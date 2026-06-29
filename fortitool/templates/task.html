@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel narrow">
+  <div class="panel-head">
+    <h1>{{ task.label }}</h1>
+    <p>{{ task.description }}</p>
+  </div>
+  <form class="form" id="task-form" method="post" action="{{ url_for('run_task', task_id=task.id) }}" enctype="multipart/form-data">
+    <label>
+      FortiGate profile
+      <select name="profile" required>
+        <option value="">Choose a profile</option>
+        {% for profile in profiles %}
+          <option value="{{ profile.name }}" {% if profile.is_default %}selected{% endif %}>{{ profile.name }} · {{ profile.host }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      {% if task.kind == "export" %}CSV fields{% else %}CSV file{% endif %}
+      {% if task.kind == "export" %}
+        <input id="fields-input" name="fields" value="{{ task.default_fields | join(', ') }}">
+      {% else %}
+        <input name="csv_file" type="file" accept=".csv,text/csv" required>
+      {% endif %}
+    </label>
+    {% if task.kind == "import" %}
+      <details class="csv-help">
+        <summary>CSV format and template</summary>
+        <p>Use the FortiGate object identifier when available. VDOM defaults to the selected profile.</p>
+        <pre><code>{{ task.csv_template().strip() }}</code></pre>
+        <a class="button-link secondary" href="{{ url_for('task_csv_template', task_id=task.id) }}">Download CSV Template</a>
+      </details>
+    {% else %}
+      <details
+        class="field-builder"
+        data-fields-url="{{ url_for('task_fields', task_id=task.id) }}"
+        data-preview-url="{{ url_for('task_preview', task_id=task.id) }}"
+      >
+        <summary>Select columns from FortiGate</summary>
+        <div class="field-builder-head">
+          <button class="secondary" id="load-fields" type="button">Load Available Fields</button>
+          <button id="apply-fields" type="button" disabled>Apply Selected Fields</button>
+          <span id="field-status">Load fields to build a selection. The CSV fields above will not change until applied.</span>
+        </div>
+        <div class="field-list" id="field-list" aria-live="polite"></div>
+      </details>
+    {% endif %}
+    {% if task.kind == "export" %}
+      <details class="advanced-options">
+        <summary>Advanced options</summary>
+        <label>
+          Endpoint template
+          <input id="endpoint-template" name="endpoint_template" value="{{ task.endpoint_template }}" list="endpoint-options" required>
+          <datalist id="endpoint-options">
+            {% for endpoint in task.endpoint_options() %}
+              <option value="{{ endpoint }}"></option>
+            {% endfor %}
+          </datalist>
+        </label>
+      </details>
+    {% else %}
+      <label>
+        Endpoint template
+        <input id="endpoint-template" name="endpoint_template" value="{{ task.endpoint_template }}" required>
+      </label>
+      <label class="check">
+        <input name="dry_run" type="checkbox" checked>
+        Dry run
+      </label>
+    {% endif %}
+    <div class="button-row">
+      {% if task.kind == "export" %}
+        <button class="secondary" id="fetch-data" type="button">Fetch Data</button>
+      {% else %}
+        <button
+          class="secondary"
+          id="load-objects"
+          type="button"
+          data-objects-url="{{ url_for('task_objects', task_id=task.id) }}"
+        >Load Current Devices</button>
+      {% endif %}
+      <button type="submit">{{ "Export CSV" if task.kind == "export" else "Run Task" }}</button>
+      <a class="button-link secondary" href="{{ url_for('index') }}">Home</a>
+    </div>
+  </form>
+</section>
+{% if task.kind == "export" %}
+  <section class="panel preview-panel" id="data-preview" hidden>
+    <div class="preview-head">
+      <h2>Data Preview</h2>
+      <span id="preview-status"></span>
+    </div>
+    <div class="preview-table-wrap">
+      <table id="preview-table">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+{% else %}
+  <section class="panel rename-editor" id="rename-editor" hidden>
+    <div class="preview-head">
+      <h2>Edit Device Names</h2>
+      <span id="rename-editor-status"></span>
+    </div>
+    <form
+      class="form"
+      id="rename-editor-form"
+      method="post"
+      action="{{ url_for('rename_objects', task_id=task.id) }}"
+    >
+      <input id="rename-profile" name="profile" type="hidden">
+      <input id="rename-endpoint" name="endpoint_template" type="hidden">
+      <div class="rename-table-wrap">
+        <table id="rename-table">
+          <thead>
+            <tr>
+              <th><input id="select-all-objects" type="checkbox" aria-label="Select all devices"></th>
+              <th>Identifier</th>
+              <th>Current Name</th>
+              <th>New Name</th>
+              <th>VDOM</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <label class="check">
+        <input name="dry_run" type="checkbox" checked>
+        Dry run
+      </label>
+      <div class="button-row">
+        <button type="submit">Rename Selected</button>
+      </div>
+    </form>
+  </section>
+{% endif %}
+{% if task.kind == "export" %}
+  <script src="{{ url_for('static', filename='task-fields.js') }}"></script>
+{% else %}
+  <script src="{{ url_for('static', filename='rename-editor.js') }}"></script>
+{% endif %}
+{% endblock %}

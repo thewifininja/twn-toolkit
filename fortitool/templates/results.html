@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>{{ task.label }} Results</h1>
+    <p>{{ profile.name }} · {{ "Dry run" if dry_run else "Live run" }}</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Row</th>
+          <th>Current</th>
+          <th>New</th>
+          <th>VDOM</th>
+          <th>Status</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for result in results %}
+          <tr>
+            <td>{{ result.row_number }}</td>
+            <td>{{ result.current_name }}</td>
+            <td>{{ result.new_name }}</td>
+            <td>{{ result.vdom }}</td>
+            <td><span class="pill {{ result.status }}">{{ result.status }}</span></td>
+            <td>{{ result.message }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="button-row result-actions">
+    {% if dry_run and entries %}
+      <form method="post" action="{{ url_for('rename_objects', task_id=task.id) }}">
+        <input name="profile" type="hidden" value="{{ profile.name }}">
+        <input name="endpoint_template" type="hidden" value="{{ endpoint_template }}">
+        {% for entry in entries %}
+          <input name="identifier" type="hidden" value="{{ entry.identifier }}">
+          <input name="current_name" type="hidden" value="{{ entry.current_name }}">
+          <input name="new_name" type="hidden" value="{{ entry.new_name }}">
+          <input name="vdom" type="hidden" value="{{ entry.vdom }}">
+        {% endfor %}
+        <button type="submit">Apply These Changes</button>
+      </form>
+    {% endif %}
+    <a class="button-link" href="{{ url_for('task_form', task_id=task.id) }}">Run Again</a>
+    <a class="button-link secondary" href="{{ url_for('index') }}">Home</a>
+  </div>
+</section>
+{% endblock %}
