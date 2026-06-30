@@ -12,9 +12,14 @@
       <span class="subtitle">Local network operations toolbox</span>
       <nav class="topnav">
         <a href="{{ url_for('index') }}">Home</a>
-        <a href="{{ url_for('fortigate_home') }}">FortiGate</a>
-        <a href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator</a>
-        <a href="{{ url_for('tools.index') }}">Generic Tools</a>
+        <details class="nav-menu">
+          <summary>Tools</summary>
+          <div class="nav-dropdown">
+            <a href="{{ url_for('fortigate_home') }}">FortiGate</a>
+            <a href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator</a>
+            <a href="{{ url_for('tools.index') }}">Generic Tools</a>
+          </div>
+        </details>
       </nav>
     </header>
     <main class="shell">

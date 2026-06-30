@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel speed-test-panel">
+  <div class="panel-head">
+    <h1>Wi-Fi / LAN Speed Test</h1>
+    <p>Measure the connection between this browser and the machine running the toolkit.</p>
+  </div>
+
+  <div
+    id="speed-test"
+    data-download-url="{{ url_for('tools.speed_test_download') }}"
+    data-ping-url="{{ url_for('tools.speed_test_ping') }}"
+    data-upload-url="{{ url_for('tools.speed_test_upload') }}"
+  >
+    <div class="speed-hero" aria-live="polite">
+      <span class="speed-phase" id="speed-phase">Ready</span>
+      <div class="speed-headlines">
+        <article class="speed-headline" id="speed-download-meter">
+          <span>Download</span>
+          <strong id="speed-download">—</strong>
+          <small>Mbps</small>
+        </article>
+        <article class="speed-headline" id="speed-upload-meter">
+          <span>Upload</span>
+          <strong id="speed-upload">—</strong>
+          <small>Mbps</small>
+        </article>
+      </div>
+      <div class="speed-progress" role="progressbar" aria-label="Test progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <span id="speed-progress-bar"></span>
+      </div>
+    </div>
+
+    <div class="speed-results">
+      <article>
+        <span>Latency</span>
+        <strong id="speed-latency">—</strong>
+        <small>ms</small>
+      </article>
+      <article>
+        <span>Jitter</span>
+        <strong id="speed-jitter">—</strong>
+        <small>ms</small>
+      </article>
+    </div>
+
+    <div class="button-row speed-actions">
+      <button id="speed-start" type="button">Start Test</button>
+      <button class="secondary" id="speed-cancel" type="button" disabled>Cancel</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
+    </div>
+    <span class="tool-status" id="speed-status">
+      For a meaningful result, open this page from a different device on your Wi-Fi or LAN.
+    </span>
+  </div>
+</section>
+
+<section class="panel tool-panel speed-test-notes">
+  <h2>What this result means</h2>
+  <p>
+    This is a local network test, not an internet speed test. The toolkit server, its wired or
+    wireless connection, and this browser's connection are all part of the measured path.
+  </p>
+</section>
+
+<script src="{{ url_for('static', filename='speed-test.js') }}"></script>
+{% endblock %}

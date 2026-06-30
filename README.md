@@ -24,6 +24,10 @@ operations tasks.
 - Compares DNS answers and response times across reusable host and resolver profiles.
 - Tests PAP or CHAP credentials against multiple saved RADIUS servers, with
   reusable request-attribute profiles and decoded standard reply attributes.
+- Measures browser-to-toolkit LAN/Wi-Fi latency, jitter, download, and upload
+  throughput.
+- Inspects the exact TLS certificate chain supplied by a web server, including
+  hostname, expiration, chain order, and local trust validation.
 - Provides a task registry so more CSV/API tasks can be added cleanly later.
 
 ## Quick Start

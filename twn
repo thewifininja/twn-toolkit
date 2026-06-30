@@ -16,6 +16,18 @@ is_running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
 }
 
+port_available() {
+  "$ROOT/.venv/bin/python" -c '
+import socket
+import sys
+
+host, port = sys.argv[1], int(sys.argv[2])
+family = socket.AF_INET6 if ":" in host else socket.AF_INET
+with socket.socket(family, socket.SOCK_STREAM) as listener:
+    listener.bind((host, port))
+' "$HOST" "$PORT" >/dev/null 2>&1
+}
+
 start() {
   if is_running; then
     echo "The WiFi Ninja's Toolkit is already running (PID $(cat "$PIDFILE"))."
@@ -25,6 +37,12 @@ start() {
 
   if [ ! -x "$GUNICORN" ]; then
     echo "Gunicorn is not installed. Run: .venv/bin/pip install -r requirements.txt" >&2
+    exit 1
+  fi
+
+  if ! port_available; then
+    echo "Cannot start: $HOST:$PORT is already in use." >&2
+    echo "A previous server may still be shutting down. Wait a moment and run ./twn status." >&2
     exit 1
   fi
 
@@ -67,10 +85,15 @@ stop() {
   pid=$(cat "$PIDFILE")
   kill "$pid"
   attempts=0
-  while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
+  while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt 350 ]; do
     attempts=$((attempts + 1))
     sleep 0.1
   done
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "The server is still shutting down (PID $pid)." >&2
+    echo "Its PID file was retained; wait a moment and run ./twn status." >&2
+    return 1
+  fi
   rm -f "$PIDFILE"
   echo "Stopped The WiFi Ninja's Toolkit."
 }

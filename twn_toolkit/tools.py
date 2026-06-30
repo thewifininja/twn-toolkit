@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+import os
 
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, stream_with_context
+
+from .certificate_tools import (
+    CertificateInspectionError,
+    inspect_certificate_chain,
+    normalize_certificate_target,
+)
 from .network_tools import (
     dns_lookup_matrix,
     parse_dns_hosts,
@@ -20,11 +27,102 @@ from .profiles import DNSProfileStore, PingProfileStore, RadiusProfileStore
 
 
 tools_bp = Blueprint("tools", __name__, url_prefix="/tools")
+SPEED_TEST_CHUNK_SIZE = 256 * 1024
+SPEED_TEST_DEFAULT_DOWNLOAD_SIZE = 512 * 1024 * 1024
+SPEED_TEST_MAX_DOWNLOAD_SIZE = 512 * 1024 * 1024
+SPEED_TEST_MAX_UPLOAD_SIZE = 16 * 1024 * 1024
+SPEED_TEST_DOWNLOAD_CHUNK = os.urandom(SPEED_TEST_CHUNK_SIZE)
 
 
 @tools_bp.get("/")
 def index():
     return render_template("tools/index.html")
+
+
+@tools_bp.route("/certificate-inspector", methods=["GET", "POST"])
+def certificate_inspector():
+    form = {"target": "", "port": "443", "timeout": "8"}
+    result = None
+    error = ""
+    if request.method == "POST":
+        form = {key: request.form.get(key, "").strip() for key in form}
+        try:
+            host, port = normalize_certificate_target(form["target"], form["port"])
+            timeout = float(form["timeout"])
+            result = inspect_certificate_chain(host, port, timeout)
+            form["port"] = str(port)
+        except (CertificateInspectionError, ValueError) as exc:
+            error = str(exc)
+    return render_template(
+        "tools/certificate_inspector.html",
+        error=error,
+        form=form,
+        result=result,
+    )
+
+
+@tools_bp.get("/speed-test")
+def speed_test():
+    return render_template("tools/speed_test.html")
+
+
+@tools_bp.route("/speed-test/ping", methods=["GET", "HEAD"])
+def speed_test_ping():
+    response = Response(status=204)
+    _disable_client_caching(response)
+    return response
+
+
+@tools_bp.get("/speed-test/download")
+def speed_test_download():
+    try:
+        size = int(request.args.get("bytes", SPEED_TEST_DEFAULT_DOWNLOAD_SIZE))
+    except ValueError:
+        return jsonify({"error": "Download size must be a whole number of bytes."}), 400
+    if not 1 <= size <= SPEED_TEST_MAX_DOWNLOAD_SIZE:
+        return jsonify({"error": "Download size must be between 1 byte and 512 MiB."}), 400
+
+    @stream_with_context
+    def generate():
+        remaining = size
+        while remaining:
+            length = min(remaining, SPEED_TEST_CHUNK_SIZE)
+            yield SPEED_TEST_DOWNLOAD_CHUNK[:length]
+            remaining -= length
+
+    response = Response(generate(), mimetype="application/octet-stream")
+    response.headers["Content-Length"] = str(size)
+    response.headers["Content-Encoding"] = "identity"
+    response.headers["X-Accel-Buffering"] = "no"
+    _disable_client_caching(response)
+    return response
+
+
+@tools_bp.post("/speed-test/upload")
+def speed_test_upload():
+    content_length = request.content_length
+    if content_length is None:
+        return jsonify({"error": "Upload requests require a Content-Length header."}), 411
+    if not 1 <= content_length <= SPEED_TEST_MAX_UPLOAD_SIZE:
+        return jsonify({"error": "Upload size must be between 1 byte and 16 MiB."}), 413
+
+    received = 0
+    while True:
+        chunk = request.stream.read(min(SPEED_TEST_CHUNK_SIZE, SPEED_TEST_MAX_UPLOAD_SIZE - received + 1))
+        if not chunk:
+            break
+        received += len(chunk)
+        if received > SPEED_TEST_MAX_UPLOAD_SIZE:
+            return jsonify({"error": "Upload exceeds the 16 MiB limit."}), 413
+    response = jsonify({"bytes_received": received})
+    _disable_client_caching(response)
+    return response
+
+
+def _disable_client_caching(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
 
 
 @tools_bp.route("/subnet-excluder", methods=["GET", "POST"])

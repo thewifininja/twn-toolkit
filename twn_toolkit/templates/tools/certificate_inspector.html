@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel">
+  <div class="panel-head">
+    <h1>Certificate Chain Inspector</h1>
+    <p>See the exact certificate chain a TLS server presents and test it against this machine's trust store.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  <form class="form" method="post">
+    <label>
+      Hostname or HTTPS URL
+      <input name="target" value="{{ form.target }}" placeholder="portal.example.com" autocomplete="off" required>
+    </label>
+    <div class="certificate-options">
+      <label>
+        Port
+        <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required>
+      </label>
+      <label>
+        Timeout (seconds)
+        <input name="timeout" type="number" min="0.2" max="30" step="0.1" value="{{ form.timeout }}" required>
+      </label>
+    </div>
+    <span class="field-note">
+      The connection is made by the toolkit server, so it must be able to resolve and reach this host.
+    </span>
+    <div class="button-row">
+      <button type="submit">Inspect Certificate</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+    </div>
+  </form>
+</section>
+
+{% if result %}
+<section class="panel tool-panel certificate-summary">
+  <div class="certificate-result-head">
+    <div>
+      <h2>{{ result.host }}:{{ result.port }}</h2>
+      <p>{{ result.tls.version }} · {{ result.tls.cipher }}{% if result.tls.cipher_bits %} · {{ result.tls.cipher_bits }} bits{% endif %}</p>
+    </div>
+    <span class="pill {{ 'success' if result.overall_valid else 'error' }}">
+      {{ "Valid" if result.overall_valid else "Needs attention" }}
+    </span>
+  </div>
+
+  <div class="certificate-check-grid">
+    <article>
+      <span>System trust</span>
+      <strong class="{{ 'certificate-good' if result.trust.valid else 'certificate-bad' }}">
+        {{ "Valid" if result.trust.valid else "Failed" }}
+      </strong>
+      {% if not result.trust.valid %}<small>{{ result.trust.error }}</small>{% endif %}
+    </article>
+    <article>
+      <span>Hostname</span>
+      <strong class="{{ 'certificate-good' if result.hostname.valid else 'certificate-bad' }}">
+        {{ "Matches" if result.hostname.valid else "Mismatch" }}
+      </strong>
+      <small>
+        {% if result.hostname.valid %}
+          {{ result.hostname.matched }} via {{ result.hostname.source }}
+        {% else %}
+          {{ result.hostname.error }}
+        {% endif %}
+      </small>
+    </article>
+    <article>
+      <span>Server supplied</span>
+      <strong>{{ result.presented_count }} certificate{{ '' if result.presented_count == 1 else 's' }}</strong>
+      <small>{{ "Chain order is consistent" if result.chain_order_valid else "Chain order is broken" }}</small>
+    </article>
+    <article>
+      <span>Response</span>
+      <strong>{{ result.elapsed_ms }} ms</strong>
+      <small>{% if result.tls.alpn %}ALPN {{ result.tls.alpn }}{% else %}No ALPN selected{% endif %}</small>
+    </article>
+  </div>
+
+  {% if result.likely_missing_intermediate %}
+    <div class="message warning">
+      A missing or incorrectly ordered intermediate certificate is likely. The server-supplied chain could not be linked or validated.
+    </div>
+  {% endif %}
+  {% if result.server_sent_self_issued_root %}
+    <div class="certificate-note">
+      The server included a self-issued certificate at the end of its chain. Servers normally omit the trusted root.
+    </div>
+  {% else %}
+    <div class="certificate-note">
+      This list contains only certificates supplied by the server. A trusted root is normally not sent and is not added to this display.
+    </div>
+  {% endif %}
+</section>
+
+<section class="panel tool-panel">
+  <div class="panel-head">
+    <h2>Server-supplied chain</h2>
+    <p>Position 1 is the leaf certificate presented for the requested host.</p>
+  </div>
+  <div class="certificate-chain">
+    {% for certificate in result.certificates %}
+      <article class="certificate-card">
+        <div class="certificate-card-head">
+          <div>
+            <span class="certificate-position">{{ certificate.position }}</span>
+            <strong>{{ certificate.role }}</strong>
+            {% if certificate.common_name %}<code>{{ certificate.common_name }}</code>{% endif %}
+          </div>
+          <span class="pill {{ 'success' if certificate.time_valid else 'error' }}">
+            {% if certificate.expired %}Expired{% elif certificate.not_yet_valid %}Not yet valid{% else %}Time valid{% endif %}
+          </span>
+        </div>
+
+        <dl class="certificate-details">
+          <div><dt>Subject</dt><dd>{{ certificate.subject }}</dd></div>
+          <div><dt>Issuer</dt><dd>{{ certificate.issuer }}</dd></div>
+          <div>
+            <dt>Validity</dt>
+            <dd>
+              {{ certificate.not_before.strftime("%Y-%m-%d %H:%M:%S UTC") }} →
+              {{ certificate.not_after.strftime("%Y-%m-%d %H:%M:%S UTC") }}
+              {% if certificate.time_valid %}({{ certificate.days_remaining }} days remaining){% endif %}
+            </dd>
+          </div>
+          <div><dt>Public key</dt><dd>{{ certificate.public_key }}</dd></div>
+          <div><dt>Signature</dt><dd>{{ certificate.signature_algorithm }} / {{ certificate.signature_hash }}</dd></div>
+          <div><dt>Serial number</dt><dd><code>{{ certificate.serial_number }}</code></dd></div>
+          <div><dt>SHA-256 fingerprint</dt><dd><code>{{ certificate.sha256_fingerprint }}</code></dd></div>
+        </dl>
+
+        <details class="certificate-more">
+          <summary>Names and authority information</summary>
+          <div class="certificate-extension-grid">
+            <div>
+              <strong>DNS names</strong>
+              {% if certificate.san_dns %}
+                {% for name in certificate.san_dns %}<code>{{ name }}</code>{% endfor %}
+              {% else %}<span>None supplied</span>{% endif %}
+            </div>
+            <div>
+              <strong>IP addresses</strong>
+              {% if certificate.san_ip %}
+                {% for address in certificate.san_ip %}<code>{{ address }}</code>{% endfor %}
+              {% else %}<span>None supplied</span>{% endif %}
+            </div>
+            <div>
+              <strong>Issuer download URLs</strong>
+              {% if certificate.aia_issuers %}
+                {% for url in certificate.aia_issuers %}<code>{{ url }}</code>{% endfor %}
+              {% else %}<span>None supplied</span>{% endif %}
+            </div>
+            <div>
+              <strong>OCSP URLs</strong>
+              {% if certificate.ocsp_urls %}
+                {% for url in certificate.ocsp_urls %}<code>{{ url }}</code>{% endfor %}
+              {% else %}<span>None supplied</span>{% endif %}
+            </div>
+          </div>
+        </details>
+      </article>
+
+      {% if not loop.last %}
+        {% set link = result.order_checks[loop.index0] %}
+        <div class="certificate-link {{ 'valid' if link.matches else 'invalid' }}">
+          {{ "Issuer matches next subject" if link.matches else "Issuer does not match next subject" }}
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

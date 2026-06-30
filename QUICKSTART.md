@@ -139,6 +139,13 @@ The **Generic Tools** workspace does not use Fortinet profiles.
   `Name = value`; unknown standard and vendor attributes can be sent in raw
   hexadecimal form. Known standard response attributes are decoded by name and
   type, while unknown attributes retain their numeric identity and raw hex.
+- **Wi-Fi / LAN Speed Test** measures latency, jitter, download, and upload
+  throughput between the browser and the toolkit server. Open it from another
+  device for a meaningful result; it does not measure internet service speed.
+- **Certificate Chain Inspector** retrieves the exact certificates supplied by
+  an HTTPS server and reports hostname matching, validity dates, chain order,
+  TLS details, and validation against the toolkit host's trust store. Trusted
+  roots are not silently added to the displayed server-supplied chain.
 
 Multi-SSH commands execute on real devices. Review the host list and commands
 carefully before selecting the required execution confirmation.

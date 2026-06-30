@@ -68,6 +68,51 @@ class NetworkToolTests(unittest.TestCase):
 
             self.assertIn(b"DNS Response Time", client.get("/").data)
             self.assertIn(b"RADIUS Authentication Test", client.get("/").data)
+            self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/").data)
+            self.assertIn(b"Certificate Chain Inspector", client.get("/").data)
+            self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/tools/").data)
+            self.assertIn(b"Certificate Chain Inspector", client.get("/tools/").data)
+            self.assertEqual(client.get("/tools/certificate-inspector").status_code, 200)
+
+            speed_page = client.get("/tools/speed-test")
+            self.assertEqual(speed_page.status_code, 200)
+            self.assertIn(b"browser and the machine running the toolkit", speed_page.data)
+            self.assertIn(b'id="speed-download-meter"', speed_page.data)
+            self.assertIn(b'id="speed-upload-meter"', speed_page.data)
+            self.assertIn(b"<summary>Tools</summary>", speed_page.data)
+            self.assertIn(b'href="/fortigate"', speed_page.data)
+            self.assertIn(b'href="/fortiauthenticator"', speed_page.data)
+            self.assertIn(b'href="/tools/"', speed_page.data.split(b"</nav>", 1)[0])
+
+            latency_response = client.get("/tools/speed-test/ping")
+            self.assertEqual(latency_response.status_code, 204)
+            self.assertIn("no-store", latency_response.headers["Cache-Control"])
+
+            download_response = client.get("/tools/speed-test/download?bytes=1025")
+            self.assertEqual(download_response.status_code, 200)
+            self.assertEqual(len(download_response.data), 1025)
+            self.assertEqual(download_response.headers["Content-Length"], "1025")
+            self.assertEqual(download_response.headers["Content-Encoding"], "identity")
+            self.assertEqual(
+                client.get("/tools/speed-test/download?bytes=0").status_code,
+                400,
+            )
+
+            upload_response = client.post(
+                "/tools/speed-test/upload",
+                data=b"x" * 4097,
+                content_type="application/octet-stream",
+            )
+            self.assertEqual(upload_response.status_code, 200)
+            self.assertEqual(upload_response.get_json()["bytes_received"], 4097)
+            self.assertEqual(
+                client.post(
+                    "/tools/speed-test/upload",
+                    data=b"",
+                    content_type="application/octet-stream",
+                ).status_code,
+                411,
+            )
 
             response = client.post(
                 "/tools/subnet-excluder",
