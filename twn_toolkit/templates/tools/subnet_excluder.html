@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel">
+  <div class="panel-head">
+    <h1>Subnet Excluder</h1>
+    <p>Subtract one or more CIDR networks from parent networks.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  <form class="form" method="post">
+    <label>
+      Parent networks
+      <textarea name="supernets" rows="4" placeholder="10.10.0.0/20&#10;172.16.0.0/16" required>{{ supernets }}</textarea>
+    </label>
+    <p class="field-note">Enter comma-, space-, or line-separated CIDRs. Use <code>rfc1918</code> for all private IPv4 space.</p>
+    <label>
+      Networks to exclude
+      <textarea name="exclusions" rows="4" placeholder="10.10.4.0/24&#10;10.10.8.0/23" required>{{ exclusions }}</textarea>
+    </label>
+    <div class="button-row">
+      <button type="submit">Calculate</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
+    </div>
+  </form>
+</section>
+
+{% if results is not none %}
+  <section class="panel tool-panel">
+    <div class="preview-head">
+      <h2>Remaining Networks</h2>
+      <span>{{ results | length }} network(s)</span>
+    </div>
+    {% if results %}
+      <pre class="result-output">{{ results | join('\n') }}</pre>
+    {% else %}
+      <p>All parent address space was excluded.</p>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}

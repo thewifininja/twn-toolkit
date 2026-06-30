@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel">
+  <div class="panel-head">
+    <h1>Multi-SSH</h1>
+    <p>Run a command sequence against up to 50 SSH hosts concurrently.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  <form class="form" method="post" autocomplete="off">
+    <label>
+      Hosts
+      <textarea name="hosts" rows="5" placeholder="switch-01.example.com&#10;192.0.2.20" required>{{ form.hosts }}</textarea>
+    </label>
+    <div class="form-grid">
+      <label>
+        Username
+        <input name="username" value="{{ form.username }}" required>
+      </label>
+      <label>
+        Password
+        <input name="password" type="password" required>
+      </label>
+      <label>
+        SSH port
+        <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required>
+      </label>
+    </div>
+    <label>
+      Commands
+      <textarea class="command-input" name="commands" rows="8" placeholder="show version&#10;show interfaces status" required>{{ form.commands }}</textarea>
+    </label>
+    <label class="check">
+      <input name="allow_unknown_hosts" type="checkbox" {% if form.allow_unknown_hosts %}checked{% endif %}>
+      Allow unknown SSH host keys for this run
+    </label>
+    <label class="check">
+      <input name="send_ctrl_y" type="checkbox" {% if form.send_ctrl_y %}checked{% endif %}>
+      Send Ctrl+Y before commands
+    </label>
+    <label class="check execution-confirm">
+      <input name="confirm_execution" type="checkbox" required>
+      I understand these commands will execute on every listed host
+    </label>
+    <div class="button-row">
+      <button type="submit">Run Commands</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
+    </div>
+    <p class="field-note">Credentials are used only for this request and are not stored.</p>
+  </form>
+</section>
+
+{% if results is not none %}
+  <section class="panel tool-panel">
+    <div class="preview-head">
+      <h2>SSH Results</h2>
+      <span>{{ results | length }} host(s)</span>
+    </div>
+    <div class="ssh-results">
+      {% for result in results %}
+        <details class="ssh-result" {% if result.status == 'error' %}open{% endif %}>
+          <summary>
+            <strong>{{ result.host }}</strong>
+            <span class="pill {{ result.status }}">{{ result.status }}</span>
+          </summary>
+          {% if result.error %}<div class="message error">{{ result.error }}</div>{% endif %}
+          <pre class="result-output">{{ result.output or 'No output captured.' }}</pre>
+        </details>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+{% endblock %}

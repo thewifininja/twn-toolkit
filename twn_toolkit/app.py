@@ -7,28 +7,36 @@ import click
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from .fortigate import FortiGateClient, FortiGateError, normalize_api_key, normalize_host
-from .profiles import ProfileStore
+from .profiles import PingProfileStore, ProfileStore
 from .tasks import TASKS, ExportTask, RenameTask, discover_export_fields, get_task, grouped_tasks
+from .tools import tools_bp
 
 
 def create_app(instance_path: str | None = None) -> Flask:
     app = Flask(__name__, instance_relative_config=True, instance_path=instance_path)
-    app.config.from_mapping(SECRET_KEY=os.environ.get("FORTITOOL_SECRET_KEY", "dev-change-me"))
+    app.config.from_mapping(SECRET_KEY=os.environ.get("TWN_TOOLKIT_SECRET_KEY", "dev-change-me"))
+    app.register_blueprint(tools_bp)
 
     store = ProfileStore(app.instance_path)
+    ping_profile_store = PingProfileStore(app.instance_path)
 
     @app.cli.command("reset-data")
     @click.option("--yes", is_flag=True, help="Reset without an interactive confirmation.")
     def reset_data(yes: bool) -> None:
-        """Remove all locally saved FortiGate profiles and API keys."""
-        if not yes and not click.confirm("Delete all saved FortiGate profiles and API keys?"):
+        """Remove all locally saved profiles and API keys."""
+        if not yes and not click.confirm("Delete all saved FortiGate and ping profiles and API keys?"):
             click.echo("Reset cancelled.")
             return
         store.clear()
-        click.echo("FortiTool local profile data has been reset.")
+        ping_profile_store.clear()
+        click.echo("The WiFi Ninja's Toolkit local profile data has been reset.")
 
     @app.get("/")
     def index():
+        return render_template("home.html")
+
+    @app.get("/fortigate")
+    def fortigate_home():
         profiles = store.all()
         edit_profile = store.get(request.args.get("edit", ""))
         return render_template(
@@ -55,13 +63,13 @@ def create_app(instance_path: str | None = None) -> Flask:
 
         if not name or not host or (not api_key and not existing_profile):
             flash("Profile name, FortiGate URL, and API key are required.", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("fortigate_home"))
 
         try:
             host = normalize_host(host)
         except ValueError as exc:
             flash(str(exc), "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("fortigate_home"))
 
         if existing_profile and original_name != name:
             store.delete(original_name)
@@ -77,20 +85,20 @@ def create_app(instance_path: str | None = None) -> Flask:
             }
         )
         flash(f"Saved profile '{name}'.", "success")
-        return redirect(url_for("index"))
+        return redirect(url_for("fortigate_home"))
 
     @app.post("/profiles/<name>/delete")
     def delete_profile(name: str):
         store.delete(name)
         flash(f"Deleted profile '{name}'.", "success")
-        return redirect(url_for("index"))
+        return redirect(url_for("fortigate_home"))
 
     @app.post("/profiles/<name>/test")
     def test_profile(name: str):
         profile = store.get(name)
         if not profile:
             flash("Profile not found.", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("fortigate_home"))
 
         client = FortiGateClient.from_profile(profile)
         try:
@@ -101,14 +109,14 @@ def create_app(instance_path: str | None = None) -> Flask:
             version = result.get("version") or result.get("build") or "reachable"
             flash(f"Connection OK: {version}", "success")
 
-        return redirect(url_for("index"))
+        return redirect(url_for("fortigate_home"))
 
     @app.get("/tasks/<task_id>")
     def task_form(task_id: str):
         task = get_task(task_id)
         if not task:
             flash("Task not found.", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("fortigate_home"))
         return render_template("task.html", profiles=store.all(), task=task)
 
     @app.get("/tasks/<task_id>/template.csv")
@@ -132,7 +140,7 @@ def create_app(instance_path: str | None = None) -> Flask:
 
         if not task or not profile:
             flash("Select a valid task and profile.", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("fortigate_home"))
 
         client = FortiGateClient.from_profile(profile)
         if isinstance(task, ExportTask):
@@ -158,7 +166,7 @@ def create_app(instance_path: str | None = None) -> Flask:
 
         if not isinstance(task, RenameTask):
             flash("Task type is not supported yet.", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("fortigate_home"))
 
         if not upload or upload.filename == "":
             flash("Choose a CSV file to import.", "error")

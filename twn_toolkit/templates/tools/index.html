@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="workspace-intro">
+  <h1>Network Tools</h1>
+  <p>Standalone utilities that do not require a FortiGate profile.</p>
+</section>
+
+<section class="task-grid">
+  <a class="task-card" href="{{ url_for('tools.subnet_excluder') }}">
+    <strong>Subnet Excluder</strong>
+    <span>Subtract CIDR networks from one or more parent networks.</span>
+  </a>
+  <a class="task-card" href="{{ url_for('tools.ping_tool') }}">
+    <strong>Multi-Host Ping</strong>
+    <span>Continuously monitor IPv4, IPv6, and DNS host reachability.</span>
+  </a>
+  <a class="task-card" href="{{ url_for('tools.multi_ssh') }}">
+    <strong>Multi-SSH</strong>
+    <span>Run the same command sequence across multiple SSH hosts.</span>
+  </a>
+</section>
+{% endblock %}

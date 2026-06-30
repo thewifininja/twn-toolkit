@@ -37,7 +37,7 @@
       <div class="button-row">
         <button type="submit">{{ "Update Profile" if edit_profile else "Save Profile" }}</button>
         {% if edit_profile %}
-          <a class="button-link secondary" href="{{ url_for('index') }}">Cancel</a>
+          <a class="button-link secondary" href="{{ url_for('fortigate_home') }}">Cancel</a>
         {% endif %}
       </div>
     </form>
@@ -61,7 +61,7 @@
             <form method="post" action="{{ url_for('test_profile', name=profile.name) }}">
               <button class="secondary" type="submit">Test</button>
             </form>
-            <a class="button-link secondary" href="{{ url_for('index', edit=profile.name) }}">Edit</a>
+            <a class="button-link secondary" href="{{ url_for('fortigate_home', edit=profile.name) }}">Edit</a>
             <form method="post" action="{{ url_for('delete_profile', name=profile.name) }}">
               <button class="danger" type="submit">Delete</button>
             </form>

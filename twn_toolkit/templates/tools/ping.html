@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel">
+  <div class="panel-head">
+    <h1>Multi-Host Ping</h1>
+    <p>Monitor up to 100 IP addresses or hostnames from this machine.</p>
+  </div>
+  <form
+    class="form"
+    id="ping-form"
+    data-delete-profile-url="{{ url_for('tools.delete_ping_profile') }}"
+    data-run-url="{{ url_for('tools.ping_run') }}"
+    data-save-profile-url="{{ url_for('tools.save_ping_profile') }}"
+  >
+    <div class="ping-profile-manager">
+      <label>
+        Saved profile
+        <select id="ping-profile">
+          <option value="">New profile</option>
+          {% for profile in profiles %}
+            <option
+              value="{{ profile.name }}"
+              data-interval="{{ profile.interval }}"
+              data-targets='{{ profile.targets|tojson }}'
+            >{{ profile.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Profile name
+        <input id="ping-profile-name" type="text" maxlength="100" placeholder="Branch offices">
+      </label>
+      <div class="button-row ping-profile-actions">
+        <button class="secondary" id="ping-profile-load" type="button">Load</button>
+        <button class="secondary" id="ping-profile-save" type="button">Save</button>
+        <button class="danger" id="ping-profile-delete" type="button">Delete</button>
+      </div>
+    </div>
+    <label>
+      Hosts
+      <textarea id="ping-hosts" rows="6" placeholder="Core Router = 192.0.2.1&#10;8.8.8.8&#10;router.example.com" required></textarea>
+    </label>
+    <span class="field-note">Optional friendly names use <code>Name = host</code>. Enter unnamed hosts normally.</span>
+    <label>
+      Interval in seconds
+      <input id="ping-interval" type="number" min="1" max="60" value="2">
+    </label>
+    <div class="button-row">
+      <button id="ping-start" type="submit">Start</button>
+      <button class="secondary" id="ping-stop" type="button" disabled>Stop</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
+    </div>
+    <span class="tool-status" id="ping-status"></span>
+  </form>
+</section>
+
+<section class="panel tool-panel" id="ping-results" hidden>
+  <div class="preview-table-wrap">
+    <table class="ping-table">
+      <thead>
+        <tr><th>Host</th><th>Status</th><th>Latency</th><th>Response-time history</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+<script src="{{ url_for('static', filename='ping-tool.js') }}"></script>
+{% endblock %}

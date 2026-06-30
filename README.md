@@ -1,6 +1,7 @@
-# FortiTool
+# The WiFi Ninja's Toolkit
 
-A small Flask app for running repeatable FortiGate admin tasks against a user-defined appliance.
+A small Flask app for repeatable Fortinet administration and standalone network
+operations tasks.
 
 ## What it does
 
@@ -12,6 +13,10 @@ A small Flask app for running repeatable FortiGate admin tasks against a user-de
 - Exports managed FortiSwitch data to CSV.
 - Exports wireless clients to CSV.
 - Exports FortiSwitch clients to CSV.
+- Subtracts CIDR exclusions from IPv4 or IPv6 parent networks.
+- Monitors multiple hosts with a live browser-based ping view.
+- Saves reusable ping host collections with optional friendly names.
+- Runs command sequences against multiple SSH hosts with per-host output.
 - Provides a task registry so more CSV/API tasks can be added cleanly later.
 
 ## Quick Start
@@ -20,10 +25,13 @@ A small Flask app for running repeatable FortiGate admin tasks against a user-de
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-flask --app fortitool run --debug
+flask --app twn_toolkit run --debug
 ```
 
 Open http://127.0.0.1:5000.
+
+The home page separates the FortiGate workspace from standalone Network Tools.
+FortiAuthenticator is reserved as a future workspace.
 
 For first-time setup, API permissions, normal usage, and preparing a clean copy
 for another user, see [QUICKSTART.md](QUICKSTART.md).
@@ -51,13 +59,14 @@ Rename task pages also provide **Load Current Devices**. This polls the FortiGat
 shows current names in a scrollable editor, and lets you select and rename devices
 without preparing a CSV. Dry run is enabled by default. AP updates use `wtp-id`
 and FortiSwitch updates use `switch-id` as stable identifiers when available.
-For managed FortiSwitches, FortiTool detects whether the appliance exposes the
+For managed FortiSwitches, The WiFi Ninja's Toolkit detects whether the appliance exposes the
 legacy writable `name` field or the FortiOS 7.4+ renameable `switch-id` key and
 uses the matching update and read-back verification flow.
 
 ## Notes
 
-API keys are stored locally in `instance/profiles.json`. Treat the machine running this app as trusted.
+API keys are stored locally in `instance/profiles.json`. Ping profiles are stored
+in `instance/ping_profiles.json`. Treat the machine running this app as trusted.
 
 Default endpoint templates:
 
@@ -69,7 +78,7 @@ Default endpoint templates:
 - Export FortiSwitch Clients: `/api/v2/monitor/switch-controller/detected-device`
 
 The endpoint template is editable before each run because FortiOS object paths can vary by version and feature set.
-Some export tasks also have alternate endpoints; if a path returns 404, FortiTool tries the next candidate and updates the form with the endpoint that worked.
+Some export tasks also have alternate endpoints; if a path returns 404, The WiFi Ninja's Toolkit tries the next candidate and updates the form with the endpoint that worked.
 
 Export field lists support fallbacks:
 
@@ -86,5 +95,5 @@ choose columns with checkboxes, drag rows into CSV order, and then select
 To remove saved profiles and API keys before sharing a copy, run:
 
 ```bash
-flask --app fortitool reset-data
+flask --app twn_toolkit reset-data
 ```

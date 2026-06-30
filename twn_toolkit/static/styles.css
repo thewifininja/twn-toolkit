@@ -44,6 +44,8 @@ body {
 }
 
 .topnav {
+  display: flex;
+  gap: 16px;
   margin-left: auto;
 }
 
@@ -113,7 +115,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   border: 1px solid #cbd4dd;
   border-radius: 6px;
   color: var(--ink);
@@ -121,6 +124,11 @@ select {
   min-height: 42px;
   padding: 9px 11px;
   width: 100%;
+}
+
+textarea {
+  min-height: 100px;
+  resize: vertical;
 }
 
 .check {
@@ -339,6 +347,7 @@ button.danger {
 }
 
 .task-card {
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink);
@@ -355,6 +364,209 @@ button.danger {
 .task-card span,
 .empty {
   color: var(--muted);
+}
+
+.workspace-intro {
+  margin-bottom: 20px;
+}
+
+.workspace-intro h1 {
+  font-size: 1.5rem;
+}
+
+.workspace-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.workspace-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  display: grid;
+  gap: 8px;
+  min-height: 150px;
+  padding: 20px;
+  text-decoration: none;
+}
+
+.workspace-card strong {
+  font-size: 1.08rem;
+}
+
+.workspace-card span {
+  color: var(--muted);
+}
+
+.workspace-card[href]:hover {
+  border-color: var(--accent);
+}
+
+.workspace-card.unavailable {
+  background: #eef2f5;
+}
+
+.tool-panel {
+  max-width: 960px;
+}
+
+.field-note,
+.tool-status {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.field-note {
+  margin: -6px 0 0;
+}
+
+.ping-profile-manager {
+  align-items: end;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  padding: 14px;
+}
+
+.ping-profile-actions {
+  flex-wrap: nowrap;
+}
+
+.ping-host-address {
+  color: var(--muted);
+  display: block;
+  font-size: 0.82rem;
+  margin-top: 3px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr 140px;
+}
+
+.command-input,
+.result-output {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.execution-confirm {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+
+.result-output {
+  background: #101820;
+  border-radius: 6px;
+  color: #e7edf3;
+  margin: 0;
+  max-height: 440px;
+  overflow: auto;
+  padding: 14px;
+  white-space: pre-wrap;
+}
+
+.ping-up {
+  color: var(--ok);
+  font-weight: 800;
+}
+
+.ping-down {
+  color: var(--bad);
+  font-weight: 800;
+}
+
+.ping-history-cell {
+  max-width: 340px;
+  min-width: 280px;
+  width: 340px;
+}
+
+.ping-history-scroll {
+  background: #f9fbfc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  max-width: 340px;
+  overflow-x: auto;
+  width: min(340px, 38vw);
+}
+
+.ping-history-graph {
+  display: block;
+  height: 86px;
+}
+
+.ping-history-grid {
+  stroke: #dce3e9;
+  stroke-width: 1;
+}
+
+.ping-history-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.ping-history-point {
+  fill: var(--accent);
+}
+
+.ping-history-failure {
+  stroke: var(--bad);
+  stroke-width: 2;
+}
+
+.preview-table-wrap .ping-table {
+  min-width: 700px;
+  table-layout: fixed;
+}
+
+.ping-table th:nth-child(1),
+.ping-table td:nth-child(1) {
+  width: 25%;
+}
+
+.ping-table th:nth-child(2),
+.ping-table td:nth-child(2) {
+  width: 10%;
+}
+
+.ping-table th:nth-child(3),
+.ping-table td:nth-child(3) {
+  width: 14%;
+}
+
+.ping-table th:nth-child(4),
+.ping-table td:nth-child(4) {
+  width: 51%;
+}
+
+.ssh-results {
+  display: grid;
+  gap: 10px;
+}
+
+.ssh-result {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.ssh-result summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.ssh-result[open] summary {
+  margin-bottom: 12px;
 }
 
 .messages {
@@ -511,9 +723,20 @@ th {
 @media (max-width: 760px) {
   .grid.two,
   .task-grid,
+  .workspace-grid,
+  .form-grid,
   .row-card,
   .field-item {
     grid-template-columns: 1fr;
+  }
+
+  .ping-profile-manager {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .ping-profile-actions {
+    flex-wrap: wrap;
   }
 
   .topbar {

@@ -81,7 +81,7 @@
         >Load Current Devices</button>
       {% endif %}
       <button type="submit">{{ "Export CSV" if task.kind == "export" else "Run Task" }}</button>
-      <a class="button-link secondary" href="{{ url_for('index') }}">Home</a>
+      <a class="button-link secondary" href="{{ url_for('fortigate_home') }}">FortiGate Home</a>
     </div>
   </form>
 </section>

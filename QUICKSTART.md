@@ -1,4 +1,4 @@
-# FortiTool Quick Start
+# The WiFi Ninja's Toolkit Quick Start
 
 ## Requirements
 
@@ -11,7 +11,7 @@ read-write permission for the wireless-controller or switch-controller resource.
 
 ## Install
 
-From the FortiTool folder:
+From the project folder:
 
 ### macOS or Linux
 
@@ -32,12 +32,12 @@ pip install -r requirements.txt
 ## Start
 
 ```bash
-flask --app fortitool run
+flask --app twn_toolkit run
 ```
 
 Open <http://127.0.0.1:5000>.
 
-Keep the terminal open while using FortiTool. Press `Ctrl+C` to stop it.
+Keep the terminal open while using The WiFi Ninja's Toolkit. Press `Ctrl+C` to stop it.
 
 ## Add a FortiGate
 
@@ -71,24 +71,42 @@ Use either workflow:
 - Upload a CSV using the inline example or **Download CSV Template**.
 
 Dry run is enabled by default. Review the results and select
-**Apply These Changes** to perform the live updates. FortiTool reads each object
+**Apply These Changes** to perform the live updates. The WiFi Ninja's Toolkit reads each object
 back after an update and reports whether the requested name was verified.
+
+## Network Tools
+
+The **Network Tools** workspace does not use FortiGate profiles.
+
+- **Subnet Excluder** subtracts comma-, space-, or line-separated CIDRs from
+  parent networks. Enter `rfc1918` to use all private IPv4 ranges.
+- **Multi-Host Ping** runs repeated ICMP checks from the machine hosting
+  The WiFi Ninja's Toolkit. Host collections can be saved as profiles, and
+  optional friendly names use `Name = host`. Select **Stop** to end polling.
+- **Multi-SSH** sends the same command sequence to multiple devices using an
+  interactive SSH shell. Passwords are used only for the current request and
+  are not saved. Unknown host keys are rejected unless explicitly allowed.
+
+Multi-SSH commands execute on real devices. Review the host list and commands
+carefully before selecting the required execution confirmation.
 
 ## Reset Before Sharing
 
-FortiTool currently persists only saved profiles and API keys. To remove them:
+The WiFi Ninja's Toolkit persists FortiGate profiles, API keys, and saved ping
+profiles. To remove them:
 
 ```bash
-flask --app fortitool reset-data
+flask --app twn_toolkit reset-data
 ```
 
 Confirm the prompt. For scripts or packaging:
 
 ```bash
-flask --app fortitool reset-data --yes
+flask --app twn_toolkit reset-data --yes
 ```
 
-This removes `instance/profiles.json`; it does not modify the application code.
+This removes `instance/profiles.json` and `instance/ping_profiles.json`; it does
+not modify the application code.
 The `instance/` and `.venv/` directories are excluded by `.gitignore`.
 
 After resetting, share the project without `.venv/`, `.git/`, or `instance/`.
@@ -99,8 +117,8 @@ The recipient can follow this guide to create their own environment and profile.
 To intentionally allow another machine on the same trusted network to connect:
 
 ```bash
-flask --app fortitool run --host 0.0.0.0
+flask --app twn_toolkit run --host 0.0.0.0
 ```
 
-FortiTool does not provide user authentication. Do not expose it directly to the
+The WiFi Ninja's Toolkit does not provide user authentication. Do not expose it directly to the
 internet, and do not use a broad network bind on an untrusted network.
