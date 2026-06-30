@@ -3,17 +3,20 @@
 ## Requirements
 
 - Python 3.10 or newer
-- Network access to the FortiGate management interface
-- A FortiGate REST API administrator and token
+- macOS, Linux, or Raspberry Pi OS
+- Network access to the appliances you want to manage
+- For FortiGate workflows: a REST API administrator and token
+- For FortiAuthenticator workflows: an administrator with Web service access
+  and its emailed API access key
 
 A read-only API profile is sufficient for exports. Rename tasks require
 read-write permission for the wireless-controller or switch-controller resource.
+FortiAuthenticator cleanup requires permission to change Users and Devices
+resources.
 
 ## Install
 
 From the project folder:
-
-### macOS or Linux
 
 ```bash
 python3 -m venv .venv
@@ -21,23 +24,22 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Windows PowerShell
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
 ## Start
 
 ```bash
-flask --app twn_toolkit run
+./twn start
 ```
 
-Open <http://127.0.0.1:5000>.
+Open <http://127.0.0.1:5050>.
 
-Keep the terminal open while using The WiFi Ninja's Toolkit. Press `Ctrl+C` to stop it.
+The service runs in the background. Manage it with:
+
+```bash
+./twn status
+./twn logs
+./twn restart
+./twn stop
+```
 
 ## Add a FortiGate
 
@@ -52,6 +54,21 @@ Keep the terminal open while using The WiFi Ninja's Toolkit. Press `Ctrl+C` to s
 
 Profiles and API tokens are stored only on the local machine in
 `instance/profiles.json`. Treat that machine and file as sensitive.
+
+## Add a FortiAuthenticator
+
+1. On FortiAuthenticator, use an administrator account with **Web service
+   access** enabled and note the emailed Web Service API Access Key.
+2. Enter a profile name and the appliance root URL, such as
+   `https://192.0.2.20`.
+3. Enter the administrator username and Web Service API Access Key. Do not use
+   the account's interactive login password.
+4. Leave TLS verification enabled when the appliance has a trusted certificate.
+5. Optionally adjust the timeout and select **Use as default profile**.
+6. Save the profile and use **Test** to verify access.
+
+FortiAuthenticator credentials are stored locally in
+`instance/fortiauthenticator_profiles.json`.
 
 ## Run Tasks
 
@@ -74,9 +91,34 @@ Dry run is enabled by default. Review the results and select
 **Apply These Changes** to perform the live updates. The WiFi Ninja's Toolkit reads each object
 back after an update and reports whether the requested name was verified.
 
-## Network Tools
+## FortiAuthenticator Tasks
 
-The **Network Tools** workspace does not use FortiGate profiles.
+### MAC Devices
+
+Use **Fetch Data** for an in-page preview or **Export CSV** for the complete
+paginated inventory.
+
+### MAC Group Memberships
+
+Preview or export all device-to-group associations, including explicit device,
+group, and membership IDs.
+
+### MAC Device Cleanup
+
+1. Load groups and select the group to clean.
+2. Choose either **Remove devices from this group only** or **Delete MAC devices
+   globally**.
+3. Build and review the preview. Global deletion highlights devices that also
+   belong to other groups.
+4. All targets are selected by default; deselect anything that should remain.
+5. Type the exact confirmation phrase calculated for the selected count.
+
+The app re-fetches and validates selected IDs immediately before execution.
+Global deletion removes the MAC device object, not just its membership.
+
+## Generic Tools
+
+The **Generic Tools** workspace does not use Fortinet profiles.
 
 - **Subnet Excluder** subtracts comma-, space-, or line-separated CIDRs from
   parent networks. Enter `rfc1918` to use all private IPv4 ranges.
@@ -92,8 +134,8 @@ carefully before selecting the required execution confirmation.
 
 ## Reset Before Sharing
 
-The WiFi Ninja's Toolkit persists FortiGate profiles, API keys, and saved ping
-profiles. To remove them:
+The WiFi Ninja's Toolkit persists FortiGate profiles, FortiAuthenticator
+profiles, API keys, and saved ping profiles. To remove them:
 
 ```bash
 flask --app twn_toolkit reset-data
@@ -105,8 +147,9 @@ Confirm the prompt. For scripts or packaging:
 flask --app twn_toolkit reset-data --yes
 ```
 
-This removes `instance/profiles.json` and `instance/ping_profiles.json`; it does
-not modify the application code.
+This removes `instance/profiles.json`,
+`instance/fortiauthenticator_profiles.json`, and
+`instance/ping_profiles.json`; it does not modify the application code.
 The `instance/` and `.venv/` directories are excluded by `.gitignore`.
 
 After resetting, share the project without `.venv/`, `.git/`, or `instance/`.
@@ -114,10 +157,12 @@ The recipient can follow this guide to create their own environment and profile.
 
 ## Local Network Access
 
-To intentionally allow another machine on the same trusted network to connect:
+To intentionally allow another machine on the same trusted network to connect,
+stop the service and restart it with a broader bind:
 
 ```bash
-flask --app twn_toolkit run --host 0.0.0.0
+./twn stop
+TWN_TOOLKIT_HOST=0.0.0.0 ./twn start
 ```
 
 The WiFi Ninja's Toolkit does not provide user authentication. Do not expose it directly to the

@@ -1,0 +1,117 @@
+#!/bin/sh
+
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+GUNICORN="$ROOT/.venv/bin/gunicorn"
+INSTANCE="$ROOT/instance"
+PIDFILE="$INSTANCE/twn-toolkit.pid"
+ACCESS_LOG="$INSTANCE/twn-toolkit-access.log"
+ERROR_LOG="$INSTANCE/twn-toolkit-error.log"
+HOST=${TWN_TOOLKIT_HOST:-127.0.0.1}
+PORT=${TWN_TOOLKIT_PORT:-5050}
+WORKERS=${TWN_TOOLKIT_WORKERS:-2}
+
+is_running() {
+  [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+}
+
+start() {
+  if is_running; then
+    echo "The WiFi Ninja's Toolkit is already running (PID $(cat "$PIDFILE"))."
+    echo "http://$HOST:$PORT"
+    return
+  fi
+
+  if [ ! -x "$GUNICORN" ]; then
+    echo "Gunicorn is not installed. Run: .venv/bin/pip install -r requirements.txt" >&2
+    exit 1
+  fi
+
+  mkdir -p "$INSTANCE"
+  rm -f "$PIDFILE"
+  cd "$ROOT"
+  "$GUNICORN" \
+    --bind "$HOST:$PORT" \
+    --workers "$WORKERS" \
+    --timeout 120 \
+    --pid "$PIDFILE" \
+    --access-logfile "$ACCESS_LOG" \
+    --error-logfile "$ERROR_LOG" \
+    --capture-output \
+    --daemon \
+    "twn_toolkit:create_app()"
+
+  attempts=0
+  while [ "$attempts" -lt 30 ]; do
+    if is_running; then
+      echo "Started The WiFi Ninja's Toolkit (PID $(cat "$PIDFILE"))."
+      echo "http://$HOST:$PORT"
+      return
+    fi
+    attempts=$((attempts + 1))
+    sleep 0.1
+  done
+
+  echo "The server did not start. Check: ./twn logs" >&2
+  exit 1
+}
+
+stop() {
+  if ! is_running; then
+    rm -f "$PIDFILE"
+    echo "The WiFi Ninja's Toolkit is not running."
+    return
+  fi
+
+  pid=$(cat "$PIDFILE")
+  kill "$pid"
+  attempts=0
+  while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
+    attempts=$((attempts + 1))
+    sleep 0.1
+  done
+  rm -f "$PIDFILE"
+  echo "Stopped The WiFi Ninja's Toolkit."
+}
+
+status() {
+  if is_running; then
+    echo "The WiFi Ninja's Toolkit is running (PID $(cat "$PIDFILE"))."
+    echo "http://$HOST:$PORT"
+  else
+    echo "The WiFi Ninja's Toolkit is not running."
+    exit 1
+  fi
+}
+
+logs() {
+  if [ -f "$ERROR_LOG" ]; then
+    tail -n 100 "$ERROR_LOG"
+  else
+    echo "No server log exists yet."
+  fi
+}
+
+case "${1:-}" in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  restart)
+    stop
+    start
+    ;;
+  status)
+    status
+    ;;
+  logs)
+    logs
+    ;;
+  *)
+    echo "Usage: ./twn {start|stop|restart|status|logs}" >&2
+    exit 2
+    ;;
+esac

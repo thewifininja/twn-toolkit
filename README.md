@@ -13,6 +13,10 @@ operations tasks.
 - Exports managed FortiSwitch data to CSV.
 - Exports wireless clients to CSV.
 - Exports FortiSwitch clients to CSV.
+- Stores local FortiAuthenticator profiles using Web Service API keys.
+- Previews and exports FortiAuthenticator MAC devices and group memberships.
+- Removes selected group memberships or deletes selected MAC devices globally
+  with previews, overlap warnings, and typed confirmation.
 - Subtracts CIDR exclusions from IPv4 or IPv6 parent networks.
 - Monitors multiple hosts with a live browser-based ping view.
 - Saves reusable ping host collections with optional friendly names.
@@ -25,13 +29,33 @@ operations tasks.
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-flask --app twn_toolkit run --debug
+./twn start
 ```
 
-Open http://127.0.0.1:5000.
+Open http://127.0.0.1:5050.
 
-The home page separates the FortiGate workspace from standalone Network Tools.
-FortiAuthenticator is reserved as a future workspace.
+The home page separates Fortinet workflows from standalone generic network tools.
+
+## Local Service
+
+```text
+./twn start     Start in the background
+./twn stop      Stop the service
+./twn restart   Restart the service
+./twn status    Show status and URL
+./twn logs      Show recent server errors
+```
+
+The launcher supports macOS, Linux, and Raspberry Pi OS. Port 5050 is used by
+default because macOS Control Center commonly occupies port 5000. Override it
+when needed:
+
+```bash
+TWN_TOOLKIT_PORT=8000 ./twn start
+```
+
+The service binds to localhost only, runs in the background, and writes its PID
+and logs under the ignored `instance/` directory.
 
 For first-time setup, API permissions, normal usage, and preparing a clean copy
 for another user, see [QUICKSTART.md](QUICKSTART.md).
@@ -65,8 +89,11 @@ uses the matching update and read-back verification flow.
 
 ## Notes
 
-API keys are stored locally in `instance/profiles.json`. Ping profiles are stored
-in `instance/ping_profiles.json`. Treat the machine running this app as trusted.
+FortiGate API keys are stored in `instance/profiles.json`. FortiAuthenticator
+usernames and Web Service API keys are stored in
+`instance/fortiauthenticator_profiles.json`. Ping profiles are stored in
+`instance/ping_profiles.json`. These files have owner-only permissions and are
+excluded from Git, but their contents are not encrypted. Treat the host as trusted.
 
 Default endpoint templates:
 
@@ -97,3 +124,14 @@ To remove saved profiles and API keys before sharing a copy, run:
 ```bash
 flask --app twn_toolkit reset-data
 ```
+
+## Development Server
+
+For local development with automatic code reloading:
+
+```bash
+source .venv/bin/activate
+flask --app twn_toolkit run --debug --port 5050
+```
+
+Stop the background service first with `./twn stop` if it is already running.
