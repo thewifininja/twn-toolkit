@@ -21,6 +21,9 @@ operations tasks.
 - Monitors multiple hosts with a live browser-based ping view.
 - Saves reusable ping host collections with optional friendly names.
 - Runs command sequences against multiple SSH hosts with per-host output.
+- Compares DNS answers and response times across reusable host and resolver profiles.
+- Tests PAP or CHAP credentials against multiple saved RADIUS servers, with
+  reusable request-attribute profiles and decoded standard reply attributes.
 - Provides a task registry so more CSV/API tasks can be added cleanly later.
 
 ## Quick Start
@@ -92,7 +95,12 @@ uses the matching update and read-back verification flow.
 FortiGate API keys are stored in `instance/profiles.json`. FortiAuthenticator
 usernames and Web Service API keys are stored in
 `instance/fortiauthenticator_profiles.json`. Ping profiles are stored in
-`instance/ping_profiles.json`. These files have owner-only permissions and are
+`instance/ping_profiles.json`; DNS host and server profiles use separate
+`instance/dns_hosts_profiles.json` and `instance/dns_servers_profiles.json` files.
+RADIUS server and credential profiles are stored separately in
+`instance/radius_servers_profiles.json` and `instance/radius_credentials_profiles.json`;
+request attributes use `instance/radius_attributes_profiles.json`.
+These files have owner-only permissions and are
 excluded from Git, but their contents are not encrypted. Treat the host as trusted.
 
 Default endpoint templates:

@@ -3,15 +3,20 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .network_tools import (
+    dns_lookup_matrix,
+    parse_dns_hosts,
+    parse_dns_servers,
+    parse_radius_attributes,
     ToolInputError,
     parse_ping_targets,
     ping_hosts,
     run_ssh_hosts,
+    radius_authenticate,
     split_values,
     subtract_subnets,
     validate_hosts,
 )
-from .profiles import PingProfileStore
+from .profiles import DNSProfileStore, PingProfileStore, RadiusProfileStore
 
 
 tools_bp = Blueprint("tools", __name__, url_prefix="/tools")
@@ -97,6 +102,194 @@ def delete_ping_profile():
 
 def _ping_profile_store() -> PingProfileStore:
     return PingProfileStore(current_app.instance_path)
+
+
+@tools_bp.route("/dns-response", methods=["GET", "POST"])
+def dns_response():
+    form = {
+        "hosts": "",
+        "servers": "",
+        "host_profile": "",
+        "server_profile": "",
+        "record_type": "A",
+        "timeout": "3",
+    }
+    results = None
+    error = ""
+    if request.method == "POST":
+        form = {key: request.form.get(key, "").strip() for key in form}
+        try:
+            hosts = parse_dns_hosts(form["hosts"], limit=100)
+            servers = parse_dns_servers(form["servers"], limit=20)
+            results = dns_lookup_matrix(
+                hosts, servers, form["record_type"], float(form["timeout"])
+            )
+        except (ToolInputError, TypeError, ValueError) as exc:
+            error = str(exc) or "Enter a valid DNS timeout."
+    return render_template(
+        "tools/dns_response.html",
+        error=error,
+        form=form,
+        host_profiles=_dns_profile_store("hosts").all(),
+        server_profiles=_dns_profile_store("servers").all(),
+        results=results,
+    )
+
+
+@tools_bp.post("/dns-response/profiles/<kind>")
+def save_dns_profile(kind: str):
+    if kind not in {"hosts", "servers"}:
+        return jsonify({"error": "Unknown DNS profile type."}), 404
+    name = request.form.get("profile_name", "").strip()
+    values = request.form.get("values", "").strip()
+    if not name:
+        return jsonify({"error": "Enter a profile name."}), 400
+    if len(name) > 100:
+        return jsonify({"error": "Profile names must be 100 characters or fewer."}), 400
+    try:
+        parsed = parse_dns_hosts(values) if kind == "hosts" else parse_dns_servers(values)
+    except ToolInputError as exc:
+        return jsonify({"error": str(exc)}), 400
+    profile = {"name": name, "values": parsed}
+    _dns_profile_store(kind).upsert(profile)
+    return jsonify({"profile": profile})
+
+
+@tools_bp.post("/dns-response/profiles/<kind>/delete")
+def delete_dns_profile(kind: str):
+    if kind not in {"hosts", "servers"}:
+        return jsonify({"error": "Unknown DNS profile type."}), 404
+    name = request.form.get("name", "").strip()
+    if not _dns_profile_store(kind).delete(name):
+        return jsonify({"error": "Profile not found."}), 404
+    return jsonify({"deleted": name})
+
+
+def _dns_profile_store(kind: str) -> DNSProfileStore:
+    return DNSProfileStore(current_app.instance_path, kind)
+
+
+@tools_bp.route("/radius-test", methods=["GET", "POST"])
+def radius_test():
+    server_store = _radius_profile_store("servers")
+    credential_store = _radius_profile_store("credentials")
+    attribute_store = _radius_profile_store("attributes")
+    form = {
+        "server_names": [],
+        "credential_name": "",
+        "protocol": "pap",
+        "timeout": "3",
+        "retries": "1",
+        "attribute_profile": "",
+    }
+    results = None
+    error = ""
+    if request.method == "POST":
+        form = {
+            "server_names": request.form.getlist("server_names"),
+            "credential_name": request.form.get("credential_name", "").strip(),
+            "protocol": request.form.get("protocol", "pap").strip(),
+            "timeout": request.form.get("timeout", "3").strip(),
+            "retries": request.form.get("retries", "1").strip(),
+            "attribute_profile": request.form.get("attribute_profile", "").strip(),
+        }
+        servers = [server_store.get(name) for name in form["server_names"]]
+        credentials = credential_store.get(form["credential_name"])
+        attribute_profile = (
+            attribute_store.get(form["attribute_profile"]) if form["attribute_profile"] else None
+        )
+        if not form["server_names"] or any(server is None for server in servers):
+            error = "Select at least one valid RADIUS server profile."
+        elif not credentials:
+            error = "Select a valid credential profile."
+        elif form["attribute_profile"] and not attribute_profile:
+            error = "Select a valid RADIUS attribute profile."
+        else:
+            try:
+                results = radius_authenticate(
+                    [server for server in servers if server],
+                    credentials,
+                    form["protocol"],
+                    float(form["timeout"]),
+                    int(form["retries"]),
+                    parse_radius_attributes(attribute_profile["source"]) if attribute_profile else [],
+                )
+            except (ToolInputError, TypeError, ValueError) as exc:
+                error = str(exc) or "Enter valid timeout and attempt values."
+    return render_template(
+        "tools/radius_test.html",
+        error=error,
+        form=form,
+        servers=server_store.all(),
+        credentials=credential_store.all(),
+        attribute_profiles=attribute_store.all(),
+        results=results,
+    )
+
+
+@tools_bp.post("/radius-test/profiles/<kind>")
+def save_radius_profile(kind: str):
+    if kind not in {"servers", "credentials", "attributes"}:
+        return jsonify({"error": "Unknown RADIUS profile type."}), 404
+    name = request.form.get("name", "").strip()
+    original_name = request.form.get("original_name", "").strip()
+    store = _radius_profile_store(kind)
+    existing = store.get(original_name) if original_name else store.get(name)
+    if not name or len(name) > 100:
+        return jsonify({"error": "Enter a profile name of 100 characters or fewer."}), 400
+    if kind == "servers":
+        host = request.form.get("host", "").strip()
+        secret = request.form.get("secret", "")
+        try:
+            validate_hosts(host, limit=1)
+            port = int(request.form.get("port", "1812"))
+            if not 1 <= port <= 65535:
+                raise ValueError
+        except (ToolInputError, ValueError):
+            return jsonify({"error": "Enter a valid server host and UDP port."}), 400
+        if not secret and not existing:
+            return jsonify({"error": "Enter the RADIUS shared secret."}), 400
+        profile = {
+            "name": name,
+            "host": host,
+            "port": port,
+            "secret": secret or existing["secret"],
+        }
+    elif kind == "credentials":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        if not username or (not password and not existing):
+            return jsonify({"error": "Enter both a username and password."}), 400
+        profile = {
+            "name": name,
+            "username": username,
+            "password": password or existing["password"],
+        }
+    else:
+        values = request.form.get("attributes", "")
+        try:
+            attributes = parse_radius_attributes(values)
+        except ToolInputError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if not attributes:
+            return jsonify({"error": "Enter at least one RADIUS attribute."}), 400
+        profile = {"name": name, "count": len(attributes), "source": values.strip()}
+    store.upsert(profile, original_name=original_name)
+    return jsonify({"profile": {"name": name}})
+
+
+@tools_bp.post("/radius-test/profiles/<kind>/delete")
+def delete_radius_profile(kind: str):
+    if kind not in {"servers", "credentials", "attributes"}:
+        return jsonify({"error": "Unknown RADIUS profile type."}), 404
+    name = request.form.get("name", "").strip()
+    if not _radius_profile_store(kind).delete(name):
+        return jsonify({"error": "Profile not found."}), 404
+    return jsonify({"deleted": name})
+
+
+def _radius_profile_store(kind: str) -> RadiusProfileStore:
+    return RadiusProfileStore(current_app.instance_path, kind)
 
 
 @tools_bp.route("/multi-ssh", methods=["GET", "POST"])

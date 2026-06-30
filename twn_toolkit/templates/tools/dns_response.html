@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel">
+  <div class="panel-head">
+    <h1>DNS Response Time</h1>
+    <p>Query every host against every selected DNS server and compare their answers and timing.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  <form class="form" method="post" id="dns-form">
+    <div class="grid two">
+      <div class="form">
+        <label>Host profile
+          <select class="dns-profile-select" data-kind="hosts">
+            <option value="">New / unsaved list</option>
+            {% for profile in host_profiles %}
+              <option value="{{ profile.name }}" data-values='{{ profile["values"]|tojson }}'>{{ profile.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Hosts
+          <textarea name="hosts" id="dns-hosts" rows="7" placeholder="Website = example.com&#10;gateway.example.net" required>{{ form.hosts }}</textarea>
+        </label>
+        <span class="field-note">One per line. Optional labels use <code>Name = hostname</code>.</span>
+        <div class="button-row">
+          <input class="profile-name-input" data-kind="hosts" placeholder="Host profile name" maxlength="100">
+          <button class="secondary dns-save-profile" data-kind="hosts" type="button">Save hosts</button>
+          <button class="danger dns-delete-profile" data-kind="hosts" type="button">Delete</button>
+        </div>
+      </div>
+      <div class="form">
+        <label>DNS server profile
+          <select class="dns-profile-select" data-kind="servers">
+            <option value="">New / unsaved list</option>
+            {% for profile in server_profiles %}
+              <option value="{{ profile.name }}" data-values='{{ profile["values"]|tojson }}'>{{ profile.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>DNS servers
+          <textarea name="servers" id="dns-servers" rows="7" placeholder="Cloudflare = 1.1.1.1&#10;Google = 8.8.8.8" required>{{ form.servers }}</textarea>
+        </label>
+        <span class="field-note">IPv4 or IPv6 addresses only. Optional labels use <code>Name = address</code>.</span>
+        <div class="button-row">
+          <input class="profile-name-input" data-kind="servers" placeholder="Server profile name" maxlength="100">
+          <button class="secondary dns-save-profile" data-kind="servers" type="button">Save servers</button>
+          <button class="danger dns-delete-profile" data-kind="servers" type="button">Delete</button>
+        </div>
+      </div>
+    </div>
+    <div class="dns-options">
+      <label>Record type
+        <select name="record_type">
+          {% for type in ("A", "AAAA", "CNAME", "MX", "NS", "PTR", "TXT") %}
+            <option value="{{ type }}" {% if form.record_type == type %}selected{% endif %}>{{ type }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Timeout (seconds)
+        <input name="timeout" type="number" min="0.2" max="30" step="0.1" value="{{ form.timeout }}">
+      </label>
+    </div>
+    <div class="button-row">
+      <button type="submit">Run DNS tests</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+    </div>
+    <span class="tool-status" id="dns-profile-status"></span>
+  </form>
+</section>
+
+{% if results is not none %}
+<section class="panel tool-panel">
+  <div class="panel-head"><h2>{{ results|length }} lookup results</h2></div>
+  <div class="preview-table-wrap">
+    <table>
+      <thead><tr><th>Host</th><th>DNS server</th><th>Type</th><th>Status</th><th>Answers</th><th>Response</th></tr></thead>
+      <tbody>
+        {% for result in results %}
+        <tr>
+          <td>{% if result.host_label %}<strong>{{ result.host_label }}</strong><br>{% endif %}<code>{{ result.host }}</code></td>
+          <td>{% if result.server_label %}<strong>{{ result.server_label }}</strong><br>{% endif %}<code>{{ result.server }}</code></td>
+          <td>{{ result.record_type }}</td>
+          <td><span class="pill {{ 'success' if result.status == 'success' else 'error' }}">{{ result.status }}</span></td>
+          <td>{% if result.answers %}{% for answer in result.answers %}<code class="dns-answer">{{ answer }}</code>{% endfor %}{% else %}<span title="{{ result.error|default('') }}">—</span>{% endif %}</td>
+          <td><strong>{{ result.response_ms }} ms</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+<script src="{{ url_for('static', filename='dns-response.js') }}"></script>
+{% endblock %}

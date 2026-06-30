@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel">
+  <div class="panel-head">
+    <h1>RADIUS Authentication Test</h1>
+    <p>Send a PAP or CHAP Access-Request to one or more saved RADIUS servers.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  <form class="form" method="post">
+    <fieldset class="choice-group">
+      <legend>RADIUS servers</legend>
+      {% if servers %}
+        {% for server in servers %}
+          <label class="check">
+            <input type="checkbox" name="server_names" value="{{ server.name }}" {% if server.name in form.server_names %}checked{% endif %}>
+            <span><strong>{{ server.name }}</strong> — {{ server.host }}:{{ server.port }}</span>
+          </label>
+        {% endfor %}
+      {% else %}
+        <span class="field-note">No servers saved. Open Profile Management below to add one.</span>
+      {% endif %}
+    </fieldset>
+    <div class="radius-run-grid">
+      <label>Credential profile
+        <select name="credential_name" required>
+          <option value="">Select credentials</option>
+          {% for profile in credentials %}
+            <option value="{{ profile.name }}" {% if form.credential_name == profile.name %}selected{% endif %}>{{ profile.name }} — {{ profile.username }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Request-attribute profile
+        <select name="attribute_profile">
+          <option value="">No additional attributes</option>
+          {% for profile in attribute_profiles %}
+            <option value="{{ profile.name }}" {% if form.attribute_profile == profile.name %}selected{% endif %}>{{ profile.name }} — {{ profile.count }} attribute(s)</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Protocol
+        <select name="protocol">
+          <option value="pap" {% if form.protocol == "pap" %}selected{% endif %}>PAP</option>
+          <option value="chap" {% if form.protocol == "chap" %}selected{% endif %}>CHAP</option>
+        </select>
+      </label>
+      <label>Timeout per attempt
+        <input name="timeout" type="number" min="0.2" max="30" step="0.1" value="{{ form.timeout }}">
+      </label>
+      <label>Maximum attempts
+        <input name="retries" type="number" min="1" max="5" value="{{ form.retries }}">
+      </label>
+    </div>
+    <div class="button-row">
+      <button type="submit">Run RADIUS test</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+    </div>
+  </form>
+</section>
+
+{% if results is not none %}
+<section class="panel tool-panel">
+  <div class="panel-head"><h2>Authentication results</h2></div>
+  <div class="preview-table-wrap">
+    <table>
+      <thead><tr><th>Server</th><th>Result</th><th>Response</th><th>Returned attributes</th></tr></thead>
+      <tbody>
+        {% for result in results %}
+          <tr>
+            <td><strong>{{ result.server_name }}</strong><br><code>{{ result.server }}:{{ result.port }}</code></td>
+            <td>
+              <span class="pill {{ 'success' if result.status == 'Access-Accept' else 'error' }}">{{ result.status }}</span>
+              {% if result.error %}<div class="radius-error">{{ result.error }}</div>{% endif %}
+            </td>
+            <td><strong>{{ result.response_ms }} ms</strong></td>
+            <td>
+              {% if result.attributes %}
+                {% for attribute in result.attributes %}
+                  <div><code>{{ attribute.name }}</code>: {{ attribute.value }}</div>
+                  {% if attribute.raw_hex %}
+                    <details class="radius-raw-value">
+                      <summary>Raw bytes</summary>
+                      <code>{{ attribute.raw_hex }}</code>
+                    </details>
+                  {% endif %}
+                {% endfor %}
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<details class="panel tool-panel radius-management" {% if not servers or not credentials %}open{% endif %}>
+  <summary>
+    <span>Profile Management</span>
+    <small>{{ servers|length }} servers · {{ credentials|length }} credentials · {{ attribute_profiles|length }} attribute sets</small>
+  </summary>
+  <p>Profiles are reusable across tests. Secrets and passwords remain server-side and are never inserted into this page.</p>
+
+  <details class="radius-profile-section">
+    <summary>RADIUS Servers <small>{{ servers|length }} saved</small></summary>
+    <div class="grid two">
+      <form class="form radius-profile-form" data-kind="servers">
+        <input name="original_name" type="hidden">
+        <h2 class="profile-form-title">Add Server Profile</h2>
+        <label>Profile name<input name="name" maxlength="100" required placeholder="Primary NPS"></label>
+        <label>Server address<input name="host" required placeholder="192.0.2.40"></label>
+        <label>Authentication port<input name="port" type="number" min="1" max="65535" value="1812"></label>
+        <label>Shared secret<input name="secret" type="password" autocomplete="new-password"></label>
+        <span class="field-note secret-note">Required for a new profile.</span>
+        <div class="button-row">
+          <button type="submit">Save Server</button>
+          <button class="secondary radius-cancel-edit" type="button" hidden>Cancel</button>
+        </div>
+      </form>
+      <div>
+        <h2>Saved Servers</h2>
+        <div class="stack radius-profile-list">
+          {% for server in servers %}
+            <article class="row-card radius-row-card">
+              <div><strong>{{ server.name }}</strong><span>{{ server.host }}:{{ server.port }}</span></div>
+              <button class="secondary radius-edit-profile" type="button" data-kind="servers" data-name="{{ server.name }}" data-host="{{ server.host }}" data-port="{{ server.port }}">Edit</button>
+              <button class="danger radius-delete-profile" data-kind="servers" data-name="{{ server.name }}" type="button">Delete</button>
+            </article>
+          {% else %}<p class="empty">No server profiles saved yet.</p>{% endfor %}
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <details class="radius-profile-section">
+    <summary>Test Credentials <small>{{ credentials|length }} saved</small></summary>
+    <div class="grid two">
+      <form class="form radius-profile-form" data-kind="credentials">
+        <input name="original_name" type="hidden">
+        <h2 class="profile-form-title">Add Credential Profile</h2>
+        <label>Profile name<input name="name" maxlength="100" required placeholder="Test user"></label>
+        <label>Username<input name="username" required autocomplete="off"></label>
+        <label>Password<input name="password" type="password" autocomplete="new-password"></label>
+        <span class="field-note secret-note">Required for a new profile. Stored locally without encryption.</span>
+        <div class="button-row">
+          <button type="submit">Save Credentials</button>
+          <button class="secondary radius-cancel-edit" type="button" hidden>Cancel</button>
+        </div>
+      </form>
+      <div>
+        <h2>Saved Credentials</h2>
+        <div class="stack radius-profile-list">
+          {% for profile in credentials %}
+            <article class="row-card radius-row-card">
+              <div><strong>{{ profile.name }}</strong><span>{{ profile.username }}</span></div>
+              <button class="secondary radius-edit-profile" type="button" data-kind="credentials" data-name="{{ profile.name }}" data-username="{{ profile.username }}">Edit</button>
+              <button class="danger radius-delete-profile" data-kind="credentials" data-name="{{ profile.name }}" type="button">Delete</button>
+            </article>
+          {% else %}<p class="empty">No credential profiles saved yet.</p>{% endfor %}
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <details class="radius-profile-section">
+    <summary>Request Attributes <small>{{ attribute_profiles|length }} saved</small></summary>
+    <div class="grid two">
+      <form class="form radius-profile-form" data-kind="attributes">
+        <input name="original_name" type="hidden">
+        <h2 class="profile-form-title">Add Attribute Profile</h2>
+        <label>Profile name<input name="name" maxlength="100" required placeholder="Wireless controller NAS"></label>
+        <label>Access-Request attributes
+          <textarea name="attributes" rows="7" required placeholder="NAS-Identifier = HQ-WLC-01&#10;NAS-IP-Address = 192.0.2.10&#10;Called-Station-Id = AA-BB-CC-DD-EE-FF:Corp-WiFi"></textarea>
+        </label>
+        <span class="field-note">One <code>Name = value</code> per line. Unknown attributes accept <code>#type = hex</code> or <code>#vendor:type = hex</code>.</span>
+        <div class="button-row">
+          <button type="submit">Save Attributes</button>
+          <button class="secondary radius-cancel-edit" type="button" hidden>Cancel</button>
+        </div>
+      </form>
+      <div>
+        <h2>Saved Attribute Profiles</h2>
+        <div class="stack radius-profile-list">
+          {% for profile in attribute_profiles %}
+            <article class="row-card radius-row-card">
+              <div><strong>{{ profile.name }}</strong><span>{{ profile.count }} attribute(s)</span></div>
+              <button class="secondary radius-edit-profile" type="button" data-kind="attributes" data-name="{{ profile.name }}" data-source="{{ profile.source|e }}">Edit</button>
+              <button class="danger radius-delete-profile" data-kind="attributes" data-name="{{ profile.name }}" type="button">Delete</button>
+            </article>
+          {% else %}<p class="empty">No request-attribute profiles saved yet.</p>{% endfor %}
+        </div>
+      </div>
+    </div>
+  </details>
+  <span class="tool-status" id="radius-profile-status"></span>
+</details>
+<script src="{{ url_for('static', filename='radius-test.js') }}"></script>
+{% endblock %}

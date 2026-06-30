@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import hashlib
 import platform
 import re
 import shutil
@@ -97,6 +98,296 @@ def parse_ping_targets(hosts_text: str, limit: int = 100) -> list[dict[str, str]
     if invalid:
         raise ToolInputError(f"Invalid host value(s): {', '.join(invalid[:5])}")
     return targets
+
+
+def parse_dns_hosts(hosts_text: str, limit: int = 100) -> list[dict[str, str]]:
+    return parse_ping_targets(hosts_text, limit=limit)
+
+
+def parse_dns_servers(servers_text: str, limit: int = 20) -> list[dict[str, str]]:
+    servers: list[dict[str, str]] = []
+    for raw_line in servers_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "=" in line:
+            label, address = (part.strip() for part in line.split("=", 1))
+            if not label:
+                raise ToolInputError("DNS server friendly names cannot be empty.")
+        else:
+            label, address = "", line
+        try:
+            ipaddress.ip_address(address)
+        except ValueError as exc:
+            raise ToolInputError(f"DNS server '{address}' must be an IPv4 or IPv6 address.") from exc
+        servers.append({"label": label, "address": address})
+    if not servers:
+        raise ToolInputError("Enter at least one DNS server.")
+    if len(servers) > limit:
+        raise ToolInputError(f"A maximum of {limit} DNS servers is allowed per run.")
+    return servers
+
+
+def dns_lookup_matrix(
+    hosts: list[dict[str, str]],
+    servers: list[dict[str, str]],
+    record_type: str = "A",
+    timeout: float = 3.0,
+) -> list[dict[str, Any]]:
+    allowed_types = {"A", "AAAA", "CNAME", "MX", "NS", "PTR", "TXT"}
+    record_type = record_type.upper()
+    if record_type not in allowed_types:
+        raise ToolInputError("Select a supported DNS record type.")
+    if not 0.2 <= timeout <= 30:
+        raise ToolInputError("DNS timeout must be between 0.2 and 30 seconds.")
+
+    jobs = [(host, server) for host in hosts for server in servers]
+    workers = min(20, len(jobs))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(_dns_lookup, host, server, record_type, timeout): index
+            for index, (host, server) in enumerate(jobs)
+        }
+        indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
+    return [result for _index, result in sorted(indexed_results)]
+
+
+def radius_authenticate(
+    servers: list[dict[str, Any]],
+    credentials: dict[str, Any],
+    protocol: str = "pap",
+    timeout: float = 3.0,
+    retries: int = 1,
+    attributes: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    protocol = protocol.lower()
+    if protocol not in {"pap", "chap"}:
+        raise ToolInputError("Authentication protocol must be PAP or CHAP.")
+    if not 0.2 <= timeout <= 30:
+        raise ToolInputError("RADIUS timeout must be between 0.2 and 30 seconds.")
+    if not 1 <= retries <= 5:
+        raise ToolInputError("RADIUS attempts must be between 1 and 5.")
+    workers = min(10, len(servers))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(
+                _radius_authenticate_one,
+                server,
+                credentials,
+                protocol,
+                timeout,
+                retries,
+                attributes or [],
+            ): index
+            for index, server in enumerate(servers)
+        }
+        indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
+    return [result for _index, result in sorted(indexed_results)]
+
+
+def _radius_authenticate_one(
+    server: dict[str, Any],
+    credentials: dict[str, Any],
+    protocol: str,
+    timeout: float,
+    retries: int,
+    attributes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    from pathlib import Path
+
+    from pyrad.client import Client
+    from pyrad.dictionary import Dictionary
+    from pyrad.packet import AccessAccept, AccessChallenge, AccessReject, AccessRequest
+
+    client = Client(
+        server=server["host"],
+        authport=server["port"],
+        secret=server["secret"].encode("utf-8"),
+        dict=Dictionary(str(Path(__file__).with_name("radius_dictionary"))),
+        timeout=timeout,
+        retries=retries,
+    )
+    request_packet = client.CreateAuthPacket(
+        code=AccessRequest,
+        **{"User-Name": credentials["username"]},
+    )
+    for attribute in attributes:
+        key: Any = attribute["name"]
+        value: Any = attribute["value"]
+        if attribute.get("raw"):
+            codes = [int(part) for part in key.split(":")]
+            key = codes[0] if len(codes) == 1 else tuple(codes)
+            value = bytes.fromhex(value)
+        request_packet.AddAttribute(key, value)
+    if protocol == "pap":
+        request_packet["User-Password"] = request_packet.PwCrypt(credentials["password"])
+    else:
+        if request_packet.authenticator is None:
+            request_packet.authenticator = request_packet.CreateAuthenticator()
+        chap_id = bytes([request_packet.id])
+        digest = hashlib.md5(
+            chap_id + credentials["password"].encode("utf-8") + request_packet.authenticator
+        ).digest()
+        request_packet["CHAP-Password"] = chap_id + digest
+
+    started = time.monotonic()
+    try:
+        reply = client.SendPacket(request_packet)
+        statuses = {
+            AccessAccept: "Access-Accept",
+            AccessReject: "Access-Reject",
+            AccessChallenge: "Access-Challenge",
+        }
+        attributes = []
+        for name in reply.keys():
+            for value in reply[name]:
+                attributes.append(
+                    {
+                        "name": str(name),
+                        "value": _radius_value(value),
+                        "raw_hex": value.hex() if isinstance(value, bytes) else "",
+                    }
+                )
+        return {
+            "server_name": server["name"],
+            "server": server["host"],
+            "port": server["port"],
+            "status": statuses.get(reply.code, f"Response code {reply.code}"),
+            "response_ms": round((time.monotonic() - started) * 1000, 1),
+            "attributes": attributes,
+        }
+    except Exception as exc:
+        return {
+            "server_name": server["name"],
+            "server": server["host"],
+            "port": server["port"],
+            "status": "error",
+            "response_ms": round((time.monotonic() - started) * 1000, 1),
+            "attributes": [],
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def _radius_value(value: Any) -> str:
+    if isinstance(value, bytes):
+        try:
+            decoded = value.decode("utf-8")
+            if decoded.isprintable():
+                return decoded
+        except UnicodeDecodeError:
+            pass
+        return f"{len(value)} bytes"
+    return str(value)
+
+
+def parse_radius_attributes(value: str, limit: int = 50) -> list[dict[str, Any]]:
+    from pathlib import Path
+
+    from pyrad.dictionary import Dictionary
+
+    dictionary = Dictionary(str(Path(__file__).with_name("radius_dictionary")))
+    attributes: list[dict[str, Any]] = []
+    for line_number, raw_line in enumerate(value.splitlines(), 1):
+        line = raw_line.strip()
+        if not line or line.startswith("# "):
+            continue
+        if "=" not in line:
+            raise ToolInputError(f"RADIUS attribute line {line_number} must use Name = value.")
+        name, item_value = (part.strip() for part in line.split("=", 1))
+        if not name or not item_value:
+            raise ToolInputError(f"RADIUS attribute line {line_number} is incomplete.")
+        raw_match = re.fullmatch(r"#(\d+)(?::(\d+))?", name)
+        if raw_match:
+            try:
+                bytes.fromhex(item_value)
+            except ValueError as exc:
+                raise ToolInputError(
+                    f"Raw attribute line {line_number} must contain an even-length hexadecimal value."
+                ) from exc
+            code = raw_match.group(1)
+            if raw_match.group(2):
+                code += f":{raw_match.group(2)}"
+            attributes.append({"name": code, "value": item_value, "raw": True})
+        else:
+            if name not in dictionary.attributes:
+                raise ToolInputError(
+                    f"Unknown RADIUS attribute '{name}' on line {line_number}. "
+                    "Use #type = hex, or #vendor:type = hex for an unknown attribute."
+                )
+            attribute = dictionary.attributes[name]
+            converted: Any = item_value
+            if attribute.type in {"integer", "signed", "short", "byte", "integer64"}:
+                try:
+                    converted = int(item_value)
+                except ValueError as exc:
+                    raise ToolInputError(
+                        f"RADIUS attribute '{name}' requires a whole number."
+                    ) from exc
+            elif attribute.type == "octets":
+                if item_value.lower().startswith("hex:"):
+                    try:
+                        converted = bytes.fromhex(item_value[4:].strip())
+                    except ValueError as exc:
+                        raise ToolInputError(f"Invalid hexadecimal value for '{name}'.") from exc
+                else:
+                    converted = item_value.encode("utf-8")
+            attributes.append({"name": name, "value": converted, "raw": False})
+    if len(attributes) > limit:
+        raise ToolInputError(f"A maximum of {limit} additional RADIUS attributes is allowed.")
+    return attributes
+
+
+def _dns_lookup(
+    host: dict[str, str],
+    server: dict[str, str],
+    record_type: str,
+    timeout: float,
+) -> dict[str, Any]:
+    import dns.exception
+    import dns.resolver
+
+    resolver = dns.resolver.Resolver(configure=False)
+    resolver.nameservers = [server["address"]]
+    resolver.timeout = timeout
+    resolver.lifetime = timeout
+    started = time.monotonic()
+    try:
+        answer = resolver.resolve(host["host"], record_type, search=False)
+        return {
+            "host": host["host"],
+            "host_label": host["label"],
+            "server": server["address"],
+            "server_label": server["label"],
+            "record_type": record_type,
+            "status": "success",
+            "answers": [item.to_text() for item in answer],
+            "response_ms": round((time.monotonic() - started) * 1000, 1),
+        }
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers,
+            dns.exception.Timeout) as exc:
+        return {
+            "host": host["host"],
+            "host_label": host["label"],
+            "server": server["address"],
+            "server_label": server["label"],
+            "record_type": record_type,
+            "status": type(exc).__name__,
+            "answers": [],
+            "response_ms": round((time.monotonic() - started) * 1000, 1),
+            "error": str(exc),
+        }
+    except Exception as exc:
+        return {
+            "host": host["host"],
+            "host_label": host["label"],
+            "server": server["address"],
+            "server_label": server["label"],
+            "record_type": record_type,
+            "status": "error",
+            "answers": [],
+            "response_ms": round((time.monotonic() - started) * 1000, 1),
+            "error": str(exc),
+        }
 
 
 def ping_hosts(hosts: list[str], timeout: int = 1) -> list[dict[str, Any]]:

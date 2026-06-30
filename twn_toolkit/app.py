@@ -16,7 +16,13 @@ from .fortiauthenticator import (
     normalize_host as normalize_fortiauthenticator_host,
 )
 from .fortigate import FortiGateClient, FortiGateError, normalize_api_key, normalize_host
-from .profiles import FortiAuthenticatorProfileStore, PingProfileStore, ProfileStore
+from .profiles import (
+    DNSProfileStore,
+    FortiAuthenticatorProfileStore,
+    PingProfileStore,
+    ProfileStore,
+    RadiusProfileStore,
+)
 from .tasks import TASKS, ExportTask, RenameTask, discover_export_fields, get_task, grouped_tasks
 from .tools import tools_bp
 
@@ -35,13 +41,18 @@ def create_app(instance_path: str | None = None) -> Flask:
     def reset_data(yes: bool) -> None:
         """Remove all locally saved profiles and API keys."""
         if not yes and not click.confirm(
-            "Delete all saved FortiGate, FortiAuthenticator, and ping profiles and credentials?"
+            "Delete all saved FortiGate, FortiAuthenticator, ping, DNS, and RADIUS profiles and credentials?"
         ):
             click.echo("Reset cancelled.")
             return
         store.clear()
         fortiauthenticator_store.clear()
         ping_profile_store.clear()
+        DNSProfileStore(app.instance_path, "hosts").clear()
+        DNSProfileStore(app.instance_path, "servers").clear()
+        RadiusProfileStore(app.instance_path, "servers").clear()
+        RadiusProfileStore(app.instance_path, "credentials").clear()
+        RadiusProfileStore(app.instance_path, "attributes").clear()
         click.echo("The WiFi Ninja's Toolkit local profile data has been reset.")
 
     @app.get("/")

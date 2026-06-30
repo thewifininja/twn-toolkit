@@ -5,7 +5,14 @@ import unittest
 from unittest.mock import patch
 
 from twn_toolkit import create_app
-from twn_toolkit.network_tools import ToolInputError, parse_ping_targets, subtract_subnets, validate_hosts
+from twn_toolkit.network_tools import (
+    ToolInputError,
+    parse_dns_servers,
+    parse_ping_targets,
+    parse_radius_attributes,
+    subtract_subnets,
+    validate_hosts,
+)
 
 
 class NetworkToolTests(unittest.TestCase):
@@ -31,11 +38,36 @@ class NetworkToolTests(unittest.TestCase):
             ],
         )
 
+    def test_parses_named_dns_servers_and_rejects_hostnames(self) -> None:
+        self.assertEqual(
+            parse_dns_servers("Cloudflare = 1.1.1.1\nGoogle IPv6 = 2001:4860:4860::8888"),
+            [
+                {"label": "Cloudflare", "address": "1.1.1.1"},
+                {"label": "Google IPv6", "address": "2001:4860:4860::8888"},
+            ],
+        )
+        with self.assertRaises(ToolInputError):
+            parse_dns_servers("resolver.example.com")
+
+    def test_parses_named_and_raw_radius_attributes(self) -> None:
+        attributes = parse_radius_attributes(
+            "NAS-Identifier = HQ-WLC\nNAS-IP-Address = 192.0.2.10\n#9:1 = 010203"
+        )
+        self.assertEqual(attributes[0]["name"], "NAS-Identifier")
+        self.assertEqual(attributes[1]["value"], "192.0.2.10")
+        self.assertEqual(
+            attributes[2],
+            {"name": "9:1", "value": "010203", "raw": True},
+        )
+
     def test_tool_routes(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
             client = app.test_client()
+
+            self.assertIn(b"DNS Response Time", client.get("/").data)
+            self.assertIn(b"RADIUS Authentication Test", client.get("/").data)
 
             response = client.post(
                 "/tools/subnet-excluder",
@@ -81,6 +113,117 @@ class NetworkToolTests(unittest.TestCase):
 
             response = client.post("/tools/ping/profiles/delete", json={"name": "Branches"})
             self.assertEqual(response.get_json()["deleted"], "Branches")
+
+            response = client.post(
+                "/tools/dns-response/profiles/hosts",
+                data={"profile_name": "Public sites", "values": "Example = example.com"},
+            )
+            self.assertEqual(response.status_code, 200)
+            response = client.post(
+                "/tools/dns-response/profiles/servers",
+                data={"profile_name": "Public DNS", "values": "Cloudflare = 1.1.1.1"},
+            )
+            self.assertEqual(response.status_code, 200)
+            page = client.get("/tools/dns-response")
+            self.assertIn(b"Public sites", page.data)
+            self.assertIn(b"Public DNS", page.data)
+
+            dns_result = {
+                "host": "example.com",
+                "host_label": "Example",
+                "server": "1.1.1.1",
+                "server_label": "Cloudflare",
+                "record_type": "A",
+                "status": "success",
+                "answers": ["192.0.2.10"],
+                "response_ms": 12.3,
+            }
+            with patch("twn_toolkit.tools.dns_lookup_matrix", return_value=[dns_result]):
+                response = client.post(
+                    "/tools/dns-response",
+                    data={
+                        "hosts": "Example = example.com",
+                        "servers": "Cloudflare = 1.1.1.1",
+                        "record_type": "A",
+                        "timeout": "3",
+                    },
+                )
+            self.assertIn(b"192.0.2.10", response.data)
+            self.assertIn(b"12.3 ms", response.data)
+
+            response = client.post(
+                "/tools/radius-test/profiles/servers",
+                data={
+                    "name": "Primary RADIUS",
+                    "host": "192.0.2.40",
+                    "port": "1812",
+                    "secret": "shared-secret-not-rendered",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            response = client.post(
+                "/tools/radius-test/profiles/credentials",
+                data={
+                    "name": "Test User",
+                    "username": "radius-test",
+                    "password": "password-not-rendered",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            response = client.post(
+                "/tools/radius-test/profiles/attributes",
+                data={
+                    "name": "HQ WLAN",
+                    "attributes": "NAS-Identifier = HQ-WLC\nNAS-IP-Address = 192.0.2.10",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            radius_page = client.get("/tools/radius-test").data
+            self.assertIn(b"Primary RADIUS", radius_page)
+            self.assertIn(b"Test User", radius_page)
+            self.assertIn(b"HQ WLAN", radius_page)
+            self.assertNotIn(b"shared-secret-not-rendered", radius_page)
+            self.assertNotIn(b"password-not-rendered", radius_page)
+
+            response = client.post(
+                "/tools/radius-test/profiles/servers",
+                data={
+                    "original_name": "Primary RADIUS",
+                    "name": "Primary RADIUS",
+                    "host": "192.0.2.41",
+                    "port": "1812",
+                    "secret": "",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            radius_page = client.get("/tools/radius-test").data
+            self.assertIn(b"192.0.2.41", radius_page)
+            self.assertNotIn(b"shared-secret-not-rendered", radius_page)
+
+            radius_result = {
+                "server_name": "Primary RADIUS",
+                "server": "192.0.2.40",
+                "port": 1812,
+                "status": "Access-Accept",
+                "response_ms": 8.4,
+                "attributes": [{"name": "Reply-Message", "value": "Welcome"}],
+            }
+            with patch("twn_toolkit.tools.radius_authenticate", return_value=[radius_result]) as auth:
+                response = client.post(
+                    "/tools/radius-test",
+                    data={
+                        "server_names": "Primary RADIUS",
+                        "credential_name": "Test User",
+                        "protocol": "pap",
+                        "timeout": "3",
+                        "retries": "1",
+                        "attribute_profile": "HQ WLAN",
+                    },
+                )
+            self.assertIn(b"Access-Accept", response.data)
+            self.assertIn(b"Reply-Message", response.data)
+            self.assertNotIn(b"password-not-rendered", response.data)
+            auth.assert_called_once()
 
             with patch(
                 "twn_toolkit.tools.run_ssh_hosts",

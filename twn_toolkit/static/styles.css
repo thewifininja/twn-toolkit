@@ -15,6 +15,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -216,6 +220,112 @@ button.danger {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.button-row > input {
+  flex: 1 1 180px;
+}
+
+.dns-options {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(160px, 240px));
+}
+
+.dns-answer {
+  display: block;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.radius-profile-form {
+  align-content: start;
+}
+
+.radius-run-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+}
+
+.radius-management > summary {
+  align-items: baseline;
+  cursor: pointer;
+  display: flex;
+  font-size: 1.05rem;
+  font-weight: 800;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.radius-management > summary small,
+.radius-profile-section > summary small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.radius-management[open] > summary {
+  margin-bottom: 8px;
+}
+
+.radius-profile-section {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.radius-profile-section > summary {
+  cursor: pointer;
+  display: flex;
+  font-weight: 800;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.radius-profile-section[open] > summary {
+  margin-bottom: 16px;
+}
+
+.radius-row-card {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.radius-profile-list {
+  margin-top: 10px;
+}
+
+.radius-error {
+  color: var(--bad);
+  font-size: 0.82rem;
+  margin-top: 6px;
+  max-width: 420px;
+  overflow-wrap: anywhere;
+}
+
+.radius-raw-value {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 2px 0 7px;
+}
+
+.radius-raw-value summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.radius-raw-value code {
+  display: block;
+  margin-top: 3px;
+  max-width: 360px;
+  overflow-wrap: anywhere;
+}
+
+.message.warning {
+  background: #fff4d9;
+  color: var(--warn);
+  font-size: 0.85rem;
 }
 
 .result-actions {
@@ -780,6 +890,7 @@ th {
   .task-grid,
   .workspace-grid,
   .form-grid,
+  .radius-run-grid,
   .row-card,
   .field-item {
     grid-template-columns: 1fr;

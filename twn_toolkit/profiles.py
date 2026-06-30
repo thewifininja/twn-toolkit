@@ -92,3 +92,23 @@ class PingProfileStore:
         with self.path.open("w", encoding="utf-8") as handle:
             json.dump(profiles, handle, indent=2)
         os.chmod(self.path, 0o600)
+
+
+class DNSProfileStore(PingProfileStore):
+    """Store one kind of reusable DNS-tool list profile."""
+
+    def __init__(self, instance_path: str, kind: str) -> None:
+        if kind not in {"hosts", "servers"}:
+            raise ValueError("DNS profile kind must be 'hosts' or 'servers'.")
+        super().__init__(instance_path)
+        self.path = self.instance_path / f"dns_{kind}_profiles.json"
+
+
+class RadiusProfileStore(PingProfileStore):
+    """Store RADIUS servers and test credentials in separate files."""
+
+    def __init__(self, instance_path: str, kind: str) -> None:
+        if kind not in {"servers", "credentials", "attributes"}:
+            raise ValueError("Unknown RADIUS profile kind.")
+        super().__init__(instance_path)
+        self.path = self.instance_path / f"radius_{kind}_profiles.json"

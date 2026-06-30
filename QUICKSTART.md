@@ -128,6 +128,17 @@ The **Generic Tools** workspace does not use Fortinet profiles.
 - **Multi-SSH** sends the same command sequence to multiple devices using an
   interactive SSH shell. Passwords are used only for the current request and
   are not saved. Unknown host keys are rejected unless explicitly allowed.
+- **DNS Response Time** runs each host lookup against each DNS server, showing
+  returned records and response time. Host lists and DNS server lists are saved
+  independently, so either can be reused in different test combinations.
+- **RADIUS Authentication Test** sends PAP or CHAP Access-Requests to one or
+  more saved RADIUS servers and reports Access-Accept, Access-Reject,
+  Access-Challenge, response time, and returned attributes. Shared secrets and
+  test credentials are stored locally and are not encrypted. Additional
+  Access-Request attributes can be saved as reusable profiles using
+  `Name = value`; unknown standard and vendor attributes can be sent in raw
+  hexadecimal form. Known standard response attributes are decoded by name and
+  type, while unknown attributes retain their numeric identity and raw hex.
 
 Multi-SSH commands execute on real devices. Review the host list and commands
 carefully before selecting the required execution confirmation.
@@ -149,7 +160,9 @@ flask --app twn_toolkit reset-data --yes
 
 This removes `instance/profiles.json`,
 `instance/fortiauthenticator_profiles.json`, and
-`instance/ping_profiles.json`; it does not modify the application code.
+`instance/ping_profiles.json`, `instance/dns_hosts_profiles.json`, and
+`instance/dns_servers_profiles.json`, plus the RADIUS profile files; it does not
+modify the application code.
 The `instance/` and `.venv/` directories are excluded by `.gitignore`.
 
 After resetting, share the project without `.venv/`, `.git/`, or `instance/`.
