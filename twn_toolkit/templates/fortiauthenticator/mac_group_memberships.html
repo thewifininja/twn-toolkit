@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel narrow">
+  <div class="panel-head">
+    <h1>MAC Group Memberships</h1>
+    <p>Fetch all FortiAuthenticator MAC device-to-group associations for an in-page preview or CSV export.</p>
+  </div>
+  {% if profiles %}
+    <form class="form" method="post" action="{{ url_for('fortiauthenticator_mac_group_memberships') }}">
+      <label>
+        FortiAuthenticator profile
+        <select name="profile" required>
+          <option value="">Choose a profile</option>
+          {% for profile in profiles %}
+            <option
+              value="{{ profile.name }}"
+              {% if selected_name == profile.name or (not selected_name and profile.is_default) %}selected{% endif %}
+            >{{ profile.name }} · {{ profile.host }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="button-row">
+        <button class="secondary" type="submit">Fetch Data</button>
+        <button formaction="{{ url_for('export_fortiauthenticator_mac_group_memberships') }}" type="submit">Export CSV</button>
+        <a class="button-link secondary" href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator Home</a>
+      </div>
+    </form>
+  {% else %}
+    <p class="empty">Create a FortiAuthenticator profile before fetching group memberships.</p>
+    <div class="button-row result-actions">
+      <a class="button-link" href="{{ url_for('fortiauthenticator_home') }}">Create Profile</a>
+    </div>
+  {% endif %}
+</section>
+
+{% if rows is not none %}
+  <section class="panel preview-panel">
+    <div class="preview-head">
+      <h2>Group Membership Preview</h2>
+      <span>
+        {{ total_count }} membership{{ "" if total_count == 1 else "s" }} fetched.
+        {% if total_count > preview_limit %}Showing the first {{ preview_limit }}; CSV includes all records.{% endif %}
+      </span>
+    </div>
+    {% if rows %}
+      <div class="preview-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Membership ID</th>
+              <th>Device ID</th>
+              <th>Device Name</th>
+              <th>Device URI</th>
+              <th>Group ID</th>
+              <th>Group Name</th>
+              <th>Group URI</th>
+              <th>Expiry Time</th>
+              <th>Resource URI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>{{ row["Membership ID"] }}</td>
+                <td>{{ row["Device ID"] }}</td>
+                <td>{{ row["Device Name"] }}</td>
+                <td>{{ row["Device URI"] }}</td>
+                <td>{{ row["Group ID"] }}</td>
+                <td>{{ row["Group Name"] }}</td>
+                <td>{{ row["Group URI"] }}</td>
+                <td>{{ row["Expiry Time"] }}</td>
+                <td>{{ row["Resource URI"] }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty">No MAC group memberships were returned.</p>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}

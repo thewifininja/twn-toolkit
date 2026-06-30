@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel narrow">
+  <div class="panel-head">
+    <h1>MAC Devices</h1>
+    <p>Fetch the complete FortiAuthenticator MAC-device inventory for an in-page preview or CSV export.</p>
+  </div>
+  {% if profiles %}
+    <form class="form" method="post" action="{{ url_for('fortiauthenticator_mac_devices') }}">
+      <label>
+        FortiAuthenticator profile
+        <select name="profile" required>
+          <option value="">Choose a profile</option>
+          {% for profile in profiles %}
+            <option
+              value="{{ profile.name }}"
+              {% if selected_name == profile.name or (not selected_name and profile.is_default) %}selected{% endif %}
+            >{{ profile.name }} · {{ profile.host }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="button-row">
+        <button class="secondary" type="submit">Fetch Data</button>
+        <button formaction="{{ url_for('export_fortiauthenticator_mac_devices') }}" type="submit">Export CSV</button>
+        <a class="button-link secondary" href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator Home</a>
+      </div>
+    </form>
+  {% else %}
+    <p class="empty">Create a FortiAuthenticator profile before fetching MAC devices.</p>
+    <div class="button-row result-actions">
+      <a class="button-link" href="{{ url_for('fortiauthenticator_home') }}">Create Profile</a>
+    </div>
+  {% endif %}
+</section>
+
+{% if rows is not none %}
+  <section class="panel preview-panel">
+    <div class="preview-head">
+      <h2>MAC Device Preview</h2>
+      <span>
+        {{ total_count }} device{{ "" if total_count == 1 else "s" }} fetched.
+        {% if total_count > preview_limit %}Showing the first {{ preview_limit }}; CSV includes all records.{% endif %}
+      </span>
+    </div>
+    {% if rows %}
+      <div class="preview-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>MAC Address</th>
+              <th>Name</th>
+              <th>Description</th>
+              <th>Resource URI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>{{ row["ID"] }}</td>
+                <td>{{ row["MAC Address"] }}</td>
+                <td>{{ row["Name"] }}</td>
+                <td>{{ row["Description"] }}</td>
+                <td>{{ row["Resource URI"] }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty">No MAC devices were returned.</p>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}

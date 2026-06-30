@@ -106,6 +106,42 @@ p {
   gap: 14px;
 }
 
+.choice-group {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+}
+
+.choice-group legend {
+  color: #2f3b48;
+  font-size: 0.9rem;
+  font-weight: 800;
+  padding: 0 5px;
+}
+
+.cleanup-confirmation {
+  margin-top: 20px;
+}
+
+.selectable-table-wrap th:first-child,
+.selectable-table-wrap td:first-child {
+  min-width: 46px;
+  text-align: center;
+  width: 46px;
+}
+
+.selectable-table-wrap input[type="checkbox"] {
+  min-height: auto;
+  width: auto;
+}
+
+#cleanup-submit {
+  gap: 0.3em;
+}
+
 label {
   color: #2f3b48;
   display: grid;
@@ -361,6 +397,11 @@ button.danger {
   border-color: var(--accent);
 }
 
+.task-card.unavailable {
+  background: #eef2f5;
+  color: #73808c;
+}
+
 .task-card span,
 .empty {
   color: var(--muted);
@@ -372,6 +413,20 @@ button.danger {
 
 .workspace-intro h1 {
   font-size: 1.5rem;
+}
+
+.home-tool-groups {
+  display: grid;
+  gap: 28px;
+}
+
+.home-tool-group {
+  display: grid;
+  gap: 14px;
+}
+
+.section-head h2 {
+  font-size: 1.15rem;
 }
 
 .workspace-grid {

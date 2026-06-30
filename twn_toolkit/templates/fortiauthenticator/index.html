@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="workspace-intro">
+  <h1>FortiAuthenticator</h1>
+  <p>Manage connection profiles and run FortiAuthenticator workflows.</p>
+</section>
+
+<section class="grid two">
+  <div class="panel">
+    <div class="panel-head">
+      <h1>{{ "Edit Profile" if edit_profile else "FortiAuthenticator Profiles" }}</h1>
+    </div>
+    <form class="form" method="post" action="{{ url_for('save_fortiauthenticator_profile') }}">
+      {% if edit_profile %}
+        <input type="hidden" name="original_name" value="{{ edit_profile.name }}">
+      {% endif %}
+      <label>
+        Profile name
+        <input name="name" value="{{ edit_profile.name if edit_profile else '' }}" placeholder="Production FAC" required>
+      </label>
+      <label>
+        FortiAuthenticator URL
+        <input name="host" value="{{ edit_profile.host if edit_profile else '' }}" placeholder="https://192.0.2.10" required>
+      </label>
+      <label>
+        Username
+        <input name="username" value="{{ edit_profile.username if edit_profile else '' }}" autocomplete="username" required>
+      </label>
+      <label>
+        Web Service API Access Key
+        <input name="password" type="password" autocomplete="new-password" placeholder="{{ 'Leave blank to keep current access key' if edit_profile else '' }}" {% if not edit_profile %}required{% endif %}>
+      </label>
+      <label>
+        Request timeout (seconds)
+        <input name="timeout" type="number" min="1" max="300" value="{{ edit_profile.timeout if edit_profile else 20 }}" required>
+      </label>
+      <label class="check">
+        <input name="verify_tls" type="checkbox" {% if not edit_profile or edit_profile.verify_tls %}checked{% endif %}>
+        Verify TLS certificate
+      </label>
+      <label class="check">
+        <input name="is_default" type="checkbox" {% if edit_profile and edit_profile.is_default %}checked{% endif %}>
+        Use as default profile
+      </label>
+      <div class="button-row">
+        <button type="submit">{{ "Update Profile" if edit_profile else "Save Profile" }}</button>
+        {% if edit_profile %}
+          <a class="button-link secondary" href="{{ url_for('fortiauthenticator_home') }}">Cancel</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h1>Saved Profiles</h1>
+    </div>
+    {% if profiles %}
+      <div class="stack">
+        {% for profile in profiles %}
+          <article class="row-card">
+            <div>
+              <strong>
+                {{ profile.name }}
+                {% if profile.is_default %}<small class="profile-default">Default</small>{% endif %}
+              </strong>
+              <span>{{ profile.host }} · {{ profile.username }}</span>
+            </div>
+            <form method="post" action="{{ url_for('test_fortiauthenticator_profile', name=profile.name) }}">
+              <button class="secondary" type="submit">Test</button>
+            </form>
+            <a class="button-link secondary" href="{{ url_for('fortiauthenticator_home', edit=profile.name) }}">Edit</a>
+            <form method="post" action="{{ url_for('delete_fortiauthenticator_profile', name=profile.name) }}">
+              <button class="danger" type="submit">Delete</button>
+            </form>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty">No FortiAuthenticator profiles saved yet.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="panel task-group">
+  <div class="panel-head">
+    <h1>MAC Device Workflows</h1>
+  </div>
+  <div class="task-grid">
+    <a class="task-card" href="{{ url_for('fortiauthenticator_mac_devices') }}">
+      <strong>Export MAC Devices</strong>
+      <span>Preview and export the full paginated MAC-device inventory.</span>
+    </a>
+    <a class="task-card" href="{{ url_for('fortiauthenticator_mac_group_memberships') }}">
+      <strong>Export Group Memberships</strong>
+      <span>Preview and export device-to-group membership data.</span>
+    </a>
+    <a class="task-card" href="{{ url_for('fortiauthenticator_mac_cleanup') }}">
+      <strong>MAC Device Cleanup</strong>
+      <span>Preview group removal or global device deletion.</span>
+    </a>
+  </div>
+</section>
+{% endblock %}

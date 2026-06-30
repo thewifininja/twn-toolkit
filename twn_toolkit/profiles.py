@@ -44,6 +44,12 @@ class ProfileStore:
         os.chmod(self.path, 0o600)
 
 
+class FortiAuthenticatorProfileStore(ProfileStore):
+    def __init__(self, instance_path: str) -> None:
+        super().__init__(instance_path)
+        self.path = self.instance_path / "fortiauthenticator_profiles.json"
+
+
 class PingProfileStore:
     def __init__(self, instance_path: str) -> None:
         self.instance_path = Path(instance_path)

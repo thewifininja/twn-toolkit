@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel narrow">
+  <div class="panel-head">
+    <h1>MAC Device Cleanup</h1>
+    <p>Build a live preview before removing group memberships or deleting MAC devices globally.</p>
+  </div>
+  {% if profiles %}
+    <form class="form" method="post" action="{{ url_for('fortiauthenticator_mac_cleanup') }}">
+      <label>
+        FortiAuthenticator profile
+        <select name="profile" required>
+          <option value="">Choose a profile</option>
+          {% for profile in profiles %}
+            <option
+              value="{{ profile.name }}"
+              {% if selected_name == profile.name or (not selected_name and profile.is_default) %}selected{% endif %}
+            >{{ profile.name }} · {{ profile.host }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if groups %}
+        <label>
+          MAC group
+          <select name="group_uri" required>
+            <option value="">Choose a group</option>
+            {% for group in groups %}
+              <option value="{{ group.uri }}" {% if selected_group_uri == group.uri %}selected{% endif %}>
+                {{ group.name }} · {{ group.count }} member{{ "" if group.count == 1 else "s" }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <fieldset class="choice-group">
+          <legend>Cleanup action</legend>
+          <label class="check">
+            <input
+              name="action"
+              type="radio"
+              value="remove_memberships"
+              {% if selected_action == "remove_memberships" %}checked{% endif %}
+            >
+            Remove devices from this group only
+          </label>
+          <label class="check">
+            <input
+              name="action"
+              type="radio"
+              value="delete_devices"
+              {% if selected_action == "delete_devices" %}checked{% endif %}
+            >
+            Delete MAC devices globally
+          </label>
+        </fieldset>
+      {% endif %}
+      <div class="button-row">
+        {% if groups %}
+          <button name="intent" type="submit" value="preview">Build Preview</button>
+          <button class="secondary" name="intent" type="submit" value="load_groups">Reload Groups</button>
+        {% else %}
+          <button class="secondary" name="intent" type="submit" value="load_groups">Load Groups</button>
+        {% endif %}
+        <a class="button-link secondary" href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator Home</a>
+      </div>
+    </form>
+  {% else %}
+    <p class="empty">Create a FortiAuthenticator profile before building a cleanup preview.</p>
+    <div class="button-row result-actions">
+      <a class="button-link" href="{{ url_for('fortiauthenticator_home') }}">Create Profile</a>
+    </div>
+  {% endif %}
+</section>
+
+{% if preview %}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Cleanup Preview</h1>
+      <p>
+        {{ preview.targets | length }} device{{ "" if preview.targets | length == 1 else "s" }}
+        in {{ preview.group_name }}.
+      </p>
+    </div>
+
+    {% if preview.action == "delete_devices" %}
+      <div class="message error">
+        Global deletion removes each MAC device object, not just its selected-group membership.
+        {% if preview.overlap_count %}
+          {{ preview.overlap_count }} target{{ "" if preview.overlap_count == 1 else "s" }}
+          also belong{{ "" if preview.overlap_count != 1 else "s" }} to another group.
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="message success">
+        This action removes only the selected group memberships. MAC device objects and other memberships remain.
+      </div>
+    {% endif %}
+
+    {% if preview.targets %}
+      <form
+        class="form cleanup-confirmation"
+        id="cleanup-selection-form"
+        method="post"
+        action="{{ url_for('execute_fortiauthenticator_mac_cleanup') }}"
+        data-action="{{ preview.action }}"
+      >
+        <input name="profile" type="hidden" value="{{ selected_name }}">
+        <input name="group_uri" type="hidden" value="{{ preview.group_uri }}">
+        <input name="action" type="hidden" value="{{ preview.action }}">
+        <div class="preview-table-wrap selectable-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    id="cleanup-select-all"
+                    type="checkbox"
+                    checked
+                    aria-label="Select all devices"
+                  >
+                </th>
+                <th>Device ID</th>
+                <th>MAC Address</th>
+                <th>Device Name</th>
+                <th>Other Groups</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for target in preview.targets %}
+                <tr>
+                  <td>
+                    <input
+                      class="cleanup-target"
+                      name="selected_id"
+                      type="checkbox"
+                      value="{{ target.membership_id if preview.action == 'remove_memberships' else target.device_id }}"
+                      checked
+                      aria-label="Select {{ target.device_name or target.mac_address or ('device ' ~ target.device_id) }}"
+                    >
+                  </td>
+                  <td>{{ target.device_id }}</td>
+                  <td>{{ target.mac_address }}</td>
+                  <td>{{ target.device_name }}</td>
+                  <td>{{ target.other_groups | join(", ") if target.other_groups else "—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <label>
+          Type <code id="cleanup-confirmation-phrase">{{ preview.confirmation }}</code> to confirm
+          <input
+            id="cleanup-confirmation-input"
+            name="confirmation"
+            autocomplete="off"
+            placeholder="{{ preview.confirmation }}"
+            required
+          >
+        </label>
+        <div class="button-row">
+          <button
+            class="{% if preview.action == 'delete_devices' %}danger{% endif %}"
+            id="cleanup-submit"
+            type="submit"
+          >
+            {{ "Remove" if preview.action == "remove_memberships" else "Delete" }}
+            <span id="cleanup-selected-count">{{ preview.targets | length }}</span>
+            <span id="cleanup-selected-noun">
+              {% if preview.action == "remove_memberships" %}
+                {{ "Membership" if preview.targets | length == 1 else "Memberships" }}
+              {% else %}
+                {{ "Device" if preview.targets | length == 1 else "Devices" }} Globally
+              {% endif %}
+            </span>
+          </button>
+        </div>
+      </form>
+    {% else %}
+      <p class="empty">No valid cleanup targets were found in this group.</p>
+    {% endif %}
+  </section>
+{% endif %}
+<script src="{{ url_for('static', filename='mac-cleanup.js') }}"></script>
+{% endblock %}

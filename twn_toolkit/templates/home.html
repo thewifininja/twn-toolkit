@@ -3,21 +3,46 @@
 {% block content %}
 <section class="workspace-intro">
   <h1>Network Operations Toolbox</h1>
-  <p>Choose a workspace to manage devices or run standalone network utilities.</p>
+  <p>Choose a Fortinet workflow or a vendor-neutral network utility.</p>
 </section>
 
-<section class="workspace-grid">
-  <a class="workspace-card" href="{{ url_for('fortigate_home') }}">
-    <strong>FortiGate</strong>
-    <span>Profiles, AP and FortiSwitch inventory, clients, and bulk renaming.</span>
-  </a>
-  <a class="workspace-card" href="{{ url_for('tools.index') }}">
-    <strong>Network Tools</strong>
-    <span>Subnet subtraction, live multi-host ping, and multi-device SSH.</span>
-  </a>
-  <div class="workspace-card unavailable">
-    <strong>FortiAuthenticator</strong>
-    <span>Reserved for future tools and workflows.</span>
-  </div>
-</section>
+<div class="home-tool-groups">
+  <section class="home-tool-group" aria-labelledby="fortinet-tools-heading">
+    <div class="section-head">
+      <h2 id="fortinet-tools-heading">Fortinet Tools</h2>
+      <p>Device administration and workflows built for Fortinet products.</p>
+    </div>
+    <div class="workspace-grid">
+      <a class="workspace-card" href="{{ url_for('fortigate_home') }}">
+        <strong>FortiGate</strong>
+        <span>Profiles, AP and FortiSwitch inventory, clients, and bulk renaming.</span>
+      </a>
+      <a class="workspace-card" href="{{ url_for('fortiauthenticator_home') }}">
+        <strong>FortiAuthenticator</strong>
+        <span>Profiles and MAC-device administration workflows.</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="home-tool-group" aria-labelledby="generic-tools-heading">
+    <div class="section-head">
+      <h2 id="generic-tools-heading">Generic Tools</h2>
+      <p>Standalone utilities that work without a FortiGate profile.</p>
+    </div>
+    <div class="workspace-grid">
+      <a class="workspace-card" href="{{ url_for('tools.subnet_excluder') }}">
+        <strong>Subnet Excluder</strong>
+        <span>Subtract CIDR networks from one or more parent networks.</span>
+      </a>
+      <a class="workspace-card" href="{{ url_for('tools.ping_tool') }}">
+        <strong>Multi-Host Ping</strong>
+        <span>Continuously monitor IPv4, IPv6, and DNS host reachability.</span>
+      </a>
+      <a class="workspace-card" href="{{ url_for('tools.multi_ssh') }}">
+        <strong>Multi-SSH</strong>
+        <span>Run the same command sequence across multiple SSH hosts.</span>
+      </a>
+    </div>
+  </section>
+</div>
 {% endblock %}

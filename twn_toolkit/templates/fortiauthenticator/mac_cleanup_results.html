@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>MAC Cleanup Results</h1>
+    <p>
+      {{ profile.name }} · {{ group_name }} ·
+      {{ "Membership removal" if action == "remove_memberships" else "Global device deletion" }}
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Device ID</th>
+          <th>MAC Address</th>
+          <th>Device Name</th>
+          <th>Status</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for result in results %}
+          <tr>
+            <td>{{ result.device_id }}</td>
+            <td>{{ result.mac_address }}</td>
+            <td>{{ result.device_name }}</td>
+            <td><span class="pill {{ result.status }}">{{ result.status }}</span></td>
+            <td>{{ result.message }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="button-row result-actions">
+    <a class="button-link" href="{{ url_for('fortiauthenticator_mac_cleanup') }}">Build Another Preview</a>
+    <a class="button-link secondary" href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator Home</a>
+  </div>
+</section>
+{% endblock %}
