@@ -20,6 +20,7 @@ from .profiles import (
     DNSProfileStore,
     FortiAuthenticatorProfileStore,
     PingProfileStore,
+    PortScanProfileStore,
     ProfileStore,
     RadiusProfileStore,
     SNMPCredentialProfileStore,
@@ -56,6 +57,8 @@ def create_app(instance_path: str | None = None) -> Flask:
         RadiusProfileStore(app.instance_path, "servers").clear()
         RadiusProfileStore(app.instance_path, "credentials").clear()
         RadiusProfileStore(app.instance_path, "attributes").clear()
+        PortScanProfileStore(app.instance_path, "hosts").clear()
+        PortScanProfileStore(app.instance_path, "ports").clear()
         SNMPCredentialProfileStore(app.instance_path).clear()
         SNMPHostProfileStore(app.instance_path).clear()
         SNMPOidProfileStore(app.instance_path).clear()

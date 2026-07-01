@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from typing import Any
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request, stream_with_context
@@ -17,9 +18,11 @@ from .network_tools import (
     parse_radius_attributes,
     ToolInputError,
     parse_ping_targets,
+    parse_tcp_ports,
     ping_hosts,
     run_ssh_hosts,
     radius_authenticate,
+    scan_tcp_ports,
     split_values,
     subtract_subnets,
     validate_hosts,
@@ -28,11 +31,14 @@ from .profiles import (
     DNSProfileStore,
     PingProfileStore,
     RadiusProfileStore,
+    PortScanProfileStore,
     SNMPCredentialProfileStore,
     SNMPHostProfileStore,
     SNMPOidProfileStore,
 )
 from .snmp_tools import parse_oid_profile, run_snmp_tests, validate_snmp_credential
+from .ntp_tools import test_ntp_server
+from .traceroute_tools import prepare_traceroute, run_traceroute, stream_traceroute
 
 
 tools_bp = Blueprint("tools", __name__, url_prefix="/tools")
@@ -46,6 +52,193 @@ SPEED_TEST_DOWNLOAD_CHUNK = os.urandom(SPEED_TEST_CHUNK_SIZE)
 @tools_bp.get("/")
 def index():
     return render_template("tools/index.html")
+
+
+@tools_bp.route("/ntp-test", methods=["GET", "POST"])
+def ntp_test():
+    form = {"host": "", "port": "123", "timeout": "3", "samples": "4"}
+    result = None
+    error = ""
+    if request.method == "POST":
+        submitted_host = request.form.get("hosts", "").strip() or request.form.get("host", "").strip()
+        form = {
+            "host": submitted_host,
+            "port": request.form.get("port", "123").strip(),
+            "timeout": request.form.get("timeout", "3").strip(),
+            "samples": request.form.get("samples", "4").strip(),
+        }
+        try:
+            result = test_ntp_server(
+                form["host"],
+                port=int(form["port"]),
+                timeout=float(form["timeout"]),
+                samples=int(form["samples"]),
+            )
+            if result["status"] != "success":
+                error = "; ".join(
+                    dict.fromkeys(
+                        sample.get("error", "No response")
+                        for sample in result["samples"]
+                        if sample["status"] == "error"
+                    )
+                )
+        except (ToolInputError, TypeError, ValueError) as exc:
+            error = str(exc) or "Enter valid NTP test settings."
+    return render_template("tools/ntp_test.html", error=error, form=form, result=result)
+
+
+@tools_bp.route("/traceroute", methods=["GET", "POST"])
+def traceroute():
+    form = {
+        "host": "",
+        "family": "auto",
+        "method": "udp",
+        "max_hops": "30",
+        "probes": "3",
+        "timeout": "2",
+    }
+    result = None
+    error = ""
+    if request.method == "POST":
+        form = {
+            "host": request.form.get("host", "").strip(),
+            "family": request.form.get("family", "auto"),
+            "method": request.form.get("method", "udp"),
+            "max_hops": request.form.get("max_hops", "30").strip(),
+            "probes": request.form.get("probes", "3").strip(),
+            "timeout": request.form.get("timeout", "2").strip(),
+        }
+        try:
+            result = run_traceroute(
+                form["host"],
+                family=form["family"],
+                method=form["method"],
+                max_hops=int(form["max_hops"]),
+                probes=int(form["probes"]),
+                timeout=float(form["timeout"]),
+            )
+        except (ToolInputError, TypeError, ValueError) as exc:
+            error = str(exc) or "Enter valid traceroute settings."
+    return render_template("tools/traceroute.html", error=error, form=form, result=result)
+
+
+@tools_bp.post("/traceroute/run")
+def traceroute_run():
+    payload = request.get_json(silent=True) or {}
+    try:
+        prepared = prepare_traceroute(
+            str(payload.get("host", "")),
+            family=str(payload.get("family", "auto")),
+            method=str(payload.get("method", "udp")),
+            max_hops=int(payload.get("max_hops", 30)),
+            probes=int(payload.get("probes", 3)),
+            timeout=float(payload.get("timeout", 2)),
+        )
+    except (ToolInputError, TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc) or "Enter valid traceroute settings."}), 400
+
+    @stream_with_context
+    def generate():
+        try:
+            for event in stream_traceroute(prepared):
+                yield json.dumps(event, separators=(",", ":")) + "\n"
+        except ToolInputError as exc:
+            yield json.dumps({"type": "error", "error": str(exc)}, separators=(",", ":")) + "\n"
+
+    response = Response(generate(), mimetype="application/x-ndjson")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
+
+
+@tools_bp.route("/port-scanner", methods=["GET", "POST"])
+def port_scanner():
+    form = {
+        "hosts": "",
+        "ports": "22, 53, 80, 443",
+        "timeout": "1",
+        "concurrency": "100",
+        "open_only": True,
+    }
+    results = None
+    stats = None
+    error = ""
+    if request.method == "POST":
+        form = {
+            "hosts": request.form.get("hosts", "").strip(),
+            "ports": request.form.get("ports", "").strip(),
+            "timeout": request.form.get("timeout", "1").strip(),
+            "concurrency": request.form.get("concurrency", "100").strip(),
+            "open_only": request.form.get("open_only") == "on",
+        }
+        try:
+            targets = parse_ping_targets(form["hosts"], limit=50)
+            ports = parse_tcp_ports(form["ports"], limit=200)
+            all_results = scan_tcp_ports(
+                targets,
+                ports,
+                timeout=float(form["timeout"]),
+                max_workers=int(form["concurrency"]),
+            )
+            stats = {
+                "combinations": len(all_results),
+                "open": sum(result["status"] == "open" for result in all_results),
+                "closed": sum(result["status"] == "closed" for result in all_results),
+                "timeout": sum(result["status"] == "timeout" for result in all_results),
+                "error": sum(result["status"] == "error" for result in all_results),
+            }
+            results = (
+                [result for result in all_results if result["status"] == "open"]
+                if form["open_only"]
+                else all_results
+            )
+        except (ToolInputError, TypeError, ValueError) as exc:
+            error = str(exc) or "Enter valid scanner settings."
+    return render_template(
+        "tools/port_scanner.html",
+        error=error,
+        form=form,
+        host_profiles=_port_scan_profile_store("hosts").all(),
+        port_profiles=_port_scan_profile_store("ports").all(),
+        results=results,
+        stats=stats,
+    )
+
+
+@tools_bp.post("/port-scanner/profiles/<kind>")
+def save_port_scan_profile(kind: str):
+    if kind not in {"hosts", "ports"}:
+        return jsonify({"error": "Unknown port scanner profile type."}), 404
+    name = request.form.get("name", "").strip()
+    original_name = request.form.get("original_name", "").strip()
+    values = request.form.get("values", "").strip()
+    if not name or len(name) > 100:
+        return jsonify({"error": "Enter a profile name of 100 characters or fewer."}), 400
+    try:
+        if kind == "hosts":
+            parsed = parse_ping_targets(values, limit=50)
+            profile = {"name": name, "values": values, "count": len(parsed)}
+        else:
+            parsed = parse_tcp_ports(values, limit=200)
+            profile = {"name": name, "values": values, "count": len(parsed)}
+    except ToolInputError as exc:
+        return jsonify({"error": str(exc)}), 400
+    _port_scan_profile_store(kind).upsert(profile, original_name=original_name)
+    return jsonify({"profile": profile})
+
+
+@tools_bp.post("/port-scanner/profiles/<kind>/delete")
+def delete_port_scan_profile(kind: str):
+    if kind not in {"hosts", "ports"}:
+        return jsonify({"error": "Unknown port scanner profile type."}), 404
+    name = request.form.get("name", "").strip()
+    if not _port_scan_profile_store(kind).delete(name):
+        return jsonify({"error": "Profile not found."}), 404
+    return jsonify({"deleted": name})
+
+
+def _port_scan_profile_store(kind: str) -> PortScanProfileStore:
+    return PortScanProfileStore(current_app.instance_path, kind)
 
 
 @tools_bp.route("/snmp-test", methods=["GET", "POST"])

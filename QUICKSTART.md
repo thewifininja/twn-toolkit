@@ -149,6 +149,16 @@ The **Generic Tools** workspace does not use Fortinet profiles.
 - **SNMP Tester** stores separate SNMPv2c/SNMPv3 credential profiles, host
   mappings, and reusable numeric OID collections. Collections support scalar
   GET operations and bounded subtree walks using a `walk:` label prefix.
+- **TCP Port Scanner** checks explicit host and port sets with reusable
+  profiles, connection timing, and service-name hints. It is limited to 50
+  hosts, 200 unique ports, and 5,000 host/port combinations per scan.
+- **NTP Tester** takes up to 10 direct NTPv4 samples and reports average clock
+  offset, round-trip delay, jitter, stratum, reference identity, leap status,
+  root delay, and root dispersion.
+- **Traceroute** follows IPv4 or IPv6 destinations using UDP or ICMP probes,
+  streaming each result into a latency-colored hop path and live text output.
+  Up to 10 destinations can be queued per run, two traces execute concurrently,
+  and long-running traces can be cancelled from the page.
 
 Multi-SSH commands execute on real devices. Review the host list and commands
 carefully before selecting the required execution confirmation.

@@ -30,6 +30,13 @@ operations tasks.
   hostname, expiration, chain order, and local trust validation.
 - Tests SNMPv2c and SNMPv3 access across reusable host, credential, and numeric
   OID collection profiles, including bounded subtree walks.
+- Scans explicit, bounded host and TCP port sets with reusable profiles,
+  connection timing, and common service-name hints.
+- Queries NTPv4 servers directly and reports clock offset, round-trip delay,
+  jitter, stratum, reference identity, and synchronization health.
+- Traces IPv4 or IPv6 network paths with UDP or ICMP probes and presents both
+  live-updating graphical hop views and streaming traditional command output
+  for up to 10 destinations per run.
 - Provides a task registry so more CSV/API tasks can be added cleanly later.
 
 ## Quick Start
@@ -108,6 +115,7 @@ RADIUS server and credential profiles are stored separately in
 request attributes use `instance/radius_attributes_profiles.json`.
 SNMP credentials, hosts, and OID collections use separate
 `instance/snmp_*_profiles.json` files.
+TCP scanner host and port sets use `instance/port_scan_*_profiles.json`.
 These files have owner-only permissions and are
 excluded from Git, but their contents are not encrypted. Treat the host as trusted.
 

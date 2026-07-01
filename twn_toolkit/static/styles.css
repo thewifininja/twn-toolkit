@@ -643,6 +643,233 @@ button.danger {
   white-space: pre-wrap;
 }
 
+.ntp-options {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(240px, 2fr) repeat(3, minmax(120px, 1fr));
+}
+
+.ntp-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 18px 0;
+}
+
+.ntp-summary article {
+  background: #f5f8fa;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 15px;
+}
+
+.ntp-summary span,
+.ntp-summary small {
+  color: var(--muted);
+  display: block;
+}
+
+.ntp-summary strong {
+  display: block;
+  font-size: 1.5rem;
+  margin: 5px 0;
+}
+
+.ntp-summary small {
+  font-size: 0.76rem;
+}
+
+.ntp-warning {
+  color: var(--warn);
+}
+
+.ntp-details {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0 0 22px;
+}
+
+.ntp-details div {
+  min-width: 0;
+}
+
+.ntp-details dt {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ntp-details dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.traceroute-options {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 2fr) repeat(2, minmax(130px, 1fr));
+}
+
+.traceroute-options > label:first-child {
+  grid-column: 1 / -1;
+}
+
+.traceroute-live-results {
+  display: grid;
+  gap: 16px;
+}
+
+.traceroute-results-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 10px;
+}
+
+.traceroute-result-details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.traceroute-result-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.traceroute-result-details > summary .certificate-result-head {
+  margin: 0;
+}
+
+.traceroute-result-details > summary h2::before {
+  color: var(--muted);
+  content: "▾";
+  display: inline-block;
+  font-size: 0.85rem;
+  margin-right: 9px;
+  transition: transform 0.15s ease;
+}
+
+.traceroute-result-details:not([open]) > summary h2::before {
+  transform: rotate(-90deg);
+}
+
+.traceroute-live-result .traceroute-text {
+  display: block;
+  margin-top: 8px;
+}
+
+.traceroute-path {
+  margin-top: 20px;
+  max-width: 900px;
+}
+
+.traceroute-hop {
+  display: grid;
+  gap: 15px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  padding-bottom: 16px;
+  position: relative;
+}
+
+.traceroute-hop:not(:last-child)::before {
+  background: var(--line);
+  content: "";
+  height: calc(100% - 26px);
+  left: 20px;
+  position: absolute;
+  top: 34px;
+  width: 2px;
+}
+
+.traceroute-marker {
+  align-items: center;
+  background: #e8f5ef;
+  border: 2px solid var(--ok);
+  border-radius: 50%;
+  color: var(--ok);
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 900;
+  height: 38px;
+  justify-content: center;
+  position: relative;
+  width: 38px;
+  z-index: 1;
+}
+
+.traceroute-hop.medium .traceroute-marker {
+  background: #fff2d8;
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.traceroute-hop.slow .traceroute-marker {
+  background: #f9e9e9;
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.traceroute-hop.unanswered .traceroute-marker {
+  background: #eef2f5;
+  border-color: #8996a3;
+  color: #65727f;
+}
+
+.traceroute-hop-card {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.traceroute-hop-card strong,
+.traceroute-hop-card small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.traceroute-hop-card small,
+.traceroute-hop-number {
+  color: var(--muted);
+}
+
+.traceroute-hop-number {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+
+.traceroute-hop-metrics {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.traceroute-hop-metrics b {
+  color: var(--ink);
+}
+
+.traceroute-text summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.traceroute-text pre {
+  background: #14202b;
+  border-radius: 7px;
+  color: #e8f0f5;
+  line-height: 1.55;
+  margin: 14px 0 0;
+  overflow-x: auto;
+  padding: 16px;
+  white-space: pre-wrap;
+}
+
 .message.warning {
   background: #fff4d9;
   color: var(--warn);
@@ -1039,6 +1266,65 @@ button.danger {
   padding: 14px;
 }
 
+.port-profile-grid {
+  margin-top: 4px;
+}
+
+.port-profile-form {
+  align-content: start;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 14px;
+}
+
+.port-scan-options {
+  align-items: end;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(160px, 220px) minmax(140px, 180px) minmax(180px, 1fr);
+}
+
+.port-open-only {
+  min-height: 42px;
+}
+
+.port-scan-summary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.port-scan-summary > div {
+  background: #f9fbfc;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.port-scan-summary span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.port-scan-summary strong {
+  font-size: 1.35rem;
+}
+
+.port-open {
+  color: var(--ok);
+}
+
+.port-results-wrap {
+  max-height: 620px;
+}
+
+.port-no-results {
+  margin-top: 0;
+}
+
 .ping-profile-actions {
   flex-wrap: nowrap;
 }
@@ -1334,6 +1620,12 @@ th {
   .form-grid,
   .radius-run-grid,
   .snmp-management-grid,
+  .port-scan-options,
+  .port-scan-summary,
+  .ntp-options,
+  .ntp-summary,
+  .ntp-details,
+  .traceroute-options,
   .certificate-check-grid,
   .certificate-details,
   .certificate-extension-grid,

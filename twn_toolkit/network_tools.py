@@ -4,6 +4,7 @@ import ipaddress
 import hashlib
 import platform
 import re
+import socket
 import shutil
 import subprocess
 import time
@@ -70,6 +71,96 @@ def validate_hosts(hosts_text: str, limit: int = 100) -> list[str]:
     if invalid:
         raise ToolInputError(f"Invalid host value(s): {', '.join(invalid[:5])}")
     return hosts
+
+
+def parse_tcp_ports(value: str, limit: int = 200) -> list[int]:
+    tokens = [token for token in re.split(r"[\s,]+", value.strip()) if token]
+    if not tokens:
+        raise ToolInputError("Enter at least one TCP port.")
+    ports: set[int] = set()
+    for token in tokens:
+        if "-" in token:
+            if token.count("-") != 1:
+                raise ToolInputError(f"Invalid port range: {token}")
+            start_text, end_text = token.split("-", 1)
+            try:
+                start, end = int(start_text), int(end_text)
+            except ValueError as exc:
+                raise ToolInputError(f"Invalid port range: {token}") from exc
+            if start > end:
+                raise ToolInputError(f"Port range must be ascending: {token}")
+            if end - start + 1 > limit:
+                raise ToolInputError(f"Port range '{token}' exceeds the {limit}-port limit.")
+            ports.update(range(start, end + 1))
+        else:
+            try:
+                ports.add(int(token))
+            except ValueError as exc:
+                raise ToolInputError(f"Invalid TCP port: {token}") from exc
+        if len(ports) > limit:
+            raise ToolInputError(f"A maximum of {limit} unique TCP ports is allowed.")
+    invalid = [port for port in ports if not 1 <= port <= 65535]
+    if invalid:
+        raise ToolInputError("TCP ports must be between 1 and 65535.")
+    return sorted(ports)
+
+
+def scan_tcp_ports(
+    targets: list[dict[str, str]],
+    ports: list[int],
+    timeout: float = 1.0,
+    max_workers: int = 100,
+) -> list[dict[str, Any]]:
+    if not targets or not ports:
+        raise ToolInputError("Select at least one host and TCP port.")
+    if len(targets) * len(ports) > 5000:
+        raise ToolInputError("A scan is limited to 5,000 host/port combinations.")
+    if not 0.1 <= timeout <= 10:
+        raise ToolInputError("Connection timeout must be between 0.1 and 10 seconds.")
+    if not 1 <= max_workers <= 200:
+        raise ToolInputError("Concurrency must be between 1 and 200.")
+
+    jobs = [(target, port) for target in targets for port in ports]
+    workers = min(max_workers, len(jobs))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(_scan_tcp_port, target, port, timeout): index
+            for index, (target, port) in enumerate(jobs)
+        }
+        indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
+    return [result for _index, result in sorted(indexed_results)]
+
+
+def _scan_tcp_port(target: dict[str, str], port: int, timeout: float) -> dict[str, Any]:
+    started = time.monotonic()
+    status = "error"
+    detail = ""
+    try:
+        with socket.create_connection((target["host"], port), timeout=timeout):
+            status = "open"
+    except ConnectionRefusedError:
+        status = "closed"
+        detail = "Connection refused"
+    except (TimeoutError, socket.timeout):
+        status = "timeout"
+        detail = "No response before timeout"
+    except socket.gaierror as exc:
+        detail = f"DNS resolution failed: {exc}"
+    except OSError as exc:
+        detail = str(exc)
+    try:
+        service = socket.getservbyport(port, "tcp")
+    except OSError:
+        service = ""
+    return {
+        "host": target["host"],
+        "label": target.get("label", ""),
+        "port": port,
+        "service": service,
+        "status": status,
+        "detail": detail,
+        "elapsed_ms": round((time.monotonic() - started) * 1000, 1),
+    }
 
 
 def parse_ping_targets(hosts_text: str, limit: int = 100) -> list[dict[str, str]]:

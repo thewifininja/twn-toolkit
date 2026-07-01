@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>NTP Tester</h1>
+    <p>Query an NTP server directly and measure its clock offset, network delay, jitter, and synchronization state.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+
+  <form class="form" method="post">
+    <div class="ntp-options">
+      <label>NTP server
+        <input name="host" value="{{ form.host }}" placeholder="time.example.com or 192.0.2.10" required>
+      </label>
+      <label>UDP port
+        <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required>
+      </label>
+      <label>Timeout (seconds)
+        <input name="timeout" type="number" min="0.2" max="15" step="0.1" value="{{ form.timeout }}" required>
+      </label>
+      <label>Samples
+        <input name="samples" type="number" min="1" max="10" value="{{ form.samples }}" required>
+      </label>
+    </div>
+    <div class="button-row">
+      <button type="submit">Test NTP Server</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+    </div>
+    <span class="field-note">Measurements are made from the toolkit server, not from your browser.</span>
+  </form>
+</section>
+
+{% if result and result.status == "success" %}
+<section class="panel">
+  <div class="certificate-result-head">
+    <div>
+      <h2>{{ result.host }}</h2>
+      <p>{{ result.resolved_address }}:{{ result.port }} · NTPv{{ result.version }} · {{ result.successful_samples }}/{{ result.total_samples }} samples</p>
+    </div>
+    <span class="pill {{ 'success' if result.synchronized else 'error' }}">{{ 'synchronized' if result.synchronized else 'not synchronized' }}</span>
+  </div>
+
+  <div class="ntp-summary">
+    <article>
+      <span>Clock offset</span>
+      <strong class="{{ 'ntp-warning' if result.offset_ms|abs > 100 else '' }}">{{ '%+.3f'|format(result.offset_ms) }} ms</strong>
+      <small>Positive means the server clock is ahead</small>
+    </article>
+    <article>
+      <span>Round-trip delay</span>
+      <strong>{{ '%.3f'|format(result.delay_ms) }} ms</strong>
+      <small>Average network response time</small>
+    </article>
+    <article>
+      <span>Jitter</span>
+      <strong>{{ '%.3f'|format(result.jitter_ms) }} ms</strong>
+      <small>Variation between clock-offset samples</small>
+    </article>
+    <article>
+      <span>Stratum</span>
+      <strong>{{ result.stratum }}</strong>
+      <small>Reference: {{ result.reference_id or 'Not provided' }}</small>
+    </article>
+  </div>
+
+  <dl class="ntp-details">
+    <div><dt>Leap status</dt><dd>{{ result.leap_text }}</dd></div>
+    <div><dt>Reference time</dt><dd><code>{{ result.reference_time }}</code></dd></div>
+    <div><dt>Root delay</dt><dd>{{ result.root_delay_ms }} ms</dd></div>
+    <div><dt>Root dispersion</dt><dd>{{ result.root_dispersion_ms }} ms</dd></div>
+    <div><dt>Clock precision</dt><dd>{{ result.precision_seconds }} seconds</dd></div>
+  </dl>
+
+  <h3>Individual Samples</h3>
+  <div class="preview-table-wrap">
+    <table>
+      <thead><tr><th>Sample</th><th>Status</th><th>Offset</th><th>Delay</th><th>Server time</th></tr></thead>
+      <tbody>
+        {% for sample in result.samples %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td><span class="pill {{ 'success' if sample.status == 'success' else 'error' }}">{{ sample.status }}</span></td>
+            {% if sample.status == "success" %}
+              <td><code>{{ '%+.3f'|format(sample.offset_ms) }} ms</code></td>
+              <td>{{ '%.3f'|format(sample.delay_ms) }} ms</td>
+              <td><code>{{ sample.server_time }}</code></td>
+            {% else %}
+              <td colspan="3">{{ sample.error }}</td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

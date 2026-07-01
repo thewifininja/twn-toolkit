@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>Traceroute</h1>
+    <p>Follow the network path from the toolkit server to an IPv4 or IPv6 destination.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+
+  <form class="form" method="post" id="traceroute-form" data-run-url="{{ url_for('tools.traceroute_run') }}">
+    <div class="traceroute-options">
+      <label>Destinations
+        <textarea name="hosts" rows="4" placeholder="example.com&#10;192.0.2.10" required>{{ form.host }}</textarea>
+        <span class="field-note">One hostname or IP address per line. Maximum 10 destinations.</span>
+      </label>
+      <label>Address family
+        <select name="family">
+          <option value="auto" {% if form.family == "auto" %}selected{% endif %}>Auto</option>
+          <option value="ipv4" {% if form.family == "ipv4" %}selected{% endif %}>IPv4</option>
+          <option value="ipv6" {% if form.family == "ipv6" %}selected{% endif %}>IPv6</option>
+        </select>
+      </label>
+      <label>Probe method
+        <select name="method">
+          <option value="udp" {% if form.method == "udp" %}selected{% endif %}>UDP</option>
+          <option value="icmp" {% if form.method == "icmp" %}selected{% endif %}>ICMP</option>
+        </select>
+      </label>
+      <label>Maximum hops
+        <input name="max_hops" type="number" min="1" max="64" value="{{ form.max_hops }}" required>
+      </label>
+      <label>Probes per hop
+        <input name="probes" type="number" min="1" max="3" value="{{ form.probes }}" required>
+      </label>
+      <label>Probe timeout
+        <input name="timeout" type="number" min="1" max="5" step="1" value="{{ form.timeout }}" required>
+      </label>
+    </div>
+    <div class="button-row">
+      <button type="submit" id="traceroute-start">Run Traceroute</button>
+      <button class="secondary" type="button" id="traceroute-cancel" disabled>Cancel</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+    </div>
+    <span class="tool-status" id="traceroute-status">The trace runs from the toolkit server. ICMP mode may require additional host or container permissions.</span>
+  </form>
+</section>
+
+{% if not result %}
+<div class="traceroute-results-toolbar" id="traceroute-results-toolbar" hidden>
+  <button class="secondary" type="button" id="traceroute-toggle-all">Expand All</button>
+</div>
+<div class="traceroute-live-results" id="traceroute-live-results"></div>
+<template id="traceroute-result-template">
+  <section class="panel traceroute-live-result">
+    <details class="traceroute-result-details">
+      <summary>
+        <div class="certificate-result-head">
+          <div>
+            <h2 class="traceroute-live-host"></h2>
+            <p class="traceroute-live-meta">Queued</p>
+          </div>
+          <span class="pill planned traceroute-live-state">queued</span>
+        </div>
+      </summary>
+      <div class="traceroute-path">
+        <article class="traceroute-hop local">
+          <div class="traceroute-marker">●</div>
+          <div class="traceroute-hop-card">
+            <span class="traceroute-hop-number">Start</span>
+            <strong>Toolkit server</strong>
+            <small>This machine</small>
+          </div>
+        </article>
+      </div>
+      <details class="traceroute-text">
+        <summary>Live Text Output</summary>
+        <pre class="traceroute-live-output"></pre>
+      </details>
+    </details>
+  </section>
+</template>
+{% endif %}
+
+{% if result %}
+<section class="panel">
+  <div class="certificate-result-head">
+    <div>
+      <h2>{{ result.host }}</h2>
+      <p>{{ result.family }} · {{ result.method }} · {{ result.responding_hops }} responding hop{{ '' if result.responding_hops == 1 else 's' }}</p>
+    </div>
+    <span class="pill {{ 'success' if result.reached else 'planned' }}">{{ 'destination reached' if result.reached else 'trace incomplete' }}</span>
+  </div>
+
+  <div class="traceroute-path">
+    <article class="traceroute-hop local">
+      <div class="traceroute-marker">●</div>
+      <div class="traceroute-hop-card">
+        <span class="traceroute-hop-number">Start</span>
+        <strong>Toolkit server</strong>
+        <small>This machine</small>
+      </div>
+    </article>
+    {% for hop in result.hops %}
+      {% set latency_class = 'unanswered' if not hop.responded else ('slow' if hop.average_ms and hop.average_ms >= 100 else ('medium' if hop.average_ms and hop.average_ms >= 30 else 'fast')) %}
+      <article class="traceroute-hop {{ latency_class }}">
+        <div class="traceroute-marker">{{ hop.number }}</div>
+        <div class="traceroute-hop-card">
+          <span class="traceroute-hop-number">Hop {{ hop.number }}</span>
+          <strong>{{ hop.name or (hop.addresses|join(', ')) or 'No response' }}</strong>
+          {% if hop.name and hop.addresses %}<small>{{ hop.addresses|join(', ') }}</small>{% endif %}
+          <div class="traceroute-hop-metrics">
+            {% if hop.latencies_ms %}
+              <span>Average <b>{{ hop.average_ms }} ms</b></span>
+              <span>Probes <b>{{ hop.latencies_ms|join(' · ') }} ms</b></span>
+              {% if hop.loss_percent %}<span>Loss <b>{{ hop.loss_percent }}%</b></span>{% endif %}
+            {% else %}
+              <span>No probe replies</span>
+            {% endif %}
+          </div>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <details class="traceroute-text" open>
+    <summary>Text Output</summary>
+    <pre>{{ result.raw_output }}</pre>
+  </details>
+</section>
+{% endif %}
+<script src="{{ url_for('static', filename='traceroute.js') }}"></script>
+{% endblock %}

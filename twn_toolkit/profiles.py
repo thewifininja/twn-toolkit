@@ -162,3 +162,11 @@ class SNMPOidProfileStore(PingProfileStore):
         if not self.path.exists():
             return [dict(profile) for profile in self.DEFAULTS]
         return super()._read()
+
+
+class PortScanProfileStore(PingProfileStore):
+    def __init__(self, instance_path: str, kind: str) -> None:
+        if kind not in {"hosts", "ports"}:
+            raise ValueError("Port scanner profile kind must be 'hosts' or 'ports'.")
+        super().__init__(instance_path)
+        self.path = self.instance_path / f"port_scan_{kind}_profiles.json"
