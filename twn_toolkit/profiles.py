@@ -112,3 +112,53 @@ class RadiusProfileStore(PingProfileStore):
             raise ValueError("Unknown RADIUS profile kind.")
         super().__init__(instance_path)
         self.path = self.instance_path / f"radius_{kind}_profiles.json"
+
+
+class SNMPCredentialProfileStore(PingProfileStore):
+    def __init__(self, instance_path: str) -> None:
+        super().__init__(instance_path)
+        self.path = self.instance_path / "snmp_credentials_profiles.json"
+
+
+class SNMPHostProfileStore(PingProfileStore):
+    def __init__(self, instance_path: str) -> None:
+        super().__init__(instance_path)
+        self.path = self.instance_path / "snmp_host_profiles.json"
+
+
+class SNMPOidProfileStore(PingProfileStore):
+    DEFAULTS = [
+        {
+            "name": "System Identity",
+            "source": "\n".join(
+                (
+                    "System Description = 1.3.6.1.2.1.1.1.0",
+                    "System Object ID = 1.3.6.1.2.1.1.2.0",
+                    "System Uptime = 1.3.6.1.2.1.1.3.0",
+                    "System Contact = 1.3.6.1.2.1.1.4.0",
+                    "System Name = 1.3.6.1.2.1.1.5.0",
+                    "System Location = 1.3.6.1.2.1.1.6.0",
+                )
+            ),
+        },
+        {
+            "name": "Interface Summary",
+            "source": "\n".join(
+                (
+                    "walk: Interface Name = 1.3.6.1.2.1.31.1.1.1.1",
+                    "walk: Interface Description = 1.3.6.1.2.1.2.2.1.2",
+                    "walk: Administrative Status = 1.3.6.1.2.1.2.2.1.7",
+                    "walk: Operational Status = 1.3.6.1.2.1.2.2.1.8",
+                )
+            ),
+        },
+    ]
+
+    def __init__(self, instance_path: str) -> None:
+        super().__init__(instance_path)
+        self.path = self.instance_path / "snmp_oid_profiles.json"
+
+    def _read(self) -> list[dict[str, Any]]:
+        if not self.path.exists():
+            return [dict(profile) for profile in self.DEFAULTS]
+        return super()._read()

@@ -146,6 +146,9 @@ The **Generic Tools** workspace does not use Fortinet profiles.
   an HTTPS server and reports hostname matching, validity dates, chain order,
   TLS details, and validation against the toolkit host's trust store. Trusted
   roots are not silently added to the displayed server-supplied chain.
+- **SNMP Tester** stores separate SNMPv2c/SNMPv3 credential profiles, host
+  mappings, and reusable numeric OID collections. Collections support scalar
+  GET operations and bounded subtree walks using a `walk:` label prefix.
 
 Multi-SSH commands execute on real devices. Review the host list and commands
 carefully before selecting the required execution confirmation.

@@ -22,6 +22,9 @@ from .profiles import (
     PingProfileStore,
     ProfileStore,
     RadiusProfileStore,
+    SNMPCredentialProfileStore,
+    SNMPHostProfileStore,
+    SNMPOidProfileStore,
 )
 from .tasks import TASKS, ExportTask, RenameTask, discover_export_fields, get_task, grouped_tasks
 from .tools import tools_bp
@@ -53,6 +56,9 @@ def create_app(instance_path: str | None = None) -> Flask:
         RadiusProfileStore(app.instance_path, "servers").clear()
         RadiusProfileStore(app.instance_path, "credentials").clear()
         RadiusProfileStore(app.instance_path, "attributes").clear()
+        SNMPCredentialProfileStore(app.instance_path).clear()
+        SNMPHostProfileStore(app.instance_path).clear()
+        SNMPOidProfileStore(app.instance_path).clear()
         click.echo("The WiFi Ninja's Toolkit local profile data has been reset.")
 
     @app.get("/")

@@ -28,6 +28,8 @@ operations tasks.
   throughput.
 - Inspects the exact TLS certificate chain supplied by a web server, including
   hostname, expiration, chain order, and local trust validation.
+- Tests SNMPv2c and SNMPv3 access across reusable host, credential, and numeric
+  OID collection profiles, including bounded subtree walks.
 - Provides a task registry so more CSV/API tasks can be added cleanly later.
 
 ## Quick Start
@@ -104,6 +106,8 @@ usernames and Web Service API keys are stored in
 RADIUS server and credential profiles are stored separately in
 `instance/radius_servers_profiles.json` and `instance/radius_credentials_profiles.json`;
 request attributes use `instance/radius_attributes_profiles.json`.
+SNMP credentials, hosts, and OID collections use separate
+`instance/snmp_*_profiles.json` files.
 These files have owner-only permissions and are
 excluded from Git, but their contents are not encrypted. Treat the host as trusted.
 

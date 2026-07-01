@@ -547,6 +547,102 @@ button.danger {
   overflow-wrap: anywhere;
 }
 
+.snmp-management-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.snmp-manager {
+  align-content: start;
+  min-width: 0;
+}
+
+.snmp-security-grid,
+.snmp-host-options {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.snmp-host-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.optional-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.snmp-run-choices {
+  align-content: start;
+}
+
+.snmp-run-choices .check {
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+  padding: 7px 2px;
+}
+
+.snmp-run-choices .check:last-child {
+  border-bottom: 0;
+}
+
+.snmp-run-choices small {
+  color: var(--muted);
+  display: block;
+  font-size: 0.76rem;
+  margin-top: 2px;
+}
+
+.snmp-results {
+  display: grid;
+  gap: 10px;
+}
+
+.snmp-result {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  min-width: 0;
+  padding: 13px;
+}
+
+.snmp-result > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.snmp-result > summary small {
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  margin-top: 3px;
+}
+
+.snmp-result[open] > summary {
+  margin-bottom: 12px;
+}
+
+.snmp-result-meta {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.snmp-value {
+  display: block;
+  max-width: 420px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .message.warning {
   background: #fff4d9;
   color: var(--warn);
@@ -1237,6 +1333,7 @@ th {
   .workspace-grid,
   .form-grid,
   .radius-run-grid,
+  .snmp-management-grid,
   .certificate-check-grid,
   .certificate-details,
   .certificate-extension-grid,
@@ -1252,6 +1349,11 @@ th {
 
   .certificate-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .snmp-security-grid,
+  .snmp-host-options {
+    grid-template-columns: 1fr;
   }
 
   .speed-hero {
