@@ -464,7 +464,7 @@ TASKS = {
     "rename-aps": RenameTask(
         id="rename-aps",
         label="Bulk Rename APs",
-        description="Rename managed wireless AP objects in the browser or from a CSV import.",
+        description="Rename managed wireless APs in the browser or from a CSV import.",
         endpoint_template="/api/v2/cmdb/wireless-controller/wtp/{current_name}",
         identifier_fields=("wtp-id", "wtp_id", "name"),
         category="ap",
@@ -473,8 +473,8 @@ TASKS = {
     ),
     "rename-switches": RenameTask(
         id="rename-switches",
-        label="Bulk Rename Switches",
-        description="Rename managed FortiSwitch objects in the browser or from a CSV import.",
+        label="Bulk Rename FortiSwitches",
+        description="Rename managed FortiSwitches in the browser or from a CSV import.",
         endpoint_template="/api/v2/cmdb/switch-controller/managed-switch/{current_name}",
         identifier_fields=("switch-id", "switch_id", "name", "serial"),
         category="switch",
@@ -498,7 +498,7 @@ TASKS = {
     ),
     "export-switches": ExportTask(
         id="export-switches",
-        label="Export Switch Data",
+        label="Export FortiSwitch Data",
         description="Download managed FortiSwitch inventory data as CSV.",
         endpoint_template="/api/v2/cmdb/switch-controller/managed-switch",
         category="switch",
@@ -511,7 +511,7 @@ TASKS = {
     "export-wireless-clients": ExportTask(
         id="export-wireless-clients",
         label="Export Wireless Clients",
-        description="Download currently visible wireless client data as CSV.",
+        description="Download currently detected wireless client data as CSV.",
         endpoint_template="/api/v2/monitor/wifi/client",
         category="ap",
         endpoint_alternatives=(
@@ -535,7 +535,7 @@ TASKS = {
     "export-fortiswitch-clients": ExportTask(
         id="export-fortiswitch-clients",
         label="Export FortiSwitch Clients",
-        description="Download currently visible FortiSwitch client data as CSV.",
+        description="Download currently detected FortiSwitch client data as CSV.",
         endpoint_template="/api/v2/monitor/switch-controller/detected-device",
         category="switch",
         endpoint_alternatives=(

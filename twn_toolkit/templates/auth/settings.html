@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <p class="eyebrow">Administration</p>
+  <h1>Authentication settings</h1>
+</div>
+
+{% if current_user.is_admin %}
+  <div class="grid two settings-grid">
+    <section class="panel">
+      <h2>Session timeout</h2>
+      <p>Sign users out after this many minutes without a request to the toolkit.</p>
+      <form method="post" action="{{ url_for('update_session_settings') }}" class="inline-form">
+        <label>Idle minutes
+          <input type="number" name="idle_timeout_minutes" min="1" max="1440"
+                 value="{{ idle_timeout_minutes }}" required>
+        </label>
+        <button type="submit">Save timeout</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Add user</h2>
+      <form method="post" action="{{ url_for('create_user') }}" class="stack">
+        <label>Username
+          <input name="username" minlength="3" maxlength="64" required>
+        </label>
+        <label>Password
+          <input type="password" name="password" minlength="12" autocomplete="new-password" required>
+        </label>
+        <label>Confirm password
+          <input type="password" name="confirm_password" minlength="12" autocomplete="new-password" required>
+        </label>
+        <label class="check">
+          <input type="checkbox" name="is_admin"> Administrator
+        </label>
+        <button type="submit">Create user</button>
+      </form>
+    </section>
+  </div>
+{% endif %}
+
+<section class="panel">
+  <h2>Users</h2>
+  <div class="user-list">
+    {% for user in users %}
+      <article class="user-card">
+        <div>
+          <h3>{{ user.username }}</h3>
+          <span class="pill {{ 'success' if user.is_admin else 'planned' }}">
+            {{ 'Administrator' if user.is_admin else 'User' }}
+          </span>
+          {% if user.id == current_user.id %}<span class="muted">Current account</span>{% endif %}
+        </div>
+        <form method="post" action="{{ url_for('change_user_password', user_id=user.id) }}" class="password-form">
+          <input type="password" name="password" minlength="12" placeholder="New password"
+                 autocomplete="new-password" aria-label="New password for {{ user.username }}" required>
+          <input type="password" name="confirm_password" minlength="12" placeholder="Confirm password"
+                 autocomplete="new-password" aria-label="Confirm password for {{ user.username }}" required>
+          <button type="submit">Change password</button>
+        </form>
+        {% if user.id != current_user.id %}
+          <form method="post" action="{{ url_for('delete_user', user_id=user.id) }}"
+                onsubmit="return confirm('Delete user {{ user.username }}?')">
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+</section>
+
+{% if current_user.is_admin %}
+  <section class="panel recovery-note">
+    <h2>Lockout recovery</h2>
+    <p>On the server, stop the toolkit and delete <code>instance/auth.json</code>, then start it again.
+       The next visit will create a new administrator. Device profiles and credentials are untouched.</p>
+  </section>
+{% endif %}
+{% endblock %}

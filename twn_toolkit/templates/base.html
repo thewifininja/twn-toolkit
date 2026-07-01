@@ -9,17 +9,23 @@
   <body>
     <header class="topbar">
       <a class="brand" href="{{ url_for('index') }}">The WiFi Ninja's Toolkit</a>
-      <span class="subtitle">Local network operations toolbox</span>
+      <span class="subtitle">Fortinet workflows and network diagnostics</span>
       <nav class="topnav">
-        <a href="{{ url_for('index') }}">Home</a>
-        <details class="nav-menu">
-          <summary>Tools</summary>
-          <div class="nav-dropdown">
-            <a href="{{ url_for('fortigate_home') }}">FortiGate</a>
-            <a href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator</a>
-            <a href="{{ url_for('tools.index') }}">Generic Tools</a>
-          </div>
-        </details>
+        {% if current_user %}
+          <a href="{{ url_for('index') }}">Home</a>
+          <details class="nav-menu">
+            <summary>Tools</summary>
+            <div class="nav-dropdown">
+              <a href="{{ url_for('fortigate_home') }}">FortiGate</a>
+              <a href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator</a>
+              <a href="{{ url_for('tools.index') }}">Network Tools</a>
+            </div>
+          </details>
+          <a href="{{ url_for('settings') }}">Settings</a>
+          <form method="post" action="{{ url_for('logout') }}" class="nav-logout">
+            <button type="submit" class="link-button">Sign out ({{ current_user.username }})</button>
+          </form>
+        {% endif %}
       </nav>
     </header>
     <main class="shell">

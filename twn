@@ -117,6 +117,28 @@ logs() {
   fi
 }
 
+reset_auth() {
+  if is_running; then
+    echo "Stop the toolkit before resetting authentication: ./twn stop" >&2
+    exit 1
+  fi
+  if [ ! -f "$INSTANCE/auth.json" ]; then
+    echo "Authentication is already unconfigured."
+    return
+  fi
+  printf "Delete all toolkit users and require first-launch setup again? [y/N] "
+  read -r answer
+  case "$answer" in
+    y|Y|yes|YES)
+      rm -f "$INSTANCE/auth.json"
+      echo "Authentication reset. Run ./twn start, then open the toolkit to create a new administrator."
+      ;;
+    *)
+      echo "Reset cancelled."
+      ;;
+  esac
+}
+
 case "${1:-}" in
   start)
     start
@@ -134,8 +156,11 @@ case "${1:-}" in
   logs)
     logs
     ;;
+  reset-auth)
+    reset_auth
+    ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|status|logs}" >&2
+    echo "Usage: ./twn {start|stop|restart|status|logs|reset-auth}" >&2
     exit 2
     ;;
 esac

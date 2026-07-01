@@ -1,76 +1,56 @@
 (function () {
-  const scanHosts = document.getElementById("port-scan-hosts");
-  const scanPorts = document.getElementById("port-scan-ports");
-  const forms = document.querySelectorAll(".port-profile-form");
-  if (!scanHosts || !scanPorts || !forms.length) return;
+  const managers = document.querySelectorAll(".port-inline-profile");
+  const status = document.getElementById("port-profile-status");
+  if (!managers.length || !status) return;
 
-  forms.forEach((form) => {
-    const kind = form.dataset.kind;
-    const select = form.querySelector(".port-existing-profile");
-    const status = form.querySelector(".port-profile-status");
+  managers.forEach((manager) => {
+    const storageKey = `twn:port-scanner:${manager.dataset.kind}`;
+    const select = manager.querySelector(".port-existing-profile");
+    const values = manager.querySelector(".port-profile-values");
+    const name = manager.querySelector(".port-profile-name");
 
     select.addEventListener("change", () => {
-      const option = select.options[select.selectedIndex];
+      const option = select.selectedOptions[0];
       const profile = option?.dataset.profile ? JSON.parse(option.dataset.profile) : null;
-      form.reset();
-      select.value = option?.value || "";
-      form.elements.original_name.value = option?.value || "";
-      if (profile) {
-        form.elements.name.value = profile.name;
-        form.elements.values.value = profile.values;
-        status.textContent = `Loaded '${profile.name}'.`;
-      } else {
-        status.textContent = "";
-      }
+      values.value = profile?.values || "";
+      name.value = profile?.name || "";
+      sessionStorage.setItem(storageKey, select.value);
+      status.textContent = profile ? `Loaded “${profile.name}”.` : "Ready for a new unsaved list.";
     });
 
-    form.querySelector(".port-load-values").addEventListener("click", () => {
-      const value = form.elements.values.value;
-      if (!value.trim()) {
-        status.textContent = `Enter or load ${kind} first.`;
-        return;
-      }
-      (kind === "hosts" ? scanHosts : scanPorts).value = value;
-      status.textContent = `Applied ${kind} to the scan form.`;
-      document.getElementById("port-scan-form").scrollIntoView({behavior: "smooth"});
-    });
+    const savedProfile = sessionStorage.getItem(storageKey);
+    if (savedProfile && [...select.options].some((option) => option.value === savedProfile)) {
+      select.value = savedProfile;
+      select.dispatchEvent(new Event("change"));
+    }
 
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const submit = form.querySelector('button[type="submit"]');
-      submit.disabled = true;
-      status.textContent = "Saving...";
-      try {
-        const response = await fetch(form.dataset.saveUrl, {
-          method: "POST",
-          body: new FormData(form),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Profile could not be saved.");
-        window.location.reload();
-      } catch (error) {
-        status.textContent = error.message;
-        submit.disabled = false;
-      }
-    });
-
-    form.querySelector(".port-delete-profile").addEventListener("click", async () => {
-      const name = select.value;
-      if (!name) {
-        status.textContent = "Select a saved profile to delete.";
-        return;
-      }
-      if (!window.confirm(`Delete '${name}'?`)) return;
+    manager.querySelector(".port-save-profile").addEventListener("click", async () => {
       const body = new FormData();
-      body.set("name", name);
-      try {
-        const response = await fetch(form.dataset.deleteUrl, {method: "POST", body});
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Profile could not be deleted.");
-        window.location.reload();
-      } catch (error) {
-        status.textContent = error.message;
+      body.set("name", name.value);
+      body.set("original_name", select.value);
+      body.set("values", values.value);
+      const response = await fetch(manager.dataset.saveUrl, {method: "POST", body});
+      const payload = await response.json();
+      if (!response.ok) {
+        status.textContent = payload.error || "Profile could not be saved.";
+        return;
       }
+      sessionStorage.setItem(storageKey, payload.profile.name);
+      window.location.reload();
+    });
+
+    manager.querySelector(".port-delete-profile").addEventListener("click", async () => {
+      if (!select.value || !window.confirm(`Delete profile “${select.value}”?`)) return;
+      const body = new FormData();
+      body.set("name", select.value);
+      const response = await fetch(manager.dataset.deleteUrl, {method: "POST", body});
+      const payload = await response.json();
+      if (!response.ok) {
+        status.textContent = payload.error || "Profile could not be deleted.";
+        return;
+      }
+      sessionStorage.removeItem(storageKey);
+      window.location.reload();
     });
   });
 })();

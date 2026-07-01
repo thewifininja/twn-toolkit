@@ -4,85 +4,48 @@
 <section class="panel">
   <div class="panel-head">
     <h1>TCP Port Scanner</h1>
-    <p>Check explicit host and port sets for reachable TCP services from the toolkit server.</p>
+    <p>Check selected TCP ports across authorized hosts from the toolkit host.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
-  <div class="grid two port-profile-grid">
-    <form
-      class="form port-profile-form"
-      data-kind="hosts"
-      data-save-url="{{ url_for('tools.save_port_scan_profile', kind='hosts') }}"
-      data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='hosts') }}"
-    >
-      <h2>Host Profiles</h2>
-      <label>Saved profile
-        <select class="port-existing-profile">
-          <option value="">New / unsaved hosts</option>
-          {% for profile in host_profiles %}
-            <option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }} · {{ profile.count }} host{{ '' if profile.count == 1 else 's' }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <input name="original_name" type="hidden">
-      <label>Profile name<input name="name" maxlength="100" placeholder="Infrastructure"></label>
-      <label>Hosts
-        <textarea name="values" class="port-profile-values" rows="6" placeholder="Core Switch = 192.0.2.10&#10;server.example.com"></textarea>
-      </label>
-      <span class="field-note">One per line. Optional friendly names use <code>Name = host</code>.</span>
-      <div class="button-row">
-        <button class="secondary port-load-values" type="button">Use in Scan</button>
-        <button type="submit">Save</button>
-        <button class="danger port-delete-profile" type="button">Delete</button>
-      </div>
-      <span class="tool-status port-profile-status"></span>
-    </form>
-
-    <form
-      class="form port-profile-form"
-      data-kind="ports"
-      data-save-url="{{ url_for('tools.save_port_scan_profile', kind='ports') }}"
-      data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='ports') }}"
-    >
-      <h2>Port Profiles</h2>
-      <label>Saved profile
-        <select class="port-existing-profile">
-          <option value="">New / unsaved ports</option>
-          {% for profile in port_profiles %}
-            <option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }} · {{ profile.count }} port{{ '' if profile.count == 1 else 's' }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <input name="original_name" type="hidden">
-      <label>Profile name<input name="name" maxlength="100" placeholder="Web services"></label>
-      <label>TCP ports
-        <textarea name="values" class="port-profile-values" rows="6" placeholder="22, 80, 443, 8000-8010"></textarea>
-      </label>
-      <span class="field-note">Comma, whitespace, and ascending ranges are accepted. Maximum 200 unique ports.</span>
-      <div class="button-row">
-        <button class="secondary port-load-values" type="button">Use in Scan</button>
-        <button type="submit">Save</button>
-        <button class="danger port-delete-profile" type="button">Delete</button>
-      </div>
-      <span class="tool-status port-profile-status"></span>
-    </form>
-  </div>
-</section>
-
-<section class="panel">
-  <div class="panel-head">
-    <h2>Run Scan</h2>
-    <p>Only scan systems you own or are authorized to test.</p>
-  </div>
   <form class="form" method="post" id="port-scan-form">
     <div class="grid two">
-      <label>Hosts
-        <textarea name="hosts" id="port-scan-hosts" rows="7" placeholder="Core Switch = 192.0.2.10&#10;server.example.com" required>{{ form.hosts }}</textarea>
-      </label>
-      <label>TCP ports
-        <textarea name="ports" id="port-scan-ports" rows="7" placeholder="22, 53, 80, 443, 8000-8010" required>{{ form.ports }}</textarea>
-      </label>
+      <div class="form port-inline-profile" data-kind="hosts" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='hosts') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='hosts') }}">
+        <label>Host profile
+          <select class="port-existing-profile">
+            <option value="">New / unsaved list</option>
+            {% for profile in host_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Hosts
+          <textarea name="hosts" class="port-profile-values" id="port-scan-hosts" rows="7" placeholder="Core Switch = 192.0.2.10&#10;server.example.com" required>{{ form.hosts }}</textarea>
+        </label>
+        <span class="field-note">One per line. Optional friendly names use <code>Name = host</code>.</span>
+        <div class="button-row">
+          <input class="port-profile-name" placeholder="Host profile name" maxlength="100">
+          <button class="secondary port-save-profile" type="button">Save hosts</button>
+          <button class="danger port-delete-profile" type="button">Delete</button>
+        </div>
+      </div>
+      <div class="form port-inline-profile" data-kind="ports" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='ports') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='ports') }}">
+        <label>Port profile
+          <select class="port-existing-profile">
+            <option value="">New / unsaved list</option>
+            {% for profile in port_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>TCP ports
+          <textarea name="ports" class="port-profile-values" id="port-scan-ports" rows="7" placeholder="22, 53, 80, 443, 8000-8010" required>{{ form.ports }}</textarea>
+        </label>
+        <span class="field-note">Comma, whitespace, and ascending ranges are accepted. Maximum 200 unique ports.</span>
+        <div class="button-row">
+          <input class="port-profile-name" placeholder="Port profile name" maxlength="100">
+          <button class="secondary port-save-profile" type="button">Save ports</button>
+          <button class="danger port-delete-profile" type="button">Delete</button>
+        </div>
+      </div>
     </div>
+    <span class="tool-status" id="port-profile-status">Only scan systems you own or are authorized to test.</span>
     <div class="port-scan-options">
       <label>Connection timeout (seconds)
         <input name="timeout" type="number" min="0.1" max="10" step="0.1" value="{{ form.timeout }}">
@@ -97,7 +60,7 @@
     </div>
     <div class="button-row">
       <button type="submit">Run TCP Scan</button>
-      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
     </div>
     <span class="tool-status">Maximum 5,000 host/port combinations per scan.</span>
   </form>

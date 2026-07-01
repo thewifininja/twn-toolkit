@@ -132,6 +132,26 @@ class TracerouteToolTests(unittest.TestCase):
         self.assertIn(b"gateway.local", response.data)
         self.assertIn(b"Text Output", response.data)
 
+    def test_traceroute_host_profile_crud(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            response = client.post(
+                "/tools/traceroute/profiles",
+                data={"name": "Public Targets", "values": "Example = example.com\n192.0.2.10"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json()["profile"]["count"], 2)
+            page = client.get("/tools/traceroute").data
+            self.assertIn(b"Public Targets", page)
+            self.assertNotIn(b"built-in method values", page)
+            response = client.post(
+                "/tools/traceroute/profiles/delete",
+                data={"name": "Public Targets"},
+            )
+            self.assertEqual(response.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()

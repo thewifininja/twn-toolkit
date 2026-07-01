@@ -8,11 +8,25 @@
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
-  <form class="form" method="post">
+  <form class="form" method="post" id="ntp-form" data-save-profile-url="{{ url_for('tools.save_ntp_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_ntp_profile') }}">
+    <label>Server profile
+      <select id="ntp-profile">
+        <option value="">New / unsaved list</option>
+        {% for profile in profiles %}
+          <option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} server{{ '' if profile.count == 1 else 's' }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>NTP servers
+      <textarea name="hosts" id="ntp-hosts" rows="5" placeholder="Primary = time.example.com&#10;Secondary = 192.0.2.20" required>{{ form.hosts }}</textarea>
+    </label>
+    <span class="field-note">One hostname or IP address per line. Optional friendly names use <code>Name = host</code>. Maximum 20 servers.</span>
+    <div class="button-row">
+      <input id="ntp-profile-name" placeholder="Server profile name" maxlength="100">
+      <button class="secondary" id="ntp-save-profile" type="button">Save servers</button>
+      <button class="danger" id="ntp-delete-profile" type="button">Delete</button>
+    </div>
     <div class="ntp-options">
-      <label>NTP server
-        <input name="host" value="{{ form.host }}" placeholder="time.example.com or 192.0.2.10" required>
-      </label>
       <label>UDP port
         <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required>
       </label>
@@ -24,23 +38,24 @@
       </label>
     </div>
     <div class="button-row">
-      <button type="submit">Test NTP Server</button>
-      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+      <button type="submit">Test NTP Servers</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
     </div>
-    <span class="field-note">Measurements are made from the toolkit server, not from your browser.</span>
+    <span class="tool-status" id="ntp-status">Measurements are made concurrently from the toolkit host, not from your browser.</span>
   </form>
 </section>
 
-{% if result and result.status == "success" %}
+{% for result in results or [] %}
 <section class="panel">
   <div class="certificate-result-head">
     <div>
-      <h2>{{ result.host }}</h2>
-      <p>{{ result.resolved_address }}:{{ result.port }} · NTPv{{ result.version }} · {{ result.successful_samples }}/{{ result.total_samples }} samples</p>
+      <h2>{{ result.label or result.host }}</h2>
+      <p>{% if result.label %}{{ result.host }} · {% endif %}{% if result.resolved_address %}{{ result.resolved_address }}:{{ result.port }} · NTPv{{ result.version }} · {% endif %}{{ result.successful_samples }}/{{ result.total_samples }} samples</p>
     </div>
     <span class="pill {{ 'success' if result.synchronized else 'error' }}">{{ 'synchronized' if result.synchronized else 'not synchronized' }}</span>
   </div>
 
+  {% if result.status == "success" %}
   <div class="ntp-summary">
     <article>
       <span>Clock offset</span>
@@ -93,6 +108,14 @@
       </tbody>
     </table>
   </div>
+  {% else %}
+    <div class="message error">
+      {% for sample in result.samples if sample.status == "error" %}
+        {{ sample.error }}{% if not loop.last %}; {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
 </section>
-{% endif %}
+{% endfor %}
+<script src="{{ url_for('static', filename='ntp-test.js') }}"></script>
 {% endblock %}

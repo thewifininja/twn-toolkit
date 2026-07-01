@@ -2,14 +2,26 @@ from __future__ import annotations
 
 import csv
 import io
-import os
 import re
+import time
 from datetime import datetime
 from typing import Any
 
 import click
-from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Flask,
+    Response,
+    flash,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
+from .auth import AuthStore, load_or_create_secret_key
 from .fortiauthenticator import (
     FortiAuthenticatorClient,
     FortiAuthenticatorError,
@@ -21,6 +33,8 @@ from .profiles import (
     FortiAuthenticatorProfileStore,
     PingProfileStore,
     PortScanProfileStore,
+    NTPHostProfileStore,
+    TracerouteHostProfileStore,
     ProfileStore,
     RadiusProfileStore,
     SNMPCredentialProfileStore,
@@ -33,19 +47,225 @@ from .tools import tools_bp
 
 def create_app(instance_path: str | None = None) -> Flask:
     app = Flask(__name__, instance_relative_config=True, instance_path=instance_path)
-    app.config.from_mapping(SECRET_KEY=os.environ.get("TWN_TOOLKIT_SECRET_KEY", "dev-change-me"))
+    app.config.from_mapping(
+        SECRET_KEY=load_or_create_secret_key(app.instance_path),
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Strict",
+    )
     app.register_blueprint(tools_bp)
 
+    auth_store = AuthStore(app.instance_path)
     store = ProfileStore(app.instance_path)
     fortiauthenticator_store = FortiAuthenticatorProfileStore(app.instance_path)
     ping_profile_store = PingProfileStore(app.instance_path)
+
+    @app.before_request
+    def require_authentication():
+        endpoint = request.endpoint or ""
+        if endpoint == "static" or endpoint in {
+            "favicon",
+            "login",
+            "logout",
+            "setup",
+        }:
+            return None
+
+        if not auth_store.is_configured():
+            session.clear()
+            return redirect(url_for("setup"))
+
+        user_id = session.get("user_id")
+        user = next(
+            (item for item in auth_store.users() if item["id"] == user_id),
+            None,
+        )
+        now = int(time.time())
+        idle_seconds = auth_store.idle_timeout_minutes() * 60
+        last_seen = session.get("last_seen")
+        valid_session = (
+            user
+            and user.get("enabled", True)
+            and session.get("session_version") == user.get("session_version", 1)
+            and isinstance(last_seen, int)
+            and now - last_seen <= idle_seconds
+        )
+        if not valid_session:
+            expired = bool(user_id and last_seen and now - int(last_seen) > idle_seconds)
+            session.clear()
+            if expired:
+                flash("Your session expired due to inactivity.", "error")
+            return redirect(url_for("login", next=_safe_next_url()))
+
+        session["last_seen"] = now
+        g.current_user = user
+        return None
+
+    @app.context_processor
+    def authentication_context():
+        return {"current_user": getattr(g, "current_user", None)}
+
+    @app.route("/setup", methods=["GET", "POST"])
+    def setup():
+        if auth_store.is_configured():
+            return redirect(url_for("login"))
+        if request.method == "POST":
+            password = request.form.get("password", "")
+            if password != request.form.get("confirm_password", ""):
+                flash("Passwords do not match.", "error")
+            else:
+                try:
+                    user = auth_store.create_user(
+                        request.form.get("username", ""), password, is_admin=True
+                    )
+                except ValueError as exc:
+                    flash(str(exc), "error")
+                else:
+                    _start_session(user)
+                    flash("Administrator account created.", "success")
+                    return redirect(url_for("index"))
+        return render_template("auth/setup.html")
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if not auth_store.is_configured():
+            return redirect(url_for("setup"))
+        if request.method == "POST":
+            user = auth_store.authenticate(
+                request.form.get("username", ""),
+                request.form.get("password", ""),
+            )
+            if user:
+                _start_session(user)
+                return redirect(_validated_next_url(request.form.get("next", "")))
+            flash("Invalid username or password.", "error")
+        return render_template("auth/login.html", next_url=_safe_next_url())
+
+    @app.post("/logout")
+    def logout():
+        session.clear()
+        flash("You have been signed out.", "success")
+        return redirect(url_for("login"))
+
+    @app.get("/settings")
+    def settings():
+        visible_users = (
+            auth_store.users()
+            if g.current_user.get("is_admin")
+            else [g.current_user]
+        )
+        return render_template(
+            "auth/settings.html",
+            users=visible_users,
+            idle_timeout_minutes=auth_store.idle_timeout_minutes(),
+        )
+
+    @app.post("/settings/users")
+    def create_user():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        password = request.form.get("password", "")
+        if password != request.form.get("confirm_password", ""):
+            flash("Passwords do not match.", "error")
+        else:
+            try:
+                auth_store.create_user(
+                    request.form.get("username", ""),
+                    password,
+                    is_admin=request.form.get("is_admin") == "on",
+                )
+            except ValueError as exc:
+                flash(str(exc), "error")
+            else:
+                flash("User created.", "success")
+        return redirect(url_for("settings"))
+
+    @app.post("/settings/users/<user_id>/password")
+    def change_user_password(user_id: str):
+        is_self = user_id == g.current_user["id"]
+        if not (g.current_user.get("is_admin") or is_self):
+            return Response("Permission denied.", status=403)
+        password = request.form.get("password", "")
+        if password != request.form.get("confirm_password", ""):
+            flash("Passwords do not match.", "error")
+        else:
+            try:
+                auth_store.update_password(user_id, password)
+            except ValueError as exc:
+                flash(str(exc), "error")
+            else:
+                if is_self:
+                    updated = next(
+                        user for user in auth_store.users() if user["id"] == user_id
+                    )
+                    _start_session(updated)
+                flash("Password updated. Existing sessions for that user were signed out.", "success")
+        return redirect(url_for("settings"))
+
+    @app.post("/settings/users/<user_id>/delete")
+    def delete_user(user_id: str):
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        if user_id == g.current_user["id"]:
+            flash("You cannot delete your own signed-in account.", "error")
+        else:
+            try:
+                auth_store.delete_user(user_id)
+            except ValueError as exc:
+                flash(str(exc), "error")
+            else:
+                flash("User deleted.", "success")
+        return redirect(url_for("settings"))
+
+    @app.post("/settings/session")
+    def update_session_settings():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            minutes = int(request.form.get("idle_timeout_minutes", ""))
+        except (TypeError, ValueError):
+            flash("Enter a whole number of minutes.", "error")
+        else:
+            try:
+                auth_store.set_idle_timeout_minutes(minutes)
+            except ValueError as exc:
+                flash(str(exc), "error")
+            else:
+                flash("Session settings updated.", "success")
+        return redirect(url_for("settings"))
+
+    def _start_session(user: dict[str, Any]) -> None:
+        session.clear()
+        session["user_id"] = user["id"]
+        session["session_version"] = user.get("session_version", 1)
+        session["last_seen"] = int(time.time())
+
+    def _validated_next_url(candidate: str) -> str:
+        if candidate.startswith("/") and not candidate.startswith("//"):
+            return candidate
+        return url_for("index")
+
+    def _safe_next_url() -> str:
+        return _validated_next_url(request.args.get("next", ""))
+
+    @app.cli.command("reset-auth")
+    @click.option("--yes", is_flag=True, help="Reset without an interactive confirmation.")
+    def reset_auth(yes: bool) -> None:
+        """Remove users and require first-run administrator setup again."""
+        if not yes and not click.confirm(
+            "Delete all toolkit users and authentication settings? Saved device profiles are not affected."
+        ):
+            click.echo("Reset cancelled.")
+            return
+        if auth_store.path.exists():
+            auth_store.path.unlink()
+        click.echo("Authentication reset. Open the toolkit to create a new administrator.")
 
     @app.cli.command("reset-data")
     @click.option("--yes", is_flag=True, help="Reset without an interactive confirmation.")
     def reset_data(yes: bool) -> None:
         """Remove all locally saved profiles and API keys."""
         if not yes and not click.confirm(
-            "Delete all saved FortiGate, FortiAuthenticator, ping, DNS, and RADIUS profiles and credentials?"
+            "Delete all saved FortiGate, FortiAuthenticator, ping, DNS, RADIUS, SNMP, TCP scanner, NTP, and traceroute profiles and credentials?"
         ):
             click.echo("Reset cancelled.")
             return
@@ -59,6 +279,8 @@ def create_app(instance_path: str | None = None) -> Flask:
         RadiusProfileStore(app.instance_path, "attributes").clear()
         PortScanProfileStore(app.instance_path, "hosts").clear()
         PortScanProfileStore(app.instance_path, "ports").clear()
+        NTPHostProfileStore(app.instance_path).clear()
+        TracerouteHostProfileStore(app.instance_path).clear()
         SNMPCredentialProfileStore(app.instance_path).clear()
         SNMPHostProfileStore(app.instance_path).clear()
         SNMPOidProfileStore(app.instance_path).clear()
@@ -174,7 +396,7 @@ def create_app(instance_path: str | None = None) -> Flask:
                 try:
                     objects = FortiAuthenticatorClient.from_profile(profile).get_all_mac_devices()
                 except FortiAuthenticatorError as exc:
-                    flash(f"MAC-device fetch failed: {exc}", "error")
+                    flash(f"MAC device fetch failed: {exc}", "error")
                 else:
                     total_count = len(objects)
                     rows = [_format_mac_device(item) for item in objects[:preview_limit]]
@@ -198,7 +420,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         try:
             objects = FortiAuthenticatorClient.from_profile(profile).get_all_mac_devices()
         except FortiAuthenticatorError as exc:
-            flash(f"MAC-device export failed: {exc}", "error")
+            flash(f"MAC device export failed: {exc}", "error")
             return redirect(url_for("fortiauthenticator_mac_devices"))
 
         output = io.StringIO()

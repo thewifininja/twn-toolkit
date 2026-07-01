@@ -53,7 +53,7 @@
     </div>
     <div class="button-row">
       <button type="submit">Run RADIUS test</button>
-      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
     </div>
   </form>
 </section>
@@ -99,7 +99,7 @@
     <span>Profile Management</span>
     <small>{{ servers|length }} servers · {{ credentials|length }} credentials · {{ attribute_profiles|length }} attribute sets</small>
   </summary>
-  <p>Profiles are reusable across tests. Secrets and passwords remain server-side and are never inserted into this page.</p>
+  <p>Profiles are reusable across tests. Saved secrets and passwords are never rendered back into this page.</p>
 
   <details class="radius-profile-section">
     <summary>RADIUS Servers <small>{{ servers|length }} saved</small></summary>

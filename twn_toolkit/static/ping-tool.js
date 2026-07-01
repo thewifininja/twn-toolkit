@@ -6,7 +6,6 @@
   const stopButton = document.getElementById("ping-stop");
   const profileSelect = document.getElementById("ping-profile");
   const profileNameInput = document.getElementById("ping-profile-name");
-  const profileLoadButton = document.getElementById("ping-profile-load");
   const profileSaveButton = document.getElementById("ping-profile-save");
   const profileDeleteButton = document.getElementById("ping-profile-delete");
   const status = document.getElementById("ping-status");
@@ -22,8 +21,8 @@
   const historyNavigationSummary = document.getElementById("ping-history-navigation-summary");
 
   if (!form || !hostsInput || !intervalInput || !startButton || !stopButton ||
-      !profileSelect || !profileNameInput || !profileLoadButton ||
-      !profileSaveButton || !profileDeleteButton || !status || !resultsPanel ||
+      !profileSelect || !profileNameInput || !profileSaveButton ||
+      !profileDeleteButton || !status || !resultsPanel ||
       !tableBody || !historyRange || !followLive || !historyPosition ||
       !exportHistory || !historyEnd || !historyOlder ||
       !historyNewer || !historyNavigationSummary) {
@@ -36,6 +35,7 @@
   let lockedViewEnd = null;
   const history = new Map();
   const resultRows = new Map();
+  const profileStorageKey = "twn:ping-profile";
   const chartTooltip = document.createElement("div");
   chartTooltip.className = "ping-chart-tooltip";
   chartTooltip.hidden = true;
@@ -74,11 +74,13 @@
   historyOlder.addEventListener("click", () => shiftHistoryWindow(-1));
   historyNewer.addEventListener("click", () => shiftHistoryWindow(1));
 
-  profileLoadButton.addEventListener("click", () => {
+  profileSelect.addEventListener("change", () => {
     const option = profileSelect.options[profileSelect.selectedIndex];
     if (!option || !option.value) {
       loadedProfileName = "";
       profileNameInput.value = "";
+      hostsInput.value = "";
+      sessionStorage.removeItem(profileStorageKey);
       status.textContent = "Ready to create a new profile.";
       return;
     }
@@ -89,8 +91,18 @@
     intervalInput.value = option.dataset.interval || "2";
     profileNameInput.value = option.value;
     loadedProfileName = option.value;
+    sessionStorage.setItem(profileStorageKey, option.value);
     status.textContent = `Loaded profile '${option.value}'.`;
   });
+
+  const savedPingProfile = sessionStorage.getItem(profileStorageKey);
+  if (
+    savedPingProfile
+    && [...profileSelect.options].some((option) => option.value === savedPingProfile)
+  ) {
+    profileSelect.value = savedPingProfile;
+    profileSelect.dispatchEvent(new Event("change"));
+  }
 
   profileSaveButton.addEventListener("click", async () => {
     profileSaveButton.disabled = true;
@@ -112,6 +124,7 @@
       }
       updateProfileOption(data.profile, loadedProfileName);
       loadedProfileName = data.profile.name;
+      sessionStorage.setItem(profileStorageKey, data.profile.name);
       profileNameInput.value = data.profile.name;
       status.textContent = `Saved profile '${data.profile.name}'.`;
     } catch (error) {
@@ -147,6 +160,7 @@
         loadedProfileName = "";
         profileNameInput.value = "";
       }
+      sessionStorage.removeItem(profileStorageKey);
       status.textContent = `Deleted profile '${name}'.`;
     } catch (error) {
       status.textContent = error.message;

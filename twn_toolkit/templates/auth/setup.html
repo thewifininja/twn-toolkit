@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel auth-panel">
+  <p class="eyebrow">First launch</p>
+  <h1>Create the administrator</h1>
+  <p>No default login exists. This account will manage users and session settings.</p>
+  <form method="post" class="stack">
+    <label>Username
+      <input name="username" autocomplete="username" minlength="3" maxlength="64" required autofocus>
+    </label>
+    <label>Password
+      <input type="password" name="password" autocomplete="new-password" minlength="12" required>
+    </label>
+    <label>Confirm password
+      <input type="password" name="confirm_password" autocomplete="new-password" minlength="12" required>
+    </label>
+    <button type="submit">Create administrator</button>
+  </form>
+</section>
+{% endblock %}

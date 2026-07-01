@@ -110,7 +110,7 @@ class NTPToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
-            with patch("twn_toolkit.tools.test_ntp_server", return_value=result):
+            with patch("twn_toolkit.tools.test_ntp_servers", return_value=[result]):
                 response = app.test_client().post(
                     "/tools/ntp-test",
                     data={"host": "ntp.example", "port": "123", "timeout": "3", "samples": "1"},
@@ -118,6 +118,26 @@ class NTPToolTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Clock offset", response.data)
         self.assertIn(b"+0.500 ms", response.data)
+
+    def test_ntp_host_profile_crud(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            response = client.post(
+                "/tools/ntp-test/profiles",
+                data={"name": "Time Servers", "values": "Primary = ntp.example\n192.0.2.20"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json()["profile"]["count"], 2)
+            page = client.get("/tools/ntp-test").data
+            self.assertIn(b"Time Servers", page)
+            self.assertNotIn(b"built-in method values", page)
+            response = client.post(
+                "/tools/ntp-test/profiles/delete",
+                data={"name": "Time Servers"},
+            )
+            self.assertEqual(response.status_code, 200)
 
 
 if __name__ == "__main__":

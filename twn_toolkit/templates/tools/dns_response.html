@@ -3,8 +3,8 @@
 {% block content %}
 <section class="panel tool-panel">
   <div class="panel-head">
-    <h1>DNS Response Time</h1>
-    <p>Query every host against every selected DNS server and compare their answers and timing.</p>
+    <h1>DNS Lookup Tester</h1>
+    <p>Query each hostname through every selected resolver and compare answers and lookup latency.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   <form class="form" method="post" id="dns-form">
@@ -62,7 +62,7 @@
     </div>
     <div class="button-row">
       <button type="submit">Run DNS tests</button>
-      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
     </div>
     <span class="tool-status" id="dns-profile-status"></span>
   </form>

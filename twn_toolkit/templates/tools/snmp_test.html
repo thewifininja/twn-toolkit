@@ -10,10 +10,8 @@
 
 <section class="snmp-management-grid">
   <article class="panel snmp-manager">
-    <div class="panel-head">
-      <h2>SNMP Profiles</h2>
-      <p>SNMPv2c communities and SNMPv3 USM credentials.</p>
-    </div>
+    <details class="snmp-manager-details">
+      <summary><span><strong>SNMP Profiles</strong><small>SNMPv2c communities and SNMPv3 credentials</small></span></summary>
     <form
       class="form snmp-profile-form"
       data-kind="credentials"
@@ -76,7 +74,7 @@
         <label>Context name <span class="optional-label">(optional)</span>
           <input name="context_name" autocomplete="off">
         </label>
-        <span class="field-note">Saved passphrases remain server-side. Leave secret fields blank while editing to keep their current values.</span>
+        <span class="field-note">Saved passphrases are never rendered back into this page. Leave secret fields blank while editing to keep their current values.</span>
       </div>
       <div class="button-row">
         <button type="submit">Save</button>
@@ -84,13 +82,12 @@
       </div>
       <span class="tool-status snmp-form-status"></span>
     </form>
+    </details>
   </article>
 
   <article class="panel snmp-manager">
-    <div class="panel-head">
-      <h2>Hosts</h2>
-      <p>Devices mapped to one saved SNMP profile.</p>
-    </div>
+    <details class="snmp-manager-details">
+      <summary><span><strong>Hosts</strong><small>Devices mapped to saved SNMP profiles</small></span></summary>
     <form
       class="form snmp-profile-form"
       data-kind="hosts"
@@ -125,13 +122,12 @@
       </div>
       <span class="tool-status snmp-form-status"></span>
     </form>
+    </details>
   </article>
 
   <article class="panel snmp-manager">
-    <div class="panel-head">
-      <h2>OID / MIB Profiles</h2>
-      <p>Named collections of scalar GETs and bounded subtree walks.</p>
-    </div>
+    <details class="snmp-manager-details">
+      <summary><span><strong>OID Profiles</strong><small>Reusable GET and subtree-walk collections</small></span></summary>
     <form
       class="form snmp-profile-form"
       data-kind="oids"
@@ -160,6 +156,7 @@
       </div>
       <span class="tool-status snmp-form-status"></span>
     </form>
+    </details>
   </article>
 </section>
 
@@ -182,7 +179,7 @@
         {% endfor %}
       </fieldset>
       <fieldset class="choice-group snmp-run-choices">
-        <legend>OID / MIB profiles</legend>
+        <legend>OID profiles</legend>
         {% for profile in oid_profiles %}
           <label class="check">
             <input name="oid_profile_names" type="checkbox" value="{{ profile.name }}" {% if profile.name in selected_oid_profiles %}checked{% endif %}>
@@ -193,7 +190,7 @@
     </div>
     <div class="button-row">
       <button type="submit" {% if not hosts %}disabled{% endif %}>Run SNMP Tests</button>
-      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
     </div>
   </form>
 </section>

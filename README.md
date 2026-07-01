@@ -1,47 +1,43 @@
 # The WiFi Ninja's Toolkit
 
-A small Flask app for repeatable Fortinet administration and standalone network
-operations tasks.
+A local-first browser toolkit for repeatable Fortinet administration and live
+network troubleshooting. It is designed for an operator workstation or trusted
+internal network—not as a permanent monitoring platform or internet-facing
+service.
 
-## What it does
+## Capabilities
 
-- Stores local FortiGate connection profiles.
-- Tests profile connectivity with the FortiGate monitor API.
-- Bulk renames managed APs in the browser or from CSV.
-- Bulk renames managed FortiSwitches in the browser or from CSV.
-- Exports managed AP data to CSV.
-- Exports managed FortiSwitch data to CSV.
-- Exports wireless clients to CSV.
-- Exports FortiSwitch clients to CSV.
-- Stores local FortiAuthenticator profiles using Web Service API keys.
-- Previews and exports FortiAuthenticator MAC devices and group memberships.
-- Removes selected group memberships or deletes selected MAC devices globally
-  with previews, overlap warnings, and typed confirmation.
-- Subtracts CIDR exclusions from IPv4 or IPv6 parent networks.
-- Monitors multiple hosts with a live browser-based ping view.
-- Saves reusable ping host collections with optional friendly names.
-- Tracks current, minimum, average, and maximum latency and packet loss with
-  scaled, timestamped, hoverable Canvas history charts. Recent samples remain
-  exact while older history is compacted into spike- and loss-preserving
-  10-second and one-minute buckets for up to seven days.
-- Runs command sequences against multiple SSH hosts with per-host output.
-- Compares DNS answers and response times across reusable host and resolver profiles.
-- Tests PAP or CHAP credentials against multiple saved RADIUS servers, with
-  reusable request-attribute profiles and decoded standard reply attributes.
-- Measures browser-to-toolkit LAN/Wi-Fi latency, jitter, download, and upload
-  throughput.
-- Inspects the exact TLS certificate chain supplied by a web server, including
-  hostname, expiration, chain order, and local trust validation.
-- Tests SNMPv2c and SNMPv3 access across reusable host, credential, and numeric
-  OID collection profiles, including bounded subtree walks.
-- Scans explicit, bounded host and TCP port sets with reusable profiles,
-  connection timing, and common service-name hints.
-- Queries NTPv4 servers directly and reports clock offset, round-trip delay,
-  jitter, stratum, reference identity, and synchronization health.
-- Traces IPv4 or IPv6 network paths with UDP or ICMP probes and presents both
-  live-updating graphical hop views and streaming traditional command output
-  for up to 10 destinations per run.
-- Provides a task registry so more CSV/API tasks can be added cleanly later.
+### Fortinet Workflows
+
+- Store and test local FortiGate and FortiAuthenticator connection profiles.
+- Export managed APs, FortiSwitches, wireless clients, FortiSwitch clients,
+  FortiAuthenticator MAC devices, and MAC group memberships.
+- Rename managed APs and FortiSwitches interactively or from CSV, with dry runs
+  and read-back verification.
+- Preview and remove FortiAuthenticator group memberships or delete MAC devices
+  globally with overlap warnings and typed confirmation.
+
+### Network Tools
+
+- **Subnet Excluder:** subtract IPv4 or IPv6 CIDR networks from parent ranges.
+- **Multi-Host Ping:** troubleshoot reachability, latency, and loss with
+  reusable host profiles, live Canvas charts, lockable history views, and CSV
+  export. History exists only in the current browser session.
+- **Multi-SSH:** run one command sequence across multiple SSH hosts.
+- **DNS Lookup Tester:** compare DNS answers and lookup latency across resolvers.
+- **RADIUS Authentication Test:** compare PAP or CHAP authentication and decode
+  returned attributes.
+- **Wi-Fi / LAN Speed Test:** measure browser-to-toolkit latency, jitter,
+  download, and upload throughput on the local network.
+- **Certificate Chain Inspector:** inspect the exact TLS chain supplied by a
+  server and validate hostname, dates, chain order, and local trust.
+- **SNMP Tester:** validate SNMPv2c or SNMPv3 access using reusable credentials,
+  devices, and numeric OID collections.
+- **TCP Port Scanner:** check selected ports across authorized hosts.
+- **NTP Tester:** compare clock offset, delay, jitter, stratum, reference
+  identity, and synchronization health across reusable server lists.
+- **Traceroute:** stream UDP or ICMP traces for up to 10 destinations from
+  reusable lists into live graphical paths and traditional text output.
 
 ## Quick Start
 
@@ -54,7 +50,7 @@ pip install -r requirements.txt
 
 Open http://127.0.0.1:5050.
 
-The home page separates Fortinet workflows from standalone generic network tools.
+The home page separates Fortinet workflows from vendor-neutral network tools.
 
 ## Local Service
 
@@ -64,6 +60,7 @@ The home page separates Fortinet workflows from standalone generic network tools
 ./twn restart   Restart the service
 ./twn status    Show status and URL
 ./twn logs      Show recent server errors
+./twn reset-auth  Remove users and return to first-launch setup
 ```
 
 The launcher supports macOS, Linux, and Raspberry Pi OS. Port 5050 is used by
@@ -74,8 +71,8 @@ when needed:
 TWN_TOOLKIT_PORT=8000 ./twn start
 ```
 
-The service binds to localhost only, runs in the background, and writes its PID
-and logs under the ignored `instance/` directory.
+The service binds to localhost by default, runs in the background, and writes
+its PID and logs under the ignored `instance/` directory.
 
 For first-time setup, API permissions, normal usage, and preparing a clean copy
 for another user, see [QUICKSTART.md](QUICKSTART.md).
@@ -107,7 +104,29 @@ For managed FortiSwitches, The WiFi Ninja's Toolkit detects whether the applianc
 legacy writable `name` field or the FortiOS 7.4+ renameable `switch-id` key and
 uses the matching update and read-back verification flow.
 
-## Notes
+## Security and Local Data
+
+On first launch, the toolkit requires creation of an administrator account;
+there is no default username or password. Passwords are stored as scrypt hashes
+in owner-readable `instance/auth.json`. Signed login sessions use an independently
+generated owner-readable secret in `instance/session_secret`. Administrators can
+manage users, change passwords, and set the idle timeout from **Settings**.
+
+If every administrator is locked out, stop the service and run:
+
+```bash
+./twn reset-auth
+./twn start
+```
+
+Equivalently, delete `instance/auth.json` while the service is stopped. The next
+browser visit returns to administrator setup. This does not delete device
+profiles, SNMP credentials, API keys, or the session secret.
+
+Authentication protects access to the application, but it does not make the
+service suitable for direct internet exposure. Keep the default localhost bind
+unless trusted internal clients need access, and put TLS in front of the toolkit
+before allowing logins over a network.
 
 FortiGate API keys are stored in `instance/profiles.json`. FortiAuthenticator
 usernames and Web Service API keys are stored in
@@ -120,15 +139,22 @@ request attributes use `instance/radius_attributes_profiles.json`.
 SNMP credentials, hosts, and OID collections use separate
 `instance/snmp_*_profiles.json` files.
 TCP scanner host and port sets use `instance/port_scan_*_profiles.json`.
+NTP and Traceroute host lists use `instance/ntp_host_profiles.json` and
+`instance/traceroute_host_profiles.json`.
 These files have owner-only permissions and are
 excluded from Git, but their contents are not encrypted. Treat the host as trusted.
+
+Multi-Host Ping measurements and chart history are held in the browser session.
+Reloading or closing the page discards that history unless it was exported.
+
+## FortiGate API Notes
 
 Default endpoint templates:
 
 - APs: `/api/v2/cmdb/wireless-controller/wtp/{current_name}`
-- Switches: `/api/v2/cmdb/switch-controller/managed-switch/{current_name}`
+- FortiSwitches: `/api/v2/cmdb/switch-controller/managed-switch/{current_name}`
 - Export AP Data: `/api/v2/cmdb/wireless-controller/wtp`
-- Export Switch Data: `/api/v2/cmdb/switch-controller/managed-switch`
+- Export FortiSwitch Data: `/api/v2/cmdb/switch-controller/managed-switch`
 - Export Wireless Clients: `/api/v2/monitor/wifi/client`
 - Export FortiSwitch Clients: `/api/v2/monitor/switch-controller/detected-device`
 

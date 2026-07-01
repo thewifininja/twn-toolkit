@@ -2,8 +2,8 @@
 
 {% block content %}
 <section class="workspace-intro">
-  <h1>Generic Tools</h1>
-  <p>Standalone utilities that do not require a FortiGate profile.</p>
+  <h1>Network Tools</h1>
+  <p>Vendor-neutral diagnostics that run from the toolkit host or your browser.</p>
 </section>
 
 <section class="task-grid">
@@ -13,15 +13,15 @@
   </a>
   <a class="task-card" href="{{ url_for('tools.ping_tool') }}">
     <strong>Multi-Host Ping</strong>
-    <span>Continuously monitor IPv4, IPv6, and DNS host reachability.</span>
+    <span>Troubleshoot reachability, latency, and packet loss across multiple hosts.</span>
   </a>
   <a class="task-card" href="{{ url_for('tools.multi_ssh') }}">
     <strong>Multi-SSH</strong>
     <span>Run the same command sequence across multiple SSH hosts.</span>
   </a>
   <a class="task-card" href="{{ url_for('tools.dns_response') }}">
-    <strong>DNS Response Time</strong>
-    <span>Compare host answers and lookup times across DNS servers.</span>
+    <strong>DNS Lookup Tester</strong>
+    <span>Compare DNS answers and lookup latency across multiple resolvers.</span>
   </a>
   <a class="task-card" href="{{ url_for('tools.radius_test') }}">
     <strong>RADIUS Authentication Test</strong>
@@ -29,7 +29,7 @@
   </a>
   <a class="task-card" href="{{ url_for('tools.speed_test') }}">
     <strong>Wi-Fi / LAN Speed Test</strong>
-    <span>Measure latency, jitter, download, and upload to this toolkit server.</span>
+    <span>Measure browser-to-toolkit latency, jitter, download, and upload on the local network.</span>
   </a>
   <a class="task-card" href="{{ url_for('tools.certificate_inspector') }}">
     <strong>Certificate Chain Inspector</strong>
@@ -37,11 +37,11 @@
   </a>
   <a class="task-card" href="{{ url_for('tools.snmp_test') }}">
     <strong>SNMP Tester</strong>
-    <span>Validate SNMPv2c and SNMPv3 access with reusable hosts and OID collections.</span>
+    <span>Validate SNMPv2c and SNMPv3 access with reusable devices, credentials, and OID collections.</span>
   </a>
   <a class="task-card" href="{{ url_for('tools.port_scanner') }}">
     <strong>TCP Port Scanner</strong>
-    <span>Check bounded host and port sets for reachable TCP services.</span>
+    <span>Check selected TCP ports across multiple authorized hosts.</span>
   </a>
   <a class="task-card" href="{{ url_for('tools.ntp_test') }}">
     <strong>NTP Tester</strong>
@@ -49,7 +49,7 @@
   </a>
   <a class="task-card" href="{{ url_for('tools.traceroute') }}">
     <strong>Traceroute</strong>
-    <span>Visualize each network hop while retaining familiar text output.</span>
+    <span>Trace up to 10 destinations with live graphical hops and text output.</span>
   </a>
 </section>
 {% endblock %}

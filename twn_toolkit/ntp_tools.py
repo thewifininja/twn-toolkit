@@ -4,6 +4,7 @@ import math
 import socket
 import struct
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,6 +19,29 @@ LEAP_STATES = {
     2: "Last minute has 59 seconds",
     3: "Clock not synchronized",
 }
+
+
+def test_ntp_servers(
+    targets: list[dict[str, str]],
+    port: int = 123,
+    timeout: float = 3.0,
+    samples: int = 4,
+) -> list[dict[str, Any]]:
+    if not targets:
+        raise ToolInputError("Enter at least one NTP server.")
+    workers = min(10, len(targets))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(test_ntp_server, target["host"], port, timeout, samples): index
+            for index, target in enumerate(targets)
+        }
+        indexed_results = []
+        for future in as_completed(futures):
+            index = futures[future]
+            result = future.result()
+            result["label"] = targets[index].get("label", "")
+            indexed_results.append((index, result))
+    return [result for _index, result in sorted(indexed_results)]
 
 
 def test_ntp_server(

@@ -9,15 +9,62 @@
   const status = document.getElementById("traceroute-status");
   const toolbar = document.getElementById("traceroute-results-toolbar");
   const toggleAllButton = document.getElementById("traceroute-toggle-all");
+  const profileSelect = document.getElementById("traceroute-profile");
+  const profileName = document.getElementById("traceroute-profile-name");
+  const hostsInput = document.getElementById("traceroute-hosts");
+  const profileStorageKey = "twn:traceroute-profile";
   let controllers = [];
   let cancelled = false;
 
-  function createResult(host) {
+  profileSelect.addEventListener("change", () => {
+    const option = profileSelect.selectedOptions[0];
+    hostsInput.value = option?.dataset.values || "";
+    profileName.value = option?.value || "";
+    sessionStorage.setItem(profileStorageKey, profileSelect.value);
+  });
+
+  const savedProfile = sessionStorage.getItem(profileStorageKey);
+  if (savedProfile && [...profileSelect.options].some((option) => option.value === savedProfile)) {
+    profileSelect.value = savedProfile;
+    profileSelect.dispatchEvent(new Event("change"));
+  }
+
+  document.getElementById("traceroute-save-profile").addEventListener("click", async () => {
+    const body = new FormData();
+    body.set("name", profileName.value);
+    body.set("original_name", profileSelect.value);
+    body.set("values", hostsInput.value);
+    const response = await fetch(form.dataset.saveProfileUrl, {method: "POST", body});
+    const payload = await response.json();
+    if (!response.ok) {
+      status.textContent = payload.error || "Profile could not be saved.";
+      return;
+    }
+    sessionStorage.setItem(profileStorageKey, payload.profile.name);
+    window.location.reload();
+  });
+
+  document.getElementById("traceroute-delete-profile").addEventListener("click", async () => {
+    if (!profileSelect.value || !window.confirm(`Delete profile “${profileSelect.value}”?`)) return;
+    const body = new FormData();
+    body.set("name", profileSelect.value);
+    const response = await fetch(form.dataset.deleteProfileUrl, {method: "POST", body});
+    const payload = await response.json();
+    if (!response.ok) {
+      status.textContent = payload.error || "Profile could not be deleted.";
+      return;
+    }
+    sessionStorage.removeItem(profileStorageKey);
+    window.location.reload();
+  });
+
+  function createResult(target) {
     const element = template.content.firstElementChild.cloneNode(true);
-    element.querySelector(".traceroute-live-host").textContent = host;
+    element.querySelector(".traceroute-live-host").textContent = target.label || target.host;
     results.append(element);
     return {
       element,
+      target,
       details: element.querySelector(".traceroute-result-details"),
       host: element.querySelector(".traceroute-live-host"),
       meta: element.querySelector(".traceroute-live-meta"),
@@ -76,23 +123,23 @@
 
   function handleEvent(view, event) {
     if (event.type === "start") {
-      view.meta.textContent = `${event.family} · ${event.method} · trace in progress`;
+      view.meta.textContent = `${view.target.label ? `${view.target.host} · ` : ""}${event.family} · ${event.method} · trace in progress`;
       view.state.textContent = "tracing";
     } else if (event.type === "output") {
       view.output.textContent += `${event.line}\n`;
     } else if (event.type === "hop") {
       appendHop(view, event.hop);
-      view.meta.textContent = `Hop ${event.hop.number} received · waiting for next hop`;
+      view.meta.textContent = `${view.target.label ? `${view.target.host} · ` : ""}Hop ${event.hop.number} received · waiting for next hop`;
     } else if (event.type === "complete") {
       view.state.className = `pill traceroute-live-state ${event.reached ? "success" : "planned"}`;
       view.state.textContent = event.reached ? "destination reached" : "trace incomplete";
-      view.meta.textContent = `${view.respondingHops} responding hop${view.respondingHops === 1 ? "" : "s"}`;
+      view.meta.textContent = `${view.target.label ? `${view.target.host} · ` : ""}${view.respondingHops} responding hop${view.respondingHops === 1 ? "" : "s"}`;
     } else if (event.type === "error") {
       throw new Error(event.error);
     }
   }
 
-  async function runTrace(host, basePayload, view) {
+  async function runTrace(target, basePayload, view) {
     const controller = new AbortController();
     controllers.push(controller);
     view.state.textContent = "starting";
@@ -100,7 +147,7 @@
       const response = await fetch(form.dataset.runUrl, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({...basePayload, host}),
+        body: JSON.stringify({...basePayload, host: target.host}),
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -123,18 +170,19 @@
     } catch (error) {
       view.state.className = `pill traceroute-live-state ${error.name === "AbortError" ? "planned" : "error"}`;
       view.state.textContent = error.name === "AbortError" ? "cancelled" : "error";
-      view.meta.textContent = error.name === "AbortError" ? "Trace cancelled" : error.message;
+      const detail = error.name === "AbortError" ? "Trace cancelled" : error.message;
+      view.meta.textContent = `${view.target.label ? `${view.target.host} · ` : ""}${detail}`;
     } finally {
       controllers = controllers.filter((item) => item !== controller);
     }
   }
 
-  async function runQueue(hosts, payload, views) {
+  async function runQueue(targets, payload, views) {
     let next = 0;
     async function worker() {
-      while (!cancelled && next < hosts.length) {
+      while (!cancelled && next < targets.length) {
         const index = next++;
-        await runTrace(hosts[index], payload, views[index]);
+        await runTrace(targets[index], payload, views[index]);
       }
     }
     await Promise.all([worker(), worker()]);
@@ -146,14 +194,12 @@
     controllers = [];
     cancelled = false;
     const data = new FormData(form);
-    const hosts = [...new Set(
-      String(data.get("hosts") || "").split(/[\r\n]+/).map((host) => host.trim()).filter(Boolean)
-    )];
-    if (!hosts.length) {
+    const targets = parseTargets(String(data.get("hosts") || ""));
+    if (!targets.length) {
       status.textContent = "Enter at least one destination.";
       return;
     }
-    if (hosts.length > 10) {
+    if (targets.length > 10) {
       status.textContent = "A maximum of 10 destinations is allowed.";
       return;
     }
@@ -162,18 +208,32 @@
     results.replaceChildren();
     toolbar.hidden = false;
     toggleAllButton.textContent = "Expand All";
-    const views = hosts.map(createResult);
+    const views = targets.map(createResult);
     startButton.disabled = true;
     cancelButton.disabled = false;
-    status.textContent = `Tracing ${hosts.length} destination${hosts.length === 1 ? "" : "s"}…`;
+    status.textContent = `Tracing ${targets.length} destination${targets.length === 1 ? "" : "s"}…`;
     try {
-      await runQueue(hosts, payload, views);
+      await runQueue(targets, payload, views);
       status.textContent = cancelled ? "Traceroutes cancelled." : "All traceroutes completed.";
     } finally {
       startButton.disabled = false;
       cancelButton.disabled = true;
     }
   });
+
+  function parseTargets(value) {
+    const targets = [];
+    const seen = new Set();
+    value.split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean).forEach((line) => {
+      const separator = line.indexOf("=");
+      const label = separator >= 0 ? line.slice(0, separator).trim() : "";
+      const host = separator >= 0 ? line.slice(separator + 1).trim() : line;
+      if (!host || seen.has(host)) return;
+      seen.add(host);
+      targets.push({label, host});
+    });
+    return targets;
+  }
 
   cancelButton.addEventListener("click", () => {
     cancelled = true;

@@ -558,6 +558,47 @@ button.danger {
   min-width: 0;
 }
 
+.snmp-manager-details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.snmp-manager-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.snmp-manager-details > summary span,
+.snmp-manager-details > summary small {
+  display: block;
+}
+
+.snmp-manager-details > summary strong {
+  font-size: 1rem;
+}
+
+.snmp-manager-details > summary small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-top: 3px;
+}
+
+.snmp-manager-details > summary::after {
+  color: var(--muted);
+  content: "▸";
+  float: right;
+  margin-top: -28px;
+}
+
+.snmp-manager-details[open] > summary::after {
+  content: "▾";
+}
+
+.snmp-manager-details[open] > summary {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+}
+
 .snmp-security-grid,
 .snmp-host-options {
   display: grid;
@@ -646,7 +687,7 @@ button.danger {
 .ntp-options {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(240px, 2fr) repeat(3, minmax(120px, 1fr));
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
 }
 
 .ntp-summary {
@@ -1658,6 +1699,78 @@ button.danger {
   color: var(--bad);
 }
 
+.auth-panel {
+  margin: 48px auto;
+  max-width: 460px;
+}
+
+.auth-panel form {
+  margin-top: 24px;
+}
+
+.nav-logout {
+  margin: 0;
+}
+
+.link-button {
+  background: transparent;
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+  display: inline;
+  font: inherit;
+  font-weight: 800;
+  line-height: inherit;
+  min-height: auto;
+  padding: 0;
+}
+
+.link-button:hover,
+.link-button:focus {
+  background: transparent;
+  color: #fff;
+  text-decoration: underline;
+}
+
+.settings-grid {
+  align-items: start;
+}
+
+.user-list {
+  display: grid;
+  gap: 12px;
+}
+
+.user-card {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(360px, 2fr) auto;
+  padding: 14px;
+}
+
+.user-card h3 {
+  margin: 0 0 7px;
+}
+
+.user-card .muted {
+  margin-left: 8px;
+}
+
+.password-form {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr auto;
+  margin: 0;
+}
+
+.recovery-note code {
+  font-weight: 700;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -1806,7 +1919,9 @@ th {
   .certificate-extension-grid,
   .speed-results,
   .row-card,
-  .field-item {
+  .field-item,
+  .user-card,
+  .password-form {
     grid-template-columns: 1fr;
   }
 

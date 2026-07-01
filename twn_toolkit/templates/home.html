@@ -2,15 +2,15 @@
 
 {% block content %}
 <section class="workspace-intro">
-  <h1>Network Operations Toolbox</h1>
-  <p>Choose a Fortinet workflow or a vendor-neutral network utility.</p>
+  <h1>Network Operations Toolkit</h1>
+  <p>Local-first tools for repeatable Fortinet administration and live network troubleshooting.</p>
 </section>
 
 <div class="home-tool-groups">
   <section class="home-tool-group" aria-labelledby="fortinet-tools-heading">
     <div class="section-head">
       <h2 id="fortinet-tools-heading">Fortinet Tools</h2>
-      <p>Device administration and workflows built for Fortinet products.</p>
+      <p>Repeatable administration and inventory workflows for Fortinet platforms.</p>
     </div>
     <div class="workspace-grid">
       <a class="workspace-card" href="{{ url_for('fortigate_home') }}">
@@ -19,15 +19,15 @@
       </a>
       <a class="workspace-card" href="{{ url_for('fortiauthenticator_home') }}">
         <strong>FortiAuthenticator</strong>
-        <span>Profiles and MAC-device administration workflows.</span>
+        <span>Profiles and MAC device administration workflows.</span>
       </a>
     </div>
   </section>
 
   <section class="home-tool-group" aria-labelledby="generic-tools-heading">
     <div class="section-head">
-      <h2 id="generic-tools-heading">Generic Tools</h2>
-      <p>Standalone utilities that work without a FortiGate profile.</p>
+      <h2 id="generic-tools-heading">Network Tools</h2>
+      <p>Vendor-neutral diagnostics that run from the toolkit host or your browser.</p>
     </div>
     <div class="workspace-grid">
       <a class="workspace-card" href="{{ url_for('tools.subnet_excluder') }}">
@@ -36,15 +36,15 @@
       </a>
       <a class="workspace-card" href="{{ url_for('tools.ping_tool') }}">
         <strong>Multi-Host Ping</strong>
-        <span>Continuously monitor IPv4, IPv6, and DNS host reachability.</span>
+        <span>Troubleshoot reachability, latency, and packet loss across multiple hosts.</span>
       </a>
       <a class="workspace-card" href="{{ url_for('tools.multi_ssh') }}">
         <strong>Multi-SSH</strong>
         <span>Run the same command sequence across multiple SSH hosts.</span>
       </a>
       <a class="workspace-card" href="{{ url_for('tools.dns_response') }}">
-        <strong>DNS Response Time</strong>
-        <span>Compare host answers and lookup times across DNS servers.</span>
+        <strong>DNS Lookup Tester</strong>
+        <span>Compare DNS answers and lookup latency across multiple resolvers.</span>
       </a>
       <a class="workspace-card" href="{{ url_for('tools.radius_test') }}">
         <strong>RADIUS Authentication Test</strong>
@@ -52,7 +52,7 @@
       </a>
       <a class="workspace-card" href="{{ url_for('tools.speed_test') }}">
         <strong>Wi-Fi / LAN Speed Test</strong>
-        <span>Measure latency, jitter, download, and upload to this toolkit server.</span>
+        <span>Measure browser-to-toolkit latency, jitter, download, and upload on the local network.</span>
       </a>
       <a class="workspace-card" href="{{ url_for('tools.certificate_inspector') }}">
         <strong>Certificate Chain Inspector</strong>
@@ -60,11 +60,11 @@
       </a>
       <a class="workspace-card" href="{{ url_for('tools.snmp_test') }}">
         <strong>SNMP Tester</strong>
-        <span>Validate SNMPv2c and SNMPv3 access with reusable hosts and OID collections.</span>
+        <span>Validate SNMPv2c and SNMPv3 access with reusable devices, credentials, and OID collections.</span>
       </a>
       <a class="workspace-card" href="{{ url_for('tools.port_scanner') }}">
         <strong>TCP Port Scanner</strong>
-        <span>Check bounded host and port sets for reachable TCP services.</span>
+        <span>Check selected TCP ports across multiple authorized hosts.</span>
       </a>
       <a class="workspace-card" href="{{ url_for('tools.ntp_test') }}">
         <strong>NTP Tester</strong>
@@ -72,7 +72,7 @@
       </a>
       <a class="workspace-card" href="{{ url_for('tools.traceroute') }}">
         <strong>Traceroute</strong>
-        <span>Visualize each network hop while retaining familiar text output.</span>
+        <span>Trace up to 10 destinations with live graphical hops and text output.</span>
       </a>
     </div>
   </section>

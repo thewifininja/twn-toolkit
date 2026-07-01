@@ -4,15 +4,23 @@
 <section class="panel">
   <div class="panel-head">
     <h1>Traceroute</h1>
-    <p>Follow the network path from the toolkit server to an IPv4 or IPv6 destination.</p>
+    <p>Follow live IPv4 or IPv6 network paths from the toolkit host to as many as 10 destinations.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
-  <form class="form" method="post" id="traceroute-form" data-run-url="{{ url_for('tools.traceroute_run') }}">
+  <form class="form" method="post" id="traceroute-form" data-run-url="{{ url_for('tools.traceroute_run') }}" data-save-profile-url="{{ url_for('tools.save_traceroute_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_traceroute_profile') }}">
+    <label>Destination profile
+      <select id="traceroute-profile">
+        <option value="">New / unsaved list</option>
+        {% for profile in profiles %}
+          <option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} destination{{ '' if profile.count == 1 else 's' }}</option>
+        {% endfor %}
+      </select>
+    </label>
     <div class="traceroute-options">
       <label>Destinations
-        <textarea name="hosts" rows="4" placeholder="example.com&#10;192.0.2.10" required>{{ form.host }}</textarea>
-        <span class="field-note">One hostname or IP address per line. Maximum 10 destinations.</span>
+        <textarea name="hosts" id="traceroute-hosts" rows="4" placeholder="Public DNS = 1.1.1.1&#10;example.com" required>{{ form.host }}</textarea>
+        <span class="field-note">One hostname or IP address per line. Optional friendly names use <code>Name = host</code>. Maximum 10 destinations.</span>
       </label>
       <label>Address family
         <select name="family">
@@ -38,9 +46,14 @@
       </label>
     </div>
     <div class="button-row">
+      <input id="traceroute-profile-name" placeholder="Destination profile name" maxlength="100">
+      <button class="secondary" id="traceroute-save-profile" type="button">Save destinations</button>
+      <button class="danger" id="traceroute-delete-profile" type="button">Delete</button>
+    </div>
+    <div class="button-row">
       <button type="submit" id="traceroute-start">Run Traceroute</button>
       <button class="secondary" type="button" id="traceroute-cancel" disabled>Cancel</button>
-      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Generic Tools</a>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
     </div>
     <span class="tool-status" id="traceroute-status">The trace runs from the toolkit server. ICMP mode may require additional host or container permissions.</span>
   </form>

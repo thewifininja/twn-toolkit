@@ -116,37 +116,28 @@ group, and membership IDs.
 The app re-fetches and validates selected IDs immediately before execution.
 Global deletion removes the MAC device object, not just its membership.
 
-## Generic Tools
+## Network Tools
 
-The **Generic Tools** workspace does not use Fortinet profiles.
+The **Network Tools** workspace contains vendor-neutral diagnostics. Some tools
+have their own reusable profiles, but none require a FortiGate profile.
 
 - **Subnet Excluder** subtracts comma-, space-, or line-separated CIDRs from
   parent networks. Enter `rfc1918` to use all private IPv4 ranges.
-- **Multi-Host Ping** runs repeated ICMP checks from the machine hosting
-  The WiFi Ninja's Toolkit. Host collections can be saved as profiles, and
-  optional friendly names use `Name = host`. Results include rolling latency
-  statistics, packet loss, scaled time-series bounds, and timestamped hover
-  details. Canvas charts offer synchronized 1-, 2-, and 5-minute views with
-  collapsible history navigation, precise end-time selection, and whole-window
-  older/newer controls. Historical views lock while new samples arrive.
-  Samples remain exact for one hour, use 10-second summary buckets
-  through 24 hours, and one-minute buckets through seven days; summaries
-  preserve minimums, maximums, averages, and loss. Retained raw and summarized
-  history can be exported as CSV. Select **Stop** to end polling.
+- **Multi-Host Ping** troubleshoots reachability, latency, and loss from the
+  toolkit host. Save reusable host profiles with optional `Name = host` labels.
+  Charts provide 1-, 2-, and 5-minute views, precise historical navigation,
+  hover details, and CSV export. History belongs to the current browser session;
+  reloading or closing the page discards it. Select **Stop** to end polling.
 - **Multi-SSH** sends the same command sequence to multiple devices using an
   interactive SSH shell. Passwords are used only for the current request and
   are not saved. Unknown host keys are rejected unless explicitly allowed.
-- **DNS Response Time** runs each host lookup against each DNS server, showing
-  returned records and response time. Host lists and DNS server lists are saved
+- **DNS Lookup Tester** runs each hostname lookup through each resolver, showing
+  returned records and response time. Host lists and resolver lists are saved
   independently, so either can be reused in different test combinations.
-- **RADIUS Authentication Test** sends PAP or CHAP Access-Requests to one or
-  more saved RADIUS servers and reports Access-Accept, Access-Reject,
-  Access-Challenge, response time, and returned attributes. Shared secrets and
-  test credentials are stored locally and are not encrypted. Additional
-  Access-Request attributes can be saved as reusable profiles using
-  `Name = value`; unknown standard and vendor attributes can be sent in raw
-  hexadecimal form. Known standard response attributes are decoded by name and
-  type, while unknown attributes retain their numeric identity and raw hex.
+- **RADIUS Authentication Test** compares PAP or CHAP authentication across
+  saved servers and reports response time, result codes, and returned
+  attributes. Server, credential, and request-attribute profiles are reusable.
+  Shared secrets and test credentials are stored locally without encryption.
 - **Wi-Fi / LAN Speed Test** measures latency, jitter, download, and upload
   throughput between the browser and the toolkit server. Open it from another
   device for a meaningful result; it does not measure internet service speed.
@@ -157,24 +148,26 @@ The **Generic Tools** workspace does not use Fortinet profiles.
 - **SNMP Tester** stores separate SNMPv2c/SNMPv3 credential profiles, host
   mappings, and reusable numeric OID collections. Collections support scalar
   GET operations and bounded subtree walks using a `walk:` label prefix.
-- **TCP Port Scanner** checks explicit host and port sets with reusable
-  profiles, connection timing, and service-name hints. It is limited to 50
-  hosts, 200 unique ports, and 5,000 host/port combinations per scan.
-- **NTP Tester** takes up to 10 direct NTPv4 samples and reports average clock
-  offset, round-trip delay, jitter, stratum, reference identity, leap status,
-  root delay, and root dispersion.
+- **TCP Port Scanner** checks selected TCP ports across reusable authorized-host
+  and port profiles, with connection timing and service-name hints. Selecting a
+  profile immediately updates the scan inputs. It is limited to 50 hosts, 200
+  unique ports, and 5,000 host/port combinations per scan.
+- **NTP Tester** tests up to 20 servers concurrently from reusable server
+  profiles. It reports average clock offset, round-trip delay, jitter, stratum,
+  reference identity, leap status, root delay, and root dispersion.
 - **Traceroute** follows IPv4 or IPv6 destinations using UDP or ICMP probes,
   streaming each result into a latency-colored hop path and live text output.
   Up to 10 destinations can be queued per run, two traces execute concurrently,
-  and long-running traces can be cancelled from the page.
+  reusable destination profiles are supported, and long-running traces can be
+  cancelled from the page.
 
 Multi-SSH commands execute on real devices. Review the host list and commands
 carefully before selecting the required execution confirmation.
 
 ## Reset Before Sharing
 
-The WiFi Ninja's Toolkit persists FortiGate profiles, FortiAuthenticator
-profiles, API keys, and saved ping profiles. To remove them:
+The WiFi Ninja's Toolkit persists Fortinet connection profiles and reusable
+ping, DNS, RADIUS, SNMP, and TCP scanner profiles. To remove them:
 
 ```bash
 flask --app twn_toolkit reset-data
@@ -186,11 +179,9 @@ Confirm the prompt. For scripts or packaging:
 flask --app twn_toolkit reset-data --yes
 ```
 
-This removes `instance/profiles.json`,
-`instance/fortiauthenticator_profiles.json`, and
-`instance/ping_profiles.json`, `instance/dns_hosts_profiles.json`, and
-`instance/dns_servers_profiles.json`, plus the RADIUS profile files; it does not
-modify the application code.
+This removes FortiGate, FortiAuthenticator, ping, DNS, RADIUS, SNMP, TCP
+port-scanner, NTP, and Traceroute profile files from `instance/`. It does not
+modify application code.
 The `instance/` and `.venv/` directories are excluded by `.gitignore`.
 
 After resetting, share the project without `.venv/`, `.git/`, or `instance/`.
@@ -206,5 +197,5 @@ stop the service and restart it with a broader bind:
 TWN_TOOLKIT_HOST=0.0.0.0 ./twn start
 ```
 
-The WiFi Ninja's Toolkit does not provide user authentication. Do not expose it directly to the
-internet, and do not use a broad network bind on an untrusted network.
+The WiFi Ninja's Toolkit does not provide user authentication. Do not expose it
+directly to the internet or use a broad network bind on an untrusted network.

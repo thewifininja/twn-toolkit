@@ -170,3 +170,15 @@ class PortScanProfileStore(PingProfileStore):
             raise ValueError("Port scanner profile kind must be 'hosts' or 'ports'.")
         super().__init__(instance_path)
         self.path = self.instance_path / f"port_scan_{kind}_profiles.json"
+
+
+class NTPHostProfileStore(PingProfileStore):
+    def __init__(self, instance_path: str) -> None:
+        super().__init__(instance_path)
+        self.path = self.instance_path / "ntp_host_profiles.json"
+
+
+class TracerouteHostProfileStore(PingProfileStore):
+    def __init__(self, instance_path: str) -> None:
+        super().__init__(instance_path)
+        self.path = self.instance_path / "traceroute_host_profiles.json"

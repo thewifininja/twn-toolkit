@@ -66,7 +66,7 @@ class NetworkToolTests(unittest.TestCase):
             app.config["TESTING"] = True
             client = app.test_client()
 
-            self.assertIn(b"DNS Response Time", client.get("/").data)
+            self.assertIn(b"DNS Lookup Tester", client.get("/").data)
             self.assertIn(b"RADIUS Authentication Test", client.get("/").data)
             self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/").data)
             self.assertIn(b"Certificate Chain Inspector", client.get("/").data)

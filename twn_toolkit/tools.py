@@ -32,12 +32,14 @@ from .profiles import (
     PingProfileStore,
     RadiusProfileStore,
     PortScanProfileStore,
+    NTPHostProfileStore,
+    TracerouteHostProfileStore,
     SNMPCredentialProfileStore,
     SNMPHostProfileStore,
     SNMPOidProfileStore,
 )
 from .snmp_tools import parse_oid_profile, run_snmp_tests, validate_snmp_credential
-from .ntp_tools import test_ntp_server
+from .ntp_tools import test_ntp_servers
 from .traceroute_tools import prepare_traceroute, run_traceroute, stream_traceroute
 
 
@@ -56,35 +58,58 @@ def index():
 
 @tools_bp.route("/ntp-test", methods=["GET", "POST"])
 def ntp_test():
-    form = {"host": "", "port": "123", "timeout": "3", "samples": "4"}
-    result = None
+    form = {"hosts": "", "port": "123", "timeout": "3", "samples": "4"}
+    results = None
     error = ""
     if request.method == "POST":
         submitted_host = request.form.get("hosts", "").strip() or request.form.get("host", "").strip()
         form = {
-            "host": submitted_host,
+            "hosts": submitted_host,
             "port": request.form.get("port", "123").strip(),
             "timeout": request.form.get("timeout", "3").strip(),
             "samples": request.form.get("samples", "4").strip(),
         }
         try:
-            result = test_ntp_server(
-                form["host"],
+            targets = parse_ping_targets(form["hosts"], limit=20)
+            results = test_ntp_servers(
+                targets,
                 port=int(form["port"]),
                 timeout=float(form["timeout"]),
                 samples=int(form["samples"]),
             )
-            if result["status"] != "success":
-                error = "; ".join(
-                    dict.fromkeys(
-                        sample.get("error", "No response")
-                        for sample in result["samples"]
-                        if sample["status"] == "error"
-                    )
-                )
         except (ToolInputError, TypeError, ValueError) as exc:
             error = str(exc) or "Enter valid NTP test settings."
-    return render_template("tools/ntp_test.html", error=error, form=form, result=result)
+    return render_template(
+        "tools/ntp_test.html",
+        error=error,
+        form=form,
+        profiles=NTPHostProfileStore(current_app.instance_path).all(),
+        results=results,
+    )
+
+
+@tools_bp.post("/ntp-test/profiles")
+def save_ntp_profile():
+    name = request.form.get("name", "").strip()
+    original_name = request.form.get("original_name", "").strip()
+    values = request.form.get("values", "").strip()
+    if not name or len(name) > 100:
+        return jsonify({"error": "Enter a profile name of 100 characters or fewer."}), 400
+    try:
+        targets = parse_ping_targets(values, limit=20)
+    except ToolInputError as exc:
+        return jsonify({"error": str(exc)}), 400
+    profile = {"name": name, "values": values, "targets": targets, "count": len(targets)}
+    NTPHostProfileStore(current_app.instance_path).upsert(profile, original_name=original_name)
+    return jsonify({"profile": profile})
+
+
+@tools_bp.post("/ntp-test/profiles/delete")
+def delete_ntp_profile():
+    name = request.form.get("name", "").strip()
+    if not NTPHostProfileStore(current_app.instance_path).delete(name):
+        return jsonify({"error": "Profile not found."}), 404
+    return jsonify({"deleted": name})
 
 
 @tools_bp.route("/traceroute", methods=["GET", "POST"])
@@ -119,7 +144,39 @@ def traceroute():
             )
         except (ToolInputError, TypeError, ValueError) as exc:
             error = str(exc) or "Enter valid traceroute settings."
-    return render_template("tools/traceroute.html", error=error, form=form, result=result)
+    return render_template(
+        "tools/traceroute.html",
+        error=error,
+        form=form,
+        result=result,
+        profiles=TracerouteHostProfileStore(current_app.instance_path).all(),
+    )
+
+
+@tools_bp.post("/traceroute/profiles")
+def save_traceroute_profile():
+    name = request.form.get("name", "").strip()
+    original_name = request.form.get("original_name", "").strip()
+    values = request.form.get("values", "").strip()
+    if not name or len(name) > 100:
+        return jsonify({"error": "Enter a profile name of 100 characters or fewer."}), 400
+    try:
+        targets = parse_ping_targets(values, limit=10)
+    except ToolInputError as exc:
+        return jsonify({"error": str(exc)}), 400
+    profile = {"name": name, "values": values, "targets": targets, "count": len(targets)}
+    TracerouteHostProfileStore(current_app.instance_path).upsert(
+        profile, original_name=original_name
+    )
+    return jsonify({"profile": profile})
+
+
+@tools_bp.post("/traceroute/profiles/delete")
+def delete_traceroute_profile():
+    name = request.form.get("name", "").strip()
+    if not TracerouteHostProfileStore(current_app.instance_path).delete(name):
+        return jsonify({"error": "Profile not found."}), 404
+    return jsonify({"deleted": name})
 
 
 @tools_bp.post("/traceroute/run")
@@ -262,7 +319,7 @@ def snmp_test():
             or len(selected_oid_profiles) > 10
             or any(profile is None for profile in oid_profiles)
         ):
-            error = "Select between 1 and 10 valid OID / MIB profiles."
+            error = "Select between 1 and 10 valid OID profiles."
         else:
             credential_names = {host["credential_name"] for host in hosts if host}
             credentials = {name: credential_store.get(name) for name in credential_names}
