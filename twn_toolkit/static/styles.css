@@ -753,6 +753,59 @@ button.danger {
   transform: rotate(-90deg);
 }
 
+.traceroute-mini-hops {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin-top: 7px;
+  min-height: 10px;
+}
+
+.traceroute-result-details[open] .traceroute-mini-hops {
+  display: none;
+}
+
+.traceroute-mini-hop {
+  background: var(--ok);
+  border: 1px solid color-mix(in srgb, var(--ok), #000 12%);
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 9px;
+  position: relative;
+  width: 9px;
+}
+
+.traceroute-mini-hop:not(:last-child) {
+  margin-right: 11px;
+}
+
+.traceroute-mini-hop:not(:last-child)::after {
+  background: #aeb9c3;
+  content: "";
+  height: 2px;
+  left: 8px;
+  position: absolute;
+  top: 3px;
+  width: 12px;
+}
+
+.traceroute-mini-hop.medium {
+  background: var(--warn);
+  border-color: color-mix(in srgb, var(--warn), #000 12%);
+}
+
+.traceroute-mini-hop.slow {
+  background: var(--bad);
+  border-color: color-mix(in srgb, var(--bad), #000 12%);
+}
+
+.traceroute-mini-hop.unanswered {
+  background: #d5dce2;
+  border-color: #8996a3;
+}
+
 .traceroute-live-result .traceroute-text {
   display: block;
   margin-top: 8px;
@@ -1374,32 +1427,93 @@ button.danger {
 }
 
 .ping-history-cell {
-  max-width: 340px;
-  min-width: 280px;
-  width: 340px;
+  min-width: 420px;
+  width: auto;
 }
 
-.ping-history-scroll {
+.ping-history-controls {
+  align-items: end;
+  background: #f9fbfc;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(160px, 220px) minmax(190px, 1fr) auto;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.ping-history-controls .check {
+  min-height: 42px;
+}
+
+.ping-history-scale {
+  color: var(--muted);
+  display: flex;
+  font-size: 0.72rem;
+  justify-content: space-between;
+  margin-top: 3px;
+}
+
+.ping-history-navigation {
+  border-top: 1px solid var(--line);
+  grid-column: 1 / -1;
+  padding-top: 10px;
+}
+
+.ping-history-navigation > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-weight: 800;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.ping-history-navigation > summary small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ping-history-navigation-content {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.ping-history-time-nav {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(220px, 320px) auto;
+  justify-content: center;
+}
+
+.ping-history-canvas-wrap {
   background: #f9fbfc;
   border: 1px solid var(--line);
   border-radius: 6px;
-  max-width: 340px;
-  overflow-x: auto;
-  width: min(340px, 38vw);
+  max-width: 100%;
+  overflow: hidden;
+  width: 100%;
 }
 
-.ping-history-graph {
+.ping-history-canvas {
   display: block;
-  height: 86px;
+  height: 150px;
+  width: 100%;
 }
 
 .ping-history-grid {
+  pointer-events: none;
   stroke: #dce3e9;
   stroke-width: 1;
 }
 
 .ping-history-line {
   fill: none;
+  pointer-events: none;
   stroke: var(--accent);
   stroke-linejoin: round;
   stroke-width: 2;
@@ -1407,36 +1521,96 @@ button.danger {
 
 .ping-history-point {
   fill: var(--accent);
+  cursor: crosshair;
+  stroke: #fff;
+  stroke-width: 1.5;
 }
 
 .ping-history-failure {
+  cursor: crosshair;
   stroke: var(--bad);
   stroke-width: 2;
 }
 
+.ping-history-axis,
+.ping-history-time {
+  fill: var(--muted);
+  font-size: 9px;
+  pointer-events: none;
+}
+
+.ping-statistics {
+  display: grid;
+  gap: 6px 10px;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+}
+
+.ping-host-statistics {
+  border-top: 1px solid var(--line);
+  margin-top: 9px;
+  padding-top: 8px;
+}
+
+.ping-statistics span {
+  min-width: 0;
+}
+
+.ping-statistics small {
+  color: var(--muted);
+  display: block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.ping-statistics strong {
+  display: block;
+  font-size: 0.83rem;
+  margin-top: 1px;
+}
+
+.ping-chart-tooltip {
+  background: #14202b;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 0.76rem;
+  max-width: 260px;
+  padding: 7px 9px;
+  pointer-events: none;
+  position: fixed;
+  z-index: 1000;
+}
+
 .preview-table-wrap .ping-table {
-  min-width: 700px;
+  min-width: 780px;
   table-layout: fixed;
+}
+
+#ping-results {
+  max-width: none;
+}
+
+#ping-controls {
+  max-width: none;
+}
+
+#ping-results .preview-table-wrap {
+  max-height: none;
+  overflow-x: auto;
 }
 
 .ping-table th:nth-child(1),
 .ping-table td:nth-child(1) {
-  width: 25%;
+  width: 28%;
 }
 
 .ping-table th:nth-child(2),
 .ping-table td:nth-child(2) {
-  width: 10%;
+  width: 8%;
 }
 
 .ping-table th:nth-child(3),
 .ping-table td:nth-child(3) {
-  width: 14%;
-}
-
-.ping-table th:nth-child(4),
-.ping-table td:nth-child(4) {
-  width: 51%;
+  width: 64%;
 }
 
 .ssh-results {
@@ -1626,6 +1800,7 @@ th {
   .ntp-summary,
   .ntp-details,
   .traceroute-options,
+  .ping-history-controls,
   .certificate-check-grid,
   .certificate-details,
   .certificate-extension-grid,
@@ -1645,6 +1820,10 @@ th {
 
   .snmp-security-grid,
   .snmp-host-options {
+    grid-template-columns: 1fr;
+  }
+
+  .ping-history-time-nav {
     grid-template-columns: 1fr;
   }
 

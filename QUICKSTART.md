@@ -124,7 +124,15 @@ The **Generic Tools** workspace does not use Fortinet profiles.
   parent networks. Enter `rfc1918` to use all private IPv4 ranges.
 - **Multi-Host Ping** runs repeated ICMP checks from the machine hosting
   The WiFi Ninja's Toolkit. Host collections can be saved as profiles, and
-  optional friendly names use `Name = host`. Select **Stop** to end polling.
+  optional friendly names use `Name = host`. Results include rolling latency
+  statistics, packet loss, scaled time-series bounds, and timestamped hover
+  details. Canvas charts offer synchronized 1-, 2-, and 5-minute views with
+  collapsible history navigation, precise end-time selection, and whole-window
+  older/newer controls. Historical views lock while new samples arrive.
+  Samples remain exact for one hour, use 10-second summary buckets
+  through 24 hours, and one-minute buckets through seven days; summaries
+  preserve minimums, maximums, averages, and loss. Retained raw and summarized
+  history can be exported as CSV. Select **Stop** to end polling.
 - **Multi-SSH** sends the same command sequence to multiple devices using an
   interactive SSH shell. Passwords are used only for the current request and
   are not saved. Unknown host keys are rejected unless explicitly allowed.

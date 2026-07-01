@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="panel tool-panel">
+<section class="panel tool-panel" id="ping-controls">
   <div class="panel-head">
     <h1>Multi-Host Ping</h1>
     <p>Monitor up to 100 IP addresses or hostnames from this machine.</p>
@@ -56,10 +56,43 @@
 </section>
 
 <section class="panel tool-panel" id="ping-results" hidden>
+  <div class="ping-history-controls">
+    <label>Visible time range
+      <select id="ping-history-range">
+        <option value="60000">1 minute</option>
+        <option value="120000">2 minutes</option>
+        <option value="300000">5 minutes</option>
+      </select>
+    </label>
+    <label class="check">
+      <input id="ping-follow-live" type="checkbox" checked>
+      Follow newest samples
+    </label>
+    <button class="secondary" id="ping-export-history" type="button">Export History CSV</button>
+    <details class="ping-history-navigation">
+      <summary>
+        <span>History Navigation</span>
+        <small id="ping-history-navigation-summary">Live</small>
+      </summary>
+      <div class="ping-history-navigation-content">
+        <label class="ping-history-navigator">History position
+          <input id="ping-history-position" type="range" min="0" max="1000" value="1000" disabled>
+          <span class="ping-history-scale"><span>Oldest</span><span>Newest</span></span>
+        </label>
+        <div class="ping-history-time-nav">
+          <button class="secondary" id="ping-history-older" type="button" disabled>← Older Window</button>
+          <label>View ending at
+            <input id="ping-history-end" type="datetime-local" step="1" disabled>
+          </label>
+          <button class="secondary" id="ping-history-newer" type="button" disabled>Newer Window →</button>
+        </div>
+      </div>
+    </details>
+  </div>
   <div class="preview-table-wrap">
     <table class="ping-table">
       <thead>
-        <tr><th>Host</th><th>Status</th><th>Latency</th><th>Response-time history</th></tr>
+        <tr><th>Host and latency statistics</th><th>Status</th><th>Response-time history</th></tr>
       </thead>
       <tbody></tbody>
     </table>

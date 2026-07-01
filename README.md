@@ -20,6 +20,10 @@ operations tasks.
 - Subtracts CIDR exclusions from IPv4 or IPv6 parent networks.
 - Monitors multiple hosts with a live browser-based ping view.
 - Saves reusable ping host collections with optional friendly names.
+- Tracks current, minimum, average, and maximum latency and packet loss with
+  scaled, timestamped, hoverable Canvas history charts. Recent samples remain
+  exact while older history is compacted into spike- and loss-preserving
+  10-second and one-minute buckets for up to seven days.
 - Runs command sequences against multiple SSH hosts with per-host output.
 - Compares DNS answers and response times across reusable host and resolver profiles.
 - Tests PAP or CHAP credentials against multiple saved RADIUS servers, with

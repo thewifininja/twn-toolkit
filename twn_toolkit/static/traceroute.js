@@ -21,6 +21,7 @@
       details: element.querySelector(".traceroute-result-details"),
       host: element.querySelector(".traceroute-live-host"),
       meta: element.querySelector(".traceroute-live-meta"),
+      miniHops: element.querySelector(".traceroute-mini-hops"),
       state: element.querySelector(".traceroute-live-state"),
       path: element.querySelector(".traceroute-path"),
       output: element.querySelector(".traceroute-live-output"),
@@ -33,6 +34,13 @@
     const latencyClass = !hop.responded
       ? "unanswered"
       : hop.average_ms >= 100 ? "slow" : hop.average_ms >= 30 ? "medium" : "fast";
+    const miniHop = document.createElement("span");
+    miniHop.className = `traceroute-mini-hop ${latencyClass}`;
+    miniHop.title = hop.responded
+      ? `Hop ${hop.number}: ${hop.name || hop.addresses.join(", ") || "Response"} · ${hop.average_ms} ms`
+      : `Hop ${hop.number}: no response`;
+    miniHop.setAttribute("aria-label", miniHop.title);
+    view.miniHops.append(miniHop);
     const article = document.createElement("article");
     article.className = `traceroute-hop ${latencyClass}`;
 
