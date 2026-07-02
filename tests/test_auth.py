@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.auth import AuthStore
@@ -120,3 +121,26 @@ def test_deleting_auth_file_returns_to_setup_without_touching_profiles(tmp_path)
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/setup")
     assert profiles.exists()
+
+
+def test_admin_can_save_server_access_and_trigger_restart(tmp_path):
+    app = create_app(str(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    with patch("twn_toolkit.app.subprocess.Popen") as popen:
+        response = client.post(
+            "/settings/server",
+            data={
+                "listen_host": "0.0.0.0",
+                "allowed_networks": "192.0.2.0/24",
+            },
+            environ_base={"REMOTE_ADDR": "127.0.0.1"},
+        )
+
+    assert response.status_code == 200
+    assert b"Restarting the toolkit" in response.data
+    popen.assert_called_once()
+    settings = json.loads((tmp_path / "server_settings.json").read_text())
+    assert settings["listen_host"] == "0.0.0.0"
+    assert settings["allowed_networks"] == ["192.0.2.0/24"]

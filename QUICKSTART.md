@@ -19,14 +19,17 @@ resources.
 From the project folder:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+./install.sh
 ```
 
-## Start
+The installer creates the virtual environment, installs requirements, and starts
+the toolkit. It is safe to run again when dependencies need refreshing.
+
+For manual setup:
 
 ```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
 ./twn start
 ```
 
@@ -189,13 +192,12 @@ The recipient can follow this guide to create their own environment and profile.
 
 ## Local Network Access
 
-To intentionally allow another machine on the same trusted network to connect,
-stop the service and restart it with a broader bind:
+An administrator can open **Settings → Server access**, select **All network
+interfaces**, and enter each trusted client address or CIDR network. **Save and
+Restart** applies the listener change without requiring terminal access. The
+toolkit always permits local loopback access and prevents a remote administrator
+from saving an allowlist that excludes their current address.
 
-```bash
-./twn stop
-TWN_TOOLKIT_HOST=0.0.0.0 ./twn start
-```
-
-The WiFi Ninja's Toolkit does not provide user authentication. Do not expose it
-directly to the internet or use a broad network bind on an untrusted network.
+Authentication and an IP allowlist do not make the service suitable
+for direct internet exposure. Keep access to trusted internal networks and use a
+TLS reverse proxy for any deployment that crosses an untrusted network.

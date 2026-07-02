@@ -46,13 +46,20 @@ service.
 ## Quick Start
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-./twn start
+./install.sh
 ```
 
-Open http://127.0.0.1:5050.
+The installer checks Python, creates `.venv`, installs requirements, starts the
+service, and can safely be run again. Open http://127.0.0.1:5050 and create the
+first administrator account.
+
+For a manual installation:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+./twn start
+```
 
 The home page separates Fortinet workflows from vendor-neutral network tools.
 
@@ -132,6 +139,16 @@ Authentication protects access to the application, but it does not make the
 service suitable for direct internet exposure. Keep the default localhost bind
 unless trusted internal clients need access, and put TLS in front of the toolkit
 before allowing logins over a network.
+
+Administrators can open **Settings → Server access** to listen on all network
+interfaces and allow specific IPv4/IPv6 addresses or CIDR networks. Loopback is
+always allowed. Saving starts a browser-managed service restart. If the new
+listener fails, the launcher restores and starts the previous server settings.
+The current remote administrator cannot save an allowlist that excludes their
+own client address.
+
+`TWN_TOOLKIT_HOST` still overrides the saved listen setting when explicitly set
+in the service environment. Trusted-client filtering remains active.
 
 FortiGate API keys are stored in `instance/profiles.json`. FortiAuthenticator
 usernames and Web Service API keys are stored in

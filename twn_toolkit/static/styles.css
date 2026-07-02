@@ -1871,6 +1871,86 @@ button.danger {
   align-items: start;
 }
 
+.auth-settings-head {
+  margin-bottom: 24px;
+}
+
+.auth-settings-head .eyebrow {
+  margin-bottom: 4px;
+}
+
+.auth-settings-panel {
+  padding: 26px;
+}
+
+.auth-settings-panel > h2,
+.auth-users-panel > h2 {
+  font-size: 1.12rem;
+}
+
+.auth-settings-panel > p {
+  line-height: 1.45;
+  margin: 8px 0 20px;
+}
+
+.auth-settings-panel > .stack {
+  gap: 16px;
+}
+
+.auth-settings-panel > .stack > button {
+  justify-self: start;
+  margin-top: 2px;
+}
+
+.auth-policy-form {
+  gap: 18px;
+}
+
+.auth-policy-form button {
+  justify-self: start;
+  margin-top: 2px;
+}
+
+.auth-users-panel {
+  margin-top: 4px;
+}
+
+.server-access-panel {
+  padding: 26px;
+}
+
+.server-access-form {
+  gap: 18px;
+  max-width: 760px;
+}
+
+.server-access-form .field-note {
+  line-height: 1.45;
+  margin: 0;
+}
+
+.server-access-form button {
+  justify-self: start;
+}
+
+.restart-panel {
+  text-align: center;
+}
+
+.auth-users-head {
+  margin-bottom: 20px;
+}
+
+.auth-users-head h2 {
+  font-size: 1.12rem;
+  margin: 0;
+}
+
+.auth-users-head .field-note {
+  line-height: 1.4;
+  margin: 8px 0 0;
+}
+
 .user-list {
   display: grid;
   gap: 12px;
@@ -2064,6 +2144,18 @@ th {
   .switch-order-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .auth-settings-head {
+    margin-bottom: 18px;
+  }
+
+  .auth-settings-panel {
+    padding: 20px;
+  }
+
+  .server-access-panel {
+    padding: 20px;
   }
 
   .speed-results {

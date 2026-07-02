@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel auth-panel restart-panel"
+         id="restart-status"
+         data-health-url="{{ url_for('health') }}"
+         data-settings-url="{{ url_for('settings') }}"
+         data-previous-boot-id="{{ previous_boot_id }}">
+  <p class="eyebrow">Server access</p>
+  <h1>Restarting the toolkit…</h1>
+  <p id="restart-message" aria-live="polite">
+    The new listener and trusted-host settings are being applied.
+  </p>
+  <noscript>
+    <p>Wait a few seconds, then reload this page.</p>
+  </noscript>
+</section>
+<script src="{{ url_for('static', filename='restart-status.js') }}" defer></script>
+{% endblock %}

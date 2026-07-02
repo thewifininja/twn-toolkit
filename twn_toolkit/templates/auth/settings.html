@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-head">
+<div class="page-head auth-settings-head">
   <p class="eyebrow">Administration</p>
   <h1>Authentication settings</h1>
 </div>
 
 {% if current_user.is_admin %}
   <div class="grid two settings-grid">
-    <section class="panel">
+    <section class="panel auth-settings-panel">
       <h2>Authentication policy</h2>
       <p>Configure session expiry and the requirements for newly assigned passwords.</p>
       <form method="post" action="{{ url_for('update_session_settings') }}" class="form auth-policy-form">
@@ -46,7 +46,7 @@
       </form>
     </section>
 
-    <section class="panel">
+    <section class="panel auth-settings-panel">
       <h2>Add user</h2>
       <p class="field-note">
         Passwords require at least {{ min_password_length }} characters{% if password_policy.require_uppercase %},
@@ -74,9 +74,50 @@
   </div>
 {% endif %}
 
-<section class="panel">
-  <h2>Users</h2>
-  <p class="field-note">Password changes use the currently configured policy.</p>
+{% if current_user.is_admin %}
+  <section class="panel server-access-panel">
+    <div class="auth-users-head">
+      <h2>Server access</h2>
+      <p class="field-note">
+        Choose where the service listens and which client addresses may reach it.
+        Loopback access is always allowed.
+      </p>
+    </div>
+    <form method="post" action="{{ url_for('update_server_settings') }}"
+          class="form server-access-form"
+          onsubmit="return confirm('Save server access settings and restart the toolkit now?')">
+      <label>
+        Listen interface
+        <select name="listen_host">
+          <option value="127.0.0.1"
+                  {% if server_settings.listen_host == '127.0.0.1' %}selected{% endif %}>
+            Localhost only
+          </option>
+          <option value="0.0.0.0"
+                  {% if server_settings.listen_host == '0.0.0.0' %}selected{% endif %}>
+            All network interfaces
+          </option>
+        </select>
+      </label>
+      <label>
+        Trusted client addresses and networks
+        <textarea name="allowed_networks" rows="5"
+                  placeholder="192.168.1.0/24&#10;10.20.30.45">{{ server_settings.allowed_networks | join('\n') }}</textarea>
+      </label>
+      <p class="field-note">
+        One IPv4/IPv6 address or CIDR network per line. Your current client address is
+        <code>{{ current_client_ip }}</code>. Changes require a service restart.
+      </p>
+      <button type="submit">Save and Restart</button>
+    </form>
+  </section>
+{% endif %}
+
+<section class="panel auth-users-panel">
+  <div class="auth-users-head">
+    <h2>Users</h2>
+    <p class="field-note">Password changes use the currently configured policy.</p>
+  </div>
   <div class="user-list">
     {% for user in users %}
       <article class="user-card">

@@ -8,9 +8,29 @@ INSTANCE="$ROOT/instance"
 PIDFILE="$INSTANCE/twn-toolkit.pid"
 ACCESS_LOG="$INSTANCE/twn-toolkit-access.log"
 ERROR_LOG="$INSTANCE/twn-toolkit-error.log"
-HOST=${TWN_TOOLKIT_HOST:-127.0.0.1}
+SERVER_SETTINGS="$INSTANCE/server_settings.json"
+PREVIOUS_SERVER_SETTINGS="$INSTANCE/server_settings.previous.json"
+HOST=${TWN_TOOLKIT_HOST:-}
 PORT=${TWN_TOOLKIT_PORT:-5050}
 WORKERS=${TWN_TOOLKIT_WORKERS:-2}
+
+if [ -z "$HOST" ] && [ -f "$SERVER_SETTINGS" ]; then
+  HOST=$(python3 -c '
+import json
+import sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        value = json.load(handle).get("listen_host", "127.0.0.1")
+except (OSError, ValueError):
+    value = "127.0.0.1"
+print(value if value in {"127.0.0.1", "0.0.0.0"} else "127.0.0.1")
+' "$SERVER_SETTINGS")
+fi
+HOST=${HOST:-127.0.0.1}
+DISPLAY_HOST="$HOST"
+if [ "$DISPLAY_HOST" = "0.0.0.0" ]; then
+  DISPLAY_HOST="127.0.0.1"
+fi
 
 is_running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
@@ -32,7 +52,7 @@ with socket.socket(family, socket.SOCK_STREAM) as listener:
 start() {
   if is_running; then
     echo "The WiFi Ninja's Toolkit is already running (PID $(cat "$PIDFILE"))."
-    echo "http://$HOST:$PORT"
+    echo "http://$DISPLAY_HOST:$PORT"
     return
   fi
 
@@ -65,7 +85,7 @@ start() {
   while [ "$attempts" -lt 30 ]; do
     if is_running; then
       echo "Started The WiFi Ninja's Toolkit (PID $(cat "$PIDFILE"))."
-      echo "http://$HOST:$PORT"
+      echo "http://$DISPLAY_HOST:$PORT"
       return
     fi
     attempts=$((attempts + 1))
@@ -102,7 +122,7 @@ stop() {
 status() {
   if is_running; then
     echo "The WiFi Ninja's Toolkit is running (PID $(cat "$PIDFILE"))."
-    echo "http://$HOST:$PORT"
+    echo "http://$DISPLAY_HOST:$PORT"
   else
     echo "The WiFi Ninja's Toolkit is not running."
     exit 1
@@ -139,6 +159,22 @@ reset_auth() {
   esac
 }
 
+web_restart() {
+  sleep 2
+  if "$0" restart; then
+    rm -f "$PREVIOUS_SERVER_SETTINGS"
+    return
+  fi
+
+  echo "Restart with new server settings failed; restoring the previous settings." >&2
+  if [ -f "$PREVIOUS_SERVER_SETTINGS" ]; then
+    cp "$PREVIOUS_SERVER_SETTINGS" "$SERVER_SETTINGS"
+  fi
+  if "$0" start; then
+    rm -f "$PREVIOUS_SERVER_SETTINGS"
+  fi
+}
+
 case "${1:-}" in
   start)
     start
@@ -158,6 +194,9 @@ case "${1:-}" in
     ;;
   adminreset|reset-auth)
     reset_auth
+    ;;
+  web-restart)
+    web_restart
     ;;
   *)
     echo "Usage: ./twn {start|stop|restart|status|logs|adminreset}" >&2

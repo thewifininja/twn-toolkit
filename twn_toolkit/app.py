@@ -3,8 +3,11 @@ from __future__ import annotations
 import csv
 import io
 import re
+import secrets
+import subprocess
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import click
@@ -41,6 +44,7 @@ from .profiles import (
     SNMPHostProfileStore,
     SNMPOidProfileStore,
 )
+from .server_settings import ServerSettingsStore, normalize_allowed_networks
 from .tasks import TASKS, ExportTask, RenameTask, discover_export_fields, get_task, grouped_tasks
 from .tools import tools_bp
 
@@ -48,6 +52,7 @@ from .tools import tools_bp
 def create_app(instance_path: str | None = None) -> Flask:
     app = Flask(__name__, instance_relative_config=True, instance_path=instance_path)
     app.config.from_mapping(
+        BOOT_ID=secrets.token_hex(12),
         SECRET_KEY=load_or_create_secret_key(app.instance_path),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Strict",
@@ -55,27 +60,36 @@ def create_app(instance_path: str | None = None) -> Flask:
     app.register_blueprint(tools_bp)
 
     auth_store = AuthStore(app.instance_path)
+    server_settings_store = ServerSettingsStore(app.instance_path)
     store = ProfileStore(app.instance_path)
     fortiauthenticator_store = FortiAuthenticatorProfileStore(app.instance_path)
     ping_profile_store = PingProfileStore(app.instance_path)
 
     @app.before_request
     def require_authentication():
-        endpoint = request.endpoint or ""
-        if endpoint == "static" or endpoint in {
-            "favicon",
-            "login",
-            "logout",
-            "setup",
-        }:
-            return None
-
         if app.testing:
             g.current_user = {
                 "id": "test-user",
                 "username": "test-user",
                 "is_admin": True,
             }
+            return None
+
+        if not server_settings_store.client_allowed(request.remote_addr):
+            return Response(
+                "This client address is not included in the toolkit's trusted hosts.",
+                status=403,
+                mimetype="text/plain",
+            )
+
+        endpoint = request.endpoint or ""
+        if endpoint == "static" or endpoint in {
+            "favicon",
+            "health",
+            "login",
+            "logout",
+            "setup",
+        }:
             return None
 
         if not auth_store.is_configured():
@@ -172,6 +186,8 @@ def create_app(instance_path: str | None = None) -> Flask:
             idle_timeout_minutes=auth_store.idle_timeout_minutes(),
             min_password_length=auth_store.min_password_length(),
             password_policy=auth_store.password_policy(),
+            server_settings=server_settings_store.get(),
+            current_client_ip=request.remote_addr or "unknown",
         )
 
     @app.post("/settings/users")
@@ -255,6 +271,56 @@ def create_app(instance_path: str | None = None) -> Flask:
             else:
                 flash("Session settings updated.", "success")
         return redirect(url_for("settings"))
+
+    @app.post("/settings/server")
+    def update_server_settings():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        listen_host = request.form.get("listen_host", "")
+        allowed_networks = request.form.get("allowed_networks", "")
+        try:
+            candidate = {
+                "listen_host": listen_host,
+                "allowed_networks": normalize_allowed_networks(allowed_networks),
+            }
+            # Validate without writing so a rejected current-client check changes nothing.
+            if listen_host not in {"127.0.0.1", "0.0.0.0"}:
+                raise ValueError("Choose localhost-only or all network interfaces.")
+            if not server_settings_store.client_allowed(request.remote_addr, candidate):
+                raise ValueError(
+                    "These trusted hosts would exclude your current client address "
+                    f"({request.remote_addr or 'unknown'}). Add it or its network before restarting."
+                )
+            server_settings_store.save(listen_host, candidate["allowed_networks"])
+        except (RuntimeError, ValueError) as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("settings"))
+
+        project_root = Path(__file__).resolve().parent.parent
+        restart_log_path = Path(app.instance_path) / "twn-toolkit-restart.log"
+        restart_log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with restart_log_path.open("a", encoding="utf-8") as restart_log:
+                subprocess.Popen(
+                    [str(project_root / "twn"), "web-restart"],
+                    cwd=project_root,
+                    stdin=subprocess.DEVNULL,
+                    stdout=restart_log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+        except OSError as exc:
+            server_settings_store.restore_previous()
+            flash(f"Settings were saved, but automatic restart failed: {exc}", "error")
+            return redirect(url_for("settings"))
+        return render_template(
+            "auth/restarting.html",
+            previous_boot_id=app.config["BOOT_ID"],
+        )
+
+    @app.get("/health")
+    def health():
+        return jsonify({"boot_id": app.config["BOOT_ID"]})
 
     def _start_session(user: dict[str, Any]) -> None:
         session.clear()
