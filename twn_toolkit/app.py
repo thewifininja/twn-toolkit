@@ -478,7 +478,10 @@ def create_app(instance_path: str | None = None) -> Flask:
             ), 409
         return jsonify(
             {
-                "message": f"Verified the new order of {len(verified)} FortiSwitches.",
+                "message": (
+                    f"Verified the new order of {len(verified)} "
+                    f"{'FortiSwitch' if len(verified) == 1 else 'FortiSwitches'}."
+                ),
                 "moves": completed,
                 "switches": verified,
             }

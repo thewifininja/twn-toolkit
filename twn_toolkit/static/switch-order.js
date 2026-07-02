@@ -37,7 +37,8 @@
       vdom.value = data.vdom;
       renderSwitches(data.switches || []);
       originalIds = currentIds();
-      status.textContent = `${data.row_count} switch(es) loaded in FortiGate table order.`;
+      const switchLabel = data.row_count === 1 ? "FortiSwitch" : "FortiSwitches";
+      status.textContent = `${data.row_count} ${switchLabel} loaded in FortiGate table order.`;
       updatePreview();
     } catch (error) {
       status.textContent = error.message;
