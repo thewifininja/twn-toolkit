@@ -568,8 +568,8 @@ def get_task(task_id: str) -> Task | None:
 
 
 TASK_CATEGORIES = (
-    ("ap", "AP Tasks"),
-    ("switch", "Switch Tasks"),
+    ("ap", "FortiAP Tasks"),
+    ("switch", "FortiSwitch Tasks"),
     ("fortigate", "FortiGate Tasks"),
 )
 

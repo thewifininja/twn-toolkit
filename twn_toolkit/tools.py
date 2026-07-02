@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import os
+import ipaddress
 import json
+import os
 from typing import Any
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request, stream_with_context
@@ -54,6 +55,24 @@ SPEED_TEST_DOWNLOAD_CHUNK = os.urandom(SPEED_TEST_CHUNK_SIZE)
 @tools_bp.get("/")
 def index():
     return render_template("tools/index.html")
+
+
+@tools_bp.get("/whats-my-ip")
+def whats_my_ip():
+    address = request.remote_addr or "Unavailable"
+    try:
+        version = f"IPv{ipaddress.ip_address(address).version}"
+    except ValueError:
+        version = "Unknown address family"
+    response = Response(
+        render_template(
+            "tools/whats_my_ip.html",
+            client_ip=address,
+            address_family=version,
+        )
+    )
+    _disable_client_caching(response)
+    return response
 
 
 @tools_bp.route("/ntp-test", methods=["GET", "POST"])

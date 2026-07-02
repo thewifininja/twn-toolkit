@@ -30,6 +30,10 @@
       <p>Vendor-neutral diagnostics that run from the toolkit host or your browser.</p>
     </div>
     <div class="workspace-grid">
+      <a class="workspace-card" href="{{ url_for('tools.whats_my_ip') }}">
+        <strong>What’s My IP?</strong>
+        <span>See the client address used to connect to this toolkit server.</span>
+      </a>
       <a class="workspace-card" href="{{ url_for('tools.subnet_excluder') }}">
         <strong>Subnet Excluder</strong>
         <span>Subtract CIDR networks from one or more parent networks.</span>

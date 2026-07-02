@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.app import _switch_order_moves
 from twn_toolkit.network_tools import (
     ToolInputError,
     parse_dns_servers,
@@ -16,6 +17,25 @@ from twn_toolkit.network_tools import (
 
 
 class NetworkToolTests(unittest.TestCase):
+    def test_builds_minimal_switch_order_moves(self) -> None:
+        self.assertEqual(
+            _switch_order_moves(
+                ["switch-c", "switch-a", "switch-b"],
+                ["switch-a", "switch-b", "switch-c"],
+            ),
+            [{"switch_id": "switch-c", "after": "switch-b"}],
+        )
+        self.assertEqual(
+            _switch_order_moves(
+                ["switch-c", "switch-b", "switch-a"],
+                ["switch-a", "switch-b", "switch-c"],
+            ),
+            [
+                {"switch_id": "switch-b", "after": "switch-a"},
+                {"switch_id": "switch-c", "after": "switch-b"},
+            ],
+        )
+
     def test_subtracts_ipv4_and_ipv6_networks(self) -> None:
         self.assertEqual(
             subtract_subnets(
@@ -73,6 +93,16 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/tools/").data)
             self.assertIn(b"Certificate Chain Inspector", client.get("/tools/").data)
             self.assertEqual(client.get("/tools/certificate-inspector").status_code, 200)
+            ip_page = client.get(
+                "/tools/whats-my-ip",
+                environ_base={"REMOTE_ADDR": "192.0.2.44"},
+            )
+            self.assertEqual(ip_page.status_code, 200)
+            self.assertIn(b"192.0.2.44", ip_page.data)
+            self.assertIn(b"IPv4", ip_page.data)
+            self.assertIn(b"https://api64.ipify.org?format=json", ip_page.data)
+            self.assertIn(b"Your public internet address", ip_page.data)
+            self.assertIn("no-store", ip_page.headers["Cache-Control"])
 
             speed_page = client.get("/tools/speed-test")
             self.assertEqual(speed_page.status_code, 200)

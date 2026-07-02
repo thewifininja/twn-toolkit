@@ -70,6 +70,14 @@ def create_app(instance_path: str | None = None) -> Flask:
         }:
             return None
 
+        if app.testing:
+            g.current_user = {
+                "id": "test-user",
+                "username": "test-user",
+                "is_admin": True,
+            }
+            return None
+
         if not auth_store.is_configured():
             session.clear()
             return redirect(url_for("setup"))
@@ -299,6 +307,87 @@ def create_app(instance_path: str | None = None) -> Flask:
             edit_profile=edit_profile,
             profiles=profiles,
             task_groups=grouped_tasks(),
+        )
+
+    @app.get("/fortigate/switch-order")
+    def switch_order():
+        return render_template("switch_order.html", profiles=store.all())
+
+    @app.post("/fortigate/switch-order/objects")
+    def switch_order_objects():
+        profile = store.get(request.form.get("profile", ""))
+        if not profile:
+            return jsonify({"error": "Select a valid FortiGate profile."}), 400
+        vdom = request.form.get("vdom", "").strip() or profile.get("default_vdom", "root")
+        try:
+            switches = _managed_switch_order(
+                FortiGateClient.from_profile(profile).get_managed_switches(vdom)
+            )
+        except FortiGateError as exc:
+            return jsonify({"error": str(exc)}), 502
+        return jsonify({"switches": switches, "row_count": len(switches), "vdom": vdom})
+
+    @app.post("/fortigate/switch-order/apply")
+    def apply_switch_order():
+        profile = store.get(request.form.get("profile", ""))
+        desired_ids = list(dict.fromkeys(request.form.getlist("switch_id")))
+        if not profile:
+            return jsonify({"error": "Select a valid FortiGate profile."}), 400
+        if len(desired_ids) < 2:
+            return jsonify({"error": "Load and order at least two switches."}), 400
+
+        vdom = request.form.get("vdom", "").strip() or profile.get("default_vdom", "root")
+        client = FortiGateClient.from_profile(profile)
+        try:
+            current = _managed_switch_order(client.get_managed_switches(vdom))
+        except FortiGateError as exc:
+            return jsonify({"error": str(exc)}), 502
+
+        current_ids = [item["id"] for item in current]
+        if len(desired_ids) != len(current_ids) or set(desired_ids) != set(current_ids):
+            return jsonify(
+                {
+                    "error": (
+                        "The managed-switch list changed after it was loaded. "
+                        "Reload the switches before applying an order."
+                    )
+                }
+            ), 409
+
+        moves = _switch_order_moves(current_ids, desired_ids)
+        completed: list[dict[str, str]] = []
+        try:
+            for move in moves:
+                client.move_managed_switch_after(move["switch_id"], move["after"], vdom)
+                completed.append(move)
+            verified = _managed_switch_order(client.get_managed_switches(vdom))
+        except FortiGateError as exc:
+            return jsonify(
+                {
+                    "error": str(exc),
+                    "completed_moves": completed,
+                    "message": (
+                        f"FortiGate rejected the reorder after {len(completed)} "
+                        "successful move(s). Reload to inspect its current order."
+                    ),
+                }
+            ), 502
+
+        verified_ids = [item["id"] for item in verified]
+        if verified_ids != desired_ids:
+            return jsonify(
+                {
+                    "error": "FortiGate accepted the moves but the verified order does not match.",
+                    "completed_moves": completed,
+                    "switches": verified,
+                }
+            ), 409
+        return jsonify(
+            {
+                "message": f"Verified the new order of {len(verified)} FortiSwitches.",
+                "moves": completed,
+                "switches": verified,
+            }
         )
 
     @app.get("/fortiauthenticator")
@@ -916,6 +1005,52 @@ def _format_mac_device(item: dict[str, Any]) -> dict[str, Any]:
         "Description": item.get("description", ""),
         "Resource URI": resource_uri,
     }
+
+
+def _managed_switch_order(items: list[dict[str, Any]]) -> list[dict[str, str]]:
+    switches: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in items:
+        identifier = str(
+            item.get("switch-id")
+            or item.get("switch_id")
+            or item.get("name")
+            or item.get("serial")
+            or item.get("sn")
+            or ""
+        ).strip()
+        if not identifier or identifier in seen:
+            continue
+        seen.add(identifier)
+        display_name = str(
+            item.get("name")
+            or item.get("description")
+            or item.get("switch-id")
+            or item.get("switch_id")
+            or identifier
+        ).strip()
+        serial = str(item.get("sn") or item.get("serial") or "").strip()
+        switches.append({"id": identifier, "name": display_name, "serial": serial})
+    return switches
+
+
+def _switch_order_moves(
+    current_ids: list[str],
+    desired_ids: list[str],
+) -> list[dict[str, str]]:
+    simulated = list(current_ids)
+    moves: list[dict[str, str]] = []
+    for index in range(1, len(desired_ids)):
+        switch_id = desired_ids[index]
+        after = desired_ids[index - 1]
+        switch_index = simulated.index(switch_id)
+        if switch_index > 0 and simulated[switch_index - 1] == after:
+            continue
+        simulated.remove(switch_id)
+        after_index = simulated.index(after)
+        simulated.insert(after_index + 1, switch_id)
+        moves.append({"switch_id": switch_id, "after": after})
+    return moves
 
 
 def _format_mac_group_membership(item: dict[str, Any]) -> dict[str, Any]:

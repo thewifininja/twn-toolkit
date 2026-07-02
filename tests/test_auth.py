@@ -44,6 +44,8 @@ def test_login_logout_and_safe_next_redirect(tmp_path):
     client.post("/logout")
 
     assert client.get("/").status_code == 302
+    login_page = client.get("/login")
+    assert b"./twn adminreset" in login_page.data
     response = client.post(
         "/login",
         data={

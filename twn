@@ -156,11 +156,11 @@ case "${1:-}" in
   logs)
     logs
     ;;
-  reset-auth)
+  adminreset|reset-auth)
     reset_auth
     ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|status|logs|reset-auth}" >&2
+    echo "Usage: ./twn {start|stop|restart|status|logs|adminreset}" >&2
     exit 2
     ;;
 esac

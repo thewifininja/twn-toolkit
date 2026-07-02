@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel switch-order-tool"
+         id="switch-order-tool"
+         data-load-url="{{ url_for('switch_order_objects') }}"
+         data-apply-url="{{ url_for('apply_switch_order') }}">
+  <div class="panel-head">
+    <h1>Order Managed FortiSwitches</h1>
+    <p>Load the FortiGate’s current table order, then drag or alphabetize the switches.</p>
+  </div>
+
+  {% if profiles %}
+    <form id="switch-order-source" class="form">
+      <div class="form-grid">
+        <label>
+          FortiGate profile
+          <select name="profile" id="switch-order-profile" required>
+            {% for profile in profiles %}
+              <option value="{{ profile.name }}" data-vdom="{{ profile.default_vdom }}"
+                      {% if profile.is_default %}selected{% endif %}>{{ profile.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          VDOM
+          <input name="vdom" id="switch-order-vdom"
+                 value="{{ (profiles | selectattr('is_default') | first or profiles[0]).default_vdom }}">
+        </label>
+      </div>
+      <div class="button-row">
+        <button type="button" id="load-switch-order">Load Current Order</button>
+        <a class="button-link secondary" href="{{ url_for('fortigate_home') }}">FortiGate</a>
+      </div>
+    </form>
+
+    <section id="switch-order-editor" class="switch-order-editor" hidden>
+      <div class="switch-order-actions">
+        <div>
+          <h2>Desired order</h2>
+          <p id="switch-order-status" aria-live="polite"></p>
+        </div>
+        <button type="button" class="secondary" id="alphabetize-switches">Alphabetize</button>
+      </div>
+
+      <ol id="switch-order-list" class="switch-order-list"></ol>
+
+      <div class="switch-order-preview">
+        <h3>Move preview</h3>
+        <ol id="switch-move-preview"></ol>
+      </div>
+
+      <button type="button" id="apply-switch-order" disabled>Apply and Verify Order</button>
+    </section>
+  {% else %}
+    <div class="message error">Save a FortiGate profile before ordering managed switches.</div>
+    <a class="button-link" href="{{ url_for('fortigate_home') }}">Create Profile</a>
+  {% endif %}
+</section>
+<script src="{{ url_for('static', filename='switch-order.js') }}" defer></script>
+{% endblock %}

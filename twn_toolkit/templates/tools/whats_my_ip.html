@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel ip-address-panel">
+  <div class="panel-head">
+    <h1>What’s My IP?</h1>
+    <p>The address your browser used to connect to this toolkit server.</p>
+  </div>
+
+  <div class="ip-address-results">
+    <div class="ip-address-result">
+      <span>Address seen by this toolkit</span>
+      <strong>{{ client_ip }}</strong>
+      <small>{{ address_family }}</small>
+    </div>
+
+    <div class="ip-address-result"
+         id="public-ip-result"
+         data-lookup-url="https://api64.ipify.org?format=json">
+      <span>Your public internet address</span>
+      <strong id="public-ip-address" aria-live="polite">Checking…</strong>
+      <small id="public-ip-status">Requested directly by your browser</small>
+    </div>
+  </div>
+
+  <p class="field-note">
+    The toolkit address may be private, VPN, or loopback. To discover the public
+    address behind NAT, your browser contacts
+    <a href="https://www.ipify.org/" target="_blank" rel="noopener noreferrer">ipify</a>
+    over HTTPS; no toolkit credentials are sent.
+  </p>
+
+  <div class="button-row">
+    <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
+  </div>
+</section>
+<script src="{{ url_for('static', filename='whats-my-ip.js') }}" defer></script>
+{% endblock %}

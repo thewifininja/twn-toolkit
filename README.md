@@ -14,11 +14,15 @@ service.
   FortiAuthenticator MAC devices, and MAC group memberships.
 - Rename managed APs and FortiSwitches interactively or from CSV, with dry runs
   and read-back verification.
+- Reorder managed FortiSwitches by drag-and-drop or alphabetize their displayed
+  names, with a move preview and post-change verification.
 - Preview and remove FortiAuthenticator group memberships or delete MAC devices
   globally with overlap warnings and typed confirmation.
 
 ### Network Tools
 
+- **What’s My IP?:** show the address used to reach the toolkit and, through a
+  browser-side ipify lookup, the client's public internet address.
 - **Subnet Excluder:** subtract IPv4 or IPv6 CIDR networks from parent ranges.
 - **Multi-Host Ping:** troubleshoot reachability, latency, and loss with
   reusable host profiles, live Canvas charts, lockable history views, and CSV
@@ -60,7 +64,7 @@ The home page separates Fortinet workflows from vendor-neutral network tools.
 ./twn restart   Restart the service
 ./twn status    Show status and URL
 ./twn logs      Show recent server errors
-./twn reset-auth  Remove users and return to first-launch setup
+./twn adminreset  Remove users and return to first-launch setup
 ```
 
 The launcher supports macOS, Linux, and Raspberry Pi OS. Port 5050 is used by
@@ -115,7 +119,7 @@ manage users, change passwords, and set the idle timeout from **Settings**.
 If every administrator is locked out, stop the service and run:
 
 ```bash
-./twn reset-auth
+./twn adminreset
 ./twn start
 ```
 

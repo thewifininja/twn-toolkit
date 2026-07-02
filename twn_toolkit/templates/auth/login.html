@@ -13,5 +13,15 @@
     </label>
     <button type="submit">Sign in</button>
   </form>
+  <details class="password-recovery">
+    <summary>Forgot your password?</summary>
+    <p>An administrator can reset your password from Settings. If every
+       administrator is locked out, open a terminal on the toolkit server and run:</p>
+    <pre><code>./twn stop
+./twn adminreset
+./twn start</code></pre>
+    <p>This removes toolkit user accounts only. Saved device profiles, API keys,
+       and SNMP credentials are not deleted.</p>
+  </details>
 </section>
 {% endblock %}

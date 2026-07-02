@@ -69,6 +69,37 @@ class FortiGateClient:
         endpoint = endpoint_template.format(current_name=quote(current_name, safe=""))
         return self.request("GET", endpoint, params={"vdom": vdom})
 
+    def get_managed_switches(self, vdom: str) -> list[dict[str, Any]]:
+        response = self.request(
+            "GET",
+            "/api/v2/cmdb/switch-controller/managed-switch",
+            params={"vdom": vdom},
+        )
+        results = response.get("results", [])
+        if not isinstance(results, list):
+            raise FortiGateError("FortiGate returned an unexpected managed-switch response.")
+        return [item for item in results if isinstance(item, dict)]
+
+    def move_managed_switch_after(
+        self,
+        switch_id: str,
+        after_switch_id: str,
+        vdom: str,
+    ) -> dict[str, Any]:
+        endpoint = (
+            "/api/v2/cmdb/switch-controller/managed-switch/"
+            f"{quote(switch_id, safe='')}"
+        )
+        return self.request(
+            "PUT",
+            endpoint,
+            params={
+                "vdom": vdom,
+                "action": "move",
+                "after": after_switch_id,
+            },
+        )
+
     def request(
         self,
         method: str,
