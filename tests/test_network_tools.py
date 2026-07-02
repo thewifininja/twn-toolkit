@@ -87,6 +87,13 @@ class NetworkToolTests(unittest.TestCase):
             client = app.test_client()
 
             self.assertIn(b"DNS Lookup Tester", client.get("/").data)
+            home_page = client.get("/")
+            self.assertIn(b"brand/dragon-mark-128.png", home_page.data)
+            self.assertIn(b"brand/favicon-32.png", home_page.data)
+            favicon = client.get("/favicon.ico")
+            self.assertEqual(favicon.status_code, 200)
+            self.assertEqual(favicon.mimetype, "image/png")
+            favicon.close()
             self.assertIn(b"RADIUS Authentication Test", client.get("/").data)
             self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/").data)
             self.assertIn(b"Certificate Chain Inspector", client.get("/").data)

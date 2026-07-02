@@ -1,14 +1,28 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{{ user_theme }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>The WiFi Ninja's Toolkit</title>
+    <title>The WiFi Ninja’s Toolkit</title>
+    <meta name="theme-color" content="#151b1a">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='brand/apple-touch-icon.png') }}">
+    <script>
+      (() => {
+        const root = document.documentElement;
+        if (root.dataset.theme === "system") {
+          root.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="{{ url_for('index') }}">The WiFi Ninja's Toolkit</a>
+      <a class="brand" href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='brand/dragon-mark-128.png') }}" alt="">
+        <span>The WiFi Ninja’s Toolkit</span>
+      </a>
       <span class="subtitle">Fortinet workflows and network diagnostics</span>
       <nav class="topnav">
         {% if current_user %}
@@ -22,6 +36,18 @@
             </div>
           </details>
           <a href="{{ url_for('settings') }}">Settings</a>
+          <button
+            type="button"
+            class="theme-toggle"
+            id="theme-toggle"
+            data-update-url="{{ url_for('update_theme') }}"
+            data-theme="{{ user_theme }}"
+            aria-pressed="{{ 'true' if user_theme == 'dark' else 'false' }}"
+            title="Toggle color theme"
+          >
+            <span class="theme-toggle-icon" aria-hidden="true">{{ '☾' if user_theme == 'dark' else '☀' }}</span>
+            <span class="theme-toggle-label">{{ 'Dark' if user_theme == 'dark' else 'Light' }}</span>
+          </button>
           <form method="post" action="{{ url_for('logout') }}" class="nav-logout">
             <button type="submit" class="link-button">Sign out ({{ current_user.username }})</button>
           </form>
@@ -40,5 +66,6 @@
       {% endwith %}
       {% block content %}{% endblock %}
     </main>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
   </body>
 </html>

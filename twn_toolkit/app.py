@@ -125,11 +125,24 @@ def create_app(instance_path: str | None = None) -> Flask:
     @app.context_processor
     def authentication_context():
         password_policy = auth_store.password_policy()
+        current_user = getattr(g, "current_user", None)
         return {
-            "current_user": getattr(g, "current_user", None),
+            "current_user": current_user,
+            "user_theme": current_user.get("theme", "light") if current_user else "system",
             "min_password_length": password_policy["min_length"],
             "password_policy": password_policy,
         }
+
+    @app.post("/settings/theme")
+    def update_theme():
+        payload = request.get_json(silent=True) or {}
+        theme = str(payload.get("theme", ""))
+        try:
+            auth_store.set_user_theme(g.current_user["id"], theme)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        g.current_user["theme"] = theme
+        return jsonify({"theme": theme})
 
     @app.route("/setup", methods=["GET", "POST"])
     def setup():
@@ -803,7 +816,7 @@ def create_app(instance_path: str | None = None) -> Flask:
 
     @app.get("/favicon.ico")
     def favicon():
-        return Response(status=204)
+        return app.send_static_file("brand/favicon-32.png")
 
     @app.post("/profiles")
     def save_profile():

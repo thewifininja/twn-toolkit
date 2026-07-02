@@ -59,6 +59,28 @@ def test_login_logout_and_safe_next_redirect(tmp_path):
     assert client.get("/").status_code == 200
 
 
+def test_theme_preference_is_saved_per_user(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+
+    response = client.post("/settings/theme", json={"theme": "dark"})
+    assert response.status_code == 200
+    assert response.get_json() == {"theme": "dark"}
+    assert AuthStore(str(tmp_path)).get_user("admin")["theme"] == "dark"
+    page = client.get("/")
+    assert b'data-theme="dark"' in page.data
+    assert b'id="theme-toggle"' in page.data
+
+    assert client.post("/settings/theme", json={"theme": "sepia"}).status_code == 400
+    client.post("/logout")
+    client.post(
+        "/login",
+        data={"username": "admin", "password": "correct horse battery staple"},
+    )
+    assert b'data-theme="dark"' in client.get("/").data
+
+
 def test_admin_can_manage_users_timeout_and_passwords(tmp_path):
     app = create_app(str(tmp_path))
     client = app.test_client()

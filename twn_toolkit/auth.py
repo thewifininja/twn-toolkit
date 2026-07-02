@@ -69,12 +69,21 @@ class AuthStore:
             "password_hash": generate_password_hash(password, method="scrypt"),
             "is_admin": bool(is_admin),
             "enabled": True,
+            "theme": "light",
             "session_version": 1,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         users.append(user)
         self._write(data)
         return user
+
+    def set_user_theme(self, user_id: str, theme: str) -> None:
+        if theme not in {"light", "dark"}:
+            raise ValueError("Theme must be light or dark.")
+        data = self._read()
+        user = _find_user(data, user_id)
+        user["theme"] = theme
+        self._write(data)
 
     def update_password(self, user_id: str, password: str) -> None:
         validate_password(password, self.password_policy())

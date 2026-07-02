@@ -40,6 +40,7 @@
   chartTooltip.className = "ping-chart-tooltip";
   chartTooltip.hidden = true;
   document.body.appendChild(chartTooltip);
+  window.addEventListener("themechange", renderAllCharts);
 
   historyRange.addEventListener("change", () => {
     if (!followLive.checked && lockedViewEnd != null) {
@@ -394,8 +395,14 @@
     const xFor = (time) => plotLeft + ((time - startTime) / Math.max(1, endTime - startTime)) * plotWidth;
     const yFor = (latency) => plotTop + ((maxLatency - latency) / maxLatency) * (plotBottom - plotTop);
 
+    const darkTheme = document.documentElement.dataset.theme === "dark";
+    const gridColor = darkTheme ? "#405149" : "#dce3e9";
+    const labelColor = darkTheme ? "#a6b5ad" : "#667482";
+    const lineColor = darkTheme ? "#6ccf91" : "#2f78a8";
+    const lossColor = darkTheme ? "#ff7b7f" : "#b43a3a";
+
     context.clearRect(0, 0, cssWidth, cssHeight);
-    context.strokeStyle = "#dce3e9";
+    context.strokeStyle = gridColor;
     context.lineWidth = 1;
     [plotTop, (plotTop + plotBottom) / 2, plotBottom].forEach((y) => {
       context.beginPath();
@@ -403,7 +410,7 @@
       context.lineTo(cssWidth - plotRight, y);
       context.stroke();
     });
-    context.fillStyle = "#667482";
+    context.fillStyle = labelColor;
     context.font = "9px system-ui, sans-serif";
     context.fillText(`${maxLatency} ms`, 4, plotTop + 3);
     context.fillText(`${maxLatency / 2} ms`, 4, ((plotTop + plotBottom) / 2) + 3);
@@ -433,7 +440,7 @@
       bins.set(x, bin);
     });
 
-    context.strokeStyle = "#2f78a8";
+    context.strokeStyle = lineColor;
     context.lineWidth = 2;
     context.beginPath();
     let drawing = false;
@@ -457,7 +464,7 @@
       const x = plotLeft + pixel;
       if (bin.received) {
         if (bin.summarized || bin.samples > 1) {
-          context.strokeStyle = "#2f78a8";
+          context.strokeStyle = lineColor;
           context.lineWidth = 1;
           context.beginPath();
           context.moveTo(x, yFor(bin.max));
@@ -465,14 +472,14 @@
           context.stroke();
         }
         if (showIndividualDots) {
-          context.fillStyle = "#2f78a8";
+          context.fillStyle = lineColor;
           context.beginPath();
           context.arc(x, yFor(bin.sum / bin.received), 2.5, 0, Math.PI * 2);
           context.fill();
         }
       }
       if (bin.loss) {
-        context.strokeStyle = "#b43a3a";
+        context.strokeStyle = lossColor;
         context.lineWidth = 2;
         context.beginPath();
         context.moveTo(x, plotBottom - 7);
@@ -480,7 +487,7 @@
         context.stroke();
       }
     });
-    context.fillStyle = "#667482";
+    context.fillStyle = labelColor;
     context.font = "9px system-ui, sans-serif";
     context.fillText(new Date(startTime).toLocaleTimeString(), plotLeft, cssHeight - 8);
     const endLabel = new Date(endTime).toLocaleTimeString();
