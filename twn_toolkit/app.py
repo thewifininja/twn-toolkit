@@ -1118,13 +1118,20 @@ def _managed_switch_order(items: list[dict[str, Any]]) -> list[dict[str, str]]:
         seen.add(identifier)
         display_name = str(
             item.get("name")
-            or item.get("description")
             or item.get("switch-id")
             or item.get("switch_id")
             or identifier
         ).strip()
+        description = str(item.get("description") or "").strip()
         serial = str(item.get("sn") or item.get("serial") or "").strip()
-        switches.append({"id": identifier, "name": display_name, "serial": serial})
+        switches.append(
+            {
+                "id": identifier,
+                "name": display_name,
+                "description": description,
+                "serial": serial,
+            }
+        )
     return switches
 
 

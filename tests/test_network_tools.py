@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from twn_toolkit import create_app
-from twn_toolkit.app import _switch_order_moves
+from twn_toolkit.app import _managed_switch_order, _switch_order_moves
 from twn_toolkit.network_tools import (
     ToolInputError,
     parse_dns_servers,
@@ -17,6 +17,26 @@ from twn_toolkit.network_tools import (
 
 
 class NetworkToolTests(unittest.TestCase):
+    def test_switch_order_keeps_name_primary_and_description_separate(self) -> None:
+        switches = _managed_switch_order(
+            [
+                {
+                    "switch-id": "S124ENTF00000001",
+                    "name": "MDF-SW01",
+                    "description": "Main distribution frame",
+                    "sn": "S124ENTF00000001",
+                },
+                {
+                    "switch-id": "S124ENTF00000002",
+                    "description": "Second-floor closet",
+                },
+            ]
+        )
+        self.assertEqual(switches[0]["name"], "MDF-SW01")
+        self.assertEqual(switches[0]["description"], "Main distribution frame")
+        self.assertEqual(switches[1]["name"], "S124ENTF00000002")
+        self.assertEqual(switches[1]["description"], "Second-floor closet")
+
     def test_builds_minimal_switch_order_moves(self) -> None:
         self.assertEqual(
             _switch_order_moves(

@@ -1236,6 +1236,14 @@ button.danger {
   overflow-wrap: anywhere;
 }
 
+.switch-order-description {
+  color: var(--muted);
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 600;
+  margin-top: 3px;
+}
+
 .switch-order-row-actions {
   display: flex;
   gap: 5px;

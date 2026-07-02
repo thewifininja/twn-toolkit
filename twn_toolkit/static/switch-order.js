@@ -136,10 +136,18 @@
       const details = document.createElement("div");
       const name = document.createElement("strong");
       name.textContent = item.name;
+      if (item.description && item.description !== item.name) {
+        const description = document.createElement("small");
+        description.className = "switch-order-description";
+        description.textContent = item.description;
+        details.append(name, description);
+      } else {
+        details.append(name);
+      }
       const identifiers = document.createElement("span");
       identifiers.textContent = item.serial && item.serial !== item.id
         ? `${item.id} · ${item.serial}` : item.id;
-      details.append(name, identifiers);
+      details.append(identifiers);
 
       const controls = document.createElement("div");
       controls.className = "switch-order-row-actions";
