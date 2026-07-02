@@ -8,28 +8,62 @@
 {% if current_user.is_admin %}
   <div class="grid two settings-grid">
     <section class="panel">
-      <h2>Session timeout</h2>
-      <p>Sign users out after this many minutes without a request to the toolkit.</p>
-      <form method="post" action="{{ url_for('update_session_settings') }}" class="inline-form">
+      <h2>Authentication policy</h2>
+      <p>Configure session expiry and the requirements for newly assigned passwords.</p>
+      <form method="post" action="{{ url_for('update_session_settings') }}" class="form auth-policy-form">
         <label>Idle minutes
           <input type="number" name="idle_timeout_minutes" min="1" max="1440"
                  value="{{ idle_timeout_minutes }}" required>
         </label>
-        <button type="submit">Save timeout</button>
+        <label>Minimum password length
+          <input type="number" name="min_password_length" min="8" max="128"
+                 value="{{ min_password_length }}" required>
+        </label>
+        <fieldset class="choice-group">
+          <legend>Required character types</legend>
+          <label class="check">
+            <input type="checkbox" name="require_uppercase"
+                   {% if password_policy.require_uppercase %}checked{% endif %}>
+            Uppercase letter
+          </label>
+          <label class="check">
+            <input type="checkbox" name="require_lowercase"
+                   {% if password_policy.require_lowercase %}checked{% endif %}>
+            Lowercase letter
+          </label>
+          <label class="check">
+            <input type="checkbox" name="require_number"
+                   {% if password_policy.require_number %}checked{% endif %}>
+            Number
+          </label>
+          <label class="check">
+            <input type="checkbox" name="require_special"
+                   {% if password_policy.require_special %}checked{% endif %}>
+            Special character
+          </label>
+        </fieldset>
+        <button type="submit">Save policy</button>
       </form>
     </section>
 
     <section class="panel">
       <h2>Add user</h2>
+      <p class="field-note">
+        Passwords require at least {{ min_password_length }} characters{% if password_policy.require_uppercase %},
+        uppercase{% endif %}{% if password_policy.require_lowercase %}, lowercase{% endif %}{% if password_policy.require_number %},
+        a number{% endif %}{% if password_policy.require_special %}, and a special character{% endif %}.
+      </p>
       <form method="post" action="{{ url_for('create_user') }}" class="stack">
         <label>Username
           <input name="username" minlength="3" maxlength="64" required>
         </label>
         <label>Password
-          <input type="password" name="password" minlength="12" autocomplete="new-password" required>
+          <input type="password" name="password" minlength="{{ min_password_length }}"
+                 autocomplete="new-password" required>
         </label>
         <label>Confirm password
-          <input type="password" name="confirm_password" minlength="12" autocomplete="new-password" required>
+          <input type="password" name="confirm_password" minlength="{{ min_password_length }}"
+                 autocomplete="new-password" required>
         </label>
         <label class="check">
           <input type="checkbox" name="is_admin"> Administrator
@@ -42,6 +76,7 @@
 
 <section class="panel">
   <h2>Users</h2>
+  <p class="field-note">Password changes use the currently configured policy.</p>
   <div class="user-list">
     {% for user in users %}
       <article class="user-card">
@@ -53,9 +88,9 @@
           {% if user.id == current_user.id %}<span class="muted">Current account</span>{% endif %}
         </div>
         <form method="post" action="{{ url_for('change_user_password', user_id=user.id) }}" class="password-form">
-          <input type="password" name="password" minlength="12" placeholder="New password"
+          <input type="password" name="password" minlength="{{ min_password_length }}" placeholder="New password"
                  autocomplete="new-password" aria-label="New password for {{ user.username }}" required>
-          <input type="password" name="confirm_password" minlength="12" placeholder="Confirm password"
+          <input type="password" name="confirm_password" minlength="{{ min_password_length }}" placeholder="Confirm password"
                  autocomplete="new-password" aria-label="Confirm password for {{ user.username }}" required>
           <button type="submit">Change password</button>
         </form>

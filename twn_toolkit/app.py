@@ -110,7 +110,12 @@ def create_app(instance_path: str | None = None) -> Flask:
 
     @app.context_processor
     def authentication_context():
-        return {"current_user": getattr(g, "current_user", None)}
+        password_policy = auth_store.password_policy()
+        return {
+            "current_user": getattr(g, "current_user", None),
+            "min_password_length": password_policy["min_length"],
+            "password_policy": password_policy,
+        }
 
     @app.route("/setup", methods=["GET", "POST"])
     def setup():
@@ -165,6 +170,8 @@ def create_app(instance_path: str | None = None) -> Flask:
             "auth/settings.html",
             users=visible_users,
             idle_timeout_minutes=auth_store.idle_timeout_minutes(),
+            min_password_length=auth_store.min_password_length(),
+            password_policy=auth_store.password_policy(),
         )
 
     @app.post("/settings/users")
@@ -230,11 +237,19 @@ def create_app(instance_path: str | None = None) -> Flask:
             return Response("Administrator access is required.", status=403)
         try:
             minutes = int(request.form.get("idle_timeout_minutes", ""))
+            min_password_length = int(request.form.get("min_password_length", ""))
         except (TypeError, ValueError):
-            flash("Enter a whole number of minutes.", "error")
+            flash("Enter whole numbers for the authentication settings.", "error")
         else:
             try:
-                auth_store.set_idle_timeout_minutes(minutes)
+                auth_store.set_policy(
+                    idle_timeout_minutes=minutes,
+                    min_password_length=min_password_length,
+                    require_uppercase=request.form.get("require_uppercase") == "on",
+                    require_lowercase=request.form.get("require_lowercase") == "on",
+                    require_number=request.form.get("require_number") == "on",
+                    require_special=request.form.get("require_special") == "on",
+                )
             except ValueError as exc:
                 flash(str(exc), "error")
             else:

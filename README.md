@@ -114,7 +114,8 @@ On first launch, the toolkit requires creation of an administrator account;
 there is no default username or password. Passwords are stored as scrypt hashes
 in owner-readable `instance/auth.json`. Signed login sessions use an independently
 generated owner-readable secret in `instance/session_secret`. Administrators can
-manage users, change passwords, and set the idle timeout from **Settings**.
+manage users, change passwords, and configure the idle timeout, minimum password
+length, and optional character-complexity requirements from **Settings**.
 
 If every administrator is locked out, stop the service and run:
 

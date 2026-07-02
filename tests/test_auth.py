@@ -77,17 +77,31 @@ def test_admin_can_manage_users_timeout_and_passwords(tmp_path):
     assert operator is not None
     assert operator["is_admin"] is False
 
-    client.post("/settings/session", data={"idle_timeout_minutes": "45"})
+    client.post(
+        "/settings/session",
+        data={
+            "idle_timeout_minutes": "45",
+            "min_password_length": "16",
+            "require_uppercase": "on",
+            "require_number": "on",
+            "require_special": "on",
+        },
+    )
     assert store.idle_timeout_minutes() == 45
+    assert store.min_password_length() == 16
+    assert store.password_policy()["require_uppercase"] is True
+    assert store.password_policy()["require_lowercase"] is False
+    assert store.password_policy()["require_number"] is True
+    assert store.password_policy()["require_special"] is True
 
     client.post(
         f"/settings/users/{operator['id']}/password",
         data={
-            "password": "replacement password!",
-            "confirm_password": "replacement password!",
+            "password": "Replacement password 2!",
+            "confirm_password": "Replacement password 2!",
         },
     )
-    assert store.authenticate("operator", "replacement password!") is not None
+    assert store.authenticate("operator", "Replacement password 2!") is not None
 
     client.post(f"/settings/users/{operator['id']}/delete")
     assert store.get_user("operator") is None

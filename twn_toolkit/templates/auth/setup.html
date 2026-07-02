@@ -9,10 +9,12 @@
       <input name="username" autocomplete="username" minlength="3" maxlength="64" required autofocus>
     </label>
     <label>Password
-      <input type="password" name="password" autocomplete="new-password" minlength="12" required>
+      <input type="password" name="password" autocomplete="new-password"
+             minlength="{{ min_password_length }}" required>
     </label>
     <label>Confirm password
-      <input type="password" name="confirm_password" autocomplete="new-password" minlength="12" required>
+      <input type="password" name="confirm_password" autocomplete="new-password"
+             minlength="{{ min_password_length }}" required>
     </label>
     <button type="submit">Create administrator</button>
   </form>
