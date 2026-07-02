@@ -690,6 +690,25 @@ button.danger {
   grid-template-columns: repeat(3, minmax(120px, 1fr));
 }
 
+.dhcp-option-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dhcp-option-list li {
+  display: grid;
+  grid-template-columns: 3.25rem 1fr;
+  align-items: baseline;
+  gap: 0.65rem;
+}
+
+.dhcp-option-list code {
+  text-align: right;
+}
+
 .ntp-summary {
   display: grid;
   gap: 12px;

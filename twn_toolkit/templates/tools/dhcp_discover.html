@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>DHCP Discover</h1>
+    <p>Broadcast one DHCP Discover from the toolkit host and inspect every matching Offer. This tool never sends a DHCP Request, so it does not accept or configure the offered address.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+
+  <form class="form" method="post">
+    <div class="ntp-options">
+      <label>Network interface
+        <select name="interface" id="dhcp-interface" required>
+          {% for interface in interfaces %}
+            <option value="{{ interface.name }}" data-mac="{{ interface.mac }}" {{ 'selected' if interface.name == form.interface else '' }}>{{ interface.name }} · {{ interface.mac }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Client MAC address
+        <input name="mac" id="dhcp-mac" value="{{ form.mac }}" placeholder="02:00:00:00:00:01" required>
+      </label>
+      <label>Listen timeout (seconds)
+        <input name="timeout" type="number" min="0.2" max="15" step="0.1" value="{{ form.timeout }}" required>
+      </label>
+    </div>
+
+    <label>Parameter Request List (option 55)
+      <textarea name="parameters" rows="3" required>{{ form.parameters }}</textarea>
+    </label>
+    <span class="field-note">Comma-separated option numbers or names, in the exact order to request. For example: <code>Subnet Mask, Router, 6, Domain Name, 119</code>.</span>
+
+    <div class="ntp-options">
+      <label>Host name (optional)
+        <input name="hostname" maxlength="255" value="{{ form.hostname }}">
+      </label>
+      <label>Vendor class (optional)
+        <input name="vendor_class" maxlength="255" value="{{ form.vendor_class }}" placeholder="Example client identifier">
+      </label>
+    </div>
+
+    <details>
+      <summary>Known option names</summary>
+      <ul class="dhcp-option-list">
+        {% for code, name in option_names.items() %}
+          <li><code>{{ code }}</code><span>{{ name }}</span></li>
+        {% endfor %}
+      </ul>
+    </details>
+
+    <div class="button-row">
+      <button type="submit">Send Discover</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
+    </div>
+    <span class="tool-status">The probe uses UDP ports 68 → 67 on the selected local interface. Running the toolkit requires permission to bind the privileged client port.</span>
+  </form>
+</section>
+
+{% if offers is not none and not offers %}
+<section class="panel">
+  <div class="message error">No matching DHCP Offers arrived before the timeout.</div>
+</section>
+{% endif %}
+
+{% for offer in offers or [] %}
+<section class="panel">
+  <div class="certificate-result-head">
+    <div>
+      <h2>Offer: {{ offer.offered_address }}</h2>
+      <p>DHCP server {{ offer.server_address }}{% if offer.source_address != offer.server_address %} · received from {{ offer.source_address }}{% endif %}</p>
+    </div>
+    <span class="pill success">offer only</span>
+  </div>
+
+  <dl class="ntp-details">
+    <div><dt>Offered address</dt><dd><code>{{ offer.offered_address }}</code></dd></div>
+    <div><dt>Server identifier</dt><dd><code>{{ offer.server_address }}</code></dd></div>
+    {% if offer.next_server %}<div><dt>Next server</dt><dd><code>{{ offer.next_server }}</code></dd></div>{% endif %}
+    {% if offer.relay_address != "0.0.0.0" %}<div><dt>Relay agent</dt><dd><code>{{ offer.relay_address }}</code></dd></div>{% endif %}
+  </dl>
+
+  <h3>Returned Options</h3>
+  <div class="preview-table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Name</th><th>Requested</th><th>Decoded value</th><th>Raw bytes</th></tr></thead>
+      <tbody>
+        {% for option in offer.options %}
+          <tr>
+            <td><code>{{ option.code }}</code></td>
+            <td>{{ option.name }}</td>
+            <td>{{ "Yes" if option.code in requested_codes else "No" }}</td>
+            <td>{{ option.value }}</td>
+            <td><code>{{ option.hex }}</code></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+
+<script>
+  document.getElementById("dhcp-interface")?.addEventListener("change", (event) => {
+    const option = event.target.selectedOptions[0];
+    if (option?.dataset.mac) document.getElementById("dhcp-mac").value = option.dataset.mac;
+  });
+</script>
+{% endblock %}

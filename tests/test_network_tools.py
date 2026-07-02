@@ -90,6 +90,7 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"RADIUS Authentication Test", client.get("/").data)
             self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/").data)
             self.assertIn(b"Certificate Chain Inspector", client.get("/").data)
+            self.assertIn(b"DHCP Discover", client.get("/").data)
             self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/tools/").data)
             self.assertIn(b"Certificate Chain Inspector", client.get("/tools/").data)
             self.assertEqual(client.get("/tools/certificate-inspector").status_code, 200)

@@ -12,6 +12,14 @@ from .certificate_tools import (
     inspect_certificate_chain,
     normalize_certificate_target,
 )
+from .dhcp_tools import (
+    DEFAULT_PARAMETER_REQUEST_LIST,
+    DHCP_OPTIONS,
+    available_interfaces,
+    discover_offers,
+    format_parameter_request_list,
+    parse_parameter_request_list,
+)
 from .network_tools import (
     dns_lookup_matrix,
     parse_dns_hosts,
@@ -55,6 +63,53 @@ SPEED_TEST_DOWNLOAD_CHUNK = os.urandom(SPEED_TEST_CHUNK_SIZE)
 @tools_bp.get("/")
 def index():
     return render_template("tools/index.html")
+
+
+@tools_bp.route("/dhcp-discover", methods=["GET", "POST"])
+def dhcp_discover():
+    interfaces = available_interfaces()
+    default_interface = interfaces[0] if interfaces else {"name": "", "mac": ""}
+    form = {
+        "interface": default_interface["name"],
+        "mac": default_interface["mac"],
+        "parameters": format_parameter_request_list(DEFAULT_PARAMETER_REQUEST_LIST),
+        "timeout": "3",
+        "hostname": "",
+        "vendor_class": "",
+    }
+    offers = None
+    requested_codes = list(DEFAULT_PARAMETER_REQUEST_LIST)
+    error = ""
+    if request.method == "POST":
+        form = {
+            "interface": request.form.get("interface", "").strip(),
+            "mac": request.form.get("mac", "").strip(),
+            "parameters": request.form.get("parameters", "").strip(),
+            "timeout": request.form.get("timeout", "3").strip(),
+            "hostname": request.form.get("hostname", "").strip(),
+            "vendor_class": request.form.get("vendor_class", "").strip(),
+        }
+        try:
+            requested_codes = parse_parameter_request_list(form["parameters"])
+            offers = discover_offers(
+                form["interface"],
+                form["mac"],
+                requested_codes,
+                timeout=float(form["timeout"]),
+                hostname=form["hostname"],
+                vendor_class=form["vendor_class"],
+            )
+        except (ToolInputError, TypeError, ValueError) as exc:
+            error = str(exc) or "Enter valid DHCP probe settings."
+    return render_template(
+        "tools/dhcp_discover.html",
+        error=error,
+        form=form,
+        interfaces=interfaces,
+        offers=offers,
+        requested_codes=requested_codes,
+        option_names=DHCP_OPTIONS,
+    )
 
 
 @tools_bp.get("/whats-my-ip")

@@ -158,6 +158,11 @@ have their own reusable profiles, but none require a FortiGate profile.
 - **NTP Tester** tests up to 20 servers concurrently from reusable server
   profiles. It reports average clock offset, round-trip delay, jitter, stratum,
   reference identity, leap status, root delay, and root dispersion.
+- **DHCP Discover** sends exactly one broadcast Discover on a selected
+  interface, using a configurable client MAC, host/vendor identity, and
+  parameter request list. It listens for all matching Offers until timeout and
+  does not send a Request or configure the offered address. Binding UDP port 68
+  and selecting an interface require root or equivalent network capabilities.
 - **Traceroute** follows IPv4 or IPv6 destinations using UDP or ICMP probes,
   streaming each result into a latency-colored hop path and live text output.
   Up to 10 destinations can be queued per run, two traces execute concurrently,

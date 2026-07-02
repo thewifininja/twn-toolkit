@@ -40,6 +40,8 @@ service.
 - **TCP Port Scanner:** check selected ports across authorized hosts.
 - **NTP Tester:** compare clock offset, delay, jitter, stratum, reference
   identity, and synchronization health across reusable server lists.
+- **DHCP Discover:** send a Discover with a custom parameter request list and
+  inspect matching Offers without sending a Request or accepting a lease.
 - **Traceroute:** stream UDP or ICMP traces for up to 10 destinations from
   reusable lists into live graphical paths and traditional text output.
 
@@ -81,6 +83,12 @@ when needed:
 ```bash
 TWN_TOOLKIT_PORT=8000 ./twn start
 ```
+
+The DHCP Discover tool binds privileged UDP client port 68 and pins traffic to
+the selected interface. Start the toolkit with suitable OS privileges when
+using that tool (for example, as root on a dedicated diagnostic host, or with
+Linux `CAP_NET_BIND_SERVICE` and `CAP_NET_RAW` capabilities). The web page
+reports a permission error when those privileges are unavailable.
 
 By default, the service listens on all IPv4 interfaces but accepts clients only
 from loopback and the RFC 1918 private ranges (`10.0.0.0/8`, `172.16.0.0/12`,
