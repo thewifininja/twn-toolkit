@@ -82,8 +82,10 @@ when needed:
 TWN_TOOLKIT_PORT=8000 ./twn start
 ```
 
-The service binds to localhost by default, runs in the background, and writes
-its PID and logs under the ignored `instance/` directory.
+By default, the service listens on all IPv4 interfaces but accepts clients only
+from loopback and the RFC 1918 private ranges (`10.0.0.0/8`, `172.16.0.0/12`,
+and `192.168.0.0/16`). It runs in the background and writes its PID and logs
+under the ignored `instance/` directory.
 
 For first-time setup, API permissions, normal usage, and preparing a clean copy
 for another user, see [QUICKSTART.md](QUICKSTART.md).
@@ -135,10 +137,9 @@ Equivalently, delete `instance/auth.json` while the service is stopped. The next
 browser visit returns to administrator setup. This does not delete device
 profiles, SNMP credentials, API keys, or the session secret.
 
-Authentication protects access to the application, but it does not make the
-service suitable for direct internet exposure. Keep the default localhost bind
-unless trusted internal clients need access, and put TLS in front of the toolkit
-before allowing logins over a network.
+Authentication and the default private-network allowlist protect access to the
+application, but they do not make it suitable for direct internet exposure. Put
+TLS in front of the toolkit before allowing logins across an untrusted network.
 
 Administrators can open **Settings → Server access** to listen on all network
 interfaces and allow specific IPv4/IPv6 addresses or CIDR networks. Loopback is

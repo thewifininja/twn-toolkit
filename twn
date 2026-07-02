@@ -22,11 +22,11 @@ try:
     with open(sys.argv[1], encoding="utf-8") as handle:
         value = json.load(handle).get("listen_host", "127.0.0.1")
 except (OSError, ValueError):
-    value = "127.0.0.1"
-print(value if value in {"127.0.0.1", "0.0.0.0"} else "127.0.0.1")
+    value = "0.0.0.0"
+print(value if value in {"127.0.0.1", "0.0.0.0"} else "0.0.0.0")
 ' "$SERVER_SETTINGS")
 fi
-HOST=${HOST:-127.0.0.1}
+HOST=${HOST:-0.0.0.0}
 DISPLAY_HOST="$HOST"
 if [ "$DISPLAY_HOST" = "0.0.0.0" ]; then
   DISPLAY_HOST="127.0.0.1"

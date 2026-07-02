@@ -8,7 +8,12 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_LISTEN_HOST = "127.0.0.1"
+DEFAULT_LISTEN_HOST = "0.0.0.0"
+DEFAULT_ALLOWED_NETWORKS = [
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+]
 ALLOWED_LISTEN_HOSTS = {"127.0.0.1", "0.0.0.0"}
 LOOPBACK_NETWORKS = (
     ipaddress.ip_network("127.0.0.0/8"),
@@ -24,7 +29,10 @@ class ServerSettingsStore:
 
     def get(self) -> dict[str, Any]:
         if not self.path.exists():
-            return {"listen_host": DEFAULT_LISTEN_HOST, "allowed_networks": []}
+            return {
+                "listen_host": DEFAULT_LISTEN_HOST,
+                "allowed_networks": list(DEFAULT_ALLOWED_NETWORKS),
+            }
         try:
             with self.path.open("r", encoding="utf-8") as handle:
                 data = json.load(handle)

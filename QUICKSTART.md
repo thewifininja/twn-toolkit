@@ -192,11 +192,12 @@ The recipient can follow this guide to create their own environment and profile.
 
 ## Local Network Access
 
-An administrator can open **Settings → Server access**, select **All network
-interfaces**, and enter each trusted client address or CIDR network. **Save and
-Restart** applies the listener change without requiring terminal access. The
-toolkit always permits local loopback access and prevents a remote administrator
-from saving an allowlist that excludes their current address.
+The default listener uses all IPv4 interfaces and permits loopback plus the RFC
+1918 private ranges (`10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16`).
+An administrator can narrow or expand this from **Settings → Server access**.
+**Save and Restart** applies changes without requiring terminal access. The
+toolkit always permits local loopback and prevents a remote administrator from
+saving an allowlist that excludes their current address.
 
 Authentication and an IP allowlist do not make the service suitable
 for direct internet exposure. Keep access to trusted internal networks and use a
