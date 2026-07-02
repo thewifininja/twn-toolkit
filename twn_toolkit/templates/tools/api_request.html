@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>Webhook / API Request Tester</h1>
+    <p>Send one HTTP request from the toolkit host and inspect timing, status, headers, and a bounded response body.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  <form class="form" method="post">
+    <div class="dns-options">
+      <label>Method
+        <select name="method">{% for method in ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'] %}<option {{ 'selected' if form.method == method else '' }}>{{ method }}</option>{% endfor %}</select>
+      </label>
+      <label>Timeout (seconds)
+        <input name="timeout" type="number" min="0.2" max="30" step="0.1" value="{{ form.timeout }}" required>
+      </label>
+    </div>
+    <label>URL
+      <input name="url" type="url" value="{{ form.url }}" placeholder="https://api.example.com/v1/health" required>
+    </label>
+    <label>Request headers
+      <textarea name="headers" rows="5" placeholder="Accept: application/json&#10;Authorization: Bearer …">{{ form.headers }}</textarea>
+    </label>
+    <span class="field-note">One <code>Name: Value</code> per line. Authorization, cookies, and API keys are redacted from results.</span>
+    <label>Request body
+      <textarea name="body" rows="8" placeholder='{"example": true}'>{{ form.body }}</textarea>
+    </label>
+    <label class="check"><input name="verify_tls" type="checkbox" {{ 'checked' if form.verify_tls else '' }}>Verify TLS certificate</label>
+    <div class="button-row"><button type="submit">Send Request</button><a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a></div>
+    <span class="field-note">Redirects are reported but not followed. Response bodies are limited to 1 MiB and are never saved.</span>
+  </form>
+</section>
+{% if result %}
+<section class="panel">
+  <div class="certificate-result-head">
+    <div><h2>{{ result.status }} {{ result.reason }}</h2><p>{{ result.elapsed_ms }} ms · {{ result.bytes }} bytes · {{ result.resolved_addresses|join(', ') }}</p></div>
+    <span class="pill {{ 'success' if result.status < 400 else 'error' }}">HTTP {{ result.status }}</span>
+  </div>
+  {% if result.redirect %}<div class="message">Redirect target: <code>{{ result.redirect }}</code> (not followed)</div>{% endif %}
+  {% if result.truncated %}<div class="message error">Response body truncated at 1 MiB.</div>{% endif %}
+  <h3>Response Headers</h3>
+  <div class="preview-table-wrap"><table><tbody>{% for name, value in result.response_headers.items() %}<tr><th>{{ name }}</th><td><code>{{ value }}</code></td></tr>{% endfor %}</tbody></table></div>
+  <h3>Response Body</h3>
+  <pre class="result-output">{{ result.body }}</pre>
+</section>
+{% endif %}
+{% endblock %}

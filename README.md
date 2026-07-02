@@ -30,7 +30,8 @@ service.
 - **Multi-SSH:** run one command sequence across multiple SSH hosts.
 - **DNS Lookup Tester:** compare DNS answers and lookup latency across resolvers.
 - **RADIUS Authentication Test:** compare PAP or CHAP authentication and decode
-  returned attributes.
+  returned attributes. Optional `eapol_test` integration adds PEAP/MSCHAPv2 and
+  EAP-TLS with request-scoped certificate uploads.
 - **Wi-Fi / LAN Speed Test:** measure browser-to-toolkit latency, jitter,
   download, and upload throughput on the local network.
 - **Certificate Chain Inspector:** inspect the exact TLS chain supplied by a
@@ -42,6 +43,12 @@ service.
   identity, and synchronization health across reusable server lists.
 - **DHCP Discover:** send a Discover with a custom parameter request list and
   inspect matching Offers without sending a Request or accepting a lease.
+- **Path MTU Tester:** binary-search the largest unfragmented IPv4 or IPv6 ICMP
+  packet that reaches a destination.
+- **Webhook / API Tester:** send a bounded HTTP request without following
+  redirects and inspect timing, status, headers, and response content.
+- **Syslog Tools:** generate RFC 5424 test messages or collect a bounded number
+  of UDP or TCP syslog messages during a short listening window.
 - **Traceroute:** stream UDP or ICMP traces for up to 10 destinations from
   reusable lists into live graphical paths and traditional text output.
 
@@ -89,6 +96,12 @@ the selected interface. Start the toolkit with suitable OS privileges when
 using that tool (for example, as root on a dedicated diagnostic host, or with
 Linux `CAP_NET_BIND_SERVICE` and `CAP_NET_RAW` capabilities). The web page
 reports a permission error when those privileges are unavailable.
+
+PEAP/MSCHAPv2 and EAP-TLS testing requires the `eapol_test` executable from the
+wpa_supplicant project. On Debian and Raspberry Pi OS it is provided by the
+`eapoltest` package. PAP and CHAP testing do not require it. CA certificates,
+client certificates, and private keys uploaded for an EAP test are placed in a
+private temporary directory and removed when the test finishes.
 
 By default, the service listens on all IPv4 interfaces but accepts clients only
 from loopback and the RFC 1918 private ranges (`10.0.0.0/8`, `172.16.0.0/12`,

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>Syslog Tools</h1>
+    <p>Generate an RFC 5424 test message or temporarily listen for incoming syslog over UDP or TCP.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Send a Test Message</h2>
+    <p>Build and transmit one standards-based syslog message to another product.</p>
+  </div>
+  <form class="form" method="post">
+    <input type="hidden" name="action" value="send">
+    <div class="ntp-options">
+      <label>Protocol
+        <select name="send_protocol"><option value="udp" {{ 'selected' if send_form.protocol == 'udp' else '' }}>UDP</option><option value="tcp" {{ 'selected' if send_form.protocol == 'tcp' else '' }}>TCP</option></select>
+      </label>
+      <label>Destination
+        <input name="send_host" value="{{ send_form.host }}" placeholder="syslog.example.com" required>
+      </label>
+      <label>Port
+        <input name="send_port" type="number" min="1" max="65535" value="{{ send_form.port }}" required>
+      </label>
+      <label>Timeout
+        <input name="send_timeout" type="number" min="0.2" max="10" step="0.1" value="{{ send_form.timeout }}" required>
+      </label>
+      <label>Facility
+        <select name="send_facility">
+          {% for value, label in [(0,'kern'),(1,'user'),(2,'mail'),(3,'daemon'),(4,'auth'),(5,'syslog'),(6,'lpr'),(7,'news'),(8,'uucp'),(9,'cron'),(10,'authpriv'),(11,'ftp'),(12,'ntp'),(13,'security'),(14,'console'),(15,'clock'),(16,'local0'),(17,'local1'),(18,'local2'),(19,'local3'),(20,'local4'),(21,'local5'),(22,'local6'),(23,'local7')] %}
+            <option value="{{ value }}" {{ 'selected' if send_form.facility|int == value else '' }}>{{ value }} · {{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Severity
+        <select name="send_severity">
+          {% for value, label in [(0,'Emergency'),(1,'Alert'),(2,'Critical'),(3,'Error'),(4,'Warning'),(5,'Notice'),(6,'Informational'),(7,'Debug')] %}
+            <option value="{{ value }}" {{ 'selected' if send_form.severity|int == value else '' }}>{{ value }} · {{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Message hostname
+        <input name="send_hostname" value="{{ send_form.hostname }}" maxlength="255" required>
+      </label>
+      <label>Application name
+        <input name="send_app_name" value="{{ send_form.app_name }}" maxlength="48" required>
+      </label>
+    </div>
+    <label>Message
+      <textarea name="send_message" rows="5" maxlength="8192" placeholder="Test message from The WiFi Ninja's Toolkit" required>{{ send_form.message }}</textarea>
+    </label>
+    <div class="button-row"><button type="submit">Send Syslog Message</button><a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a></div>
+    <span class="field-note">TCP uses newline framing. Sending confirms local transmission or connection—not ingestion by the remote product.</span>
+  </form>
+  {% if send_result %}
+    <div class="message success">Sent {{ send_result.bytes }} bytes over {{ send_result.protocol }} to <code>{{ send_result.address }}:{{ send_result.port }}</code> with priority {{ send_result.priority }}.</div>
+    <h3>Message on the Wire</h3>
+    <pre class="result-output">{{ send_result.wire_message }}</pre>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Receive Messages Temporarily</h2>
+    <p>Open a bounded listener, collect incoming messages, then close it automatically.</p>
+  </div>
+  <form class="form" method="post">
+    <input type="hidden" name="action" value="receive">
+    <div class="ntp-options">
+      <label>Protocol
+        <select name="protocol"><option value="udp" {{ 'selected' if receive_form.protocol == 'udp' else '' }}>UDP</option><option value="tcp" {{ 'selected' if receive_form.protocol == 'tcp' else '' }}>TCP</option></select>
+      </label>
+      <label>Bind address
+        <input name="bind_address" value="{{ receive_form.bind_address }}" required>
+      </label>
+      <label>Port
+        <input name="port" type="number" min="1" max="65535" value="{{ receive_form.port }}" required>
+      </label>
+      <label>Listen duration
+        <input name="duration" type="number" min="1" max="30" step="1" value="{{ receive_form.duration }}" required>
+      </label>
+      <label>Maximum messages
+        <input name="max_messages" type="number" min="1" max="500" value="{{ receive_form.max_messages }}" required>
+      </label>
+    </div>
+    <div class="button-row"><button type="submit">Start Listening</button><a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a></div>
+    <span class="field-note">The page waits while listening. Port 5514 avoids the privileges normally required by standard syslog port 514.</span>
+  </form>
+</section>
+{% if messages is not none %}
+<section class="panel">
+  <div class="certificate-result-head"><div><h2>Captured Messages</h2><p>{{ messages|length }} message{{ '' if messages|length == 1 else 's' }}</p></div><span class="pill success">listener closed</span></div>
+  {% if messages %}
+  <div class="preview-table-wrap"><table>
+    <thead><tr><th>Received (UTC)</th><th>Source</th><th>PRI</th><th>Facility</th><th>Severity</th><th>Message</th></tr></thead>
+    <tbody>{% for item in messages %}<tr>
+      <td><code>{{ item.received_at }}</code></td><td><code>{{ item.source }}:{{ item.source_port }}</code></td>
+      <td>{{ item.priority if item.priority is not none else '—' }}</td><td>{{ item.facility if item.facility is not none else '—' }}</td>
+      <td>{{ item.severity if item.severity is not none else '—' }}</td><td><code>{{ item.message }}</code></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="empty">No syslog messages arrived before the listener closed.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

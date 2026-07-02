@@ -2,6 +2,12 @@
   const result = document.querySelector("#public-ip-result");
   const address = document.querySelector("#public-ip-address");
   const status = document.querySelector("#public-ip-status");
+  const checkAgain = document.querySelector("#check-ip-again");
+  checkAgain?.addEventListener("click", () => {
+    checkAgain.disabled = true;
+    checkAgain.textContent = "Checking…";
+    window.location.reload();
+  });
   if (!result || !address || !status) return;
 
   const controller = new AbortController();

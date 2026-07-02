@@ -91,6 +91,9 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/").data)
             self.assertIn(b"Certificate Chain Inspector", client.get("/").data)
             self.assertIn(b"DHCP Discover", client.get("/").data)
+            self.assertIn(b"Path MTU Tester", client.get("/").data)
+            self.assertIn(b"Webhook / API Tester", client.get("/").data)
+            self.assertIn(b"Syslog Tools", client.get("/").data)
             self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/tools/").data)
             self.assertIn(b"Certificate Chain Inspector", client.get("/tools/").data)
             self.assertEqual(client.get("/tools/certificate-inspector").status_code, 200)
@@ -103,6 +106,7 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"IPv4", ip_page.data)
             self.assertIn(b"https://api64.ipify.org?format=json", ip_page.data)
             self.assertIn(b"Your public internet address", ip_page.data)
+            self.assertIn(b'id="check-ip-again"', ip_page.data)
             self.assertIn("no-store", ip_page.headers["Cache-Control"])
 
             speed_page = client.get("/tools/speed-test")
@@ -260,6 +264,11 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"HQ WLAN", radius_page)
             self.assertNotIn(b"shared-secret-not-rendered", radius_page)
             self.assertNotIn(b"password-not-rendered", radius_page)
+            with patch("twn_toolkit.tools.platform.system", return_value="Darwin"):
+                mac_radius_page = client.get("/tools/radius-test").data
+            self.assertIn(b"macOS EAP compatibility", mac_radius_page)
+            self.assertIn(b'class="platform-warning"', mac_radius_page)
+            self.assertIn(b"standard Homebrew formula", mac_radius_page)
 
             response = client.post(
                 "/tools/radius-test/profiles/servers",

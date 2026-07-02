@@ -140,7 +140,10 @@ have their own reusable profiles, but none require a FortiGate profile.
 - **RADIUS Authentication Test** compares PAP or CHAP authentication across
   saved servers and reports response time, result codes, and returned
   attributes. Server, credential, and request-attribute profiles are reusable.
-  Shared secrets and test credentials are stored locally without encryption.
+  With the optional `eapol_test` executable installed, it also supports
+  CA-validated PEAP/MSCHAPv2 and EAP-TLS. EAP certificate and private-key
+  uploads are request-scoped and immediately removed; they are never saved.
+  Shared secrets and saved test credentials are stored locally without encryption.
 - **Wi-Fi / LAN Speed Test** measures latency, jitter, download, and upload
   throughput between the browser and the toolkit server. Open it from another
   device for a meaningful result; it does not measure internet service speed.
@@ -163,6 +166,16 @@ have their own reusable profiles, but none require a FortiGate profile.
   parameter request list. It listens for all matching Offers until timeout and
   does not send a Request or configure the offered address. Binding UDP port 68
   and selecting an interface require root or equivalent network capabilities.
+- **Path MTU Tester** uses bounded ICMP probes to find the largest packet that
+  reaches an IPv4 or IPv6 destination without fragmentation. Firewalls that
+  silently discard ICMP can make the result inconclusive.
+- **Webhook / API Tester** sends one HTTP request from the toolkit host. It
+  does not follow redirects, limits response bodies to 1 MiB, redacts common
+  credential headers in results, and does not save request contents.
+- **Syslog Tools** generates configurable RFC 5424 messages over UDP or TCP to
+  test another syslog product. It can also open a listener for up to 30 seconds
+  and 500 messages, then closes it automatically. Port 5514 is the receiver
+  default so ordinary installations do not need permission for port 514.
 - **Traceroute** follows IPv4 or IPv6 destinations using UDP or ICMP probes,
   streaming each result into a latency-colored hop path and live text output.
   Up to 10 destinations can be queued per run, two traces execute concurrently,

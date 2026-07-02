@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import platform
 from typing import Any
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request, stream_with_context
@@ -19,6 +20,13 @@ from .dhcp_tools import (
     discover_offers,
     format_parameter_request_list,
     parse_parameter_request_list,
+)
+from .diagnostic_tools import (
+    parse_http_headers,
+    receive_syslog,
+    send_syslog,
+    send_api_request,
+    test_path_mtu,
 )
 from .network_tools import (
     dns_lookup_matrix,
@@ -47,6 +55,7 @@ from .profiles import (
     SNMPHostProfileStore,
     SNMPOidProfileStore,
 )
+from .radius_eap_tools import eapol_test_available, radius_eap_authenticate
 from .snmp_tools import parse_oid_profile, run_snmp_tests, validate_snmp_credential
 from .ntp_tools import test_ntp_servers
 from .traceroute_tools import prepare_traceroute, run_traceroute, stream_traceroute
@@ -109,6 +118,132 @@ def dhcp_discover():
         offers=offers,
         requested_codes=requested_codes,
         option_names=DHCP_OPTIONS,
+    )
+
+
+@tools_bp.route("/path-mtu", methods=["GET", "POST"])
+def path_mtu():
+    form = {"host": "", "family": "auto", "minimum": "576", "maximum": "1500", "timeout": "1"}
+    result = None
+    error = ""
+    if request.method == "POST":
+        form = {key: request.form.get(key, default).strip() for key, default in form.items()}
+        try:
+            result = test_path_mtu(
+                form["host"],
+                family=form["family"],
+                minimum=int(form["minimum"]),
+                maximum=int(form["maximum"]),
+                timeout=float(form["timeout"]),
+            )
+        except (ToolInputError, TypeError, ValueError) as exc:
+            error = str(exc) or "Enter valid Path MTU settings."
+    return render_template("tools/path_mtu.html", form=form, result=result, error=error)
+
+
+@tools_bp.route("/api-request", methods=["GET", "POST"])
+def api_request():
+    form = {
+        "method": "GET",
+        "url": "",
+        "headers": "Accept: application/json",
+        "body": "",
+        "timeout": "10",
+        "verify_tls": True,
+    }
+    result = None
+    error = ""
+    if request.method == "POST":
+        form = {
+            "method": request.form.get("method", "GET"),
+            "url": request.form.get("url", "").strip(),
+            "headers": request.form.get("headers", ""),
+            "body": request.form.get("body", ""),
+            "timeout": request.form.get("timeout", "10").strip(),
+            "verify_tls": request.form.get("verify_tls") == "on",
+        }
+        try:
+            result = send_api_request(
+                form["method"],
+                form["url"],
+                headers=parse_http_headers(form["headers"]),
+                body=form["body"],
+                timeout=float(form["timeout"]),
+                verify_tls=form["verify_tls"],
+            )
+        except (ToolInputError, TypeError, ValueError) as exc:
+            error = str(exc) or "Enter valid API request settings."
+    response = Response(render_template("tools/api_request.html", form=form, result=result, error=error))
+    _disable_client_caching(response)
+    return response
+
+
+@tools_bp.route("/syslog-receiver", methods=["GET", "POST"])
+def syslog_receiver():
+    receive_form = {
+        "protocol": "udp",
+        "bind_address": "0.0.0.0",
+        "port": "5514",
+        "duration": "10",
+        "max_messages": "100",
+    }
+    send_form = {
+        "protocol": "udp",
+        "host": "",
+        "port": "514",
+        "facility": "16",
+        "severity": "6",
+        "hostname": "twn-toolkit",
+        "app_name": "twn-toolkit",
+        "message": "",
+        "timeout": "3",
+    }
+    messages = None
+    send_result = None
+    error = ""
+    if request.method == "POST":
+        action = request.form.get("action", "receive")
+        if action == "send":
+            send_form = {
+                key: request.form.get(f"send_{key}", default).strip()
+                for key, default in send_form.items()
+            }
+            try:
+                send_result = send_syslog(
+                    send_form["protocol"],
+                    send_form["host"],
+                    int(send_form["port"]),
+                    facility=int(send_form["facility"]),
+                    severity=int(send_form["severity"]),
+                    hostname=send_form["hostname"],
+                    app_name=send_form["app_name"],
+                    message=send_form["message"],
+                    timeout=float(send_form["timeout"]),
+                )
+            except (ToolInputError, TypeError, ValueError) as exc:
+                error = str(exc) or "Enter valid syslog sender settings."
+        else:
+            receive_form = {
+                key: request.form.get(key, default).strip()
+                for key, default in receive_form.items()
+            }
+            try:
+                messages = receive_syslog(
+                    receive_form["protocol"],
+                    receive_form["bind_address"],
+                    int(receive_form["port"]),
+                    duration=float(receive_form["duration"]),
+                    max_messages=int(receive_form["max_messages"]),
+                )
+            except (ToolInputError, TypeError, ValueError) as exc:
+                error = str(exc) or "Enter valid syslog receiver settings."
+    return render_template(
+        "tools/syslog_receiver.html",
+        receive_form=receive_form,
+        send_form=send_form,
+        messages=messages,
+        send_result=send_result,
+        error=error,
     )
 
 
@@ -792,6 +927,9 @@ def radius_test():
         "timeout": "3",
         "retries": "1",
         "attribute_profile": "",
+        "anonymous_identity": "anonymous",
+        "server_domain": "",
+        "private_key_password": "",
     }
     results = None
     error = ""
@@ -803,6 +941,9 @@ def radius_test():
             "timeout": request.form.get("timeout", "3").strip(),
             "retries": request.form.get("retries", "1").strip(),
             "attribute_profile": request.form.get("attribute_profile", "").strip(),
+            "anonymous_identity": request.form.get("anonymous_identity", "anonymous").strip(),
+            "server_domain": request.form.get("server_domain", "").strip(),
+            "private_key_password": request.form.get("private_key_password", ""),
         }
         servers = [server_store.get(name) for name in form["server_names"]]
         credentials = credential_store.get(form["credential_name"])
@@ -815,16 +956,32 @@ def radius_test():
             error = "Select a valid credential profile."
         elif form["attribute_profile"] and not attribute_profile:
             error = "Select a valid RADIUS attribute profile."
+        elif form["protocol"] in {"peap-mschapv2", "eap-tls"} and attribute_profile:
+            error = "Additional RADIUS attribute profiles currently apply to PAP and CHAP only."
         else:
             try:
-                results = radius_authenticate(
-                    [server for server in servers if server],
-                    credentials,
-                    form["protocol"],
-                    float(form["timeout"]),
-                    int(form["retries"]),
-                    parse_radius_attributes(attribute_profile["source"]) if attribute_profile else [],
-                )
+                if form["protocol"] in {"peap-mschapv2", "eap-tls"}:
+                    results = radius_eap_authenticate(
+                        [server for server in servers if server],
+                        credentials,
+                        form["protocol"],
+                        timeout=float(form["timeout"]),
+                        ca_certificate=_uploaded_bytes("ca_certificate"),
+                        client_certificate=_uploaded_bytes("client_certificate"),
+                        private_key=_uploaded_bytes("private_key"),
+                        private_key_password=form["private_key_password"],
+                        anonymous_identity=form["anonymous_identity"],
+                        server_domain=form["server_domain"],
+                    )
+                else:
+                    results = radius_authenticate(
+                        [server for server in servers if server],
+                        credentials,
+                        form["protocol"],
+                        float(form["timeout"]),
+                        int(form["retries"]),
+                        parse_radius_attributes(attribute_profile["source"]) if attribute_profile else [],
+                    )
             except (ToolInputError, TypeError, ValueError) as exc:
                 error = str(exc) or "Enter valid timeout and attempt values."
     return render_template(
@@ -835,6 +992,8 @@ def radius_test():
         credentials=credential_store.all(),
         attribute_profiles=attribute_store.all(),
         results=results,
+        eapol_available=eapol_test_available(),
+        is_macos=platform.system() == "Darwin",
     )
 
 
@@ -901,6 +1060,11 @@ def delete_radius_profile(kind: str):
 
 def _radius_profile_store(kind: str) -> RadiusProfileStore:
     return RadiusProfileStore(current_app.instance_path, kind)
+
+
+def _uploaded_bytes(name: str) -> bytes:
+    upload = request.files.get(name)
+    return upload.read(2 * 1024 * 1024 + 1) if upload and upload.filename else b""
 
 
 @tools_bp.route("/multi-ssh", methods=["GET", "POST"])

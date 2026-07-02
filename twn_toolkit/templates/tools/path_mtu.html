@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>Path MTU Tester</h1>
+    <p>Find the largest unfragmented ICMP packet that reaches a destination using a bounded binary search.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  <form class="form" method="post">
+    <label>Destination
+      <input name="host" value="{{ form.host }}" placeholder="host.example.com or 192.0.2.1" required>
+    </label>
+    <div class="ntp-options">
+      <label>Address family
+        <select name="family">
+          {% for value, label in [('auto', 'Auto'), ('ipv4', 'IPv4'), ('ipv6', 'IPv6')] %}
+            <option value="{{ value }}" {{ 'selected' if form.family == value else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Minimum MTU
+        <input name="minimum" type="number" min="576" max="65535" value="{{ form.minimum }}" required>
+      </label>
+      <label>Maximum MTU
+        <input name="maximum" type="number" min="576" max="65535" value="{{ form.maximum }}" required>
+      </label>
+      <label>Probe timeout
+        <input name="timeout" type="number" min="0.2" max="5" step="0.1" value="{{ form.timeout }}" required>
+      </label>
+    </div>
+    <div class="button-row">
+      <button type="submit">Test Path MTU</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
+    </div>
+    <span class="field-note">ICMP must be permitted. A silent destination can make the result inconclusive.</span>
+  </form>
+</section>
+{% if result %}
+<section class="panel">
+  <div class="certificate-result-head">
+    <div><h2>{{ result.host }}</h2><p>{{ result.address }} · {{ result.family }}</p></div>
+    <span class="pill {{ 'success' if result.conclusive else 'error' }}">{{ result.mtu ~ ' bytes' if result.conclusive else 'inconclusive' }}</span>
+  </div>
+  {% if result.conclusive %}
+    <div class="ntp-summary">
+      <article><span>Largest working MTU</span><strong>{{ result.mtu }}</strong><small>Includes IP and ICMP headers</small></article>
+      <article><span>ICMP payload</span><strong>{{ result.mtu - result.overhead }}</strong><small>{{ result.overhead }} bytes of protocol overhead</small></article>
+    </div>
+  {% endif %}
+  <div class="preview-table-wrap"><table>
+    <thead><tr><th>MTU</th><th>Payload</th><th>Result</th><th>Probe output</th></tr></thead>
+    <tbody>{% for probe in result.probes %}<tr>
+      <td><code>{{ probe.mtu }}</code></td><td>{{ probe.payload }}</td>
+      <td><span class="pill {{ 'success' if probe.success else 'error' }}">{{ 'passed' if probe.success else 'failed' }}</span></td>
+      <td>{{ probe.detail }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}
