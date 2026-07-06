@@ -107,13 +107,15 @@ class AuthStore:
             "idle_timeout_minutes", DEFAULT_IDLE_TIMEOUT_MINUTES
         )
         try:
-            return max(1, min(1440, int(value)))
+            return max(0, min(1440, int(value)))
         except (TypeError, ValueError):
             return DEFAULT_IDLE_TIMEOUT_MINUTES
 
     def set_idle_timeout_minutes(self, minutes: int) -> None:
-        if not 1 <= minutes <= 1440:
-            raise ValueError("Idle timeout must be between 1 minute and 24 hours.")
+        if not 0 <= minutes <= 1440:
+            raise ValueError(
+                "Idle timeout must be 0 (never expire) or between 1 minute and 24 hours."
+            )
         data = self._read()
         data.setdefault("settings", {})["idle_timeout_minutes"] = minutes
         self._write(data)
@@ -161,8 +163,10 @@ class AuthStore:
         require_number: bool = False,
         require_special: bool = False,
     ) -> None:
-        if not 1 <= idle_timeout_minutes <= 1440:
-            raise ValueError("Idle timeout must be between 1 minute and 24 hours.")
+        if not 0 <= idle_timeout_minutes <= 1440:
+            raise ValueError(
+                "Idle timeout must be 0 (never expire) or between 1 minute and 24 hours."
+            )
         if not (
             MIN_CONFIGURABLE_PASSWORD_LENGTH
             <= min_password_length

@@ -11,8 +11,8 @@
       <h2>Authentication policy</h2>
       <p>Configure session expiry and the requirements for newly assigned passwords.</p>
       <form method="post" action="{{ url_for('update_session_settings') }}" class="form auth-policy-form">
-        <label>Idle minutes
-          <input type="number" name="idle_timeout_minutes" min="1" max="1440"
+        <label>Idle minutes (0 = never expire)
+          <input type="number" name="idle_timeout_minutes" min="0" max="1440"
                  value="{{ idle_timeout_minutes }}" required>
         </label>
         <label>Minimum password length

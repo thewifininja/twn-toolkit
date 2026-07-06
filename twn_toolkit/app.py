@@ -102,17 +102,23 @@ def create_app(instance_path: str | None = None) -> Flask:
             None,
         )
         now = int(time.time())
-        idle_seconds = auth_store.idle_timeout_minutes() * 60
+        idle_timeout_minutes = auth_store.idle_timeout_minutes()
+        idle_seconds = idle_timeout_minutes * 60
         last_seen = session.get("last_seen")
         valid_session = (
             user
             and user.get("enabled", True)
             and session.get("session_version") == user.get("session_version", 1)
             and isinstance(last_seen, int)
-            and now - last_seen <= idle_seconds
+            and (idle_timeout_minutes == 0 or now - last_seen <= idle_seconds)
         )
         if not valid_session:
-            expired = bool(user_id and last_seen and now - int(last_seen) > idle_seconds)
+            expired = bool(
+                idle_timeout_minutes > 0
+                and user_id
+                and last_seen
+                and now - int(last_seen) > idle_seconds
+            )
             session.clear()
             if expired:
                 flash("Your session expired due to inactivity.", "error")

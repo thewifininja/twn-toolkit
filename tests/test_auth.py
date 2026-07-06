@@ -130,6 +130,25 @@ def test_admin_can_manage_users_timeout_and_passwords(tmp_path):
     assert store.get_user("operator") is None
 
 
+def test_zero_idle_timeout_never_expires_session(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+    store = AuthStore(str(tmp_path))
+
+    store.set_policy(idle_timeout_minutes=0, min_password_length=8)
+    with client.session_transaction() as user_session:
+        user_session["last_seen"] = 1
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert store.idle_timeout_minutes() == 0
+    settings_page = client.get("/settings")
+    assert b"Idle minutes (0 = never expire)" in settings_page.data
+    assert b'min="0"' in settings_page.data
+
+
 def test_deleting_auth_file_returns_to_setup_without_touching_profiles(tmp_path):
     app = create_app(str(tmp_path))
     client = app.test_client()
