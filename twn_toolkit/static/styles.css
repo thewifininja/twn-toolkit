@@ -374,97 +374,131 @@ button.danger {
   line-height: 1.4;
 }
 
-.ninja-loader {
-  justify-self: center;
-  height: 76px;
-  position: relative;
-  width: 76px;
+.packet-loader {
+  height: 112px;
+  justify-self: stretch;
+  margin: -4px 0 2px;
 }
 
-.ninja-loader::before {
-  animation: loader-pulse 1.7s ease-in-out infinite;
-  background: linear-gradient(135deg, var(--brand-green), var(--accent));
-  border-radius: 24px 24px 28px 28px;
-  box-shadow: inset 0 -8px 0 rgb(0 0 0 / 16%);
-  content: "";
-  height: 44px;
-  left: 16px;
-  position: absolute;
-  top: 18px;
-  transform: rotate(45deg);
-  width: 44px;
+.packet-map {
+  display: block;
+  height: 112px;
+  margin: 0 auto;
+  max-width: 280px;
+  overflow: visible;
+  width: min(100%, 280px);
 }
 
-.ninja-loader::after {
-  background:
-    radial-gradient(circle at 36% 48%, #fff 0 3px, transparent 4px),
-    radial-gradient(circle at 64% 48%, #fff 0 3px, transparent 4px),
-    linear-gradient(90deg, transparent 0 20%, #17211f 20% 80%, transparent 80%);
-  border-radius: 999px;
-  content: "";
-  height: 18px;
-  left: 15px;
-  position: absolute;
-  top: 28px;
-  transform: rotate(45deg);
-  width: 46px;
+.packet-links path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--brand-green) 30%, transparent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 5;
 }
 
-.ninja-loader span {
-  animation: loader-spark 1.4s ease-in-out infinite;
-  background: var(--brand-green);
-  border-radius: 50%;
-  height: 8px;
-  position: absolute;
-  width: 8px;
+.packet-dashes path {
+  animation: packet-route 2.4s linear infinite;
+  fill: none;
+  filter: url("#packet-glow");
+  opacity: 0.92;
+  stroke: color-mix(in srgb, var(--brand-green) 86%, #ffffff);
+  stroke-dasharray: 24 180;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
 }
 
-.ninja-loader span:nth-child(1) {
-  animation-delay: 0s;
-  left: 4px;
-  top: 36px;
+.packet-node {
+  animation: node-pulse 1.9s ease-in-out infinite;
+  fill: color-mix(in srgb, var(--brand-green) 45%, #ffffff);
+  filter: url("#packet-glow");
+  stroke: var(--panel);
+  stroke-width: 4;
 }
 
-.ninja-loader span:nth-child(2) {
-  animation-delay: 0.2s;
-  right: 10px;
-  top: 8px;
+.packet-node-two {
+  animation-delay: 0.14s;
 }
 
-.ninja-loader span:nth-child(3) {
-  animation-delay: 0.4s;
-  bottom: 8px;
-  right: 12px;
+.packet-node-three {
+  animation-delay: 0.28s;
 }
 
-@keyframes loader-pulse {
+.packet-node-four {
+  animation-delay: 0.42s;
+}
+
+.packet-node-five {
+  animation-delay: 0.56s;
+}
+
+.packet-pulses circle {
+  animation: map-pulse 2.4s ease-out infinite;
+  fill: none;
+  opacity: 0;
+  stroke: color-mix(in srgb, var(--brand-green) 55%, transparent);
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.packet-pulses circle:nth-child(2) {
+  animation-delay: 0.55s;
+}
+
+.packet-pulses circle:nth-child(3) {
+  animation-delay: 1.1s;
+}
+
+.packet-movers circle {
+  fill: #fff;
+  filter: url("#packet-glow");
+  stroke: var(--brand-green);
+  stroke-width: 2;
+}
+
+@keyframes packet-route {
+  to {
+    stroke-dashoffset: -204;
+  }
+}
+
+@keyframes node-pulse {
   0%,
   100% {
-    transform: rotate(45deg) scale(0.95);
-  }
-
-  50% {
-    transform: rotate(45deg) scale(1.06);
-  }
-}
-
-@keyframes loader-spark {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: translateY(0) scale(0.8);
+    opacity: 0.82;
+    transform: scale(0.96);
   }
 
   50% {
     opacity: 1;
-    transform: translateY(-8px) scale(1.25);
+    transform: scale(1.05);
+  }
+}
+
+@keyframes map-pulse {
+  0% {
+    opacity: 0.5;
+    transform: scale(0.55);
+  }
+
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ninja-loader::before,
-  .ninja-loader span {
+  .packet-dashes path,
+  .packet-node,
+  .packet-pulses circle {
     animation: none;
+  }
+
+  .packet-movers {
+    display: none;
   }
 }
 

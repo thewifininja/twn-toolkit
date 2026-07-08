@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from unittest.mock import Mock, patch
 
@@ -84,7 +85,9 @@ class FortiGateClientTests(unittest.TestCase):
         self.assertEqual([row["ap"] for row in rows], ["Hallway-AP", "Kitchen-AP"])
         self.assertEqual(request.call_count, 3)
         first_params = request.call_args_list[0].kwargs["params"]
-        self.assertEqual(first_params["filter"], "stamac==aa:bb:cc:dd:ee:ff")
+        self.assertEqual(first_params["filter"], json.dumps({"stamac": "= aa:bb:cc:dd:ee:ff"}))
+        self.assertEqual(first_params["timeframe"], "realtime")
+        self.assertEqual(first_params["limit"], 10_000)
 
 
 if __name__ == "__main__":

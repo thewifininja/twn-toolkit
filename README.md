@@ -191,6 +191,20 @@ excluded from Git, but their contents are not encrypted. Treat the host as trust
 Multi-Host Ping measurements and chart history are held in the browser session.
 Reloading or closing the page discards that history unless it was exported.
 
+## Disclaimer
+
+The WiFi Ninja's Toolkit is provided as-is, without warranty of any kind. It is
+intended for use by network administrators and operators who understand the
+impact of the actions they perform.
+
+Some tools may make configuration changes, send authentication requests, query
+logs, run diagnostics, or interact with infrastructure using stored credentials
+or API tokens. You are responsible for reviewing actions before running them,
+protecting stored credentials, and ensuring you have authorization to use the
+toolkit in your environment.
+
+Use at your own risk.
+
 ## FortiGate API Notes
 
 Default endpoint templates:
@@ -233,3 +247,8 @@ flask --app twn_toolkit run --debug --port 5050
 ```
 
 Stop the background service first with `./twn stop` if it is already running.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for
+details.

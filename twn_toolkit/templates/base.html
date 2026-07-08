@@ -68,13 +68,53 @@
     </main>
     <div class="app-loading" id="app-loading" role="status" aria-live="polite" aria-atomic="true" hidden>
       <div class="app-loading-card">
-        <div class="ninja-loader" aria-hidden="true">
-          <span></span>
-          <span></span>
-          <span></span>
+        <div class="packet-loader" aria-hidden="true">
+          <svg class="packet-map" viewBox="0 0 260 104" role="img">
+            <defs>
+              <filter id="packet-glow" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+                <feMerge>
+                  <feMergeNode in="blur"></feMergeNode>
+                  <feMergeNode in="SourceGraphic"></feMergeNode>
+                </feMerge>
+              </filter>
+            </defs>
+            <g class="packet-links">
+              <path d="M34 68 L96 35 L151 70 L216 42"></path>
+              <path d="M34 68 L82 78 L151 70"></path>
+              <path d="M96 35 L216 42"></path>
+              <path d="M96 35 L126 56 L151 70"></path>
+            </g>
+            <g class="packet-dashes">
+              <path d="M34 68 L96 35 L151 70 L216 42"></path>
+            </g>
+            <g class="packet-nodes">
+              <circle class="packet-node packet-node-one" cx="34" cy="68" r="12"></circle>
+              <circle class="packet-node packet-node-two" cx="96" cy="35" r="12"></circle>
+              <circle class="packet-node packet-node-three" cx="82" cy="78" r="10"></circle>
+              <circle class="packet-node packet-node-four" cx="151" cy="70" r="12"></circle>
+              <circle class="packet-node packet-node-five" cx="216" cy="42" r="12"></circle>
+            </g>
+            <g class="packet-pulses">
+              <circle cx="34" cy="68" r="17"></circle>
+              <circle cx="151" cy="70" r="17"></circle>
+              <circle cx="216" cy="42" r="17"></circle>
+            </g>
+            <g class="packet-movers">
+              <circle r="4">
+                <animateMotion dur="2.8s" repeatCount="indefinite" path="M34 68 L96 35 L151 70 L216 42"></animateMotion>
+              </circle>
+              <circle r="3.5">
+                <animateMotion dur="2.8s" begin="0.7s" repeatCount="indefinite" path="M34 68 L82 78 L151 70 L216 42"></animateMotion>
+              </circle>
+              <circle r="3">
+                <animateMotion dur="2.8s" begin="1.4s" repeatCount="indefinite" path="M96 35 L126 56 L151 70"></animateMotion>
+              </circle>
+            </g>
+          </svg>
         </div>
         <strong id="app-loading-message">Working on it…</strong>
-        <small>The toolkit is talking to the gear. Tiny packets are doing tiny packet things.</small>
+        <small id="app-loading-quip">The toolkit is talking to the gear. Tiny packets are doing tiny packet things.</small>
       </div>
     </div>
     <script src="{{ url_for('static', filename='theme.js') }}"></script>

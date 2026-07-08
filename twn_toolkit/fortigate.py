@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json as json_module
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import quote, urlparse
 
@@ -104,13 +106,15 @@ class FortiGateClient:
         mac: str,
         vdom: str,
         hours: int,
-        limit: int = 500,
+        limit: int = 10_000,
     ) -> list[dict[str, Any]]:
         primary_endpoints = ("/api/v2/log/memory/event/wireless",)
         fallback_endpoints = ("/api/v2/log/disk/event/wireless",)
         mac_digits = "".join(character for character in mac.lower() if character in "0123456789abcdef")
         mac_hyphenated = "-".join(mac.split(":"))
         station_mac_filters = (
+            json_module.dumps({"stamac": f"= {mac}"}),
+            json_module.dumps({"stamac": mac}),
             f"stamac=={mac}",
             f"stamac=={mac_hyphenated}",
             f"stamac=={mac_digits}",
@@ -123,6 +127,7 @@ class FortiGateClient:
         last_error: FortiGateError | None = None
         matching_rows: list[dict[str, Any]] = []
         seen_matches: set[str] = set()
+        cutoff_time = datetime.now() - timedelta(hours=hours)
 
         for endpoints in (primary_endpoints, fallback_endpoints):
             had_endpoint_success = False
@@ -143,8 +148,13 @@ class FortiGateClient:
                         rows = _response_rows(response)
                         if not rows:
                             break
+                        if _rows_are_older_than(rows, cutoff_time):
+                            break
                         for row in rows:
                             if not _rows_contain_mac([row], mac):
+                                continue
+                            row_time = _row_time(row)
+                            if row_time != datetime.min and row_time < cutoff_time:
                                 continue
                             if not _rows_contain_wireless_history_signal([row]):
                                 continue
@@ -273,6 +283,7 @@ def _wireless_log_params(
         "limit": limit,
         "start": start,
         "hours": hours,
+        "timeframe": "realtime",
         "filter": filter_value,
     }
 
@@ -284,6 +295,53 @@ def _rows_contain_mac(rows: list[dict[str, Any]], mac: str) -> bool:
 
 def _rows_contain_wireless_history_signal(rows: list[dict[str, Any]]) -> bool:
     return any(_is_wireless_history_signal(_alnum_text(row)) for row in rows)
+
+
+def _rows_are_older_than(rows: list[dict[str, Any]], cutoff: datetime) -> bool:
+    row_times = [_row_time(row) for row in rows]
+    useful_times = [value for value in row_times if value != datetime.min]
+    return bool(useful_times) and max(useful_times) < cutoff
+
+
+def _row_time(row: dict[str, Any]) -> datetime:
+    date = _nested_value(row, "date")
+    time = _nested_value(row, "time")
+    if date and time:
+        for pattern in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"):
+            try:
+                return datetime.strptime(f"{date} {time}"[:19], pattern)
+            except ValueError:
+                continue
+
+    eventtime = _nested_value(row, "eventtime")
+    if eventtime and str(eventtime).isdigit():
+        timestamp = int(str(eventtime))
+        if timestamp > 10_000_000_000_000_000:
+            timestamp //= 1_000_000_000
+        elif timestamp > 10_000_000_000:
+            timestamp //= 1_000
+        try:
+            return datetime.fromtimestamp(timestamp)
+        except (OSError, ValueError):
+            pass
+
+    return datetime.min
+
+
+def _nested_value(value: Any, key: str) -> str:
+    if isinstance(value, dict):
+        for candidate_key, item in value.items():
+            if str(candidate_key).lower().replace("-", "_") == key:
+                return str(item)
+            nested = _nested_value(item, key)
+            if nested:
+                return nested
+    if isinstance(value, list):
+        for item in value:
+            nested = _nested_value(item, key)
+            if nested:
+                return nested
+    return ""
 
 
 def _is_wireless_history_signal(text: str) -> bool:
