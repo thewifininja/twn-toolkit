@@ -6,7 +6,8 @@
     <h1>{{ task.label }}</h1>
     <p>{{ task.description }}</p>
   </div>
-  <form class="form" id="task-form" method="post" action="{{ url_for('run_task', task_id=task.id) }}" enctype="multipart/form-data">
+  <form class="form" id="task-form" method="post" action="{{ url_for('run_task', task_id=task.id) }}" enctype="multipart/form-data"
+        {% if task.kind != "export" %}data-loading-message="Running {{ task.label }}…"{% endif %}>
     <label>
       FortiGate profile
       <select name="profile" required>
@@ -109,6 +110,7 @@
       id="rename-editor-form"
       method="post"
       action="{{ url_for('rename_objects', task_id=task.id) }}"
+      data-loading-message="Applying selected changes…"
     >
       <input id="rename-profile" name="profile" type="hidden">
       <input id="rename-endpoint" name="endpoint_template" type="hidden">

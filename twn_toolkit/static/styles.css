@@ -331,6 +331,222 @@ button.danger {
   flex: 1 1 180px;
 }
 
+.app-loading {
+  align-items: center;
+  background: rgb(21 27 26 / 52%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 1000;
+}
+
+.is-loading body {
+  cursor: progress;
+}
+
+.app-loading[hidden] {
+  display: none;
+}
+
+.app-loading-card {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 26%);
+  color: var(--ink);
+  display: grid;
+  gap: 10px;
+  max-width: 360px;
+  padding: 26px;
+  text-align: center;
+  width: min(100%, 360px);
+}
+
+.app-loading-card strong {
+  font-size: 1.05rem;
+}
+
+.app-loading-card small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.ninja-loader {
+  justify-self: center;
+  height: 76px;
+  position: relative;
+  width: 76px;
+}
+
+.ninja-loader::before {
+  animation: loader-pulse 1.7s ease-in-out infinite;
+  background: linear-gradient(135deg, var(--brand-green), var(--accent));
+  border-radius: 24px 24px 28px 28px;
+  box-shadow: inset 0 -8px 0 rgb(0 0 0 / 16%);
+  content: "";
+  height: 44px;
+  left: 16px;
+  position: absolute;
+  top: 18px;
+  transform: rotate(45deg);
+  width: 44px;
+}
+
+.ninja-loader::after {
+  background:
+    radial-gradient(circle at 36% 48%, #fff 0 3px, transparent 4px),
+    radial-gradient(circle at 64% 48%, #fff 0 3px, transparent 4px),
+    linear-gradient(90deg, transparent 0 20%, #17211f 20% 80%, transparent 80%);
+  border-radius: 999px;
+  content: "";
+  height: 18px;
+  left: 15px;
+  position: absolute;
+  top: 28px;
+  transform: rotate(45deg);
+  width: 46px;
+}
+
+.ninja-loader span {
+  animation: loader-spark 1.4s ease-in-out infinite;
+  background: var(--brand-green);
+  border-radius: 50%;
+  height: 8px;
+  position: absolute;
+  width: 8px;
+}
+
+.ninja-loader span:nth-child(1) {
+  animation-delay: 0s;
+  left: 4px;
+  top: 36px;
+}
+
+.ninja-loader span:nth-child(2) {
+  animation-delay: 0.2s;
+  right: 10px;
+  top: 8px;
+}
+
+.ninja-loader span:nth-child(3) {
+  animation-delay: 0.4s;
+  bottom: 8px;
+  right: 12px;
+}
+
+@keyframes loader-pulse {
+  0%,
+  100% {
+    transform: rotate(45deg) scale(0.95);
+  }
+
+  50% {
+    transform: rotate(45deg) scale(1.06);
+  }
+}
+
+@keyframes loader-spark {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0) scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ninja-loader::before,
+  .ninja-loader span {
+    animation: none;
+  }
+}
+
+.backup-choice-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.backup-choice {
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  padding: 0.75rem;
+}
+
+.backup-choice span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.backup-choice small {
+  color: var(--muted);
+}
+
+.backup-choice .sensitive-note {
+  color: var(--bad);
+  font-weight: 700;
+}
+
+.backup-intro-note {
+  font-size: 1rem;
+  line-height: 1.45;
+  margin-top: 8px;
+  max-width: 880px;
+}
+
+.backup-password-fields {
+  display: grid;
+  gap: 16px;
+}
+
+.backup-password-fields label {
+  gap: 9px;
+}
+
+.backup-encryption-note {
+  line-height: 1.4;
+  margin: 2px 0 0;
+  max-width: 720px;
+}
+
+.fortiap-history-summary {
+  display: grid;
+  gap: 16px;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.summary-grid article {
+  background: #f9fbfc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+}
+
+.summary-grid span,
+.summary-grid small,
+.ap-path {
+  color: var(--muted);
+}
+
+.ap-path {
+  line-height: 1.5;
+  margin: 0;
+}
+
 .dns-options {
   display: grid;
   gap: 14px;

@@ -66,6 +66,18 @@
       {% endwith %}
       {% block content %}{% endblock %}
     </main>
+    <div class="app-loading" id="app-loading" role="status" aria-live="polite" aria-atomic="true" hidden>
+      <div class="app-loading-card">
+        <div class="ninja-loader" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <strong id="app-loading-message">Working on it…</strong>
+        <small>The toolkit is talking to the gear. Tiny packets are doing tiny packet things.</small>
+      </div>
+    </div>
     <script src="{{ url_for('static', filename='theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='loading.js') }}"></script>
   </body>
 </html>

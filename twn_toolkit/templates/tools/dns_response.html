@@ -7,7 +7,7 @@
     <p>Query each hostname through every selected resolver and compare answers and lookup latency.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form" method="post" id="dns-form">
+  <form class="form" method="post" id="dns-form" data-loading-message="Running DNS tests…">
     <div class="grid two">
       <div class="form">
         <label>Host profile

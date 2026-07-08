@@ -22,7 +22,7 @@
   {% if not eapol_available %}
     <div class="message">PEAP and EAP-TLS require the optional <code>eapol_test</code> executable. PAP and CHAP remain available.</div>
   {% endif %}
-  <form class="form" method="post" enctype="multipart/form-data">
+  <form class="form" method="post" enctype="multipart/form-data" data-loading-message="Running RADIUS authentication test…">
     <fieldset class="choice-group">
       <legend>RADIUS servers</legend>
       {% if servers %}

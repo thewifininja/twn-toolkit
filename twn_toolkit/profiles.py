@@ -31,6 +31,9 @@ class ProfileStore:
         if self.path.exists():
             self.path.unlink()
 
+    def replace_all(self, profiles: list[dict[str, Any]]) -> None:
+        self._write(profiles)
+
     def _read(self) -> list[dict[str, Any]]:
         if not self.path.exists():
             return []
@@ -80,6 +83,9 @@ class PingProfileStore:
     def clear(self) -> None:
         if self.path.exists():
             self.path.unlink()
+
+    def replace_all(self, profiles: list[dict[str, Any]]) -> None:
+        self._write(profiles)
 
     def _read(self) -> list[dict[str, Any]]:
         if not self.path.exists():

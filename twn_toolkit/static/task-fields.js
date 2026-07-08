@@ -25,6 +25,7 @@
     applyButton.disabled = true;
     status.textContent = "Loading fields...";
     fieldList.innerHTML = "";
+    window.toolkitLoading?.show("Loading available FortiGate fields…");
 
     try {
       const response = await fetch(builder.dataset.fieldsUrl, {
@@ -47,6 +48,7 @@
       applyButton.disabled = true;
     } finally {
       loadButton.disabled = false;
+      window.toolkitLoading?.hide();
     }
   });
 
@@ -62,6 +64,7 @@
     preview.hidden = false;
     previewStatus.textContent = "Fetching data...";
     clearPreview();
+    window.toolkitLoading?.show("Fetching FortiGate data preview…");
 
     try {
       const response = await fetch(builder.dataset.previewUrl, {
@@ -81,6 +84,7 @@
       previewStatus.textContent = error.message;
     } finally {
       fetchButton.disabled = false;
+      window.toolkitLoading?.hide();
     }
   });
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import csv
+import base64
 import io
+import json
+import os
 import re
 import secrets
 import subprocess
@@ -11,6 +14,9 @@ from pathlib import Path
 from typing import Any
 
 import click
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from flask import (
     Flask,
     Response,
@@ -31,6 +37,11 @@ from .fortiauthenticator import (
     normalize_host as normalize_fortiauthenticator_host,
 )
 from .fortigate import FortiGateClient, FortiGateError, normalize_api_key, normalize_host
+from .fortiap_history import (
+    LocalFortiGateWirelessHistorySource,
+    normalize_client_mac,
+    wireless_client_history,
+)
 from .profiles import (
     DNSProfileStore,
     FortiAuthenticatorProfileStore,
@@ -49,6 +60,9 @@ from .tasks import TASKS, ExportTask, RenameTask, discover_export_fields, get_ta
 from .tools import tools_bp
 
 
+BACKUP_KDF_ITERATIONS = 390_000
+
+
 def create_app(instance_path: str | None = None) -> Flask:
     app = Flask(__name__, instance_relative_config=True, instance_path=instance_path)
     app.config.from_mapping(
@@ -64,6 +78,113 @@ def create_app(instance_path: str | None = None) -> Flask:
     store = ProfileStore(app.instance_path)
     fortiauthenticator_store = FortiAuthenticatorProfileStore(app.instance_path)
     ping_profile_store = PingProfileStore(app.instance_path)
+    backup_catalog = [
+        {
+            "id": "fortigate_profiles",
+            "label": "FortiGate profiles",
+            "description": "Saved FortiGate URLs, default VDOMs, TLS choices, and API keys.",
+            "store": store,
+            "sensitive": True,
+        },
+        {
+            "id": "fortiauthenticator_profiles",
+            "label": "FortiAuthenticator profiles",
+            "description": "Saved FortiAuthenticator URLs, users, TLS choices, timeouts, and passwords.",
+            "store": fortiauthenticator_store,
+            "sensitive": True,
+        },
+        {
+            "id": "ping_profiles",
+            "label": "Ping profiles",
+            "description": "Saved ping target lists.",
+            "store": ping_profile_store,
+            "sensitive": False,
+        },
+        {
+            "id": "dns_host_profiles",
+            "label": "DNS host profiles",
+            "description": "Saved DNS hostname/query lists.",
+            "store": DNSProfileStore(app.instance_path, "hosts"),
+            "sensitive": False,
+        },
+        {
+            "id": "dns_server_profiles",
+            "label": "DNS server profiles",
+            "description": "Saved DNS server lists.",
+            "store": DNSProfileStore(app.instance_path, "servers"),
+            "sensitive": False,
+        },
+        {
+            "id": "radius_server_profiles",
+            "label": "RADIUS server profiles",
+            "description": "Saved RADIUS servers and shared secrets.",
+            "store": RadiusProfileStore(app.instance_path, "servers"),
+            "sensitive": True,
+        },
+        {
+            "id": "radius_credential_profiles",
+            "label": "RADIUS credential profiles",
+            "description": "Saved RADIUS test usernames and passwords.",
+            "store": RadiusProfileStore(app.instance_path, "credentials"),
+            "sensitive": True,
+        },
+        {
+            "id": "radius_attribute_profiles",
+            "label": "RADIUS request-attribute profiles",
+            "description": "Saved request-attribute sets.",
+            "store": RadiusProfileStore(app.instance_path, "attributes"),
+            "sensitive": False,
+        },
+        {
+            "id": "snmp_credential_profiles",
+            "label": "SNMP credential profiles",
+            "description": "Saved SNMP communities, usernames, auth keys, and privacy keys.",
+            "store": SNMPCredentialProfileStore(app.instance_path),
+            "sensitive": True,
+        },
+        {
+            "id": "snmp_host_profiles",
+            "label": "SNMP host profiles",
+            "description": "Saved SNMP target hosts.",
+            "store": SNMPHostProfileStore(app.instance_path),
+            "sensitive": False,
+        },
+        {
+            "id": "snmp_oid_profiles",
+            "label": "SNMP OID profiles",
+            "description": "Saved SNMP OID lists.",
+            "store": SNMPOidProfileStore(app.instance_path),
+            "sensitive": False,
+        },
+        {
+            "id": "port_scan_host_profiles",
+            "label": "TCP scanner host profiles",
+            "description": "Saved TCP scanner host lists.",
+            "store": PortScanProfileStore(app.instance_path, "hosts"),
+            "sensitive": False,
+        },
+        {
+            "id": "port_scan_port_profiles",
+            "label": "TCP scanner port profiles",
+            "description": "Saved TCP scanner port lists.",
+            "store": PortScanProfileStore(app.instance_path, "ports"),
+            "sensitive": False,
+        },
+        {
+            "id": "ntp_host_profiles",
+            "label": "NTP host profiles",
+            "description": "Saved NTP target lists.",
+            "store": NTPHostProfileStore(app.instance_path),
+            "sensitive": False,
+        },
+        {
+            "id": "traceroute_host_profiles",
+            "label": "Traceroute host profiles",
+            "description": "Saved traceroute target lists.",
+            "store": TracerouteHostProfileStore(app.instance_path),
+            "sensitive": False,
+        },
+    ]
 
     @app.before_request
     def require_authentication():
@@ -337,6 +458,103 @@ def create_app(instance_path: str | None = None) -> Flask:
             previous_boot_id=app.config["BOOT_ID"],
         )
 
+    @app.get("/settings/backup")
+    def backup_settings():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        return render_template("auth/backup.html", backup_catalog=backup_catalog)
+
+    @app.post("/settings/backup/export")
+    def export_profile_backup():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        selected_ids = set(request.form.getlist("item"))
+        selected_items = [item for item in backup_catalog if item["id"] in selected_ids]
+        if not selected_items:
+            flash("Choose at least one profile group to export.", "error")
+            return redirect(url_for("backup_settings"))
+
+        has_sensitive_items = any(item["sensitive"] for item in selected_items)
+        encrypt_requested = has_sensitive_items or request.form.get("encrypt_backup") == "on"
+        password = request.form.get("backup_password", "")
+        confirm_password = request.form.get("confirm_backup_password", "")
+        if encrypt_requested:
+            if not password:
+                flash("Enter an encryption password for this backup.", "error")
+                return redirect(url_for("backup_settings"))
+            if password != confirm_password:
+                flash("Backup encryption passwords do not match.", "error")
+                return redirect(url_for("backup_settings"))
+
+        backup = {
+            "format": "twn-toolkit-profile-backup",
+            "version": 1,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "items": {item["id"]: item["store"].all() for item in selected_items},
+        }
+        payload = json.dumps(backup, indent=2).encode("utf-8")
+        filename_prefix = "twn-toolkit-backup"
+        if encrypt_requested:
+            payload = json.dumps(_encrypt_backup(payload, password), indent=2).encode("utf-8")
+            filename_prefix = "twn-toolkit-encrypted-backup"
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return Response(
+            payload,
+            mimetype="application/json",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename_prefix}-{stamp}.json"'
+            },
+        )
+
+    @app.post("/settings/backup/import")
+    def import_profile_backup():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        upload = request.files.get("backup_file")
+        if not upload or not upload.filename:
+            flash("Choose a toolkit backup JSON file to import.", "error")
+            return redirect(url_for("backup_settings"))
+
+        selected_ids = set(request.form.getlist("item"))
+        selected_items = [item for item in backup_catalog if item["id"] in selected_ids]
+        if not selected_items:
+            flash("Choose at least one profile group to import.", "error")
+            return redirect(url_for("backup_settings"))
+
+        import_mode = request.form.get("import_mode", "merge")
+        if import_mode not in {"merge", "replace"}:
+            flash("Choose combine or replace for the import mode.", "error")
+            return redirect(url_for("backup_settings"))
+
+        try:
+            backup = json.loads(upload.read().decode("utf-8"))
+            if backup.get("format") == "twn-toolkit-encrypted-profile-backup":
+                backup_password = request.form.get("backup_password", "")
+                if not backup_password:
+                    raise ValueError("Enter the password for this encrypted backup.")
+                backup = _decrypt_backup(backup, backup_password)
+            if (
+                backup.get("format") != "twn-toolkit-profile-backup"
+                or int(backup.get("version", 0)) != 1
+                or not isinstance(backup.get("items"), dict)
+            ):
+                raise ValueError("This does not look like a toolkit profile backup.")
+            imported = _import_backup_items(backup["items"], selected_items, import_mode)
+        except (UnicodeDecodeError, json.JSONDecodeError, InvalidToken, ValueError) as exc:
+            if isinstance(exc, InvalidToken):
+                exc = ValueError("The backup password is incorrect or the encrypted file is damaged.")
+            flash(f"Backup import failed: {exc}", "error")
+        else:
+            action = "Combined" if import_mode == "merge" else "Imported"
+            flash(
+                action
+                + " "
+                + ", ".join(f"{count} {label}" for label, count in imported)
+                + ".",
+                "success",
+            )
+        return redirect(url_for("backup_settings"))
+
     @app.get("/health")
     def health():
         return jsonify({"boot_id": app.config["BOOT_ID"]})
@@ -354,6 +572,95 @@ def create_app(instance_path: str | None = None) -> Flask:
 
     def _safe_next_url() -> str:
         return _validated_next_url(request.args.get("next", ""))
+
+    def _import_backup_items(
+        backup_items: dict[str, Any],
+        selected_items: list[dict[str, Any]],
+        import_mode: str,
+    ) -> list[tuple[str, int]]:
+        validated: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+        for item in selected_items:
+            item_id = item["id"]
+            if item_id not in backup_items:
+                continue
+            profiles = backup_items[item_id]
+            if not isinstance(profiles, list) or not all(
+                isinstance(profile, dict)
+                and isinstance(profile.get("name"), str)
+                and profile["name"].strip()
+                for profile in profiles
+            ):
+                raise ValueError(f"{item['label']} contains invalid profile data.")
+            validated.append((item, profiles))
+        if not validated:
+            raise ValueError("None of the selected profile groups were present in the backup.")
+
+        imported: list[tuple[str, int]] = []
+        for item, profiles in validated:
+            if import_mode == "merge":
+                profiles = _merge_profiles_by_name(item["store"].all(), profiles)
+            item["store"].replace_all(profiles)
+            imported.append((item["label"], len(profiles)))
+        return imported
+
+    def _merge_profiles_by_name(
+        existing_profiles: list[dict[str, Any]],
+        imported_profiles: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        merged: dict[str, dict[str, Any]] = {
+            profile["name"]: profile for profile in existing_profiles
+        }
+        for profile in imported_profiles:
+            merged[profile["name"]] = profile
+        profiles = list(merged.values())
+        default_names = [profile["name"] for profile in imported_profiles if profile.get("is_default")]
+        if default_names:
+            default_name = default_names[-1]
+            profiles = [
+                {**profile, "is_default": profile["name"] == default_name}
+                if "is_default" in profile
+                else profile
+                for profile in profiles
+            ]
+        return profiles
+
+    def _encrypt_backup(payload: bytes, password: str) -> dict[str, Any]:
+        salt = os.urandom(16)
+        token = Fernet(_backup_key(password, salt)).encrypt(payload)
+        return {
+            "format": "twn-toolkit-encrypted-profile-backup",
+            "version": 1,
+            "kdf": "PBKDF2HMAC-SHA256",
+            "iterations": BACKUP_KDF_ITERATIONS,
+            "salt": base64.urlsafe_b64encode(salt).decode("ascii"),
+            "ciphertext": token.decode("ascii"),
+        }
+
+    def _decrypt_backup(encrypted_backup: dict[str, Any], password: str) -> dict[str, Any]:
+        if (
+            int(encrypted_backup.get("version", 0)) != 1
+            or encrypted_backup.get("kdf") != "PBKDF2HMAC-SHA256"
+            or int(encrypted_backup.get("iterations", 0)) != BACKUP_KDF_ITERATIONS
+            or not isinstance(encrypted_backup.get("salt"), str)
+            or not isinstance(encrypted_backup.get("ciphertext"), str)
+        ):
+            raise ValueError("This encrypted backup format is not supported.")
+        try:
+            salt = base64.urlsafe_b64decode(encrypted_backup["salt"].encode("ascii"))
+            ciphertext = encrypted_backup["ciphertext"].encode("ascii")
+        except (ValueError, UnicodeEncodeError) as exc:
+            raise ValueError("This encrypted backup is not valid.") from exc
+        plaintext = Fernet(_backup_key(password, salt)).decrypt(ciphertext)
+        return json.loads(plaintext.decode("utf-8"))
+
+    def _backup_key(password: str, salt: bytes) -> bytes:
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=BACKUP_KDF_ITERATIONS,
+        )
+        return base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
 
     @app.cli.command("reset-auth")
     @click.option("--yes", is_flag=True, help="Reset without an interactive confirmation.")
@@ -412,6 +719,45 @@ def create_app(instance_path: str | None = None) -> Flask:
     @app.get("/fortigate/switch-order")
     def switch_order():
         return render_template("switch_order.html", profiles=store.all())
+
+    @app.route("/fortigate/fortiap/client-history", methods=["GET", "POST"])
+    def fortiap_client_history():
+        profiles = store.all()
+        selected_name = request.form.get("profile", "") if request.method == "POST" else ""
+        mac = request.form.get("mac", "").strip() if request.method == "POST" else ""
+        hours_value = request.form.get("hours", "24") if request.method == "POST" else "24"
+        vdom = request.form.get("vdom", "").strip() if request.method == "POST" else ""
+        result: dict[str, Any] | None = None
+
+        if request.method == "POST":
+            profile = store.get(selected_name)
+            if not profile:
+                flash("Select a valid FortiGate profile.", "error")
+            else:
+                try:
+                    normalized_mac = normalize_client_mac(mac)
+                    hours = int(hours_value)
+                    if not 1 <= hours <= 168:
+                        raise ValueError("Choose a time window from 1 hour to 7 days.")
+                    vdom = vdom or profile.get("default_vdom", "root")
+                    result = wireless_client_history(
+                        LocalFortiGateWirelessHistorySource(FortiGateClient.from_profile(profile)),
+                        normalized_mac,
+                        vdom,
+                        hours,
+                    )
+                except ValueError as exc:
+                    flash(str(exc), "error")
+
+        return render_template(
+            "fortiap_client_history.html",
+            profiles=profiles,
+            selected_name=selected_name,
+            mac=mac,
+            hours=hours_value,
+            vdom=vdom,
+            result=result,
+        )
 
     @app.post("/fortigate/switch-order/objects")
     def switch_order_objects():

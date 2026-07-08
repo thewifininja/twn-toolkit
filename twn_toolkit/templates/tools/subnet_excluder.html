@@ -7,7 +7,7 @@
     <p>Subtract one or more CIDR networks from parent networks.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form" method="post">
+  <form class="form" method="post" data-loading-message="Calculating remaining networks…">
     <label>
       Parent networks
       <textarea name="supernets" rows="4" placeholder="10.10.0.0/20&#10;172.16.0.0/16" required>{{ supernets }}</textarea>

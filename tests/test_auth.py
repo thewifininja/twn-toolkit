@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 from unittest.mock import patch
 
@@ -185,3 +186,128 @@ def test_admin_can_save_server_access_and_trigger_restart(tmp_path):
     settings = json.loads((tmp_path / "server_settings.json").read_text())
     assert settings["listen_host"] == "0.0.0.0"
     assert settings["allowed_networks"] == ["192.0.2.0/24"]
+
+
+def test_admin_can_export_and_import_selected_profile_backups(tmp_path):
+    app = create_app(str(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    profiles = tmp_path / "profiles.json"
+    ping_profiles = tmp_path / "ping_profiles.json"
+    profiles.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "Lab",
+                    "host": "https://192.0.2.1",
+                    "api_key": "secret-token",
+                    "verify_tls": True,
+                    "is_default": True,
+                    "default_vdom": "root",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    ping_profiles.write_text(json.dumps([{"name": "WAN", "targets": "1.1.1.1"}]), encoding="utf-8")
+
+    page = client.get("/settings/backup")
+    assert page.status_code == 200
+    assert b"FortiGate profiles" in page.data
+    assert b"Includes stored secrets/API keys." in page.data
+
+    export = client.post(
+        "/settings/backup/export",
+        data={
+            "item": ["fortigate_profiles", "ping_profiles"],
+            "backup_password": "backup password",
+            "confirm_backup_password": "backup password",
+        },
+    )
+    assert export.status_code == 200
+    backup = json.loads(export.data)
+    assert backup["format"] == "twn-toolkit-encrypted-profile-backup"
+    assert b"secret-token" not in export.data
+
+    profiles.write_text(json.dumps([]), encoding="utf-8")
+    ping_profiles.write_text(json.dumps([]), encoding="utf-8")
+
+    imported = client.post(
+        "/settings/backup/import",
+        data={
+            "backup_file": (io.BytesIO(export.data), "backup.json"),
+            "item": ["fortigate_profiles"],
+            "backup_password": "backup password",
+            "import_mode": "replace",
+        },
+        content_type="multipart/form-data",
+    )
+    assert imported.status_code == 302
+    assert json.loads(profiles.read_text(encoding="utf-8"))[0]["name"] == "Lab"
+    assert json.loads(ping_profiles.read_text(encoding="utf-8")) == []
+
+
+def test_sensitive_backup_requires_password_and_plain_backup_can_merge(tmp_path):
+    app = create_app(str(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    profiles = tmp_path / "profiles.json"
+    ping_profiles = tmp_path / "ping_profiles.json"
+    profiles.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "Lab",
+                    "host": "https://192.0.2.1",
+                    "api_key": "secret-token",
+                    "verify_tls": True,
+                    "is_default": True,
+                    "default_vdom": "root",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    ping_profiles.write_text(json.dumps([{"name": "WAN", "targets": "1.1.1.1"}]), encoding="utf-8")
+
+    blocked = client.post(
+        "/settings/backup/export",
+        data={"item": ["fortigate_profiles"]},
+        follow_redirects=True,
+    )
+    assert b"Enter an encryption password for this backup." in blocked.data
+
+    export = client.post(
+        "/settings/backup/export",
+        data={"item": ["ping_profiles"]},
+    )
+    backup = json.loads(export.data)
+    assert backup["format"] == "twn-toolkit-profile-backup"
+    assert backup["items"]["ping_profiles"][0]["name"] == "WAN"
+
+    ping_profiles.write_text(
+        json.dumps(
+            [
+                {"name": "LAN", "targets": "192.0.2.10"},
+                {"name": "WAN", "targets": "8.8.8.8"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    imported = client.post(
+        "/settings/backup/import",
+        data={
+            "backup_file": (io.BytesIO(export.data), "backup.json"),
+            "item": ["ping_profiles"],
+            "import_mode": "merge",
+        },
+        content_type="multipart/form-data",
+    )
+    assert imported.status_code == 302
+    restored = {
+        profile["name"]: profile["targets"]
+        for profile in json.loads(ping_profiles.read_text(encoding="utf-8"))
+    }
+    assert restored == {"LAN": "192.0.2.10", "WAN": "1.1.1.1"}

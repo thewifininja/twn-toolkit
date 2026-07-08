@@ -6,7 +6,7 @@
     <p>Find the largest unfragmented ICMP packet that reaches a destination using a bounded binary search.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form" method="post">
+  <form class="form" method="post" data-loading-message="Testing path MTU…">
     <label>Destination
       <input name="host" value="{{ form.host }}" placeholder="host.example.com or 192.0.2.1" required>
     </label>

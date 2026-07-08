@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head auth-settings-head">
+  <p class="eyebrow">Administration</p>
+  <h1>Profile backup and restore</h1>
+  <p class="field-note backup-intro-note">
+    Export or import saved toolkit profile lists. Backups that include stored API keys, passwords,
+    shared secrets, SNMP communities, or SNMP keys must be encrypted with a password.
+  </p>
+</div>
+
+<section class="grid two settings-grid">
+  <div class="panel">
+    <h2>Export backup</h2>
+    <p>Choose the profile groups to download as one toolkit backup file.</p>
+    <form method="post" action="{{ url_for('export_profile_backup') }}" class="form backup-form" id="backup-export-form">
+      <div class="backup-choice-list">
+        {% for item in backup_catalog %}
+          <label class="check backup-choice">
+            <input type="checkbox" name="item" value="{{ item.id }}" data-sensitive="{{ 'true' if item.sensitive else 'false' }}" checked>
+            <span>
+              <strong>{{ item.label }}</strong>
+              <small>{{ item.description }}</small>
+              {% if item.sensitive %}<small class="sensitive-note">Requires encrypted backup.</small>{% endif %}
+            </span>
+          </label>
+        {% endfor %}
+      </div>
+      <label class="check">
+        <input type="checkbox" name="encrypt_backup" id="encrypt-backup">
+        Encrypt this backup even if no secret-bearing groups are selected
+      </label>
+      <div class="backup-password-fields">
+        <label>Backup encryption password
+          <input type="password" name="backup_password" id="export-backup-password" autocomplete="new-password">
+        </label>
+        <label>Confirm encryption password
+          <input type="password" name="confirm_backup_password" id="confirm-backup-password" autocomplete="new-password">
+        </label>
+        <p class="field-note backup-encryption-note" id="export-encryption-note">
+          Encryption is required when any selected group contains stored credentials or secrets.
+        </p>
+      </div>
+      <button type="submit">Download Backup</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Import backup</h2>
+    <p>
+      Choose a toolkit backup file and the profile groups to restore. Combine keeps existing
+      profiles, adds new profile names, and updates matching names from the backup.
+    </p>
+    <form method="post" action="{{ url_for('import_profile_backup') }}" enctype="multipart/form-data" class="form backup-form"
+          data-loading-message="Importing selected backup groups…">
+      <label>Backup JSON file
+        <input type="file" name="backup_file" accept="application/json,.json" required>
+      </label>
+      <label>Password for encrypted backup
+        <input type="password" name="backup_password" autocomplete="current-password">
+      </label>
+      <fieldset class="choice-group">
+        <legend>Import mode</legend>
+        <label class="check">
+          <input type="radio" name="import_mode" value="merge" checked>
+          Combine with existing profiles
+        </label>
+        <label class="check">
+          <input type="radio" name="import_mode" value="replace">
+          Replace selected profile groups
+        </label>
+      </fieldset>
+      <div class="backup-choice-list">
+        {% for item in backup_catalog %}
+          <label class="check backup-choice">
+            <input type="checkbox" name="item" value="{{ item.id }}" checked>
+            <span>
+              <strong>{{ item.label }}</strong>
+              <small>{{ item.description }}</small>
+              {% if item.sensitive %}<small class="sensitive-note">May restore stored secrets/API keys.</small>{% endif %}
+            </span>
+          </label>
+        {% endfor %}
+      </div>
+      <button type="submit" class="secondary">Import Selected Groups</button>
+    </form>
+  </div>
+</section>
+
+<p><a href="{{ url_for('settings') }}">Back to settings</a></p>
+<script>
+  (() => {
+    const form = document.getElementById("backup-export-form");
+    if (!form) return;
+    const encryptBackup = document.getElementById("encrypt-backup");
+    const password = document.getElementById("export-backup-password");
+    const confirmation = document.getElementById("confirm-backup-password");
+    const note = document.getElementById("export-encryption-note");
+
+    function updateEncryptionRequirement() {
+      const selectedSecret = [...form.querySelectorAll("input[name='item']:checked")]
+        .some((input) => input.dataset.sensitive === "true");
+      const required = selectedSecret || encryptBackup.checked;
+      password.required = required;
+      confirmation.required = required;
+      note.textContent = selectedSecret
+        ? "Encryption is required because at least one selected group contains stored credentials or secrets."
+        : "Encryption is optional for this selection because no selected groups are marked as secret-bearing.";
+    }
+
+    form.addEventListener("change", updateEncryptionRequirement);
+    updateEncryptionRequirement();
+  })();
+</script>
+{% endblock %}

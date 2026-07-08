@@ -38,6 +38,54 @@ class FortiGateClientTests(unittest.TestCase):
             timeout=20,
         )
 
+    @patch("twn_toolkit.fortigate.requests.request")
+    def test_wireless_log_lookup_uses_station_mac_filter_and_history_events(self, request: Mock) -> None:
+        first = Mock()
+        first.status_code = 200
+        first.content = b'{"results":[{"stamac":"aa:bb:cc:dd:ee:ff","logdesc":"Wireless client authenticated","ap":"Hallway-AP"}]}'
+        first.json.return_value = {
+            "results": [
+                {
+                    "stamac": "aa:bb:cc:dd:ee:ff",
+                    "logdesc": "Wireless client authenticated",
+                    "ap": "Hallway-AP",
+                }
+            ]
+        }
+        second = Mock()
+        second.status_code = 200
+        second.content = b'{"results":[{"stamac":"aa:bb:cc:dd:ee:ff","logdesc":"Wireless client IP assigned","ap":"Kitchen-AP"}]}'
+        second.json.return_value = {
+            "results": [
+                {
+                    "stamac": "aa:bb:cc:dd:ee:ff",
+                    "logdesc": "Wireless client IP assigned",
+                    "ap": "Kitchen-AP",
+                }
+            ]
+        }
+        empty = Mock()
+        empty.status_code = 200
+        empty.content = b'{"results":[]}'
+        empty.json.return_value = {"results": []}
+        responses = [first, second]
+
+        def response_for_request(*_args, **_kwargs):
+            return responses.pop(0) if responses else empty
+
+        request.side_effect = response_for_request
+
+        client = FortiGateClient(
+            host="https://fortigate.example",
+            api_key="secret",
+        )
+        rows = client.get_wireless_client_logs("aa:bb:cc:dd:ee:ff", "root", 24)
+
+        self.assertEqual([row["ap"] for row in rows], ["Hallway-AP", "Kitchen-AP"])
+        self.assertEqual(request.call_count, 3)
+        first_params = request.call_args_list[0].kwargs["params"]
+        self.assertEqual(first_params["filter"], "stamac==aa:bb:cc:dd:ee:ff")
+
 
 if __name__ == "__main__":
     unittest.main()

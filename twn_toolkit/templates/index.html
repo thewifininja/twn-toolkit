@@ -87,6 +87,12 @@
             <span>{{ task.description }}</span>
           </a>
         {% endfor %}
+        {% if group_label == "FortiAP Tasks" %}
+          <a class="task-card" href="{{ url_for('fortiap_client_history') }}">
+            <strong>Find Wireless Client History</strong>
+            <span>Search local wireless-client logs and show the AP path for a client MAC.</span>
+          </a>
+        {% endif %}
         {% if group_label == "FortiSwitch Tasks" %}
           <a class="task-card" href="{{ url_for('switch_order') }}">
             <strong>Re-order Managed FortiSwitches</strong>

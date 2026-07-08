@@ -27,6 +27,7 @@
     list.innerHTML = "";
     preview.innerHTML = "";
     applyButton.disabled = true;
+    window.toolkitLoading?.show("Loading managed FortiSwitches…");
     try {
       const response = await fetch(root.dataset.loadUrl, {
         method: "POST",
@@ -44,6 +45,7 @@
       status.textContent = error.message;
     } finally {
       loadButton.disabled = false;
+      window.toolkitLoading?.hide();
     }
   });
 
@@ -101,6 +103,7 @@
     applyButton.disabled = true;
     alphabetizeButton.disabled = true;
     status.textContent = "Applying moves and verifying the resulting order…";
+    window.toolkitLoading?.show("Applying switch moves and verifying order…");
     try {
       const response = await fetch(root.dataset.applyUrl, {method: "POST", body});
       const data = await response.json();
@@ -117,6 +120,7 @@
       applyButton.disabled = false;
     } finally {
       alphabetizeButton.disabled = false;
+      window.toolkitLoading?.hide();
     }
   });
 

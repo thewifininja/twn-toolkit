@@ -7,7 +7,7 @@
     <p>See the exact certificate chain a TLS server presents and test it against this machine's trust store.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form" method="post">
+  <form class="form" method="post" data-loading-message="Inspecting certificate chain…">
     <label>
       Hostname or HTTPS URL
       <input name="target" value="{{ form.target }}" placeholder="portal.example.com" autocomplete="off" required>

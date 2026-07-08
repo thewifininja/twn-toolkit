@@ -8,7 +8,7 @@
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
-  <form class="form" method="post" id="ntp-form" data-save-profile-url="{{ url_for('tools.save_ntp_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_ntp_profile') }}">
+  <form class="form" method="post" id="ntp-form" data-loading-message="Testing NTP servers…" data-save-profile-url="{{ url_for('tools.save_ntp_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_ntp_profile') }}">
     <label>Server profile
       <select id="ntp-profile">
         <option value="">New / unsaved list</option>

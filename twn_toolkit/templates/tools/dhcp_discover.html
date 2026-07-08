@@ -8,7 +8,7 @@
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
-  <form class="form" method="post">
+  <form class="form" method="post" data-loading-message="Sending DHCP Discover…">
     <div class="ntp-options">
       <label>Network interface
         <select name="interface" id="dhcp-interface" required>

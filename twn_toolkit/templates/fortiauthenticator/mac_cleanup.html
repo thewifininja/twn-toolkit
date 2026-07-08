@@ -7,7 +7,8 @@
     <p>Build a live preview before removing group memberships or deleting MAC devices globally.</p>
   </div>
   {% if profiles %}
-    <form class="form" method="post" action="{{ url_for('fortiauthenticator_mac_cleanup') }}">
+    <form class="form" method="post" action="{{ url_for('fortiauthenticator_mac_cleanup') }}"
+          data-loading-message="Building MAC cleanup preview…">
       <label>
         FortiAuthenticator profile
         <select name="profile" required>
@@ -103,6 +104,7 @@
         method="post"
         action="{{ url_for('execute_fortiauthenticator_mac_cleanup') }}"
         data-action="{{ preview.action }}"
+        data-loading-message="Executing MAC cleanup…"
       >
         <input name="profile" type="hidden" value="{{ selected_name }}">
         <input name="group_uri" type="hidden" value="{{ preview.group_uri }}">

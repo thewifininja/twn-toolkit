@@ -7,7 +7,7 @@
     <p>Run a command sequence against up to 50 SSH hosts concurrently.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form" method="post" autocomplete="off">
+  <form class="form" method="post" autocomplete="off" data-loading-message="Running SSH commands…">
     <label>
       Hosts
       <textarea name="hosts" rows="5" placeholder="switch-01.example.com&#10;192.0.2.20" required>{{ form.hosts }}</textarea>

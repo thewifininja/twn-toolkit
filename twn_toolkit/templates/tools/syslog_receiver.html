@@ -13,7 +13,7 @@
     <h2>Send a Test Message</h2>
     <p>Build and transmit one standards-based syslog message to another product.</p>
   </div>
-  <form class="form" method="post">
+  <form class="form" method="post" data-loading-message="Sending syslog message…">
     <input type="hidden" name="action" value="send">
     <div class="ntp-options">
       <label>Protocol
@@ -67,7 +67,7 @@
     <h2>Receive Messages Temporarily</h2>
     <p>Open a bounded listener, collect incoming messages, then close it automatically.</p>
   </div>
-  <form class="form" method="post">
+  <form class="form" method="post" data-loading-message="Listening for syslog messages…">
     <input type="hidden" name="action" value="receive">
     <div class="ntp-options">
       <label>Protocol

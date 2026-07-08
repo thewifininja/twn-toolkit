@@ -6,7 +6,7 @@
     <p>Send one HTTP request from the toolkit host and inspect timing, status, headers, and a bounded response body.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form" method="post">
+  <form class="form" method="post" data-loading-message="Sending API request…">
     <div class="dns-options">
       <label>Method
         <select name="method">{% for method in ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'] %}<option {{ 'selected' if form.method == method else '' }}>{{ method }}</option>{% endfor %}</select>

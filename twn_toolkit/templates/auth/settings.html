@@ -147,6 +147,16 @@
 </section>
 
 {% if current_user.is_admin %}
+  <section class="panel server-access-panel">
+    <div class="auth-users-head">
+      <h2>Profile backup</h2>
+      <p class="field-note">
+        Export or import saved FortiGate, FortiAuthenticator, and network-tool profile lists.
+      </p>
+    </div>
+    <a class="button-link secondary" href="{{ url_for('backup_settings') }}">Open Backup / Restore</a>
+  </section>
+
   <section class="panel recovery-note">
     <h2>Lockout recovery</h2>
     <p>On the server, stop the toolkit and delete <code>instance/auth.json</code>, then start it again.

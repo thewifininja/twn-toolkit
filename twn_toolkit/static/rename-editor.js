@@ -20,6 +20,7 @@
     editor.hidden = false;
     status.textContent = "Loading devices...";
     tableBody.innerHTML = "";
+    window.toolkitLoading?.show("Loading current FortiGate devices…");
 
     try {
       const response = await fetch(loadButton.dataset.objectsUrl, {
@@ -39,6 +40,7 @@
       status.textContent = error.message;
     } finally {
       loadButton.disabled = false;
+      window.toolkitLoading?.hide();
     }
   });
 

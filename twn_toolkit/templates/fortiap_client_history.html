@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel narrow">
+  <div class="panel-head">
+    <h1>Find Wireless Client History</h1>
+    <p>Search local FortiGate wireless-client logs for a client MAC and collapse matching AP events into transitions.</p>
+  </div>
+  <form class="form" method="post" action="{{ url_for('fortiap_client_history') }}"
+        data-loading-message="Searching wireless client logs…">
+    <label>
+      FortiGate profile
+      <select name="profile" required>
+        <option value="">Choose a profile</option>
+        {% for profile in profiles %}
+          <option value="{{ profile.name }}" {% if selected_name == profile.name or (not selected_name and profile.is_default) %}selected{% endif %}>{{ profile.name }} · {{ profile.host }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Client MAC address
+      <input name="mac" value="{{ mac }}" placeholder="aa:bb:cc:dd:ee:ff" required>
+    </label>
+    <label>
+      Time window
+      <select name="hours">
+        {% for value, label in [(1, 'Last 1 hour'), (8, 'Last 8 hours'), (24, 'Last 24 hours'), (72, 'Last 3 days'), (168, 'Last 7 days')] %}
+          <option value="{{ value }}" {% if hours|string == value|string %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      VDOM
+      <input name="vdom" value="{{ vdom }}" placeholder="Defaults to the selected profile VDOM">
+    </label>
+    <div class="button-row">
+      <button type="submit">Find Client History</button>
+      <a class="button-link secondary" href="{{ url_for('fortigate_home') }}">FortiGate Home</a>
+    </div>
+  </form>
+</section>
+
+{% if result %}
+  <section class="panel preview-panel fortiap-history-summary">
+    <div class="preview-head">
+      <h2>Client summary</h2>
+      <span>{{ result.mac }} · VDOM {{ result.vdom }} · {{ result.source }}</span>
+    </div>
+    {% if result.live_clients %}
+      <div class="summary-grid">
+        {% for client in result.live_clients %}
+          <article>
+            <strong>{{ client.ap }}</strong>
+            <span>Currently seen{% if client.ssid %} on {{ client.ssid }}{% endif %}</span>
+            <small>
+              {% if client.ip %}IP {{ client.ip }}{% endif %}
+              {% if client.radio %} · Radio {{ client.radio }}{% endif %}
+              {% if client.channel %} · Channel {{ client.channel }}{% endif %}
+              {% if client.signal %} · Signal {{ client.signal }}{% endif %}
+            </small>
+          </article>
+        {% endfor %}
+      </div>
+    {% elif result.live_error %}
+      <p class="empty">Live client lookup was unavailable: {{ result.live_error }}</p>
+    {% else %}
+      <p class="empty">The client is not currently visible in the live wireless-client table.</p>
+    {% endif %}
+
+    {% if result.ap_path %}
+      <p class="ap-path"><strong>AP path:</strong> {{ result.ap_path | join(' → ') }}</p>
+    {% endif %}
+    {% if result.omitted_unknown_ap_count %}
+      <p class="field-note">
+        Omitted {{ result.omitted_unknown_ap_count }} matching log row{{ '' if result.omitted_unknown_ap_count == 1 else 's' }}
+        without an identifiable AP from the collapsed path.
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="panel preview-panel">
+    <div class="preview-head">
+      <h2>Collapsed AP history</h2>
+      <span>{{ result.raw_event_count }} matching wireless event{{ '' if result.raw_event_count == 1 else 's' }}</span>
+    </div>
+    {% if result.timeline %}
+      <div class="preview-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>First seen</th>
+              <th>Last seen</th>
+              <th>AP</th>
+              <th>Events</th>
+              <th>SSID</th>
+              <th>Radio</th>
+              <th>Channel</th>
+              <th>Client IP</th>
+              <th>Latest detail</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in result.timeline %}
+              <tr>
+                <td>{{ item.first_time or 'Unknown' }}</td>
+                <td>{{ item.last_time or item.first_time or 'Unknown' }}</td>
+                <td><strong>{{ item.ap }}</strong></td>
+                <td>{{ item.event_count }}</td>
+                <td>{{ item.ssid }}</td>
+                <td>{{ item.radio }}</td>
+                <td>{{ item.channel }}</td>
+                <td>{{ item.ip }}</td>
+                <td>{{ item.details or item.event }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% elif result.log_error %}
+      <p class="empty">
+        No matching wireless-client history logs were found. Local FortiGate logs may be unavailable,
+        older than the selected time window, or wireless event logging may not be enabled.
+        Scanned {{ result.log_row_count }} local log row{{ '' if result.log_row_count == 1 else 's' }}.
+        Last API response: {{ result.log_error }}
+      </p>
+    {% else %}
+      <p class="empty">
+        No matching wireless-client history logs were found. Local FortiGate log retention may not cover
+        this time window, or wireless event logging may not be enabled.
+        Scanned {{ result.log_row_count }} local log row{{ '' if result.log_row_count == 1 else 's' }}.
+      </p>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}

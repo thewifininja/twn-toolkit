@@ -8,7 +8,7 @@
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
-  <form class="form" method="post" id="port-scan-form">
+  <form class="form" method="post" id="port-scan-form" data-loading-message="Scanning TCP ports…">
     <div class="grid two">
       <div class="form port-inline-profile" data-kind="hosts" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='hosts') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='hosts') }}">
         <label>Host profile

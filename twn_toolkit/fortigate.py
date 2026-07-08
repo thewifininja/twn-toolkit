@@ -80,6 +80,91 @@ class FortiGateClient:
             raise FortiGateError("FortiGate returned an unexpected managed-switch response.")
         return [item for item in results if isinstance(item, dict)]
 
+    def get_wireless_clients(self, vdom: str) -> list[dict[str, Any]]:
+        endpoints = (
+            "/api/v2/monitor/wifi/client",
+            "/api/v2/monitor/wireless-controller/client",
+            "/api/v2/monitor/wireless-controller/clients",
+            "/api/v2/monitor/wireless-controller/wtp/client",
+        )
+        last_error: FortiGateError | None = None
+        for endpoint in endpoints:
+            try:
+                response = self.request("GET", endpoint, params={"vdom": vdom})
+            except FortiGateError as exc:
+                last_error = exc
+                continue
+            return _response_rows(response)
+        if last_error:
+            raise last_error
+        return []
+
+    def get_wireless_client_logs(
+        self,
+        mac: str,
+        vdom: str,
+        hours: int,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        primary_endpoints = ("/api/v2/log/memory/event/wireless",)
+        fallback_endpoints = ("/api/v2/log/disk/event/wireless",)
+        mac_digits = "".join(character for character in mac.lower() if character in "0123456789abcdef")
+        mac_hyphenated = "-".join(mac.split(":"))
+        station_mac_filters = (
+            f"stamac=={mac}",
+            f"stamac=={mac_hyphenated}",
+            f"stamac=={mac_digits}",
+            f"sta_mac=={mac}",
+            f"clientmac=={mac}",
+            f"client_mac=={mac}",
+            f"srcmac=={mac}",
+            f"mac=={mac}",
+        )
+        last_error: FortiGateError | None = None
+        matching_rows: list[dict[str, Any]] = []
+        seen_matches: set[str] = set()
+
+        for endpoints in (primary_endpoints, fallback_endpoints):
+            had_endpoint_success = False
+            for endpoint in endpoints:
+                endpoint_missing = False
+                for filter_value in station_mac_filters:
+                    for start in range(0, limit * 6, limit):
+                        params = _wireless_log_params(vdom, hours, limit, start, filter_value)
+                        try:
+                            response = self.request("GET", endpoint, params=params)
+                        except FortiGateError as exc:
+                            last_error = exc
+                            if exc.status_code == 404:
+                                endpoint_missing = True
+                                break
+                            continue
+                        had_endpoint_success = True
+                        rows = _response_rows(response)
+                        if not rows:
+                            break
+                        for row in rows:
+                            if not _rows_contain_mac([row], mac):
+                                continue
+                            if not _rows_contain_wireless_history_signal([row]):
+                                continue
+                            signature = _row_signature(row)
+                            if signature in seen_matches:
+                                continue
+                            seen_matches.add(signature)
+                            matching_rows.append(row)
+                    if matching_rows:
+                        return matching_rows
+                    if endpoint_missing:
+                        break
+            if matching_rows:
+                return matching_rows
+            if had_endpoint_success:
+                break
+        if last_error and not matching_rows:
+            raise last_error
+        return []
+
     def move_managed_switch_after(
         self,
         switch_id: str,
@@ -163,6 +248,83 @@ def _response_message(response: requests.Response) -> str:
         return str(data)[:500]
 
     return str(data)[:500]
+
+
+def _response_rows(response: dict[str, Any]) -> list[dict[str, Any]]:
+    for key in ("results", "data", "logs", "items"):
+        value = response.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    if isinstance(response.get("result"), list):
+        return [item for item in response["result"] if isinstance(item, dict)]
+    return []
+
+
+def _wireless_log_params(
+    vdom: str,
+    hours: int,
+    limit: int,
+    start: int,
+    filter_value: str,
+) -> dict[str, Any]:
+    return {
+        "vdom": vdom,
+        "rows": limit,
+        "limit": limit,
+        "start": start,
+        "hours": hours,
+        "filter": filter_value,
+    }
+
+
+def _rows_contain_mac(rows: list[dict[str, Any]], mac: str) -> bool:
+    normalized = "".join(character for character in mac.lower() if character in "0123456789abcdef")
+    return any(normalized in _hex_text(row) for row in rows)
+
+
+def _rows_contain_wireless_history_signal(rows: list[dict[str, Any]]) -> bool:
+    return any(_is_wireless_history_signal(_alnum_text(row)) for row in rows)
+
+
+def _is_wireless_history_signal(text: str) -> bool:
+    return any(
+        signal in text
+        for signal in (
+            "assocreq",
+            "associationrequest",
+            "authenticationrequestfromwirelessstation",
+            "authenticationresponsetowirelessstation",
+            "wirelessclientauthenticated",
+            "wirelessclientdeauthenticated",
+            "wirelessclientdisassociated",
+            "wirelessclientleftwtp",
+            "wirelessclientipassigned",
+        )
+    )
+
+
+def _hex_text(value: Any) -> str:
+    if isinstance(value, dict):
+        return "".join(_hex_text(item) for item in value.values())
+    if isinstance(value, list):
+        return "".join(_hex_text(item) for item in value)
+    return "".join(
+        character
+        for character in str(value).lower()
+        if character in "0123456789abcdef"
+    )
+
+
+def _alnum_text(value: Any) -> str:
+    if isinstance(value, dict):
+        return "".join(_alnum_text(item) for item in value.values())
+    if isinstance(value, list):
+        return "".join(_alnum_text(item) for item in value)
+    return "".join(character for character in str(value).lower() if character.isalnum())
+
+
+def _row_signature(row: dict[str, Any]) -> str:
+    return repr(sorted((str(key), repr(value)) for key, value in row.items()))
 
 
 def _http_error_message(
