@@ -141,16 +141,24 @@
 </section>
 {% endif %}
 
-<details class="panel tool-panel radius-management" {% if not servers or not credentials %}open{% endif %}>
-  <summary>
-    <span>Profile Management</span>
-    <small>{{ servers|length }} servers · {{ credentials|length }} credentials · {{ attribute_profiles|length }} attribute sets</small>
-  </summary>
-  <p>Profiles are reusable across tests. Saved secrets and passwords are never rendered back into this page.</p>
+<section class="panel tool-panel radius-management">
+  <div class="auth-users-head">
+    <h2>RADIUS profiles</h2>
+    <p class="field-note">
+      Profiles are reusable across tests. Saved secrets and passwords are never rendered back into this page.
+    </p>
+  </div>
 
-  <details class="radius-profile-section">
-    <summary>RADIUS Servers <small>{{ servers|length }} saved</small></summary>
-    <div class="grid two">
+  <div class="access-profile-list radius-profile-groups">
+  <details class="access-profile-card profile-section radius-profile-section" {% if not servers %}open{% endif %}>
+    <summary>
+      <span>
+        <strong>RADIUS servers</strong>
+        <small>{{ servers|length }} saved · Shared secrets are write-only</small>
+      </span>
+    </summary>
+    <details class="profile-create-details card-action-details" {% if not servers %}open{% endif %}>
+      <summary><span>New server</span></summary>
       <form class="form radius-profile-form" data-kind="servers">
         <input name="original_name" type="hidden">
         <h2 class="profile-form-title">Add Server Profile</h2>
@@ -161,27 +169,45 @@
         <span class="field-note secret-note">Required for a new profile.</span>
         <div class="button-row">
           <button type="submit">Save Server</button>
-          <button class="secondary radius-cancel-edit" type="button" hidden>Cancel</button>
         </div>
       </form>
-      <div>
-        <h2>Saved Servers</h2>
-        <div class="stack radius-profile-list">
-          {% for server in servers %}
-            <article class="row-card radius-row-card">
-              <div><strong>{{ server.name }}</strong><span>{{ server.host }}:{{ server.port }}</span></div>
-              <button class="secondary radius-edit-profile" type="button" data-kind="servers" data-name="{{ server.name }}" data-host="{{ server.host }}" data-port="{{ server.port }}">Edit</button>
+    </details>
+    <div class="access-profile-list nested-profile-list">
+      {% for server in servers %}
+        <details class="access-profile-card nested-profile-card">
+          <summary>
+            <span>
+              <strong>{{ server.name }}</strong>
+              <small>{{ server.host }}:{{ server.port }}</small>
+            </span>
+          </summary>
+          <form class="form radius-profile-form" data-kind="servers">
+            <input name="original_name" type="hidden" value="{{ server.name }}">
+            <h2 class="profile-form-title">Edit {{ server.name }}</h2>
+            <label>Profile name<input name="name" maxlength="100" required value="{{ server.name }}"></label>
+            <label>Server address<input name="host" required value="{{ server.host }}"></label>
+            <label>Authentication port<input name="port" type="number" min="1" max="65535" value="{{ server.port }}"></label>
+            <label>Shared secret<input name="secret" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved secret"></label>
+            <span class="field-note secret-note">Leave blank to keep the saved secret.</span>
+            <div class="button-row">
+              <button type="submit">Update server</button>
               <button class="danger radius-delete-profile" data-kind="servers" data-name="{{ server.name }}" type="button">Delete</button>
-            </article>
-          {% else %}<p class="empty">No server profiles saved yet.</p>{% endfor %}
-        </div>
-      </div>
+            </div>
+          </form>
+        </details>
+      {% else %}<p class="empty">No server profiles saved yet.</p>{% endfor %}
     </div>
   </details>
 
-  <details class="radius-profile-section">
-    <summary>Test Credentials <small>{{ credentials|length }} saved</small></summary>
-    <div class="grid two">
+  <details class="access-profile-card profile-section radius-profile-section" {% if not credentials %}open{% endif %}>
+    <summary>
+      <span>
+        <strong>Test credentials</strong>
+        <small>{{ credentials|length }} saved · Passwords are write-only</small>
+      </span>
+    </summary>
+    <details class="profile-create-details card-action-details" {% if not credentials %}open{% endif %}>
+      <summary><span>New credential</span></summary>
       <form class="form radius-profile-form" data-kind="credentials">
         <input name="original_name" type="hidden">
         <h2 class="profile-form-title">Add Credential Profile</h2>
@@ -191,27 +217,44 @@
         <span class="field-note secret-note">Required for a new profile. Stored locally without encryption.</span>
         <div class="button-row">
           <button type="submit">Save Credentials</button>
-          <button class="secondary radius-cancel-edit" type="button" hidden>Cancel</button>
         </div>
       </form>
-      <div>
-        <h2>Saved Credentials</h2>
-        <div class="stack radius-profile-list">
-          {% for profile in credentials %}
-            <article class="row-card radius-row-card">
-              <div><strong>{{ profile.name }}</strong><span>{{ profile.username }}</span></div>
-              <button class="secondary radius-edit-profile" type="button" data-kind="credentials" data-name="{{ profile.name }}" data-username="{{ profile.username }}">Edit</button>
+    </details>
+    <div class="access-profile-list nested-profile-list">
+      {% for profile in credentials %}
+        <details class="access-profile-card nested-profile-card">
+          <summary>
+            <span>
+              <strong>{{ profile.name }}</strong>
+              <small>{{ profile.username }}</small>
+            </span>
+          </summary>
+          <form class="form radius-profile-form" data-kind="credentials">
+            <input name="original_name" type="hidden" value="{{ profile.name }}">
+            <h2 class="profile-form-title">Edit {{ profile.name }}</h2>
+            <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
+            <label>Username<input name="username" required autocomplete="off" value="{{ profile.username }}"></label>
+            <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved password"></label>
+            <span class="field-note secret-note">Leave blank to keep the saved password.</span>
+            <div class="button-row">
+              <button type="submit">Update credentials</button>
               <button class="danger radius-delete-profile" data-kind="credentials" data-name="{{ profile.name }}" type="button">Delete</button>
-            </article>
-          {% else %}<p class="empty">No credential profiles saved yet.</p>{% endfor %}
-        </div>
-      </div>
+            </div>
+          </form>
+        </details>
+      {% else %}<p class="empty">No credential profiles saved yet.</p>{% endfor %}
     </div>
   </details>
 
-  <details class="radius-profile-section">
-    <summary>Request Attributes <small>{{ attribute_profiles|length }} saved</small></summary>
-    <div class="grid two">
+  <details class="access-profile-card profile-section radius-profile-section">
+    <summary>
+      <span>
+        <strong>Request attributes</strong>
+        <small>{{ attribute_profiles|length }} saved · Optional PAP/CHAP Access-Request additions</small>
+      </span>
+    </summary>
+    <details class="profile-create-details card-action-details" {% if not attribute_profiles %}open{% endif %}>
+      <summary><span>New attributes</span></summary>
       <form class="form radius-profile-form" data-kind="attributes">
         <input name="original_name" type="hidden">
         <h2 class="profile-form-title">Add Attribute Profile</h2>
@@ -222,24 +265,37 @@
         <span class="field-note">One <code>Name = value</code> per line. Unknown attributes accept <code>#type = hex</code> or <code>#vendor:type = hex</code>.</span>
         <div class="button-row">
           <button type="submit">Save Attributes</button>
-          <button class="secondary radius-cancel-edit" type="button" hidden>Cancel</button>
         </div>
       </form>
-      <div>
-        <h2>Saved Attribute Profiles</h2>
-        <div class="stack radius-profile-list">
-          {% for profile in attribute_profiles %}
-            <article class="row-card radius-row-card">
-              <div><strong>{{ profile.name }}</strong><span>{{ profile.count }} attribute(s)</span></div>
-              <button class="secondary radius-edit-profile" type="button" data-kind="attributes" data-name="{{ profile.name }}" data-source="{{ profile.source|e }}">Edit</button>
+    </details>
+    <div class="access-profile-list nested-profile-list">
+      {% for profile in attribute_profiles %}
+        <details class="access-profile-card nested-profile-card">
+          <summary>
+            <span>
+              <strong>{{ profile.name }}</strong>
+              <small>{{ profile.count }} attribute(s)</small>
+            </span>
+          </summary>
+          <form class="form radius-profile-form" data-kind="attributes">
+            <input name="original_name" type="hidden" value="{{ profile.name }}">
+            <h2 class="profile-form-title">Edit {{ profile.name }}</h2>
+            <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
+            <label>Access-Request attributes
+              <textarea name="attributes" rows="7" required>{{ profile.source }}</textarea>
+            </label>
+            <span class="field-note">One <code>Name = value</code> per line. Unknown attributes accept <code>#type = hex</code> or <code>#vendor:type = hex</code>.</span>
+            <div class="button-row">
+              <button type="submit">Update attributes</button>
               <button class="danger radius-delete-profile" data-kind="attributes" data-name="{{ profile.name }}" type="button">Delete</button>
-            </article>
-          {% else %}<p class="empty">No request-attribute profiles saved yet.</p>{% endfor %}
-        </div>
-      </div>
+            </div>
+          </form>
+        </details>
+      {% else %}<p class="empty">No request-attribute profiles saved yet.</p>{% endfor %}
     </div>
   </details>
+  </div>
   <span class="tool-status" id="radius-profile-status"></span>
-</details>
+</section>
 <script src="{{ url_for('static', filename='radius-test.js') }}"></script>
 {% endblock %}

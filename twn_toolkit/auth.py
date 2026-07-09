@@ -199,10 +199,13 @@ class AuthStore:
             profile for profile in data.get("access_profiles", []) if profile.get("id") != profile_id
         ]
         for user in data.get("users", []):
-            user["access_profile_ids"] = [
-                item for item in user.get("access_profile_ids", []) if item != profile_id
+            existing_profile_ids = user.get("access_profile_ids", [])
+            updated_profile_ids = [
+                item for item in existing_profile_ids if item != profile_id
             ]
-            user["session_version"] = int(user.get("session_version", 1)) + 1
+            if updated_profile_ids != existing_profile_ids:
+                user["access_profile_ids"] = updated_profile_ids
+                user["session_version"] = int(user.get("session_version", 1)) + 1
         self._write(data)
 
     def effective_tool_ids(self, user: dict[str, Any]) -> set[str] | None:

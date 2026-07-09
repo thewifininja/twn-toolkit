@@ -65,6 +65,32 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"MAC Device Cleanup", fortiauthenticator.data)
         self.assertNotIn(b"Profiles and MAC device administration workflows.", fortiauthenticator.data)
 
+    def test_fortigate_profile_test_uses_loading_animation(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+            client.post(
+                "/profiles",
+                data={
+                    "name": "Lab",
+                    "host": "https://fortigate.example",
+                    "api_key": "secret",
+                    "default_vdom": "root",
+                },
+            )
+
+            response = client.get("/fortigate")
+
+        self.assertIn(b"Testing FortiGate profile", response.data)
+
     def test_user_can_toggle_homepage_favorite(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)

@@ -3,11 +3,9 @@
   if (!forms.length) return;
 
   forms.forEach((form) => {
-    const existingSelect = form.querySelector(".snmp-existing-profile");
     const deleteButton = form.querySelector(".snmp-delete-profile");
     const status = form.querySelector(".snmp-form-status");
 
-    existingSelect.addEventListener("change", () => loadProfile(form));
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       status.textContent = "Saving...";
@@ -27,8 +25,8 @@
       }
     });
 
-    deleteButton.addEventListener("click", async () => {
-      const name = existingSelect.value;
+    deleteButton?.addEventListener("click", async () => {
+      const name = deleteButton.dataset.name || form.elements.original_name.value || "";
       if (!name) {
         status.textContent = "Select a saved profile to delete.";
         return;
@@ -54,31 +52,6 @@
       updateCredentialFields(form);
     }
   });
-
-  function loadProfile(form) {
-    const select = form.querySelector(".snmp-existing-profile");
-    const option = select.options[select.selectedIndex];
-    const profile = option?.dataset.profile ? JSON.parse(option.dataset.profile) : null;
-    form.reset();
-    select.value = option?.value || "";
-    form.elements.original_name.value = option?.value || "";
-    if (profile) {
-      Object.entries(profile).forEach(([key, value]) => {
-        const field = form.elements[key];
-        if (field && !["has_community", "has_auth_key", "has_priv_key"].includes(key)) {
-          field.value = value == null ? "" : String(value);
-        }
-      });
-    }
-    if (form.dataset.kind === "credentials") {
-      const note = form.querySelector(".snmp-community-note");
-      note.textContent = profile?.has_community
-        ? "Leave blank to keep the saved community."
-        : "Required for a new profile.";
-      updateCredentialFields(form);
-    }
-    form.querySelector(".snmp-form-status").textContent = profile ? `Loaded '${profile.name}'.` : "";
-  }
 
   function updateCredentialFields(form) {
     const isV3 = form.elements.version.value === "v3";

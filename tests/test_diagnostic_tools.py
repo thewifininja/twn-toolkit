@@ -124,7 +124,7 @@ class DiagnosticToolTests(unittest.TestCase):
             app.config["TESTING"] = True
             client = app.test_client()
             with patch(
-                "twn_toolkit.tools.test_path_mtu",
+                "twn_toolkit.path_mtu_routes.test_path_mtu",
                 return_value={
                     "host": "example.test", "address": "192.0.2.1", "family": "IPv4",
                     "mtu": 1400, "minimum": 576, "maximum": 1500, "overhead": 28,
@@ -138,7 +138,7 @@ class DiagnosticToolTests(unittest.TestCase):
             self.assertIn(b"Largest working MTU", page.data)
 
             with patch(
-                "twn_toolkit.tools.send_api_request",
+                "twn_toolkit.api_request_routes.send_api_request",
                 return_value={
                     "status": 200, "reason": "OK", "elapsed_ms": 5, "bytes": 2,
                     "resolved_addresses": ["192.0.2.2"], "request_headers": {},
@@ -153,7 +153,7 @@ class DiagnosticToolTests(unittest.TestCase):
             self.assertIn(b"200 OK", page.data)
 
             with patch(
-                "twn_toolkit.tools.receive_syslog",
+                "twn_toolkit.syslog_routes.receive_syslog",
                 return_value=[{
                     "received_at": "2026-01-01T00:00:00.000Z", "source": "192.0.2.4",
                     "source_port": 1234, "priority": 134, "facility": 16,
@@ -167,7 +167,7 @@ class DiagnosticToolTests(unittest.TestCase):
             self.assertIn(b"&lt;134&gt;hello", page.data)
 
             with patch(
-                "twn_toolkit.tools.send_syslog",
+                "twn_toolkit.syslog_routes.send_syslog",
                 return_value={
                     "protocol": "UDP", "host": "syslog.example", "address": "192.0.2.8",
                     "port": 514, "priority": 134, "facility": 16, "severity": 6,

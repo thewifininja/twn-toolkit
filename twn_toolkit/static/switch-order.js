@@ -5,12 +5,13 @@
   const editor = document.querySelector("#switch-order-editor");
   const list = document.querySelector("#switch-order-list");
   const status = document.querySelector("#switch-order-status");
+  const detail = document.querySelector("#switch-order-detail");
   const preview = document.querySelector("#switch-move-preview");
   const alphabetizeButton = document.querySelector("#alphabetize-switches");
   const applyButton = document.querySelector("#apply-switch-order");
   const profile = document.querySelector("#switch-order-profile");
   const vdom = document.querySelector("#switch-order-vdom");
-  if (!root || !source || !loadButton || !editor || !list || !status || !preview ||
+  if (!root || !source || !loadButton || !editor || !list || !status || !detail || !preview ||
       !alphabetizeButton || !applyButton || !profile || !vdom) return;
 
   let originalIds = [];
@@ -23,7 +24,7 @@
   loadButton.addEventListener("click", async () => {
     loadButton.disabled = true;
     editor.hidden = false;
-    status.textContent = "Loading managed switches…";
+    setStatus("Loading managed switches…");
     list.innerHTML = "";
     preview.innerHTML = "";
     applyButton.disabled = true;
@@ -39,10 +40,10 @@
       renderSwitches(data.switches || []);
       originalIds = currentIds();
       const switchLabel = data.row_count === 1 ? "FortiSwitch" : "FortiSwitches";
-      status.textContent = `${data.row_count} ${switchLabel} loaded in FortiGate table order.`;
+      setStatus(`${data.row_count} ${switchLabel} loaded in FortiGate table order.`, "success");
       updatePreview();
     } catch (error) {
-      status.textContent = error.message;
+      setStatus(error.message, "error");
     } finally {
       loadButton.disabled = false;
       window.toolkitLoading?.hide();
@@ -54,7 +55,7 @@
     const rows = Array.from(list.children);
     rows.sort((left, right) => collator.compare(left.dataset.name, right.dataset.name));
     rows.forEach((row) => list.appendChild(row));
-    status.textContent = "Alphabetized by displayed switch name. Review, then apply.";
+    setStatus("Alphabetized by displayed switch name. Review, then apply.");
     updatePreview();
   });
 
@@ -88,7 +89,7 @@
   list.addEventListener("dragend", () => {
     draggedItem?.classList.remove("dragging");
     draggedItem = null;
-    status.textContent = "Order changed. Review the moves, then apply.";
+    setStatus("Order changed. Review the moves, then apply.");
     updatePreview();
   });
 
@@ -102,21 +103,24 @@
     currentIds().forEach((id) => body.append("switch_id", id));
     applyButton.disabled = true;
     alphabetizeButton.disabled = true;
-    status.textContent = "Applying moves and verifying the resulting order…";
+    setStatus("Applying moves and verifying the resulting order…");
     window.toolkitLoading?.show("Applying switch moves and verifying order…");
     try {
       const response = await fetch(root.dataset.applyUrl, {method: "POST", body});
       const data = await response.json();
       if (!response.ok) {
-        const detail = data.message ? ` ${data.message}` : "";
-        throw new Error((data.error || "Unable to apply switch order.") + detail);
+        const summary = data.user_message || data.message || data.error || "Unable to apply switch order.";
+        const technicalDetail = data.detail || (data.user_message ? data.error : "");
+        setStatus(summary, "error", technicalDetail);
+        applyButton.disabled = false;
+        return;
       }
       renderSwitches(data.switches || []);
       originalIds = currentIds();
       updatePreview();
-      status.textContent = data.message;
+      setStatus(data.message, "success");
     } catch (error) {
-      status.textContent = error.message;
+      setStatus(error.message, "error");
       applyButton.disabled = false;
     } finally {
       alphabetizeButton.disabled = false;
@@ -163,6 +167,13 @@
       row.append(handle, details, controls);
       list.appendChild(row);
     });
+  }
+
+  function setStatus(message, type = "", technicalDetail = "") {
+    status.textContent = message;
+    status.className = ["switch-order-status", type].filter(Boolean).join(" ");
+    detail.textContent = technicalDetail ? `Technical detail: ${technicalDetail}` : "";
+    detail.hidden = !technicalDetail;
   }
 
   function directionButton(direction, label, text) {

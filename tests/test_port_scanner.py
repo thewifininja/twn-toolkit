@@ -94,7 +94,7 @@ class PortScannerTests(unittest.TestCase):
                     "elapsed_ms": 1.1,
                 },
             ]
-            with patch("twn_toolkit.tools.scan_tcp_ports", return_value=fake_results):
+            with patch("twn_toolkit.port_scanner_routes.scan_tcp_ports", return_value=fake_results):
                 response = client.post(
                     "/tools/port-scanner",
                     data={

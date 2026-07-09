@@ -71,7 +71,7 @@ class PacketReplayToolTests(unittest.TestCase):
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
             with patch(
-                "twn_toolkit.tools.available_interfaces",
+                "twn_toolkit.packet_replay_routes.available_interfaces",
                 return_value=[{"name": "eth0", "mac": "02:00:00:00:00:01"}],
             ):
                 response = app.test_client().post(
@@ -95,7 +95,7 @@ class PacketReplayToolTests(unittest.TestCase):
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
             with patch(
-                "twn_toolkit.tools.available_interfaces",
+                "twn_toolkit.packet_replay_routes.available_interfaces",
                 return_value=[{"name": "eth0", "mac": "02:00:00:00:00:01"}],
             ):
                 response = app.test_client().post(

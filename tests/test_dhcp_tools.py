@@ -147,10 +147,10 @@ class DHCPToolTests(unittest.TestCase):
             app.config["TESTING"] = True
             with (
                 patch(
-                    "twn_toolkit.tools.available_interfaces",
+                    "twn_toolkit.dhcp_routes.available_interfaces",
                     return_value=[{"name": "eth0", "mac": "02:00:00:00:00:01"}],
                 ),
-                patch("twn_toolkit.tools.discover_offers", return_value=[offer]),
+                patch("twn_toolkit.dhcp_routes.discover_offers", return_value=[offer]),
             ):
                 response = app.test_client().post(
                     "/tools/dhcp-discover",

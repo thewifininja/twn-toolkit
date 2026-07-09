@@ -16,81 +16,117 @@
 </section>
 
 {% if can_manage_profiles %}
-  <section class="grid two">
-    <div class="panel">
-    <div class="panel-head">
-      <h1>{{ "Edit Profile" if edit_profile else "FortiAuthenticator Profiles" }}</h1>
+  <section class="panel fortinet-profile-panel">
+    <div class="auth-users-head">
+      <h2>FortiAuthenticator profiles</h2>
+      <p class="field-note">
+        Save FortiAuthenticator Web Service API connections once, then use them across MAC device and group workflows.
+      </p>
     </div>
-    <form class="form" method="post" action="{{ url_for('save_fortiauthenticator_profile') }}">
-      {% if edit_profile %}
-        <input type="hidden" name="original_name" value="{{ edit_profile.name }}">
-      {% endif %}
-      <label>
-        Profile name
-        <input name="name" value="{{ edit_profile.name if edit_profile else '' }}" placeholder="Production FAC" required>
-      </label>
-      <label>
-        FortiAuthenticator URL
-        <input name="host" value="{{ edit_profile.host if edit_profile else '' }}" placeholder="https://192.0.2.10" required>
-      </label>
-      <label>
-        Username
-        <input name="username" value="{{ edit_profile.username if edit_profile else '' }}" autocomplete="username" required>
-      </label>
-      <label>
-        Web Service API Access Key
-        <input name="password" type="password" autocomplete="new-password" placeholder="{{ 'Leave blank to keep current access key' if edit_profile else '' }}" {% if not edit_profile %}required{% endif %}>
-      </label>
-      <label>
-        Request timeout (seconds)
-        <input name="timeout" type="number" min="1" max="300" value="{{ edit_profile.timeout if edit_profile else 20 }}" required>
-      </label>
-      <label class="check">
-        <input name="verify_tls" type="checkbox" {% if not edit_profile or edit_profile.verify_tls %}checked{% endif %}>
-        Verify TLS certificate
-      </label>
-      <label class="check">
-        <input name="is_default" type="checkbox" {% if edit_profile and edit_profile.is_default %}checked{% endif %}>
-        Use as default profile
-      </label>
-      <div class="button-row">
-        <button type="submit">{{ "Update Profile" if edit_profile else "Save Profile" }}</button>
-        {% if edit_profile %}
-          <a class="button-link secondary" href="{{ url_for('fortiauthenticator_home') }}">Cancel</a>
-        {% endif %}
-      </div>
-    </form>
-    </div>
+    <details class="add-user-card card-action-details" {% if not profiles %}open{% endif %}>
+      <summary>
+        <span>New profile</span>
+      </summary>
+      <form class="form" method="post" action="{{ url_for('save_fortiauthenticator_profile') }}">
+        <p class="field-note">Create a new FortiAuthenticator API profile.</p>
+        <label>
+          Profile name
+          <input name="name" placeholder="Production FAC" required>
+        </label>
+        <label>
+          FortiAuthenticator URL
+          <input name="host" placeholder="https://192.0.2.10" required>
+        </label>
+        <label>
+          Username
+          <input name="username" autocomplete="username" required>
+        </label>
+        <label>
+          Web Service API Access Key
+          <input name="password" type="password" autocomplete="new-password" required>
+        </label>
+        <label>
+          Request timeout (seconds)
+          <input name="timeout" type="number" min="1" max="300" value="20" required>
+        </label>
+        <label class="check">
+          <input name="verify_tls" type="checkbox" checked>
+          Verify TLS certificate
+        </label>
+        <label class="check">
+          <input name="is_default" type="checkbox">
+          Use as default profile
+        </label>
+        <button type="submit">Save profile</button>
+      </form>
+    </details>
 
-    <div class="panel">
-    <div class="panel-head">
-      <h1>Saved Profiles</h1>
-    </div>
     {% if profiles %}
-      <div class="stack">
+      <div class="access-profile-list fortinet-profile-list">
         {% for profile in profiles %}
-          <article class="row-card">
-            <div>
-              <strong>
-                {{ profile.name }}
-                {% if profile.is_default %}<small class="profile-default">Default</small>{% endif %}
-              </strong>
-              <span>{{ profile.host }} · {{ profile.username }}</span>
-            </div>
-            <form method="post" action="{{ url_for('test_fortiauthenticator_profile', name=profile.name) }}">
-              <button class="secondary" type="submit">Test</button>
+          <details class="access-profile-card fortinet-profile-card" {% if edit_profile and edit_profile.name == profile.name %}open{% endif %}>
+            <summary>
+              <span>
+                <strong>
+                  {{ profile.name }}
+                  {% if profile.is_default %}<small class="profile-default">Default</small>{% endif %}
+                </strong>
+                <small>{{ profile.host }} · {{ profile.username }}</small>
+              </span>
+            </summary>
+            <form
+              id="fortiauthenticator-test-profile-{{ loop.index }}"
+              method="post"
+              action="{{ url_for('test_fortiauthenticator_profile', name=profile.name) }}"
+              data-loading-message="Testing FortiAuthenticator profile…"
+            ></form>
+            <form class="form fortinet-profile-form" method="post" action="{{ url_for('save_fortiauthenticator_profile') }}">
+              <input type="hidden" name="original_name" value="{{ profile.name }}">
+              <label>
+                Profile name
+                <input name="name" value="{{ profile.name }}" placeholder="Production FAC" required>
+              </label>
+              <label>
+                FortiAuthenticator URL
+                <input name="host" value="{{ profile.host }}" placeholder="https://192.0.2.10" required>
+              </label>
+              <label>
+                Username
+                <input name="username" value="{{ profile.username }}" autocomplete="username" required>
+              </label>
+              <label>
+                Web Service API Access Key
+                <input name="password" type="password" autocomplete="new-password" placeholder="Leave blank to keep current access key">
+              </label>
+              <label>
+                Request timeout (seconds)
+                <input name="timeout" type="number" min="1" max="300" value="{{ profile.timeout or 20 }}" required>
+              </label>
+              <label class="check">
+                <input name="verify_tls" type="checkbox" {% if profile.verify_tls %}checked{% endif %}>
+                Verify TLS certificate
+              </label>
+              <label class="check">
+                <input name="is_default" type="checkbox" {% if profile.is_default %}checked{% endif %}>
+                Use as default profile
+              </label>
+              <div class="button-row">
+                <button class="secondary" type="submit" form="fortiauthenticator-test-profile-{{ loop.index }}">Test profile</button>
+                <button type="submit">Update profile</button>
+                <button
+                  class="danger"
+                  type="submit"
+                  formaction="{{ url_for('delete_fortiauthenticator_profile', name=profile.name) }}"
+                  onclick="return confirm('Delete FortiAuthenticator profile {{ profile.name }}?')"
+                >Delete</button>
+              </div>
             </form>
-            <a class="button-link secondary" href="{{ url_for('fortiauthenticator_home', edit=profile.name) }}">Edit</a>
-            <form method="post" action="{{ url_for('delete_fortiauthenticator_profile', name=profile.name) }}">
-              <button class="danger" type="submit">Delete</button>
-            </form>
-          </article>
+          </details>
         {% endfor %}
       </div>
     {% else %}
       <p class="empty">No FortiAuthenticator profiles saved yet.</p>
     {% endif %}
-    </div>
   </section>
 {% else %}
   <section class="panel">

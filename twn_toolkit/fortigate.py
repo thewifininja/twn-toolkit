@@ -8,6 +8,8 @@ from urllib.parse import quote, urlparse
 
 import requests
 
+from .http_client import DEFAULT_HTTP_TIMEOUT_SECONDS, format_seconds, split_request_timeout
+
 
 class FortiGateError(RuntimeError):
     def __init__(self, message: str, status_code: int | None = None, response_body: str = "") -> None:
@@ -40,7 +42,7 @@ class FortiGateClient:
     host: str
     api_key: str
     verify_tls: bool = True
-    timeout: int = 20
+    timeout: int = DEFAULT_HTTP_TIMEOUT_SECONDS
 
     @classmethod
     def from_profile(cls, profile: dict[str, Any]) -> "FortiGateClient":
@@ -207,6 +209,7 @@ class FortiGateClient:
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
         }
+        request_timeout = split_request_timeout(self.timeout)
 
         try:
             response = requests.request(
@@ -216,10 +219,30 @@ class FortiGateClient:
                 params=params,
                 json=json,
                 verify=self.verify_tls,
-                timeout=self.timeout,
+                timeout=request_timeout,
             )
+        except requests.ConnectTimeout as exc:
+            raise FortiGateError(
+                f"Could not connect to FortiGate at {self.host} within "
+                f"{format_seconds(request_timeout[0])}. Confirm the host is reachable from the toolkit server."
+            ) from exc
+        except requests.ReadTimeout as exc:
+            raise FortiGateError(
+                f"FortiGate at {self.host} accepted the connection but did not respond within "
+                f"{format_seconds(request_timeout[1])}."
+            ) from exc
+        except requests.SSLError as exc:
+            raise FortiGateError(
+                f"TLS verification failed for FortiGate at {self.host}. "
+                "Confirm the certificate is trusted, or disable TLS verification for this profile if appropriate."
+            ) from exc
+        except requests.ConnectionError as exc:
+            raise FortiGateError(
+                f"Could not reach FortiGate at {self.host}. "
+                "Confirm the address, port, routing, firewall policy, and that the REST API is enabled."
+            ) from exc
         except requests.RequestException as exc:
-            raise FortiGateError(str(exc)) from exc
+            raise FortiGateError(f"FortiGate request failed: {exc}") from exc
 
         if response.status_code >= 400:
             body = _response_message(response)

@@ -57,6 +57,41 @@
         Build custom profiles from individual tool permissions. Users get the union of every profile assigned to them.
       </p>
     </div>
+    <details class="create-access-profile-card card-action-details">
+      <summary>
+        <span>New profile</span>
+      </summary>
+      <form method="post" action="{{ url_for('save_access_profile') }}" class="form access-profile-form">
+        <p class="field-note">Add a custom profile scoped to any combination of tools.</p>
+        <label>Name
+          <input name="name" maxlength="80" placeholder="Wireless helpdesk" required>
+        </label>
+        <label>Description
+          <input name="description" maxlength="240" placeholder="Optional note for admins">
+        </label>
+        <div class="checkbox-actions" aria-label="Tool permission selection shortcuts">
+          <button type="button" class="link-button" data-checkbox-action="select" data-checkbox-target="input[name='tool_id']">Select all tools</button>
+          <button type="button" class="link-button" data-checkbox-action="deselect" data-checkbox-target="input[name='tool_id']">Deselect all tools</button>
+        </div>
+        <div class="access-tool-groups">
+          {% for group_label, tools in tool_groups_for_access %}
+            <fieldset class="choice-group access-tool-group">
+              <legend>{{ group_label }}</legend>
+              {% for tool in tools %}
+                <label class="check">
+                  <input type="checkbox" name="tool_id" value="{{ tool.id }}">
+                  <span>
+                    <strong>{{ tool.label }}</strong>
+                    <small>{{ tool.description }}</small>
+                  </span>
+                </label>
+              {% endfor %}
+            </fieldset>
+          {% endfor %}
+        </div>
+        <button type="submit">Save access profile</button>
+      </form>
+    </details>
     <div class="access-profile-list">
       <article class="access-profile-card builtin-profile-card">
         <div>
@@ -82,6 +117,10 @@
               <label>Description
                 <input name="description" maxlength="240" value="{{ profile.description }}">
               </label>
+              <div class="checkbox-actions" aria-label="Tool permission selection shortcuts">
+                <button type="button" class="link-button" data-checkbox-action="select" data-checkbox-target="input[name='tool_id']">Select all tools</button>
+                <button type="button" class="link-button" data-checkbox-action="deselect" data-checkbox-target="input[name='tool_id']">Deselect all tools</button>
+              </div>
               <div class="access-tool-groups">
                 {% for group_label, tools in tool_groups_for_access %}
                   <fieldset class="choice-group access-tool-group">
@@ -112,39 +151,6 @@
         {% endfor %}
       {% endif %}
 
-      <details class="access-profile-card create-access-profile-card">
-        <summary>
-          <span>
-            <strong>Create access profile</strong>
-            <small>Add a custom profile scoped to any combination of tools.</small>
-          </span>
-        </summary>
-        <form method="post" action="{{ url_for('save_access_profile') }}" class="form access-profile-form">
-          <label>Name
-            <input name="name" maxlength="80" placeholder="Wireless helpdesk" required>
-          </label>
-          <label>Description
-            <input name="description" maxlength="240" placeholder="Optional note for admins">
-          </label>
-          <div class="access-tool-groups">
-            {% for group_label, tools in tool_groups_for_access %}
-              <fieldset class="choice-group access-tool-group">
-                <legend>{{ group_label }}</legend>
-                {% for tool in tools %}
-                  <label class="check">
-                    <input type="checkbox" name="tool_id" value="{{ tool.id }}">
-                    <span>
-                      <strong>{{ tool.label }}</strong>
-                      <small>{{ tool.description }}</small>
-                    </span>
-                  </label>
-                {% endfor %}
-              </fieldset>
-            {% endfor %}
-          </div>
-          <button type="submit">Save access profile</button>
-        </form>
-      </details>
     </div>
   </section>
 {% endif %}
@@ -194,14 +200,12 @@
     <p class="field-note">Password changes use the currently configured policy.</p>
   </div>
   {% if current_user.is_admin %}
-    <details class="user-card add-user-card">
+    <details class="add-user-card card-action-details">
       <summary>
-        <span>
-          <strong>Add user</strong>
-          <small>Create an account and assign one or more access profiles.</small>
-        </span>
+        <span>New user</span>
       </summary>
       <form method="post" action="{{ url_for('create_user') }}" class="stack">
+        <p class="field-note">Create an account and assign one or more access profiles.</p>
         <label>Username
           <input name="username" minlength="3" maxlength="64" required>
         </label>
@@ -215,6 +219,12 @@
         </label>
         <fieldset class="choice-group">
           <legend>Access profiles</legend>
+          {% if access_profiles %}
+            <div class="checkbox-actions" aria-label="Access profile selection shortcuts">
+              <button type="button" class="link-button" data-checkbox-action="select" data-checkbox-target="input[name='access_profile_id']">Select all profiles</button>
+              <button type="button" class="link-button" data-checkbox-action="deselect" data-checkbox-target="input[name='access_profile_id']">Deselect all profiles</button>
+            </div>
+          {% endif %}
           <label class="check">
             <input type="radio" name="builtin_profile" value="administrator">
             Administrator <small class="profile-helper">Full toolkit access</small>
@@ -236,50 +246,64 @@
   {% endif %}
   <div class="user-list">
     {% for user in users %}
-      <article class="user-card">
-        <div>
-          <h3>{{ user.username }}</h3>
-          <span class="pill {{ 'success' if user.is_admin else 'planned' }}">
-            {{ 'Administrator' if user.is_admin else 'User' }}
+      <details class="user-card user-edit-card">
+        <summary>
+          <span class="user-summary-main">
+            <strong>{{ user.username }}</strong>
+            <span>
+              <span class="pill {{ 'success' if user.is_admin else 'planned' }}">
+                {{ 'Administrator' if user.is_admin else 'User' }}
+              </span>
+              {% if user.id == current_user.id %}<span class="muted">Current account</span>{% endif %}
+            </span>
           </span>
-          {% if user.id == current_user.id %}<span class="muted">Current account</span>{% endif %}
-        </div>
-        <form method="post" action="{{ url_for('change_user_password', user_id=user.id) }}" class="password-form">
-          <input type="password" name="password" minlength="{{ min_password_length }}" placeholder="New password"
-                 autocomplete="new-password" aria-label="New password for {{ user.username }}" required>
-          <input type="password" name="confirm_password" minlength="{{ min_password_length }}" placeholder="Confirm password"
-                 autocomplete="new-password" aria-label="Confirm password for {{ user.username }}" required>
-          <button type="submit">Change password</button>
-        </form>
-        {% if current_user.is_admin %}
-          <form method="post" action="{{ url_for('update_user_access', user_id=user.id) }}" class="user-access-form">
-            <fieldset class="choice-group compact-choice-group">
-              <legend>Assigned profiles</legend>
-              <label class="check">
-                <input type="radio" name="builtin_profile" value="administrator" {% if user.is_admin %}checked{% endif %}>
-                Administrator
-              </label>
-              <label class="check">
-                <input type="radio" name="builtin_profile" value="" {% if not user.is_admin %}checked{% endif %}>
-                Standard user
-              </label>
-              {% for profile in access_profiles %}
+          <span class="button-link secondary user-edit-button">Edit</span>
+        </summary>
+        <div class="user-edit-panel">
+          <form method="post" action="{{ url_for('change_user_password', user_id=user.id) }}" class="password-form">
+            <h4>Change password</h4>
+            <input type="password" name="password" minlength="{{ min_password_length }}" placeholder="New password"
+                   autocomplete="new-password" aria-label="New password for {{ user.username }}" required>
+            <input type="password" name="confirm_password" minlength="{{ min_password_length }}" placeholder="Confirm password"
+                   autocomplete="new-password" aria-label="Confirm password for {{ user.username }}" required>
+            <button type="submit">Change password</button>
+          </form>
+          {% if current_user.is_admin %}
+            <form method="post" action="{{ url_for('update_user_access', user_id=user.id) }}" class="user-access-form">
+              <fieldset class="choice-group compact-choice-group">
+                <legend>Assigned profiles</legend>
+                {% if access_profiles %}
+                  <div class="checkbox-actions" aria-label="Access profile selection shortcuts">
+                    <button type="button" class="link-button" data-checkbox-action="select" data-checkbox-target="input[name='access_profile_id']">Select all profiles</button>
+                    <button type="button" class="link-button" data-checkbox-action="deselect" data-checkbox-target="input[name='access_profile_id']">Deselect all profiles</button>
+                  </div>
+                {% endif %}
                 <label class="check">
-                  <input type="checkbox" name="access_profile_id" value="{{ profile.id }}" {% if profile.id in user.get('access_profile_ids', []) %}checked{% endif %}>
-                  {{ profile.name }}
+                  <input type="radio" name="builtin_profile" value="administrator" {% if user.is_admin %}checked{% endif %}>
+                  Administrator
                 </label>
-              {% endfor %}
-            </fieldset>
-            <button class="secondary" type="submit">Save access</button>
-          </form>
-        {% endif %}
-        {% if user.id != current_user.id %}
-          <form method="post" action="{{ url_for('delete_user', user_id=user.id) }}"
-                onsubmit="return confirm('Delete user {{ user.username }}?')">
-            <button type="submit" class="danger">Delete</button>
-          </form>
-        {% endif %}
-      </article>
+                <label class="check">
+                  <input type="radio" name="builtin_profile" value="" {% if not user.is_admin %}checked{% endif %}>
+                  Standard user
+                </label>
+                {% for profile in access_profiles %}
+                  <label class="check">
+                    <input type="checkbox" name="access_profile_id" value="{{ profile.id }}" {% if profile.id in user.get('access_profile_ids', []) %}checked{% endif %}>
+                    {{ profile.name }}
+                  </label>
+                {% endfor %}
+              </fieldset>
+              <button class="secondary" type="submit">Save access</button>
+            </form>
+          {% endif %}
+          {% if user.id != current_user.id %}
+            <form method="post" action="{{ url_for('delete_user', user_id=user.id) }}"
+                  onsubmit="return confirm('Delete user {{ user.username }}?')">
+              <button type="submit" class="danger">Delete user</button>
+            </form>
+          {% endif %}
+        </div>
+      </details>
     {% endfor %}
   </div>
 </section>

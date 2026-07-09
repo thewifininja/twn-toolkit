@@ -5,7 +5,8 @@ import unittest
 from unittest.mock import patch
 
 from twn_toolkit import create_app
-from twn_toolkit.app import _managed_switch_order, _switch_order_moves
+from twn_toolkit.fortigate import FortiGateError
+from twn_toolkit.fortigate_routes import managed_switch_order, switch_order_moves
 from twn_toolkit.network_tools import (
     ToolInputError,
     parse_dns_servers,
@@ -18,7 +19,7 @@ from twn_toolkit.network_tools import (
 
 class NetworkToolTests(unittest.TestCase):
     def test_switch_order_keeps_name_primary_and_description_separate(self) -> None:
-        switches = _managed_switch_order(
+        switches = managed_switch_order(
             [
                 {
                     "switch-id": "S124ENTF00000001",
@@ -39,14 +40,14 @@ class NetworkToolTests(unittest.TestCase):
 
     def test_builds_minimal_switch_order_moves(self) -> None:
         self.assertEqual(
-            _switch_order_moves(
+            switch_order_moves(
                 ["switch-c", "switch-a", "switch-b"],
                 ["switch-a", "switch-b", "switch-c"],
             ),
             [{"switch_id": "switch-c", "after": "switch-b"}],
         )
         self.assertEqual(
-            _switch_order_moves(
+            switch_order_moves(
                 ["switch-c", "switch-b", "switch-a"],
                 ["switch-a", "switch-b", "switch-c"],
             ),
@@ -55,6 +56,51 @@ class NetworkToolTests(unittest.TestCase):
                 {"switch_id": "switch-c", "after": "switch-b"},
             ],
         )
+
+    def test_switch_order_apply_returns_friendly_permission_error(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            client.post(
+                "/profiles",
+                data={
+                    "name": "ReadOnly",
+                    "host": "https://fortigate.example",
+                    "api_key": "secret",
+                    "default_vdom": "root",
+                },
+            )
+            switches = [
+                {"switch-id": "switch-a", "name": "Switch A"},
+                {"switch-id": "switch-b", "name": "Switch B"},
+            ]
+
+            with (
+                patch(
+                    "twn_toolkit.fortigate_routes.FortiGateClient.get_managed_switches",
+                    return_value=switches,
+                ),
+                patch(
+                    "twn_toolkit.fortigate_routes.FortiGateClient.move_managed_switch_after",
+                    side_effect=FortiGateError("raw permission detail", status_code=403),
+                ),
+            ):
+                response = client.post(
+                    "/fortigate/switch-order/apply",
+                    data={
+                        "profile": "ReadOnly",
+                        "vdom": "root",
+                        "switch_id": ["switch-b", "switch-a"],
+                    },
+                )
+
+        self.assertEqual(response.status_code, 502)
+        payload = response.get_json()
+        self.assertIn("did not allow the reorder", payload["user_message"])
+        self.assertIn("read-write access", payload["user_message"])
+        self.assertEqual(payload["detail"], "raw permission detail")
+        self.assertEqual(payload["completed_moves"], [])
 
     def test_subtracts_ipv4_and_ipv6_networks(self) -> None:
         self.assertEqual(
@@ -188,7 +234,7 @@ class NetworkToolTests(unittest.TestCase):
                 "latency_ms": 0.1,
                 "elapsed_ms": 1.0,
             }
-            with patch("twn_toolkit.tools.ping_hosts", return_value=[ping_result]):
+            with patch("twn_toolkit.ping_routes.ping_hosts", return_value=[ping_result]):
                 response = client.post("/tools/ping/run", json={"hosts": "Localhost = localhost"})
             self.assertEqual(response.get_json()["results"], [{**ping_result, "label": "Localhost"}])
 
@@ -245,7 +291,7 @@ class NetworkToolTests(unittest.TestCase):
                 "answers": ["192.0.2.10"],
                 "response_ms": 12.3,
             }
-            with patch("twn_toolkit.tools.dns_lookup_matrix", return_value=[dns_result]):
+            with patch("twn_toolkit.dns_routes.dns_lookup_matrix", return_value=[dns_result]):
                 response = client.post(
                     "/tools/dns-response",
                     data={
@@ -291,7 +337,7 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"HQ WLAN", radius_page)
             self.assertNotIn(b"shared-secret-not-rendered", radius_page)
             self.assertNotIn(b"password-not-rendered", radius_page)
-            with patch("twn_toolkit.tools.platform.system", return_value="Darwin"):
+            with patch("twn_toolkit.radius_routes.platform.system", return_value="Darwin"):
                 mac_radius_page = client.get("/tools/radius-test").data
             self.assertIn(b"macOS EAP compatibility", mac_radius_page)
             self.assertIn(b'class="platform-warning"', mac_radius_page)
@@ -320,7 +366,7 @@ class NetworkToolTests(unittest.TestCase):
                 "response_ms": 8.4,
                 "attributes": [{"name": "Reply-Message", "value": "Welcome"}],
             }
-            with patch("twn_toolkit.tools.radius_authenticate", return_value=[radius_result]) as auth:
+            with patch("twn_toolkit.radius_routes.radius_authenticate", return_value=[radius_result]) as auth:
                 response = client.post(
                     "/tools/radius-test",
                     data={
@@ -338,7 +384,7 @@ class NetworkToolTests(unittest.TestCase):
             auth.assert_called_once()
 
             with patch(
-                "twn_toolkit.tools.run_ssh_hosts",
+                "twn_toolkit.ssh_routes.run_ssh_hosts",
                 return_value=[{"host": "switch-1", "status": "success", "output": "ok"}],
             ):
                 response = client.post(

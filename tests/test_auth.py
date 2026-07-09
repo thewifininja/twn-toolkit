@@ -239,7 +239,7 @@ def test_admin_can_save_server_access_and_trigger_restart(tmp_path):
     app.config["TESTING"] = True
     client = app.test_client()
 
-    with patch("twn_toolkit.app.subprocess.Popen") as popen:
+    with patch("twn_toolkit.admin_routes.subprocess.Popen") as popen:
         response = client.post(
             "/settings/server",
             data={

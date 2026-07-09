@@ -8,6 +8,8 @@ from urllib.parse import urljoin, urlparse
 import requests
 from requests.auth import HTTPBasicAuth
 
+from .http_client import DEFAULT_HTTP_TIMEOUT_SECONDS, format_seconds, split_request_timeout
+
 
 class FortiAuthenticatorError(RuntimeError):
     def __init__(self, message: str, status_code: int | None = None, response_body: str = "") -> None:
@@ -36,7 +38,7 @@ class FortiAuthenticatorClient:
     username: str
     password: str
     verify_tls: bool = True
-    timeout: int = 20
+    timeout: int = DEFAULT_HTTP_TIMEOUT_SECONDS
 
     @classmethod
     def from_profile(cls, profile: dict[str, Any]) -> "FortiAuthenticatorClient":
@@ -45,7 +47,7 @@ class FortiAuthenticatorClient:
             username=profile["username"].strip(),
             password=profile["password"],
             verify_tls=profile.get("verify_tls", True),
-            timeout=int(profile.get("timeout", 20)),
+            timeout=int(profile.get("timeout", DEFAULT_HTTP_TIMEOUT_SECONDS)),
         )
 
     def test_connection(self) -> dict[str, Any]:
@@ -97,6 +99,7 @@ class FortiAuthenticatorClient:
         json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         url = urljoin(f"{self.host}/", endpoint.lstrip("/"))
+        request_timeout = split_request_timeout(self.timeout)
         try:
             response = requests.request(
                 method,
@@ -106,10 +109,30 @@ class FortiAuthenticatorClient:
                 params=params,
                 json=json,
                 verify=self.verify_tls,
-                timeout=self.timeout,
+                timeout=request_timeout,
             )
+        except requests.ConnectTimeout as exc:
+            raise FortiAuthenticatorError(
+                f"Could not connect to FortiAuthenticator at {self.host} within "
+                f"{format_seconds(request_timeout[0])}. Confirm the host is reachable from the toolkit server."
+            ) from exc
+        except requests.ReadTimeout as exc:
+            raise FortiAuthenticatorError(
+                f"FortiAuthenticator at {self.host} accepted the connection but did not respond within "
+                f"{format_seconds(request_timeout[1])}. Try again or increase the profile request timeout."
+            ) from exc
+        except requests.SSLError as exc:
+            raise FortiAuthenticatorError(
+                f"TLS verification failed for FortiAuthenticator at {self.host}. "
+                "Confirm the certificate is trusted, or disable TLS verification for this profile if appropriate."
+            ) from exc
+        except requests.ConnectionError as exc:
+            raise FortiAuthenticatorError(
+                f"Could not reach FortiAuthenticator at {self.host}. "
+                "Confirm the address, port, routing, firewall policy, and that the Web Service API is enabled."
+            ) from exc
         except requests.RequestException as exc:
-            raise FortiAuthenticatorError(str(exc)) from exc
+            raise FortiAuthenticatorError(f"FortiAuthenticator request failed: {exc}") from exc
 
         if response.status_code >= 400:
             body = _response_message(response)

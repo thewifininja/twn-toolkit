@@ -16,6 +16,7 @@ PREVIOUS_SERVER_SETTINGS="$INSTANCE/server_settings.previous.json"
 HOST=${TWN_TOOLKIT_HOST:-}
 PORT=${TWN_TOOLKIT_PORT:-5050}
 WORKERS=${TWN_TOOLKIT_WORKERS:-2}
+STOP_TIMEOUT=${TWN_TOOLKIT_STOP_TIMEOUT:-10}
 
 if [ -z "$HOST" ] && [ -f "$SERVER_SETTINGS" ]; then
   HOST=$(python3 -c '
@@ -139,14 +140,29 @@ stop() {
   pid=$(cat "$PIDFILE")
   kill "$pid"
   attempts=0
-  while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt 350 ]; do
+  max_attempts=$((STOP_TIMEOUT * 10))
+  while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt "$max_attempts" ]; do
     attempts=$((attempts + 1))
     sleep 0.1
   done
   if kill -0 "$pid" 2>/dev/null; then
-    echo "The server is still shutting down (PID $pid)." >&2
-    echo "Its PID file was retained; wait a moment and run ./twn status." >&2
-    return 1
+    echo "Graceful stop timed out after ${STOP_TIMEOUT}s; forcing shutdown (PID $pid)." >&2
+    children=$(pgrep -P "$pid" 2>/dev/null || true)
+    if [ -n "$children" ]; then
+      kill -KILL $children "$pid" 2>/dev/null || true
+    else
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+    attempts=0
+    while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
+      attempts=$((attempts + 1))
+      sleep 0.1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "The server could not be stopped (PID $pid)." >&2
+      echo "Its PID file was retained; inspect the process manually." >&2
+      return 1
+    fi
   fi
   rm -f "$PIDFILE"
   echo "Stopped The WiFi Ninja's Toolkit."
@@ -192,6 +208,16 @@ reset_auth() {
   esac
 }
 
+reset_data() {
+  if is_running; then
+    echo "Stop the toolkit before resetting saved profile data: ./twn stop" >&2
+    exit 1
+  fi
+  ensure_requirements
+  cd "$ROOT"
+  "$PYTHON" -m flask --app twn_toolkit reset-data "$@"
+}
+
 web_restart() {
   sleep 2
   if "$0" restart; then
@@ -228,11 +254,15 @@ case "${1:-}" in
   adminreset|reset-auth)
     reset_auth
     ;;
+  reset-data)
+    shift
+    reset_data "$@"
+    ;;
   web-restart)
     web_restart
     ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|status|logs|adminreset}" >&2
+    echo "Usage: ./twn {start|stop|restart|status|logs|adminreset|reset-data}" >&2
     exit 2
     ;;
 esac

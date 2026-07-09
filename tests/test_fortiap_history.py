@@ -215,7 +215,7 @@ def test_client_history_route_renders_results(tmp_path):
     )
 
     with patch(
-        "twn_toolkit.app.wireless_client_history",
+        "twn_toolkit.fortigate_routes.wireless_client_history",
         return_value={
             "mac": "aa:bb:cc:dd:ee:ff",
             "vdom": "root",

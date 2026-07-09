@@ -16,77 +16,109 @@
 </section>
 
 {% if can_manage_profiles %}
-  <section class="grid two">
-    <div class="panel">
-    <div class="panel-head">
-      <h1>{{ "Edit Profile" if edit_profile else "FortiGate Profiles" }}</h1>
+  <section class="panel fortinet-profile-panel">
+    <div class="auth-users-head">
+      <h2>FortiGate profiles</h2>
+      <p class="field-note">
+        Save FortiGate API connections once, then use them across AP, switch, wireless client, and inventory workflows.
+      </p>
     </div>
-    <form class="form" method="post" action="{{ url_for('save_profile') }}">
-      {% if edit_profile %}
-        <input type="hidden" name="original_name" value="{{ edit_profile.name }}">
-      {% endif %}
-      <label>
-        Profile name
-        <input name="name" value="{{ edit_profile.name if edit_profile else '' }}" placeholder="Lab Firewall" required>
-      </label>
-      <label>
-        FortiGate URL
-        <input name="host" value="{{ edit_profile.host if edit_profile else '' }}" placeholder="https://192.0.2.10:8443" required>
-      </label>
-      <label>
-        API key
-        <input name="api_key" type="password" autocomplete="off" placeholder="{{ 'Leave blank to keep current key' if edit_profile else '' }}" {% if not edit_profile %}required{% endif %}>
-      </label>
-      <label>
-        Default VDOM
-        <input name="default_vdom" value="{{ edit_profile.default_vdom if edit_profile else 'root' }}">
-      </label>
-      <label class="check">
-        <input name="verify_tls" type="checkbox" {% if not edit_profile or edit_profile.verify_tls %}checked{% endif %}>
-        Verify TLS certificate
-      </label>
-      <label class="check">
-        <input name="is_default" type="checkbox" {% if edit_profile and edit_profile.is_default %}checked{% endif %}>
-        Use as default profile
-      </label>
-      <div class="button-row">
-        <button type="submit">{{ "Update Profile" if edit_profile else "Save Profile" }}</button>
-        {% if edit_profile %}
-          <a class="button-link secondary" href="{{ url_for('fortigate_home') }}">Cancel</a>
-        {% endif %}
-      </div>
-    </form>
-    </div>
+    <details class="add-user-card card-action-details" {% if not profiles %}open{% endif %}>
+      <summary>
+        <span>New profile</span>
+      </summary>
+      <form class="form" method="post" action="{{ url_for('save_profile') }}">
+        <p class="field-note">Create a new FortiGate API profile.</p>
+        <label>
+          Profile name
+          <input name="name" placeholder="Lab Firewall" required>
+        </label>
+        <label>
+          FortiGate URL
+          <input name="host" placeholder="https://192.0.2.10:8443" required>
+        </label>
+        <label>
+          API key
+          <input name="api_key" type="password" autocomplete="off" required>
+        </label>
+        <label>
+          Default VDOM
+          <input name="default_vdom" value="root">
+        </label>
+        <label class="check">
+          <input name="verify_tls" type="checkbox" checked>
+          Verify TLS certificate
+        </label>
+        <label class="check">
+          <input name="is_default" type="checkbox">
+          Use as default profile
+        </label>
+        <button type="submit">Save profile</button>
+      </form>
+    </details>
 
-    <div class="panel">
-    <div class="panel-head">
-      <h1>Saved Profiles</h1>
-    </div>
     {% if profiles %}
-      <div class="stack">
+      <div class="access-profile-list fortinet-profile-list">
         {% for profile in profiles %}
-          <article class="row-card">
-            <div>
-              <strong>
-                {{ profile.name }}
-                {% if profile.is_default %}<small class="profile-default">Default</small>{% endif %}
-              </strong>
-              <span>{{ profile.host }} · VDOM {{ profile.default_vdom }}</span>
-            </div>
-            <form method="post" action="{{ url_for('test_profile', name=profile.name) }}">
-              <button class="secondary" type="submit">Test</button>
+          <details class="access-profile-card fortinet-profile-card" {% if edit_profile and edit_profile.name == profile.name %}open{% endif %}>
+            <summary>
+              <span>
+                <strong>
+                  {{ profile.name }}
+                  {% if profile.is_default %}<small class="profile-default">Default</small>{% endif %}
+                </strong>
+                <small>{{ profile.host }} · VDOM {{ profile.default_vdom }}</small>
+              </span>
+            </summary>
+            <form
+              id="fortigate-test-profile-{{ loop.index }}"
+              method="post"
+              action="{{ url_for('test_profile', name=profile.name) }}"
+              data-loading-message="Testing FortiGate profile…"
+            ></form>
+            <form class="form fortinet-profile-form" method="post" action="{{ url_for('save_profile') }}">
+              <input type="hidden" name="original_name" value="{{ profile.name }}">
+              <label>
+                Profile name
+                <input name="name" value="{{ profile.name }}" placeholder="Lab Firewall" required>
+              </label>
+              <label>
+                FortiGate URL
+                <input name="host" value="{{ profile.host }}" placeholder="https://192.0.2.10:8443" required>
+              </label>
+              <label>
+                API key
+                <input name="api_key" type="password" autocomplete="off" placeholder="Leave blank to keep current key">
+              </label>
+              <label>
+                Default VDOM
+                <input name="default_vdom" value="{{ profile.default_vdom or 'root' }}">
+              </label>
+              <label class="check">
+                <input name="verify_tls" type="checkbox" {% if profile.verify_tls %}checked{% endif %}>
+                Verify TLS certificate
+              </label>
+              <label class="check">
+                <input name="is_default" type="checkbox" {% if profile.is_default %}checked{% endif %}>
+                Use as default profile
+              </label>
+              <div class="button-row">
+                <button class="secondary" type="submit" form="fortigate-test-profile-{{ loop.index }}">Test profile</button>
+                <button type="submit">Update profile</button>
+                <button
+                  class="danger"
+                  type="submit"
+                  formaction="{{ url_for('delete_profile', name=profile.name) }}"
+                  onclick="return confirm('Delete FortiGate profile {{ profile.name }}?')"
+                >Delete</button>
+              </div>
             </form>
-            <a class="button-link secondary" href="{{ url_for('fortigate_home', edit=profile.name) }}">Edit</a>
-            <form method="post" action="{{ url_for('delete_profile', name=profile.name) }}">
-              <button class="danger" type="submit">Delete</button>
-            </form>
-          </article>
+          </details>
         {% endfor %}
       </div>
     {% else %}
       <p class="empty">No profiles saved yet.</p>
     {% endif %}
-    </div>
   </section>
 {% else %}
   <section class="panel">

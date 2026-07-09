@@ -143,7 +143,7 @@ class SNMPToolTests(unittest.TestCase):
                     ],
                 }
             ]
-            with patch("twn_toolkit.tools.run_snmp_tests", return_value=fake_results):
+            with patch("twn_toolkit.snmp_routes.run_snmp_tests", return_value=fake_results):
                 response = client.post(
                     "/tools/snmp-test",
                     data={

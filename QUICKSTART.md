@@ -191,13 +191,15 @@ The WiFi Ninja's Toolkit persists Fortinet connection profiles and reusable
 ping, DNS, RADIUS, SNMP, and TCP scanner profiles. To remove them:
 
 ```bash
-flask --app twn_toolkit reset-data
+./twn stop
+./twn reset-data
 ```
 
 Confirm the prompt. For scripts or packaging:
 
 ```bash
-flask --app twn_toolkit reset-data --yes
+./twn stop
+./twn reset-data --yes
 ```
 
 This removes FortiGate, FortiAuthenticator, ping, DNS, RADIUS, SNMP, TCP

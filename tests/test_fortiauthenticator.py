@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
+import requests
+
 from twn_toolkit import create_app
 from twn_toolkit.fortiauthenticator import FortiAuthenticatorClient, FortiAuthenticatorError
 
@@ -32,7 +34,32 @@ class FortiAuthenticatorClientTests(unittest.TestCase):
         self.assertEqual(request.call_args.kwargs["auth"].username, "api-user")
         self.assertEqual(request.call_args.kwargs["auth"].password, "secret")
         self.assertFalse(request.call_args.kwargs["verify"])
-        self.assertEqual(request.call_args.kwargs["timeout"], 30)
+        self.assertEqual(request.call_args.kwargs["timeout"], (3.0, 30.0))
+
+    @patch("twn_toolkit.fortiauthenticator.requests.request")
+    def test_unreachable_host_fails_with_clear_connection_message(self, request: Mock) -> None:
+        request.side_effect = requests.ConnectTimeout("timed out")
+
+        with self.assertRaisesRegex(FortiAuthenticatorError, "Could not connect.*within 3 seconds"):
+            FortiAuthenticatorClient(
+                host="https://fac.example.com",
+                username="api-user",
+                password="secret",
+                timeout=30,
+            ).test_connection()
+
+    @patch("twn_toolkit.fortiauthenticator.requests.request")
+    def test_short_profile_timeout_caps_connect_timeout(self, request: Mock) -> None:
+        request.return_value = Mock(status_code=204, content=b"")
+
+        FortiAuthenticatorClient(
+            host="https://fac.example.com",
+            username="api-user",
+            password="secret",
+            timeout=1,
+        ).test_connection()
+
+        self.assertEqual(request.call_args.kwargs["timeout"], (1.0, 1.0))
 
     @patch("twn_toolkit.fortiauthenticator.requests.request")
     def test_connection_explains_authentication_failure(self, request: Mock) -> None:
@@ -173,7 +200,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         with open(profile_path, encoding="utf-8") as handle:
             self.assertEqual(json.load(handle), [])
 
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.test_connection")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.test_connection")
     def test_saved_profile_connection(self, test_connection: Mock) -> None:
         self.client.post(
             "/fortiauthenticator/profiles",
@@ -192,7 +219,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         )
         self.assertIn(b"42 MAC devices available", response.data)
 
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_devices")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
     def test_mac_device_preview_and_csv_export(self, get_all_mac_devices: Mock) -> None:
         self.client.post(
             "/fortiauthenticator/profiles",
@@ -243,7 +270,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             "43,aa:bb:cc:dd:ee:ff,Phone,,/api/v1/macdevices/43/\n",
         )
 
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_group_memberships")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_group_memberships")
     def test_group_membership_preview_and_csv_export(self, get_memberships: Mock) -> None:
         self.client.post(
             "/fortiauthenticator/profiles",
@@ -292,8 +319,8 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             "/api/v1/macgroup-memberships/91/\n",
         )
 
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_devices")
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_group_memberships")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_group_memberships")
     def test_global_cleanup_preview_warns_about_other_groups(
         self,
         get_memberships: Mock,
@@ -323,9 +350,9 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         self.assertIn(b'value="42"', response.data)
         self.assertIn(b'value="43"', response.data)
 
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.delete_mac_device")
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_devices")
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_group_memberships")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.delete_mac_device")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_group_memberships")
     def test_cleanup_rejects_incorrect_confirmation(
         self,
         get_memberships: Mock,
@@ -351,9 +378,9 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         self.assertIn(b"Confirmation did not match", response.data)
         delete_device.assert_not_called()
 
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.delete_mac_group_membership")
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_devices")
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_group_memberships")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.delete_mac_group_membership")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_group_memberships")
     def test_cleanup_removes_only_selected_memberships(
         self,
         get_memberships: Mock,
@@ -382,9 +409,9 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             ["91"],
         )
 
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.delete_mac_device")
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_devices")
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_group_memberships")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.delete_mac_device")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_group_memberships")
     def test_cleanup_deletes_each_device_globally(
         self,
         get_memberships: Mock,
@@ -413,9 +440,9 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             ["42", "43"],
         )
 
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.delete_mac_device")
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_devices")
-    @patch("twn_toolkit.app.FortiAuthenticatorClient.get_all_mac_group_memberships")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.delete_mac_device")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_group_memberships")
     def test_cleanup_rejects_target_not_in_fresh_preview(
         self,
         get_memberships: Mock,

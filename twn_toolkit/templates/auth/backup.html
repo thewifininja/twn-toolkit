@@ -14,6 +14,10 @@
     <h2>Export backup</h2>
     <p>Choose the profile groups to download as one toolkit backup file.</p>
     <form method="post" action="{{ url_for('export_profile_backup') }}" class="form backup-form" id="backup-export-form">
+      <div class="checkbox-actions" aria-label="Export group selection shortcuts">
+        <button type="button" class="link-button" data-checkbox-action="select" data-checkbox-target="input[name='item']">Select all groups</button>
+        <button type="button" class="link-button" data-checkbox-action="deselect" data-checkbox-target="input[name='item']">Deselect all groups</button>
+      </div>
       <div class="backup-choice-list">
         {% for item in backup_catalog %}
           <label class="check backup-choice">
@@ -70,6 +74,10 @@
           Replace selected profile groups
         </label>
       </fieldset>
+      <div class="checkbox-actions" aria-label="Import group selection shortcuts">
+        <button type="button" class="link-button" data-checkbox-action="select" data-checkbox-target="input[name='item']">Select all groups</button>
+        <button type="button" class="link-button" data-checkbox-action="deselect" data-checkbox-target="input[name='item']">Deselect all groups</button>
+      </div>
       <div class="backup-choice-list">
         {% for item in backup_catalog %}
           <label class="check backup-choice">

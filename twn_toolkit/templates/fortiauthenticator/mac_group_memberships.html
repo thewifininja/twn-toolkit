@@ -7,7 +7,12 @@
     <p>Fetch all associations between FortiAuthenticator MAC devices and groups for an in-page preview or CSV export.</p>
   </div>
   {% if profiles %}
-    <form class="form" method="post" action="{{ url_for('fortiauthenticator_mac_group_memberships') }}">
+    <form
+      class="form"
+      method="post"
+      action="{{ url_for('fortiauthenticator_mac_group_memberships') }}"
+      data-loading-message="Fetching FortiAuthenticator group memberships…"
+    >
       <label>
         FortiAuthenticator profile
         <select name="profile" required>

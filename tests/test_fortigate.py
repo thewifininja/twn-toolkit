@@ -4,7 +4,9 @@ import json
 import unittest
 from unittest.mock import Mock, patch
 
-from twn_toolkit.fortigate import FortiGateClient
+import requests
+
+from twn_toolkit.fortigate import FortiGateClient, FortiGateError
 
 
 class FortiGateClientTests(unittest.TestCase):
@@ -36,8 +38,35 @@ class FortiGateClientTests(unittest.TestCase):
             },
             json=None,
             verify=True,
-            timeout=20,
+            timeout=(3.0, 20.0),
         )
+
+    @patch("twn_toolkit.fortigate.requests.request")
+    def test_unreachable_host_fails_with_clear_connection_message(self, request: Mock) -> None:
+        request.side_effect = requests.ConnectTimeout("timed out")
+
+        with self.assertRaisesRegex(FortiGateError, "Could not connect.*within 3 seconds"):
+            FortiGateClient(
+                host="https://fortigate.example",
+                api_key="secret",
+                timeout=20,
+            ).test_connection()
+
+    @patch("twn_toolkit.fortigate.requests.request")
+    def test_short_timeout_caps_connect_timeout(self, request: Mock) -> None:
+        response = Mock()
+        response.status_code = 200
+        response.content = b'{"version":"v7.6"}'
+        response.json.return_value = {"version": "v7.6"}
+        request.return_value = response
+
+        FortiGateClient(
+            host="https://fortigate.example",
+            api_key="secret",
+            timeout=1,
+        ).test_connection()
+
+        self.assertEqual(request.call_args.kwargs["timeout"], (1.0, 1.0))
 
     @patch("twn_toolkit.fortigate.requests.request")
     def test_wireless_log_lookup_uses_station_mac_filter_and_history_events(self, request: Mock) -> None:

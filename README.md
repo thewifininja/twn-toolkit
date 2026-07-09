@@ -83,6 +83,7 @@ The home page separates Fortinet workflows from vendor-neutral network tools.
 ./twn status    Show status and URL
 ./twn logs      Show recent server errors
 ./twn adminreset  Remove users and return to first-launch setup
+./twn reset-data   Remove saved profiles and API keys
 ```
 
 The launcher supports macOS, Linux, and Raspberry Pi OS. Port 5050 is used by
@@ -242,7 +243,8 @@ choose columns with checkboxes, drag rows into CSV order, and then select
 To remove saved profiles and API keys before sharing a copy, run:
 
 ```bash
-flask --app twn_toolkit reset-data
+./twn stop
+./twn reset-data
 ```
 
 ## Development Server
@@ -255,6 +257,12 @@ flask --app twn_toolkit run --debug --port 5050
 ```
 
 Stop the background service first with `./twn stop` if it is already running.
+
+## Internal Tool Development
+
+New internal tools should register their metadata and route ownership through the
+tool registry so navigation, favorites, access profiles, and authorization stay
+consistent. See [docs/adding-a-tool.md](docs/adding-a-tool.md).
 
 ## License
 

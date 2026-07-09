@@ -123,6 +123,56 @@ class AccessProfileTests(unittest.TestCase):
             self.assertIn(b"Find Wireless Client History", fortigate.data)
             self.assertNotIn(b"Re-order Managed FortiSwitches", fortigate.data)
 
+    def test_deleting_unassigned_access_profile_does_not_log_out_admin(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            client = app.test_client()
+            setup_admin(client)
+            store = AuthStore(instance)
+            profile = store.save_access_profile(
+                name="Temporary profile",
+                tool_ids=["tools.ping"],
+            )
+            admin = store.get_user("admin")
+            self.assertIsNotNone(admin)
+            original_session_version = admin["session_version"]
+
+            response = client.post(
+                f"/settings/access-profiles/{profile['id']}/delete",
+                follow_redirects=True,
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b"Access profile deleted.", response.data)
+            self.assertIn(b"Authentication settings", response.data)
+            updated_admin = store.get_user("admin")
+            self.assertIsNotNone(updated_admin)
+            self.assertEqual(updated_admin["session_version"], original_session_version)
+
+    def test_deleting_assigned_access_profile_invalidates_affected_user(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            client = app.test_client()
+            setup_admin(client)
+            store = AuthStore(instance)
+            profile = store.save_access_profile(
+                name="Ping only",
+                tool_ids=["tools.ping"],
+            )
+            user = store.create_user(
+                "operator",
+                "a different long password",
+                access_profile_ids=[profile["id"]],
+            )
+            original_session_version = user["session_version"]
+
+            client.post(f"/settings/access-profiles/{profile['id']}/delete")
+
+            updated_user = store.get_user("operator")
+            self.assertIsNotNone(updated_user)
+            self.assertEqual(updated_user["access_profile_ids"], [])
+            self.assertEqual(updated_user["session_version"], original_session_version + 1)
+
 
 if __name__ == "__main__":
     unittest.main()

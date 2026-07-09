@@ -115,7 +115,7 @@ class TracerouteToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
-            with patch("twn_toolkit.tools.run_traceroute", return_value=result):
+            with patch("twn_toolkit.traceroute_routes.run_traceroute", return_value=result):
                 response = app.test_client().post(
                     "/tools/traceroute",
                     data={

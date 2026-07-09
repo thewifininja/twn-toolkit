@@ -110,7 +110,7 @@ class NTPToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
-            with patch("twn_toolkit.tools.test_ntp_servers", return_value=[result]):
+            with patch("twn_toolkit.ntp_routes.test_ntp_servers", return_value=[result]):
                 response = app.test_client().post(
                     "/tools/ntp-test",
                     data={"host": "ntp.example", "port": "123", "timeout": "3", "samples": "1"},

@@ -7,7 +7,12 @@
     <p>Fetch the complete FortiAuthenticator MAC device inventory for an in-page preview or CSV export.</p>
   </div>
   {% if profiles %}
-    <form class="form" method="post" action="{{ url_for('fortiauthenticator_mac_devices') }}">
+    <form
+      class="form"
+      method="post"
+      action="{{ url_for('fortiauthenticator_mac_devices') }}"
+      data-loading-message="Fetching FortiAuthenticator MAC devices…"
+    >
       <label>
         FortiAuthenticator profile
         <select name="profile" required>
