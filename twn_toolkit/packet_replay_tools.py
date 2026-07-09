@@ -176,16 +176,27 @@ def send_replay_frames(
     interval_seconds = _validate_interval(interval_seconds)
     try:
         from scapy.all import Ether, sendp  # type: ignore[import-not-found]
+        from scapy.error import Scapy_Exception  # type: ignore[import-not-found]
     except ImportError as exc:
         raise ToolInputError(
             "Raw packet sending requires Scapy. Run the installer again or install requirements."
         ) from exc
 
     started = time.time()
-    for index, frame in enumerate(frames):
-        sendp(Ether(frame), iface=interface, verbose=False)
-        if index < len(frames) - 1:
-            time.sleep(interval_seconds)
+    try:
+        for index, frame in enumerate(frames):
+            sendp(Ether(frame), iface=interface, verbose=False)
+            if index < len(frames) - 1:
+                time.sleep(interval_seconds)
+    except PermissionError as exc:
+        raise ToolInputError(
+            "Packet replay needs raw packet permissions. Start the toolkit with suitable privileges "
+            "or grant the Python process packet-capture/raw-socket access for the selected interface."
+        ) from exc
+    except OSError as exc:
+        raise ToolInputError(f"Packet replay failed on interface {interface}: {exc}") from exc
+    except Scapy_Exception as exc:
+        raise ToolInputError(f"Packet replay failed on interface {interface}: {exc}") from exc
     return {
         "sent": len(frames),
         "interface": interface,

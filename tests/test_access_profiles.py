@@ -90,6 +90,39 @@ class AccessProfileTests(unittest.TestCase):
             self.assertEqual(client.get("/tools/packet-replay").status_code, 200)
             self.assertEqual(client.get("/settings/backup").status_code, 403)
 
+    def test_nav_and_home_only_show_allowed_categories(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            client = app.test_client()
+            setup_admin(client)
+            store = AuthStore(instance)
+            profile = store.save_access_profile(
+                name="Wireless history",
+                tool_ids=["fortigate.wireless_client_history"],
+            )
+            store.create_user(
+                "wirelessuser",
+                "a different long password",
+                access_profile_ids=[profile["id"]],
+            )
+
+            client.post("/logout")
+            client.post(
+                "/login",
+                data={"username": "wirelessuser", "password": "a different long password"},
+            )
+            home = client.get("/")
+            fortigate = client.get("/fortigate")
+
+            self.assertEqual(home.status_code, 200)
+            self.assertIn(b'href="/fortigate"', home.data)
+            self.assertNotIn(b'href="/fortiauthenticator"', home.data)
+            self.assertNotIn(b'href="/tools/"', home.data)
+            self.assertIn(b"FortiGate / FortiAP / FortiSwitch", home.data)
+            self.assertEqual(fortigate.status_code, 200)
+            self.assertIn(b"Find Wireless Client History", fortigate.data)
+            self.assertNotIn(b"Re-order Managed FortiSwitches", fortigate.data)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -269,11 +269,21 @@ def create_app(instance_path: str | None = None) -> Flask:
         password_policy = auth_store.password_policy()
         current_user = getattr(g, "current_user", None)
         allowed_tool_ids = getattr(g, "allowed_tool_ids", None)
+        nav_category_ids = set()
+        if current_user:
+            nav_category_ids = {
+                tool.category
+                for tool in visible_tools(
+                    is_admin=bool(current_user.get("is_admin")),
+                    allowed_tool_ids=allowed_tool_ids,
+                )
+            }
         return {
             "current_user": current_user,
             "user_theme": current_user.get("theme", "light") if current_user else "system",
             "favorite_ids": auth_store.favorite_tool_ids(current_user["id"]) if current_user else [],
             "allowed_tool_ids": allowed_tool_ids,
+            "nav_category_ids": nav_category_ids,
             "min_password_length": password_policy["min_length"],
             "password_policy": password_policy,
         }
@@ -373,7 +383,7 @@ def create_app(instance_path: str | None = None) -> Flask:
                 auth_store.create_user(
                     request.form.get("username", ""),
                     password,
-                    is_admin=request.form.get("is_admin") == "on",
+                    is_admin=request.form.get("builtin_profile") == "administrator",
                     access_profile_ids=request.form.getlist("access_profile_id"),
                 )
             except ValueError as exc:
@@ -389,7 +399,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         try:
             auth_store.update_user_access(
                 user_id,
-                is_admin=request.form.get("is_admin") == "on",
+                is_admin=request.form.get("builtin_profile") == "administrator",
                 access_profile_ids=request.form.getlist("access_profile_id"),
             )
         except ValueError as exc:
@@ -790,7 +800,6 @@ def create_app(instance_path: str | None = None) -> Flask:
         visible_category_ids = {
             tool.category
             for tool in visible_tools(is_admin=is_admin, allowed_tool_ids=allowed_tool_ids)
-            if tool.show_on_home
         }
         return render_template(
             "home.html",

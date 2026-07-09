@@ -2605,7 +2605,50 @@ button.danger {
 }
 
 .access-profile-card summary {
+  align-items: center;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--panel), var(--accent) 7%), var(--card-tint));
+  border: 1px solid var(--line);
+  border-radius: 10px;
   cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: -4px;
+  padding: 12px 14px;
+  transition: border-color 150ms ease, transform 150ms ease, background 150ms ease;
+}
+
+.access-profile-card summary::-webkit-details-marker,
+.add-user-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.access-profile-card summary::after,
+.add-user-card summary::after {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  content: "+";
+  display: grid;
+  flex: 0 0 30px;
+  font-size: 1.1rem;
+  font-weight: 900;
+  height: 30px;
+  line-height: 1;
+  place-items: center;
+  width: 30px;
+}
+
+.access-profile-card[open] > summary::after,
+.add-user-card[open] > summary::after {
+  content: "–";
+}
+
+.access-profile-card summary:hover,
+.add-user-card summary:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
 }
 
 .access-profile-card summary span,
@@ -2619,6 +2662,15 @@ button.danger {
   color: var(--muted);
 }
 
+.builtin-profile-card {
+  display: grid;
+  gap: 2px;
+}
+
+.create-access-profile-card {
+  border-style: dashed;
+}
+
 .user-access-form {
   display: grid;
   gap: 8px;
@@ -2627,6 +2679,35 @@ button.danger {
 .compact-choice-group {
   gap: 6px;
   padding: 10px;
+}
+
+.add-user-card {
+  align-items: start;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.add-user-card summary {
+  align-items: center;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--panel), var(--accent) 7%), var(--card-tint));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 14px;
+  transition: border-color 150ms ease, transform 150ms ease, background 150ms ease;
+}
+
+.add-user-card form,
+.access-profile-card form {
+  margin-top: 14px;
+}
+
+.profile-helper {
+  color: var(--muted);
+  margin-left: 4px;
 }
 
 .recovery-note code {

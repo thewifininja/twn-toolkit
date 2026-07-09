@@ -30,9 +30,15 @@
           <details class="nav-menu">
             <summary>Tools</summary>
             <div class="nav-dropdown">
-              <a href="{{ url_for('fortigate_home') }}">FortiGate</a>
-              <a href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator</a>
-              <a href="{{ url_for('tools.index') }}">Network Tools</a>
+              {% if current_user.is_admin or 'fortigate' in nav_category_ids %}
+                <a href="{{ url_for('fortigate_home') }}">FortiGate</a>
+              {% endif %}
+              {% if current_user.is_admin or 'fortiauthenticator' in nav_category_ids %}
+                <a href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator</a>
+              {% endif %}
+              {% if current_user.is_admin or 'network' in nav_category_ids %}
+                <a href="{{ url_for('tools.index') }}">Network Tools</a>
+              {% endif %}
             </div>
           </details>
           <a href="{{ url_for('settings') }}">Settings</a>
