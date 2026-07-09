@@ -43,6 +43,8 @@ service.
   identity, and synchronization health across reusable server lists.
 - **DHCP Discover:** send a Discover with a custom parameter request list and
   inspect matching Offers without sending a Request or accepting a lease.
+- **Packet Replay:** preview, lightly modify, and transmit a bounded raw
+  Ethernet frame on an authorized wired test network.
 - **Path MTU Tester:** binary-search the largest unfragmented IPv4 or IPv6 ICMP
   packet that reaches a destination.
 - **Webhook / API Tester:** send a bounded HTTP request without following
@@ -96,6 +98,12 @@ the selected interface. Start the toolkit with suitable OS privileges when
 using that tool (for example, as root on a dedicated diagnostic host, or with
 Linux `CAP_NET_BIND_SERVICE` and `CAP_NET_RAW` capabilities). The web page
 reports a permission error when those privileges are unavailable.
+
+The Packet Replay tool is administrator-only and sends raw Ethernet frames from
+the toolkit host. Use it only on networks where you are authorized to transmit
+test traffic. Raw frame sending generally requires root privileges or packet
+capture permissions, and wired Ethernet is the intended target; wireless frame
+injection is not supported.
 
 PEAP/MSCHAPv2 and EAP-TLS testing requires the `eapol_test` executable from the
 wpa_supplicant project. On Debian and Raspberry Pi OS it is provided by the

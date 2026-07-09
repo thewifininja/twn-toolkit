@@ -6,3 +6,4 @@ cryptography==49.0.0
 dnspython==2.7.0
 pyrad==2.5.4
 pysnmp==7.1.27
+scapy==2.6.1

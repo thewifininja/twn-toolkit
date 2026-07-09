@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>Packet Replay</h1>
+    <p>Preview and send a bounded raw Ethernet frame from the toolkit host. This diagnostic tool is admin-only and intended for authorized wired test networks.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  {% if send_result %}
+    <div class="message success">Sent {{ send_result.sent }} frame{{ '' if send_result.sent == 1 else 's' }} on {{ send_result.interface }} in {{ send_result.elapsed_seconds }} seconds.</div>
+  {% endif %}
+
+  <form class="form" method="post" enctype="multipart/form-data" data-loading-message="Preparing packet replay…">
+    <div class="ntp-options">
+      <label>Network interface
+        <select name="interface" required>
+          {% for interface in interfaces %}
+            <option value="{{ interface.name }}" {{ 'selected' if interface.name == form.interface else '' }}>{{ interface.name }}{% if interface.mac %} · {{ interface.mac }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Repeat count
+        <input name="repeat_count" type="number" min="1" max="{{ max_repeats }}" value="{{ form.repeat_count }}" required>
+      </label>
+      <label>Interval between frames
+        <input name="interval_seconds" type="number" min="0.1" max="60" step="0.1" value="{{ form.interval_seconds }}" required>
+      </label>
+    </div>
+
+    <label>Raw Ethernet frame hex
+      <textarea name="packet_hex" rows="8" placeholder="ff ff ff ff ff ff 02 00 00 00 00 01 08 00 ...">{{ form.packet_hex }}</textarea>
+    </label>
+    <span class="field-note">Paste a full Ethernet frame, including destination MAC, source MAC, and EtherType. Whitespace, colons, and dashes are ignored.</span>
+
+    <label>Or upload a single-packet PCAP
+      <input name="packet_file" type="file" accept=".pcap,.cap,application/vnd.tcpdump.pcap">
+    </label>
+    <span class="field-note">Classic PCAP only for now. Export exactly one full packet, not a multi-packet trace.</span>
+
+    <div class="ntp-options">
+      <label>Rewrite source MAC (optional)
+        <input name="source_mac" value="{{ form.source_mac }}" placeholder="02:00:00:00:00:01">
+      </label>
+      <label>Rewrite destination MAC (optional)
+        <input name="destination_mac" value="{{ form.destination_mac }}" placeholder="ff:ff:ff:ff:ff:ff">
+      </label>
+    </div>
+
+    <div class="ntp-options">
+      <label>VLAN handling
+        <select name="vlan_action">
+          <option value="keep" {{ 'selected' if form.vlan_action == 'keep' else '' }}>Keep packet VLAN tags</option>
+          <option value="replace" {{ 'selected' if form.vlan_action == 'replace' else '' }}>Add/replace 802.1Q VLAN tag</option>
+          <option value="remove" {{ 'selected' if form.vlan_action == 'remove' else '' }}>Remove VLAN tags</option>
+        </select>
+      </label>
+      <label>VLAN IDs for fanout
+        <input name="vlan_ids" value="{{ form.vlan_ids }}" placeholder="10, 20, 30">
+      </label>
+    </div>
+    <span class="field-note">VLAN fanout sends one tagged copy per listed VLAN for each repeat. Total sends are capped at {{ max_total_frames }} frames.</span>
+
+    <div class="message warning">
+      Use only on networks where you are authorized to transmit test traffic. Raw frame sending usually requires root privileges or packet-capture permissions, and wired Ethernet is the intended target.
+    </div>
+
+    <div class="button-row">
+      <button type="submit" name="action" value="preview">Preview Packet</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
+    </div>
+
+    {% if plan %}
+      <hr>
+      <h2>Send confirmation</h2>
+      <p class="field-note">Review the preview below. To transmit exactly this plan, type <code>SEND</code> and click Send Packet Replay.</p>
+      <label>Confirmation
+        <input name="confirm_send" value="{{ form.confirm_send }}" placeholder="SEND">
+      </label>
+      <div class="button-row">
+        <button class="danger" type="submit" name="action" value="send">Send Packet Replay</button>
+      </div>
+    {% endif %}
+  </form>
+</section>
+
+{% if plan %}
+<section class="panel">
+  <div class="certificate-result-head">
+    <div>
+      <h2>Replay preview</h2>
+      <p>{{ plan.summary.protocol }} · {{ plan.summary.bytes_per_frame }} bytes per frame · {{ plan.summary.frame_count }} total frame{{ '' if plan.summary.frame_count == 1 else 's' }}</p>
+    </div>
+    <span class="pill {{ 'error' if plan.warnings else 'success' }}">{{ 'caution' if plan.warnings else 'ready' }}</span>
+  </div>
+
+  {% for warning in plan.warnings %}
+    <div class="message warning">{{ warning }}</div>
+  {% endfor %}
+
+  <dl class="ntp-details">
+    <div><dt>Destination MAC</dt><dd><code>{{ plan.summary.destination_mac }}</code></dd></div>
+    <div><dt>Source MAC</dt><dd><code>{{ plan.summary.source_mac }}</code></dd></div>
+    <div><dt>EtherType</dt><dd><code>{{ plan.summary.ethertype }}</code></dd></div>
+    <div><dt>Repeats</dt><dd>{{ plan.summary.repeat_count }}</dd></div>
+    <div><dt>Interval</dt><dd>{{ plan.summary.interval_seconds }} seconds</dd></div>
+    <div><dt>Total bytes</dt><dd>{{ plan.summary.total_bytes }}</dd></div>
+    {% if plan.summary.vlan_targets %}
+      <div><dt>VLAN fanout</dt><dd>{{ plan.summary.vlan_targets | join(', ') }}</dd></div>
+    {% elif plan.summary.vlans %}
+      <div><dt>Packet VLANs</dt><dd>{% for vlan in plan.summary.vlans %}{{ vlan.id }}{% if not loop.last %}, {% endif %}{% endfor %}</dd></div>
+    {% endif %}
+  </dl>
+
+  {% if plan.summary.details %}
+    <div class="preview-table-wrap">
+      <table>
+        <thead><tr><th>Decoded field</th><th>Value</th></tr></thead>
+        <tbody>
+          {% for item in plan.summary.details %}
+            <tr><td>{{ item.name }}</td><td><code>{{ item.value }}</code></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

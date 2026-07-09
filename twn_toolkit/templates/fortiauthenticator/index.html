@@ -1,13 +1,23 @@
 {% extends "base.html" %}
+{% from "components/tool_cards.html" import tool_card %}
 
 {% block content %}
-<section class="workspace-intro">
-  <h1>FortiAuthenticator</h1>
-  <p>Manage connection profiles and run FortiAuthenticator workflows.</p>
+<section class="home-hero compact-hero">
+  <div>
+    <span class="eyebrow">Fortinet workflows</span>
+    <h1>FortiAuthenticator</h1>
+    <p>Manage FortiAuthenticator Web Service API profiles here, then run MAC device and group membership workflows using those saved profiles.</p>
+  </div>
+  <div class="home-hero-card">
+    <span>Saved profiles</span>
+    <strong>{{ profiles | length }}</strong>
+    <small>Used by the tools below</small>
+  </div>
 </section>
 
-<section class="grid two">
-  <div class="panel">
+{% if can_manage_profiles %}
+  <section class="grid two">
+    <div class="panel">
     <div class="panel-head">
       <h1>{{ "Edit Profile" if edit_profile else "FortiAuthenticator Profiles" }}</h1>
     </div>
@@ -50,9 +60,9 @@
         {% endif %}
       </div>
     </form>
-  </div>
+    </div>
 
-  <div class="panel">
+    <div class="panel">
     <div class="panel-head">
       <h1>Saved Profiles</h1>
     </div>
@@ -80,26 +90,28 @@
     {% else %}
       <p class="empty">No FortiAuthenticator profiles saved yet.</p>
     {% endif %}
-  </div>
-</section>
+    </div>
+  </section>
+{% else %}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>FortiAuthenticator profiles are managed by administrators</h1>
+      <p>You can run the workflows shown below using saved profiles, but this account cannot create, edit, test, or delete FortiAuthenticator API profiles.</p>
+    </div>
+  </section>
+{% endif %}
 
-<section class="panel task-group">
-  <div class="panel-head">
-    <h1>MAC Device Workflows</h1>
-  </div>
-  <div class="task-grid">
-    <a class="task-card" href="{{ url_for('fortiauthenticator_mac_devices') }}">
-      <strong>Export MAC Devices</strong>
-      <span>Preview and export the complete paginated MAC device inventory.</span>
-    </a>
-    <a class="task-card" href="{{ url_for('fortiauthenticator_mac_group_memberships') }}">
-      <strong>Export Group Memberships</strong>
-      <span>Preview and export device-to-group membership data.</span>
-    </a>
-    <a class="task-card" href="{{ url_for('fortiauthenticator_mac_cleanup') }}">
-      <strong>MAC Device Cleanup</strong>
-      <span>Preview group removal or global device deletion.</span>
-    </a>
-  </div>
-</section>
+{% for group_label, tools in tool_groups %}
+  <section class="home-section task-group">
+    <div class="section-head compact">
+      <h2>{{ group_label }}</h2>
+      <p>These workflows use the FortiAuthenticator profiles managed on this page.</p>
+    </div>
+    <div class="launch-grid">
+      {% for tool in tools %}
+        {{ tool_card(tool, favorite_ids) }}
+      {% endfor %}
+    </div>
+  </section>
+{% endfor %}
 {% endblock %}

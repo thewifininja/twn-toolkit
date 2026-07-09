@@ -1,100 +1,74 @@
 {% extends "base.html" %}
+{% from "components/tool_cards.html" import tool_card %}
 
 {% block content %}
-<section class="workspace-intro">
-  <h1>Network Operations Toolkit</h1>
-  <p>Local-first tools for repeatable Fortinet administration and live network troubleshooting.</p>
+<section class="home-hero">
+  <div>
+    <span class="eyebrow">Local-first operations</span>
+    <h1>What are we fixing today?</h1>
+    <p>Jump into Fortinet workflows, network diagnostics, administration, or pin your usual tools so they are waiting for you when the next weird packet gremlin appears.</p>
+  </div>
+  <div class="home-hero-card">
+    <span>Signed in as</span>
+    <strong>{{ current_user.username }}</strong>
+    <small>{{ 'Administrator' if current_user.is_admin else 'Standard user' }}</small>
+  </div>
 </section>
 
-<div class="home-tool-groups">
-  <section class="home-tool-group" aria-labelledby="fortinet-tools-heading">
-    <div class="section-head">
-      <h2 id="fortinet-tools-heading">Fortinet Tools</h2>
-      <p>Repeatable administration and inventory workflows for Fortinet platforms.</p>
+<section class="home-section">
+  <div class="section-head">
+    <h2>Favorites</h2>
+    <p>Your personal launchpad. Star tools below to keep them here.</p>
+  </div>
+  {% if favorites %}
+    <div class="launch-grid favorites-grid">
+      {% for tool in favorites %}
+        {{ tool_card(tool, favorite_ids) }}
+      {% endfor %}
     </div>
-    <div class="workspace-grid">
-      <a class="workspace-card" href="{{ url_for('fortigate_home') }}">
-        <strong>FortiGate</strong>
-        <span>Profiles, AP and FortiSwitch inventory, clients, and bulk renaming.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('fortiauthenticator_home') }}">
-        <strong>FortiAuthenticator</strong>
-        <span>Profiles and MAC device administration workflows.</span>
-      </a>
+  {% else %}
+    <div class="empty-state">
+      <strong>No favorites yet.</strong>
+      <span>Use the star on any tool card to build your own quick-launch row.</span>
     </div>
-  </section>
+  {% endif %}
+</section>
 
-  <section class="home-tool-group" aria-labelledby="generic-tools-heading">
-    <div class="section-head">
-      <h2 id="generic-tools-heading">Network Tools</h2>
-      <p>Vendor-neutral diagnostics that run from the toolkit host or your browser.</p>
-    </div>
-    <div class="workspace-grid">
-      <a class="workspace-card" href="{{ url_for('tools.whats_my_ip') }}">
-        <strong>What’s My IP?</strong>
-        <span>See the client address used to connect to this toolkit server.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.subnet_excluder') }}">
-        <strong>Subnet Excluder</strong>
-        <span>Subtract CIDR networks from one or more parent networks.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.ping_tool') }}">
-        <strong>Multi-Host Ping</strong>
-        <span>Troubleshoot reachability, latency, and packet loss across multiple hosts.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.multi_ssh') }}">
-        <strong>Multi-SSH</strong>
-        <span>Run the same command sequence across multiple SSH hosts.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.dns_response') }}">
-        <strong>DNS Lookup Tester</strong>
-        <span>Compare DNS answers and lookup latency across multiple resolvers.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.radius_test') }}">
-        <strong>RADIUS Authentication Test</strong>
-        <span>Test PAP, CHAP, PEAP/MSCHAPv2, or EAP-TLS against one or more RADIUS servers.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.speed_test') }}">
-        <strong>Wi-Fi / LAN Speed Test</strong>
-        <span>Measure browser-to-toolkit latency, jitter, download, and upload on the local network.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.certificate_inspector') }}">
-        <strong>Certificate Chain Inspector</strong>
-        <span>Inspect the exact TLS chain a web server presents and validate trust and hostnames.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.snmp_test') }}">
-        <strong>SNMP Tester</strong>
-        <span>Validate SNMPv2c and SNMPv3 access with reusable devices, credentials, and OID collections.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.port_scanner') }}">
-        <strong>TCP Port Scanner</strong>
-        <span>Check selected TCP ports across multiple authorized hosts.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.ntp_test') }}">
-        <strong>NTP Tester</strong>
-        <span>Measure clock offset, response delay, jitter, and synchronization health.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.dhcp_discover') }}">
-        <strong>DHCP Discover</strong>
-        <span>Send a Discover with a custom parameter request list and inspect Offers without requesting a lease.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.path_mtu') }}">
-        <strong>Path MTU Tester</strong>
-        <span>Find the largest unfragmented packet that reaches a destination.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.api_request') }}">
-        <strong>Webhook / API Tester</strong>
-        <span>Send a bounded HTTP request and inspect its status, timing, headers, and body.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.syslog_receiver') }}">
-        <strong>Syslog Tools</strong>
-        <span>Generate test messages or listen briefly for UDP and TCP syslog traffic.</span>
-      </a>
-      <a class="workspace-card" href="{{ url_for('tools.traceroute') }}">
-        <strong>Traceroute</strong>
-        <span>Trace up to 10 destinations with live graphical hops and text output.</span>
-      </a>
-    </div>
-  </section>
-</div>
+<section class="home-section">
+  <div class="section-head">
+    <h2>Tool Categories</h2>
+    <p>Start broad when you know the problem domain, then drill into the exact workflow.</p>
+  </div>
+  <div class="category-grid">
+    {% for category in tool_categories %}
+      {% if current_user.is_admin or category.id != "administration" %}
+        <a class="category-card" href="{{ url_for(category.endpoint) }}">
+          <strong>{{ category.label }}</strong>
+          <span>{{ category.description }}</span>
+        </a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
+
+<section class="home-section">
+  <div class="section-head">
+    <h2>Tool Areas</h2>
+    <p>Quick access to the major workspaces. Detailed Fortinet workflows live inside their FortiGate and FortiAuthenticator pages.</p>
+  </div>
+  <div class="home-tool-groups">
+    {% for group_label, tools in tool_groups %}
+      <section class="home-tool-group" aria-labelledby="tool-group-{{ loop.index }}">
+        <div class="section-head compact">
+          <h3 id="tool-group-{{ loop.index }}">{{ group_label }}</h3>
+        </div>
+        <div class="launch-grid">
+          {% for tool in tools %}
+            {{ tool_card(tool, favorite_ids) }}
+          {% endfor %}
+        </div>
+      </section>
+    {% endfor %}
+  </div>
+</section>
 {% endblock %}

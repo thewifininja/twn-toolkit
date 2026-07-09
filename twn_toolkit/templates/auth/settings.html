@@ -68,10 +68,111 @@
         <label class="check">
           <input type="checkbox" name="is_admin"> Administrator
         </label>
+        {% if access_profiles %}
+          <fieldset class="choice-group">
+            <legend>Access profiles</legend>
+            {% for profile in access_profiles %}
+              <label class="check">
+                <input type="checkbox" name="access_profile_id" value="{{ profile.id }}">
+                {{ profile.name }}
+              </label>
+            {% endfor %}
+          </fieldset>
+        {% endif %}
         <button type="submit">Create user</button>
       </form>
     </section>
   </div>
+{% endif %}
+
+{% if current_user.is_admin %}
+  <section class="panel access-profile-panel">
+    <div class="auth-users-head">
+      <h2>Access profiles</h2>
+      <p class="field-note">
+        Build custom profiles from individual tool permissions. Standard users get the union of every profile assigned to them.
+      </p>
+    </div>
+    <div class="access-profile-grid">
+      <form method="post" action="{{ url_for('save_access_profile') }}" class="form access-profile-form">
+        <h3>Create access profile</h3>
+        <label>Name
+          <input name="name" maxlength="80" placeholder="Wireless helpdesk" required>
+        </label>
+        <label>Description
+          <input name="description" maxlength="240" placeholder="Optional note for admins">
+        </label>
+        <div class="access-tool-groups">
+          {% for group_label, tools in tool_groups_for_access %}
+            <fieldset class="choice-group access-tool-group">
+              <legend>{{ group_label }}</legend>
+              {% for tool in tools %}
+                <label class="check">
+                  <input type="checkbox" name="tool_id" value="{{ tool.id }}">
+                  <span>
+                    <strong>{{ tool.label }}</strong>
+                    <small>{{ tool.description }}</small>
+                  </span>
+                </label>
+              {% endfor %}
+            </fieldset>
+          {% endfor %}
+        </div>
+        <button type="submit">Save access profile</button>
+      </form>
+
+      <div class="access-profile-list">
+        {% if access_profiles %}
+          {% for profile in access_profiles %}
+            <details class="access-profile-card">
+              <summary>
+                <span>
+                  <strong>{{ profile.name }}</strong>
+                  <small>{{ profile.description or profile.tool_ids|length ~ ' tool permission(s)' }}</small>
+                </span>
+              </summary>
+              <form method="post" action="{{ url_for('save_access_profile') }}" class="form access-profile-form">
+                <input type="hidden" name="profile_id" value="{{ profile.id }}">
+                <label>Name
+                  <input name="name" maxlength="80" value="{{ profile.name }}" required>
+                </label>
+                <label>Description
+                  <input name="description" maxlength="240" value="{{ profile.description }}">
+                </label>
+                <div class="access-tool-groups">
+                  {% for group_label, tools in tool_groups_for_access %}
+                    <fieldset class="choice-group access-tool-group">
+                      <legend>{{ group_label }}</legend>
+                      {% for tool in tools %}
+                        <label class="check">
+                          <input type="checkbox" name="tool_id" value="{{ tool.id }}" {% if tool.id in profile.tool_ids %}checked{% endif %}>
+                          <span>
+                            <strong>{{ tool.label }}</strong>
+                            <small>{{ tool.description }}</small>
+                          </span>
+                        </label>
+                      {% endfor %}
+                    </fieldset>
+                  {% endfor %}
+                </div>
+                <div class="button-row">
+                  <button type="submit">Update profile</button>
+                  <button
+                    class="danger"
+                    type="submit"
+                    formaction="{{ url_for('delete_access_profile', profile_id=profile.id) }}"
+                    onclick="return confirm('Delete access profile {{ profile.name }}? Users assigned to it will lose those permissions.')"
+                  >Delete</button>
+                </div>
+              </form>
+            </details>
+          {% endfor %}
+        {% else %}
+          <p class="empty">No access profiles yet. Create one to grant standard users scoped tool access.</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
 {% endif %}
 
 {% if current_user.is_admin %}
@@ -135,6 +236,26 @@
                  autocomplete="new-password" aria-label="Confirm password for {{ user.username }}" required>
           <button type="submit">Change password</button>
         </form>
+        {% if current_user.is_admin %}
+          <form method="post" action="{{ url_for('update_user_access', user_id=user.id) }}" class="user-access-form">
+            <label class="check">
+              <input type="checkbox" name="is_admin" {% if user.is_admin %}checked{% endif %}>
+              Administrator
+            </label>
+            {% if access_profiles %}
+              <fieldset class="choice-group compact-choice-group">
+                <legend>Assigned profiles</legend>
+                {% for profile in access_profiles %}
+                  <label class="check">
+                    <input type="checkbox" name="access_profile_id" value="{{ profile.id }}" {% if profile.id in user.get('access_profile_ids', []) %}checked{% endif %}>
+                    {{ profile.name }}
+                  </label>
+                {% endfor %}
+              </fieldset>
+            {% endif %}
+            <button class="secondary" type="submit">Save access</button>
+          </form>
+        {% endif %}
         {% if user.id != current_user.id %}
           <form method="post" action="{{ url_for('delete_user', user_id=user.id) }}"
                 onsubmit="return confirm('Delete user {{ user.username }}?')">

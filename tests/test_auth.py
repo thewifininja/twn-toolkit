@@ -150,6 +150,75 @@ def test_zero_idle_timeout_never_expires_session(tmp_path):
     assert b'min="0"' in settings_page.data
 
 
+def test_admin_can_create_custom_access_profile_and_assign_to_user(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+
+    response = client.post(
+        "/settings/access-profiles",
+        data={
+            "name": "Ping only",
+            "description": "Can run multi-host ping",
+            "tool_id": ["tools.ping", "admin.settings", "not-a-real-tool"],
+        },
+    )
+    assert response.status_code == 302
+    store = AuthStore(str(tmp_path))
+    profiles = store.access_profiles()
+    assert len(profiles) == 1
+    assert profiles[0]["name"] == "Ping only"
+    assert profiles[0]["tool_ids"] == ["tools.ping"]
+
+    client.post(
+        "/settings/users",
+        data={
+            "username": "operator",
+            "password": "a different long password",
+            "confirm_password": "a different long password",
+            "access_profile_id": profiles[0]["id"],
+        },
+    )
+    operator = store.get_user("operator")
+    assert operator is not None
+    assert operator["is_admin"] is False
+    assert operator["access_profile_ids"] == [profiles[0]["id"]]
+
+    client.post("/logout")
+    client.post(
+        "/login",
+        data={"username": "operator", "password": "a different long password"},
+    )
+
+    assert client.get("/tools/ping").status_code == 200
+    assert client.get("/tools/dns-response").status_code == 403
+    home = client.get("/")
+    assert b"Multi-Host Ping" in home.data
+    assert b"DNS Lookup Tester" not in home.data
+
+
+def test_access_profile_can_grant_high_risk_tool_without_admin_status(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+    store = AuthStore(str(tmp_path))
+    profile = store.save_access_profile(name="Packet replay", tool_ids=["tools.packet_replay"])
+    store.create_user(
+        "packetuser",
+        "a different long password",
+        access_profile_ids=[profile["id"]],
+    )
+
+    client.post("/logout")
+    client.post(
+        "/login",
+        data={"username": "packetuser", "password": "a different long password"},
+    )
+
+    assert client.get("/tools/packet-replay").status_code == 200
+    assert client.get("/settings/backup").status_code == 403
+
+
 def test_deleting_auth_file_returns_to_setup_without_touching_profiles(tmp_path):
     app = create_app(str(tmp_path))
     client = app.test_client()

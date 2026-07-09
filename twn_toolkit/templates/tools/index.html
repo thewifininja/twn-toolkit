@@ -1,75 +1,30 @@
 {% extends "base.html" %}
+{% from "components/tool_cards.html" import tool_card %}
 
 {% block content %}
-<section class="workspace-intro">
-  <h1>Network Tools</h1>
-  <p>Vendor-neutral diagnostics that run from the toolkit host or your browser.</p>
+<section class="home-hero compact-hero">
+  <div>
+    <span class="eyebrow">Vendor-neutral diagnostics</span>
+    <h1>Network Tools</h1>
+    <p>Diagnostics that run from the toolkit host or your browser. Star your regular tools here and they will appear on the homepage.</p>
+  </div>
+  <div class="home-hero-card">
+    <span>Tool group</span>
+    <strong>Network</strong>
+    <small>Host and browser based</small>
+  </div>
 </section>
 
-<section class="task-grid">
-  <a class="task-card" href="{{ url_for('tools.whats_my_ip') }}">
-    <strong>What’s My IP?</strong>
-    <span>See the client address used to connect to this toolkit server.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.subnet_excluder') }}">
-    <strong>Subnet Excluder</strong>
-    <span>Subtract CIDR networks from one or more parent networks.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.ping_tool') }}">
-    <strong>Multi-Host Ping</strong>
-    <span>Troubleshoot reachability, latency, and packet loss across multiple hosts.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.multi_ssh') }}">
-    <strong>Multi-SSH</strong>
-    <span>Run the same command sequence across multiple SSH hosts.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.dns_response') }}">
-    <strong>DNS Lookup Tester</strong>
-    <span>Compare DNS answers and lookup latency across multiple resolvers.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.radius_test') }}">
-    <strong>RADIUS Authentication Test</strong>
-    <span>Compare PAP, CHAP, PEAP/MSCHAPv2, or EAP-TLS authentication across RADIUS servers.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.speed_test') }}">
-    <strong>Wi-Fi / LAN Speed Test</strong>
-    <span>Measure browser-to-toolkit latency, jitter, download, and upload on the local network.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.certificate_inspector') }}">
-    <strong>Certificate Chain Inspector</strong>
-    <span>Inspect the exact TLS chain a web server presents and validate trust and hostnames.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.snmp_test') }}">
-    <strong>SNMP Tester</strong>
-    <span>Validate SNMPv2c and SNMPv3 access with reusable devices, credentials, and OID collections.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.port_scanner') }}">
-    <strong>TCP Port Scanner</strong>
-    <span>Check selected TCP ports across multiple authorized hosts.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.ntp_test') }}">
-    <strong>NTP Tester</strong>
-    <span>Measure clock offset, response delay, jitter, and synchronization health.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.dhcp_discover') }}">
-    <strong>DHCP Discover</strong>
-    <span>Send a Discover with a custom parameter request list and inspect Offers without requesting a lease.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.path_mtu') }}">
-    <strong>Path MTU Tester</strong>
-    <span>Find the largest unfragmented packet that reaches a destination.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.api_request') }}">
-    <strong>Webhook / API Tester</strong>
-    <span>Send a bounded HTTP request and inspect its status, timing, headers, and body.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.syslog_receiver') }}">
-    <strong>Syslog Tools</strong>
-    <span>Generate test messages or listen briefly for UDP and TCP syslog traffic.</span>
-  </a>
-  <a class="task-card" href="{{ url_for('tools.traceroute') }}">
-    <strong>Traceroute</strong>
-    <span>Trace up to 10 destinations with live graphical hops and text output.</span>
-  </a>
-</section>
+{% for group_label, tools in tool_groups %}
+  <section class="home-section task-group">
+    <div class="section-head compact">
+      <h2>{{ group_label }}</h2>
+    </div>
+    <div class="launch-grid">
+      {% for tool in tools %}
+        {{ tool_card(tool, favorite_ids) }}
+      {% endfor %}
+    </div>
+  </section>
+{% endfor %}
 {% endblock %}

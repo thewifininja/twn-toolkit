@@ -54,6 +54,7 @@ class AuthStore:
         password: str,
         *,
         is_admin: bool = False,
+        access_profile_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         username = validate_username(username)
         validate_password(password, self.password_policy())
@@ -70,6 +71,7 @@ class AuthStore:
             "is_admin": bool(is_admin),
             "enabled": True,
             "theme": "light",
+            "access_profile_ids": _valid_profile_ids(data, access_profile_ids or []),
             "session_version": 1,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -85,11 +87,54 @@ class AuthStore:
         user["theme"] = theme
         self._write(data)
 
+    def favorite_tool_ids(self, user_id: str) -> list[str]:
+        try:
+            user = _find_user(self._read(), user_id)
+        except ValueError:
+            return []
+        favorites = user.get("favorite_tools", [])
+        return [str(tool_id) for tool_id in favorites if isinstance(tool_id, str)]
+
+    def toggle_favorite_tool(self, user_id: str, tool_id: str) -> bool:
+        data = self._read()
+        user = _find_user(data, user_id)
+        favorites = [
+            str(item)
+            for item in user.get("favorite_tools", [])
+            if isinstance(item, str)
+        ]
+        if tool_id in favorites:
+            favorites = [item for item in favorites if item != tool_id]
+            enabled = False
+        else:
+            favorites.append(tool_id)
+            enabled = True
+        user["favorite_tools"] = favorites
+        self._write(data)
+        return enabled
+
     def update_password(self, user_id: str, password: str) -> None:
         validate_password(password, self.password_policy())
         data = self._read()
         user = _find_user(data, user_id)
         user["password_hash"] = generate_password_hash(password, method="scrypt")
+        user["session_version"] = int(user.get("session_version", 1)) + 1
+        self._write(data)
+
+    def update_user_access(
+        self,
+        user_id: str,
+        *,
+        is_admin: bool,
+        access_profile_ids: list[str],
+    ) -> None:
+        data = self._read()
+        user = _find_user(data, user_id)
+        users = data.get("users", [])
+        if user.get("is_admin") and not is_admin and sum(bool(item.get("is_admin")) for item in users) <= 1:
+            raise ValueError("The only administrator cannot be changed to a standard user.")
+        user["is_admin"] = bool(is_admin)
+        user["access_profile_ids"] = [] if is_admin else _valid_profile_ids(data, access_profile_ids)
         user["session_version"] = int(user.get("session_version", 1)) + 1
         self._write(data)
 
@@ -101,6 +146,76 @@ class AuthStore:
             raise ValueError("The only administrator cannot be deleted.")
         data["users"] = [item for item in users if item["id"] != user_id]
         self._write(data)
+
+    def access_profiles(self) -> list[dict[str, Any]]:
+        profiles = self._read().get("access_profiles", [])
+        return sorted(
+            [_normalize_access_profile(profile) for profile in profiles if isinstance(profile, dict)],
+            key=lambda profile: profile["name"].casefold(),
+        )
+
+    def get_access_profile(self, profile_id: str) -> dict[str, Any] | None:
+        return next(
+            (profile for profile in self.access_profiles() if profile["id"] == profile_id),
+            None,
+        )
+
+    def save_access_profile(
+        self,
+        *,
+        name: str,
+        tool_ids: list[str],
+        description: str = "",
+        profile_id: str = "",
+    ) -> dict[str, Any]:
+        name = _validate_access_profile_name(name)
+        cleaned_tool_ids = _clean_tool_ids(tool_ids)
+        data = self._read()
+        profiles = data.setdefault("access_profiles", [])
+        folded = name.casefold()
+        if profile_id:
+            profile = _find_access_profile(data, profile_id)
+            if any(
+                item.get("id") != profile_id
+                and str(item.get("name", "")).casefold() == folded
+                for item in profiles
+            ):
+                raise ValueError("That access profile name already exists.")
+        else:
+            if any(str(item.get("name", "")).casefold() == folded for item in profiles):
+                raise ValueError("That access profile name already exists.")
+            profile = {"id": secrets.token_hex(12)}
+            profiles.append(profile)
+        profile["name"] = name
+        profile["description"] = description.strip()[:240]
+        profile["tool_ids"] = cleaned_tool_ids
+        self._write(data)
+        return _normalize_access_profile(profile)
+
+    def delete_access_profile(self, profile_id: str) -> None:
+        data = self._read()
+        _find_access_profile(data, profile_id)
+        data["access_profiles"] = [
+            profile for profile in data.get("access_profiles", []) if profile.get("id") != profile_id
+        ]
+        for user in data.get("users", []):
+            user["access_profile_ids"] = [
+                item for item in user.get("access_profile_ids", []) if item != profile_id
+            ]
+            user["session_version"] = int(user.get("session_version", 1)) + 1
+        self._write(data)
+
+    def effective_tool_ids(self, user: dict[str, Any]) -> set[str] | None:
+        if user.get("is_admin"):
+            return None
+        profile_ids = set(
+            str(item) for item in user.get("access_profile_ids", []) if isinstance(item, str)
+        )
+        allowed: set[str] = set()
+        for profile in self.access_profiles():
+            if profile["id"] in profile_ids:
+                allowed.update(profile["tool_ids"])
+        return allowed
 
     def idle_timeout_minutes(self) -> int:
         value = self._read().get("settings", {}).get(
@@ -199,6 +314,7 @@ class AuthStore:
                     "require_special": False,
                 },
                 "users": [],
+                "access_profiles": [],
             }
         try:
             with self.path.open("r", encoding="utf-8") as handle:
@@ -293,3 +409,52 @@ def _find_user(data: dict[str, Any], user_id: str) -> dict[str, Any]:
     if not user:
         raise ValueError("User not found.")
     return user
+
+
+def _find_access_profile(data: dict[str, Any], profile_id: str) -> dict[str, Any]:
+    profile = next(
+        (item for item in data.get("access_profiles", []) if item.get("id") == profile_id),
+        None,
+    )
+    if not profile:
+        raise ValueError("Access profile not found.")
+    return profile
+
+
+def _validate_access_profile_name(name: str) -> str:
+    name = " ".join(name.strip().split())
+    if not 2 <= len(name) <= 80:
+        raise ValueError("Access profile name must be 2–80 characters.")
+    return name
+
+
+def _clean_tool_ids(tool_ids: list[str]) -> list[str]:
+    cleaned = []
+    for tool_id in tool_ids:
+        tool_id = str(tool_id).strip()
+        if not tool_id or tool_id in cleaned:
+            continue
+        cleaned.append(tool_id)
+    return cleaned
+
+
+def _normalize_access_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(profile.get("id", "")),
+        "name": str(profile.get("name", "")),
+        "description": str(profile.get("description", "")),
+        "tool_ids": _clean_tool_ids(profile.get("tool_ids", [])),
+    }
+
+
+def _valid_profile_ids(data: dict[str, Any], profile_ids: list[str]) -> list[str]:
+    known = {
+        str(profile.get("id"))
+        for profile in data.get("access_profiles", [])
+        if isinstance(profile, dict)
+    }
+    return [
+        profile_id
+        for profile_id in _clean_tool_ids(profile_ids)
+        if profile_id in known
+    ]

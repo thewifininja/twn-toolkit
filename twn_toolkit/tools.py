@@ -6,7 +6,16 @@ import os
 import platform
 from typing import Any
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, request, stream_with_context
+from flask import (
+    Blueprint,
+    Response,
+    current_app,
+    g,
+    jsonify,
+    render_template,
+    request,
+    stream_with_context,
+)
 
 from .certificate_tools import (
     CertificateInspectionError,
@@ -58,6 +67,15 @@ from .profiles import (
 from .radius_eap_tools import eapol_test_available, radius_eap_authenticate
 from .snmp_tools import parse_oid_profile, run_snmp_tests, validate_snmp_credential
 from .ntp_tools import test_ntp_servers
+from .packet_replay_tools import (
+    MAX_REPEATS,
+    MAX_TOTAL_FRAMES,
+    parse_hex_packet,
+    parse_single_packet_capture,
+    prepare_replay_plan,
+    send_replay_frames,
+)
+from .tool_catalog import grouped_visible_tools_for_category
 from .traceroute_tools import prepare_traceroute, run_traceroute, stream_traceroute
 
 
@@ -71,7 +89,15 @@ SPEED_TEST_DOWNLOAD_CHUNK = os.urandom(SPEED_TEST_CHUNK_SIZE)
 
 @tools_bp.get("/")
 def index():
-    return render_template("tools/index.html")
+    allowed_tool_ids = getattr(g, "allowed_tool_ids", None)
+    return render_template(
+        "tools/index.html",
+        tool_groups=grouped_visible_tools_for_category(
+            "network",
+            is_admin=bool(g.current_user.get("is_admin")),
+            allowed_tool_ids=allowed_tool_ids,
+        ),
+    )
 
 
 @tools_bp.route("/dhcp-discover", methods=["GET", "POST"])
@@ -118,6 +144,66 @@ def dhcp_discover():
         offers=offers,
         requested_codes=requested_codes,
         option_names=DHCP_OPTIONS,
+    )
+
+
+@tools_bp.route("/packet-replay", methods=["GET", "POST"])
+def packet_replay():
+    interfaces = available_interfaces()
+    default_interface = interfaces[0]["name"] if interfaces else ""
+    form = {
+        "interface": default_interface,
+        "packet_hex": "",
+        "source_mac": "",
+        "destination_mac": "",
+        "vlan_action": "keep",
+        "vlan_ids": "",
+        "repeat_count": "1",
+        "interval_seconds": "1.0",
+        "confirm_send": "",
+    }
+    plan = None
+    send_result = None
+    error = ""
+    action = "preview"
+    if request.method == "POST":
+        form = {key: request.form.get(key, default).strip() for key, default in form.items()}
+        action = request.form.get("action", "preview")
+        try:
+            upload = request.files.get("packet_file")
+            if upload and upload.filename:
+                packet = parse_single_packet_capture(upload.read())
+            else:
+                packet = parse_hex_packet(form["packet_hex"])
+            plan = prepare_replay_plan(
+                packet,
+                source_mac=form["source_mac"],
+                destination_mac=form["destination_mac"],
+                vlan_action=form["vlan_action"],
+                vlan_ids=form["vlan_ids"],
+                repeat_count=int(form["repeat_count"]),
+                interval_seconds=float(form["interval_seconds"]),
+            )
+            if action == "send":
+                if form["confirm_send"] != "SEND":
+                    raise ToolInputError('Type "SEND" to confirm packet transmission.')
+                send_result = send_replay_frames(
+                    plan.frames,
+                    interface=form["interface"],
+                    interval_seconds=plan.summary["interval_seconds"],
+                )
+        except (ToolInputError, TypeError, ValueError) as exc:
+            error = str(exc) or "Enter a valid packet replay request."
+    return render_template(
+        "tools/packet_replay.html",
+        error=error,
+        form=form,
+        interfaces=interfaces,
+        max_repeats=MAX_REPEATS,
+        max_total_frames=MAX_TOTAL_FRAMES,
+        plan=plan,
+        send_result=send_result,
+        action=action,
     )
 
 

@@ -1,0 +1,24 @@
+{% macro tool_card(tool, favorite_ids) -%}
+  <article class="launch-card">
+    <div class="launch-card-body">
+      <div>
+        <a class="launch-card-link" href="{{ url_for(tool.endpoint, **tool.endpoint_values) }}">
+          <strong>{{ tool.label }}</strong>
+        </a>
+        <span>{{ tool.description }}</span>
+      </div>
+      {% if tool.risk != "standard" %}
+        <small class="risk-label risk-{{ tool.risk }}">{{ tool.risk }}</small>
+      {% endif %}
+    </div>
+    <form class="favorite-form" method="post" action="{{ url_for('toggle_tool_favorite', tool_id=tool.id) }}">
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <button
+        class="favorite-button {{ 'active' if tool.id in favorite_ids else '' }}"
+        type="submit"
+        title="{{ 'Remove from favorites' if tool.id in favorite_ids else 'Add to favorites' }}"
+        aria-label="{{ 'Remove ' ~ tool.label ~ ' from favorites' if tool.id in favorite_ids else 'Add ' ~ tool.label ~ ' to favorites' }}"
+      >★</button>
+    </form>
+  </article>
+{%- endmacro %}

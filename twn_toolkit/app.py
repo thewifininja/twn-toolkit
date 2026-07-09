@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from flask import (
     Flask,
     Response,
+    abort,
     flash,
     g,
     jsonify,
@@ -57,6 +58,16 @@ from .profiles import (
 )
 from .server_settings import ServerSettingsStore, normalize_allowed_networks
 from .tasks import TASKS, ExportTask, RenameTask, discover_export_fields, get_task, grouped_tasks
+from .tool_catalog import (
+    TOOL_BY_ID,
+    TOOL_CATEGORIES,
+    favorite_tools,
+    grouped_access_tools,
+    grouped_visible_tools,
+    grouped_visible_tools_for_category,
+    tool_id_for_endpoint,
+    visible_tools,
+)
 from .tools import tools_bp
 
 
@@ -247,18 +258,36 @@ def create_app(instance_path: str | None = None) -> Flask:
 
         session["last_seen"] = now
         g.current_user = user
+        g.allowed_tool_ids = auth_store.effective_tool_ids(user)
+        denied_tool_id = tool_id_for_endpoint(endpoint, request.view_args)
+        if denied_tool_id and not _tool_access_allowed(denied_tool_id):
+            return Response("This user does not have access to that tool.", status=403)
         return None
 
     @app.context_processor
     def authentication_context():
         password_policy = auth_store.password_policy()
         current_user = getattr(g, "current_user", None)
+        allowed_tool_ids = getattr(g, "allowed_tool_ids", None)
         return {
             "current_user": current_user,
             "user_theme": current_user.get("theme", "light") if current_user else "system",
+            "favorite_ids": auth_store.favorite_tool_ids(current_user["id"]) if current_user else [],
+            "allowed_tool_ids": allowed_tool_ids,
             "min_password_length": password_policy["min_length"],
             "password_policy": password_policy,
         }
+
+    def _tool_access_allowed(tool_id: str) -> bool:
+        if g.current_user.get("is_admin"):
+            return True
+        return tool_id in (getattr(g, "allowed_tool_ids", None) or set())
+
+    def _category_allowed(category: str) -> bool:
+        if g.current_user.get("is_admin"):
+            return True
+        allowed_tool_ids = getattr(g, "allowed_tool_ids", None) or set()
+        return any(tool.category == category and tool.id in allowed_tool_ids for tool in visible_tools(is_admin=True))
 
     @app.post("/settings/theme")
     def update_theme():
@@ -323,6 +352,8 @@ def create_app(instance_path: str | None = None) -> Flask:
         return render_template(
             "auth/settings.html",
             users=visible_users,
+            access_profiles=auth_store.access_profiles(),
+            tool_groups_for_access=grouped_access_tools(),
             idle_timeout_minutes=auth_store.idle_timeout_minutes(),
             min_password_length=auth_store.min_password_length(),
             password_policy=auth_store.password_policy(),
@@ -343,11 +374,61 @@ def create_app(instance_path: str | None = None) -> Flask:
                     request.form.get("username", ""),
                     password,
                     is_admin=request.form.get("is_admin") == "on",
+                    access_profile_ids=request.form.getlist("access_profile_id"),
                 )
             except ValueError as exc:
                 flash(str(exc), "error")
             else:
                 flash("User created.", "success")
+        return redirect(url_for("settings"))
+
+    @app.post("/settings/users/<user_id>/access")
+    def update_user_access(user_id: str):
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            auth_store.update_user_access(
+                user_id,
+                is_admin=request.form.get("is_admin") == "on",
+                access_profile_ids=request.form.getlist("access_profile_id"),
+            )
+        except ValueError as exc:
+            flash(str(exc), "error")
+        else:
+            flash("User access updated.", "success")
+        return redirect(url_for("settings"))
+
+    @app.post("/settings/access-profiles")
+    def save_access_profile():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            auth_store.save_access_profile(
+                profile_id=request.form.get("profile_id", ""),
+                name=request.form.get("name", ""),
+                description=request.form.get("description", ""),
+                tool_ids=[
+                    tool_id
+                    for tool_id in request.form.getlist("tool_id")
+                    if TOOL_BY_ID.get(tool_id) and TOOL_BY_ID[tool_id].grantable
+                ],
+            )
+        except ValueError as exc:
+            flash(str(exc), "error")
+        else:
+            flash("Access profile saved.", "success")
+        return redirect(url_for("settings"))
+
+    @app.post("/settings/access-profiles/<profile_id>/delete")
+    def delete_access_profile(profile_id: str):
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            auth_store.delete_access_profile(profile_id)
+        except ValueError as exc:
+            flash(str(exc), "error")
+        else:
+            flash("Access profile deleted.", "success")
         return redirect(url_for("settings"))
 
     @app.post("/settings/users/<user_id>/password")
@@ -703,17 +784,52 @@ def create_app(instance_path: str | None = None) -> Flask:
 
     @app.get("/")
     def index():
-        return render_template("home.html")
+        is_admin = bool(g.current_user.get("is_admin"))
+        allowed_tool_ids = getattr(g, "allowed_tool_ids", None)
+        favorite_ids = auth_store.favorite_tool_ids(g.current_user["id"])
+        visible_category_ids = {
+            tool.category
+            for tool in visible_tools(is_admin=is_admin, allowed_tool_ids=allowed_tool_ids)
+            if tool.show_on_home
+        }
+        return render_template(
+            "home.html",
+            favorite_ids=favorite_ids,
+            favorites=favorite_tools(
+                favorite_ids, is_admin=is_admin, allowed_tool_ids=allowed_tool_ids
+            ),
+            tool_categories=[
+                category for category in TOOL_CATEGORIES if category["id"] in visible_category_ids
+            ],
+            tool_groups=grouped_visible_tools(is_admin=is_admin, allowed_tool_ids=allowed_tool_ids),
+        )
+
+    @app.post("/favorites/tools/<tool_id>")
+    def toggle_tool_favorite(tool_id: str):
+        tool = TOOL_BY_ID.get(tool_id)
+        if not tool:
+            abort(404)
+        if not _tool_access_allowed(tool_id):
+            abort(403)
+        auth_store.toggle_favorite_tool(g.current_user["id"], tool_id)
+        return redirect(_validated_next_url(request.form.get("next", "")))
 
     @app.get("/fortigate")
     def fortigate_home():
+        if not _category_allowed("fortigate"):
+            return Response("This user does not have access to FortiGate tools.", status=403)
         profiles = store.all()
         edit_profile = store.get(request.args.get("edit", ""))
         return render_template(
             "index.html",
             edit_profile=edit_profile,
             profiles=profiles,
-            task_groups=grouped_tasks(),
+            can_manage_profiles=_tool_access_allowed("fortigate.home"),
+            tool_groups=grouped_visible_tools_for_category(
+                "fortigate",
+                is_admin=bool(g.current_user.get("is_admin")),
+                allowed_tool_ids=getattr(g, "allowed_tool_ids", None),
+            ),
         )
 
     @app.get("/fortigate/switch-order")
@@ -841,12 +957,20 @@ def create_app(instance_path: str | None = None) -> Flask:
 
     @app.get("/fortiauthenticator")
     def fortiauthenticator_home():
+        if not _category_allowed("fortiauthenticator"):
+            return Response("This user does not have access to FortiAuthenticator tools.", status=403)
         profiles = fortiauthenticator_store.all()
         edit_profile = fortiauthenticator_store.get(request.args.get("edit", ""))
         return render_template(
             "fortiauthenticator/index.html",
             edit_profile=edit_profile,
             profiles=profiles,
+            can_manage_profiles=_tool_access_allowed("fortiauthenticator.home"),
+            tool_groups=grouped_visible_tools_for_category(
+                "fortiauthenticator",
+                is_admin=bool(g.current_user.get("is_admin")),
+                allowed_tool_ids=getattr(g, "allowed_tool_ids", None),
+            ),
         )
 
     @app.post("/fortiauthenticator/profiles")

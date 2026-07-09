@@ -1,8 +1,23 @@
 {% extends "base.html" %}
+{% from "components/tool_cards.html" import tool_card %}
 
 {% block content %}
-<section class="grid two">
-  <div class="panel">
+<section class="home-hero compact-hero">
+  <div>
+    <span class="eyebrow">Fortinet workflows</span>
+    <h1>FortiGate / FortiAP / FortiSwitch</h1>
+    <p>Manage FortiGate API profiles here, then run AP, switch, wireless client, and inventory workflows using those saved profiles.</p>
+  </div>
+  <div class="home-hero-card">
+    <span>Saved profiles</span>
+    <strong>{{ profiles | length }}</strong>
+    <small>Used by the tools below</small>
+  </div>
+</section>
+
+{% if can_manage_profiles %}
+  <section class="grid two">
+    <div class="panel">
     <div class="panel-head">
       <h1>{{ "Edit Profile" if edit_profile else "FortiGate Profiles" }}</h1>
     </div>
@@ -41,9 +56,9 @@
         {% endif %}
       </div>
     </form>
-  </div>
+    </div>
 
-  <div class="panel">
+    <div class="panel">
     <div class="panel-head">
       <h1>Saved Profiles</h1>
     </div>
@@ -71,34 +86,28 @@
     {% else %}
       <p class="empty">No profiles saved yet.</p>
     {% endif %}
-  </div>
-</section>
+    </div>
+  </section>
+{% else %}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>FortiGate profiles are managed by administrators</h1>
+      <p>You can run the workflows shown below using saved profiles, but this account cannot create, edit, test, or delete FortiGate API profiles.</p>
+    </div>
+  </section>
+{% endif %}
 
 <div class="task-groups">
-  {% for group_label, tasks in task_groups %}
-    <section class="panel task-group">
-      <div class="panel-head">
-        <h1>{{ group_label }}</h1>
+  {% for group_label, tools in tool_groups %}
+    <section class="home-section task-group">
+      <div class="section-head compact">
+        <h2>{{ group_label }}</h2>
+        <p>These workflows use the FortiGate profiles managed on this page.</p>
       </div>
-      <div class="task-grid">
-        {% for task in tasks %}
-          <a class="task-card" href="{{ url_for('task_form', task_id=task.id) }}">
-            <strong>{{ task.label }}</strong>
-            <span>{{ task.description }}</span>
-          </a>
+      <div class="launch-grid">
+        {% for tool in tools %}
+          {{ tool_card(tool, favorite_ids) }}
         {% endfor %}
-        {% if group_label == "FortiAP Tasks" %}
-          <a class="task-card" href="{{ url_for('fortiap_client_history') }}">
-            <strong>Find Wireless Client History</strong>
-            <span>Search local wireless-client logs and show the AP path for a client MAC.</span>
-          </a>
-        {% endif %}
-        {% if group_label == "FortiSwitch Tasks" %}
-          <a class="task-card" href="{{ url_for('switch_order') }}">
-            <strong>Re-order Managed FortiSwitches</strong>
-            <span>Drag switches into the desired GUI order or alphabetize them.</span>
-          </a>
-        {% endif %}
       </div>
     </section>
   {% endfor %}
