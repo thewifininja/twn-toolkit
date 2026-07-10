@@ -27,7 +27,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "Profiles, FortiAP/FortiSwitch workflows, inventory exports, and bulk operations.",
                 "fortigate_home",
                 "fortigate",
-                "Fortinet Workflows",
+                "Fortinet Profiles",
             ),
             ToolLink(
                 "fortigate.wireless_client_history",

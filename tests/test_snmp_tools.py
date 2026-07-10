@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.snmp_tools import parse_oid_profile, validate_snmp_credential
 
@@ -154,6 +155,12 @@ class SNMPToolTests(unittest.TestCase):
             self.assertIn(b"core-1", response.data)
             self.assertNotIn(b"private-community", response.data)
             self.assertNotIn(b"<th>Operation</th>", response.data)
+            summary = ActivityStore(instance).summary()
+            self.assertEqual(summary["counters"]["snmp"]["polls"], 1)
+            self.assertEqual(summary["counters"]["actions"]["total"], 1)
+            self.assertEqual(summary["scoreboard"][0]["metrics"][0]["key"], "snmp.polls")
+            self.assertEqual(summary["recent"][0]["title"], "Ran SNMP test")
+            self.assertIn("1 value", summary["recent"][0]["detail"])
 
 
 if __name__ == "__main__":

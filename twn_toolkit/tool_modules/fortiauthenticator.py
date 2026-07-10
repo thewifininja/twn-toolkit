@@ -27,7 +27,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "Profiles and MAC device administration workflows.",
                 "fortiauthenticator_home",
                 "fortiauthenticator",
-                "Fortinet Workflows",
+                "Fortinet Profiles",
             ),
             ToolLink(
                 "fortiauthenticator.mac_devices",

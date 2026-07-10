@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from .activity_context import record_current_activity
 from .network_tools import (
     ToolInputError,
     parse_ping_targets,
@@ -55,6 +56,14 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
                 )
             except (ToolInputError, TypeError, ValueError) as exc:
                 error = str(exc) or "Enter valid scanner settings."
+                record_current_activity("Ports", "Ran TCP port scan", "Request failed")
+            else:
+                record_current_activity(
+                    "Ports",
+                    "Ran TCP port scan",
+                    f"{len(targets)} host(s), {len(ports)} port(s), {stats['open']} open",
+                    counters={"tcp": {"ports_scanned": len(all_results)}},
+                )
         return render_template(
             "tools/port_scanner.html",
             error=error,

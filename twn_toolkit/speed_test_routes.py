@@ -4,6 +4,7 @@ import os
 
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
 
+from .activity_context import record_current_activity
 from .route_utils import disable_client_caching
 
 SPEED_TEST_CHUNK_SIZE = 256 * 1024
@@ -32,7 +33,6 @@ def register_speed_test_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": "Download size must be a whole number of bytes."}), 400
         if not 1 <= size <= SPEED_TEST_MAX_DOWNLOAD_SIZE:
             return jsonify({"error": "Download size must be between 1 byte and 512 MiB."}), 400
-
         @stream_with_context
         def generate():
             remaining = size
@@ -69,3 +69,23 @@ def register_speed_test_routes(tools_bp: Blueprint) -> None:
         response = jsonify({"bytes_received": received})
         disable_client_caching(response)
         return response
+
+    @tools_bp.post("/speed-test/activity")
+    def speed_test_activity():
+        payload = request.get_json(silent=True) or {}
+        try:
+            download_bytes = int(payload.get("download_bytes", 0))
+            upload_bytes = int(payload.get("upload_bytes", 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Speed test byte counts must be whole numbers."}), 400
+        max_reported_bytes = 100 * 1024 * 1024 * 1024
+        if not 0 <= download_bytes <= max_reported_bytes or not 0 <= upload_bytes <= max_reported_bytes:
+            return jsonify({"error": "Speed test byte counts are outside the allowed range."}), 400
+        total_bytes = download_bytes + upload_bytes
+        record_current_activity(
+            "Throughput",
+            "Completed speed test",
+            f"{download_bytes} download bytes · {upload_bytes} upload bytes",
+            counters={"speedtest": {"runs": 1, "bytes_transferred": total_bytes}},
+        )
+        return jsonify({"ok": True})

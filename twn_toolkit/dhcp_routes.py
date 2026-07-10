@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, render_template, request
 
+from .activity_context import record_current_activity
 from .dhcp_tools import (
     DEFAULT_PARAMETER_REQUEST_LIST,
     DHCP_OPTIONS,
@@ -50,6 +51,14 @@ def register_dhcp_routes(tools_bp: Blueprint) -> None:
                 )
             except (ToolInputError, TypeError, ValueError) as exc:
                 error = str(exc) or "Enter valid DHCP probe settings."
+                record_current_activity("Addressing", "Sent DHCP Discover", "Request failed")
+            else:
+                record_current_activity(
+                    "Addressing",
+                    "Sent DHCP Discover",
+                    f"{form['interface']}: {len(offers)} offer(s)",
+                    counters={"dhcp": {"discovers": 1, "offers": len(offers)}},
+                )
         return render_template(
             "tools/dhcp_discover.html",
             error=error,

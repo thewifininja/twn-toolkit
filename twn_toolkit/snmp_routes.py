@@ -4,6 +4,7 @@ from typing import Any
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from .activity_context import record_current_activity
 from .network_tools import ToolInputError, validate_hosts
 from .profiles import (
     SNMPCredentialProfileStore,
@@ -11,6 +12,22 @@ from .profiles import (
     SNMPOidProfileStore,
 )
 from .snmp_tools import parse_oid_profile, run_snmp_tests, validate_snmp_credential
+
+
+def _record_snmp_activity(
+    title: str,
+    detail: str = "",
+    *,
+    polls: int = 0,
+    count_action: bool = False,
+) -> None:
+    record_current_activity(
+        "Infrastructure",
+        title,
+        detail,
+        counters={"snmp": {"polls": polls}},
+        count_action=count_action,
+    )
 
 
 def register_snmp_routes(tools_bp: Blueprint) -> None:
@@ -54,7 +71,25 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
                             prepared_oid_profiles,
                         )
                     except (ToolInputError, ValueError) as exc:
+                        _record_snmp_activity(
+                            "Ran SNMP test",
+                            f"{len(selected_hosts)} host(s), {len(selected_oid_profiles)} OID profile(s): failed",
+                            count_action=True,
+                        )
                         error = str(exc)
+                    else:
+                        failed = sum(1 for result in results if result.get("status") == "error")
+                        rows = sum(len(result.get("rows", [])) for result in results)
+                        _record_snmp_activity(
+                            "Ran SNMP test",
+                            (
+                                f"{len(selected_hosts)} host(s), "
+                                f"{len(selected_oid_profiles)} OID profile(s), "
+                                f"{rows} value(s), {failed} failed"
+                            ),
+                            polls=len(results),
+                            count_action=True,
+                        )
         credentials = credential_store.all()
         return render_template(
             "tools/snmp_test.html",

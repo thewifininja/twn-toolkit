@@ -4,6 +4,7 @@ import platform
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from .activity_context import record_current_activity
 from .network_tools import (
     ToolInputError,
     parse_radius_attributes,
@@ -12,6 +13,22 @@ from .network_tools import (
 )
 from .profiles import RadiusProfileStore
 from .radius_eap_tools import eapol_test_available, radius_eap_authenticate
+
+
+def _record_radius_activity(
+    title: str,
+    detail: str = "",
+    *,
+    attempts: int = 0,
+    count_action: bool = False,
+) -> None:
+    record_current_activity(
+        "Authentication",
+        title,
+        detail,
+        counters={"radius": {"attempts": attempts}},
+        count_action=count_action,
+    )
 
 
 def register_radius_routes(tools_bp: Blueprint) -> None:
@@ -85,7 +102,28 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
                             else [],
                         )
                 except (ToolInputError, TypeError, ValueError) as exc:
+                    _record_radius_activity(
+                        "Ran RADIUS test",
+                        f"{len(form['server_names'])} server(s), {form['protocol']}: failed",
+                        count_action=True,
+                    )
                     error = str(exc) or "Enter valid timeout and attempt values."
+                else:
+                    successes = sum(
+                        1
+                        for result in results
+                        if not result.get("error")
+                        and str(result.get("status", "")).lower() not in {"error", "failed"}
+                    )
+                    _record_radius_activity(
+                        "Ran RADIUS test",
+                        (
+                            f"{len(results)} server attempt(s), {form['protocol']}, "
+                            f"{successes} succeeded"
+                        ),
+                        attempts=len(results),
+                        count_action=True,
+                    )
         return render_template(
             "tools/radius_test.html",
             error=error,

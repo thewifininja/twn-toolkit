@@ -6,6 +6,7 @@ from typing import Any, Callable
 from flask import (
     Flask,
     Response,
+    current_app,
     flash,
     g,
     jsonify,
@@ -15,6 +16,7 @@ from flask import (
     url_for,
 )
 
+from .activity_context import record_current_activity
 from .fortigate import FortiGateClient, FortiGateError, normalize_api_key, normalize_host
 from .fortiap_history import (
     LocalFortiGateWirelessHistorySource,
@@ -24,6 +26,23 @@ from .fortiap_history import (
 from .profiles import ProfileStore
 from .tasks import ExportTask, RenameTask, discover_export_fields, get_task
 from .tool_catalog import grouped_visible_tools_for_category
+
+
+def _record_fortinet_api_activity(
+    title: str,
+    detail: str = "",
+    *,
+    api_calls: int = 1,
+    failures: int = 0,
+    count_action: bool = True,
+) -> None:
+    record_current_activity(
+        "Fortinet",
+        title,
+        detail,
+        counters={"fortinet": {"api_calls": api_calls, "failures": failures}},
+        count_action=count_action,
+    )
 
 
 def register_fortigate_routes(
@@ -81,6 +100,10 @@ def register_fortigate_routes(
                         vdom,
                         hours,
                     )
+                    _record_fortinet_api_activity(
+                        "Loaded wireless client history",
+                        f"{normalized_mac} via {selected_name} ({hours}h)",
+                    )
                 except ValueError as exc:
                     flash(str(exc), "error")
 
@@ -105,7 +128,18 @@ def register_fortigate_routes(
                 FortiGateClient.from_profile(profile).get_managed_switches(vdom)
             )
         except FortiGateError as exc:
+            _record_fortinet_api_activity(
+                "Loaded FortiSwitch order",
+                f"{profile['name']}: failed",
+                failures=1,
+                count_action=False,
+            )
             return jsonify({"error": str(exc)}), 502
+        _record_fortinet_api_activity(
+            "Loaded FortiSwitch order",
+            f"{profile['name']}: {len(switches)} switches",
+            count_action=False,
+        )
         return jsonify({"switches": switches, "row_count": len(switches), "vdom": vdom})
 
     @app.post("/fortigate/switch-order/apply")
@@ -122,6 +156,11 @@ def register_fortigate_routes(
         try:
             current = managed_switch_order(client.get_managed_switches(vdom))
         except FortiGateError as exc:
+            _record_fortinet_api_activity(
+                "Applied FortiSwitch order",
+                f"{profile['name']}: initial load failed",
+                failures=1,
+            )
             return jsonify({"error": str(exc)}), 502
 
         current_ids = [item["id"] for item in current]
@@ -143,6 +182,12 @@ def register_fortigate_routes(
                 completed.append(move)
             verified = managed_switch_order(client.get_managed_switches(vdom))
         except FortiGateError as exc:
+            _record_fortinet_api_activity(
+                "Applied FortiSwitch order",
+                f"{profile['name']}: {len(completed)} of {len(moves)} moves completed",
+                api_calls=2 + len(completed),
+                failures=1,
+            )
             progress = (
                 "No switch moves were applied."
                 if not completed
@@ -163,6 +208,12 @@ def register_fortigate_routes(
 
         verified_ids = [item["id"] for item in verified]
         if verified_ids != desired_ids:
+            _record_fortinet_api_activity(
+                "Applied FortiSwitch order",
+                f"{profile['name']}: verification mismatch after {len(completed)} moves",
+                api_calls=2 + len(completed),
+                failures=1,
+            )
             return jsonify(
                 {
                     "error": "FortiGate accepted the moves but the verified order does not match.",
@@ -170,6 +221,11 @@ def register_fortigate_routes(
                     "switches": verified,
                 }
             ), 409
+        _record_fortinet_api_activity(
+            "Applied FortiSwitch order",
+            f"{profile['name']}: {len(completed)} moves verified",
+            api_calls=2 + len(completed),
+        )
         return jsonify(
             {
                 "message": (
@@ -235,9 +291,18 @@ def register_fortigate_routes(
         try:
             result = client.test_connection()
         except FortiGateError as exc:
+            _record_fortinet_api_activity(
+                "Tested FortiGate profile",
+                f"{name}: connection failed",
+                failures=1,
+            )
             flash(f"Connection failed: {connection_error_message(exc)}", "error")
         else:
             version = result.get("version") or result.get("build") or "reachable"
+            _record_fortinet_api_activity(
+                "Tested FortiGate profile",
+                f"{name}: {version}",
+            )
             flash(f"Connection OK: {version}", "success")
 
         return redirect(url_for("fortigate_home"))
@@ -284,9 +349,18 @@ def register_fortigate_routes(
                     fields=fields,
                 )
             except FortiGateError as exc:
+                _record_fortinet_api_activity(
+                    "Ran FortiGate export",
+                    f"{profile['name']}: {task.label} failed",
+                    failures=1,
+                )
                 flash(f"Export failed: {exc}", "error")
                 return redirect(url_for("task_form", task_id=task_id))
 
+            _record_fortinet_api_activity(
+                "Ran FortiGate export",
+                f"{profile['name']}: {task.label}",
+            )
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             filename = f"{task.id}-{profile['name']}-{stamp}.csv".replace(" ", "_")
             return Response(
@@ -309,6 +383,12 @@ def register_fortigate_routes(
             dry_run=dry_run,
             endpoint_template=endpoint_template or task.endpoint_template,
             default_vdom=profile.get("default_vdom", "root"),
+        )
+        _record_fortinet_api_activity(
+            "Ran FortiGate rename task",
+            f"{profile['name']}: {task.label} ({len(entries)} row{'s' if len(entries) != 1 else ''})",
+            api_calls=max(1, len(entries)),
+            failures=sum(1 for result in results if result.status == "error"),
         )
 
         return render_template(
@@ -340,8 +420,19 @@ def register_fortigate_routes(
                 default_vdom=profile.get("default_vdom", "root"),
             )
         except FortiGateError as exc:
+            _record_fortinet_api_activity(
+                "Discovered FortiGate objects",
+                f"{profile['name']}: {task.label} failed",
+                failures=1,
+                count_action=False,
+            )
             return jsonify({"error": str(exc)}), 502
 
+        _record_fortinet_api_activity(
+            "Discovered FortiGate objects",
+            f"{profile['name']}: {task.label} ({len(objects)} objects)",
+            count_action=False,
+        )
         return jsonify({"objects": objects, "row_count": len(objects)})
 
     @app.post("/tasks/<task_id>/rename")
@@ -384,6 +475,12 @@ def register_fortigate_routes(
             endpoint_template=endpoint_template or task.endpoint_template,
             default_vdom=profile.get("default_vdom", "root"),
         )
+        _record_fortinet_api_activity(
+            "Ran FortiGate rename task",
+            f"{profile['name']}: {task.label} ({len(entries)} row{'s' if len(entries) != 1 else ''})",
+            api_calls=max(1, len(entries)),
+            failures=sum(1 for result in results if result.status == "error"),
+        )
         return render_template(
             "results.html",
             entries=entries if dry_run else None,
@@ -413,8 +510,19 @@ def register_fortigate_routes(
                 default_vdom=profile.get("default_vdom", "root"),
             )
         except FortiGateError as exc:
+            _record_fortinet_api_activity(
+                "Loaded FortiGate export fields",
+                f"{profile['name']}: {task.label} failed",
+                failures=1,
+                count_action=False,
+            )
             return jsonify({"error": str(exc)}), 502
 
+        _record_fortinet_api_activity(
+            "Loaded FortiGate export fields",
+            f"{profile['name']}: {task.label} ({len(rows)} rows)",
+            count_action=False,
+        )
         fields = discover_export_fields(task, rows)
         return jsonify({"endpoint_used": endpoint_used, "fields": fields, "row_count": len(rows)})
 
@@ -438,8 +546,19 @@ def register_fortigate_routes(
                 default_vdom=profile.get("default_vdom", "root"),
             )
         except FortiGateError as exc:
+            _record_fortinet_api_activity(
+                "Previewed FortiGate export",
+                f"{profile['name']}: {task.label} failed",
+                failures=1,
+                count_action=False,
+            )
             return jsonify({"error": str(exc)}), 502
 
+        _record_fortinet_api_activity(
+            "Previewed FortiGate export",
+            f"{profile['name']}: {task.label} ({len(rows)} rows)",
+            count_action=False,
+        )
         columns, formatted_rows = task.format_rows(rows, selected_fields)
         return jsonify(
             {

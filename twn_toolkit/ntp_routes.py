@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from .activity_context import record_current_activity
 from .network_tools import ToolInputError, parse_ping_targets
 from .ntp_tools import test_ntp_servers
 from .profiles import NTPHostProfileStore
@@ -31,6 +32,15 @@ def register_ntp_routes(tools_bp: Blueprint) -> None:
                 )
             except (ToolInputError, TypeError, ValueError) as exc:
                 error = str(exc) or "Enter valid NTP test settings."
+                record_current_activity("Time", "Ran NTP test", "Request failed")
+            else:
+                query_count = sum(int(result.get("total_samples", 0)) for result in results)
+                record_current_activity(
+                    "Time",
+                    "Ran NTP test",
+                    f"{len(targets)} server(s), {query_count} sample(s)",
+                    counters={"ntp": {"queries": query_count}},
+                )
         return render_template(
             "tools/ntp_test.html",
             error=error,

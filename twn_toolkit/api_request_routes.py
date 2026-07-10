@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, Response, render_template, request
 
+from .activity_context import record_current_activity
 from .diagnostic_tools import parse_http_headers, send_api_request
 from .network_tools import ToolInputError
 from .route_utils import disable_client_caching
@@ -40,6 +41,14 @@ def register_api_request_routes(tools_bp: Blueprint) -> None:
                 )
             except (ToolInputError, TypeError, ValueError) as exc:
                 error = str(exc) or "Enter valid API request settings."
+                record_current_activity("HTTP", "Sent API request", "Request failed")
+            else:
+                record_current_activity(
+                    "HTTP",
+                    "Sent API request",
+                    f"{form['method']} · HTTP {result['status']}",
+                    counters={"api": {"requests": 1}},
+                )
         response = Response(
             render_template("tools/api_request.html", form=form, result=result, error=error)
         )

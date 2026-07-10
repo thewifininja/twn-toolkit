@@ -12,9 +12,27 @@ from flask import (
     stream_with_context,
 )
 
+from .activity_context import record_current_activity
 from .network_tools import ToolInputError, parse_ping_targets
 from .profiles import TracerouteHostProfileStore
 from .traceroute_tools import prepare_traceroute, run_traceroute, stream_traceroute
+
+
+def _record_traceroute_activity(
+    title: str,
+    detail: str = "",
+    *,
+    completed: int = 0,
+    hops: int = 0,
+    count_action: bool = False,
+) -> None:
+    record_current_activity(
+        "Pathing",
+        title,
+        detail,
+        counters={"traceroute": {"completed": completed, "hops": hops}},
+        count_action=count_action,
+    )
 
 
 def register_traceroute_routes(tools_bp: Blueprint) -> None:
@@ -49,7 +67,21 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
                     timeout=float(form["timeout"]),
                 )
             except (ToolInputError, TypeError, ValueError) as exc:
+                _record_traceroute_activity(
+                    "Ran traceroute",
+                    f"{form['host']}: failed",
+                    count_action=True,
+                )
                 error = str(exc) or "Enter valid traceroute settings."
+            else:
+                _record_traceroute_activity(
+                    "Ran traceroute",
+                    f"{result['host']}: {result['hop_count']} hops"
+                    + (" · destination reached" if result.get("reached") else " · incomplete"),
+                    completed=1,
+                    hops=int(result.get("hop_count", 0)),
+                    count_action=True,
+                )
         return render_template(
             "tools/traceroute.html",
             error=error,
@@ -101,8 +133,26 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
         def generate():
             try:
                 for event in stream_traceroute(prepared):
+                    if event.get("type") == "complete":
+                        _record_traceroute_activity(
+                            "Ran traceroute",
+                            f"{prepared['host']}: {event.get('hop_count', 0)} hops"
+                            + (
+                                " · destination reached"
+                                if event.get("reached")
+                                else " · incomplete"
+                            ),
+                            completed=1,
+                            hops=int(event.get("hop_count", 0)),
+                            count_action=True,
+                        )
                     yield json.dumps(event, separators=(",", ":")) + "\n"
             except ToolInputError as exc:
+                _record_traceroute_activity(
+                    "Ran traceroute",
+                    f"{prepared['host']}: failed",
+                    count_action=True,
+                )
                 yield json.dumps({"type": "error", "error": str(exc)}, separators=(",", ":")) + "\n"
 
         response = Response(generate(), mimetype="application/x-ndjson")

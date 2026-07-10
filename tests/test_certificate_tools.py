@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -9,6 +10,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
+from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.certificate_tools import (
     check_certificate_hostname,
     inspect_certificate_chain,
@@ -98,6 +101,42 @@ class CertificateToolTests(unittest.TestCase):
         self.assertTrue(result["hostname"]["valid"])
         self.assertTrue(result["overall_valid"])
         self.assertEqual(result["certificates"][1]["role"], "Self-issued root / CA")
+
+    def test_certificate_route_records_activity(self) -> None:
+        result = {
+            "host": "portal.example.com",
+            "port": 443,
+            "resolved_addresses": ["192.0.2.10"],
+            "tls": {
+                "version": "TLSv1.3",
+                "cipher": "TLS_AES_256_GCM_SHA384",
+                "cipher_bits": 256,
+                "alpn": "h2",
+            },
+            "presented_count": 1,
+            "chain_order_valid": True,
+            "chain_order_error": "",
+            "hostname": {"valid": True, "matched": "portal.example.com", "error": ""},
+            "trust": {"valid": True, "error": ""},
+            "overall_valid": True,
+            "certificates": [summarize_certificate(self.leaf, 0, self.now)],
+        }
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            with patch(
+                "twn_toolkit.certificate_routes.inspect_certificate_chain",
+                return_value=result,
+            ):
+                response = app.test_client().post(
+                    "/tools/certificate-inspector",
+                    data={"target": "portal.example.com", "port": "443", "timeout": "3"},
+                )
+            summary = ActivityStore(instance).summary()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(summary["counters"]["certificates"]["inspections"], 1)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
 
 
 def _certificate(

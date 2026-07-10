@@ -1,12 +1,14 @@
 {% extends "base.html" %}
-{% from "components/tool_cards.html" import tool_card %}
 
 {% block content %}
-<section class="home-hero">
+<section class="dashboard-hero">
   <div>
-    <span class="eyebrow">Local-first operations</span>
-    <h1>What are we fixing today?</h1>
-    <p>Jump into Fortinet workflows, network diagnostics, administration, or pin your usual tools so they are waiting for you when the next weird packet gremlin appears.</p>
+    <span class="eyebrow">Toolkit dashboard</span>
+    <h1>Command center</h1>
+    <p>
+      A live-ish pulse of what the toolkit has been doing: probes sent, paths traced,
+      APIs touched, packets replayed, and the tiny victories earned along the way.
+    </p>
   </div>
   <div class="home-hero-card">
     <span>Signed in as</span>
@@ -15,60 +17,157 @@
   </div>
 </section>
 
-<section class="home-section">
-  <div class="section-head">
-    <h2>Favorites</h2>
-    <p>Your personal launchpad. Star tools below to keep them here.</p>
+<section class="dashboard-toolbar" aria-label="Dashboard time window">
+  <div>
+    <strong>{{ dashboard.window.range_label }}</strong>
+    <span>Metrics, scoreboard, and recent activity</span>
   </div>
-  {% if favorites %}
-    <div class="launch-grid favorites-grid">
-      {% for tool in favorites %}
-        {{ tool_card(tool, favorite_ids) }}
+  <form class="dashboard-window-form" method="get" action="{{ url_for('index') }}">
+    <input type="hidden" name="scoreboard_rank" value="{{ dashboard.scoreboard_rank.key }}">
+    <div class="dashboard-window-preset">
+      <label for="activity-window">Time window</label>
+      <select id="activity-window" name="activity_window" onchange="this.form.submit()">
+        {% for option in dashboard.window_options %}
+          <option value="{{ option.key }}" {% if option.key == dashboard.window.key %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if dashboard.window.key == 'custom' %}
+      <div class="dashboard-custom-range">
+        <label for="activity-start">Start</label>
+        <input id="activity-start" type="datetime-local" step="1" name="activity_start" value="{{ dashboard.window.range_start }}" required>
+        <label for="activity-end">End</label>
+        <input id="activity-end" type="datetime-local" step="1" name="activity_end" value="{{ dashboard.window.range_end }}" required>
+        <button class="button-link secondary" type="submit">Apply range</button>
+      </div>
+      {% if dashboard.window.error %}
+        <span class="field-error">{{ dashboard.window.error }}</span>
+      {% endif %}
+    {% endif %}
+  </form>
+</section>
+
+<section class="dashboard-grid">
+  {% for card in dashboard.cards %}
+    <article class="dashboard-card">
+      <div>
+        <span class="dashboard-kicker">{{ card.kicker }}</span>
+        <strong>{{ card.title }}</strong>
+      </div>
+      <div class="dashboard-stat">
+        <span>{{ card.primary }}</span>
+        <small>{{ card.primary_label }}</small>
+      </div>
+      <p>{{ card.secondary }}</p>
+      {% if current_user.is_admin %}
+        <form method="post" action="{{ url_for('reset_activity_metric', metric=card.metric) }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <button class="link-button subtle" type="submit">Reset</button>
+        </form>
+      {% endif %}
+    </article>
+  {% endfor %}
+</section>
+
+<section class="home-section dashboard-section">
+  <div class="section-head">
+    <div>
+      <h2>User scoreboard</h2>
+      <p>Ranks intentional user actions. Raw probes, replies, and other technical counters stay in the metric cards.</p>
+    </div>
+    <div class="section-actions">
+      {% if dashboard.scoreboard %}
+        <form class="scoreboard-rank-form" method="get" action="{{ url_for('index') }}">
+          <input type="hidden" name="activity_window" value="{{ dashboard.window.key }}">
+          {% if dashboard.window.key == 'custom' %}
+            <input type="hidden" name="activity_start" value="{{ dashboard.window.range_start }}">
+            <input type="hidden" name="activity_end" value="{{ dashboard.window.range_end }}">
+          {% endif %}
+          <label for="scoreboard-rank">Rank by</label>
+          <select id="scoreboard-rank" name="scoreboard_rank" onchange="this.form.submit()">
+            {% for option in dashboard.scoreboard_rank_options %}
+              <option value="{{ option.key }}" {% if option.key == dashboard.scoreboard_rank.key %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      {% endif %}
+      {% if current_user.is_admin and dashboard.scoreboard %}
+        <form method="post" action="{{ url_for('reset_activity_scoreboard') }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <button class="button-link secondary" type="submit">Clear all scores</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+  {% if dashboard.scoreboard %}
+    <div class="scoreboard-list">
+      {% for user in dashboard.scoreboard[:5] %}
+        <details class="scoreboard-entry">
+          <summary>
+            <div class="scoreboard-entry-user">
+              <strong>{{ user.username }}</strong>
+              <small>{{ dashboard.scoreboard_rank.label }}</small>
+            </div>
+            <div class="scoreboard-rank-value">
+              <strong>{{ user.rank_value }}</strong>
+              <small>{{ dashboard.scoreboard_rank.unit }}</small>
+            </div>
+            <span class="scoreboard-entry-toggle" aria-hidden="true">+</span>
+          </summary>
+          <div class="scoreboard-entry-body">
+            <dl class="scoreboard-metrics" aria-label="{{ user.username }} metrics">
+              <div>
+                <dt>Activity score</dt>
+                <dd>{{ user.actions }} action{{ '' if user.actions == 1 else 's' }}</dd>
+              </div>
+              {% if user.metrics %}
+                {% for metric in user.metrics %}
+                  <div>
+                    <dt>{{ metric.label }}</dt>
+                    <dd>{{ metric.value }} {{ metric.unit }}</dd>
+                  </div>
+                {% endfor %}
+              {% endif %}
+            </dl>
+            {% if current_user.is_admin %}
+              <form method="post" action="{{ url_for('reset_activity_user_score', user_id=user.user_id) }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <button class="link-button subtle" type="submit">Clear score</button>
+              </form>
+            {% endif %}
+          </div>
+        </details>
       {% endfor %}
     </div>
   {% else %}
     <div class="empty-state">
-      <strong>No favorites yet.</strong>
-      <span>Use the star on any tool card to build your own quick-launch row.</span>
+      <strong>No user activity yet.</strong>
+      <span>Once tools record intentional actions, the most active users will appear here.</span>
     </div>
   {% endif %}
 </section>
 
-<section class="home-section">
+<section class="home-section dashboard-section">
   <div class="section-head">
-    <h2>Tool Categories</h2>
-    <p>Start broad when you know the problem domain, then drill into the exact workflow.</p>
+    <h2>Recent activity</h2>
+    <p>Showing the latest {{ [dashboard.recent|length, 8]|min }} of {{ dashboard.recent|length }} events from {{ dashboard.window.range_label|lower }}.</p>
   </div>
-  <div class="category-grid">
-    {% for category in tool_categories %}
-      {% if current_user.is_admin or category.id != "administration" %}
-        <a class="category-card" href="{{ url_for(category.endpoint) }}">
-          <strong>{{ category.label }}</strong>
-          <span>{{ category.description }}</span>
-        </a>
-      {% endif %}
-    {% endfor %}
-  </div>
-</section>
-
-<section class="home-section">
-  <div class="section-head">
-    <h2>Tool Areas</h2>
-    <p>Quick access to the major workspaces. Detailed Fortinet workflows live inside their FortiGate and FortiAuthenticator pages.</p>
-  </div>
-  <div class="home-tool-groups">
-    {% for group_label, tools in tool_groups %}
-      <section class="home-tool-group" aria-labelledby="tool-group-{{ loop.index }}">
-        <div class="section-head compact">
-          <h3 id="tool-group-{{ loop.index }}">{{ group_label }}</h3>
-        </div>
-        <div class="launch-grid">
-          {% for tool in tools %}
-            {{ tool_card(tool, favorite_ids) }}
-          {% endfor %}
-        </div>
-      </section>
-    {% endfor %}
-  </div>
+  {% if dashboard.recent %}
+    <div class="activity-list">
+      {% for event in dashboard.recent[:8] %}
+        <article>
+          <span>{{ event.category }}</span>
+          <strong>{{ event.title }}</strong>
+          <small>{{ event.timestamp }}{% if event.username %} · {{ event.username }}{% endif %}</small>
+          {% if event.detail %}<p>{{ event.detail }}</p>{% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <strong>No activity history is being recorded yet.</strong>
+      <span>The activity store is ready; individual tools can now be wired into it.</span>
+    </div>
+  {% endif %}
 </section>
 {% endblock %}

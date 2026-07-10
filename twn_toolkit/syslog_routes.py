@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, render_template, request
 
+from .activity_context import record_current_activity
 from .diagnostic_tools import receive_syslog, send_syslog
 from .network_tools import ToolInputError
 
@@ -51,6 +52,14 @@ def register_syslog_routes(tools_bp: Blueprint) -> None:
                     )
                 except (ToolInputError, TypeError, ValueError) as exc:
                     error = str(exc) or "Enter valid syslog sender settings."
+                    record_current_activity("Logging", "Sent syslog message", "Request failed")
+                else:
+                    record_current_activity(
+                        "Logging",
+                        "Sent syslog message",
+                        f"{send_result['protocol']} to {send_result['host']}:{send_result['port']}",
+                        counters={"syslog": {"messages": 1}},
+                    )
             else:
                 receive_form = {
                     key: request.form.get(key, default).strip()
@@ -66,6 +75,14 @@ def register_syslog_routes(tools_bp: Blueprint) -> None:
                     )
                 except (ToolInputError, TypeError, ValueError) as exc:
                     error = str(exc) or "Enter valid syslog receiver settings."
+                    record_current_activity("Logging", "Listened for syslog", "Request failed")
+                else:
+                    record_current_activity(
+                        "Logging",
+                        "Listened for syslog",
+                        f"Received {len(messages)} message(s)",
+                        counters={"syslog": {"messages": len(messages)}},
+                    )
         return render_template(
             "tools/syslog_receiver.html",
             receive_form=receive_form,

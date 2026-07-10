@@ -9,6 +9,7 @@ from typing import Any, Callable
 from flask import (
     Flask,
     Response,
+    current_app,
     flash,
     g,
     redirect,
@@ -17,6 +18,7 @@ from flask import (
     url_for,
 )
 
+from .activity_context import record_current_activity
 from .fortiauthenticator import (
     FortiAuthenticatorClient,
     FortiAuthenticatorError,
@@ -24,6 +26,23 @@ from .fortiauthenticator import (
 )
 from .profiles import FortiAuthenticatorProfileStore
 from .tool_catalog import grouped_visible_tools_for_category
+
+
+def _record_fortinet_api_activity(
+    title: str,
+    detail: str = "",
+    *,
+    api_calls: int = 1,
+    failures: int = 0,
+    count_action: bool = True,
+) -> None:
+    record_current_activity(
+        "Fortinet",
+        title,
+        detail,
+        counters={"fortinet": {"api_calls": api_calls, "failures": failures}},
+        count_action=count_action,
+    )
 
 
 def register_fortiauthenticator_routes(
@@ -113,10 +132,19 @@ def register_fortiauthenticator_routes(
         try:
             result = FortiAuthenticatorClient.from_profile(profile).test_connection()
         except FortiAuthenticatorError as exc:
+            _record_fortinet_api_activity(
+                "Tested FortiAuthenticator profile",
+                f"{name}: connection failed",
+                failures=1,
+            )
             flash(f"Connection failed: {exc}", "error")
         else:
             total = result.get("meta", {}).get("total_count")
             suffix = f" ({total} MAC devices available)." if total is not None else "."
+            detail = f"{name}: reachable"
+            if total is not None:
+                detail = f"{name}: {total} MAC devices available"
+            _record_fortinet_api_activity("Tested FortiAuthenticator profile", detail)
             flash(f"Connection to '{name}' succeeded{suffix}", "success")
         return redirect(url_for("fortiauthenticator_home"))
 
@@ -136,10 +164,21 @@ def register_fortiauthenticator_routes(
                 try:
                     objects = FortiAuthenticatorClient.from_profile(profile).get_all_mac_devices()
                 except FortiAuthenticatorError as exc:
+                    _record_fortinet_api_activity(
+                        "Loaded FortiAuthenticator MAC devices",
+                        f"{selected_name}: failed",
+                        failures=1,
+                        count_action=False,
+                    )
                     flash(f"MAC device fetch failed: {exc}", "error")
                 else:
                     total_count = len(objects)
                     rows = [_format_mac_device(item) for item in objects[:preview_limit]]
+                    _record_fortinet_api_activity(
+                        "Loaded FortiAuthenticator MAC devices",
+                        f"{selected_name}: {total_count} devices",
+                        count_action=False,
+                    )
 
         return render_template(
             "fortiauthenticator/mac_devices.html",
@@ -160,9 +199,18 @@ def register_fortiauthenticator_routes(
         try:
             objects = FortiAuthenticatorClient.from_profile(profile).get_all_mac_devices()
         except FortiAuthenticatorError as exc:
+            _record_fortinet_api_activity(
+                "Exported FortiAuthenticator MAC devices",
+                f"{profile['name']}: failed",
+                failures=1,
+            )
             flash(f"MAC device export failed: {exc}", "error")
             return redirect(url_for("fortiauthenticator_mac_devices"))
 
+        _record_fortinet_api_activity(
+            "Exported FortiAuthenticator MAC devices",
+            f"{profile['name']}: {len(objects)} devices",
+        )
         output = io.StringIO()
         fieldnames = ["ID", "MAC Address", "Name", "Description", "Resource URI"]
         writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
@@ -195,10 +243,21 @@ def register_fortiauthenticator_routes(
                         FortiAuthenticatorClient.from_profile(profile).get_all_mac_group_memberships()
                     )
                 except FortiAuthenticatorError as exc:
+                    _record_fortinet_api_activity(
+                        "Loaded FortiAuthenticator MAC memberships",
+                        f"{selected_name}: failed",
+                        failures=1,
+                        count_action=False,
+                    )
                     flash(f"MAC group-membership fetch failed: {exc}", "error")
                 else:
                     total_count = len(objects)
                     rows = [_format_mac_group_membership(item) for item in objects[:preview_limit]]
+                    _record_fortinet_api_activity(
+                        "Loaded FortiAuthenticator MAC memberships",
+                        f"{selected_name}: {total_count} memberships",
+                        count_action=False,
+                    )
 
         return render_template(
             "fortiauthenticator/mac_group_memberships.html",
@@ -221,9 +280,18 @@ def register_fortiauthenticator_routes(
                 profile
             ).get_all_mac_group_memberships()
         except FortiAuthenticatorError as exc:
+            _record_fortinet_api_activity(
+                "Exported FortiAuthenticator MAC memberships",
+                f"{profile['name']}: failed",
+                failures=1,
+            )
             flash(f"MAC group-membership export failed: {exc}", "error")
             return redirect(url_for("fortiauthenticator_mac_group_memberships"))
 
+        _record_fortinet_api_activity(
+            "Exported FortiAuthenticator MAC memberships",
+            f"{profile['name']}: {len(objects)} memberships",
+        )
         output = io.StringIO()
         fieldnames = [
             "Membership ID",
@@ -266,12 +334,14 @@ def register_fortiauthenticator_routes(
                 try:
                     memberships = client.get_all_mac_group_memberships()
                     groups = _mac_groups(memberships)
+                    api_calls = 1
                     if request.form.get("intent") == "preview":
                         if selected_action not in {"remove_memberships", "delete_devices"}:
                             raise FortiAuthenticatorError("Select a valid cleanup action.")
                         if selected_group_uri not in {group["uri"] for group in groups}:
                             raise FortiAuthenticatorError("Select a valid MAC group.")
                         devices = client.get_all_mac_devices()
+                        api_calls += 1
                         preview = _build_mac_cleanup_preview(
                             memberships,
                             devices,
@@ -279,7 +349,20 @@ def register_fortiauthenticator_routes(
                             selected_action,
                         )
                 except FortiAuthenticatorError as exc:
+                    _record_fortinet_api_activity(
+                        "Previewed FortiAuthenticator MAC cleanup",
+                        f"{selected_name}: failed",
+                        failures=1,
+                        count_action=False,
+                    )
                     flash(f"Cleanup preview failed: {exc}", "error")
+                else:
+                    _record_fortinet_api_activity(
+                        "Previewed FortiAuthenticator MAC cleanup",
+                        f"{selected_name}: {len(groups)} groups",
+                        api_calls=api_calls,
+                        count_action=False,
+                    )
 
         return render_template(
             "fortiauthenticator/mac_cleanup.html",
@@ -317,6 +400,12 @@ def register_fortiauthenticator_routes(
             devices = client.get_all_mac_devices()
             preview = _build_mac_cleanup_preview(memberships, devices, group_uri, action)
         except FortiAuthenticatorError as exc:
+            _record_fortinet_api_activity(
+                "Ran FortiAuthenticator MAC cleanup",
+                f"{profile['name']}: validation failed",
+                api_calls=2,
+                failures=1,
+            )
             flash(f"Cleanup validation failed: {exc}", "error")
             return redirect(url_for("fortiauthenticator_mac_cleanup"))
 
@@ -363,6 +452,13 @@ def register_fortiauthenticator_routes(
                 )
                 results.append({**target, "status": "success", "message": operation})
 
+        failures = sum(1 for result in results if result["status"] == "error")
+        _record_fortinet_api_activity(
+            "Ran FortiAuthenticator MAC cleanup",
+            f"{profile['name']}: {len(targets) - failures} of {len(targets)} succeeded",
+            api_calls=2 + len(targets),
+            failures=failures,
+        )
         return render_template(
             "fortiauthenticator/mac_cleanup_results.html",
             action=action,

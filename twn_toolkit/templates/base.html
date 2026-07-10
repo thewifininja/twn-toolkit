@@ -19,6 +19,20 @@
   </head>
   <body>
     <header class="topbar">
+      {% if current_user %}
+        <button
+          type="button"
+          class="sidebar-toggle"
+          id="sidebar-toggle"
+          aria-controls="app-sidebar"
+          aria-expanded="true"
+          title="Toggle navigation"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      {% endif %}
       <a class="brand" href="{{ url_for('index') }}">
         <img src="{{ url_for('static', filename='brand/dragon-mark-128.png') }}" alt="">
         <span>The WiFi Ninja’s Toolkit</span>
@@ -26,22 +40,9 @@
       <span class="subtitle">Fortinet workflows and network diagnostics</span>
       <nav class="topnav">
         {% if current_user %}
-          <a href="{{ url_for('index') }}">Home</a>
-          <details class="nav-menu">
-            <summary>Tools</summary>
-            <div class="nav-dropdown">
-              {% if current_user.is_admin or 'fortigate' in nav_category_ids %}
-                <a href="{{ url_for('fortigate_home') }}">FortiGate</a>
-              {% endif %}
-              {% if current_user.is_admin or 'fortiauthenticator' in nav_category_ids %}
-                <a href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator</a>
-              {% endif %}
-              {% if current_user.is_admin or 'network' in nav_category_ids %}
-                <a href="{{ url_for('tools.index') }}">Network Tools</a>
-              {% endif %}
-            </div>
-          </details>
-          <a href="{{ url_for('settings') }}">Settings</a>
+          {% if current_user.is_admin %}
+            <a href="{{ url_for('settings') }}">Settings</a>
+          {% endif %}
           <button
             type="button"
             class="theme-toggle"
@@ -60,18 +61,139 @@
         {% endif %}
       </nav>
     </header>
-    <main class="shell">
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <section class="messages">
-            {% for category, message in messages %}
-              <div class="message {{ category }}">{{ message }}</div>
-            {% endfor %}
-          </section>
-        {% endif %}
-      {% endwith %}
-      {% block content %}{% endblock %}
-    </main>
+    <div class="app-layout">
+      {% if current_user %}
+        {% macro sidebar_tool_row(tool, label=none, parent=false, favorite_enabled=true) -%}
+          <div class="side-nav-item {{ 'parent' if parent else '' }}">
+            <a class="{{ 'side-nav-parent-link' if parent else '' }} {{ 'active' if tool.id == current_tool_id else '' }}" href="{{ url_for(tool.endpoint, **tool.endpoint_values) }}">
+              <span class="side-nav-dot" aria-hidden="true"></span>
+              <span class="side-nav-label">{{ label or tool.label }}</span>
+            </a>
+            {% if favorite_enabled and tool.grantable %}
+              <form class="side-nav-favorite-form" method="post" action="{{ url_for('toggle_tool_favorite', tool_id=tool.id) }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <button
+                  class="side-nav-favorite-button {{ 'active' if tool.id in favorite_ids else '' }}"
+                  type="submit"
+                  title="{{ 'Remove from favorites' if tool.id in favorite_ids else 'Add to favorites' }}"
+                  aria-label="{{ 'Remove ' ~ (label or tool.label) ~ ' from favorites' if tool.id in favorite_ids else 'Add ' ~ (label or tool.label) ~ ' to favorites' }}"
+                >★</button>
+              </form>
+            {% endif %}
+          </div>
+        {%- endmacro %}
+        <aside class="app-sidebar" id="app-sidebar" aria-label="Primary navigation">
+          <nav class="side-nav">
+            <div class="side-nav-scroll">
+              <a class="side-nav-home {{ 'active' if request.endpoint == 'index' else '' }}" href="{{ url_for('index') }}">
+                <span class="side-nav-icon" aria-hidden="true">⌂</span>
+                <span class="side-nav-label">Dashboard</span>
+              </a>
+
+              <details class="side-nav-section" {{ 'open' if sidebar_favorites or sidebar_favorites_active else '' }}>
+                <summary>
+                  <span>Favorites</span>
+                  <small>{{ sidebar_favorites|length }}</small>
+                </summary>
+                {% if sidebar_favorites %}
+                  <ul>
+                    {% for tool in sidebar_favorites %}
+                      <li>
+                        {{ sidebar_tool_row(tool) }}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <p class="side-nav-empty">Star tools to keep them here.</p>
+                {% endif %}
+              </details>
+
+              {% for group in sidebar_tool_groups %}
+                <details class="side-nav-section" {{ 'open' if group.active else '' }}>
+                  <summary>
+                    <span>{{ group.label }}</span>
+                    <small>{{ (group.tools|default([])|length) + (group.children|default([])|length) }}</small>
+                  </summary>
+                  {% if group.tools %}
+                    <ul>
+                      {% for tool in group.tools %}
+                        <li>
+                          {{ sidebar_tool_row(tool) }}
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
+                  {% if group.children %}
+                    <ul class="side-nav-tree">
+                      {% for child in group.children %}
+                        <li>
+                          <div class="side-nav-parent-row">
+                            {% if child.tool %}
+                              {{ sidebar_tool_row(child.tool, child.label, true, child.favorite_enabled|default(true)) }}
+                            {% else %}
+                              <span class="side-nav-parent-label">
+                                <span class="side-nav-dot" aria-hidden="true"></span>
+                                <span class="side-nav-label">{{ child.label }}</span>
+                              </span>
+                            {% endif %}
+                          </div>
+
+                          {% if child.children %}
+                            <div class="side-nav-nested-groups">
+                              {% for nested in child.children %}
+                                <details class="side-nav-subsection" {{ 'open' if nested.active else '' }}>
+                                  <summary>
+                                    <span>{{ nested.label }}</span>
+                                    <small>{{ nested.tools|length }}</small>
+                                  </summary>
+                                  <ul>
+                                    {% for tool in nested.tools %}
+                                      <li>
+                                        {{ sidebar_tool_row(tool) }}
+                                      </li>
+                                    {% endfor %}
+                                  </ul>
+                                </details>
+                              {% endfor %}
+                            </div>
+                          {% endif %}
+
+                          {% if child.tools %}
+                            <ul class="side-nav-child-list">
+                              {% for tool in child.tools %}
+                                <li>
+                                  {{ sidebar_tool_row(tool) }}
+                                </li>
+                              {% endfor %}
+                            </ul>
+                          {% endif %}
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
+                </details>
+              {% endfor %}
+            </div>
+            <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}">
+              <span class="side-nav-label">Help</span>
+              <span class="side-nav-version">v{{ app_version }}</span>
+            </a>
+          </nav>
+        </aside>
+      {% endif %}
+      <main class="shell">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <section class="messages">
+              {% for category, message in messages %}
+                <div class="message {{ category }}">{{ message }}</div>
+              {% endfor %}
+            </section>
+          {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+      </main>
+    </div>
     <div class="app-loading" id="app-loading" role="status" aria-live="polite" aria-atomic="true" hidden>
       <div class="app-loading-card">
         <div class="packet-loader" aria-hidden="true">
@@ -126,5 +248,6 @@
     <script src="{{ url_for('static', filename='theme.js') }}"></script>
     <script src="{{ url_for('static', filename='checkbox-actions.js') }}"></script>
     <script src="{{ url_for('static', filename='loading.js') }}"></script>
+    <script src="{{ url_for('static', filename='sidebar.js') }}"></script>
   </body>
 </html>

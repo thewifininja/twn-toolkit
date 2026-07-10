@@ -8,6 +8,7 @@ from io import StringIO
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.traceroute_tools import (
     parse_traceroute_output,
@@ -127,10 +128,53 @@ class TracerouteToolTests(unittest.TestCase):
                         "timeout": "2",
                     },
                 )
+            summary = ActivityStore(instance).summary()
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"destination reached", response.data)
         self.assertIn(b"gateway.local", response.data)
         self.assertIn(b"Text Output", response.data)
+        self.assertEqual(summary["counters"]["traceroute"]["completed"], 1)
+        self.assertEqual(summary["counters"]["traceroute"]["hops"], 4)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
+        self.assertEqual(summary["recent"][0]["title"], "Ran traceroute")
+
+    def test_streaming_route_records_completed_trace_activity(self) -> None:
+        events = [
+            {"type": "start", "host": "example.com", "family": "IPv4", "method": "UDP"},
+            {"type": "hop", "hop": {"number": 1, "responded": True}},
+            {"type": "complete", "reached": True, "hop_count": 1, "responding_hops": 1},
+        ]
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            with (
+                patch(
+                    "twn_toolkit.traceroute_routes.prepare_traceroute",
+                    return_value={
+                        "host": "example.com",
+                        "family": "auto",
+                        "method": "udp",
+                        "max_hops": 30,
+                        "probes": 3,
+                        "timeout": 2,
+                        "command": ["traceroute", "example.com"],
+                    },
+                ),
+                patch("twn_toolkit.traceroute_routes.stream_traceroute", return_value=events),
+            ):
+                response = app.test_client().post(
+                    "/tools/traceroute/run",
+                    json={"host": "example.com"},
+                )
+                payload = response.get_data(as_text=True)
+            summary = ActivityStore(instance).summary()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('"type":"complete"', payload)
+        self.assertEqual(summary["counters"]["traceroute"]["completed"], 1)
+        self.assertEqual(summary["counters"]["traceroute"]["hops"], 1)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
+        self.assertEqual(summary["scoreboard"][0]["metrics"][0]["key"], "traceroute.completed")
 
     def test_traceroute_host_profile_crud(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

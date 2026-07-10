@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.fortiap_history import normalize_client_mac, wireless_client_history
 
 
@@ -257,3 +258,8 @@ def test_client_history_route_renders_results(tmp_path):
     assert b"Find Wireless Client History" in response.data
     assert b"Lobby-AP" in response.data
     history.assert_called_once()
+    summary = ActivityStore(str(tmp_path)).summary()
+    assert summary["counters"]["fortinet"]["api_calls"] == 1
+    assert summary["counters"]["actions"]["total"] == 1
+    assert summary["scoreboard"][0]["username"] == "test-user"
+    assert summary["recent"][0]["title"] == "Loaded wireless client history"

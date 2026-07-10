@@ -88,9 +88,13 @@ class ToolRegistryTests(unittest.TestCase):
         public_or_self_service = {
             "favicon",
             "health",
+            "help_page",
             "index",
             "login",
             "logout",
+            "reset_activity_metric",
+            "reset_activity_scoreboard",
+            "reset_activity_user_score",
             "settings",
             "setup",
             "static",

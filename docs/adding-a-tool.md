@@ -141,10 +141,11 @@ Run:
 
 When continuing work after context compaction:
 
-1. Inspect `twn_toolkit/tool_catalog.py` and `twn_toolkit/tool_modules/`.
-2. Register new internal tools in the correct domain module.
-3. Keep UI cards registry-driven.
-4. Keep route authorization server-side.
-5. Preserve admin implicit all-access.
-6. Keep standard-user access profile behavior as union-of-profiles.
-7. Run the full unittest suite before handoff.
+1. Read `docs/agent-continuity.md` for current product and activity rules.
+2. Inspect `twn_toolkit/tool_catalog.py` and `twn_toolkit/tool_modules/`.
+3. Register new internal tools in the correct domain module.
+4. Keep UI cards registry-driven.
+5. Keep route authorization server-side.
+6. Preserve admin implicit all-access.
+7. Keep standard-user access profile behavior as union-of-profiles.
+8. Run the full unittest suite before handoff.

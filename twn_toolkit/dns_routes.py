@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from .activity_context import record_current_activity
 from .network_tools import (
     ToolInputError,
     dns_lookup_matrix,
@@ -34,6 +35,14 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
                 )
             except (ToolInputError, TypeError, ValueError) as exc:
                 error = str(exc) or "Enter a valid DNS timeout."
+                record_current_activity("Resolution", "Ran DNS lookup", "Request failed")
+            else:
+                record_current_activity(
+                    "Resolution",
+                    "Ran DNS lookup",
+                    f"{len(hosts)} host(s) across {len(servers)} resolver(s)",
+                    counters={"dns": {"queries": len(results)}},
+                )
         return render_template(
             "tools/dns_response.html",
             error=error,

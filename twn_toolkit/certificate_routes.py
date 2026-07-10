@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, render_template, request
 
+from .activity_context import record_current_activity
 from .certificate_tools import (
     CertificateInspectionError,
     inspect_certificate_chain,
@@ -24,6 +25,14 @@ def register_certificate_routes(tools_bp: Blueprint) -> None:
                 form["port"] = str(port)
             except (CertificateInspectionError, ValueError) as exc:
                 error = str(exc)
+                record_current_activity("TLS", "Inspected certificate chain", "Request failed")
+            else:
+                record_current_activity(
+                    "TLS",
+                    "Inspected certificate chain",
+                    f"{host}:{port} · {result.get('presented_count', 0)} certificate(s)",
+                    counters={"certificates": {"inspections": 1}},
+                )
         return render_template(
             "tools/certificate_inspector.html",
             error=error,

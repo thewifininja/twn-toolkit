@@ -7,6 +7,7 @@ from io import BytesIO
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.packet_replay_tools import (
     parse_hex_packet,
@@ -304,11 +305,14 @@ class PacketReplayToolTests(unittest.TestCase):
                         "action": "preview",
                     },
                 )
+            preview_summary = ActivityStore(instance).summary()
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Replay preview", response.data)
         self.assertIn(b"IPv4 / UDP", response.data)
         self.assertIn(b"Destination MAC is broadcast.", response.data)
         self.assertIn(b"First replay header bytes", response.data)
+        self.assertEqual(preview_summary["counters"]["actions"]["total"], 0)
+        self.assertEqual(preview_summary["counters"]["packet_replay"]["frames"], 0)
 
     def test_route_sends_without_typed_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -341,9 +345,12 @@ class PacketReplayToolTests(unittest.TestCase):
                         "action": "send",
                     },
                 )
+            summary = ActivityStore(instance).summary()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(sender.call_count, 1)
         self.assertIn(b"Send request completed", response.data)
+        self.assertEqual(summary["counters"]["packet_replay"]["frames"], 1)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
 
     def test_route_sends_confirmed_plan(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

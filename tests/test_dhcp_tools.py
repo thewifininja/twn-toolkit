@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.dhcp_tools import (
     DHCP_MAGIC_COOKIE,
     _decode_option,
@@ -161,10 +162,14 @@ class DHCPToolTests(unittest.TestCase):
                         "timeout": "1",
                     },
                 )
+            summary = ActivityStore(instance).summary()
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Offer: 192.0.2.50", response.data)
         self.assertIn(b"Subnet Mask", response.data)
         self.assertIn(b"never sends a DHCP Request", response.data)
+        self.assertEqual(summary["counters"]["dhcp"]["discovers"], 1)
+        self.assertEqual(summary["counters"]["dhcp"]["offers"], 1)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
 
 
 if __name__ == "__main__":

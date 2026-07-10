@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import requests
 
 from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.fortiauthenticator import FortiAuthenticatorClient, FortiAuthenticatorError
 
 
@@ -218,6 +219,13 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertIn(b"42 MAC devices available", response.data)
+        summary = ActivityStore(self.temporary_directory.name).summary()
+        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 1)
+        self.assertEqual(summary["counters"]["fortinet"]["failures"], 0)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
+        self.assertEqual(summary["scoreboard"][0]["username"], "test-user")
+        self.assertEqual(summary["recent"][0]["title"], "Tested FortiAuthenticator profile")
+        self.assertEqual(summary["recent"][0]["detail"], "Lab: 42 MAC devices available")
 
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
     def test_mac_device_preview_and_csv_export(self, get_all_mac_devices: Mock) -> None:
@@ -269,6 +277,10 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             "42,11:22:33:44:55:66,Printer,Front office,/api/v1/macdevices/42/\n"
             "43,aa:bb:cc:dd:ee:ff,Phone,,/api/v1/macdevices/43/\n",
         )
+        summary = ActivityStore(self.temporary_directory.name).summary()
+        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 2)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
+        self.assertEqual(summary["recent"][0]["title"], "Exported FortiAuthenticator MAC devices")
 
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_group_memberships")
     def test_group_membership_preview_and_csv_export(self, get_memberships: Mock) -> None:
@@ -317,6 +329,13 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             "Expiry Time,Resource URI\n"
             "91,42,Printer,/api/v1/macdevices/42/,8,Office Devices,/api/v1/macgroups/8/,,"
             "/api/v1/macgroup-memberships/91/\n",
+        )
+        summary = ActivityStore(self.temporary_directory.name).summary()
+        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 2)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
+        self.assertEqual(
+            summary["recent"][0]["title"],
+            "Exported FortiAuthenticator MAC memberships",
         )
 
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
@@ -408,6 +427,10 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             [call.args[0] for call in delete_membership.call_args_list],
             ["91"],
         )
+        summary = ActivityStore(self.temporary_directory.name).summary()
+        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 3)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
+        self.assertEqual(summary["recent"][0]["title"], "Ran FortiAuthenticator MAC cleanup")
 
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.delete_mac_device")
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, render_template, request
 
+from .activity_context import record_current_activity
 from .dhcp_tools import available_interfaces
 from .network_tools import ToolInputError
 from .packet_replay_tools import (
@@ -68,8 +69,16 @@ def register_packet_replay_routes(tools_bp: Blueprint) -> None:
                         interface=form["interface"],
                         interval_seconds=plan.summary["interval_seconds"],
                     )
+                    record_current_activity(
+                        "Packets",
+                        "Sent packet replay",
+                        f"{send_result['sent']} frame(s) on {form['interface']}",
+                        counters={"packet_replay": {"frames": int(send_result["sent"])}},
+                    )
             except (ToolInputError, TypeError, ValueError) as exc:
                 error = str(exc) or "Enter a valid packet replay request."
+                if send_attempted:
+                    record_current_activity("Packets", "Sent packet replay", "Request failed")
         return render_template(
             "tools/packet_replay.html",
             error=error,

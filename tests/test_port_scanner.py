@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.network_tools import ToolInputError, parse_tcp_ports, scan_tcp_ports
 
 
@@ -108,6 +109,9 @@ class PortScannerTests(unittest.TestCase):
             self.assertIn(b"https", response.data)
             self.assertIn(b"4.2 ms", response.data)
             self.assertNotIn(b"Connection refused", response.data)
+            summary = ActivityStore(instance).summary()
+            self.assertEqual(summary["counters"]["tcp"]["ports_scanned"], 2)
+            self.assertEqual(summary["counters"]["actions"]["total"], 1)
 
             response = client.post(
                 "/tools/port-scanner/profiles/ports/delete",

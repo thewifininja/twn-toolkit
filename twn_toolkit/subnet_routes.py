@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, render_template, request
 
+from .activity_context import record_current_activity
 from .network_tools import ToolInputError, subtract_subnets
 
 
@@ -19,6 +20,14 @@ def register_subnet_routes(tools_bp: Blueprint) -> None:
                 results = subtract_subnets(supernets, exclusions)
             except ToolInputError as exc:
                 error = str(exc)
+                record_current_activity("Addressing", "Calculated subnet exclusions", "Request failed")
+            else:
+                record_current_activity(
+                    "Addressing",
+                    "Calculated subnet exclusions",
+                    f"Produced {len(results)} network(s)",
+                    counters={"subnet": {"calculations": 1, "networks": len(results)}},
+                )
         return render_template(
             "tools/subnet_excluder.html",
             error=error,

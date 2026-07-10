@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from .activity_context import increment_current_activity, record_current_activity
 from .network_tools import ToolInputError, parse_ping_targets, ping_hosts
 from .profiles import PingProfileStore
 
@@ -22,6 +23,51 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
         for target, result in zip(targets, results):
             result["label"] = target["label"]
         return jsonify({"results": results})
+
+    @tools_bp.post("/ping/activity")
+    def ping_activity():
+        payload = request.get_json(silent=True) or {}
+        event = str(payload.get("event", "checkpoint")).strip().lower()
+        run_id = str(payload.get("run_id", ""))[:80]
+        probes_sent = _bounded_int(payload.get("probes_sent", 0), 0, 100_000)
+        replies_received = _bounded_int(payload.get("replies_received", 0), 0, probes_sent)
+        targets = _bounded_int(payload.get("targets", 0), 0, 100)
+        counters = {"ping": {}}
+        if probes_sent:
+            counters["ping"]["probes_sent"] = probes_sent
+        if replies_received:
+            counters["ping"]["replies_received"] = replies_received
+        if event == "start":
+            counters["ping"]["sessions_started"] = 1
+            if targets:
+                counters["ping"]["targets_started"] = targets
+            record_current_activity(
+                "Reachability",
+                "Started ping run",
+                f"{targets} target{'s' if targets != 1 else ''}",
+                counters=counters,
+                count_action=True,
+            )
+        elif event == "final":
+            if probes_sent or replies_received:
+                record_current_activity(
+                    "Reachability",
+                    "Stopped ping run",
+                    _ping_activity_detail(probes_sent, replies_received, run_id),
+                    counters=counters,
+                    count_action=False,
+                )
+            else:
+                record_current_activity(
+                    "Reachability",
+                    "Stopped ping run",
+                    "No new probes since the last checkpoint.",
+                    count_action=False,
+                )
+        else:
+            for counter, amount in counters["ping"].items():
+                increment_current_activity("ping", counter, amount)
+        return jsonify({"ok": True})
 
     @tools_bp.post("/ping/profiles")
     def save_ping_profile():
@@ -57,3 +103,19 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
 
 def _ping_profile_store() -> PingProfileStore:
     return PingProfileStore(current_app.instance_path)
+
+
+def _bounded_int(value: object, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = minimum
+    return max(minimum, min(maximum, parsed))
+
+
+def _ping_activity_detail(probes_sent: int, replies_received: int, run_id: str) -> str:
+    loss = probes_sent - replies_received
+    detail = f"{probes_sent} probes, {replies_received} replies, {loss} lost"
+    if run_id:
+        detail = f"{detail} · run {run_id}"
+    return detail

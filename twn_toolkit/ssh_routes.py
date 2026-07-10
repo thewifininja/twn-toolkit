@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint, render_template, request
 
+from .activity_context import record_current_activity
 from .network_tools import ToolInputError, run_ssh_hosts, validate_hosts
 
 
@@ -44,4 +45,17 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                 )
             except (ToolInputError, ValueError) as exc:
                 error = str(exc) if str(exc) else "Enter a valid SSH port."
+                record_current_activity("Automation", "Ran Multi-SSH", "Request failed")
+            else:
+                record_current_activity(
+                    "Automation",
+                    "Ran Multi-SSH",
+                    f"{len(results)} host(s), {len(commands)} command(s)",
+                    counters={
+                        "ssh": {
+                            "hosts": len(results),
+                            "commands": len(results) * len(commands),
+                        }
+                    },
+                )
         return render_template("tools/multi_ssh.html", error=error, form=form, results=results)

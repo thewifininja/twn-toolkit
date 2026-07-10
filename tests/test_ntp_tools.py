@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.ntp_tools import NTP_PACKET, _unix_to_ntp, test_ntp_server
 
@@ -115,9 +116,12 @@ class NTPToolTests(unittest.TestCase):
                     "/tools/ntp-test",
                     data={"host": "ntp.example", "port": "123", "timeout": "3", "samples": "1"},
                 )
+            summary = ActivityStore(instance).summary()
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Clock offset", response.data)
         self.assertIn(b"+0.500 ms", response.data)
+        self.assertEqual(summary["counters"]["ntp"]["queries"], 1)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
 
     def test_ntp_host_profile_crud(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.fortigate import FortiGateError
 from twn_toolkit.fortigate_routes import managed_switch_order, switch_order_moves
 from twn_toolkit.network_tools import (
@@ -94,6 +95,7 @@ class NetworkToolTests(unittest.TestCase):
                         "switch_id": ["switch-b", "switch-a"],
                     },
                 )
+            summary = ActivityStore(instance).summary()
 
         self.assertEqual(response.status_code, 502)
         payload = response.get_json()
@@ -101,6 +103,10 @@ class NetworkToolTests(unittest.TestCase):
         self.assertIn("read-write access", payload["user_message"])
         self.assertEqual(payload["detail"], "raw permission detail")
         self.assertEqual(payload["completed_moves"], [])
+        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 2)
+        self.assertEqual(summary["counters"]["fortinet"]["failures"], 1)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
+        self.assertEqual(summary["recent"][0]["title"], "Applied FortiSwitch order")
 
     def test_subtracts_ipv4_and_ipv6_networks(self) -> None:
         self.assertEqual(
@@ -146,6 +152,78 @@ class NetworkToolTests(unittest.TestCase):
             {"name": "9:1", "value": "010203", "raw": True},
         )
 
+    def test_ping_activity_records_batched_counters(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+
+            start = client.post(
+                "/tools/ping/activity",
+                json={"event": "start", "run_id": "run-1", "targets": 2},
+            )
+            checkpoint = client.post(
+                "/tools/ping/activity",
+                json={
+                    "event": "checkpoint",
+                    "run_id": "run-1",
+                    "probes_sent": 6,
+                    "replies_received": 5,
+                },
+            )
+            final = client.post(
+                "/tools/ping/activity",
+                json={
+                    "event": "final",
+                    "run_id": "run-1",
+                    "probes_sent": 2,
+                    "replies_received": 1,
+                },
+            )
+            summary = ActivityStore(instance).summary()
+
+        self.assertEqual(start.status_code, 200)
+        self.assertEqual(checkpoint.status_code, 200)
+        self.assertEqual(final.status_code, 200)
+        self.assertEqual(summary["counters"]["ping"]["sessions_started"], 1)
+        self.assertEqual(summary["counters"]["ping"]["targets_started"], 2)
+        self.assertEqual(summary["counters"]["ping"]["probes_sent"], 8)
+        self.assertEqual(summary["counters"]["ping"]["replies_received"], 6)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
+        self.assertEqual(summary["scoreboard"][0]["username"], "test-user")
+        self.assertEqual(summary["scoreboard"][0]["actions"], 1)
+        self.assertEqual(summary["recent"][0]["title"], "Stopped ping run")
+        self.assertEqual(summary["recent"][1]["title"], "Started ping run")
+
+    @patch("twn_toolkit.fortigate_routes.FortiGateClient.test_connection")
+    def test_fortigate_profile_test_records_api_activity(self, test_connection) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            client.post(
+                "/profiles",
+                data={
+                    "name": "Lab",
+                    "host": "https://fortigate.example",
+                    "api_key": "secret",
+                    "default_vdom": "root",
+                },
+            )
+            test_connection.return_value = {"version": "v7.6"}
+
+            response = client.post("/profiles/Lab/test", follow_redirects=True)
+            summary = ActivityStore(instance).summary()
+
+        self.assertIn(b"Connection OK: v7.6", response.data)
+        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 1)
+        self.assertEqual(summary["counters"]["fortinet"]["failures"], 0)
+        self.assertEqual(summary["counters"]["actions"]["total"], 1)
+        self.assertEqual(summary["scoreboard"][0]["username"], "test-user")
+        self.assertEqual(summary["scoreboard"][0]["actions"], 1)
+        self.assertEqual(summary["recent"][0]["title"], "Tested FortiGate profile")
+        self.assertEqual(summary["recent"][0]["detail"], "Lab: v7.6")
+
     def test_tool_routes(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
@@ -187,10 +265,11 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"browser and the machine running the toolkit", speed_page.data)
             self.assertIn(b'id="speed-download-meter"', speed_page.data)
             self.assertIn(b'id="speed-upload-meter"', speed_page.data)
-            self.assertIn(b"<summary>Tools</summary>", speed_page.data)
+            self.assertIn(b"Dashboard", speed_page.data)
+            self.assertIn(b"Network Tools", speed_page.data)
             self.assertIn(b'href="/fortigate"', speed_page.data)
             self.assertIn(b'href="/fortiauthenticator"', speed_page.data)
-            self.assertIn(b'href="/tools/"', speed_page.data.split(b"</nav>", 1)[0])
+            self.assertIn(b'href="/tools/packet-replay"', speed_page.data)
 
             latency_response = client.get("/tools/speed-test/ping")
             self.assertEqual(latency_response.status_code, 204)
@@ -213,6 +292,11 @@ class NetworkToolTests(unittest.TestCase):
             )
             self.assertEqual(upload_response.status_code, 200)
             self.assertEqual(upload_response.get_json()["bytes_received"], 4097)
+            activity_response = client.post(
+                "/tools/speed-test/activity",
+                json={"download_bytes": 1025, "upload_bytes": 4097},
+            )
+            self.assertEqual(activity_response.status_code, 200)
             self.assertEqual(
                 client.post(
                     "/tools/speed-test/upload",
@@ -382,6 +466,10 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"Reply-Message", response.data)
             self.assertNotIn(b"password-not-rendered", response.data)
             auth.assert_called_once()
+            summary = ActivityStore(instance).summary()
+            self.assertEqual(summary["counters"]["radius"]["attempts"], 1)
+            self.assertEqual(summary["counters"]["actions"]["total"], 5)
+            self.assertEqual(summary["recent"][0]["title"], "Ran RADIUS test")
 
             with patch(
                 "twn_toolkit.ssh_routes.run_ssh_hosts",
@@ -400,6 +488,18 @@ class NetworkToolTests(unittest.TestCase):
                 )
             self.assertIn(b"ok", response.data)
             self.assertNotIn(b"not-rendered", response.data)
+            summary = ActivityStore(instance).summary()
+            self.assertEqual(summary["counters"]["ip"]["lookups"], 1)
+            self.assertEqual(summary["counters"]["speedtest"]["runs"], 1)
+            self.assertEqual(summary["counters"]["speedtest"]["bytes_transferred"], 5122)
+            self.assertEqual(summary["counters"]["subnet"]["calculations"], 1)
+            self.assertEqual(summary["counters"]["subnet"]["networks"], 2)
+            self.assertEqual(summary["counters"]["dns"]["queries"], 1)
+            self.assertEqual(summary["counters"]["radius"]["attempts"], 1)
+            self.assertEqual(summary["counters"]["ssh"]["hosts"], 1)
+            self.assertEqual(summary["counters"]["ssh"]["commands"], 1)
+            self.assertEqual(summary["counters"]["actions"]["total"], 6)
+            self.assertEqual(summary["recent"][0]["title"], "Ran Multi-SSH")
 
 
 if __name__ == "__main__":

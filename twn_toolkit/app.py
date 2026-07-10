@@ -19,6 +19,7 @@ from flask import (
     url_for,
 )
 
+from .activity import ActivityStore
 from .auth import AuthStore, load_or_create_secret_key
 from .admin_routes import register_admin_routes
 from .fortiauthenticator_routes import register_fortiauthenticator_routes
@@ -38,6 +39,7 @@ from .tool_catalog import (
     visible_tools,
 )
 from .tools import tools_bp
+from .version import APP_VERSION
 
 
 def create_app(instance_path: str | None = None) -> Flask:
@@ -51,6 +53,7 @@ def create_app(instance_path: str | None = None) -> Flask:
     app.register_blueprint(tools_bp)
 
     auth_store = AuthStore(app.instance_path)
+    activity_store = ActivityStore(app.instance_path)
     server_settings_store = ServerSettingsStore(app.instance_path)
     store = ProfileStore(app.instance_path)
     fortiauthenticator_store = FortiAuthenticatorProfileStore(app.instance_path)
@@ -129,20 +132,129 @@ def create_app(instance_path: str | None = None) -> Flask:
         current_user = getattr(g, "current_user", None)
         allowed_tool_ids = getattr(g, "allowed_tool_ids", None)
         nav_category_ids = set()
+        sidebar_favorites = []
+        sidebar_tool_groups = []
+        sidebar_favorites_active = False
+        current_tool_id = None
         if current_user:
+            is_admin = bool(current_user.get("is_admin"))
+            visible = visible_tools(is_admin=is_admin, allowed_tool_ids=allowed_tool_ids)
             nav_category_ids = {
                 tool.category
-                for tool in visible_tools(
-                    is_admin=bool(current_user.get("is_admin")),
-                    allowed_tool_ids=allowed_tool_ids,
-                )
+                for tool in visible
             }
+            favorite_ids = auth_store.favorite_tool_ids(current_user["id"])
+            sidebar_favorites = favorite_tools(
+                favorite_ids, is_admin=is_admin, allowed_tool_ids=allowed_tool_ids
+            )
+            visible_by_id = {tool.id: tool for tool in visible}
+            current_endpoint = request.endpoint or ""
+            current_tool_id = tool_id_for_endpoint(current_endpoint, request.view_args)
+            if current_tool_id is None:
+                endpoint_matches = [
+                    tool for tool in visible if tool.endpoint == current_endpoint
+                ]
+                if len(endpoint_matches) == 1:
+                    current_tool_id = endpoint_matches[0].id
+            sidebar_favorites_active = any(tool.id == current_tool_id for tool in sidebar_favorites)
+
+            def is_active(tool: Any) -> bool:
+                return tool.id == current_tool_id
+
+            def active_in_tools(tools: list[Any]) -> bool:
+                return any(is_active(tool) for tool in tools)
+
+            fortinet_action_tools = [
+                tool for tool in visible if tool.category_label == "FortiAP Tasks"
+            ]
+            fortinet_action_tools.extend(
+                tool for tool in visible if tool.category_label == "FortiSwitch Tasks"
+            )
+            fortinet_action_tools.extend(
+                tool
+                for tool in visible
+                if tool.category_label == "FortiAuthenticator Workflows"
+            )
+            fortigate_visible = any(tool.category == "fortigate" for tool in visible)
+            fortiauthenticator_visible = any(
+                tool.category == "fortiauthenticator" for tool in visible
+            )
+            fortigate_home = visible_by_id.get("fortigate.home") or (
+                TOOL_BY_ID["fortigate.home"] if fortigate_visible else None
+            )
+            fortiauthenticator_home = visible_by_id.get("fortiauthenticator.home") or (
+                TOOL_BY_ID["fortiauthenticator.home"] if fortiauthenticator_visible else None
+            )
+            fortinet_children = []
+            if fortigate_home:
+                fortinet_children.append(
+                    {
+                        "label": "FortiGate",
+                        "tool": fortigate_home,
+                        "favorite_enabled": fortigate_home.id in visible_by_id,
+                        "active": is_active(fortigate_home)
+                        or current_endpoint == fortigate_home.endpoint
+                        or any(
+                            tool.category_label in {"FortiAP Tasks", "FortiSwitch Tasks"}
+                            and is_active(tool)
+                            for tool in fortinet_action_tools
+                        ),
+                    }
+                )
+            if fortiauthenticator_home:
+                fortinet_children.append(
+                    {
+                        "label": "FortiAuthenticator",
+                        "tool": fortiauthenticator_home,
+                        "favorite_enabled": fortiauthenticator_home.id in visible_by_id,
+                        "active": is_active(fortiauthenticator_home)
+                        or current_endpoint == fortiauthenticator_home.endpoint
+                        or any(
+                            tool.category_label == "FortiAuthenticator Workflows"
+                            and is_active(tool)
+                            for tool in fortinet_action_tools
+                        ),
+                    }
+                )
+            if fortinet_children:
+                sidebar_tool_groups.append(
+                    {
+                        "label": "Fortinet Tools",
+                        "children": fortinet_children,
+                        "active": any(child["active"] for child in fortinet_children),
+                    }
+                )
+
+            network_tools = [tool for tool in visible if tool.category == "network"]
+            if network_tools:
+                sidebar_tool_groups.append(
+                    {
+                        "label": "Network Tools",
+                        "tools": network_tools,
+                        "active": active_in_tools(network_tools),
+                    }
+                )
+
+            admin_tools = [tool for tool in visible if tool.category == "administration"]
+            if admin_tools:
+                sidebar_tool_groups.append(
+                    {
+                        "label": "Administration",
+                        "tools": admin_tools,
+                        "active": active_in_tools(admin_tools),
+                    }
+                )
         return {
             "current_user": current_user,
             "user_theme": current_user.get("theme", "light") if current_user else "system",
             "favorite_ids": auth_store.favorite_tool_ids(current_user["id"]) if current_user else [],
             "allowed_tool_ids": allowed_tool_ids,
             "nav_category_ids": nav_category_ids,
+            "sidebar_favorites": sidebar_favorites,
+            "sidebar_tool_groups": sidebar_tool_groups,
+            "sidebar_favorites_active": sidebar_favorites_active,
+            "current_tool_id": current_tool_id,
+            "app_version": APP_VERSION,
             "min_password_length": password_policy["min_length"],
             "password_policy": password_policy,
         }
@@ -217,6 +329,10 @@ def create_app(instance_path: str | None = None) -> Flask:
     def health():
         return jsonify({"boot_id": app.config["BOOT_ID"]})
 
+    @app.get("/help")
+    def help_page():
+        return render_template("help.html")
+
     def _start_session(user: dict[str, Any]) -> None:
         session.clear()
         session["user_id"] = user["id"]
@@ -277,6 +393,12 @@ def create_app(instance_path: str | None = None) -> Flask:
         return render_template(
             "home.html",
             favorite_ids=favorite_ids,
+            dashboard=activity_store.summary(
+                request.args.get("scoreboard_rank", "actions.total"),
+                request.args.get("activity_window", "lifetime"),
+                request.args.get("activity_start", ""),
+                request.args.get("activity_end", ""),
+            ),
             favorites=favorite_tools(
                 favorite_ids, is_admin=is_admin, allowed_tool_ids=allowed_tool_ids
             ),
@@ -286,10 +408,42 @@ def create_app(instance_path: str | None = None) -> Flask:
             tool_groups=grouped_visible_tools(is_admin=is_admin, allowed_tool_ids=allowed_tool_ids),
         )
 
+    @app.post("/activity/reset/<metric>")
+    def reset_activity_metric(metric: str):
+        if not g.current_user.get("is_admin"):
+            abort(403)
+        try:
+            activity_store.reset_metric(metric)
+        except ValueError:
+            abort(404)
+        flash("Dashboard counter reset.", "success")
+        return redirect(_validated_next_url(request.form.get("next", "")))
+
+    @app.post("/activity/scoreboard/reset")
+    def reset_activity_scoreboard():
+        if not g.current_user.get("is_admin"):
+            abort(403)
+        activity_store.reset_all_user_actions()
+        flash("All user action scores reset.", "success")
+        return redirect(_validated_next_url(request.form.get("next", "")))
+
+    @app.post("/activity/scoreboard/users/<user_id>/reset")
+    def reset_activity_user_score(user_id: str):
+        if not g.current_user.get("is_admin"):
+            abort(403)
+        try:
+            activity_store.reset_user_actions(user_id)
+        except ValueError:
+            abort(404)
+        flash("User action score reset.", "success")
+        return redirect(_validated_next_url(request.form.get("next", "")))
+
     @app.post("/favorites/tools/<tool_id>")
     def toggle_tool_favorite(tool_id: str):
         tool = TOOL_BY_ID.get(tool_id)
         if not tool:
+            abort(404)
+        if not tool.grantable:
             abort(404)
         if not _tool_access_allowed(tool_id):
             abort(403)

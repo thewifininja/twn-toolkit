@@ -4,6 +4,7 @@ import ipaddress
 
 from flask import Blueprint, Response, render_template, request
 
+from .activity_context import record_current_activity
 from .route_utils import disable_client_caching
 
 
@@ -15,6 +16,12 @@ def register_ip_info_routes(tools_bp: Blueprint) -> None:
             version = f"IPv{ipaddress.ip_address(address).version}"
         except ValueError:
             version = "Unknown address family"
+        record_current_activity(
+            "Addressing",
+            "Checked toolkit-facing IP",
+            version,
+            counters={"ip": {"lookups": 1}},
+        )
         response = Response(
             render_template(
                 "tools/whats_my_ip.html",

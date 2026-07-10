@@ -36,11 +36,13 @@
 
       status.textContent = "Measuring download throughput...";
       const download = await measureDownload(controller.signal);
-      values.download.textContent = formatSpeed(download);
+      values.download.textContent = formatSpeed(download.speed);
 
       status.textContent = "Measuring upload throughput...";
       const upload = await measureUpload(controller.signal);
-      values.upload.textContent = formatSpeed(upload);
+      values.upload.textContent = formatSpeed(upload.speed);
+
+      await recordCompletion(download.bytes, upload.bytes);
 
       setProgress(100);
       phase.textContent = "Complete";
@@ -108,7 +110,10 @@
     }
 
     await Promise.all(Array.from({length: streamCount}, stream));
-    return megabitsPerSecond(totalBytes, performance.now() - started);
+    return {
+      bytes: totalBytes,
+      speed: megabitsPerSecond(totalBytes, performance.now() - started),
+    };
   }
 
   async function measureUpload(signal) {
@@ -135,7 +140,24 @@
     }
 
     await Promise.all(Array.from({length: streamCount}, stream));
-    return megabitsPerSecond(totalBytes, performance.now() - started);
+    return {
+      bytes: totalBytes,
+      speed: megabitsPerSecond(totalBytes, performance.now() - started),
+    };
+  }
+
+  async function recordCompletion(downloadBytes, uploadBytes) {
+    if (!root.dataset.activityUrl) return;
+    try {
+      await fetch(root.dataset.activityUrl, {
+        method: "POST",
+        cache: "no-store",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({download_bytes: downloadBytes, upload_bytes: uploadBytes}),
+      });
+    } catch (_error) {
+      // Metrics must never turn a completed speed test into a visible failure.
+    }
   }
 
   function randomPayload(size) {

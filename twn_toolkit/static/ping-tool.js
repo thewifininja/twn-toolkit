@@ -33,9 +33,14 @@
   let timer = null;
   let loadedProfileName = "";
   let lockedViewEnd = null;
+  let runId = "";
+  let pendingProbesSent = 0;
+  let pendingRepliesReceived = 0;
+  let lastActivityReport = 0;
   const history = new Map();
   const resultRows = new Map();
   const profileStorageKey = "twn:ping-profile";
+  const activityIntervalMs = 30_000;
   const chartTooltip = document.createElement("div");
   chartTooltip.className = "ping-chart-tooltip";
   chartTooltip.hidden = true;
@@ -185,15 +190,18 @@
     startButton.disabled = true;
     stopButton.disabled = false;
     resultsPanel.hidden = false;
+    resetActivityRun();
+    reportPingActivity("start", {targets: parseTargetCount(hostsInput.value)});
     runRound();
   });
 
   stopButton.addEventListener("click", () => {
-    running = false;
-    clearTimeout(timer);
-    startButton.disabled = false;
-    stopButton.disabled = true;
-    status.textContent = "Stopped.";
+    stopPingRun();
+  });
+  window.addEventListener("pagehide", () => {
+    if (running || pendingProbesSent || pendingRepliesReceived) {
+      flushPingActivity("final", true);
+    }
   });
 
   async function runRound() {
@@ -216,18 +224,89 @@
         return;
       }
       renderResults(data.results || []);
+      trackPingRound(data.results || []);
       status.textContent = `Last round completed at ${new Date().toLocaleTimeString()}.`;
     } catch (error) {
       status.textContent = error.message;
       running = false;
       startButton.disabled = false;
       stopButton.disabled = true;
+      flushPingActivity("final");
       return;
     }
 
     const seconds = Math.max(1, Math.min(60, Number(intervalInput.value) || 2));
     const remainingDelay = Math.max(0, (seconds * 1000) - (performance.now() - roundStarted));
     timer = setTimeout(runRound, remainingDelay);
+  }
+
+  function stopPingRun() {
+    running = false;
+    clearTimeout(timer);
+    startButton.disabled = false;
+    stopButton.disabled = true;
+    status.textContent = "Stopped.";
+    flushPingActivity("final");
+  }
+
+  function resetActivityRun() {
+    runId = window.crypto && window.crypto.randomUUID
+      ? window.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    pendingProbesSent = 0;
+    pendingRepliesReceived = 0;
+    lastActivityReport = performance.now();
+  }
+
+  function trackPingRound(results) {
+    pendingProbesSent += results.length;
+    pendingRepliesReceived += results.filter((result) => result.reachable).length;
+    if (performance.now() - lastActivityReport >= activityIntervalMs) {
+      flushPingActivity("checkpoint");
+    }
+  }
+
+  function flushPingActivity(event, beacon = false) {
+    if (!form.dataset.activityUrl || (!pendingProbesSent && !pendingRepliesReceived && event !== "start" && event !== "final")) {
+      return;
+    }
+    const payload = {
+      event,
+      run_id: runId,
+      probes_sent: pendingProbesSent,
+      replies_received: pendingRepliesReceived,
+    };
+    pendingProbesSent = 0;
+    pendingRepliesReceived = 0;
+    lastActivityReport = performance.now();
+    reportPingActivityPayload(payload, beacon);
+  }
+
+  function reportPingActivity(event, extra = {}) {
+    reportPingActivityPayload({event, run_id: runId, ...extra});
+  }
+
+  function reportPingActivityPayload(payload, beacon = false) {
+    const body = JSON.stringify(payload);
+    if (beacon && navigator.sendBeacon) {
+      const blob = new Blob([body], {type: "application/json"});
+      navigator.sendBeacon(form.dataset.activityUrl, blob);
+      return;
+    }
+    fetch(form.dataset.activityUrl, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  }
+
+  function parseTargetCount(source) {
+    return source
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .length;
   }
 
   function renderResults(results) {

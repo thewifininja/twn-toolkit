@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="home-hero compact-hero help-hero">
+  <div>
+    <span class="eyebrow">Help</span>
+    <h1>Using The WiFi Ninja’s Toolkit</h1>
+    <p>
+      A practical field guide for navigating the toolkit, protecting saved
+      credentials, and running network actions with the right amount of caution.
+    </p>
+  </div>
+  <div class="home-hero-card">
+    <span>Version</span>
+    <strong>v{{ app_version }}</strong>
+    <small>Local toolkit build</small>
+  </div>
+</section>
+
+<section class="help-grid">
+  <article class="help-card">
+    <h2>Finding tools</h2>
+    <p>
+      Primary navigation lives in the left pane. Use Favorites for your regular
+      shortcuts, Fortinet Tools for FortiGate and FortiAuthenticator profile
+      pages, Network Tools for vendor-neutral diagnostics, and Administration
+      for users, access profiles, backups, and server settings.
+    </p>
+    <p>
+      Fortinet-specific actions live on their FortiGate or FortiAuthenticator
+      pages so the required saved profile context is visible before you run them.
+    </p>
+  </article>
+
+  <article class="help-card">
+    <h2>Accounts and access</h2>
+    <p>
+      Administrators can create users and custom access profiles in Settings.
+      A standard user only sees tools assigned through their profiles. If a
+      page is missing from the sidebar, that is usually an access-profile choice,
+      not a broken link.
+    </p>
+    <p>
+      The built-in Administrator profile is intentionally protected. Assign it
+      only to people who should manage users, backups, server access, and high
+      impact tools.
+    </p>
+  </article>
+
+  <article class="help-card">
+    <h2>Profiles, secrets, and backups</h2>
+    <p>
+      Saved profiles make repeated work faster, but some contain API keys,
+      shared secrets, passwords, SNMP credentials, or similar sensitive values.
+      Secret fields are write-only in the UI; the toolkit does not render saved
+      secret values back into forms.
+    </p>
+    <p>
+      Backup exports require encryption whenever selected data contains secrets.
+      If a backup does not include secrets, encryption is optional. Treat any
+      encrypted backup as sensitive because anyone with both the file and its
+      password can restore the stored data.
+    </p>
+  </article>
+
+  <article class="help-card">
+    <h2>Running tools safely</h2>
+    <p>
+      Read preview screens before applying changes. Export and lookup tools are
+      generally low impact; rename, cleanup, replay, scanning, authentication,
+      and API tools deserve more attention because they can touch infrastructure
+      or generate traffic.
+    </p>
+    <p>
+      Several tools use the shared loading animation while server-side work is
+      happening. If a target device is unreachable, a page may wait for the
+      configured timeout before returning an error.
+    </p>
+  </article>
+
+  <article class="help-card">
+    <h2>Packet Replay</h2>
+    <p>
+      Packet Replay can transmit raw Ethernet frames from the toolkit host.
+      Use it only on networks where you are authorized to test. Preview the
+      decoded fields, selected interface, repeat count, interval, VLAN fanout,
+      and rewrite options before sending.
+    </p>
+    <p>
+      On macOS and Linux, raw packet permissions can vary by interface and
+      environment. If packets appear to send but are not visible in capture,
+      verify the capture filter first; VLAN-tagged traffic often needs a
+      VLAN-aware filter such as <code>vlan</code>.
+    </p>
+  </article>
+
+  <article class="help-card">
+    <h2>Troubleshooting</h2>
+    <ul>
+      <li>Use the Test button on saved FortiGate/FortiAuthenticator profiles before running profile-backed actions.</li>
+      <li>If a page hangs briefly, check whether the target device is offline or blocked by a firewall.</li>
+      <li>If the toolkit was started with sudo and later will not start normally, run the permissions repair helper.</li>
+      <li>If access looks wrong, check the user’s assigned profiles in Settings.</li>
+      <li>If a browser layout looks odd, try a hard refresh after pulling updates.</li>
+    </ul>
+  </article>
+</section>
+
+<section class="home-section help-section">
+  <div class="section-head">
+    <h2>Important disclaimer</h2>
+  </div>
+  <p>
+    The WiFi Ninja’s Toolkit is provided as-is, without warranty of any kind.
+    It is intended for network administrators and operators who understand the
+    effect of the actions they perform. You are responsible for protecting
+    stored credentials, reviewing actions before running them, and ensuring you
+    have authorization to use the toolkit in your environment.
+  </p>
+  <p><strong>Use at your own risk.</strong></p>
+</section>
+{% endblock %}

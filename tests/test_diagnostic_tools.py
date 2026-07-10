@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from twn_toolkit import create_app
+from twn_toolkit.activity import ActivityStore
 from twn_toolkit.diagnostic_tools import (
     parse_http_headers,
     receive_syslog,
@@ -183,6 +184,12 @@ class DiagnosticToolTests(unittest.TestCase):
                 })
             self.assertIn(b"Sent 80 bytes", page.data)
             self.assertIn(b"Message on the Wire", page.data)
+            summary = ActivityStore(instance).summary()
+            self.assertEqual(summary["counters"]["path_mtu"]["tests"], 1)
+            self.assertEqual(summary["counters"]["api"]["requests"], 1)
+            self.assertEqual(summary["counters"]["syslog"]["messages"], 2)
+            self.assertEqual(summary["counters"]["actions"]["total"], 4)
+            self.assertEqual(summary["recent"][0]["title"], "Sent syslog message")
 
 
 if __name__ == "__main__":
