@@ -61,7 +61,7 @@
         {% endif %}
       </nav>
     </header>
-    <div class="app-layout">
+    <div class="app-layout {{ 'with-sidebar' if current_user else 'without-sidebar' }}">
       {% if current_user %}
         {% macro sidebar_tool_row(tool, label=none, parent=false, favorite_enabled=true) -%}
           <div class="side-nav-item {{ 'parent' if parent else '' }}">

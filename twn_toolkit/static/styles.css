@@ -106,8 +106,12 @@ body {
 .app-layout {
   align-items: start;
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: calc(100vh - var(--topbar-height));
+}
+
+.app-layout.with-sidebar {
+  grid-template-columns: 300px minmax(0, 1fr);
 }
 
 .app-sidebar {
@@ -421,7 +425,7 @@ body {
   text-transform: none;
 }
 
-.sidebar-collapsed .app-layout {
+.sidebar-collapsed .app-layout.with-sidebar {
   grid-template-columns: 76px minmax(0, 1fr);
 }
 

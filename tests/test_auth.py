@@ -29,6 +29,10 @@ def test_first_launch_requires_setup_and_creates_no_default_user(tmp_path):
     assert response.headers["Location"].endswith("/setup")
     assert AuthStore(str(tmp_path)).users() == []
 
+    setup_page = client.get("/setup")
+    assert b'app-layout without-sidebar' in setup_page.data
+    assert b'app-layout with-sidebar' not in setup_page.data
+
     response = _setup(client)
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/")
@@ -48,6 +52,7 @@ def test_login_logout_and_safe_next_redirect(tmp_path):
     assert client.get("/").status_code == 302
     login_page = client.get("/login")
     assert b"./twn adminreset" in login_page.data
+    assert b'app-layout without-sidebar' in login_page.data
     response = client.post(
         "/login",
         data={
