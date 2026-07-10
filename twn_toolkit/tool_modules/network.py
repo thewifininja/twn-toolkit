@@ -218,11 +218,10 @@ def register_tools(registry: ToolRegistry) -> None:
             ToolLink(
                 "tools.packet_replay",
                 "Packet Replay",
-                "Preview, lightly modify, and transmit a bounded raw Ethernet frame.",
+                "Preview, modify, and transmit raw Ethernet frames.",
                 "tools.packet_replay",
                 "network",
                 "Network Tools",
-                admin_only=True,
                 risk="high",
             ),
             ToolLink(

@@ -42,6 +42,7 @@ The service runs in the background. Manage it with:
 ./twn logs
 ./twn restart
 ./twn stop
+./twn fix-permissions
 ```
 
 ## Add a FortiGate
@@ -166,6 +167,16 @@ have their own reusable profiles, but none require a FortiGate profile.
   parameter request list. It listens for all matching Offers until timeout and
   does not send a Request or configure the offered address. Binding UDP port 68
   and selecting an interface require root or equivalent network capabilities.
+- **Packet Replay** previews and transmits raw Ethernet frames from the
+  toolkit host. Use a wired test interface on a network where you are authorized
+  to send crafted traffic. Linux uses a native raw Ethernet socket and requires
+  root or `CAP_NET_RAW`; macOS/BSD-like systems use Scapy/libpcap and may
+  require starting the toolkit with `sudo` so the Python process can open packet
+  devices. Upload a full-packet classic Ethernet PCAP, or paste one raw Ethernet
+  frame as hex, preview the decoded plan, then transmit from the preview card.
+  If the page reports a permission error, restart the toolkit with the required
+  raw-packet privileges on a dedicated diagnostic host. See
+  [Packet Replay setup](docs/packet-replay.md) for platform-specific steps.
 - **Path MTU Tester** uses bounded ICMP probes to find the largest packet that
   reaches an IPv4 or IPv6 destination without fragmentation. Firewalls that
   silently discard ICMP can make the result inconclusive.

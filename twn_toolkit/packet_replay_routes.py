@@ -5,10 +5,10 @@ from flask import Blueprint, render_template, request
 from .dhcp_tools import available_interfaces
 from .network_tools import ToolInputError
 from .packet_replay_tools import (
-    MAX_REPEATS,
-    MAX_TOTAL_FRAMES,
+    encode_prepared_packets,
     parse_hex_packet,
-    parse_single_packet_capture,
+    parse_packet_capture,
+    parse_prepared_packets,
     prepare_replay_plan,
     send_replay_frames,
 )
@@ -28,23 +28,32 @@ def register_packet_replay_routes(tools_bp: Blueprint) -> None:
             "vlan_ids": "",
             "repeat_count": "1",
             "interval_seconds": "1.0",
-            "confirm_send": "",
+            "prepared_packet_hex": "",
         }
         plan = None
         send_result = None
         error = ""
         action = "preview"
+        send_attempted = False
         if request.method == "POST":
             form = {key: request.form.get(key, default).strip() for key, default in form.items()}
             action = request.form.get("action", "preview")
+            send_attempted = action == "send"
             try:
                 upload = request.files.get("packet_file")
                 if upload and upload.filename:
-                    packet = parse_single_packet_capture(upload.read())
+                    packets = parse_packet_capture(upload.read())
                 else:
-                    packet = parse_hex_packet(form["packet_hex"])
+                    packet_hex = form["packet_hex"] or (
+                        form["prepared_packet_hex"] if action == "send" else ""
+                    )
+                    packets = (
+                        parse_prepared_packets(packet_hex)
+                        if action == "send" and not form["packet_hex"]
+                        else [parse_hex_packet(packet_hex)]
+                    )
                 plan = prepare_replay_plan(
-                    packet,
+                    packets,
                     source_mac=form["source_mac"],
                     destination_mac=form["destination_mac"],
                     vlan_action=form["vlan_action"],
@@ -52,9 +61,8 @@ def register_packet_replay_routes(tools_bp: Blueprint) -> None:
                     repeat_count=int(form["repeat_count"]),
                     interval_seconds=float(form["interval_seconds"]),
                 )
+                form["prepared_packet_hex"] = encode_prepared_packets(plan.originals)
                 if action == "send":
-                    if form["confirm_send"] != "SEND":
-                        raise ToolInputError('Type "SEND" to confirm packet transmission.')
                     send_result = send_replay_frames(
                         plan.frames,
                         interface=form["interface"],
@@ -67,9 +75,8 @@ def register_packet_replay_routes(tools_bp: Blueprint) -> None:
             error=error,
             form=form,
             interfaces=interfaces,
-            max_repeats=MAX_REPEATS,
-            max_total_frames=MAX_TOTAL_FRAMES,
             plan=plan,
             send_result=send_result,
             action=action,
+            send_attempted=send_attempted,
         )

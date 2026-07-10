@@ -4,14 +4,17 @@
 <section class="panel">
   <div class="panel-head">
     <h1>Packet Replay</h1>
-    <p>Preview and send a bounded raw Ethernet frame from the toolkit host. This diagnostic tool is admin-only and intended for authorized wired test networks.</p>
+    <p>Preview, modify, and send raw Ethernet frames from the toolkit host on authorized wired test networks.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  {% if send_result %}
-    <div class="message success">Sent {{ send_result.sent }} frame{{ '' if send_result.sent == 1 else 's' }} on {{ send_result.interface }} in {{ send_result.elapsed_seconds }} seconds.</div>
+  {% if send_attempted and not send_result and not error %}
+    <div class="message warning">
+      Send requested for interface <code>{{ form.interface }}</code>. If no success or error appears below, restart the toolkit so the latest packet replay code is running.
+    </div>
   {% endif %}
 
   <form class="form" method="post" enctype="multipart/form-data" data-loading-message="Preparing packet replay…">
+    <input name="prepared_packet_hex" type="hidden" value="{{ form.prepared_packet_hex }}">
     <div class="ntp-options">
       <label>Network interface
         <select name="interface" required>
@@ -21,7 +24,7 @@
         </select>
       </label>
       <label>Repeat count
-        <input name="repeat_count" type="number" min="1" max="{{ max_repeats }}" value="{{ form.repeat_count }}" required>
+        <input name="repeat_count" type="number" min="1" value="{{ form.repeat_count }}" required>
       </label>
       <label>Interval between frames
         <input name="interval_seconds" type="number" min="0.1" max="60" step="0.1" value="{{ form.interval_seconds }}" required>
@@ -33,10 +36,10 @@
     </label>
     <span class="field-note">Paste a full Ethernet frame, including destination MAC, source MAC, and EtherType. Whitespace, colons, and dashes are ignored.</span>
 
-    <label>Or upload a single-packet PCAP
+    <label>Or upload a classic PCAP
       <input name="packet_file" type="file" accept=".pcap,.cap,application/vnd.tcpdump.pcap">
     </label>
-    <span class="field-note">Classic PCAP only for now. Export exactly one full packet, not a multi-packet trace.</span>
+    <span class="field-note">Classic Ethernet PCAP only for now. Multi-packet captures are supported.</span>
 
     <div class="ntp-options">
       <label>Rewrite source MAC (optional)
@@ -56,10 +59,10 @@
         </select>
       </label>
       <label>VLAN IDs for fanout
-        <input name="vlan_ids" value="{{ form.vlan_ids }}" placeholder="10, 20, 30">
+        <input name="vlan_ids" value="{{ form.vlan_ids }}" placeholder="untagged, 10-12, 20">
       </label>
     </div>
-    <span class="field-note">VLAN fanout sends one tagged copy per listed VLAN for each repeat. Total sends are capped at {{ max_total_frames }} frames.</span>
+    <span class="field-note">VLAN fanout accepts individual IDs, ranges like <code>10-20</code>, and <code>untagged</code>. VLAN 0 sends a priority-tagged frame; it is not the same as untagged.</span>
 
     <div class="message warning">
       Use only on networks where you are authorized to transmit test traffic. Raw frame sending usually requires root privileges or packet-capture permissions, and wired Ethernet is the intended target.
@@ -69,18 +72,6 @@
       <button type="submit" name="action" value="preview">Preview Packet</button>
       <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
     </div>
-
-    {% if plan %}
-      <hr>
-      <h2>Send confirmation</h2>
-      <p class="field-note">Review the preview below. To transmit exactly this plan, type <code>SEND</code> and click Send Packet Replay.</p>
-      <label>Confirmation
-        <input name="confirm_send" value="{{ form.confirm_send }}" placeholder="SEND">
-      </label>
-      <div class="button-row">
-        <button class="danger" type="submit" name="action" value="send">Send Packet Replay</button>
-      </div>
-    {% endif %}
   </form>
 </section>
 
@@ -89,7 +80,7 @@
   <div class="certificate-result-head">
     <div>
       <h2>Replay preview</h2>
-      <p>{{ plan.summary.protocol }} · {{ plan.summary.bytes_per_frame }} bytes per frame · {{ plan.summary.frame_count }} total frame{{ '' if plan.summary.frame_count == 1 else 's' }}</p>
+      <p>{{ plan.summary.packet_count }} source packet{{ '' if plan.summary.packet_count == 1 else 's' }} · first packet {{ plan.summary.protocol }} · {{ plan.summary.frame_count }} total replay frame{{ '' if plan.summary.frame_count == 1 else 's' }}</p>
     </div>
     <span class="pill {{ 'error' if plan.warnings else 'success' }}">{{ 'caution' if plan.warnings else 'ready' }}</span>
   </div>
@@ -97,16 +88,30 @@
   {% for warning in plan.warnings %}
     <div class="message warning">{{ warning }}</div>
   {% endfor %}
+  {% for note in plan.summary.notes %}
+    <p class="field-note packet-replay-note">{{ note }}</p>
+  {% endfor %}
+
+  {% if action == 'send' and send_result %}
+    <div class="message success">
+      Send request completed: {{ send_result.sent }} frame{{ '' if send_result.sent == 1 else 's' }} accepted by {{ send_result.method|default('the sender') }} on <code>{{ send_result.interface }}</code>.
+    </div>
+    {% if send_result.detail %}
+      <p class="field-note packet-replay-note">{{ send_result.detail }}</p>
+    {% endif %}
+  {% endif %}
 
   <dl class="ntp-details">
     <div><dt>Destination MAC</dt><dd><code>{{ plan.summary.destination_mac }}</code></dd></div>
     <div><dt>Source MAC</dt><dd><code>{{ plan.summary.source_mac }}</code></dd></div>
     <div><dt>EtherType</dt><dd><code>{{ plan.summary.ethertype }}</code></dd></div>
+    <div><dt>Source packets</dt><dd>{{ plan.summary.packet_count }}</dd></div>
     <div><dt>Repeats</dt><dd>{{ plan.summary.repeat_count }}</dd></div>
     <div><dt>Interval</dt><dd>{{ plan.summary.interval_seconds }} seconds</dd></div>
     <div><dt>Total bytes</dt><dd>{{ plan.summary.total_bytes }}</dd></div>
-    {% if plan.summary.vlan_targets %}
-      <div><dt>VLAN fanout</dt><dd>{{ plan.summary.vlan_targets | join(', ') }}</dd></div>
+    <div><dt>First replay header bytes</dt><dd><code>{{ plan.summary.first_replay_header_hex }}</code></dd></div>
+    {% if plan.summary.vlan_target_labels %}
+      <div><dt>VLAN fanout</dt><dd>{{ plan.summary.vlan_target_labels | join(', ') }}</dd></div>
     {% elif plan.summary.vlans %}
       <div><dt>Packet VLANs</dt><dd>{% for vlan in plan.summary.vlans %}{{ vlan.id }}{% if not loop.last %}, {% endif %}{% endfor %}</dd></div>
     {% endif %}
@@ -124,6 +129,21 @@
       </table>
     </div>
   {% endif %}
+
+  <form class="form packet-replay-send-form" method="post" data-loading-message="Sending packet replay…">
+    <input name="interface" type="hidden" value="{{ form.interface }}">
+    <input name="packet_hex" type="hidden" value="">
+    <input name="prepared_packet_hex" type="hidden" value="{{ form.prepared_packet_hex }}">
+    <input name="source_mac" type="hidden" value="{{ form.source_mac }}">
+    <input name="destination_mac" type="hidden" value="{{ form.destination_mac }}">
+    <input name="vlan_action" type="hidden" value="{{ form.vlan_action }}">
+    <input name="vlan_ids" type="hidden" value="{{ form.vlan_ids }}">
+    <input name="repeat_count" type="hidden" value="{{ form.repeat_count }}">
+    <input name="interval_seconds" type="hidden" value="{{ form.interval_seconds }}">
+    <div class="button-row">
+      <button class="danger" type="submit" name="action" value="send">Send Packet Replay</button>
+    </div>
+  </form>
 </section>
 {% endif %}
 {% endblock %}

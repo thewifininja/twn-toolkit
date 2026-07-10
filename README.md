@@ -43,8 +43,8 @@ service.
   identity, and synchronization health across reusable server lists.
 - **DHCP Discover:** send a Discover with a custom parameter request list and
   inspect matching Offers without sending a Request or accepting a lease.
-- **Packet Replay:** preview, lightly modify, and transmit a bounded raw
-  Ethernet frame on an authorized wired test network.
+- **Packet Replay:** preview, modify, and transmit raw Ethernet
+  frames from hex or classic PCAP on an authorized wired test network.
 - **Path MTU Tester:** binary-search the largest unfragmented IPv4 or IPv6 ICMP
   packet that reaches a destination.
 - **Webhook / API Tester:** send a bounded HTTP request without following
@@ -82,9 +82,14 @@ The home page separates Fortinet workflows from vendor-neutral network tools.
 ./twn restart   Restart the service
 ./twn status    Show status and URL
 ./twn logs      Show recent server errors
+./twn fix-permissions  Repair instance ownership after sudo mode
 ./twn adminreset  Remove users and return to first-launch setup
 ./twn reset-data   Remove saved profiles and API keys
 ```
+
+If the toolkit was previously started with `sudo`, startup checks for
+root-owned files under `instance/` and offers `./twn fix-permissions` before
+trying to launch a service that cannot write its own runtime files.
 
 The launcher supports macOS, Linux, and Raspberry Pi OS. Port 5050 is used by
 default because macOS Control Center commonly occupies port 5000. Override it
@@ -100,11 +105,15 @@ using that tool (for example, as root on a dedicated diagnostic host, or with
 Linux `CAP_NET_BIND_SERVICE` and `CAP_NET_RAW` capabilities). The web page
 reports a permission error when those privileges are unavailable.
 
-The Packet Replay tool is administrator-only and sends raw Ethernet frames from
-the toolkit host. Use it only on networks where you are authorized to transmit
-test traffic. Raw frame sending generally requires root privileges or packet
-capture permissions, and wired Ethernet is the intended target; wireless frame
-injection is not supported.
+The Packet Replay tool sends raw Ethernet frames from the toolkit host. Use it
+only on networks where you are authorized to transmit test traffic. Wired
+Ethernet is the intended target; wireless frame injection is not supported. On
+Linux, the toolkit uses a native raw Ethernet socket and needs root or
+`CAP_NET_RAW`. On macOS/BSD-like systems, it falls back to Scapy/libpcap and may
+need to run with `sudo` so it can open BPF packet devices. Administrators can
+grant Packet Replay to non-admin users through access profiles. A successful
+send reports the selected interface and the sender backend used. See
+[Packet Replay setup](docs/packet-replay.md) for platform-specific steps.
 
 PEAP/MSCHAPv2 and EAP-TLS testing requires the `eapol_test` executable from the
 wpa_supplicant project. On Debian and Raspberry Pi OS it is provided by the

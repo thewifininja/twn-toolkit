@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+import socket
 import struct
+import sys
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -11,17 +13,17 @@ from .network_tools import ToolInputError
 
 MAX_PACKET_BYTES = 9216
 MAX_UPLOAD_BYTES = 256 * 1024
-MAX_REPEATS = 20
-MAX_TOTAL_FRAMES = 100
 MIN_INTERVAL_SECONDS = 0.1
 MAX_INTERVAL_SECONDS = 60.0
 VLAN_ETHERTYPES = {0x8100, 0x88A8, 0x9100}
 MULTICAST_PREFIXES = ("01:00:5e", "33:33")
+UNTAGGED_VLAN_TARGET = None
 
 
 @dataclass(frozen=True)
 class ReplayPlan:
     original: bytes
+    originals: list[bytes]
     frames: list[bytes]
     summary: dict[str, Any]
     warnings: list[str]
@@ -30,7 +32,7 @@ class ReplayPlan:
 def parse_hex_packet(value: str) -> bytes:
     cleaned = re.sub(r"[^0-9A-Fa-f]", "", value or "")
     if not cleaned:
-        raise ToolInputError("Paste packet hex or upload a single-packet capture.")
+        raise ToolInputError("Paste packet hex or upload a packet capture.")
     if len(cleaned) % 2:
         raise ToolInputError("Packet hex must contain an even number of hex digits.")
     try:
@@ -41,8 +43,15 @@ def parse_hex_packet(value: str) -> bytes:
 
 
 def parse_single_packet_capture(data: bytes) -> bytes:
+    packets = parse_packet_capture(data)
+    if len(packets) != 1:
+        raise ToolInputError("Upload a PCAP containing exactly one packet.")
+    return packets[0]
+
+
+def parse_packet_capture(data: bytes) -> list[bytes]:
     if len(data) > MAX_UPLOAD_BYTES:
-        raise ToolInputError("Capture upload is too large. Upload one packet, not a full trace.")
+        raise ToolInputError("Capture upload is too large. Upload a smaller packet capture.")
     if len(data) < 24:
         raise ToolInputError("Upload a classic PCAP or paste raw packet hex.")
 
@@ -52,27 +61,57 @@ def parse_single_packet_capture(data: bytes) -> bytes:
     elif magic in {b"\xa1\xb2\xc3\xd4", b"\xa1\xb2\x3c\x4d"}:
         endian = ">"
     else:
-        raise ToolInputError("Only classic single-packet PCAP uploads are supported right now.")
+        raise ToolInputError("Only classic PCAP uploads are supported right now.")
+
+    _magic, _major, _minor, _thiszone, _sigfigs, _snaplen, linktype = struct.unpack_from(
+        f"{endian}IHHIIII", data, 0
+    )
+    if linktype != 1:
+        raise ToolInputError("Packet replay PCAP uploads must use Ethernet link type.")
 
     if len(data) < 40:
         raise ToolInputError("The PCAP does not contain a packet record.")
-    _ts_sec, _ts_frac, included_length, original_length = struct.unpack_from(
-        f"{endian}IIII", data, 24
-    )
-    if included_length != original_length:
-        raise ToolInputError("The packet in the PCAP is truncated. Export the full packet.")
-    start = 40
-    end = start + included_length
-    if len(data) < end:
-        raise ToolInputError("The PCAP packet record is incomplete.")
-    remaining = data[end:]
-    if remaining.strip(b"\0"):
-        raise ToolInputError("Upload a PCAP containing exactly one packet.")
-    return _validate_frame_size(data[start:end])
+
+    packets = []
+    offset = 24
+    while offset < len(data):
+        remaining = data[offset:]
+        if not remaining.strip(b"\0"):
+            break
+        if len(remaining) < 16:
+            raise ToolInputError("The PCAP packet record is incomplete.")
+        _ts_sec, _ts_frac, included_length, original_length = struct.unpack_from(
+            f"{endian}IIII", data, offset
+        )
+        if included_length != original_length:
+            raise ToolInputError("A packet in the PCAP is truncated. Export full packets.")
+        start = offset + 16
+        end = start + included_length
+        if len(data) < end:
+            raise ToolInputError("The PCAP packet record is incomplete.")
+        packets.append(_validate_frame_size(data[start:end]))
+        offset = end
+    if not packets:
+        raise ToolInputError("The PCAP does not contain a packet record.")
+    return packets
+
+
+def encode_prepared_packets(packets: list[bytes]) -> str:
+    return "|".join(packet.hex() for packet in packets)
+
+
+def parse_prepared_packets(value: str) -> list[bytes]:
+    packets = []
+    for packet_hex in (value or "").split("|"):
+        if packet_hex.strip():
+            packets.append(parse_hex_packet(packet_hex))
+    if not packets:
+        raise ToolInputError("Paste packet hex or upload a packet capture.")
+    return packets
 
 
 def prepare_replay_plan(
-    packet: bytes,
+    packet: bytes | list[bytes],
     *,
     source_mac: str = "",
     destination_mac: str = "",
@@ -81,43 +120,56 @@ def prepare_replay_plan(
     repeat_count: int = 1,
     interval_seconds: float = 1.0,
 ) -> ReplayPlan:
-    original = _validate_frame_size(packet)
+    originals = [_validate_frame_size(candidate) for candidate in _coerce_packets(packet)]
     repeat_count = _validate_repeat_count(repeat_count)
     interval_seconds = _validate_interval(interval_seconds)
-    vlan_values = _parse_vlan_ids(vlan_ids)
-    if vlan_values and vlan_action == "keep":
-        raise ToolInputError("Choose Add/replace VLAN tag when entering VLAN IDs.")
     if vlan_action not in {"keep", "replace", "remove"}:
         raise ToolInputError("Choose a valid VLAN handling option.")
+    vlan_values = [] if vlan_action == "keep" else _parse_vlan_targets(vlan_ids)
 
-    base = _rewrite_macs(
-        original,
-        source_mac=_normalize_mac_optional(source_mac),
-        destination_mac=_normalize_mac_optional(destination_mac),
-    )
-    vlan_targets = vlan_values if vlan_values else [None]
-    if len(vlan_targets) * repeat_count > MAX_TOTAL_FRAMES:
-        raise ToolInputError(f"Packet replay is limited to {MAX_TOTAL_FRAMES} total frames.")
-
+    source_mac = _normalize_mac_optional(source_mac)
+    destination_mac = _normalize_mac_optional(destination_mac)
+    base_frames = [
+        _rewrite_macs(original, source_mac=source_mac, destination_mac=destination_mac)
+        for original in originals
+    ]
+    vlan_targets = vlan_values if vlan_values else [UNTAGGED_VLAN_TARGET]
     one_pass_frames = [
-        _apply_vlan(base, vlan_action=vlan_action, vlan_id=vlan_id) for vlan_id in vlan_targets
+        _apply_vlan(base, vlan_action=vlan_action, vlan_id=vlan_id)
+        for base in base_frames
+        for vlan_id in vlan_targets
     ]
     frames = []
     for _ in range(repeat_count):
         frames.extend(one_pass_frames)
 
     summary = decode_frame(one_pass_frames[0])
+    summary["packet_count"] = len(originals)
     summary["repeat_count"] = repeat_count
     summary["interval_seconds"] = interval_seconds
     summary["vlan_targets"] = vlan_values
+    summary["vlan_target_labels"] = [_format_vlan_target(vlan_id) for vlan_id in vlan_values]
     summary["frame_count"] = len(frames)
     summary["bytes_per_frame"] = len(one_pass_frames[0])
     summary["total_bytes"] = sum(len(frame) for frame in frames)
+    summary["first_replay_header_hex"] = one_pass_frames[0][:22].hex(" ")
+    summary["notes"] = _notes(
+        summary,
+        repeat_count=repeat_count,
+        vlan_count=len(vlan_targets),
+        has_vlan_targets=any(vlan_id is not None for vlan_id in vlan_targets),
+    )
     return ReplayPlan(
-        original=original,
+        original=originals[0],
+        originals=originals,
         frames=frames,
         summary=summary,
-        warnings=_warnings(summary, repeat_count=repeat_count, vlan_count=len(vlan_targets)),
+        warnings=_warnings(
+            summary,
+            repeat_count=repeat_count,
+            vlan_count=len(vlan_targets),
+            has_vlan_targets=any(vlan_id is not None for vlan_id in vlan_targets),
+        ),
     )
 
 
@@ -174,18 +226,85 @@ def send_replay_frames(
     if not frames:
         raise ToolInputError("There are no frames to send.")
     interval_seconds = _validate_interval(interval_seconds)
+    if sys.platform.startswith("linux") and hasattr(socket, "AF_PACKET"):
+        return _send_replay_frames_linux_socket(
+            frames,
+            interface=interface,
+            interval_seconds=interval_seconds,
+        )
+
+    return _send_replay_frames_scapy(
+        frames,
+        interface=interface,
+        interval_seconds=interval_seconds,
+    )
+
+
+def _send_replay_frames_linux_socket(
+    frames: list[bytes],
+    *,
+    interface: str,
+    interval_seconds: float,
+) -> dict[str, Any]:
+    started = time.time()
     try:
-        from scapy.all import Ether, sendp  # type: ignore[import-not-found]
+        with socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(0x0003)) as raw_socket:
+            raw_socket.bind((interface, 0))
+            for index, frame in enumerate(frames):
+                sent = raw_socket.send(frame)
+                if sent != len(frame):
+                    raise ToolInputError(
+                        f"Packet replay sent only {sent} of {len(frame)} bytes on {interface}."
+                    )
+                if index < len(frames) - 1:
+                    time.sleep(interval_seconds)
+    except PermissionError as exc:
+        raise ToolInputError(
+            "Packet replay needs Linux CAP_NET_RAW or root privileges for raw Ethernet sockets. "
+            "Start the toolkit with suitable privileges on a dedicated diagnostic host, or grant "
+            "CAP_NET_RAW to the Python interpreter used by the toolkit."
+        ) from exc
+    except OSError as exc:
+        raise ToolInputError(f"Packet replay failed on interface {interface}: {exc}") from exc
+    return {
+        "sent": len(frames),
+        "attempted": len(frames),
+        "interface": interface,
+        "elapsed_seconds": round(time.time() - started, 3),
+        "method": "linux raw socket",
+        "detail": "The kernel accepted each raw Ethernet frame for transmission.",
+    }
+
+
+def _send_replay_frames_scapy(
+    frames: list[bytes],
+    *,
+    interface: str,
+    interval_seconds: float,
+) -> dict[str, Any]:
+    try:
+        from scapy.all import conf  # type: ignore[import-not-found]
         from scapy.error import Scapy_Exception  # type: ignore[import-not-found]
     except ImportError as exc:
         raise ToolInputError(
             "Raw packet sending requires Scapy. Run the installer again or install requirements."
         ) from exc
+    darwin_tagged_send = sys.platform == "darwin" and any(_frame_has_vlan(frame) for frame in frames)
+    if sys.platform == "darwin":
+        conf.use_pcap = not darwin_tagged_send
 
     started = time.time()
+    handed_to_backend = 0
+    l2_socket = None
     try:
+        l2_socket = conf.L2socket(iface=interface)
         for index, frame in enumerate(frames):
-            sendp(Ether(frame), iface=interface, verbose=False)
+            sent = l2_socket.send(frame)
+            if isinstance(sent, int) and sent != len(frame):
+                raise ToolInputError(
+                    f"Packet replay handed only {sent} of {len(frame)} bytes to Scapy on {interface}."
+                )
+            handed_to_backend += 1
             if index < len(frames) - 1:
                 time.sleep(interval_seconds)
     except PermissionError as exc:
@@ -197,10 +316,22 @@ def send_replay_frames(
         raise ToolInputError(f"Packet replay failed on interface {interface}: {exc}") from exc
     except Scapy_Exception as exc:
         raise ToolInputError(f"Packet replay failed on interface {interface}: {exc}") from exc
+    finally:
+        if l2_socket is not None:
+            try:
+                l2_socket.close()
+            except (AttributeError, OSError, Scapy_Exception):
+                pass
     return {
-        "sent": len(frames),
+        "sent": handed_to_backend,
+        "attempted": len(frames),
         "interface": interface,
         "elapsed_seconds": round(time.time() - started, 3),
+        "method": _scapy_sender_method(darwin_tagged_send=darwin_tagged_send),
+        "detail": (
+            "Scapy accepted the exact replay bytes shown in the preview. macOS does not provide a simple send-byte count here; "
+            "verify on the wire with Wireshark/tcpdump on the selected interface or another host."
+        ),
     }
 
 
@@ -212,13 +343,35 @@ def _validate_frame_size(packet: bytes) -> bytes:
     return packet
 
 
+def _frame_has_vlan(frame: bytes) -> bool:
+    if len(frame) < 14:
+        return False
+    return struct.unpack_from("!H", frame, 12)[0] in VLAN_ETHERTYPES
+
+
+def _scapy_sender_method(*, darwin_tagged_send: bool) -> str:
+    if sys.platform != "darwin":
+        return "scapy raw socket"
+    if darwin_tagged_send:
+        return "scapy/BPF raw socket"
+    return "scapy/libpcap raw socket"
+
+
+def _coerce_packets(packet: bytes | list[bytes]) -> list[bytes]:
+    if isinstance(packet, bytes):
+        return [packet]
+    if not packet:
+        raise ToolInputError("There are no packets to replay.")
+    return packet
+
+
 def _validate_repeat_count(value: int) -> int:
     try:
         count = int(value)
     except (TypeError, ValueError) as exc:
         raise ToolInputError("Repeat count must be a whole number.") from exc
-    if not 1 <= count <= MAX_REPEATS:
-        raise ToolInputError(f"Repeat count must be between 1 and {MAX_REPEATS}.")
+    if count < 1:
+        raise ToolInputError("Repeat count must be at least 1.")
     return count
 
 
@@ -234,24 +387,59 @@ def _validate_interval(value: float) -> float:
     return interval
 
 
-def _parse_vlan_ids(value: str) -> list[int]:
+def _parse_vlan_targets(value: str) -> list[int | None]:
     if not (value or "").strip():
         return []
-    vlans = []
+    vlans: list[int | None] = []
     for part in re.split(r"[\s,]+", value.strip()):
         if not part:
             continue
-        try:
-            vlan_id = int(part, 10)
-        except ValueError as exc:
-            raise ToolInputError("VLAN IDs must be numbers from 1 through 4094.") from exc
-        if not 1 <= vlan_id <= 4094:
-            raise ToolInputError("VLAN IDs must be numbers from 1 through 4094.")
-        if vlan_id not in vlans:
-            vlans.append(vlan_id)
-    if len(vlans) > 20:
-        raise ToolInputError("VLAN fanout is limited to 20 VLANs at a time.")
+        if part.lower() in {"untagged", "none", "native"}:
+            if UNTAGGED_VLAN_TARGET not in vlans:
+                vlans.append(UNTAGGED_VLAN_TARGET)
+            continue
+        for vlan_id in _expand_vlan_token(part):
+            if vlan_id not in vlans:
+                vlans.append(vlan_id)
     return vlans
+
+
+def _expand_vlan_token(value: str) -> list[int]:
+    if "-" in value:
+        start_text, end_text = value.split("-", 1)
+        try:
+            start = int(start_text, 10)
+            end = int(end_text, 10)
+        except ValueError as exc:
+            raise ToolInputError(
+                "VLAN targets must be numbers, ranges like 10-20, or the word untagged."
+            ) from exc
+        if start > end:
+            raise ToolInputError("VLAN ranges must start at the lower VLAN ID.")
+        _validate_vlan_id(start)
+        _validate_vlan_id(end)
+        return list(range(start, end + 1))
+    try:
+        vlan_id = int(value, 10)
+    except ValueError as exc:
+        raise ToolInputError(
+            "VLAN targets must be numbers, ranges like 10-20, or the word untagged."
+        ) from exc
+    _validate_vlan_id(vlan_id)
+    return [vlan_id]
+
+
+def _validate_vlan_id(vlan_id: int) -> None:
+    if not 0 <= vlan_id <= 4094:
+        raise ToolInputError("VLAN IDs must be numbers from 0 through 4094.")
+
+
+def _format_vlan_target(vlan_id: int | None) -> str:
+    if vlan_id is None:
+        return "untagged"
+    if vlan_id == 0:
+        return "0 (priority tag)"
+    return str(vlan_id)
 
 
 def _normalize_mac_optional(value: str) -> str:
@@ -334,17 +522,39 @@ def _decode_ports(payload: bytes, proto: int, summary: dict[str, Any]) -> None:
     )
 
 
-def _warnings(summary: dict[str, Any], *, repeat_count: int, vlan_count: int) -> list[str]:
+def _warnings(
+    summary: dict[str, Any],
+    *,
+    repeat_count: int,
+    vlan_count: int,
+    has_vlan_targets: bool,
+) -> list[str]:
     warnings = []
     if summary.get("broadcast"):
         warnings.append("Destination MAC is broadcast.")
     elif summary.get("multicast"):
         warnings.append("Destination MAC is multicast.")
-    if vlan_count > 1:
-        warnings.append(f"VLAN fanout will send one copy on each of {vlan_count} VLANs per repeat.")
-    if repeat_count > 10:
-        warnings.append("Repeat count is above 10.")
     return warnings
+
+
+def _notes(
+    summary: dict[str, Any],
+    *,
+    repeat_count: int,
+    vlan_count: int,
+    has_vlan_targets: bool,
+) -> list[str]:
+    notes = []
+    if repeat_count > 10:
+        notes.append("Repeat count is above 10.")
+    if vlan_count > 1:
+        notes.append(f"VLAN fanout will send one copy on each of {vlan_count} targets per repeat.")
+    if sys.platform == "darwin" and (summary.get("vlans") or has_vlan_targets):
+        notes.append(
+            "macOS VLAN replay uses Scapy's BPF raw-device path. If tcpdump or Wireshark does not show "
+            "the frame, verify with a VLAN-aware capture filter such as 'vlan' or 'vlan and port 514'."
+        )
+    return notes
 
 
 def _format_mac(value: bytes) -> str:

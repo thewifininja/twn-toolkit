@@ -2052,6 +2052,14 @@ button.danger {
   margin: -6px 0 0;
 }
 
+.packet-replay-note {
+  margin: 8px 0 0;
+}
+
+.packet-replay-send-form {
+  margin-top: 24px;
+}
+
 .ping-profile-manager {
   align-items: end;
   border: 1px solid var(--line);

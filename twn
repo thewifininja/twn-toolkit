@@ -81,11 +81,66 @@ with socket.socket(family, socket.SOCK_STREAM) as listener:
 ' "$HOST" "$PORT" >/dev/null 2>&1
 }
 
+has_instance_permission_issues() {
+  [ -d "$INSTANCE" ] || return 1
+  if [ ! -r "$INSTANCE" ] || [ ! -w "$INSTANCE" ]; then
+    return 0
+  fi
+  for path in "$INSTANCE"/*; do
+    [ -e "$path" ] || continue
+    if [ ! -r "$path" ] || [ ! -w "$path" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+show_instance_permission_issues() {
+  echo "The instance directory has files this user cannot read or write:" >&2
+  if [ ! -r "$INSTANCE" ] || [ ! -w "$INSTANCE" ]; then
+    echo "  $INSTANCE" >&2
+  fi
+  for path in "$INSTANCE"/*; do
+    [ -e "$path" ] || continue
+    if [ ! -r "$path" ] || [ ! -w "$path" ]; then
+      echo "  $path" >&2
+    fi
+  done
+}
+
+offer_permission_repair() {
+  show_instance_permission_issues
+  echo "This often happens after running: sudo ./twn start" >&2
+  if [ "$(id -u)" -eq 0 ]; then
+    echo "Run: ./twn fix-permissions" >&2
+    return 1
+  fi
+  if [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
+    printf "Run sudo ./twn fix-permissions now? [y/N] "
+    read -r answer
+    case "$answer" in
+      y|Y|yes|YES)
+        sudo "$0" fix-permissions
+        return
+        ;;
+    esac
+  fi
+  echo "Run: sudo $0 fix-permissions" >&2
+  return 1
+}
+
 start() {
   if is_running; then
     echo "The WiFi Ninja's Toolkit is already running (PID $(cat "$PIDFILE"))."
     echo "http://$DISPLAY_HOST:$PORT"
     return
+  fi
+
+  if [ "$(id -u)" -ne 0 ] && has_instance_permission_issues; then
+    offer_permission_repair
+    if has_instance_permission_issues; then
+      exit 1
+    fi
   fi
 
   ensure_requirements
@@ -126,7 +181,11 @@ start() {
     sleep 0.1
   done
 
-  echo "The server did not start. Check: ./twn logs" >&2
+  echo "The server did not start." >&2
+  if has_instance_permission_issues; then
+    offer_permission_repair
+  fi
+  echo "Check: ./twn logs" >&2
   exit 1
 }
 
@@ -184,6 +243,30 @@ logs() {
   else
     echo "No server log exists yet."
   fi
+}
+
+fix_permissions() {
+  if is_running; then
+    echo "Stop the toolkit before repairing instance permissions: ./twn stop" >&2
+    exit 1
+  fi
+  if [ ! -d "$INSTANCE" ]; then
+    echo "No instance directory exists yet."
+    return
+  fi
+  owner=$(id -un)
+  group=$(id -gn)
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "Repairing files created by sudo mode requires elevated permissions."
+    echo "Run: sudo $0 fix-permissions"
+    exit 1
+  fi
+  if [ -n "${SUDO_USER:-}" ]; then
+    owner="$SUDO_USER"
+    group=$(id -gn "$SUDO_USER")
+  fi
+  chown -R "$owner:$group" "$INSTANCE"
+  echo "Repaired instance permissions for $owner:$group."
 }
 
 reset_auth() {
@@ -251,6 +334,9 @@ case "${1:-}" in
   logs)
     logs
     ;;
+  fix-permissions)
+    fix_permissions
+    ;;
   adminreset|reset-auth)
     reset_auth
     ;;
@@ -262,7 +348,7 @@ case "${1:-}" in
     web_restart
     ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|status|logs|adminreset|reset-data}" >&2
+    echo "Usage: ./twn {start|stop|restart|status|logs|fix-permissions|adminreset|reset-data}" >&2
     exit 2
     ;;
 esac
