@@ -3842,7 +3842,7 @@ button.danger {
 }
 
 .access-profile-card > summary::-webkit-details-marker,
-.card-action-details summary::-webkit-details-marker {
+.card-action-details > summary::-webkit-details-marker {
   display: none;
 }
 
@@ -3920,7 +3920,7 @@ button.danger {
   margin: 0 0 16px;
 }
 
-.card-action-details summary {
+.card-action-details > summary {
   cursor: pointer;
   display: block;
   list-style: none;
@@ -3930,7 +3930,7 @@ button.danger {
   top: 26px;
 }
 
-.card-action-details summary span {
+.card-action-details > summary span {
   background: #344c40;
   border-radius: 6px;
   color: #fff;
@@ -3940,12 +3940,12 @@ button.danger {
   padding: 10px 14px;
 }
 
-.card-action-details summary:hover span,
-.card-action-details[open] summary span {
+.card-action-details > summary:hover span,
+.card-action-details[open] > summary span {
   background: #263a30;
 }
 
-.card-action-details form {
+.card-action-details > form {
   background: var(--card-tint);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -3957,17 +3957,17 @@ button.danger {
   margin: 14px 0 16px;
 }
 
-.profile-create-details.card-action-details summary {
+.profile-create-details.card-action-details > summary {
   right: 62px;
   top: 25px;
 }
 
-.profile-create-details.card-action-details summary span {
+.profile-create-details.card-action-details > summary span {
   min-height: 34px;
   padding: 7px 12px;
 }
 
-.profile-create-details.card-action-details form {
+.profile-create-details.card-action-details > form {
   border-left: 4px solid color-mix(in srgb, var(--accent), transparent 45%);
 }
 
@@ -4981,13 +4981,13 @@ th {
     height: auto;
   }
 
-  .card-action-details summary {
+  .card-action-details > summary {
     margin: -4px 0 14px;
     position: static;
     text-align: left;
   }
 
-  .profile-create-details.card-action-details summary span {
+  .profile-create-details.card-action-details > summary span {
     justify-content: center;
     width: 100%;
   }

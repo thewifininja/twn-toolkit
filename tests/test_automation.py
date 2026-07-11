@@ -1045,5 +1045,19 @@ class AutomationRegistryTests(unittest.TestCase):
         self.assertEqual(one_result.evidence["failed"], 1)
 
 
+class AutomationUiRegressionTests(unittest.TestCase):
+    def test_create_card_css_does_not_style_nested_schedule_summaries(self) -> None:
+        stylesheet = (
+            Path(__file__).resolve().parents[1]
+            / "twn_toolkit"
+            / "static"
+            / "styles.css"
+        ).read_text(encoding="utf-8")
+        self.assertIn(".card-action-details > summary {", stylesheet)
+        self.assertIn(".profile-create-details.card-action-details > summary {", stylesheet)
+        self.assertNotIn(".card-action-details summary {", stylesheet)
+        self.assertNotIn(".profile-create-details.card-action-details summary {", stylesheet)
+
+
 if __name__ == "__main__":
     unittest.main()
