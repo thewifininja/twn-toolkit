@@ -9,8 +9,10 @@ REQUIREMENTS="$ROOT/requirements.txt"
 INSTANCE="$ROOT/instance"
 REQUIREMENTS_STAMP="$INSTANCE/requirements.sha256"
 PIDFILE="$INSTANCE/twn-toolkit.pid"
+AUTOMATION_PIDFILE="$INSTANCE/twn-automation.pid"
 ACCESS_LOG="$INSTANCE/twn-toolkit-access.log"
 ERROR_LOG="$INSTANCE/twn-toolkit-error.log"
+AUTOMATION_LOG="$INSTANCE/twn-automation.log"
 SERVER_SETTINGS="$INSTANCE/server_settings.json"
 PREVIOUS_SERVER_SETTINGS="$INSTANCE/server_settings.previous.json"
 HOST=${TWN_TOOLKIT_HOST:-}
@@ -38,6 +40,51 @@ fi
 
 is_running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+}
+
+automation_is_running() {
+  [ -f "$AUTOMATION_PIDFILE" ] && kill -0 "$(cat "$AUTOMATION_PIDFILE")" 2>/dev/null
+}
+
+start_automation() {
+  if automation_is_running; then
+    return
+  fi
+  rm -f "$AUTOMATION_PIDFILE"
+  cd "$ROOT"
+  "$PYTHON" -m twn_toolkit.automation_worker \
+    --instance "$INSTANCE" \
+    --daemon \
+    --pid-file "$AUTOMATION_PIDFILE" \
+    --log-file "$AUTOMATION_LOG"
+  attempts=0
+  while [ "$attempts" -lt 20 ]; do
+    if automation_is_running; then
+      return
+    fi
+    attempts=$((attempts + 1))
+    sleep 0.1
+  done
+  echo "The automation scheduler did not start. Check: $AUTOMATION_LOG" >&2
+  return 1
+}
+
+stop_automation() {
+  if ! automation_is_running; then
+    rm -f "$AUTOMATION_PIDFILE"
+    return
+  fi
+  automation_pid=$(cat "$AUTOMATION_PIDFILE")
+  kill "$automation_pid"
+  attempts=0
+  while kill -0 "$automation_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
+    attempts=$((attempts + 1))
+    sleep 0.1
+  done
+  if kill -0 "$automation_pid" 2>/dev/null; then
+    kill -KILL "$automation_pid" 2>/dev/null || true
+  fi
+  rm -f "$AUTOMATION_PIDFILE"
 }
 
 requirements_hash() {
@@ -131,7 +178,9 @@ offer_permission_repair() {
 
 start() {
   if is_running; then
+    start_automation
     echo "The WiFi Ninja's Toolkit is already running (PID $(cat "$PIDFILE"))."
+    echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
     echo "http://$DISPLAY_HOST:$PORT"
     return
   fi
@@ -173,7 +222,9 @@ start() {
   attempts=0
   while [ "$attempts" -lt 30 ]; do
     if is_running; then
+      start_automation
       echo "Started The WiFi Ninja's Toolkit (PID $(cat "$PIDFILE"))."
+      echo "Started automation scheduler (PID $(cat "$AUTOMATION_PIDFILE"))."
       echo "http://$DISPLAY_HOST:$PORT"
       return
     fi
@@ -192,10 +243,12 @@ start() {
 stop() {
   if ! is_running; then
     rm -f "$PIDFILE"
+    stop_automation
     echo "The WiFi Ninja's Toolkit is not running."
     return
   fi
 
+  stop_automation
   pid=$(cat "$PIDFILE")
   kill "$pid"
   attempts=0
@@ -230,6 +283,11 @@ stop() {
 status() {
   if is_running; then
     echo "The WiFi Ninja's Toolkit is running (PID $(cat "$PIDFILE"))."
+    if automation_is_running; then
+      echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
+    else
+      echo "Automation scheduler is not running." >&2
+    fi
     echo "http://$DISPLAY_HOST:$PORT"
   else
     echo "The WiFi Ninja's Toolkit is not running."
@@ -242,6 +300,10 @@ logs() {
     tail -n 100 "$ERROR_LOG"
   else
     echo "No server log exists yet."
+  fi
+  if [ -f "$AUTOMATION_LOG" ]; then
+    echo "Automation scheduler log:"
+    tail -n 100 "$AUTOMATION_LOG"
   fi
 }
 

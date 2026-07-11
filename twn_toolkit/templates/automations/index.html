@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% macro condition_form(values, definition=none) %}
+  {% set config = definition.config if definition else values %}
+  <form class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
+    {% set definition_id = definition.id if definition else values.get('condition_definition_id', '') %}
+    {% if definition_id %}<input type="hidden" name="condition_definition_id" value="{{ definition_id }}">{% endif %}
+    <label>Condition name
+      <input name="condition_name" maxlength="100" value="{{ definition.name if definition else values.get('condition_name', '') }}" placeholder="Production path unavailable" required>
+    </label>
+    <label>Condition type
+      <select name="condition_type">
+        {% for item in condition_types %}<option value="{{ item.id }}" {% if (definition and definition.type == item.id) or (not definition and values.get('condition_type', 'ping.multi') == item.id) %}selected{% endif %}>{{ item.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <div data-condition-fields="manual.trigger" hidden>
+      <p class="field-note">This condition is met only when a user clicks Run now on an automation that uses it.</p>
+    </div>
+    <div class="automation-condition-fields" data-condition-fields="ping.multi">
+      <label>Ping targets
+        <textarea name="condition_targets" rows="5" placeholder="Gateway = 192.0.2.1&#10;1.1.1.1&#10;8.8.8.8" required>{{ config.get('targets', config.get('condition_targets', '')) }}</textarea>
+      </label>
+      <div class="form-grid">
+        <label>Per-target timeout
+          <div class="input-suffix"><input name="condition_timeout" type="number" min="1" max="10" value="{{ config.get('timeout', config.get('condition_timeout', '1')) }}" required><span>seconds</span></div>
+        </label>
+        <label>Condition is met when
+          {% set failure_mode = config.get('failure_mode', config.get('condition_failure_mode', 'all')) %}
+          <select name="condition_failure_mode">
+            <option value="all" {% if failure_mode == 'all' %}selected{% endif %}>All targets fail</option>
+            <option value="at_least" {% if failure_mode == 'at_least' %}selected{% endif %}>At least this many fail</option>
+          </select>
+        </label>
+        <label>Required failed targets
+          <input name="condition_failure_count" type="number" min="1" value="{{ config.get('failure_count', config.get('condition_failure_count', '1')) }}" required>
+        </label>
+      </div>
+    </div>
+    <div class="button-row"><button type="submit">{{ 'Update condition' if definition_id else 'Save condition' }}</button></div>
+  </form>
+{% endmacro %}
+
+{% macro action_form(values, definition=none) %}
+  {% set config = definition.config if definition else values %}
+  {% set definition_id = definition.id if definition else values.get('action_definition_id', '') %}
+  <form class="form automation-form" method="post" action="{{ url_for('save_automation_action') }}" autocomplete="off">
+    {% if definition_id %}<input type="hidden" name="action_definition_id" value="{{ definition_id }}">{% endif %}
+    <label>Action name
+      <input name="action_name" maxlength="100" value="{{ definition.name if definition else values.get('action_name', '') }}" placeholder="Collect access switch logs" required>
+    </label>
+    <label>Action type
+      <select name="action_type">
+        {% for item in action_types %}<option value="{{ item.id }}" {% if (definition and definition.type == item.id) or (not definition and values.get('action_type', 'ssh.collect') == item.id) %}selected{% endif %}>{{ item.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <p class="field-note">SSH output is retained with each run. The password is encrypted using this toolkit installation’s secret key.</p>
+    <label>SSH hosts
+      <textarea name="action_hosts" rows="4" placeholder="10.0.0.11&#10;10.0.0.12" required>{{ config.get('hosts', config.get('action_hosts', '')) }}</textarea>
+    </label>
+    <div class="form-grid">
+      <label>Username
+        <input name="action_username" value="{{ config.get('username', config.get('action_username', '')) }}" required>
+      </label>
+      <label>Password
+        <input name="action_password" type="password" {% if definition_id %}placeholder="Leave blank to keep saved password"{% else %}required{% endif %}>
+      </label>
+      <label>SSH port
+        <input name="action_port" type="number" min="1" max="65535" value="{{ config.get('port', config.get('action_port', '22')) }}" required>
+      </label>
+    </div>
+    <label>Commands
+      <textarea class="command-input" name="action_commands" rows="7" placeholder="show clock&#10;show logging&#10;show interfaces" required>{{ config.get('commands', config.get('action_commands', '')) }}</textarea>
+    </label>
+    <div class="check-grid">
+      <label class="check"><input name="action_allow_unknown_hosts" type="checkbox" {% if config.get('allow_unknown_hosts') or config.get('action_allow_unknown_hosts') %}checked{% endif %}>Allow unknown SSH host keys</label>
+      <label class="check"><input name="action_send_ctrl_y" type="checkbox" {% if config.get('send_ctrl_y') or config.get('action_send_ctrl_y') %}checked{% endif %}>Send Ctrl+Y before commands</label>
+    </div>
+    <div class="button-row"><button type="submit">{{ 'Update action' if definition_id else 'Save action' }}</button></div>
+  </form>
+{% endmacro %}
+
+{% macro automation_form(values, automation=none) %}
+  {% set selected_condition = automation.condition.id if automation else values.get('condition_definition_id', '') %}
+  {% set selected_actions = automation.actions|map(attribute='id')|list if automation else values.get('action_definition_ids', []) %}
+  <form class="form automation-form" method="post" action="{{ url_for('save_automation') }}">
+    {% if automation %}<input type="hidden" name="automation_id" value="{{ automation.id }}">{% endif %}
+    <label>Automation name
+      <input name="name" maxlength="100" value="{{ automation.name if automation else values.get('name', '') }}" placeholder="Branch outage collection" required>
+    </label>
+    <div class="form-grid" data-scheduled-policy>
+      <label>Check every
+        <div class="input-suffix"><input name="interval_seconds" type="number" min="1" max="86400" value="{{ automation.interval_seconds if automation else values.get('interval_seconds', '30') }}" required><span>seconds</span></div>
+      </label>
+      <label>Trigger after
+        <div class="input-suffix"><input name="trigger_after" type="number" min="1" max="100" value="{{ automation.trigger_after if automation else values.get('trigger_after', '3') }}" required><span>met checks</span></div>
+      </label>
+      <label>Recover after
+        <div class="input-suffix"><input name="recover_after" type="number" min="1" max="100" value="{{ automation.recover_after if automation else values.get('recover_after', '3') }}" required><span>clear checks</span></div>
+      </label>
+      <label>Cooldown
+        <div class="input-suffix"><input name="cooldown_seconds" type="number" min="0" max="604800" value="{{ automation.cooldown_seconds if automation else values.get('cooldown_seconds', '300') }}" required><span>seconds</span></div>
+      </label>
+    </div>
+    <fieldset class="automation-builder-block">
+      <legend>Condition</legend>
+      {% if condition_definitions %}
+        <label>Reusable condition
+          <select name="condition_definition_id" data-automation-condition-select required>
+            <option value="">Select a condition</option>
+            {% for item in condition_definitions %}<option value="{{ item.id }}" data-condition-type="{{ item.type }}" {% if selected_condition == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
+          </select>
+        </label>
+      {% else %}<p class="empty">Create a condition before building an automation.</p>{% endif %}
+    </fieldset>
+    <fieldset class="automation-builder-block">
+      <legend>Actions</legend>
+      {% if action_definitions %}
+        <div class="automation-action-choices">
+          {% for item in action_definitions %}
+            <label class="check"><input name="action_definition_id" type="checkbox" value="{{ item.id }}" {% if item.id in selected_actions %}checked{% endif %}><span><strong>{{ item.name }}</strong><small>{{ item.type }}</small></span></label>
+          {% endfor %}
+        </div>
+      {% else %}<p class="empty">Create an action before building an automation.</p>{% endif %}
+    </fieldset>
+    <div class="button-row"><button type="submit" {% if not condition_definitions or not action_definitions %}disabled{% endif %}>{{ 'Update automation' if automation else 'Save automation' }}</button></div>
+  </form>
+{% endmacro %}
+
+{% block content %}
+<section class="workspace-intro">
+  <span class="eyebrow">Automation</span>
+  <h1>Conditions and actions</h1>
+  <p>Build reusable observations and responses, then connect them with scheduling, trigger, recovery, and cooldown policies.</p>
+</section>
+
+<section class="panel automation-manager automation-library-panel">
+  <div class="section-head"><div><h2>Conditions</h2><p>{{ condition_definitions|length }} reusable observation{{ '' if condition_definitions|length == 1 else 's' }}</p></div></div>
+  <details class="card-action-details profile-create-details" data-automation-create {% if form_error and form_section == 'condition' %}open{% endif %}>
+    <summary><span>New condition</span></summary>
+    {% if form_error and form_section == 'condition' %}<div class="message error">{{ form_error }}</div>{% endif %}
+    {{ condition_form(form) }}
+  </details>
+  {% if condition_definitions %}<div class="automation-list">
+    {% for definition in condition_definitions %}
+      <details class="access-profile-card automation-card" {% if request.args.get('focus_condition') == definition.id or (test_result and test_result.condition_id == definition.id) %}open{% endif %}>
+        <summary><span><strong>{{ definition.name }}</strong><small>{% if definition.type == 'manual.trigger' %}Manual trigger · on demand{% else %}{{ definition.type }} · {{ definition.config.failure_count }} of {{ definition.config.targets.split('\n')|length }} failed target threshold{% endif %}</small></span></summary>
+        <div class="automation-card-body">
+          {% if test_result and test_result.condition_id == definition.id %}<div class="message {{ 'error' if test_result.status == 'error' else 'success' if test_result.status == 'clear' else 'warning' }}"><strong>Condition test: {{ test_result.status }}</strong> · {{ test_result.summary }}</div>{% endif %}
+          <div class="button-row automation-actions">
+            {% if definition.type != 'manual.trigger' %}<form method="post" action="{{ url_for('test_condition_definition', definition_id=definition.id) }}" data-loading-message="Testing reusable condition…"><button class="secondary" type="submit">Test</button></form>{% endif %}
+            <button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-condition-{{ definition.id }}">Edit</button>
+            <form method="post" action="{{ url_for('delete_automation_condition', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable condition?')"><button class="danger" type="submit">Delete</button></form>
+          </div>
+          <div class="automation-record-editor" id="edit-condition-{{ definition.id }}" hidden>{{ condition_form({}, definition) }}</div>
+        </div>
+      </details>
+    {% endfor %}
+  </div>{% else %}<div class="empty-state"><strong>No reusable conditions yet.</strong><span>Create one once, then select it from any number of automations.</span></div>{% endif %}
+</section>
+
+<section class="panel automation-manager automation-library-panel">
+  <div class="section-head"><div><h2>Actions</h2><p>{{ action_definitions|length }} reusable response{{ '' if action_definitions|length == 1 else 's' }}</p></div></div>
+  <details class="card-action-details profile-create-details" data-automation-create {% if form_error and form_section == 'action' %}open{% endif %}>
+    <summary><span>New action</span></summary>
+    {% if form_error and form_section == 'action' %}<div class="message error">{{ form_error }}</div>{% endif %}
+    {{ action_form(form) }}
+  </details>
+  {% if action_definitions %}<div class="automation-list">
+    {% for definition in action_definitions %}
+      <details class="access-profile-card automation-card" {% if request.args.get('focus_action') == definition.id %}open{% endif %}>
+        <summary><span><strong>{{ definition.name }}</strong><small>{{ definition.type }} · {{ definition.config.hosts.split('\n')|length }} host{{ '' if definition.config.hosts.split('\n')|length == 1 else 's' }} · credentials saved</small></span></summary>
+        <div class="automation-card-body">
+          <div class="button-row automation-actions"><button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-action-{{ definition.id }}">Edit</button><form method="post" action="{{ url_for('delete_automation_action', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable action?')"><button class="danger" type="submit">Delete</button></form></div>
+          <div class="automation-record-editor" id="edit-action-{{ definition.id }}" hidden>{{ action_form({}, definition) }}</div>
+        </div>
+      </details>
+    {% endfor %}
+  </div>{% else %}<div class="empty-state"><strong>No reusable actions yet.</strong><span>Create one once, then attach it to any number of automations.</span></div>{% endif %}
+</section>
+
+<section class="panel automation-manager">
+  <div class="section-head"><div><h2>Automations</h2><p>{{ automations|length }} configured · checks continue without an open browser</p></div></div>
+  {% if not scheduler.running %}<div class="message warning automation-scheduler-warning"><strong>Automation scheduler is not running.</strong> Armed automations will not run until the toolkit is restarted with <code>./twn restart</code>.</div>{% endif %}
+  <details class="card-action-details profile-create-details" data-automation-create {% if form_error and form_section == 'automation' %}open{% endif %}>
+    <summary><span>New automation</span></summary>
+    {% if form_error and form_section == 'automation' %}<div class="message error">{{ form_error }}</div>{% endif %}
+    {{ automation_form(form) }}
+  </details>
+  {% if automations %}<div class="automation-list">
+    {% for automation in automations %}
+      <details class="access-profile-card automation-card profile-section" {% if request.args.get('focus') == automation.id or (test_result and test_result.automation_id == automation.id) %}open{% endif %}>
+        {% set is_manual = automation.condition.type == 'manual.trigger' %}
+        <summary><span><strong>{{ automation.name }}</strong><small>{{ automation.condition.name }} → {{ automation.actions|map(attribute='name')|join(', ') }} · {{ 'on demand' if is_manual else 'every ' ~ automation.interval_seconds ~ 's · ' ~ ('armed' if automation.enabled else 'paused') }}</small></span><span class="pill {{ 'planned' if is_manual else 'success' if automation.state == 'healthy' else 'error' if automation.state == 'error' else 'planned' }}">{{ 'manual' if is_manual else automation.state }}</span></summary>
+        <div class="automation-card-body">
+          {% if not is_manual %}<div class="automation-status-grid"><div><span>Last check</span><strong>{{ automation.last_check_display }}</strong></div><div><span>Last trigger</span><strong>{{ automation.last_triggered_display }}</strong></div><div><span>Threshold progress</span><strong>{{ automation.consecutive_met }} / {{ automation.trigger_after }}</strong></div><div><span>Latest observation</span><strong>{{ automation.last_summary or 'No checks yet' }}</strong></div></div>{% else %}<p class="field-note automation-manual-note">This automation runs only when an administrator explicitly starts it.</p>{% endif %}
+          {% if automation.last_error %}<div class="message error">{{ automation.last_error }}</div>{% endif %}
+          {% if test_result and test_result.automation_id == automation.id %}<div class="message {{ 'error' if test_result.status == 'error' else 'success' if test_result.status == 'clear' else 'warning' }}"><strong>Condition test: {{ test_result.status }}</strong> · {{ test_result.summary }}</div>{% endif %}
+          <div class="button-row automation-actions">{% if is_manual %}<form method="post" action="{{ url_for('run_automation_now', automation_id=automation.id) }}" data-loading-message="Running automation actions…"><button type="submit">Run now</button></form>{% else %}<form method="post" action="{{ url_for('toggle_automation', automation_id=automation.id) }}"><button class="{{ 'secondary' if automation.enabled else '' }}" type="submit">{{ 'Pause' if automation.enabled else 'Arm' }}</button></form><form method="post" action="{{ url_for('test_automation_condition', automation_id=automation.id) }}" data-loading-message="Testing automation condition…"><button class="secondary" type="submit">Test condition</button></form>{% endif %}<button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-automation-{{ automation.id }}">Edit</button><form method="post" action="{{ url_for('delete_automation', automation_id=automation.id) }}" onsubmit="return confirm('Delete this automation and its retained history?')"><button class="danger" type="submit">Delete</button></form></div>
+          <div class="automation-record-editor" id="edit-automation-{{ automation.id }}" hidden>{{ automation_form({}, automation) }}</div>
+          {% if not is_manual %}<details class="automation-subsection"><summary>Recent checks <small>{{ automation.recent_checks|length }}</small></summary>{% if automation.recent_checks %}<div class="automation-history-list">{% for check in automation.recent_checks %}<article><span class="pill {{ 'error' if check.status == 'error' else 'planned' if check.met else 'success' }}">{{ check.status }}</span><strong>{{ check.summary }}</strong><small>{{ check.checked_display }}</small></article>{% endfor %}</div>{% else %}<p class="empty">No checks have run yet.</p>{% endif %}</details>{% endif %}
+          <details class="automation-subsection automation-runs" {% if request.args.get('focus_run') and automation.recent_runs %}open{% endif %}>
+            <summary><span>Collected action runs <small class="count-badge">{{ automation.recent_runs|length }}</small></span></summary>
+            {% if automation.recent_runs %}
+              <div class="automation-runs-toolbar">
+                <span>Newest run first</span>
+                <form method="post" action="{{ url_for('clear_automation_runs', automation_id=automation.id) }}" onsubmit="return confirm('Delete all collected action runs for this automation? Condition-check history will remain.')"><button class="text-danger" type="submit">Clear collected data</button></form>
+              </div>
+              <div class="automation-history-list">
+                {% for run in automation.recent_runs %}
+                  <details class="automation-run" {% if request.args.get('focus_run') == run.id %}open{% endif %}>
+                    <summary>
+                      <span class="pill {{ run.status }}">{{ run.status }}</span>
+                      <span class="automation-run-summary"><strong>{{ run.trigger_summary }}</strong><small>{{ run.started_display }}</small></span>
+                    </summary>
+                    <div class="automation-run-body">
+                      <div class="automation-run-toolbar">
+                        <span>Collected output</span>
+                        <div class="button-row automation-run-actions"><a class="button-link secondary" href="{{ url_for('download_automation_run', run_id=run.id) }}">Download ZIP</a><form method="post" action="{{ url_for('delete_automation_run', run_id=run.id) }}" onsubmit="return confirm('Delete this collected action run?')"><button class="text-danger" type="submit">Delete run</button></form></div>
+                      </div>
+                      {% for result in run.results %}
+                        <section class="automation-result-group">
+                          <div class="automation-result-head"><span>Action {{ loop.index }}</span><strong>{{ result.summary }}</strong></div>
+                          <div class="automation-host-list">
+                            {% for host in result.output.get('hosts', []) %}
+                              <details class="ssh-result automation-host-result">
+                                <summary><strong>{{ host.host }}</strong><span class="pill {{ host.status }}">{{ host.status }}</span></summary>
+                                {% if host.error %}<div class="message error">{{ host.error }}</div>{% endif %}
+                                <pre class="result-output">{{ host.output or 'No output captured.' }}</pre>
+                              </details>
+                            {% endfor %}
+                          </div>
+                        </section>
+                      {% endfor %}
+                    </div>
+                  </details>
+                {% endfor %}
+              </div>
+            {% else %}<p class="empty">No collected action data.</p>{% endif %}
+          </details>
+        </div>
+      </details>
+    {% endfor %}
+  </div>{% else %}<div class="empty-state"><strong>No automations yet.</strong><span>Create reusable conditions and actions above, then connect them here.</span></div>{% endif %}
+</section>
+<script src="{{ url_for('static', filename='automation.js') }}"></script>
+{% endblock %}

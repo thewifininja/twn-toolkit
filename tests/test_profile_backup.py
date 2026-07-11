@@ -47,6 +47,7 @@ class ProfileBackupTests(unittest.TestCase):
                 "port_scan_port_profiles",
                 "ntp_host_profiles",
                 "traceroute_host_profiles",
+                "automation_definitions",
             ],
         )
         self.assertEqual(len(ids), len(set(ids)))

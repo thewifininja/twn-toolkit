@@ -110,6 +110,40 @@ accepted replay frames.
 - Keep secrets write-only in the UI. Backups containing secrets require
   encryption.
 
+## Automation architecture
+
+- Reusable condition definitions and reusable action definitions are separate
+  first-class records. An automation references one condition plus one or more
+  actions and adds trigger/recovery/schedule policy. Conditions observe; the automation state
+  machine decides when to fire; actions respond.
+- Do not run monitoring loops inside Flask or Gunicorn workers. `./twn` manages
+  one separate `twn_toolkit.automation_worker` process beside the web service.
+- `instance/automations.sqlite3` stores definitions, scheduler state, checks,
+  runs, and retained outputs. SSH action definitions are encrypted at rest with
+  a key derived from the installation session secret.
+- Current states are disabled, healthy, suspect, triggered, recovering, and
+  error. A triggered automation fires once and must recover/rearm before it can
+  fire again.
+- Initial registered types are `manual.trigger`, `ping.multi`, and
+  `ssh.collect`. Manual-trigger automations are excluded from due-check claims
+  and expose an explicit Run now action. Add future types
+  through `automation_registry.py`; do not add type-specific branches to the
+  scheduler.
+- Automation definitions are a sensitive backup group. History/output is not
+  backed up, and imported definitions remain paused.
+- Editing a shared definition pauses all dependent automations. Deletion is
+  blocked while references remain. Existing embedded definitions are migrated
+  automatically into reusable records.
+- Check intervals may be as low as one second. The scheduler polls due work
+  every 250ms; condition execution time still limits effective cadence.
+- Action runs have a ZIP download containing summary metadata and per-host SSH
+  text output.
+- Collected action runs can be deleted individually or cleared per automation.
+  Clearing runs must not delete condition-check history.
+- Automation creation is administrator-only for the initial vertical slice.
+  Granular view/arm/edit/output permissions are a planned extension.
+- See `docs/automations.md` for operations, security, and planned extensions.
+
 ## Verification
 
 Run the full suite before handoff:

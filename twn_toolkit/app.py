@@ -20,6 +20,8 @@ from flask import (
 )
 
 from .activity import ActivityStore
+from .automation import AutomationStore
+from .automation_routes import register_automation_routes
 from .auth import AuthStore, load_or_create_secret_key
 from .admin_routes import register_admin_routes
 from .fortiauthenticator_routes import register_fortiauthenticator_routes
@@ -53,6 +55,7 @@ def create_app(instance_path: str | None = None) -> Flask:
     app.register_blueprint(tools_bp)
 
     auth_store = AuthStore(app.instance_path)
+    automation_store = AutomationStore(app.instance_path, app.config["SECRET_KEY"])
     activity_store = ActivityStore(app.instance_path)
     server_settings_store = ServerSettingsStore(app.instance_path)
     store = ProfileStore(app.instance_path)
@@ -226,6 +229,15 @@ def create_app(instance_path: str | None = None) -> Flask:
                 )
 
             network_tools = [tool for tool in visible if tool.category == "network"]
+            automation_tools = [tool for tool in visible if tool.category == "automation"]
+            if automation_tools:
+                sidebar_tool_groups.append(
+                    {
+                        "label": "Automation",
+                        "tools": automation_tools,
+                        "active": active_in_tools(automation_tools),
+                    }
+                )
             if network_tools:
                 sidebar_tool_groups.append(
                     {
@@ -282,6 +294,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         category_allowed=_category_allowed,
         tool_access_allowed=_tool_access_allowed,
     )
+    register_automation_routes(app, automation_store)
 
     @app.route("/setup", methods=["GET", "POST"])
     def setup():
@@ -373,7 +386,7 @@ def create_app(instance_path: str | None = None) -> Flask:
     def reset_data(yes: bool) -> None:
         """Remove all locally saved profiles and API keys."""
         if not yes and not click.confirm(
-            "Delete all saved FortiGate, FortiAuthenticator, ping, DNS, RADIUS, SNMP, TCP scanner, NTP, and traceroute profiles and credentials?"
+            "Delete all saved profiles, credentials, and automation definitions?"
         ):
             click.echo("Reset cancelled.")
             return

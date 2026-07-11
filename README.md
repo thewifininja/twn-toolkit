@@ -54,6 +54,23 @@ service.
 - **Traceroute:** stream UDP or ICMP traces for up to 10 destinations from
   reusable lists into live graphical paths and traditional text output.
 
+### Automations
+
+- Define reusable multi-host ping conditions and reusable SSH collection
+  actions, then reference them from multiple automations.
+- Schedule checks as frequently as once per second with consecutive failure,
+  recovery, and cooldown thresholds.
+- Use a reusable Manual trigger condition for on-demand automations that run
+  only when an administrator selects **Run now**.
+- Trigger concurrent SSH command collection against management targets and
+  retain per-host output with the incident run.
+- Download a run as a ZIP containing metadata and per-host text output.
+- Delete individual collected runs or clear all collected action data for an
+  automation while preserving condition-check history.
+- Run checks in a dedicated scheduler process even when no browser is open.
+- Extend trusted internal condition and action registries without rewriting the
+  scheduler. See [Automations](docs/automations.md).
+
 ## Quick Start
 
 ```bash
@@ -80,8 +97,8 @@ The home page separates Fortinet workflows from vendor-neutral network tools.
 ./twn start     Start in the background
 ./twn stop      Stop the service
 ./twn restart   Restart the service
-./twn status    Show status and URL
-./twn logs      Show recent server errors
+./twn status    Show web and automation scheduler status
+./twn logs      Show recent web and automation scheduler errors
 ./twn fix-permissions  Repair instance ownership after sudo mode
 ./twn adminreset  Remove users and return to first-launch setup
 ./twn reset-data   Remove saved profiles and API keys
@@ -205,6 +222,13 @@ NTP and Traceroute host lists use `instance/ntp_host_profiles.json` and
 `instance/traceroute_host_profiles.json`.
 These files have owner-only permissions and are
 excluded from Git, but their contents are not encrypted. Treat the host as trusted.
+
+Automation definitions, runtime state, condition history, and retained action
+output are stored in `instance/automations.sqlite3`. Saved automation action
+configuration is encrypted at rest using the installation's private session
+secret. Automation definitions containing credentials can only be exported in
+an encrypted profile backup; runtime history and captured output are excluded
+from backups.
 
 Multi-Host Ping measurements and chart history are held in the browser session.
 Reloading or closing the page discards that history unless it was exported.

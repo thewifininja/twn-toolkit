@@ -15,12 +15,13 @@ BACKUP_KDF_ITERATIONS = 390_000
 
 
 def build_backup_catalog(instance_path: str) -> list[dict[str, Any]]:
-    from .tool_modules import fortiauthenticator, fortigate, network
+    from .tool_modules import automation, fortiauthenticator, fortigate, network
 
     return [
         *fortigate.backup_items(instance_path),
         *fortiauthenticator.backup_items(instance_path),
         *network.backup_items(instance_path),
+        *automation.backup_items(instance_path),
     ]
 
 
