@@ -7,6 +7,12 @@ service.
 
 ## Capabilities
 
+### Dashboard
+
+- Track time-filtered toolkit metrics, user rankings, and recent activity.
+- Administrators can globally show, hide, and reorder metric widgets; hidden
+  widgets remain available in edit mode and new metrics appear automatically.
+
 ### Fortinet Workflows
 
 - Store and test local FortiGate and FortiAuthenticator connection profiles.

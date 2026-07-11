@@ -37,6 +37,14 @@ conversation compaction and future development sessions.
   leaving action scores and recent history intact.
 - Admins can reset metrics and scores. Standard users can view the dashboard but
   cannot reset it.
+- Metric widget order and visibility are global and administrator-managed.
+  `instance/dashboard_layout.json` stores stable metric IDs rather than titles
+  or array positions. Unknown future widgets default to visible and are appended
+  before the hidden group. Hidden widgets never render for standard users.
+- Dashboard edit mode operates on the real responsive grid. Hidden widgets move
+  below a clear divider; Cancel restores the pre-edit DOM order and visibility,
+  while Save persists both. Reordering supports mouse drag, touch/pointer drag,
+  and arrow keys from the widget drag handle.
 - New metrics should be attributable to the current user whenever the action is
   authenticated.
 

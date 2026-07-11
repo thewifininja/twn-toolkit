@@ -47,9 +47,26 @@
   </form>
 </section>
 
-<section class="dashboard-grid">
+<section class="dashboard-metrics" data-dashboard-editor>
+  <div class="dashboard-metrics-head">
+    <div><h2>Toolkit activity</h2><p>Operational totals for {{ dashboard.window.range_label|lower }}.</p></div>
+    {% if current_user.is_admin %}
+      <div class="dashboard-edit-actions">
+        <button class="secondary" type="button" data-dashboard-edit>Edit dashboard</button>
+        <div class="button-row" data-dashboard-edit-controls hidden>
+          <form id="dashboard-layout-form" method="post" action="{{ url_for('save_dashboard_layout') }}"><input type="hidden" name="order"><input type="hidden" name="hidden"></form>
+          <button type="submit" form="dashboard-layout-form">Save layout</button>
+          <button class="secondary" type="button" data-dashboard-cancel>Cancel</button>
+          <form method="post" action="{{ url_for('reset_dashboard_layout') }}" onsubmit="return confirm('Restore every dashboard widget and its default order?')"><button class="link-button subtle" type="submit">Restore defaults</button></form>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+  <div class="dashboard-grid" data-dashboard-grid>
   {% for card in dashboard.cards %}
-    <article class="dashboard-card">
+    {% if current_user.is_admin or not card.dashboard_hidden %}
+    <article class="dashboard-card{% if card.dashboard_hidden %} dashboard-card-hidden{% endif %}" data-widget-id="{{ card.metric }}" data-widget-hidden="{{ 'true' if card.dashboard_hidden else 'false' }}" {% if card.dashboard_hidden %}hidden{% endif %}>
+      {% if current_user.is_admin %}<div class="dashboard-card-editor" hidden><button class="dashboard-drag-handle" type="button" aria-label="Move {{ card.title }}" title="Drag to reorder">⠿</button><button class="dashboard-visibility-toggle" type="button" aria-pressed="{{ 'false' if card.dashboard_hidden else 'true' }}">{{ 'Show' if card.dashboard_hidden else 'Hide' }}</button></div>{% endif %}
       <div>
         <span class="dashboard-kicker">{{ card.kicker }}</span>
         <strong>{{ card.title }}</strong>
@@ -66,7 +83,10 @@
         </form>
       {% endif %}
     </article>
+    {% endif %}
   {% endfor %}
+  {% if current_user.is_admin %}<div class="dashboard-hidden-divider" data-dashboard-hidden-divider hidden><span>Hidden widgets</span><small>These will not appear outside edit mode.</small></div>{% endif %}
+  </div>
 </section>
 
 <section class="home-section dashboard-section">
@@ -170,4 +190,5 @@
     </div>
   {% endif %}
 </section>
+{% if current_user.is_admin %}<script src="{{ url_for('static', filename='dashboard-layout.js') }}"></script>{% endif %}
 {% endblock %}

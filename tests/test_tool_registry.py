@@ -90,6 +90,8 @@ class ToolRegistryTests(unittest.TestCase):
             "health",
             "help_page",
             "index",
+            "save_dashboard_layout",
+            "reset_dashboard_layout",
             "login",
             "logout",
             "reset_activity_metric",

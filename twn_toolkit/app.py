@@ -24,6 +24,7 @@ from .automation import AutomationStore
 from .automation_routes import register_automation_routes
 from .auth import AuthStore, load_or_create_secret_key
 from .admin_routes import register_admin_routes
+from .dashboard_layout import DashboardLayoutStore
 from .fortiauthenticator_routes import register_fortiauthenticator_routes
 from .fortigate_routes import register_fortigate_routes
 from .profiles import (
@@ -57,6 +58,7 @@ def create_app(instance_path: str | None = None) -> Flask:
     auth_store = AuthStore(app.instance_path)
     automation_store = AutomationStore(app.instance_path, app.config["SECRET_KEY"])
     activity_store = ActivityStore(app.instance_path)
+    dashboard_layout_store = DashboardLayoutStore(app.instance_path)
     server_settings_store = ServerSettingsStore(app.instance_path)
     store = ProfileStore(app.instance_path)
     fortiauthenticator_store = FortiAuthenticatorProfileStore(app.instance_path)
@@ -403,15 +405,17 @@ def create_app(instance_path: str | None = None) -> Flask:
             tool.category
             for tool in visible_tools(is_admin=is_admin, allowed_tool_ids=allowed_tool_ids)
         }
+        dashboard = activity_store.summary(
+            request.args.get("scoreboard_rank", "actions.total"),
+            request.args.get("activity_window", "lifetime"),
+            request.args.get("activity_start", ""),
+            request.args.get("activity_end", ""),
+        )
+        dashboard["cards"] = dashboard_layout_store.arrange(dashboard["cards"])
         return render_template(
             "home.html",
             favorite_ids=favorite_ids,
-            dashboard=activity_store.summary(
-                request.args.get("scoreboard_rank", "actions.total"),
-                request.args.get("activity_window", "lifetime"),
-                request.args.get("activity_start", ""),
-                request.args.get("activity_end", ""),
-            ),
+            dashboard=dashboard,
             favorites=favorite_tools(
                 favorite_ids, is_admin=is_admin, allowed_tool_ids=allowed_tool_ids
             ),
@@ -420,6 +424,26 @@ def create_app(instance_path: str | None = None) -> Flask:
             ],
             tool_groups=grouped_visible_tools(is_admin=is_admin, allowed_tool_ids=allowed_tool_ids),
         )
+
+    @app.post("/dashboard/layout")
+    def save_dashboard_layout():
+        if not g.current_user.get("is_admin"):
+            abort(403)
+        cards = activity_store.summary()["cards"]
+        available_ids = [str(card["metric"]) for card in cards]
+        order = [item for item in request.form.get("order", "").split(",") if item]
+        hidden = [item for item in request.form.get("hidden", "").split(",") if item]
+        dashboard_layout_store.save(order, hidden, available_ids)
+        flash("Dashboard layout saved.", "success")
+        return redirect(url_for("index"))
+
+    @app.post("/dashboard/layout/reset")
+    def reset_dashboard_layout():
+        if not g.current_user.get("is_admin"):
+            abort(403)
+        dashboard_layout_store.reset()
+        flash("Dashboard layout restored to its defaults.", "success")
+        return redirect(url_for("index"))
 
     @app.post("/activity/reset/<metric>")
     def reset_activity_metric(metric: str):

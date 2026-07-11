@@ -6,6 +6,7 @@ import unittest
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
 from twn_toolkit.auth import AuthStore
+from twn_toolkit.dashboard_layout import DashboardLayoutStore
 
 
 class HomePageTests(unittest.TestCase):
@@ -226,6 +227,75 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"4 replies", page.data)
         self.assertEqual(reset.status_code, 302)
         self.assertIn(b">0</span>", reset_page.data)
+
+    def test_admin_can_reorder_and_hide_dashboard_widgets(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+            original = ActivityStore(instance).summary()["cards"]
+            metric_ids = [card["metric"] for card in original]
+            response = client.post(
+                "/dashboard/layout",
+                data={
+                    "order": ",".join(reversed(metric_ids)),
+                    "hidden": metric_ids[0],
+                },
+            )
+            page = client.get("/")
+            saved = DashboardLayoutStore(instance).get(metric_ids)
+            AuthStore(instance).create_user(
+                "operator", "correct horse battery staple"
+            )
+            operator = app.test_client()
+            operator.post(
+                "/login",
+                data={
+                    "username": "operator",
+                    "password": "correct horse battery staple",
+                },
+            )
+            operator_page = operator.get("/")
+            forbidden = operator.post(
+                "/dashboard/layout",
+                data={"order": ",".join(metric_ids), "hidden": ""},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(saved["hidden"], [metric_ids[0]])
+        self.assertEqual(saved["order"][-1], metric_ids[0])
+        self.assertIn(b"Edit dashboard", page.data)
+        self.assertIn(b"Save layout", page.data)
+        self.assertIn(b"Hidden widgets", page.data)
+        self.assertIn(
+            f'data-widget-id="{metric_ids[0]}" data-widget-hidden="true" hidden'.encode(),
+            page.data,
+        )
+        self.assertNotIn(
+            f'data-widget-id="{metric_ids[0]}"'.encode(), operator_page.data
+        )
+        self.assertNotIn(b"Edit dashboard", operator_page.data)
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_dashboard_layout_store_appends_new_widgets_and_reset_restores_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = DashboardLayoutStore(instance)
+            store.save(["two", "one"], ["one"], ["one", "two"])
+            expanded = store.get(["one", "two", "three"])
+            self.assertEqual(expanded["order"], ["two", "three", "one"])
+            self.assertEqual(expanded["hidden"], ["one"])
+            store.reset()
+            self.assertEqual(
+                store.get(["one", "two", "three"])["order"],
+                ["one", "two", "three"],
+            )
 
     def test_dashboard_can_rank_scoreboard_by_metric(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

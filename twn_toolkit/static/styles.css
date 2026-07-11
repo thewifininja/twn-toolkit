@@ -2234,6 +2234,34 @@ button.danger {
   margin-bottom: 22px;
 }
 
+.dashboard-metrics-head {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 4px 0 12px;
+}
+
+.dashboard-metrics-head h2 {
+  margin-bottom: 2px;
+}
+
+.dashboard-metrics-head p {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.dashboard-edit-actions,
+.dashboard-edit-actions > .button-row {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dashboard-edit-actions form {
+  margin: 0;
+}
+
 .dashboard-toolbar {
   align-items: center;
   background: var(--panel);
@@ -2306,6 +2334,85 @@ button.danger {
   gap: 6px;
   min-height: 136px;
   padding: 14px;
+  position: relative;
+}
+
+.dashboard-card-editor {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  margin: -6px -6px 1px;
+}
+
+.dashboard-drag-handle,
+.dashboard-visibility-toggle {
+  background: transparent;
+  color: var(--muted);
+  min-height: 30px;
+  padding: 4px 7px;
+}
+
+.dashboard-drag-handle {
+  cursor: grab;
+  font-size: 1.2rem;
+  line-height: 1;
+  touch-action: none;
+}
+
+.dashboard-drag-handle:active {
+  cursor: grabbing;
+}
+
+.dashboard-visibility-toggle {
+  font-size: 0.72rem;
+}
+
+.dashboard-drag-handle:hover,
+.dashboard-visibility-toggle:hover {
+  background: color-mix(in srgb, var(--brand-green), transparent 88%);
+}
+
+.dashboard-metrics.is-editing .dashboard-card {
+  border-color: color-mix(in srgb, var(--brand-green), var(--line) 35%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-green), transparent 91%);
+  cursor: move;
+}
+
+.dashboard-metrics.is-editing .dashboard-card > form:not(.dashboard-card-editor) {
+  visibility: hidden;
+}
+
+.dashboard-card.is-dragging {
+  opacity: 0.55;
+  transform: scale(0.985);
+}
+
+.dashboard-card.dashboard-card-hidden {
+  background: color-mix(in srgb, var(--panel), var(--muted) 7%);
+  border-style: dashed;
+  box-shadow: none;
+  opacity: 0.7;
+}
+
+.dashboard-hidden-divider {
+  align-items: baseline;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding: 12px 4px 0;
+}
+
+.dashboard-hidden-divider span {
+  color: var(--text);
+  font-weight: 850;
+}
+
+.dashboard-hidden-divider small {
+  font-size: 0.75rem;
 }
 
 .dashboard-card strong {
@@ -4402,6 +4509,31 @@ th {
 }
 
 @media (max-width: 640px) {
+  .dashboard-metrics-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-edit-actions,
+  .dashboard-edit-actions > .button-row {
+    justify-content: flex-start;
+  }
+
+  .dashboard-edit-actions > [data-dashboard-edit] {
+    width: 100%;
+  }
+
+  .dashboard-edit-actions > .button-row {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .dashboard-edit-actions > .button-row form:last-child {
+    grid-column: 1 / -1;
+  }
+
   .topbar {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
