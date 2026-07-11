@@ -22,6 +22,11 @@ from twn_toolkit.automation_registry import (
 )
 from twn_toolkit.auth import AuthStore, load_or_create_secret_key
 from twn_toolkit.network_tools import ToolInputError
+from twn_toolkit.profiles import (
+    SNMPCredentialProfileStore,
+    SNMPHostProfileStore,
+    SNMPOidProfileStore,
+)
 
 
 class AutomationStoreTests(unittest.TestCase):
@@ -808,6 +813,120 @@ class AutomationRouteTests(unittest.TestCase):
 
 
 class AutomationRegistryTests(unittest.TestCase):
+    def test_snmp_condition_uses_saved_profiles_and_compares_each_value(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            SNMPCredentialProfileStore(instance).upsert(
+                {"name": "Public", "version": "v2c", "community": "secret"}
+            )
+            SNMPHostProfileStore(instance).upsert(
+                {
+                    "name": "Core",
+                    "host": "192.0.2.10",
+                    "port": 161,
+                    "credential_name": "Public",
+                    "timeout": 2,
+                    "retries": 1,
+                }
+            )
+            SNMPOidProfileStore(instance).upsert(
+                {"name": "Temperature", "source": "Temp = 1.3.6.1.4.1.999.1.0"}
+            )
+            polls = [{
+                "host_name": "Core", "host": "192.0.2.10", "port": 161,
+                "credential_name": "Public", "profile_name": "temperature-rule",
+                "status": "success", "error": "", "elapsed_ms": 3.0,
+                "rows": [{
+                    "label": "Temp", "operation": "get", "oid": "1.3.6.1.4.1.999.1.0",
+                    "value": "72", "value_type": "Integer", "response_ms": 2.5,
+                }],
+            }]
+            condition = AUTOMATION_REGISTRY.conditions["snmp.value"]
+            with (
+                patch.dict("os.environ", {"TWN_TOOLKIT_INSTANCE_PATH": instance}),
+                patch("twn_toolkit.automation_types.conditions.run_snmp_tests", return_value=polls),
+            ):
+                result = condition.evaluate({
+                    "host_names": ["Core"],
+                    "rules": [{
+                        "id": "temperature-rule", "name": "Temperature high",
+                        "oid_profile_name": "Temperature", "oid": "1.3.6.1.4.1.999.1.0",
+                        "comparison": "greater_than", "expected_value": "70",
+                        "case_sensitive": False,
+                    }],
+                    "host_failure_mode": "at_least", "host_failure_count": 1,
+                })
+            self.assertTrue(result.met)
+            self.assertEqual(result.evidence["matched_hosts"], 1)
+            value = result.evidence["hosts"][0]["rules"][0]["values"][0]
+            self.assertEqual(value["value"], "72")
+            self.assertNotIn("community", value)
+
+    def test_snmp_condition_validates_guided_comparison_inputs(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["snmp.value"]
+        normalized = condition.validate({
+            "host_names": ["Core"],
+            "rules": [{
+                "id": "availability", "name": "Unavailable",
+                "oid_profile_name": "Identity", "oid": "1.3.6.1.2.1.1.5.0",
+                "comparison": "unavailable", "expected_value": "",
+            }],
+            "host_failure_mode": "all", "host_failure_count": 1,
+        })
+        self.assertEqual(normalized["rules"][0]["comparison"], "unavailable")
+        with self.assertRaisesRegex(ToolInputError, "numeric comparison value"):
+            condition.validate({
+                "host_names": ["Core"],
+                "rules": [{
+                    "id": "temperature", "name": "Temperature",
+                    "oid_profile_name": "Temperature", "oid": "1.3.6.1.4.1.999.1.0",
+                    "comparison": "greater_than", "expected_value": "warm",
+                }],
+                "host_failure_mode": "at_least", "host_failure_count": 1,
+            })
+
+    def test_snmp_and_rules_must_match_on_the_same_host(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            SNMPCredentialProfileStore(instance).upsert(
+                {"name": "Public", "version": "v2c", "community": "secret"}
+            )
+            for name, address in (("Switch 1", "192.0.2.11"), ("Switch 2", "192.0.2.12")):
+                SNMPHostProfileStore(instance).upsert({
+                    "name": name, "host": address, "port": 161,
+                    "credential_name": "Public", "timeout": 2, "retries": 1,
+                })
+            SNMPOidProfileStore(instance).upsert({
+                "name": "Health",
+                "source": "CPU = 1.3.6.1.4.1.999.1.0\nMemory = 1.3.6.1.4.1.999.2.0",
+            })
+            values = {
+                ("Switch 1", "cpu"): "95", ("Switch 1", "memory"): "40",
+                ("Switch 2", "cpu"): "20", ("Switch 2", "memory"): "96",
+            }
+            polls = []
+            for (host_name, rule_id), value in values.items():
+                oid = "1.3.6.1.4.1.999.1.0" if rule_id == "cpu" else "1.3.6.1.4.1.999.2.0"
+                polls.append({
+                    "host_name": host_name, "host": "192.0.2.1", "profile_name": rule_id,
+                    "status": "success", "error": "", "elapsed_ms": 1,
+                    "rows": [{"label": rule_id, "oid": oid, "value": value, "value_type": "Integer", "response_ms": 1}],
+                })
+            config = {
+                "host_names": ["Switch 1", "Switch 2"],
+                "rules": [
+                    {"id": "cpu", "name": "CPU high", "oid_profile_name": "Health", "oid": "1.3.6.1.4.1.999.1.0", "comparison": "greater_than", "expected_value": "80"},
+                    {"id": "memory", "name": "Memory high", "oid_profile_name": "Health", "oid": "1.3.6.1.4.1.999.2.0", "comparison": "greater_than", "expected_value": "80"},
+                ],
+                "host_failure_mode": "at_least", "host_failure_count": 1,
+            }
+            with (
+                patch.dict("os.environ", {"TWN_TOOLKIT_INSTANCE_PATH": instance}),
+                patch("twn_toolkit.automation_types.conditions.run_snmp_tests", return_value=polls),
+            ):
+                result = AUTOMATION_REGISTRY.conditions["snmp.value"].evaluate(config)
+            self.assertFalse(result.met)
+            self.assertEqual(result.evidence["matched_hosts"], 0)
+            self.assertTrue(all(not host["matched"] for host in result.evidence["hosts"]))
+
     def test_registered_types_own_form_parsing_and_secret_metadata(self) -> None:
         condition = AUTOMATION_REGISTRY.condition_config_from_form(
             "ping.multi",

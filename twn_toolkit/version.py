@@ -30,11 +30,12 @@ RELEASE_NOTES = (
                 "title": "Automation",
                 "items": (
                     "Added a dedicated scheduler process with reusable conditions, reusable actions, retained checks, and downloadable action runs.",
-                    "Added manual, calendar, multi-host ICMP, DNS lookup, and per-host TCP service conditions.",
+                    "Added manual, calendar, multi-host ICMP, DNS lookup, per-host TCP service, and saved-profile SNMP OID value conditions.",
                     "Added prompt-aware multi-host SSH collection and RFC 5424 Syslog notification actions.",
                     "Added encrypted, templated Webhook/API notifications with JSON-safe trigger variables and per-endpoint delivery results.",
                     "Added one-second monitoring intervals, trigger/recovery debounce, cooldowns, missed-schedule policies, and timezone-aware calendar rules.",
                     "Added user-defined action stages: actions run in parallel within a stage, stages run sequentially, and bounded earlier-stage results can feed later Webhook/API notifications.",
+                    "Added per-host AND logic and reusable calculated values for SNMP conditions, including percentage, remaining-percentage, difference, and sum formulas over scalar OIDs.",
                 ),
             },
             {

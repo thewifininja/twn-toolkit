@@ -27,6 +27,8 @@ from .automation_registry import AUTOMATION_REGISTRY
 from .activity_context import record_current_activity
 from .network_tools import ToolInputError
 from .schedule_tools import describe_schedule_rule, local_timezone_name, schedule_preview
+from .profiles import SNMPHostProfileStore, SNMPOidProfileStore
+from .snmp_tools import parse_oid_profile
 
 
 def register_automation_routes(app: Flask, store: AutomationStore) -> None:
@@ -74,7 +76,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 definition["schedule_preview"] = schedule_preview(
                     definition["config"], time.time(), 5
                 )
-            elif definition["type"] == "tcp.reachability":
+            elif definition["type"] in {"tcp.reachability", "snmp.value"}:
                 # Normalize legacy global host/port definitions for display.
                 definition["config"] = AUTOMATION_REGISTRY.validate_condition(
                     definition["type"], definition["config"]
@@ -90,6 +92,9 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             ],
             condition_types=AUTOMATION_REGISTRY.conditions.values(),
             action_types=AUTOMATION_REGISTRY.actions.values(),
+            snmp_hosts=SNMPHostProfileStore(store.instance_path).all(),
+            snmp_oid_profiles=SNMPOidProfileStore(store.instance_path).all(),
+            snmp_oid_choices=_snmp_oid_choices(store.instance_path),
             test_result=test_result,
             form_error=form_error,
             form=form or _empty_form(),
@@ -107,6 +112,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     def save_automation():
         require_admin()
         form = {key: value for key, value in request.form.items()}
+        form["snmp_host_names"] = request.form.getlist("snmp_host_name")
         form["action_definition_ids"] = request.form.getlist("action_definition_id")
         try:
             form["action_stages"] = json.loads(
@@ -139,6 +145,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     def save_automation_condition():
         require_admin()
         form = {key: value for key, value in request.form.items()}
+        form["snmp_host_names"] = request.form.getlist("snmp_host_name")
         try:
             form["rules"] = json.loads(request.form.get("schedule_rules_json", "[]"))
         except json.JSONDecodeError:
@@ -411,6 +418,25 @@ def _empty_form() -> dict[str, str]:
         "condition_failure_count": "1",
         "action_port": "22",
     }
+
+
+def _snmp_oid_choices(instance_path: Path) -> list[dict[str, str]]:
+    choices: list[dict[str, str]] = []
+    for profile in SNMPOidProfileStore(instance_path).all():
+        try:
+            entries = parse_oid_profile(profile["source"])
+        except ToolInputError:
+            continue
+        for entry in entries:
+            choices.append({
+                "value": f"{profile['name']}|{entry['oid']}",
+                "profile_name": profile["name"],
+                "oid": entry["oid"],
+                "label": entry["label"],
+                "operation": entry["operation"],
+                "display": f"{profile['name']} · {entry['label']} ({entry['oid']})",
+            })
+    return choices
 
 
 def _format_time(value: Any) -> str:

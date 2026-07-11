@@ -22,6 +22,7 @@ def main() -> None:
     if args.daemon:
         _daemonize(args.pid_file, args.log_file)
     instance_path = str(Path(args.instance).resolve())
+    os.environ["TWN_TOOLKIT_INSTANCE_PATH"] = instance_path
     store = AutomationStore(
         instance_path,
         load_or_create_secret_key(instance_path),

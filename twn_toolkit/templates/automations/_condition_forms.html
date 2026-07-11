@@ -40,6 +40,20 @@
   {% endif %}
 {% endmacro %}
 
+{% macro snmp_test_evidence(result) %}
+  {% if result and result.evidence and result.evidence.get('hosts') %}
+    <div class="condition-test-results">
+      {% for host in result.evidence.hosts %}
+        <article>
+          <span class="pill {{ 'error' if host.matched else 'success' }}">{{ 'matched' if host.matched else 'clear' }}</span>
+          <span><strong>{{ host.host_name }}</strong><small>{{ host.host }} · {% for rule in host.rules %}{{ rule.rule_name }}: {{ 'matched' if rule.matched else rule.error or 'clear' }}{% if not loop.last %} · {% endif %}{% endfor %}</small></span>
+          <small>{{ host.rules|selectattr('matched')|list|length }} / {{ host.rules|length }} rules</small>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
 {% macro condition_form(values, definition=none) %}
   {% set config = definition.config if definition else values %}
   <form class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
@@ -177,6 +191,29 @@
         </label>
       </div>
       <p class="field-note">Expected closed requires an explicit connection refusal. A timeout or connection error is treated as a failed check because it does not prove the port is closed.</p>
+    </div>
+    <div class="automation-condition-fields" data-condition-fields="snmp.value" hidden>
+      {% set selected_snmp_hosts = config.get('host_names', config.get('snmp_host_names', [])) %}
+      <fieldset class="choice-group snmp-run-choices">
+        <legend>Target hosts</legend>
+        {% for host in snmp_hosts %}<label class="check"><input type="checkbox" name="snmp_host_name" value="{{ host.name }}" {% if host.name in selected_snmp_hosts %}checked{% endif %}><span><strong>{{ host.name }}</strong><small>{{ host.host }}:{{ host.port }} · {{ host.credential_name }}</small></span></label>{% else %}<p class="empty">No saved SNMP hosts. Add them in <a href="{{ url_for('tools.snmp_test') }}">SNMP Tester</a>.</p>{% endfor %}
+      </fieldset>
+      <input type="hidden" name="snmp_rules_json" value="{{ config.get('rules', [])|tojson|forceescape }}" data-snmp-rules-json>
+      <div class="snmp-rule-builder" data-snmp-rule-builder data-oid-choices="{{ snmp_oid_choices|tojson|forceescape }}">
+        <div class="section-head"><div><strong>Required rules per host</strong><p>Every rule must match on the same host.</p></div><button class="secondary" type="button" data-add-snmp-rule>Add rule</button></div>
+        <div class="snmp-rule-list" data-snmp-rule-list></div>
+        <p class="empty" data-snmp-rule-empty>No SNMP rules yet.</p>
+      </div>
+      <div class="form-grid tcp-policy-row">
+        <label>Condition is met when all rules match on
+          {% set snmp_host_failure_mode = config.get('host_failure_mode', config.get('snmp_host_failure_mode', 'at_least')) %}
+          <select name="snmp_host_failure_mode"><option value="at_least" {% if snmp_host_failure_mode == 'at_least' %}selected{% endif %}>At least this many hosts</option><option value="all" {% if snmp_host_failure_mode == 'all' %}selected{% endif %}>All selected hosts</option></select>
+        </label>
+        <label>Required matching hosts
+          <input name="snmp_host_failure_count" type="number" min="1" value="{{ config.get('host_failure_count', config.get('snmp_host_failure_count', '1')) }}" required>
+        </label>
+      </div>
+      <p class="field-note">Rules are correlated per host. CPU on one switch and memory on another cannot satisfy the same condition. A walk rule matches when at least one returned value matches.</p>
     </div>
     <div class="button-row"><button type="submit">{{ 'Update condition' if definition_id else 'Save condition' }}</button></div>
   </form>

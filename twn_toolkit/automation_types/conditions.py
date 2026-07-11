@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from typing import Any, Mapping
+
+from flask import current_app, has_app_context
 
 from ..network_tools import (
     ToolInputError,
@@ -14,6 +18,8 @@ from ..network_tools import (
     scan_tcp_checks,
 )
 from ..schedule_tools import schedule_occurrence, validate_schedule_config
+from ..profiles import SNMPCredentialProfileStore, SNMPHostProfileStore, SNMPOidProfileStore
+from ..snmp_tools import parse_oid_profile, resolve_oid_selection, run_snmp_tests
 from .models import ConditionResult, ConditionType
 
 def _validate_ping(config: dict[str, Any]) -> dict[str, Any]:
@@ -296,6 +302,211 @@ def _evaluate_tcp(config: dict[str, Any]) -> ConditionResult:
     )
 
 
+SNMP_COMPARISONS = {
+    "unavailable", "equals", "not_equals", "contains", "not_contains",
+    "greater_than", "at_least", "less_than", "at_most",
+}
+SNMP_NUMERIC_COMPARISONS = {"greater_than", "at_least", "less_than", "at_most"}
+
+
+def _validate_snmp(config: dict[str, Any]) -> dict[str, Any]:
+    host_names = list(dict.fromkeys(str(value).strip() for value in config.get("host_names", []) if str(value).strip()))
+    if not 1 <= len(host_names) <= 20:
+        raise ToolInputError("Select between 1 and 20 saved SNMP hosts.")
+
+    raw_rules = config.get("rules")
+    if not isinstance(raw_rules, list):
+        # Normalize the first SNMP condition format into one rule per selected
+        # OID profile. The comparison is inverted because the old format
+        # described health while rules describe the state that triggers.
+        inverse = {
+            "responds": "unavailable", "equals": "not_equals",
+            "not_equals": "equals", "contains": "not_contains",
+            "not_contains": "contains", "greater_than": "at_most",
+            "at_least": "less_than", "less_than": "at_least",
+            "at_most": "greater_than",
+        }
+        raw_rules = [
+            {
+                "id": f"legacy-{index}", "name": profile_name,
+                "oid_profile_name": profile_name, "oid": "*",
+                "comparison": inverse.get(str(config.get("comparison", "responds")), "unavailable"),
+                "expected_value": str(config.get("expected_value", "")),
+                "case_sensitive": bool(config.get("case_sensitive", False)),
+            }
+            for index, profile_name in enumerate(config.get("oid_profile_names", []), start=1)
+        ]
+    if not 1 <= len(raw_rules) <= 20:
+        raise ToolInputError("Add between 1 and 20 SNMP rules.")
+    rules: list[dict[str, Any]] = []
+    for index, raw_rule in enumerate(raw_rules, start=1):
+        if not isinstance(raw_rule, dict):
+            raise ToolInputError(f"SNMP rule {index} is invalid.")
+        name = str(raw_rule.get("name", "")).strip()
+        profile_name = str(raw_rule.get("oid_profile_name", "")).strip()
+        oid = str(raw_rule.get("oid", "")).strip().lstrip(".")
+        comparison = str(raw_rule.get("comparison", "unavailable"))
+        expected_value = str(raw_rule.get("expected_value", "")).strip()
+        if not name or len(name) > 100:
+            raise ToolInputError(f"SNMP rule {index} needs a name of 100 characters or fewer.")
+        if not profile_name or not oid:
+            raise ToolInputError(f"SNMP rule '{name}' needs an OID selection.")
+        if oid != "*" and not oid.startswith("calc:") and not re.fullmatch(r"\d+(?:\.\d+)+", oid):
+            raise ToolInputError(f"SNMP rule '{name}' has an invalid numeric OID.")
+        if comparison not in SNMP_COMPARISONS:
+            raise ToolInputError(f"SNMP rule '{name}' has an invalid comparison.")
+        if comparison != "unavailable" and not expected_value:
+            raise ToolInputError(f"SNMP rule '{name}' needs a comparison value.")
+        if len(expected_value) > 500:
+            raise ToolInputError(f"SNMP rule '{name}' comparison value is too long.")
+        if comparison in SNMP_NUMERIC_COMPARISONS:
+            try:
+                float(expected_value)
+            except ValueError as exc:
+                raise ToolInputError(f"SNMP rule '{name}' requires a numeric comparison value.") from exc
+        rules.append({
+            "id": str(raw_rule.get("id", "")).strip() or f"rule-{index}",
+            "name": name, "oid_profile_name": profile_name, "oid": oid,
+            "comparison": comparison, "expected_value": expected_value,
+            "case_sensitive": bool(raw_rule.get("case_sensitive", False)),
+        })
+    host_failure_mode = str(config.get("host_failure_mode", config.get("failure_mode", "at_least")))
+    if host_failure_mode not in {"all", "at_least"}:
+        raise ToolInputError("Select a valid SNMP host threshold.")
+    try:
+        host_failure_count = int(config.get("host_failure_count", config.get("failure_count", 1)))
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError("Required matching SNMP hosts must be a whole number.") from exc
+    if host_failure_mode == "all":
+        host_failure_count = len(host_names)
+    if not 1 <= host_failure_count <= len(host_names):
+        raise ToolInputError(f"Required matching SNMP hosts must be between 1 and {len(host_names)}.")
+    return {
+        "host_names": host_names, "rules": rules,
+        "host_failure_mode": host_failure_mode,
+        "host_failure_count": host_failure_count,
+    }
+
+
+def _automation_instance_path() -> str:
+    if has_app_context():
+        return current_app.instance_path
+    value = os.environ.get("TWN_TOOLKIT_INSTANCE_PATH", "").strip()
+    if not value:
+        raise ToolInputError("The automation worker has no toolkit instance path.")
+    return value
+
+
+def _snmp_numeric_value(value: str) -> float | None:
+    text = str(value).strip()
+    candidates = (text, re.match(r"^\(([-+]?\d+(?:\.\d+)?)\)", text).group(1) if re.match(r"^\(([-+]?\d+(?:\.\d+)?)\)", text) else "")
+    for candidate in candidates:
+        try:
+            return float(candidate)
+        except ValueError:
+            continue
+    return None
+
+
+def _snmp_value_matches(value: str, rule: dict[str, Any]) -> tuple[bool, str]:
+    comparison = rule["comparison"]
+    expected = rule["expected_value"]
+    if comparison in SNMP_NUMERIC_COMPARISONS:
+        actual_number = _snmp_numeric_value(value)
+        if actual_number is None:
+            return False, "Returned value is not numeric"
+        expected_number = float(expected)
+        matches = {
+            "greater_than": actual_number > expected_number,
+            "at_least": actual_number >= expected_number,
+            "less_than": actual_number < expected_number,
+            "at_most": actual_number <= expected_number,
+        }[comparison]
+        return matches, f"Observed {actual_number:g}; expected {comparison.replace('_', ' ')} {expected_number:g}"
+    actual_text, expected_text = str(value), expected
+    if not rule["case_sensitive"]:
+        actual_text, expected_text = actual_text.casefold(), expected_text.casefold()
+    matches = {
+        "equals": actual_text == expected_text,
+        "not_equals": actual_text != expected_text,
+        "contains": expected_text in actual_text,
+        "not_contains": expected_text not in actual_text,
+    }[comparison]
+    return matches, f"Expected value to {comparison.replace('_', ' ')} '{expected}'"
+
+
+def _evaluate_snmp(config: dict[str, Any]) -> ConditionResult:
+    normalized = _validate_snmp(config)
+    instance_path = _automation_instance_path()
+    host_store = SNMPHostProfileStore(instance_path)
+    oid_store = SNMPOidProfileStore(instance_path)
+    credential_store = SNMPCredentialProfileStore(instance_path)
+    hosts = [host_store.get(name) for name in normalized["host_names"]]
+    if any(host is None for host in hosts):
+        raise ToolInputError("One or more selected SNMP hosts no longer exist.")
+    credential_names = {host["credential_name"] for host in hosts if host}
+    credentials = {name: credential_store.get(name) for name in credential_names}
+    if any(profile is None for profile in credentials.values()):
+        raise ToolInputError("One or more SNMP hosts reference a missing credential profile.")
+    prepared_profiles: list[dict[str, Any]] = []
+    for rule in normalized["rules"]:
+        profile = oid_store.get(rule["oid_profile_name"])
+        if not profile:
+            raise ToolInputError(f"OID profile '{rule['oid_profile_name']}' no longer exists.")
+        entries = parse_oid_profile(profile["source"])
+        selected = entries if rule["oid"] == "*" else resolve_oid_selection(entries, rule["oid"])
+        if not selected:
+            raise ToolInputError(f"OID selected by SNMP rule '{rule['name']}' no longer exists.")
+        prepared_profiles.append({"name": rule["id"], "entries": selected})
+    raw_results = run_snmp_tests(
+        [host for host in hosts if host],
+        {name: profile for name, profile in credentials.items() if profile},
+        prepared_profiles,
+    )
+    rule_by_id = {rule["id"]: rule for rule in normalized["rules"]}
+    host_results: dict[str, dict[str, Any]] = {
+        host["name"]: {"host_name": host["name"], "host": host["host"], "matched": False, "rules": []}
+        for host in hosts if host
+    }
+    for result in raw_results:
+        rule = rule_by_id[result["profile_name"]]
+        rule_result = {
+            "rule_id": rule["id"], "rule_name": rule["name"],
+            "comparison": rule["comparison"], "expected_value": rule["expected_value"],
+            "matched": False, "values": [], "error": "",
+            "response_ms": result.get("elapsed_ms", 0),
+        }
+        if result.get("status") != "success" or not result.get("rows"):
+            rule_result["error"] = result.get("error") or "No SNMP values were returned."
+            rule_result["matched"] = rule["comparison"] == "unavailable"
+        elif rule["comparison"] == "unavailable":
+            rule_result["values"] = result["rows"]
+        else:
+            selected_rows = (
+                result["rows"] if rule["oid"] == "*"
+                else [row for row in result["rows"] if row["oid"] == rule["oid"]]
+            )
+            for row in selected_rows:
+                matches, reason = _snmp_value_matches(str(row.get("value", "")), rule)
+                rule_result["values"].append({**row, "matched": matches, "reason": reason})
+            rule_result["matched"] = any(value["matched"] for value in rule_result["values"])
+        host_results[result["host_name"]]["rules"].append(rule_result)
+    evaluated_hosts = list(host_results.values())
+    for host_result in evaluated_hosts:
+        host_result["matched"] = (
+            len(host_result["rules"]) == len(normalized["rules"])
+            and all(rule["matched"] for rule in host_result["rules"])
+        )
+    matched_hosts = sum(1 for host in evaluated_hosts if host["matched"])
+    required = normalized["host_failure_count"]
+    met = matched_hosts >= required
+    return ConditionResult(
+        met=met, status="met" if met else "clear",
+        summary=f"{matched_hosts} of {len(evaluated_hosts)} hosts matched all {len(normalized['rules'])} SNMP rules; threshold is {required}.",
+        evidence={"hosts": evaluated_hosts, "matched_hosts": matched_hosts, "required_hosts": required, "rule_count": len(normalized["rules"])},
+    )
+
+
 def _validate_manual(_config: dict[str, Any]) -> dict[str, Any]:
     return {}
 
@@ -344,6 +555,20 @@ def _parse_tcp_form(form: Mapping[str, Any]) -> dict[str, Any]:
     return {"targets": form.get("tcp_targets", ""), "timeout": form.get("tcp_timeout", "1"), "expected_state": form.get("tcp_expected_state", "open"), "failure_mode": form.get("tcp_failure_mode", "at_least"), "failure_count": form.get("tcp_failure_count", "1")}
 
 
+def _parse_snmp_form(form: Mapping[str, Any]) -> dict[str, Any]:
+    getlist = getattr(form, "getlist", lambda key: form.get(key, []))
+    try:
+        rules = json.loads(str(form.get("snmp_rules_json", "[]")))
+    except json.JSONDecodeError as exc:
+        raise ToolInputError("SNMP rules could not be decoded.") from exc
+    return {
+        "host_names": getlist("snmp_host_name"),
+        "rules": rules,
+        "host_failure_mode": form.get("snmp_host_failure_mode", "at_least"),
+        "host_failure_count": form.get("snmp_host_failure_count", "1"),
+    }
+
+
 def _parse_schedule_form(form: Mapping[str, Any]) -> dict[str, Any]:
     try:
         rules = json.loads(str(form.get("schedule_rules_json", "[]")))
@@ -363,4 +588,5 @@ def registered_conditions() -> tuple[ConditionType, ...]:
         ConditionType("ping.multi", "Multi-host ping", "Trigger when a selected number of ICMP targets are unreachable.", _validate_ping, _evaluate_ping, _parse_ping_form),
         ConditionType("dns.lookup", "DNS lookup", "Trigger when DNS queries fail or return unexpected answers.", _validate_dns, _evaluate_dns, _parse_dns_form),
         ConditionType("tcp.reachability", "TCP service reachability", "Trigger when TCP services do not match their expected open or closed state.", _validate_tcp, _evaluate_tcp, _parse_tcp_form),
+        ConditionType("snmp.value", "SNMP OID value", "Trigger when saved SNMP hosts fail to return expected OID values.", _validate_snmp, _evaluate_snmp, _parse_snmp_form),
     )

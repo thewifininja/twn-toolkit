@@ -76,6 +76,9 @@ service.
   unexpected A, AAAA, CNAME, MX, NS, PTR, or TXT answers.
 - Monitor TCP services with a custom list of individual ports or ranges per
   host, with expected-open and expected-closed state checks.
+- Build SNMP conditions from shared hosts and per-host AND rules. OID profiles
+  can expose reusable derived values such as
+  `calc: Memory Usage % = percent(Current Memory KB, Total Memory KB)`.
 - Schedule checks as frequently as once per second with consecutive failure,
   recovery, and cooldown thresholds.
 - Use a reusable Manual trigger condition for on-demand automations that run

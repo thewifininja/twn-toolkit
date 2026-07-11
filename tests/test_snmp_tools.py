@@ -7,7 +7,12 @@ from unittest.mock import patch
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
 from twn_toolkit.network_tools import ToolInputError
-from twn_toolkit.snmp_tools import parse_oid_profile, validate_snmp_credential
+from twn_toolkit.snmp_tools import (
+    _append_calculated_rows,
+    parse_oid_profile,
+    resolve_oid_selection,
+    validate_snmp_credential,
+)
 
 
 class SNMPToolTests(unittest.TestCase):
@@ -32,6 +37,41 @@ class SNMPToolTests(unittest.TestCase):
         )
         with self.assertRaises(ToolInputError):
             parse_oid_profile("sysName = SNMPv2-MIB::sysName.0")
+
+    def test_parses_and_calculates_derived_oid_values(self) -> None:
+        entries = parse_oid_profile(
+            "Current Memory KB = 1.3.6.1.4.1.999.1.0\n"
+            "Total Memory KB = 1.3.6.1.4.1.999.2.0\n"
+            "calc: Memory Usage % = percent(Current Memory KB, Total Memory KB)"
+        )
+        self.assertEqual(entries[-1]["operation"], "calculate")
+        self.assertEqual(entries[-1]["oid"], "calc:Memory Usage %")
+        selected = resolve_oid_selection(entries, "calc:Memory Usage %")
+        self.assertEqual([entry["label"] for entry in selected], [
+            "Current Memory KB", "Total Memory KB", "Memory Usage %",
+        ])
+        rows, error = _append_calculated_rows(
+            [
+                {"label": "Current Memory KB", "value": "524288"},
+                {"label": "Total Memory KB", "value": "1048576"},
+            ],
+            entries,
+        )
+        self.assertEqual(error, "")
+        self.assertEqual(rows[-1]["value"], "50")
+        self.assertEqual(rows[-1]["source_values"]["Total Memory KB"], 1048576)
+
+        with self.assertRaisesRegex(ToolInputError, "unknown value"):
+            parse_oid_profile(
+                "Used = 1.3.6.1.4.1.999.1.0\n"
+                "calc: Usage = percent(Used, Missing)"
+            )
+        with self.assertRaisesRegex(ToolInputError, "walked OID"):
+            parse_oid_profile(
+                "walk: Ports = 1.3.6.1.2.1.2.2.1.8\n"
+                "Total = 1.3.6.1.4.1.999.2.0\n"
+                "calc: Usage = percent(Ports, Total)"
+            )
 
     def test_validates_v3_security_and_preserves_saved_keys(self) -> None:
         existing = {

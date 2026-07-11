@@ -33,6 +33,16 @@ from .network_tools import ToolInputError
 
 
 OID_PATTERN = re.compile(r"^\d+(?:\.\d+)+$")
+CALC_PATTERN = re.compile(
+    r"^calc:\s*(?P<label>[^=]+?)\s*=\s*(?P<function>[a-z_]+)\((?P<inputs>.*)\)\s*$",
+    re.IGNORECASE,
+)
+CALCULATION_FUNCTIONS = {
+    "percent": 2,
+    "remaining_percent": 2,
+    "difference": 2,
+    "sum": 2,
+}
 AUTH_PROTOCOLS = {
     "none": USM_AUTH_NONE,
     "md5": USM_AUTH_HMAC96_MD5,
@@ -51,11 +61,32 @@ PRIV_PROTOCOLS = {
 }
 
 
-def parse_oid_profile(source: str, limit: int = 50) -> list[dict[str, str]]:
-    entries: list[dict[str, str]] = []
+def parse_oid_profile(source: str, limit: int = 50) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
     for line_number, raw_line in enumerate(source.splitlines(), start=1):
         line = raw_line.strip()
         if not line or line.startswith("#"):
+            continue
+        calculation = CALC_PATTERN.fullmatch(line)
+        if calculation:
+            label = calculation.group("label").strip()
+            function = calculation.group("function").lower()
+            inputs = [value.strip() for value in calculation.group("inputs").split(",") if value.strip()]
+            if function not in CALCULATION_FUNCTIONS:
+                raise ToolInputError(
+                    f"Line {line_number}: unsupported calculation '{function}'."
+                )
+            if len(inputs) != CALCULATION_FUNCTIONS[function]:
+                raise ToolInputError(
+                    f"Line {line_number}: {function} requires {CALCULATION_FUNCTIONS[function]} inputs."
+                )
+            entries.append({
+                "label": label,
+                "oid": f"calc:{label}",
+                "operation": "calculate",
+                "function": function,
+                "inputs": inputs,
+            })
             continue
         if "=" in line:
             label, oid = (part.strip() for part in line.split("=", 1))
@@ -82,7 +113,55 @@ def parse_oid_profile(source: str, limit: int = 50) -> list[dict[str, str]]:
         raise ToolInputError("Enter at least one OID.")
     if len(entries) > limit:
         raise ToolInputError(f"A maximum of {limit} OIDs is allowed per profile.")
+    labels = [entry["label"] for entry in entries]
+    duplicates = sorted({label for label in labels if labels.count(label) > 1})
+    if duplicates:
+        raise ToolInputError(f"OID profile labels must be unique: {', '.join(duplicates[:5])}")
+    by_label = {entry["label"]: entry for entry in entries}
+
+    def validate_dependencies(label: str, path: tuple[str, ...] = ()) -> None:
+        if label in path:
+            raise ToolInputError(f"Circular OID calculation: {' -> '.join((*path, label))}")
+        entry = by_label[label]
+        if entry["operation"] == "walk":
+            raise ToolInputError(
+                f"Calculated values cannot use walked OID '{label}'. Use scalar GET OIDs."
+            )
+        if entry["operation"] != "calculate":
+            return
+        for input_label in entry["inputs"]:
+            if input_label not in by_label:
+                raise ToolInputError(
+                    f"Calculation '{label}' references unknown value '{input_label}'."
+                )
+            validate_dependencies(input_label, (*path, label))
+
+    for entry in entries:
+        if entry["operation"] == "calculate":
+            if not entry["label"] or len(entry["label"]) > 100:
+                raise ToolInputError("Calculated labels must be 1 to 100 characters long.")
+            validate_dependencies(entry["label"])
     return entries
+
+
+def resolve_oid_selection(entries: list[dict[str, Any]], oid: str) -> list[dict[str, Any]]:
+    """Return a selected entry and every raw/calculated dependency it needs."""
+    by_label = {entry["label"]: entry for entry in entries}
+    selected = next((entry for entry in entries if entry["oid"] == oid), None)
+    if not selected:
+        return []
+    required: set[str] = set()
+
+    def add(entry: dict[str, Any]) -> None:
+        if entry["label"] in required:
+            return
+        if entry["operation"] == "calculate":
+            for input_label in entry["inputs"]:
+                add(by_label[input_label])
+        required.add(entry["label"])
+
+    add(selected)
+    return [entry for entry in entries if entry["label"] in required]
 
 
 def validate_snmp_credential(profile: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -176,6 +255,8 @@ async def _poll_host_profile(
         )
         context = ContextData(contextName=credential.get("context_name", ""))
         for entry in oid_profile["entries"]:
+            if entry["operation"] == "calculate":
+                continue
             if entry["operation"] == "walk":
                 entry_rows, entry_error = await _walk_entry(
                     engine, auth, target, context, entry
@@ -188,6 +269,8 @@ async def _poll_host_profile(
             if entry_error:
                 error = entry_error
                 break
+        if not error:
+            rows, error = _append_calculated_rows(rows, oid_profile["entries"])
     except Exception as exc:
         error = str(exc) or type(exc).__name__
     finally:
@@ -203,6 +286,70 @@ async def _poll_host_profile(
         "elapsed_ms": round((time.monotonic() - started) * 1000, 1),
         "rows": rows,
     }
+
+
+def _append_calculated_rows(
+    rows: list[dict[str, Any]], entries: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], str]:
+    values: dict[str, float] = {}
+    for entry in entries:
+        if entry["operation"] == "calculate":
+            continue
+        matching = [row for row in rows if row["label"] == entry["label"]]
+        if len(matching) != 1:
+            continue
+        try:
+            values[entry["label"]] = float(str(matching[0]["value"]).strip())
+        except ValueError:
+            continue
+    pending = [entry for entry in entries if entry["operation"] == "calculate"]
+    while pending:
+        progressed = False
+        for entry in list(pending):
+            if not all(label in values for label in entry["inputs"]):
+                continue
+            source_values = {label: values[label] for label in entry["inputs"]}
+            try:
+                calculated = _calculate_value(entry["function"], list(source_values.values()))
+            except (ValueError, ZeroDivisionError) as exc:
+                return rows, f"{entry['label']}: {exc}"
+            values[entry["label"]] = calculated
+            rows.append({
+                "label": entry["label"],
+                "operation": "calculate",
+                "oid": entry["oid"],
+                "value": f"{calculated:.6f}".rstrip("0").rstrip("."),
+                "value_type": "Calculated",
+                "response_ms": 0.0,
+                "function": entry["function"],
+                "source_values": source_values,
+            })
+            pending.remove(entry)
+            progressed = True
+        if not progressed:
+            unresolved = pending[0]
+            return rows, (
+                f"{unresolved['label']}: source values were missing or nonnumeric "
+                f"({', '.join(unresolved['inputs'])})."
+            )
+    return rows, ""
+
+
+def _calculate_value(function: str, values: list[float]) -> float:
+    first, second = values
+    if function == "percent":
+        if second == 0:
+            raise ZeroDivisionError("cannot calculate percent with a zero denominator")
+        return first / second * 100
+    if function == "remaining_percent":
+        if first == 0:
+            raise ZeroDivisionError("cannot calculate remaining percent with a zero total")
+        return (first - second) / first * 100
+    if function == "difference":
+        return first - second
+    if function == "sum":
+        return first + second
+    raise ValueError(f"unsupported calculation '{function}'")
 
 
 async def _get_entry(engine, auth, target, context, entry):

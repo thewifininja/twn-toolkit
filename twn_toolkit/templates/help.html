@@ -140,6 +140,17 @@ Google = google.com | 443
 Core Switch = 10.0.0.10 | 22, 443, 8000-8010</code></pre>
     <p>Expected open requires a connection. Expected closed requires explicit refusal; timeout does not prove closed.</p>
   </div></details>
+  <details class="help-topic"><summary>SNMP OID value conditions</summary><div class="help-topic-body">
+    <p>SNMP conditions reuse hosts, credentials, and individual OIDs from collections managed in SNMP Tester. Credentials remain in their existing write-only profile store.</p>
+    <p>Select target hosts once, then add up to 20 named rules. Text rules support equality and containment with optional case sensitivity; numeric rules support inclusive or exclusive upper/lower thresholds. An unavailable-value rule detects failed or empty polls.</p>
+    <p>Rules use AND logic on each host. A host matches only when every rule matches on that same host, so high CPU on one switch cannot combine with high memory on another. The final threshold requires one, a selected number, or all hosts to match the complete rule group.</p>
+    <p>Walk rules match when at least one returned value matches. Test results summarize every host and its rule outcomes.</p>
+    <p>OID profiles can expose reusable calculated values:</p>
+    <pre><code>Current Memory KB = 1.3.6.1.4.1.example.1.0
+Total Memory KB = 1.3.6.1.4.1.example.2.0
+calc: Memory Usage % = percent(Current Memory KB, Total Memory KB)</code></pre>
+    <p>Supported functions are <code>percent(A, B)</code>, <code>remaining_percent(A, B)</code>, <code>difference(A, B)</code>, and <code>sum(A, B)</code>. Inputs must resolve to scalar numeric GET values. Unknown labels, circular dependencies, walked inputs, missing/nonnumeric values, and division by zero are rejected or reported.</p>
+  </div></details>
   <details class="help-topic"><summary>Manual and calendar conditions</summary><div class="help-topic-body">
     <p>Manual triggers run only when an administrator selects Run now. Calendar conditions contain up to 50 one-time, daily, weekday, every-N-weeks, monthly-date, or ordinal-weekday rules with an explicit timezone.</p>
     <p>Missed occurrences may run late, run only within a grace period, or skip. Refresh next run time is read-only. Simultaneous rules collapse into one occurrence.</p>
