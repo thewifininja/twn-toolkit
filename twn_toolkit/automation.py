@@ -766,12 +766,17 @@ class AutomationStore:
     ) -> dict[str, Any]:
         config = self._decrypt(str(row["config_encrypted"]))
         has_password = bool(config.get("password"))
+        has_headers = bool(config.get("headers"))
         if not include_secrets:
-            config = {key: value for key, value in config.items() if key != "password"}
+            config = {
+                key: value for key, value in config.items()
+                if key not in {"password", "headers"}
+            }
         return {
             **dict(row),
             "config": config,
             "has_password": has_password,
+            "has_headers": has_headers,
         }
 
     @staticmethod

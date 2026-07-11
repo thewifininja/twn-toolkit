@@ -261,6 +261,40 @@
         <small class="field-note">Available variables: <code>{{ '{{trigger.status}}' }}</code>, <code>{{ '{{trigger.summary}}' }}</code>, <code>{{ '{{trigger.met}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>.</small>
       </label>
     </div>
+    <div data-action-fields="webhook.send" hidden>
+      <label>Webhook endpoints
+        <textarea name="webhook_endpoints" rows="4" placeholder="Primary webhook = https://hooks.example.com/notify&#10;Backup API = https://api.example.net/v1/events" required>{{ config.get('endpoints', config.get('webhook_endpoints', '')) }}</textarea>
+        <small class="field-note">One HTTP/HTTPS URL per line. Optional friendly names use <code>Name = URL</code>. Embedded URL credentials are rejected.</small>
+      </label>
+      <div class="form-grid">
+        <label>Method
+          {% set webhook_method = config.get('method', config.get('webhook_method', 'POST')) %}
+          <select name="webhook_method" required>{% for method in ['POST','PUT','PATCH'] %}<option value="{{ method }}" {% if webhook_method == method %}selected{% endif %}>{{ method }}</option>{% endfor %}</select>
+        </label>
+        <label>Body format
+          {% set webhook_body_format = config.get('body_format', config.get('webhook_body_format', 'json')) %}
+          <select name="webhook_body_format" required><option value="json" {% if webhook_body_format == 'json' %}selected{% endif %}>JSON</option><option value="text" {% if webhook_body_format == 'text' %}selected{% endif %}>Plain text</option></select>
+        </label>
+        <label>Accepted HTTP statuses
+          <input name="webhook_expected_statuses" value="{{ config.get('expected_statuses', config.get('webhook_expected_statuses', '200-299')) }}" placeholder="200-299" required>
+          <small class="field-note">Comma/space-separated values or ranges.</small>
+        </label>
+        <label>Request timeout
+          <div class="input-suffix"><input name="webhook_timeout" type="number" min="0.2" max="30" step="0.1" value="{{ config.get('timeout', config.get('webhook_timeout', '10')) }}" required><span>seconds</span></div>
+        </label>
+      </div>
+      <label>Request headers <small>(write-only)</small>
+        <textarea name="webhook_headers" rows="5" placeholder="Authorization: Bearer …&#10;X-API-Key: …&#10;Content-Type: application/json"></textarea>
+        <small class="field-note">One <code>Name: Value</code> per line. {% if definition and definition.has_headers %}Leave blank to keep the saved headers. {% endif %}Headers are encrypted and never rendered back into this page or retained results.</small>
+      </label>
+      {% if definition and definition.has_headers %}<label class="check"><input name="webhook_clear_headers" type="checkbox">Remove all saved headers when updating</label>{% endif %}
+      <label>Request body
+        <textarea name="webhook_body" rows="8" maxlength="65536" required>{% if config.get('body') %}{{ config.get('body') }}{% elif config.get('webhook_body') %}{{ config.get('webhook_body') }}{% else %}{"event":"toolkit_automation","status":"{{ '{{trigger.status}}' }}","summary":"{{ '{{trigger.summary}}' }}","timestamp":"{{ '{{timestamp}}' }}"}{% endif %}</textarea>
+        <small class="field-note">Variables: <code>{{ '{{trigger.status}}' }}</code>, <code>{{ '{{trigger.summary}}' }}</code>, <code>{{ '{{trigger.met}}' }}</code>, <code>{{ '{{trigger.evidence}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>. Exact JSON-value tokens retain boolean/object types.</small>
+      </label>
+      <label class="check"><input name="webhook_verify_tls" type="checkbox" {% if config.get('verify_tls', config.get('webhook_verify_tls', true)) %}checked{% endif %}>Verify TLS certificates</label>
+      <p class="field-note">Redirects are reported but not followed. Only a 4 KiB response preview is retained per endpoint. Disable TLS verification only for a controlled internal endpoint.</p>
+    </div>
     <div class="button-row"><button type="submit">{{ 'Update action' if definition_id else 'Save action' }}</button></div>
   </form>
 {% endmacro %}
@@ -358,7 +392,7 @@
   {% if action_definitions %}<div class="automation-list">
     {% for definition in action_definitions %}
       <details class="access-profile-card automation-card" {% if request.args.get('focus_action') == definition.id %}open{% endif %}>
-        <summary><span><strong>{{ definition.name }}</strong><small>{% if definition.type == 'syslog.send' %}Syslog {{ definition.config.protocol|upper }} · {{ definition.config.destinations.split('\n')|length }} destination{{ '' if definition.config.destinations.split('\n')|length == 1 else 's' }} · priority {{ definition.config.facility * 8 + definition.config.severity }}{% else %}{{ definition.type }} · {{ definition.config.hosts.split('\n')|length }} host{{ '' if definition.config.hosts.split('\n')|length == 1 else 's' }} · credentials saved{% endif %}</small></span></summary>
+        <summary><span><strong>{{ definition.name }}</strong><small>{% if definition.type == 'syslog.send' %}Syslog {{ definition.config.protocol|upper }} · {{ definition.config.destinations.split('\n')|length }} destination{{ '' if definition.config.destinations.split('\n')|length == 1 else 's' }} · priority {{ definition.config.facility * 8 + definition.config.severity }}{% elif definition.type == 'webhook.send' %}Webhook {{ definition.config.method }} · {{ definition.config.endpoints.split('\n')|length }} endpoint{{ '' if definition.config.endpoints.split('\n')|length == 1 else 's' }} · {{ definition.config.body_format|upper }}{% if definition.has_headers %} · headers saved{% endif %}{% else %}{{ definition.type }} · {{ definition.config.hosts.split('\n')|length }} host{{ '' if definition.config.hosts.split('\n')|length == 1 else 's' }} · credentials saved{% endif %}</small></span></summary>
         <div class="automation-card-body">
           <div class="button-row automation-actions"><button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-action-{{ definition.id }}">Edit</button><form method="post" action="{{ url_for('delete_automation_action', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable action?')"><button class="danger" type="submit">Delete</button></form></div>
           <div class="automation-record-editor" id="edit-action-{{ definition.id }}" hidden>{{ action_form({}, definition) }}</div>
@@ -427,6 +461,15 @@
                                 <span class="pill {{ destination.status }}">{{ destination.status }}</span>
                                 <span><strong>{{ destination.label or destination.host }}:{{ destination.port }}</strong><small>{% if destination.label %}{{ destination.host }} · {% endif %}{{ destination.protocol }}{% if destination.address %} · {{ destination.address }}{% endif %}{% if destination.bytes %} · {{ destination.bytes }} bytes{% endif %}{% if destination.error %} · {{ destination.error }}{% endif %}</small></span>
                               </article>
+                            {% endfor %}
+                            {% for endpoint in result.output.get('endpoints', []) %}
+                              <details class="automation-endpoint-result" {% if endpoint.status != 'success' or endpoint.response_preview %}open{% endif %}>
+                                <summary><span><strong>{{ endpoint.label or endpoint.url }}</strong>{% if endpoint.label %}<small>{{ endpoint.url }}</small>{% endif %}</span><span class="pill {{ endpoint.status }}">{{ 'HTTP ' ~ endpoint.http_status if endpoint.http_status else endpoint.status }}</span></summary>
+                                <div class="automation-endpoint-body">
+                                  {% if endpoint.error %}<div class="message error">{{ endpoint.error }}</div>{% else %}<p>{{ endpoint.elapsed_ms }} ms{% if endpoint.resolved_addresses %} · {{ endpoint.resolved_addresses|join(', ') }}{% endif %}{% if endpoint.redirect %} · Redirect: {{ endpoint.redirect }}{% endif %}</p>{% endif %}
+                                  {% if endpoint.response_preview %}<pre class="result-output">{{ endpoint.response_preview }}{% if endpoint.response_truncated %}\n[Response preview truncated.] {% endif %}</pre>{% endif %}
+                                </div>
+                              </details>
                             {% endfor %}
                           </div>
                         </section>

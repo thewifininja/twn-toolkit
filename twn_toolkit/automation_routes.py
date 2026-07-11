@@ -179,11 +179,14 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         require_admin()
         form = {key: value for key, value in request.form.items()}
         definition_id = request.form.get("action_definition_id", "")
-        password = request.form.get("action_password", "")
-        if definition_id and not password:
+        existing_config: dict[str, Any] = {}
+        if definition_id:
             existing = store.get_action_definition(definition_id, include_secrets=True)
             if existing:
-                password = str(existing["config"].get("password", ""))
+                existing_config = dict(existing["config"])
+        password = request.form.get("action_password", "")
+        if definition_id and not password:
+            password = str(existing_config.get("password", ""))
         try:
             type_id = request.form.get("action_type", "ssh.collect")
             action_config = {
@@ -206,6 +209,22 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                     "app_name": request.form.get("syslog_app_name", "twn-automation"),
                     "message": request.form.get("syslog_message", ""),
                     "timeout": request.form.get("syslog_timeout", "3"),
+                }
+            elif type_id == "webhook.send":
+                headers = request.form.get("webhook_headers", "")
+                if "webhook_clear_headers" in request.form:
+                    headers = ""
+                elif definition_id and not headers.strip():
+                    headers = str(existing_config.get("headers", ""))
+                action_config = {
+                    "endpoints": request.form.get("webhook_endpoints", ""),
+                    "method": request.form.get("webhook_method", "POST"),
+                    "headers": headers,
+                    "body_format": request.form.get("webhook_body_format", "json"),
+                    "body": request.form.get("webhook_body", ""),
+                    "timeout": request.form.get("webhook_timeout", "10"),
+                    "verify_tls": "webhook_verify_tls" in request.form,
+                    "expected_statuses": request.form.get("webhook_expected_statuses", "200-299"),
                 }
             config = AUTOMATION_REGISTRY.validate_action(
                 type_id,
@@ -404,6 +423,12 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                     archive.writestr(
                         f"action-{action_index}-destinations.json",
                         json.dumps(destinations, indent=2),
+                    )
+                endpoints = result.get("output", {}).get("endpoints", [])
+                if endpoints:
+                    archive.writestr(
+                        f"action-{action_index}-endpoints.json",
+                        json.dumps(endpoints, indent=2),
                     )
                 for host_index, host in enumerate(result.get("output", {}).get("hosts", []), 1):
                     host_name = _safe_filename(

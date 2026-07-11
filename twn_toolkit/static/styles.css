@@ -3232,6 +3232,10 @@ button.danger {
   grid-template-columns: 1fr 1fr 140px;
 }
 
+.form-grid > label {
+  align-self: start;
+}
+
 .command-input,
 .result-output {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -4499,6 +4503,50 @@ button.text-danger:hover {
 .automation-destination-result small {
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+.automation-endpoint-result {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.automation-endpoint-result > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 10px 12px;
+}
+
+.automation-endpoint-result > summary::-webkit-details-marker {
+  display: none;
+}
+
+.automation-endpoint-result > summary > span:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.automation-endpoint-result small,
+.automation-endpoint-body p {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.automation-endpoint-body {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.automation-endpoint-body p {
+  margin: 0;
 }
 
 .automation-host-result {

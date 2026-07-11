@@ -158,7 +158,7 @@ accepted replay frames.
   fire again.
 - Registered condition types are `manual.trigger`, `ping.multi`, `dns.lookup`,
   `tcp.reachability`, and `schedule.calendar`. Registered action types are
-  `ssh.collect` and `syslog.send`. Manual-trigger
+  `ssh.collect`, `syslog.send`, and `webhook.send`. Manual-trigger
   automations are excluded from due-check claims and expose an explicit Run now
   action. Calendar schedules are intentionally handled by a small scheduler
   adapter because occurrence consumption differs from monitoring state. Other
@@ -212,6 +212,13 @@ accepted replay frames.
   substitutes only documented trigger/timestamp tokens rather than using a
   general template evaluator. Delivery results are retained per destination;
   mixed outcomes produce a partial action result.
+- `webhook.send` reuses the bounded manual API-request helper. It supports up
+  to 10 named HTTP/HTTPS endpoints with a shared POST/PUT/PATCH template,
+  accepted-status expression, timeout, and TLS policy. Headers are encrypted
+  and write-only. JSON templates are parsed then recursively substituted so
+  exact boolean/evidence tokens remain typed; text templates use explicit token
+  replacement. Never retain request headers, and retain at most 4 KiB of each
+  response body.
 - SSH capture is bounded to 5 MiB per host while reading; prompt detection keeps
   using a small rolling tail after that limit. Automation browser previews are
   shortened to 40,000 characters per host, but ZIP downloads use the complete

@@ -150,6 +150,11 @@ Core Switch = 10.0.0.10 | 22, 443, 8000-8010</code></pre>
 Backup collector = 192.0.2.20 | 5514</code></pre>
     <p>Messages support <code>{{ '{{trigger.status}}' }}</code>, <code>{{ '{{trigger.summary}}' }}</code>, <code>{{ '{{trigger.met}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>. UDP success means the local socket accepted the datagram, not remote acknowledgment.</p>
   </div></details>
+  <details class="help-topic"><summary>Webhook / API notification action</summary><div class="help-topic-body">
+    <p>Sends one POST, PUT, or PATCH template to up to 10 HTTP/HTTPS endpoints. Endpoints may use <code>Friendly Name = URL</code>. Configure accepted status values/ranges, timeout, TLS verification, body format, and write-only headers.</p>
+    <p>JSON templates are parsed before substitution, so exact <code>{{ '{{trigger.met}}' }}</code> and <code>{{ '{{trigger.evidence}}' }}</code> values retain boolean/object types. Text and JSON templates also support status, summary, and timestamp. Redirects are reported but not followed; retained response previews are capped at 4 KiB per endpoint.</p>
+    <p>Authorization/API-key headers are encrypted, never rendered back into the editor, and never copied into retained run output. Leave the field blank to keep saved headers, or select Remove all saved headers while updating.</p>
+  </div></details>
   <details class="help-topic"><summary>History, downloads, cleanup, and scheduler</summary><div class="help-topic-body">
     <p>Checks, triggers, action status, and retained output live in <code>instance/automations.sqlite3</code>. SSH ZIPs contain timestamped host files; syslog ZIPs contain destination JSON. Delete run removes one result; Clear collected data removes action runs but preserves condition history.</p>
     <p><code>./twn start</code> launches one scheduler beside the web service. Work continues without a browser. Imported automations remain paused.</p>

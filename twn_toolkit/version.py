@@ -32,6 +32,7 @@ RELEASE_NOTES = (
                     "Added a dedicated scheduler process with reusable conditions, reusable actions, retained checks, and downloadable action runs.",
                     "Added manual, calendar, multi-host ICMP, DNS lookup, and per-host TCP service conditions.",
                     "Added prompt-aware multi-host SSH collection and RFC 5424 Syslog notification actions.",
+                    "Added encrypted, templated Webhook/API notifications with JSON-safe trigger variables and per-endpoint delivery results.",
                     "Added one-second monitoring intervals, trigger/recovery debounce, cooldowns, missed-schedule policies, and timezone-aware calendar rules.",
                 ),
             },

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 import re
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from .network_tools import (
     ToolInputError,
@@ -19,7 +21,7 @@ from .network_tools import (
     scan_tcp_checks,
     validate_hosts,
 )
-from .diagnostic_tools import send_syslog
+from .diagnostic_tools import parse_http_headers, send_api_request, send_syslog
 from .schedule_tools import schedule_occurrence, validate_schedule_config
 
 
@@ -549,6 +551,173 @@ def _execute_syslog(config: dict[str, Any], trigger: ConditionResult) -> ActionR
         summary=f"Syslog message sent to {successes} of {len(results)} destinations.",
         output={"destinations": results, "message": message},
     )
+
+
+def _parse_webhook_statuses(value: str) -> set[int]:
+    statuses: set[int] = set()
+    for token in re.split(r"[\s,]+", value.strip()):
+        if not token:
+            continue
+        if "-" in token:
+            if token.count("-") != 1:
+                raise ToolInputError(f"Invalid HTTP status range: {token}")
+            start_text, end_text = token.split("-", 1)
+            try:
+                start, end = int(start_text), int(end_text)
+            except ValueError as exc:
+                raise ToolInputError(f"Invalid HTTP status range: {token}") from exc
+            if start > end:
+                raise ToolInputError(f"HTTP status range must be ascending: {token}")
+            statuses.update(range(start, end + 1))
+        else:
+            try:
+                statuses.add(int(token))
+            except ValueError as exc:
+                raise ToolInputError(f"Invalid HTTP status: {token}") from exc
+    if not statuses or any(not 100 <= status <= 599 for status in statuses):
+        raise ToolInputError("Expected HTTP statuses must be between 100 and 599.")
+    return statuses
+
+
+def _validate_webhook(config: dict[str, Any]) -> dict[str, Any]:
+    endpoints = []
+    for raw_line in str(config.get("endpoints", "")).splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "=" in line:
+            label, url = (part.strip() for part in line.split("=", 1))
+            if not label:
+                raise ToolInputError("Webhook endpoint friendly names cannot be empty.")
+        else:
+            label, url = "", line
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username:
+            raise ToolInputError("Webhook endpoints must be HTTP/HTTPS URLs without embedded credentials.")
+        endpoints.append({"label": label, "url": url})
+    if not endpoints:
+        raise ToolInputError("Enter at least one webhook endpoint.")
+    if len(endpoints) > 10:
+        raise ToolInputError("A maximum of 10 webhook endpoints is allowed.")
+    method = str(config.get("method", "POST")).upper()
+    if method not in {"POST", "PUT", "PATCH"}:
+        raise ToolInputError("Webhook method must be POST, PUT, or PATCH.")
+    headers_text = str(config.get("headers", "")).strip()
+    parse_http_headers(headers_text)
+    body_format = str(config.get("body_format", "json"))
+    if body_format not in {"json", "text"}:
+        raise ToolInputError("Webhook body format must be JSON or text.")
+    body = str(config.get("body", "")).strip()
+    if not body:
+        raise ToolInputError("Enter a webhook request body.")
+    if len(body.encode("utf-8")) > 65536:
+        raise ToolInputError("Webhook request body must be 65,536 UTF-8 bytes or fewer.")
+    if body_format == "json":
+        try:
+            json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise ToolInputError(f"Webhook JSON template is invalid: {exc.msg} at line {exc.lineno} column {exc.colno}.") from exc
+    try:
+        timeout = float(config.get("timeout", 10))
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError("Webhook timeout must be a number.") from exc
+    if not 0.2 <= timeout <= 30:
+        raise ToolInputError("Webhook timeout must be between 0.2 and 30 seconds.")
+    expected_statuses = str(config.get("expected_statuses", "200-299")).strip()
+    _parse_webhook_statuses(expected_statuses)
+    return {
+        "endpoints": "\n".join(
+            f"{item['label']} = {item['url']}" if item["label"] else item["url"]
+            for item in endpoints
+        ),
+        "method": method,
+        "headers": headers_text,
+        "has_headers": bool(headers_text),
+        "body_format": body_format,
+        "body": body,
+        "timeout": timeout,
+        "verify_tls": bool(config.get("verify_tls", True)),
+        "expected_statuses": expected_statuses,
+    }
+
+
+def _webhook_values(trigger: ConditionResult) -> dict[str, Any]:
+    return {
+        "{{trigger.status}}": trigger.status,
+        "{{trigger.summary}}": trigger.summary,
+        "{{trigger.met}}": trigger.met,
+        "{{trigger.evidence}}": trigger.evidence,
+        "{{timestamp}}": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    }
+
+
+def _replace_webhook_json(value: Any, replacements: dict[str, Any]) -> Any:
+    if isinstance(value, dict):
+        return {key: _replace_webhook_json(item, replacements) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_replace_webhook_json(item, replacements) for item in value]
+    if not isinstance(value, str):
+        return value
+    if value in replacements:
+        return replacements[value]
+    rendered = value
+    for token, replacement in replacements.items():
+        if token in rendered:
+            rendered = rendered.replace(token, json.dumps(replacement, ensure_ascii=False) if isinstance(replacement, (dict, list)) else str(replacement).lower() if isinstance(replacement, bool) else str(replacement))
+    return rendered
+
+
+def _render_webhook_body(config: dict[str, Any], trigger: ConditionResult) -> str:
+    replacements = _webhook_values(trigger)
+    if config["body_format"] == "json":
+        parsed = json.loads(config["body"])
+        return json.dumps(_replace_webhook_json(parsed, replacements), ensure_ascii=False, separators=(",", ":"))
+    rendered = config["body"]
+    for token, replacement in replacements.items():
+        rendered = rendered.replace(token, json.dumps(replacement, ensure_ascii=False) if isinstance(replacement, (dict, list)) else str(replacement).lower() if isinstance(replacement, bool) else str(replacement))
+    return rendered
+
+
+def _execute_webhook(config: dict[str, Any], trigger: ConditionResult) -> ActionResult:
+    normalized = _validate_webhook(config)
+    headers = parse_http_headers(normalized["headers"])
+    if normalized["body_format"] == "json" and not any(name.lower() == "content-type" for name in headers):
+        headers["Content-Type"] = "application/json"
+    body = _render_webhook_body(normalized, trigger)
+    accepted = _parse_webhook_statuses(normalized["expected_statuses"])
+    results = []
+    for line in normalized["endpoints"].splitlines():
+        if "=" in line:
+            label, url = (part.strip() for part in line.split("=", 1))
+        else:
+            label, url = "", line.strip()
+        try:
+            response = send_api_request(
+                normalized["method"], url, headers=headers, body=body,
+                timeout=normalized["timeout"], verify_tls=normalized["verify_tls"],
+            )
+        except ToolInputError as exc:
+            results.append({"status": "error", "label": label, "url": url, "error": str(exc)})
+            continue
+        success = response["status"] in accepted
+        preview = str(response.get("body", ""))[:4096]
+        results.append({
+            "status": "success" if success else "error",
+            "label": label, "url": url, "http_status": response["status"],
+            "reason": response.get("reason", ""), "elapsed_ms": response.get("elapsed_ms"),
+            "resolved_addresses": response.get("resolved_addresses", []),
+            "redirect": response.get("redirect", ""), "response_preview": preview,
+            "response_truncated": bool(response.get("truncated")) or len(str(response.get("body", ""))) > len(preview),
+        })
+    successes = sum(item["status"] == "success" for item in results)
+    status = "success" if successes == len(results) else "partial" if successes else "error"
+    return ActionResult(
+        status=status,
+        summary=f"Webhook delivered successfully to {successes} of {len(results)} endpoints.",
+        output={"endpoints": results, "method": normalized["method"]},
+    )
+
+
 def _validate_manual(_config: dict[str, Any]) -> dict[str, Any]:
     return {}
 
@@ -649,6 +818,15 @@ def build_automation_registry() -> AutomationRegistry:
             description="Send an RFC 5424 message to one or more UDP or TCP collectors.",
             validate=_validate_syslog,
             execute=_execute_syslog,
+        )
+    )
+    registry.add_action(
+        ActionType(
+            id="webhook.send",
+            label="Webhook / API notification",
+            description="Send a templated HTTP notification to one or more endpoints.",
+            validate=_validate_webhook,
+            execute=_execute_webhook,
         )
     )
     return registry

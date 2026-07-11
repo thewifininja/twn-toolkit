@@ -282,6 +282,69 @@ class AutomationStoreTests(unittest.TestCase):
 
 
 class AutomationRouteTests(unittest.TestCase):
+    def test_admin_can_create_webhook_action_with_write_only_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            response = client.post(
+                "/automations/actions/save",
+                data={
+                    "action_name": "Notify operations",
+                    "action_type": "webhook.send",
+                    "webhook_endpoints": "Primary = https://hooks.example.com/events\nhttps://backup.example.net/notify",
+                    "webhook_method": "POST",
+                    "webhook_headers": "Authorization: Bearer extremely-secret\nX-API-Key: also-secret",
+                    "webhook_body_format": "json",
+                    "webhook_body": '{"status":"{{trigger.status}}","summary":"{{trigger.summary}}"}',
+                    "webhook_timeout": "8",
+                    "webhook_verify_tls": "on",
+                    "webhook_expected_statuses": "200-299",
+                },
+            )
+            store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
+            definition = store.action_definitions(include_secrets=True)[0]
+            page = client.get("/automations")
+            update = client.post(
+                "/automations/actions/save",
+                data={
+                    "action_definition_id": definition["id"],
+                    "action_name": "Notify operations",
+                    "action_type": "webhook.send",
+                    "webhook_endpoints": definition["config"]["endpoints"],
+                    "webhook_method": "POST", "webhook_headers": "",
+                    "webhook_body_format": "json", "webhook_body": definition["config"]["body"],
+                    "webhook_timeout": "8", "webhook_verify_tls": "on",
+                    "webhook_expected_statuses": "200-299",
+                },
+            )
+            preserved = store.action_definitions(include_secrets=True)[0]
+            clear = client.post(
+                "/automations/actions/save",
+                data={
+                    "action_definition_id": definition["id"],
+                    "action_name": "Notify operations", "action_type": "webhook.send",
+                    "webhook_endpoints": definition["config"]["endpoints"],
+                    "webhook_method": "POST", "webhook_headers": "",
+                    "webhook_clear_headers": "on", "webhook_body_format": "json",
+                    "webhook_body": definition["config"]["body"], "webhook_timeout": "8",
+                    "webhook_verify_tls": "on", "webhook_expected_statuses": "200-299",
+                },
+            )
+            cleared = store.action_definitions(include_secrets=True)[0]
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(update.status_code, 302)
+        self.assertEqual(clear.status_code, 302)
+        self.assertEqual(definition["type"], "webhook.send")
+        self.assertIn("extremely-secret", definition["config"]["headers"])
+        self.assertEqual(preserved["config"]["headers"], definition["config"]["headers"])
+        self.assertEqual(cleared["config"]["headers"], "")
+        self.assertNotIn(b"extremely-secret", page.data)
+        self.assertIn(b"Webhook POST", page.data)
+        self.assertIn(b"2 endpoints", page.data)
+        self.assertIn(b"headers saved", page.data)
+
     def test_admin_can_create_syslog_action(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
             app = create_app(instance_path)
@@ -641,6 +704,42 @@ class AutomationRouteTests(unittest.TestCase):
 
 
 class AutomationRegistryTests(unittest.TestCase):
+    def test_webhook_action_renders_json_safely_and_reports_partial_delivery(self) -> None:
+        action = AUTOMATION_REGISTRY.actions["webhook.send"]
+        trigger = ConditionResult(True, "met", 'Gateway said "down"', {"failed": 2})
+        success_response = {
+            "status": 204, "reason": "No Content", "elapsed_ms": 12.3,
+            "resolved_addresses": ["192.0.2.10"], "body": "", "truncated": False,
+            "redirect": "",
+        }
+        failure_response = {
+            "status": 500, "reason": "Error", "elapsed_ms": 20.1,
+            "resolved_addresses": ["192.0.2.20"], "body": "failed", "truncated": False,
+            "redirect": "",
+        }
+        with patch(
+            "twn_toolkit.automation_registry.send_api_request",
+            side_effect=[success_response, failure_response],
+        ) as sender:
+            result = action.execute(
+                {
+                    "endpoints": "Primary = https://hooks.example.com/events\nhttps://backup.example.net/events",
+                    "method": "POST", "headers": "Authorization: Bearer secret",
+                    "body_format": "json",
+                    "body": '{"summary":"{{trigger.summary}}","met":"{{trigger.met}}","evidence":"{{trigger.evidence}}"}',
+                    "timeout": 5, "verify_tls": True, "expected_statuses": "200-299",
+                },
+                trigger,
+            )
+        sent_body = json.loads(sender.call_args_list[0].kwargs["body"])
+        self.assertEqual(sent_body["summary"], 'Gateway said "down"')
+        self.assertIs(sent_body["met"], True)
+        self.assertEqual(sent_body["evidence"], {"failed": 2})
+        self.assertEqual(result.status, "partial")
+        self.assertEqual(result.output["endpoints"][0]["status"], "success")
+        self.assertEqual(result.output["endpoints"][1]["http_status"], 500)
+        self.assertNotIn("secret", json.dumps(result.output))
+
     def test_syslog_action_substitutes_trigger_and_reports_partial_delivery(self) -> None:
         action = AUTOMATION_REGISTRY.actions["syslog.send"]
         trigger = ConditionResult(True, "met", "Two WAN probes failed", {"failed": 2})

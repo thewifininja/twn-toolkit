@@ -84,6 +84,8 @@ service.
   retain per-host output with the incident run.
 - Send templated RFC 5424 syslog notifications to multiple UDP or TCP
   collectors and retain per-destination delivery results.
+- Send encrypted-header Webhook/API notifications with JSON-safe trigger
+  variables, accepted-status policy, and retained per-endpoint results.
 - Download a run as a ZIP containing metadata and per-host text output.
 - Delete individual collected runs or clear all collected action data for an
   automation while preserving condition-check history.

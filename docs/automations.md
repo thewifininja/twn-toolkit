@@ -66,12 +66,18 @@ to the next future occurrence rather than replaying a backlog.
   `{{trigger.status}}`, `{{trigger.summary}}`, `{{trigger.met}}`, and
   `{{timestamp}}`. Each collector records its own success/error result, so a
   partial delivery remains visible.
+- Action: send a POST, PUT, or PATCH Webhook/API notification to up to 10
+  endpoints. Headers are encrypted/write-only, accepted HTTP statuses and TLS
+  verification are explicit, redirects are not followed, and retained response
+  previews are capped at 4 KiB per endpoint. JSON templates preserve typed
+  boolean/object substitutions for trigger state and evidence.
 - History: retain condition checks, triggers, per-host command output, and
   action status in `instance/automations.sqlite3`.
 - Downloads: each action run can be downloaded as a ZIP containing JSON run
   metadata and one text file per SSH host. Host filenames begin with the run's
   sortable local timestamp, such as `20260710172428-Core-Switch.txt` or
-  `20260710172428-10.0.0.12.txt`. Syslog runs include destination-result JSON.
+  `20260710172428-10.0.0.12.txt`. Syslog and webhook runs include per-target
+  result JSON.
 - Capture: retain at most 5 MiB per host. A timed-out command keeps its partial
   output, identifies the command and timeout, and stops later commands on that
   host while other hosts continue. Long browser previews are shortened without
