@@ -3,120 +3,204 @@
 {% block content %}
 <section class="home-hero compact-hero help-hero">
   <div>
-    <span class="eyebrow">Help</span>
+    <span class="eyebrow">Help &amp; field guide</span>
     <h1>Using The WiFi Ninja’s Toolkit</h1>
-    <p>
-      A practical field guide for navigating the toolkit, protecting saved
-      credentials, and running network actions with the right amount of caution.
-    </p>
+    <p>Operate the toolkit, build automations, protect saved credentials, and troubleshoot the local service.</p>
   </div>
-  <div class="home-hero-card">
-    <span>Version</span>
-    <strong>v{{ app_version }}</strong>
-    <small>Local toolkit build</small>
-  </div>
+  <div class="home-hero-card"><span>Version</span><strong>v{{ app_version }}</strong><small>Local toolkit build</small></div>
 </section>
 
-<section class="help-grid">
-  <article class="help-card">
-    <h2>Finding tools</h2>
-    <p>
-      Primary navigation lives in the left pane. Use Favorites for your regular
-      shortcuts, Fortinet Tools for FortiGate and FortiAuthenticator profile
-      pages, Network Tools for vendor-neutral diagnostics, and Administration
-      for users, access profiles, backups, and server settings.
-    </p>
-    <p>
-      Fortinet-specific actions live on their FortiGate or FortiAuthenticator
-      pages so the required saved profile context is visible before you run them.
-    </p>
-  </article>
-
-  <article class="help-card">
-    <h2>Accounts and access</h2>
-    <p>
-      Administrators can create users and custom access profiles in Settings.
-      A standard user only sees tools assigned through their profiles. If a
-      page is missing from the sidebar, that is usually an access-profile choice,
-      not a broken link.
-    </p>
-    <p>
-      The built-in Administrator profile is intentionally protected. Assign it
-      only to people who should manage users, backups, server access, and high
-      impact tools.
-    </p>
-  </article>
-
-  <article class="help-card">
-    <h2>Profiles, secrets, and backups</h2>
-    <p>
-      Saved profiles make repeated work faster, but some contain API keys,
-      shared secrets, passwords, SNMP credentials, or similar sensitive values.
-      Secret fields are write-only in the UI; the toolkit does not render saved
-      secret values back into forms.
-    </p>
-    <p>
-      Backup exports require encryption whenever selected data contains secrets.
-      If a backup does not include secrets, encryption is optional. Treat any
-      encrypted backup as sensitive because anyone with both the file and its
-      password can restore the stored data.
-    </p>
-  </article>
-
-  <article class="help-card">
-    <h2>Running tools safely</h2>
-    <p>
-      Read preview screens before applying changes. Export and lookup tools are
-      generally low impact; rename, cleanup, replay, scanning, authentication,
-      and API tools deserve more attention because they can touch infrastructure
-      or generate traffic.
-    </p>
-    <p>
-      Several tools use the shared loading animation while server-side work is
-      happening. If a target device is unreachable, a page may wait for the
-      configured timeout before returning an error.
-    </p>
-  </article>
-
-  <article class="help-card">
-    <h2>Packet Replay</h2>
-    <p>
-      Packet Replay can transmit raw Ethernet frames from the toolkit host.
-      Use it only on networks where you are authorized to test. Preview the
-      decoded fields, selected interface, repeat count, interval, VLAN fanout,
-      and rewrite options before sending.
-    </p>
-    <p>
-      On macOS and Linux, raw packet permissions can vary by interface and
-      environment. If packets appear to send but are not visible in capture,
-      verify the capture filter first; VLAN-tagged traffic often needs a
-      VLAN-aware filter such as <code>vlan</code>.
-    </p>
-  </article>
-
-  <article class="help-card">
-    <h2>Troubleshooting</h2>
-    <ul>
-      <li>Use the Test button on saved FortiGate/FortiAuthenticator profiles before running profile-backed actions.</li>
-      <li>If a page hangs briefly, check whether the target device is offline or blocked by a firewall.</li>
-      <li>If the toolkit was started with sudo and later will not start normally, run the permissions repair helper.</li>
-      <li>If access looks wrong, check the user’s assigned profiles in Settings.</li>
-      <li>If a browser layout looks odd, try a hard refresh after pulling updates.</li>
-    </ul>
-  </article>
+<section class="panel help-jump-panel" aria-labelledby="help-contents">
+  <div class="section-head"><div><h2 id="help-contents">Guide contents</h2><p>Jump directly to the area you need.</p></div></div>
+  <div class="help-search"><label for="help-search-input">Search this guide</label><div class="help-search-controls"><input id="help-search-input" type="search" placeholder="Try automation, VLAN, backup, sudo…" autocomplete="off" data-help-search><button class="secondary" type="button" data-help-search-clear hidden>Clear</button></div><small data-help-search-status aria-live="polite"></small></div>
+  <nav class="help-toc" aria-label="Help topics">
+    <a href="#release-notes">Release notes</a><a href="#getting-started">Getting started</a><a href="#dashboard">Dashboard</a><a href="#accounts">Accounts &amp; access</a><a href="#profiles">Profiles &amp; backups</a><a href="#fortinet">Fortinet</a><a href="#network-tools">Network tools</a><a href="#automations">Automations</a><a href="#packet-replay">Packet Replay</a><a href="#operations">Operations</a><a href="#security">Security</a>
+  </nav>
 </section>
 
-<section class="home-section help-section">
-  <div class="section-head">
-    <h2>Important disclaimer</h2>
-  </div>
-  <p>
-    The WiFi Ninja’s Toolkit is provided as-is, without warranty of any kind.
-    It is intended for network administrators and operators who understand the
-    effect of the actions they perform. You are responsible for protecting
-    stored credentials, reviewing actions before running them, and ensuring you
-    have authorization to use the toolkit in your environment.
-  </p>
-  <p><strong>Use at your own risk.</strong></p>
+<section class="home-section help-section" id="release-notes">
+  <div class="section-head"><div><span class="eyebrow">What changed</span><h2>Release notes</h2></div><a href="#help-contents">Back to contents</a></div>
+  {% for release in release_notes %}
+    <details class="help-topic release-note" {% if loop.first %}open{% endif %}>
+      <summary><span><strong>v{{ release.version }}</strong><small>{{ release.date }} · {{ release.title }}</small></span></summary>
+      <div class="help-topic-body"><p>{{ release.summary }}</p><div class="release-note-groups">
+        {% for group in release.groups %}<section><h3>{{ group.title }}</h3><ul>{% for item in group['items'] %}<li>{{ item }}</li>{% endfor %}</ul></section>{% endfor %}
+      </div></div>
+    </details>
+  {% endfor %}
 </section>
+
+<section class="home-section help-section" id="getting-started">
+  <div class="section-head"><div><span class="eyebrow">Basics</span><h2>Getting started</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Navigation, Favorites, and finding tools</summary><div class="help-topic-body">
+    <p>The persistent left pane is the primary navigation. Sections collapse independently, the current section opens automatically, and the pane scrolls separately from the page. Help and the installed version remain at the bottom.</p>
+    <ul><li><strong>Favorites</strong> contains personal shortcuts. Hover or focus a tool and use its star to add/remove it.</li><li><strong>Fortinet Tools</strong> links to FortiGate and FortiAuthenticator profiles/workflows.</li><li><strong>Network Tools</strong> contains vendor-neutral diagnostics.</li><li><strong>Automation</strong> contains conditions, actions, and automations.</li><li><strong>Administration</strong> contains Settings and areas allowed by your access profiles.</li></ul>
+    <p>On narrow screens, use the hamburger button to open or close navigation.</p>
+  </div></details>
+  <details class="help-topic"><summary>First launch and service startup</summary><div class="help-topic-body">
+    <p>There is no default login. The first visit creates the initial administrator.</p>
+    <pre><code>./install.sh
+./twn start
+./twn status</code></pre>
+    <p>The service normally uses port <code>5050</code>. Override one launch with <code>TWN_TOOLKIT_PORT=8000 ./twn start</code>.</p>
+  </div></details>
+  <details class="help-topic"><summary>Shared interface conventions</summary><div class="help-topic-body">
+    <ul><li>Expandable cards contain saved definitions, editors, or result history.</li><li><strong>New</strong> opens a form and changes to <strong>Cancel</strong> while open.</li><li>Secret fields are write-only and are not rendered back into forms.</li><li>Test/preview controls are read-only unless the page explicitly says changes will be applied.</li><li>Loading cards indicate server-side work. Automation workers continue without an open browser.</li></ul>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="dashboard">
+  <div class="section-head"><div><span class="eyebrow">Activity</span><h2>Dashboard and metrics</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Metrics, time ranges, and scoreboard</summary><div class="help-topic-body">
+    <p>Raw counters measure work performed: probes, replies, queries, frames, API calls, and completed tests. Activity score counts deliberate user executions; it does not imply remote success.</p>
+    <p>Use last hour, 24 hours, 7 days, 30 days, lifetime, or a custom local range. The range applies to widgets, rankings, and recent activity. Expand a scoreboard user to see all non-zero metrics.</p>
+  </div></details>
+  <details class="help-topic"><summary>Editing and resetting</summary><div class="help-topic-body">
+    <p>Administrators can show, hide, and drag widgets into a global order. Hidden widgets move below the divider. Cancel restores the previous layout; Save persists it for all users. The layout can be backed up, but counters/history cannot.</p>
+    <p>Resetting a metric clears it globally. Clearing a user score resets only that user’s activity score and preserves their raw operational counters.</p>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="accounts">
+  <div class="section-head"><div><span class="eyebrow">Administration</span><h2>Accounts and access</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Users and custom access profiles</summary><div class="help-topic-body">
+    <p>Administrators create custom profiles and assign one or more to each user. Effective access is the union of assigned profiles. Unauthorized tools disappear from navigation and remain blocked by the server if requested directly.</p>
+    <p>The built-in Administrator profile is protected. Assign it only to people who should manage users, profiles, backups, server access, and high-impact tools.</p>
+  </div></details>
+  <details class="help-topic"><summary>Sessions, password policy, and recovery</summary><div class="help-topic-body">
+    <p>Settings controls minimum password length, optional complexity, and idle timeout. <strong>Never</strong> disables idle expiration. If all administrators are locked out:</p>
+    <pre><code>./twn stop
+./twn adminreset
+./twn start</code></pre>
+    <p>This resets users only; saved device profiles and API keys remain.</p>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="profiles">
+  <div class="section-head"><div><span class="eyebrow">Saved data</span><h2>Profiles, secrets, and backups</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Saved profiles and credentials</summary><div class="help-topic-body">
+    <p>Reusable lists and credentials reduce repeated entry across Fortinet, ping, DNS, RADIUS, SNMP, NTP, traceroute, TCP scanning, and automation tools. API keys, passwords, RADIUS secrets, and SNMP credentials are never rendered back into forms.</p>
+    <p>Most profile stores are owner-readable local files, not a remote secrets vault. Automation action configuration is encrypted at rest using the installation session secret. Treat the host and <code>instance/</code> as trusted and sensitive.</p>
+  </div></details>
+  <details class="help-topic"><summary>Encrypted exports and import behavior</summary><div class="help-topic-body">
+    <p>Select the groups to export in Settings → Profile backup and restore. If any selection contains secrets, a backup password is mandatory; otherwise encryption is optional. Anyone with both file and password can restore the secrets.</p>
+    <ul><li><strong>Combine</strong> keeps existing entries and adds imported data.</li><li><strong>Replace</strong> replaces selected stored groups.</li><li>Wrong passwords or damaged encrypted files fail without importing partial plaintext.</li><li>Imported automations remain paused until reviewed.</li></ul>
+    <p>Automation history/output, dashboard counters, and recent activity are not included.</p>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="fortinet">
+  <div class="section-head"><div><span class="eyebrow">Vendor workflows</span><h2>Fortinet profiles and workflows</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Profiles, permissions, and timeouts</summary><div class="help-topic-body">
+    <p>Create and Test FortiGate/FortiAuthenticator profiles before running workflows. Use the least-privileged API administrator that permits the intended action. Test proves connectivity/authentication; HTTP 403 on a later operation usually means the remote profile lacks permission for that endpoint or write.</p>
+    <p>Unreachable appliances return after bounded timeouts rather than hanging indefinitely.</p>
+  </div></details>
+  <details class="help-topic"><summary>Exports, rename, reorder, and cleanup</summary><div class="help-topic-body">
+    <ul><li>Export workflows fetch managed AP, switch, wireless-client, switch-client, and related data into previews/CSV.</li><li>Rename workflows support CSV and interactive device loading. Review dry runs before applying.</li><li>Re-order Managed FortiSwitches previews moves and verifies final order.</li><li>FortiAuthenticator cleanup previews overlap before removing memberships or deleting MAC devices.</li></ul>
+  </div></details>
+  <details class="help-topic"><summary>Wireless client history</summary><div class="help-topic-body">
+    <p>The lookup normalizes MAC addresses, combines live state with local wireless event logs, and focuses on association-request events. Consecutive entries on one AP collapse; a roam creates the next visit. “No logs found” can mean memory logs are unavailable or old events rolled out. FortiAnalyzer is reserved for a future source.</p>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="network-tools">
+  <div class="section-head"><div><span class="eyebrow">Diagnostics</span><h2>Network tools</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Reachability, path, and service tools</summary><div class="help-topic-body">
+    <ul><li><strong>Multi-Host Ping:</strong> live reachability, latency/loss charts, profiles, locked history, and CSV. Browser history is temporary.</li><li><strong>Traceroute:</strong> UDP/ICMP traces to multiple targets with graphical and text output.</li><li><strong>Path MTU:</strong> finds the largest unfragmented IPv4/IPv6 ICMP packet reaching a target.</li><li><strong>TCP Port Scanner:</strong> checks authorized hosts against ports/ranges.</li><li><strong>Certificate Inspector:</strong> shows the TLS chain and validates hostname, dates, order, and trust.</li><li><strong>Wi-Fi/LAN Speed Test:</strong> browser-to-toolkit performance, not ISP speed.</li></ul>
+  </div></details>
+  <details class="help-topic"><summary>Protocol and authentication tools</summary><div class="help-topic-body">
+    <ul><li><strong>DNS:</strong> compares answers/timing across resolvers.</li><li><strong>SNMP:</strong> reusable v2c/v3 credentials, hosts, and OID collections.</li><li><strong>RADIUS:</strong> PAP/CHAP plus decoded attributes; EAP methods require <code>eapol_test</code>.</li><li><strong>NTP:</strong> compares offset, delay, jitter, stratum, identity, and sync health.</li><li><strong>Syslog:</strong> sends RFC 5424 or listens for bounded UDP/TCP messages.</li><li><strong>Webhook/API Tester:</strong> bounded HTTP requests without redirect following.</li></ul>
+  </div></details>
+  <details class="help-topic"><summary>DHCP, Multi-SSH, and utilities</summary><div class="help-topic-body">
+    <ul><li><strong>DHCP Discover:</strong> inspects Offers without requesting a lease. Port 68/raw interface access may need root/capabilities.</li><li><strong>Multi-SSH:</strong> concurrent prompt-aware commands. Use <code>Friendly Name = host</code> and <code>[timeout=600] command</code>. Results can be exported.</li><li><strong>Subnet Excluder:</strong> subtracts IPv4/IPv6 child networks.</li><li><strong>What’s My IP?:</strong> shows the toolkit-observed client and attempts a browser-side public lookup.</li></ul>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="automations">
+  <div class="section-head"><div><span class="eyebrow">Background work</span><h2>Conditions, actions, and automations</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>The reusable three-part model</summary><div class="help-topic-body">
+    <ol><li>A <strong>condition</strong> observes something or supplies a manual/calendar trigger.</li><li>An <strong>action</strong> defines a trusted response.</li><li>An <strong>automation</strong> connects one condition to actions and adds policy.</li></ol>
+    <p>Definitions may be shared by many automations. Editing a shared definition pauses every dependent automation for review.</p>
+  </div></details>
+  <details class="help-topic"><summary>Monitoring policy and states</summary><div class="help-topic-body">
+    <dl class="help-definitions"><div><dt>Check every</dt><dd>Evaluation interval; minimum one second.</dd></div><div><dt>Trigger after</dt><dd>Consecutive met checks before actions fire once.</dd></div><div><dt>Recover after</dt><dd>Consecutive clear checks before rearming.</dd></div><div><dt>Cooldown</dt><dd>Minimum time between incident triggers.</dd></div></dl>
+    <p>Monitoring moves through healthy, suspect, triggered, recovering, and healthy. Evaluation failures use error and do not count as a met condition. Manual/calendar triggers bypass debounce and recovery.</p>
+  </div></details>
+  <details class="help-topic"><summary>ICMP, DNS, and TCP conditions</summary><div class="help-topic-body">
+    <p><strong>Ping</strong> treats every target as a check. Test displays reachability, RTT, timeout elapsed time, and friendly name/address.</p>
+    <p><strong>DNS</strong> queries each name through each resolver, supports A/AAAA/CNAME/MX/NS/PTR/TXT, and optionally requires any/all expected answers. Test shows every resolver path and timing.</p>
+    <p><strong>TCP</strong> assigns ports per host:</p>
+    <pre><code>Home FortiGate = gate.example.com | 8443
+Google = google.com | 443
+Core Switch = 10.0.0.10 | 22, 443, 8000-8010</code></pre>
+    <p>Expected open requires a connection. Expected closed requires explicit refusal; timeout does not prove closed.</p>
+  </div></details>
+  <details class="help-topic"><summary>Manual and calendar conditions</summary><div class="help-topic-body">
+    <p>Manual triggers run only when an administrator selects Run now. Calendar conditions contain up to 50 one-time, daily, weekday, every-N-weeks, monthly-date, or ordinal-weekday rules with an explicit timezone.</p>
+    <p>Missed occurrences may run late, run only within a grace period, or skip. Refresh next run time is read-only. Simultaneous rules collapse into one occurrence.</p>
+  </div></details>
+  <details class="help-topic"><summary>SSH collection action</summary><div class="help-topic-body">
+    <p>Runs up to 50 hosts concurrently and retains output. Completion is the return of the original device prompt. Default ceiling is 300 seconds; override one command:</p>
+    <pre><code>[timeout=600] diag debug report</code></pre>
+    <p>Overrides are 1–3600 seconds with a one-hour combined budget per host. Timeouts retain partial output and stop later commands only on that host.</p>
+  </div></details>
+  <details class="help-topic"><summary>Syslog notification action</summary><div class="help-topic-body">
+    <p>Sends RFC 5424 to up to 20 UDP/TCP collectors:</p>
+    <pre><code>Primary SIEM = syslog.example.com | 514
+Backup collector = 192.0.2.20 | 5514</code></pre>
+    <p>Messages support <code>{{ '{{trigger.status}}' }}</code>, <code>{{ '{{trigger.summary}}' }}</code>, <code>{{ '{{trigger.met}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>. UDP success means the local socket accepted the datagram, not remote acknowledgment.</p>
+  </div></details>
+  <details class="help-topic"><summary>History, downloads, cleanup, and scheduler</summary><div class="help-topic-body">
+    <p>Checks, triggers, action status, and retained output live in <code>instance/automations.sqlite3</code>. SSH ZIPs contain timestamped host files; syslog ZIPs contain destination JSON. Delete run removes one result; Clear collected data removes action runs but preserves condition history.</p>
+    <p><code>./twn start</code> launches one scheduler beside the web service. Work continues without a browser. Imported automations remain paused.</p>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="packet-replay">
+  <div class="section-head"><div><span class="eyebrow">High impact</span><h2>Packet Replay</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Inputs, rewrites, VLANs, and sending</summary><div class="help-topic-body">
+    <p>Transmit raw Ethernet frames from hex or classic Ethernet PCAP. Select the wired interface, review decoded fields/rewrite plan, then send from Preview. Multiple source packets, repeat, interval, and MAC/IP/port rewrites are supported.</p>
+    <p>VLAN fanout accepts IDs, ranges, and <code>untagged</code>: <code>untagged,10-12,20</code>. VLAN 0 is priority-tagged, not untagged.</p>
+  </div></details>
+  <details class="help-topic"><summary>Permissions and capture verification</summary><div class="help-topic-body">
+    <p>Linux needs root or <code>CAP_NET_RAW</code>. macOS uses Scapy/libpcap/BPF and may require elevated BPF access. Wireless 802.11 injection is unsupported.</p>
+    <pre><code>sudo tcpdump -i en0 -e -nn -vvv 'vlan or ether proto 0x8100'
+sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
+    <p>Sender acceptance is not remote delivery; verify actual egress on the wire.</p>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="operations">
+  <div class="section-head"><div><span class="eyebrow">Local service</span><h2>Operations and troubleshooting</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Service commands</summary><div class="help-topic-body">
+    <pre><code>./twn start            Start web service and scheduler
+./twn stop             Stop both processes
+./twn restart          Restart both processes
+./twn status           Show process status
+./twn logs             Show recent errors
+./twn fix-permissions  Repair instance ownership after sudo
+./twn adminreset       Reset users only
+./twn reset-data       Remove saved toolkit data</code></pre>
+  </div></details>
+  <details class="help-topic"><summary>Port conflicts and sudo ownership</summary><div class="help-topic-body">
+    <p>Find a Linux listener with <code>sudo ss -lptn 'sport = :5050'</code> or <code>sudo lsof -nP -iTCP:5050 -sTCP:LISTEN</code>. On macOS use <code>lsof -nP -iTCP:5050 -sTCP:LISTEN</code>.</p>
+    <p>A sudo launch can create root-owned <code>instance/</code> files. Run <code>./twn fix-permissions</code> before returning to normal-user operation.</p>
+  </div></details>
+  <details class="help-topic"><summary>Common checks</summary><div class="help-topic-body">
+    <ul><li>Restart after code/dependency updates.</li><li>Verify both web and scheduler with <code>./twn status</code>.</li><li>Inspect <code>./twn logs</code>.</li><li>Test saved Fortinet profiles.</li><li>Check target, interface, firewall, remote permissions, and timeout.</li><li>Hard-refresh if browser assets look stale.</li></ul>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="security">
+  <div class="section-head"><div><span class="eyebrow">Responsibility</span><h2>Security, local data, and disclaimer</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Deployment boundary and retained data</summary><div class="help-topic-body">
+    <p>This is local-first software for a trusted workstation/internal network, not direct internet exposure. Use TLS and an appropriate access layer across untrusted networks. Server access settings can allow explicit addresses/CIDRs; loopback remains allowed.</p>
+    <p>User passwords are scrypt hashes; sessions use a separate secret. Profile stores and automation databases live under owner-only ignored <code>instance/</code> paths. Protect the host, filesystem backups, exported backups, downloads, and browser session.</p>
+  </div></details>
+  <details class="help-topic" open><summary>Use at your own risk</summary><div class="help-topic-body">
+    <p>The WiFi Ninja’s Toolkit is provided as-is, without warranty. Some tools change configuration, authenticate, scan, query logs, transmit crafted packets, or execute commands with saved credentials.</p>
+    <p>You are responsible for authorization, protecting credentials/output, reviewing previews, selecting correct targets/interfaces, and understanding impact. <strong>Use at your own risk.</strong></p>
+  </div></details>
+</section>
+<script src="{{ url_for('static', filename='help.js') }}"></script>
 {% endblock %}

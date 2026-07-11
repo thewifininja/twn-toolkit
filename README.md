@@ -69,12 +69,21 @@ service.
 
 - Define reusable multi-host ping conditions and reusable SSH collection
   actions, then reference them from multiple automations.
+- Monitor DNS names through multiple resolvers and trigger on query failures or
+  unexpected A, AAAA, CNAME, MX, NS, PTR, or TXT answers.
+- Monitor TCP services with a custom list of individual ports or ranges per
+  host, with expected-open and expected-closed state checks.
 - Schedule checks as frequently as once per second with consecutive failure,
   recovery, and cooldown thresholds.
 - Use a reusable Manual trigger condition for on-demand automations that run
   only when an administrator selects **Run now**.
+- Build reusable calendar conditions containing multiple one-time, daily,
+  weekly, alternating-week, monthly-date, and ordinal-weekday rules. Each
+  schedule has an explicit timezone and configurable missed-run policy.
 - Trigger concurrent SSH command collection against management targets and
   retain per-host output with the incident run.
+- Send templated RFC 5424 syslog notifications to multiple UDP or TCP
+  collectors and retain per-destination delivery results.
 - Download a run as a ZIP containing metadata and per-host text output.
 - Delete individual collected runs or clear all collected action data for an
   automation while preserving condition-check history.

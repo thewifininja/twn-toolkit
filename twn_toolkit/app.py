@@ -42,7 +42,7 @@ from .tool_catalog import (
     visible_tools,
 )
 from .tools import tools_bp
-from .version import APP_VERSION
+from .version import APP_VERSION, RELEASE_NOTES
 
 
 def create_app(instance_path: str | None = None) -> Flask:
@@ -269,6 +269,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             "sidebar_favorites_active": sidebar_favorites_active,
             "current_tool_id": current_tool_id,
             "app_version": APP_VERSION,
+            "release_notes": RELEASE_NOTES,
             "min_password_length": password_policy["min_length"],
             "password_policy": password_policy,
         }

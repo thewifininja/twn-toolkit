@@ -1,9 +1,52 @@
 {% extends "base.html" %}
 
+{% macro dns_test_evidence(result) %}
+  {% if result and result.evidence and result.evidence.get('checks') %}
+    <div class="condition-test-results">
+      {% for check in result.evidence.checks %}
+        <article>
+          <span class="pill {{ 'error' if check.failed else 'success' }}">{{ 'failed' if check.failed else 'passed' }}</span>
+          <span><strong>{{ check.host_label or check.host }} via {{ check.server_label or check.server }}</strong><small>{% if check.answers %}{{ check.answers|join(', ') }}{% else %}{{ check.reason or check.status }}{% endif %}</small></span>
+          <small>{{ check.response_ms }} ms</small>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% macro ping_test_evidence(result) %}
+  {% if result and result.evidence and result.evidence.get('targets') %}
+    <div class="condition-test-results">
+      {% for target in result.evidence.targets %}
+        <article>
+          <span class="pill {{ 'success' if target.reachable else 'error' }}">{{ 'reachable' if target.reachable else 'failed' }}</span>
+          <span><strong>{{ target.label or target.host }}</strong><small>{% if target.label %}{{ target.host }} · {% endif %}{{ 'ICMP echo reply received' if target.reachable else target.error or 'No ICMP reply before timeout' }}</small></span>
+          <small>{% if target.latency_ms is not none %}{{ target.latency_ms }} ms RTT{% elif target.elapsed_ms is defined %}{{ target.elapsed_ms }} ms elapsed{% else %}No reply{% endif %}</small>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% macro tcp_test_evidence(result) %}
+  {% if result and result.evidence and result.evidence.get('checks') %}
+    <div class="condition-test-results">
+      {% for check in result.evidence.checks %}
+        <article>
+          <span class="pill {{ 'error' if check.failed else 'success' }}">{{ 'failed' if check.failed else 'passed' }}</span>
+          <span><strong>{{ check.label or check.host }}:{{ check.port }}{% if check.service %} · {{ check.service }}{% endif %}</strong><small>{% if check.label %}{{ check.host }} · {% endif %}Observed {{ check.status }}; expected {{ check.expected_state }}{% if check.detail %} · {{ check.detail }}{% endif %}</small></span>
+          <small>{{ check.elapsed_ms }} ms</small>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
 {% macro condition_form(values, definition=none) %}
   {% set config = definition.config if definition else values %}
   <form class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
     {% set definition_id = definition.id if definition else values.get('condition_definition_id', '') %}
+    {% set timezone_list_id = 'schedule-timezones-' ~ (definition_id or 'new') %}
     {% if definition_id %}<input type="hidden" name="condition_definition_id" value="{{ definition_id }}">{% endif %}
     <label>Condition name
       <input name="condition_name" maxlength="100" value="{{ definition.name if definition else values.get('condition_name', '') }}" placeholder="Production path unavailable" required>
@@ -15,6 +58,31 @@
     </label>
     <div data-condition-fields="manual.trigger" hidden>
       <p class="field-note">This condition is met only when a user clicks Run now on an automation that uses it.</p>
+    </div>
+    <div class="automation-condition-fields schedule-builder" data-condition-fields="schedule.calendar" hidden>
+      <div class="schedule-settings-grid">
+        <label>Timezone
+          <input name="schedule_timezone" list="{{ timezone_list_id }}" value="{{ config.get('timezone', config.get('schedule_timezone', schedule_default_timezone)) }}" placeholder="America/New_York" required>
+        </label>
+        <label>Missed occurrences
+          {% set missed_policy = config.get('missed_policy', config.get('schedule_missed_policy', 'grace')) %}
+          <select name="schedule_missed_policy" required>
+            <option value="grace" {% if missed_policy == 'grace' %}selected{% endif %}>Run within grace period</option>
+            <option value="run_late" {% if missed_policy == 'run_late' %}selected{% endif %}>Run when available</option>
+            <option value="skip" {% if missed_policy == 'skip' %}selected{% endif %}>Skip missed occurrences</option>
+          </select>
+        </label>
+        <label>Grace period
+          <div class="input-suffix"><input name="schedule_grace_minutes" type="number" min="1" max="1440" value="{{ config.get('grace_minutes', config.get('schedule_grace_minutes', '30')) }}" required><span>minutes</span></div>
+        </label>
+      </div>
+      <datalist id="{{ timezone_list_id }}"><option value="America/New_York"><option value="America/Chicago"><option value="America/Denver"><option value="America/Los_Angeles"><option value="UTC"></datalist>
+      <input type="hidden" name="schedule_rules_json" value="{{ config.get('rules', [])|tojson|forceescape }}" data-schedule-rules-json>
+      <div class="schedule-rule-editor" data-schedule-rule-editor>
+        <div class="schedule-rule-editor-head"><div><strong>Schedule rules</strong><small>Any matching rule triggers the automation once.</small></div><button class="secondary" type="button" data-add-schedule-rule>Add schedule rule</button></div>
+        <div class="schedule-rule-list" data-schedule-rule-list></div>
+        <p class="empty" data-schedule-empty>No schedule rules yet.</p>
+      </div>
     </div>
     <div class="automation-condition-fields" data-condition-fields="ping.multi">
       <label>Ping targets
@@ -36,6 +104,82 @@
         </label>
       </div>
     </div>
+    <div class="automation-condition-fields" data-condition-fields="dns.lookup" hidden>
+      <div class="form-grid">
+        <label>DNS names
+          <textarea name="dns_hosts" rows="5" placeholder="Primary portal = portal.example.com&#10;Secondary portal = portal-backup.example.com" required>{{ config.get('hosts', config.get('dns_hosts', '')) }}</textarea>
+          <small class="field-note">One name per line. Optional friendly names use <code>Name = hostname</code>.</small>
+        </label>
+        <label>DNS resolvers
+          <textarea name="dns_servers" rows="5" placeholder="Internal DNS = 10.0.0.10&#10;Cloudflare = 1.1.1.1" required>{{ config.get('servers', config.get('dns_servers', '')) }}</textarea>
+          <small class="field-note">Each resolver must be an IPv4 or IPv6 address.</small>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>Record type
+          {% set dns_record_type = config.get('record_type', config.get('dns_record_type', 'A')) %}
+          <select name="dns_record_type" required>{% for record_type in ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'TXT'] %}<option value="{{ record_type }}" {% if dns_record_type == record_type %}selected{% endif %}>{{ record_type }}</option>{% endfor %}</select>
+        </label>
+        <label>Per-query timeout
+          <div class="input-suffix"><input name="dns_timeout" type="number" min="0.2" max="30" step="0.1" value="{{ config.get('timeout', config.get('dns_timeout', '3')) }}" required><span>seconds</span></div>
+        </label>
+      </div>
+      <label>Expected answers <small>(optional)</small>
+        <textarea name="dns_expected_answers" rows="3" placeholder="192.0.2.10&#10;192.0.2.11">{{ config.get('expected_answers', config.get('dns_expected_answers', '')) }}</textarea>
+        <small class="field-note">Leave blank to require only a successful answer. Matching ignores letter case and a final DNS dot.</small>
+      </label>
+      <div class="form-grid">
+        <label>Expected-answer matching
+          {% set dns_answer_mode = config.get('answer_mode', config.get('dns_answer_mode', 'any')) %}
+          <select name="dns_answer_mode">
+            <option value="any" {% if dns_answer_mode == 'any' %}selected{% endif %}>At least one expected answer is returned</option>
+            <option value="all" {% if dns_answer_mode == 'all' %}selected{% endif %}>Every expected answer is returned</option>
+          </select>
+        </label>
+        <label>Condition is met when
+          {% set dns_failure_mode = config.get('failure_mode', config.get('dns_failure_mode', 'at_least')) %}
+          <select name="dns_failure_mode">
+            <option value="at_least" {% if dns_failure_mode == 'at_least' %}selected{% endif %}>At least this many checks fail</option>
+            <option value="all" {% if dns_failure_mode == 'all' %}selected{% endif %}>All hostname/resolver checks fail</option>
+          </select>
+        </label>
+        <label>Required failed checks
+          <input name="dns_failure_count" type="number" min="1" value="{{ config.get('failure_count', config.get('dns_failure_count', '1')) }}" required>
+        </label>
+      </div>
+      <p class="field-note">Each DNS name is queried through every resolver. A timeout, DNS error, empty response, or unexpected answer counts as one failed check.</p>
+    </div>
+    <div class="automation-condition-fields" data-condition-fields="tcp.reachability" hidden>
+      <label>TCP targets and ports
+        <textarea name="tcp_targets" rows="6" placeholder="Home FortiGate = gate.example.com | 8443&#10;Google = google.com | 443&#10;Core Switch = 10.0.0.10 | 22, 443, 8000-8010" required>{{ config.get('targets', config.get('tcp_targets', '')) }}</textarea>
+        <small class="field-note">Use <code>Friendly Name = hostname-or-IP | ports</code>. Each host has its own comma/space-separated ports and inclusive ranges. Maximum: 50 lines, 200 ports per line, and 5,000 total checks.</small>
+      </label>
+      <div class="form-grid tcp-policy-row">
+        <label>Expected state
+          {% set tcp_expected_state = config.get('expected_state', config.get('tcp_expected_state', 'open')) %}
+          <select name="tcp_expected_state" required>
+            <option value="open" {% if tcp_expected_state == 'open' %}selected{% endif %}>Port should be open</option>
+            <option value="closed" {% if tcp_expected_state == 'closed' %}selected{% endif %}>Port should refuse connections</option>
+          </select>
+        </label>
+        <label>Connection timeout
+          <div class="input-suffix"><input name="tcp_timeout" type="number" min="0.1" max="10" step="0.1" value="{{ config.get('timeout', config.get('tcp_timeout', '1')) }}" required><span>seconds</span></div>
+        </label>
+      </div>
+      <div class="form-grid tcp-policy-row">
+        <label>Condition is met when
+          {% set tcp_failure_mode = config.get('failure_mode', config.get('tcp_failure_mode', 'at_least')) %}
+          <select name="tcp_failure_mode">
+            <option value="at_least" {% if tcp_failure_mode == 'at_least' %}selected{% endif %}>At least this many checks fail</option>
+            <option value="all" {% if tcp_failure_mode == 'all' %}selected{% endif %}>All host/port checks fail</option>
+          </select>
+        </label>
+        <label>Required failed checks
+          <input name="tcp_failure_count" type="number" min="1" value="{{ config.get('failure_count', config.get('tcp_failure_count', '1')) }}" required>
+        </label>
+      </div>
+      <p class="field-note">Expected closed requires an explicit connection refusal. A timeout or connection error is treated as a failed check because it does not prove the port is closed.</p>
+    </div>
     <div class="button-row"><button type="submit">{{ 'Update condition' if definition_id else 'Save condition' }}</button></div>
   </form>
 {% endmacro %}
@@ -53,12 +197,13 @@
         {% for item in action_types %}<option value="{{ item.id }}" {% if (definition and definition.type == item.id) or (not definition and values.get('action_type', 'ssh.collect') == item.id) %}selected{% endif %}>{{ item.label }}</option>{% endfor %}
       </select>
     </label>
-    <p class="field-note">SSH output is retained with each run. The password is encrypted using this toolkit installation’s secret key.</p>
-    <label>SSH hosts
+    <div data-action-fields="ssh.collect">
+      <p class="field-note">SSH output is retained with each run. The password is encrypted using this toolkit installation’s secret key.</p>
+      <label>SSH hosts
       <textarea name="action_hosts" rows="4" placeholder="Basement Switch = 10.0.0.11&#10;10.0.0.12" required>{{ config.get('hosts', config.get('action_hosts', '')) }}</textarea>
       <small class="field-note">Optional friendly names use <code>Name = hostname-or-IP</code>.</small>
-    </label>
-    <div class="form-grid">
+      </label>
+      <div class="form-grid">
       <label>Username
         <input name="action_username" value="{{ config.get('username', config.get('action_username', '')) }}" required>
       </label>
@@ -68,17 +213,53 @@
       <label>SSH port
         <input name="action_port" type="number" min="1" max="65535" value="{{ config.get('port', config.get('action_port', '22')) }}" required>
       </label>
-    </div>
-    <label>Commands
+      </div>
+      <label>Commands
       <textarea class="command-input" name="action_commands" rows="7" placeholder="show clock&#10;show logging&#10;[timeout=600] diag debug report" required>{{ config.get('commands', config.get('action_commands', '')) }}</textarea>
-    </label>
-    <label>Default command timeout
+      </label>
+      <label>Default command timeout
       <div class="input-suffix"><input name="action_command_timeout" type="number" min="1" max="3600" value="{{ config.get('command_timeout', config.get('action_command_timeout', '300')) }}" required><span>seconds</span></div>
       <small class="field-note">A command completes when the device prompt returns. Override one command with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
-    </label>
-    <div class="check-grid">
+      </label>
+      <div class="check-grid">
       <label class="check"><input name="action_allow_unknown_hosts" type="checkbox" {% if config.get('allow_unknown_hosts') or config.get('action_allow_unknown_hosts') %}checked{% endif %}>Allow unknown SSH host keys</label>
       <label class="check"><input name="action_send_ctrl_y" type="checkbox" {% if config.get('send_ctrl_y') or config.get('action_send_ctrl_y') %}checked{% endif %}>Send Ctrl+Y before commands</label>
+      </div>
+    </div>
+    <div data-action-fields="syslog.send" hidden>
+      <label>Syslog destinations
+        <textarea name="syslog_destinations" rows="4" placeholder="Primary SIEM = syslog.example.com | 514&#10;Backup collector = 192.0.2.20 | 5514" required>{{ config.get('destinations', config.get('syslog_destinations', '')) }}</textarea>
+        <small class="field-note">Use <code>Friendly Name = hostname-or-IP | port</code>. The selected protocol applies to every destination.</small>
+      </label>
+      <div class="form-grid">
+        <label>Protocol
+          {% set syslog_protocol = config.get('protocol', config.get('syslog_protocol', 'udp')) %}
+          <select name="syslog_protocol" required><option value="udp" {% if syslog_protocol == 'udp' %}selected{% endif %}>UDP</option><option value="tcp" {% if syslog_protocol == 'tcp' %}selected{% endif %}>TCP</option></select>
+        </label>
+        <label>Facility
+          {% set syslog_facility = config.get('facility', config.get('syslog_facility', 16))|int %}
+          <select name="syslog_facility" required>{% for value, label in [(0,'kern'),(1,'user'),(2,'mail'),(3,'daemon'),(4,'auth'),(5,'syslog'),(6,'lpr'),(7,'news'),(8,'uucp'),(9,'cron'),(10,'authpriv'),(11,'ftp'),(12,'ntp'),(13,'security'),(14,'console'),(15,'clock'),(16,'local0'),(17,'local1'),(18,'local2'),(19,'local3'),(20,'local4'),(21,'local5'),(22,'local6'),(23,'local7')] %}<option value="{{ value }}" {% if syslog_facility == value %}selected{% endif %}>{{ value }} · {{ label }}</option>{% endfor %}</select>
+        </label>
+        <label>Severity
+          {% set syslog_severity = config.get('severity', config.get('syslog_severity', 6))|int %}
+          <select name="syslog_severity" required>{% for value, label in [(0,'emergency'),(1,'alert'),(2,'critical'),(3,'error'),(4,'warning'),(5,'notice'),(6,'informational'),(7,'debug')] %}<option value="{{ value }}" {% if syslog_severity == value %}selected{% endif %}>{{ value }} · {{ label }}</option>{% endfor %}</select>
+        </label>
+        <label>Send timeout
+          <div class="input-suffix"><input name="syslog_timeout" type="number" min="0.2" max="10" step="0.1" value="{{ config.get('timeout', config.get('syslog_timeout', '3')) }}" required><span>seconds</span></div>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>RFC 5424 hostname
+          <input name="syslog_hostname" value="{{ config.get('hostname', config.get('syslog_hostname', 'twn-toolkit')) }}" maxlength="255" required>
+        </label>
+        <label>Application name
+          <input name="syslog_app_name" value="{{ config.get('app_name', config.get('syslog_app_name', 'twn-automation')) }}" maxlength="48" required>
+        </label>
+      </div>
+      <label>Message
+        <textarea name="syslog_message" rows="5" maxlength="8192" placeholder="Toolkit automation fired: {{ '{{trigger.summary}}' }}" required>{{ config.get('message', config.get('syslog_message', 'Toolkit automation fired: {{trigger.summary}}')) }}</textarea>
+        <small class="field-note">Available variables: <code>{{ '{{trigger.status}}' }}</code>, <code>{{ '{{trigger.summary}}' }}</code>, <code>{{ '{{trigger.met}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>.</small>
+      </label>
     </div>
     <div class="button-row"><button type="submit">{{ 'Update action' if definition_id else 'Save action' }}</button></div>
   </form>
@@ -148,11 +329,15 @@
   {% if condition_definitions %}<div class="automation-list">
     {% for definition in condition_definitions %}
       <details class="access-profile-card automation-card" {% if request.args.get('focus_condition') == definition.id or (test_result and test_result.condition_id == definition.id) %}open{% endif %}>
-        <summary><span><strong>{{ definition.name }}</strong><small>{% if definition.type == 'manual.trigger' %}Manual trigger · on demand{% else %}{{ definition.type }} · {{ definition.config.failure_count }} of {{ definition.config.targets.split('\n')|length }} failed target threshold{% endif %}</small></span></summary>
+        <summary><span><strong>{{ definition.name }}</strong><small>{% if definition.type == 'manual.trigger' %}Manual trigger · on demand{% elif definition.type == 'schedule.calendar' %}Calendar schedule · {{ definition.config.rules|length }} rule{{ '' if definition.config.rules|length == 1 else 's' }} · {{ definition.config.timezone }}{% elif definition.type == 'dns.lookup' %}DNS {{ definition.config.record_type }} · {{ definition.config.hosts.split('\n')|length }} name{{ '' if definition.config.hosts.split('\n')|length == 1 else 's' }} × {{ definition.config.servers.split('\n')|length }} resolver{{ '' if definition.config.servers.split('\n')|length == 1 else 's' }}{% elif definition.type == 'tcp.reachability' %}TCP · {{ definition.config.target_count }} host{{ '' if definition.config.target_count == 1 else 's' }} · {{ definition.config.check_count }} check{{ '' if definition.config.check_count == 1 else 's' }} · expected {{ definition.config.expected_state }}{% else %}{{ definition.type }} · {{ definition.config.failure_count }} of {{ definition.config.targets.split('\n')|length }} failed target threshold{% endif %}</small></span></summary>
         <div class="automation-card-body">
-          {% if test_result and test_result.condition_id == definition.id %}<div class="message {{ 'error' if test_result.status == 'error' else 'success' if test_result.status == 'clear' else 'warning' }}"><strong>Condition test: {{ test_result.status }}</strong> · {{ test_result.summary }}</div>{% endif %}
+          {% if definition.type == 'schedule.calendar' %}<div class="schedule-definition-summary"><div><span>Rules</span>{% for description in definition.rule_descriptions %}<strong>{{ description }}</strong>{% endfor %}</div><div><span>Next occurrences</span>{% if definition.schedule_preview %}{% for occurrence in definition.schedule_preview %}<strong>{{ occurrence.display }}</strong>{% endfor %}{% else %}<strong>No future occurrences</strong>{% endif %}</div></div>{% endif %}
+          {% if test_result and test_result.condition_id == definition.id %}<div class="message {{ 'error' if test_result.status == 'error' else 'success' if test_result.status == 'clear' else 'warning' }}"><strong>{{ 'Schedule preview' if definition.type == 'schedule.calendar' else 'Condition test: ' ~ test_result.status }}</strong> · {{ test_result.summary }}</div>{% endif %}
+          {% if definition.type == 'dns.lookup' and test_result and test_result.condition_id == definition.id %}{{ dns_test_evidence(test_result) }}{% endif %}
+          {% if definition.type == 'ping.multi' and test_result and test_result.condition_id == definition.id %}{{ ping_test_evidence(test_result) }}{% endif %}
+          {% if definition.type == 'tcp.reachability' and test_result and test_result.condition_id == definition.id %}{{ tcp_test_evidence(test_result) }}{% endif %}
           <div class="button-row automation-actions">
-            {% if definition.type != 'manual.trigger' %}<form method="post" action="{{ url_for('test_condition_definition', definition_id=definition.id) }}" data-loading-message="Testing reusable condition…"><button class="secondary" type="submit">Test</button></form>{% endif %}
+            {% if definition.type != 'manual.trigger' %}<form method="post" action="{{ url_for('test_condition_definition', definition_id=definition.id) }}" data-loading-message="{{ 'Refreshing schedule preview…' if definition.type == 'schedule.calendar' else 'Testing reusable condition…' }}"><button class="secondary" type="submit" {% if definition.type == 'schedule.calendar' %}title="Read-only: recalculates upcoming occurrences without arming or running anything."{% endif %}>{{ 'Refresh next run times' if definition.type == 'schedule.calendar' else 'Test' }}</button></form>{% endif %}
             <button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-condition-{{ definition.id }}">Edit</button>
             <form method="post" action="{{ url_for('delete_automation_condition', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable condition?')"><button class="danger" type="submit">Delete</button></form>
           </div>
@@ -173,7 +358,7 @@
   {% if action_definitions %}<div class="automation-list">
     {% for definition in action_definitions %}
       <details class="access-profile-card automation-card" {% if request.args.get('focus_action') == definition.id %}open{% endif %}>
-        <summary><span><strong>{{ definition.name }}</strong><small>{{ definition.type }} · {{ definition.config.hosts.split('\n')|length }} host{{ '' if definition.config.hosts.split('\n')|length == 1 else 's' }} · credentials saved</small></span></summary>
+        <summary><span><strong>{{ definition.name }}</strong><small>{% if definition.type == 'syslog.send' %}Syslog {{ definition.config.protocol|upper }} · {{ definition.config.destinations.split('\n')|length }} destination{{ '' if definition.config.destinations.split('\n')|length == 1 else 's' }} · priority {{ definition.config.facility * 8 + definition.config.severity }}{% else %}{{ definition.type }} · {{ definition.config.hosts.split('\n')|length }} host{{ '' if definition.config.hosts.split('\n')|length == 1 else 's' }} · credentials saved{% endif %}</small></span></summary>
         <div class="automation-card-body">
           <div class="button-row automation-actions"><button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-action-{{ definition.id }}">Edit</button><form method="post" action="{{ url_for('delete_automation_action', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable action?')"><button class="danger" type="submit">Delete</button></form></div>
           <div class="automation-record-editor" id="edit-action-{{ definition.id }}" hidden>{{ action_form({}, definition) }}</div>
@@ -194,15 +379,19 @@
   {% if automations %}<div class="automation-list">
     {% for automation in automations %}
       <details class="access-profile-card automation-card profile-section" {% if request.args.get('focus') == automation.id or (test_result and test_result.automation_id == automation.id) %}open{% endif %}>
-        {% set is_manual = automation.condition.type == 'manual.trigger' %}
-        <summary><span><strong>{{ automation.name }}</strong><small>{{ automation.condition.name }} → {{ automation.actions|map(attribute='name')|join(', ') }} · {{ 'on demand' if is_manual else 'every ' ~ automation.interval_seconds ~ 's · ' ~ ('armed' if automation.enabled else 'paused') }}</small></span><span class="pill {{ 'planned' if is_manual else 'success' if automation.state == 'healthy' else 'error' if automation.state == 'error' else 'planned' }}">{{ 'manual' if is_manual else automation.state }}</span></summary>
+        {% set is_manual = automation.condition.type == 'manual.trigger' %}{% set is_schedule = automation.condition.type == 'schedule.calendar' %}
+        <summary><span><strong>{{ automation.name }}</strong><small>{{ automation.condition.name }} → {{ automation.actions|map(attribute='name')|join(', ') }} · {{ 'on demand' if is_manual else 'next ' ~ automation.next_check_display if is_schedule and automation.enabled else 'schedule completed' if is_schedule and automation.state == 'completed' else 'schedule paused' if is_schedule else 'every ' ~ automation.interval_seconds ~ 's · ' ~ ('armed' if automation.enabled else 'paused') }}</small></span><span class="pill {{ 'planned' if is_manual or is_schedule else 'success' if automation.state == 'healthy' else 'error' if automation.state == 'error' else 'planned' }}">{{ 'manual' if is_manual else automation.state }}</span></summary>
         <div class="automation-card-body">
-          {% if not is_manual %}<div class="automation-status-grid"><div><span>Last check</span><strong>{{ automation.last_check_display }}</strong></div><div><span>Last trigger</span><strong>{{ automation.last_triggered_display }}</strong></div><div><span>Threshold progress</span><strong>{{ automation.consecutive_met }} / {{ automation.trigger_after }}</strong></div><div><span>Latest observation</span><strong>{{ automation.last_summary or 'No checks yet' }}</strong></div></div>{% else %}<p class="field-note automation-manual-note">This automation runs only when an administrator explicitly starts it.</p>{% endif %}
+          {% if is_schedule %}<div class="automation-status-grid schedule-status-grid"><div><span>Next occurrence</span><strong>{{ automation.next_check_display }}</strong></div><div><span>Last scheduled run</span><strong>{{ automation.last_triggered_display }}</strong></div><div><span>Timezone</span><strong>{{ automation.condition.config.timezone }}</strong></div><div><span>Latest schedule event</span><strong>{{ automation.last_summary or 'No occurrences yet' }}</strong></div></div>{% elif not is_manual %}<div class="automation-status-grid"><div><span>Last check</span><strong>{{ automation.last_check_display }}</strong></div><div><span>Last trigger</span><strong>{{ automation.last_triggered_display }}</strong></div><div><span>Threshold progress</span><strong>{{ automation.consecutive_met }} / {{ automation.trigger_after }}</strong></div><div><span>Latest observation</span><strong>{{ automation.last_summary or 'No checks yet' }}</strong></div></div>{% else %}<p class="field-note automation-manual-note">This automation runs only when an administrator explicitly starts it.</p>{% endif %}
           {% if automation.last_error %}<div class="message error">{{ automation.last_error }}</div>{% endif %}
-          {% if test_result and test_result.automation_id == automation.id %}<div class="message {{ 'error' if test_result.status == 'error' else 'success' if test_result.status == 'clear' else 'warning' }}"><strong>Condition test: {{ test_result.status }}</strong> · {{ test_result.summary }}</div>{% endif %}
-          <div class="button-row automation-actions">{% if is_manual %}<form method="post" action="{{ url_for('run_automation_now', automation_id=automation.id) }}" data-loading-message="Running automation actions…"><button type="submit">Run now</button></form>{% else %}<form method="post" action="{{ url_for('toggle_automation', automation_id=automation.id) }}"><button class="{{ 'secondary' if automation.enabled else '' }}" type="submit">{{ 'Pause' if automation.enabled else 'Arm' }}</button></form><form method="post" action="{{ url_for('test_automation_condition', automation_id=automation.id) }}" data-loading-message="Testing automation condition…"><button class="secondary" type="submit">Test condition</button></form>{% endif %}<button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-automation-{{ automation.id }}">Edit</button><form method="post" action="{{ url_for('delete_automation', automation_id=automation.id) }}" onsubmit="return confirm('Delete this automation and its retained history?')"><button class="danger" type="submit">Delete</button></form></div>
+          {% if test_result and test_result.automation_id == automation.id %}<div class="message {{ 'error' if test_result.status == 'error' else 'success' if test_result.status == 'clear' else 'warning' }}"><strong>{{ 'Schedule preview' if is_schedule else 'Condition test: ' ~ test_result.status }}</strong> · {{ test_result.summary }}</div>{% endif %}
+          {% if automation.condition.type == 'dns.lookup' and test_result and test_result.automation_id == automation.id %}{{ dns_test_evidence(test_result) }}{% endif %}
+          {% if automation.condition.type == 'ping.multi' and test_result and test_result.automation_id == automation.id %}{{ ping_test_evidence(test_result) }}{% endif %}
+          {% if automation.condition.type == 'tcp.reachability' and test_result and test_result.automation_id == automation.id %}{{ tcp_test_evidence(test_result) }}{% endif %}
+          <div class="button-row automation-actions">{% if is_manual %}<form method="post" action="{{ url_for('run_automation_now', automation_id=automation.id) }}" data-loading-message="Running automation actions…"><button type="submit">Run now</button></form>{% else %}<form method="post" action="{{ url_for('toggle_automation', automation_id=automation.id) }}"><button class="{{ 'secondary' if automation.enabled else '' }}" type="submit">{{ 'Pause' if automation.enabled else 'Arm' }}</button></form><form method="post" action="{{ url_for('test_automation_condition', automation_id=automation.id) }}" data-loading-message="{{ 'Refreshing schedule preview…' if is_schedule else 'Testing automation condition…' }}"><button class="secondary" type="submit" {% if is_schedule %}title="Read-only: recalculates upcoming occurrences without arming or running anything."{% endif %}>{{ 'Refresh next run time' if is_schedule else 'Test condition' }}</button></form>{% endif %}<button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-automation-{{ automation.id }}">Edit</button><form method="post" action="{{ url_for('delete_automation', automation_id=automation.id) }}" onsubmit="return confirm('Delete this automation and its retained history?')"><button class="danger" type="submit">Delete</button></form></div>
+          {% if is_schedule %}<p class="field-note schedule-preview-note">Refresh is read-only. It recalculates the next occurrence without arming the schedule or running its actions.</p>{% endif %}
           <div class="automation-record-editor" id="edit-automation-{{ automation.id }}" hidden>{{ automation_form({}, automation) }}</div>
-          {% if not is_manual %}<details class="automation-subsection"><summary>Recent checks <small>{{ automation.recent_checks|length }}</small></summary>{% if automation.recent_checks %}<div class="automation-history-list">{% for check in automation.recent_checks %}<article><span class="pill {{ 'error' if check.status == 'error' else 'planned' if check.met else 'success' }}">{{ check.status }}</span><strong>{{ check.summary }}</strong><small>{{ check.checked_display }}</small></article>{% endfor %}</div>{% else %}<p class="empty">No checks have run yet.</p>{% endif %}</details>{% endif %}
+          {% if not is_manual %}<details class="automation-subsection"><summary>{{ 'Schedule history' if is_schedule else 'Recent checks' }} <small>{{ automation.recent_checks|length }}</small></summary>{% if automation.recent_checks %}<div class="automation-history-list">{% for check in automation.recent_checks %}<article><span class="pill {{ 'error' if check.status == 'error' else 'planned' if check.status in ['scheduled', 'skipped'] or check.met else 'success' }}">{{ check.status }}</span><strong>{{ check.summary }}</strong><small>{{ check.checked_display }}</small></article>{% endfor %}</div>{% else %}<p class="empty">{{ 'No schedule occurrences yet.' if is_schedule else 'No checks have run yet.' }}</p>{% endif %}</details>{% endif %}
           <details class="automation-subsection automation-runs" {% if request.args.get('focus_run') and automation.recent_runs %}open{% endif %}>
             <summary><span>Collected action runs <small class="count-badge">{{ automation.recent_runs|length }}</small></span></summary>
             {% if automation.recent_runs %}
@@ -232,6 +421,12 @@
                                 {% if host.error %}<div class="message error">{{ host.error }}</div>{% endif %}
                                 <pre class="result-output">{{ host.output or 'No output captured.' }}</pre>
                               </details>
+                            {% endfor %}
+                            {% for destination in result.output.get('destinations', []) %}
+                              <article class="automation-destination-result">
+                                <span class="pill {{ destination.status }}">{{ destination.status }}</span>
+                                <span><strong>{{ destination.label or destination.host }}:{{ destination.port }}</strong><small>{% if destination.label %}{{ destination.host }} · {% endif %}{{ destination.protocol }}{% if destination.address %} · {{ destination.address }}{% endif %}{% if destination.bytes %} · {{ destination.bytes }} bytes{% endif %}{% if destination.error %} · {{ destination.error }}{% endif %}</small></span>
+                              </article>
                             {% endfor %}
                           </div>
                         </section>

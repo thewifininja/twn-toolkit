@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 import io
+import json
 import re
 import sqlite3
 import zipfile
@@ -20,6 +21,7 @@ from twn_toolkit.automation_registry import (
     ConditionType,
 )
 from twn_toolkit.auth import AuthStore, load_or_create_secret_key
+from twn_toolkit.network_tools import ToolInputError
 
 
 class AutomationStoreTests(unittest.TestCase):
@@ -179,6 +181,54 @@ class AutomationStoreTests(unittest.TestCase):
         self.store.set_enabled(automation_id, True)
         self.assertEqual(self.store.claim_due(), [])
 
+    def test_engine_executes_calendar_occurrence_without_debounce(self) -> None:
+        condition_id = self.store.save_condition_definition(
+            name="Calendar",
+            type_id="schedule.calendar",
+            config={
+                "timezone": "UTC",
+                "missed_policy": "grace",
+                "grace_minutes": 30,
+                "rules": [{"id": "once", "type": "once", "date": "2026-07-11", "time": "12:00"}],
+            },
+        )
+        action_id = self.store.save_action_definition(
+            name="Scheduled action", type_id="test.action", config={"password": "secret"}
+        )
+        automation_id = self.store.save(
+            name="Calendar workflow",
+            interval_seconds=30,
+            trigger_after=99,
+            recover_after=99,
+            cooldown_seconds=604800,
+            condition_definition_id=condition_id,
+            action_definition_ids=[action_id],
+            created_by="user-1",
+        )
+        calls = []
+        registry = AutomationRegistry()
+        registry.add_condition(AUTOMATION_REGISTRY.conditions["schedule.calendar"])
+        registry.add_action(
+            ActionType(
+                "test.action",
+                "Test action",
+                "",
+                lambda value: value,
+                lambda _config, trigger: (
+                    calls.append(trigger.evidence["occurrence"]["rule_ids"])
+                    or ActionResult("success", "ran", {})
+                ),
+            )
+        )
+        with patch("twn_toolkit.automation.time.time", return_value=1783771200 - 3600):
+            self.store.set_enabled(automation_id, True)
+        with patch("twn_toolkit.automation.time.time", return_value=1783771201):
+            processed = AutomationEngine(self.store, registry).run_once()
+        self.assertEqual(processed, 1)
+        self.assertEqual(calls, [["once"]])
+        self.assertEqual(self.store.get(automation_id)["state"], "completed")
+        self.assertEqual(len(self.store.recent_runs(automation_id)), 1)
+
     def test_backup_adapter_moves_definitions_and_secrets_but_not_runtime_state(self) -> None:
         automation_id = self.store.save(
             name="Portable automation",
@@ -232,6 +282,174 @@ class AutomationStoreTests(unittest.TestCase):
 
 
 class AutomationRouteTests(unittest.TestCase):
+    def test_admin_can_create_syslog_action(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            response = client.post(
+                "/automations/actions/save",
+                data={
+                    "action_name": "Notify collectors",
+                    "action_type": "syslog.send",
+                    "syslog_destinations": "Primary = syslog.example.com | 514\nBackup = 192.0.2.20 | 5514",
+                    "syslog_protocol": "udp",
+                    "syslog_facility": "16",
+                    "syslog_severity": "4",
+                    "syslog_hostname": "twn-toolkit",
+                    "syslog_app_name": "twn-automation",
+                    "syslog_message": "Condition fired: {{trigger.summary}}",
+                    "syslog_timeout": "2.5",
+                },
+            )
+            store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
+            definition = store.action_definitions()[0]
+            page = client.get("/automations")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(definition["type"], "syslog.send")
+        self.assertEqual(definition["config"]["severity"], 4)
+        self.assertEqual(definition["config"]["timeout"], 2.5)
+        self.assertIn(b"Syslog UDP", page.data)
+        self.assertIn(b"2 destinations", page.data)
+        self.assertIn(b"priority 132", page.data)
+
+    def test_admin_can_create_and_test_tcp_condition(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            response = client.post(
+                "/automations/conditions/save",
+                data={
+                    "condition_name": "Management services",
+                    "condition_type": "tcp.reachability",
+                    "tcp_targets": "Core Switch = 192.0.2.10 | 22, 443-444\nportal.example.com | 8443",
+                    "tcp_timeout": "1.5",
+                    "tcp_expected_state": "open",
+                    "tcp_failure_mode": "at_least",
+                    "tcp_failure_count": "2",
+                },
+            )
+            store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
+            definition = store.condition_definitions()[0]
+            tcp_results = [{
+                "host": "192.0.2.10", "label": "Core Switch", "port": 22,
+                "service": "ssh", "status": "open", "detail": "", "elapsed_ms": 3.2,
+            }]
+            with patch("twn_toolkit.automation_registry.scan_tcp_checks", return_value=tcp_results):
+                tested = client.post(f"/automations/conditions/{definition['id']}/test")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(definition["type"], "tcp.reachability")
+        self.assertEqual(
+            definition["config"]["targets"],
+            "Core Switch = 192.0.2.10 | 22, 443, 444\nportal.example.com | 8443",
+        )
+        self.assertEqual(definition["config"]["check_count"], 4)
+        self.assertEqual(definition["config"]["failure_count"], 2)
+        self.assertIn(b"Core Switch:22", tested.data)
+        self.assertIn(b"ssh", tested.data)
+        self.assertIn(b"Observed open; expected open", tested.data)
+        self.assertIn(b"3.2 ms", tested.data)
+
+    def test_ping_condition_test_shows_per_target_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            client.post(
+                "/automations/conditions/save",
+                data={
+                    "condition_name": "WAN reachability",
+                    "condition_type": "ping.multi",
+                    "condition_targets": "Gateway = 192.0.2.1\nInternet = 198.51.100.1",
+                    "condition_timeout": "1",
+                    "condition_failure_mode": "at_least",
+                    "condition_failure_count": "1",
+                },
+            )
+            store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
+            definition_id = store.condition_definitions()[0]["id"]
+            ping_results = [
+                {"host": "192.0.2.1", "reachable": True, "latency_ms": 2.4, "elapsed_ms": 3.0},
+                {"host": "198.51.100.1", "reachable": False, "latency_ms": None, "elapsed_ms": 1001.2},
+            ]
+            with patch("twn_toolkit.automation_registry.ping_hosts", return_value=ping_results):
+                response = client.post(f"/automations/conditions/{definition_id}/test")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Gateway", response.data)
+        self.assertIn(b"192.0.2.1", response.data)
+        self.assertIn(b"2.4 ms RTT", response.data)
+        self.assertIn(b"Internet", response.data)
+        self.assertIn(b"No ICMP reply before timeout", response.data)
+        self.assertIn(b"1001.2 ms elapsed", response.data)
+
+    def test_admin_can_create_dns_lookup_condition(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            response = client.post(
+                "/automations/conditions/save",
+                data={
+                    "condition_name": "Portal DNS changed",
+                    "condition_type": "dns.lookup",
+                    "dns_hosts": "Portal = portal.example.com",
+                    "dns_servers": "Internal = 192.0.2.53\nPublic = 198.51.100.53",
+                    "dns_record_type": "A",
+                    "dns_timeout": "2.5",
+                    "dns_expected_answers": "192.0.2.10\n192.0.2.11",
+                    "dns_answer_mode": "any",
+                    "dns_failure_mode": "at_least",
+                    "dns_failure_count": "1",
+                },
+            )
+            store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
+            definition = store.condition_definitions()[0]
+            page = client.get("/automations")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(definition["type"], "dns.lookup")
+        self.assertEqual(definition["config"]["record_type"], "A")
+        self.assertEqual(definition["config"]["failure_count"], 1)
+        self.assertIn(b"DNS A", page.data)
+        self.assertIn(b"1 name", page.data)
+        self.assertIn(b"2 resolvers", page.data)
+
+    def test_admin_can_create_calendar_condition_with_multiple_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            rules = [
+                {"id": "monday", "type": "weekly", "weekdays": [0], "time": "15:00"},
+                {"id": "third-wed", "type": "monthly_weekday", "ordinal": 3, "weekday": 2, "time": "01:00"},
+                {"id": "alternate", "type": "interval_weeks", "interval": 2, "anchor_date": "2026-07-16", "time": "16:03"},
+            ]
+            response = client.post(
+                "/automations/conditions/save",
+                data={
+                    "condition_name": "Maintenance calendar",
+                    "condition_type": "schedule.calendar",
+                    "schedule_timezone": "America/New_York",
+                    "schedule_missed_policy": "grace",
+                    "schedule_grace_minutes": "30",
+                    "schedule_rules_json": json.dumps(rules),
+                },
+            )
+            store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
+            definition = store.condition_definitions()[0]
+            page = client.get("/automations")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(definition["type"], "schedule.calendar")
+        self.assertEqual(len(definition["config"]["rules"]), 3)
+        self.assertIn(b"Calendar schedule", page.data)
+        self.assertIn(b"third Wednesday", page.data)
+        self.assertIn(b"Next occurrences", page.data)
+
     def test_admin_can_create_and_view_an_automation(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
             app = create_app(instance_path)
@@ -423,6 +641,147 @@ class AutomationRouteTests(unittest.TestCase):
 
 
 class AutomationRegistryTests(unittest.TestCase):
+    def test_syslog_action_substitutes_trigger_and_reports_partial_delivery(self) -> None:
+        action = AUTOMATION_REGISTRY.actions["syslog.send"]
+        trigger = ConditionResult(True, "met", "Two WAN probes failed", {"failed": 2})
+        sent_result = {
+            "protocol": "UDP", "host": "syslog.example.com", "address": "192.0.2.10",
+            "port": 514, "priority": 134, "facility": 16, "severity": 6,
+            "bytes": 120, "wire_message": "payload",
+        }
+        with patch(
+            "twn_toolkit.automation_registry.send_syslog",
+            side_effect=[sent_result, ToolInputError("Could not resolve syslog destination")],
+        ) as sender:
+            result = action.execute(
+                {
+                    "destinations": "Primary = syslog.example.com | 514\nBackup = bad.example | 5514",
+                    "protocol": "udp", "facility": 16, "severity": 6,
+                    "hostname": "toolkit", "app_name": "automation",
+                    "message": "{{trigger.status}}: {{trigger.summary}} at {{timestamp}}",
+                    "timeout": 3,
+                },
+                trigger,
+            )
+        self.assertEqual(result.status, "partial")
+        self.assertEqual(result.summary, "Syslog message sent to 1 of 2 destinations.")
+        self.assertEqual(result.output["destinations"][0]["status"], "success")
+        self.assertEqual(result.output["destinations"][1]["status"], "error")
+        self.assertIn("met: Two WAN probes failed at ", result.output["message"])
+        self.assertEqual(sender.call_args_list[0].kwargs["message"], result.output["message"])
+
+    def test_tcp_condition_normalizes_per_host_port_lists_and_legacy_config(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["tcp.reachability"]
+        normalized = condition.validate({
+            "targets": "FortiGate = gate.example.com | 8443\nGoogle = google.com | 443\nSwitch = 192.0.2.10 | 22, 8000-8002",
+            "timeout": 1, "expected_state": "open", "failure_mode": "at_least", "failure_count": 1,
+        })
+        self.assertEqual(normalized["target_count"], 3)
+        self.assertEqual(normalized["check_count"], 6)
+        self.assertIn("FortiGate = gate.example.com | 8443", normalized["targets"])
+        self.assertIn("Switch = 192.0.2.10 | 22, 8000, 8001, 8002", normalized["targets"])
+
+        legacy = condition.validate({
+            "hosts": "FortiGate = gate.example.com\nGoogle = google.com",
+            "ports": "443,8443", "timeout": 1, "expected_state": "open",
+            "failure_mode": "at_least", "failure_count": 1,
+        })
+        self.assertEqual(legacy["check_count"], 4)
+        self.assertIn("FortiGate = gate.example.com | 443, 8443", legacy["targets"])
+        self.assertIn("Google = google.com | 443, 8443", legacy["targets"])
+
+    def test_tcp_condition_compares_observed_and_expected_state(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["tcp.reachability"]
+        results = [
+            {"host": "192.0.2.10", "label": "Switch", "port": 22, "service": "ssh", "status": "open", "detail": "", "elapsed_ms": 2.0},
+            {"host": "192.0.2.10", "label": "Switch", "port": 443, "service": "https", "status": "closed", "detail": "Connection refused", "elapsed_ms": 1.0},
+        ]
+        with patch("twn_toolkit.automation_registry.scan_tcp_checks", return_value=results):
+            result = condition.evaluate({
+                "hosts": "Switch = 192.0.2.10", "ports": "22,443", "timeout": 1,
+                "expected_state": "open", "failure_mode": "at_least", "failure_count": 1,
+            })
+        self.assertTrue(result.met)
+        self.assertFalse(result.evidence["checks"][0]["failed"])
+        self.assertTrue(result.evidence["checks"][1]["failed"])
+        self.assertEqual(result.evidence["failed"], 1)
+
+    def test_tcp_expected_closed_requires_connection_refusal(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["tcp.reachability"]
+        results = [
+            {"host": "192.0.2.10", "label": "", "port": 22, "service": "ssh", "status": "closed", "detail": "Connection refused", "elapsed_ms": 1.0},
+            {"host": "192.0.2.10", "label": "", "port": 23, "service": "telnet", "status": "timeout", "detail": "No response before timeout", "elapsed_ms": 1000.0},
+        ]
+        with patch("twn_toolkit.automation_registry.scan_tcp_checks", return_value=results):
+            result = condition.evaluate({
+                "hosts": "192.0.2.10", "ports": "22-23", "timeout": 1,
+                "expected_state": "closed", "failure_mode": "at_least", "failure_count": 1,
+            })
+        self.assertTrue(result.met)
+        self.assertFalse(result.evidence["checks"][0]["failed"])
+        self.assertTrue(result.evidence["checks"][1]["failed"])
+
+    def test_dns_condition_matches_expected_answers_across_resolvers(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["dns.lookup"]
+        results = [
+            {
+                "host": "portal.example.com",
+                "host_label": "Portal",
+                "server": "192.0.2.53",
+                "server_label": "Internal",
+                "record_type": "CNAME",
+                "status": "success",
+                "answers": ["EDGE.EXAMPLE.COM."],
+                "response_ms": 2.0,
+            },
+            {
+                "host": "portal.example.com",
+                "host_label": "Portal",
+                "server": "198.51.100.53",
+                "server_label": "Public",
+                "record_type": "CNAME",
+                "status": "Timeout",
+                "answers": [],
+                "response_ms": 1000.0,
+                "error": "timed out",
+            },
+        ]
+        with patch("twn_toolkit.automation_registry.dns_lookup_matrix", return_value=results):
+            result = condition.evaluate(
+                {
+                    "hosts": "Portal = portal.example.com",
+                    "servers": "Internal = 192.0.2.53\nPublic = 198.51.100.53",
+                    "record_type": "CNAME",
+                    "timeout": 1,
+                    "expected_answers": "edge.example.com",
+                    "answer_mode": "any",
+                    "failure_mode": "at_least",
+                    "failure_count": 1,
+                }
+            )
+
+        self.assertTrue(result.met)
+        self.assertEqual(result.evidence["failed"], 1)
+        self.assertTrue(result.evidence["checks"][0]["matches_expected"])
+        self.assertFalse(result.evidence["checks"][0]["failed"])
+        self.assertTrue(result.evidence["checks"][1]["failed"])
+
+    def test_dns_condition_can_require_every_expected_answer(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["dns.lookup"]
+        results = [{
+            "host": "example.com", "host_label": "", "server": "192.0.2.53",
+            "server_label": "", "record_type": "A", "status": "success",
+            "answers": ["192.0.2.10"], "response_ms": 1.0,
+        }]
+        with patch("twn_toolkit.automation_registry.dns_lookup_matrix", return_value=results):
+            result = condition.evaluate({
+                "hosts": "example.com", "servers": "192.0.2.53", "record_type": "A",
+                "timeout": 1, "expected_answers": "192.0.2.10\n192.0.2.11",
+                "answer_mode": "all", "failure_mode": "all", "failure_count": 1,
+            })
+        self.assertTrue(result.met)
+        self.assertFalse(result.evidence["checks"][0]["matches_expected"])
+
     def test_ping_condition_supports_all_and_at_least_thresholds(self) -> None:
         condition = AUTOMATION_REGISTRY.conditions["ping.multi"]
         results = [

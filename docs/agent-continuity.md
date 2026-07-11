@@ -92,6 +92,28 @@ accepted replay frames.
   can grow without a destructive migration.
 - If activity volume becomes substantial, add daily rollups and a documented
   raw-sample retention policy before deleting historical samples.
+- Alert the project owner before the next material SQLite schema change. At
+  that point, replace ad-hoc column checks with numbered, transactional
+  migrations recorded per database (version, applied timestamp, description).
+  This migration runner is a pre-1.0 requirement even if no earlier schema
+  change forces it first. Add upgrade tests using snapshots from older schemas.
+
+## Versioning and release expectations
+
+- `twn_toolkit/version.py` is the single application-version source used by the
+  package, sidebar, and Help page.
+- Begin intentional pre-1.0 version increments now. Use Semantic Versioning:
+  patch releases for compatible fixes/documentation, minor releases for new
+  tools or meaningful workflows, and reserve 1.0.0 for the first explicitly
+  supported/stable configuration and migration contract.
+- Before 1.0, call out configuration/schema incompatibilities in release notes;
+  pre-1.0 does not excuse silent destructive changes.
+- Suggested current milestone is 0.8.0: the toolkit is broad and operationally
+  useful, while automation/API notifications, formal migrations, upgrade-path
+  testing, and release packaging still need hardening before 1.0.
+- Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
+  structured data. The Help page renders that source as collapsible release
+  history; every intentional version bump must add a dated release entry.
 
 ## UI standards
 
@@ -134,11 +156,36 @@ accepted replay frames.
 - Current states are disabled, healthy, suspect, triggered, recovering, and
   error. A triggered automation fires once and must recover/rearm before it can
   fire again.
-- Initial registered types are `manual.trigger`, `ping.multi`, and
-  `ssh.collect`. Manual-trigger automations are excluded from due-check claims
-  and expose an explicit Run now action. Add future types
-  through `automation_registry.py`; do not add type-specific branches to the
-  scheduler.
+- Registered condition types are `manual.trigger`, `ping.multi`, `dns.lookup`,
+  `tcp.reachability`, and `schedule.calendar`. Registered action types are
+  `ssh.collect` and `syslog.send`. Manual-trigger
+  automations are excluded from due-check claims and expose an explicit Run now
+  action. Calendar schedules are intentionally handled by a small scheduler
+  adapter because occurrence consumption differs from monitoring state. Other
+  future types should register through `automation_registry.py` without adding
+  type-specific branches to persistence or the scheduler.
+- A `schedule.calendar` condition contains up to 50 reusable sub-rules. It
+  supports one-time, daily, selected-weekday, every-N-weeks, monthly-date, and
+  ordinal-weekday rules in an explicit IANA timezone. Simultaneous sub-rules
+  collapse into one occurrence. Each referencing automation tracks its own next
+  occurrence and applies run-late, grace-period, or skip missed-run policy.
+- Schedule claims preserve the intended occurrence in `pending_schedule_at`
+  and move `next_check_at` to a five-minute lease. This prevents a second
+  scheduler from claiming the same occurrence while allowing a crashed worker
+  to retry it. After consumption, recurring schedules advance directly to a
+  future occurrence rather than replaying downtime backlog.
+- `dns.lookup` reuses the regular DNS tool's concurrent query engine. Each
+  hostname/resolver pair is one check. An optional global expected-answer set
+  can require any or all values; comparisons ignore case and a final DNS dot.
+  Availability, answer mismatch, and the configured failed-check threshold are
+  represented in the common condition result contract.
+- `tcp.reachability` reuses the regular TCP scanner. Targets use
+  `Friendly Name = host | ports`, allowing a different port/range list per host.
+  Each expanded host/port pair is one check, and ports normalize to stable
+  sorted values. Conditions can expect either open or explicitly refused
+  connections. A timeout or generic socket error does not satisfy
+  expected-closed because it is not definitive. Legacy global host/port configs
+  normalize automatically and are persisted in the new form on their next edit.
 - Automation definitions are a sensitive backup group. History/output is not
   backed up, and imported definitions remain paused.
 - Editing a shared definition pauses all dependent automations. Deletion is
@@ -160,6 +207,11 @@ accepted replay frames.
   connection target as `host` and the optional display value as `host_label` in
   execution results. UI output and filenames prefer the label but still expose
   the actual address.
+- `syslog.send` reuses the regular RFC 5424 sender and accepts up to 20
+  `Friendly Name = host | port` destinations under one UDP/TCP protocol. It
+  substitutes only documented trigger/timestamp tokens rather than using a
+  general template evaluator. Delivery results are retained per destination;
+  mixed outcomes produce a partial action result.
 - SSH capture is bounded to 5 MiB per host while reading; prompt detection keeps
   using a small rolling tail after that limit. Automation browser previews are
   shortened to 40,000 characters per host, but ZIP downloads use the complete

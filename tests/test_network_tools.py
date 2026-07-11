@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ from twn_toolkit.network_tools import (
     _extract_ssh_prompt,
     _read_ssh_command,
     _ssh_host,
+    _ping_host,
     ToolInputError,
     parse_dns_servers,
     parse_ping_targets,
@@ -24,6 +26,15 @@ from twn_toolkit.network_tools import (
 
 
 class NetworkToolTests(unittest.TestCase):
+    def test_ping_timeout_does_not_expose_subprocess_command(self) -> None:
+        with patch(
+            "twn_toolkit.network_tools.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["/sbin/ping", "192.0.2.1"], 1.25),
+        ):
+            result = _ping_host("192.0.2.1", 1)
+        self.assertFalse(result["reachable"])
+        self.assertNotIn("error", result)
+
     def test_ssh_commands_support_per_command_timeout_overrides(self) -> None:
         commands = parse_ssh_commands(
             ["get system status", "[timeout=600] diag debug report"], 300

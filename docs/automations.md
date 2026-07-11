@@ -7,9 +7,43 @@ continue running without an open browser because
 `./twn start` launches a single scheduler process beside the Gunicorn web
 service.
 
+## Calendar schedules
+
+A reusable Calendar schedule condition can contain up to 50 independent rules,
+so one condition can describe an intentionally complicated operating calendar
+without creating a matching pile of conditions and automations. Rules support:
+
+- a one-time local date and time;
+- every day at a selected time;
+- selected weekdays at a selected time;
+- every N weeks on a weekday, anchored to a selected date;
+- a day of each month; and
+- an ordinal weekday of each month, such as the third Wednesday.
+
+Each schedule has an explicit IANA timezone and a missed-run policy: run late,
+run only within a configurable grace period, or skip. Daylight-saving gaps move
+to the first valid local minute, and repeated fallback times run once. Multiple
+rules that resolve to the same instant are collapsed into one occurrence.
+
+Calendar conditions are reusable definitions, but every automation referencing
+one consumes occurrences independently. Scheduled automations bypass the
+monitoring debounce, recovery, and cooldown state cycle. A claimed occurrence
+is leased in SQLite so scheduler restarts can retry it without two scheduler
+processes firing it simultaneously. Stale recurring schedules advance directly
+to the next future occurrence rather than replaying a backlog.
+
 ## First supported vertical slice
 
 - Condition: multi-host ICMP reachability.
+- Condition: DNS lookup health across a hostname-by-resolver matrix. A, AAAA,
+  CNAME, MX, NS, PTR, and TXT records can require any successful answer or
+  compare returned values against an expected set. Thresholds can trigger when
+  one, several, or every query path fails or returns an unexpected answer.
+- Condition: TCP service state with a custom port list per host. Ports and
+  inclusive ranges are supported, and a check can require an open service or a
+  definitive connection refusal. Timeouts remain failures rather than being
+  mistaken for proof that a port is closed. Legacy definitions with one global
+  port list are normalized by applying that list to each saved host.
 - Condition: reusable manual trigger for explicitly started, on-demand
   automations. Manual conditions are never claimed by the scheduler.
 - Check intervals: 1 second through 24 hours. The scheduler polls due work four
@@ -26,12 +60,18 @@ service.
   combined timeout budget across commands is limited to one hour per host.
   Targets may use `Friendly Name = hostname-or-IP`; the address is retained for
   troubleshooting while the friendly name is used in results and ZIP filenames.
+- Action: send an RFC 5424 syslog message to up to 20 UDP or TCP collectors.
+  Facility, severity, hostname, application name, timeout, and destination ports
+  are configurable. Messages support the explicit variables
+  `{{trigger.status}}`, `{{trigger.summary}}`, `{{trigger.met}}`, and
+  `{{timestamp}}`. Each collector records its own success/error result, so a
+  partial delivery remains visible.
 - History: retain condition checks, triggers, per-host command output, and
   action status in `instance/automations.sqlite3`.
 - Downloads: each action run can be downloaded as a ZIP containing JSON run
   metadata and one text file per SSH host. Host filenames begin with the run's
   sortable local timestamp, such as `20260710172428-Core-Switch.txt` or
-  `20260710172428-10.0.0.12.txt`.
+  `20260710172428-10.0.0.12.txt`. Syslog runs include destination-result JSON.
 - Capture: retain at most 5 MiB per host. A timed-out command keeps its partial
   output, identifies the command and timeout, and stops later commands on that
   host while other hosts continue. Long browser previews are shortened without
@@ -100,7 +140,7 @@ loops.
 
 ## Planned extensions
 
-- DNS, TCP, HTTP/API, SNMP, certificate, syslog-pattern, schedule, and manual
+- HTTP/API, SNMP, certificate, and syslog-pattern
   condition types.
 - Explicit action ordering and retry/continue policies for multi-action plans.
 - Explicit production and out-of-band source-interface binding.

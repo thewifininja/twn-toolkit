@@ -4,6 +4,7 @@ import io
 import json
 import os
 import re
+import time
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ from .automation import AutomationEngine, AutomationStore
 from .automation_registry import AUTOMATION_REGISTRY
 from .activity_context import record_current_activity
 from .network_tools import ToolInputError
+from .schedule_tools import describe_schedule_rule, local_timezone_name, schedule_preview
 
 
 def register_automation_routes(app: Flask, store: AutomationStore) -> None:
@@ -51,10 +53,27 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             automation["last_triggered_display"] = _format_time(
                 automation["last_triggered_at"]
             )
+            automation["next_check_display"] = _format_time(
+                automation.get("pending_schedule_at") or automation["next_check_at"]
+            )
+        condition_definitions = store.condition_definitions()
+        for definition in condition_definitions:
+            if definition["type"] == "schedule.calendar":
+                definition["rule_descriptions"] = [
+                    describe_schedule_rule(rule) for rule in definition["config"]["rules"]
+                ]
+                definition["schedule_preview"] = schedule_preview(
+                    definition["config"], time.time(), 5
+                )
+            elif definition["type"] == "tcp.reachability":
+                # Normalize legacy global host/port definitions for display.
+                definition["config"] = AUTOMATION_REGISTRY.validate_condition(
+                    definition["type"], definition["config"]
+                )
         return render_template(
             "automations/index.html",
             automations=automations,
-            condition_definitions=store.condition_definitions(),
+            condition_definitions=condition_definitions,
             action_definitions=store.action_definitions(),
             condition_types=AUTOMATION_REGISTRY.conditions.values(),
             action_types=AUTOMATION_REGISTRY.actions.values(),
@@ -63,6 +82,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             form=form or _empty_form(),
             form_section=form_section,
             scheduler=_scheduler_status(store.instance_path),
+            schedule_default_timezone=local_timezone_name(),
         )
 
     @app.get("/automations")
@@ -100,15 +120,43 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         require_admin()
         form = {key: value for key, value in request.form.items()}
         try:
+            form["rules"] = json.loads(request.form.get("schedule_rules_json", "[]"))
+        except json.JSONDecodeError:
+            form["rules"] = []
+        try:
             type_id = request.form.get("condition_type", "ping.multi")
+            condition_config = {
+                "targets": request.form.get("condition_targets", ""),
+                "timeout": request.form.get("condition_timeout", "1"),
+                "failure_mode": request.form.get("condition_failure_mode", "all"),
+                "failure_count": request.form.get("condition_failure_count", "1"),
+                "timezone": request.form.get("schedule_timezone", ""),
+                "missed_policy": request.form.get("schedule_missed_policy", "grace"),
+                "grace_minutes": request.form.get("schedule_grace_minutes", "30"),
+                "rules": json.loads(request.form.get("schedule_rules_json", "[]")),
+            }
+            if type_id == "dns.lookup":
+                condition_config = {
+                    "hosts": request.form.get("dns_hosts", ""),
+                    "servers": request.form.get("dns_servers", ""),
+                    "record_type": request.form.get("dns_record_type", "A"),
+                    "expected_answers": request.form.get("dns_expected_answers", ""),
+                    "answer_mode": request.form.get("dns_answer_mode", "any"),
+                    "failure_mode": request.form.get("dns_failure_mode", "at_least"),
+                    "failure_count": request.form.get("dns_failure_count", "1"),
+                    "timeout": request.form.get("dns_timeout", "3"),
+                }
+            elif type_id == "tcp.reachability":
+                condition_config = {
+                    "targets": request.form.get("tcp_targets", ""),
+                    "timeout": request.form.get("tcp_timeout", "1"),
+                    "expected_state": request.form.get("tcp_expected_state", "open"),
+                    "failure_mode": request.form.get("tcp_failure_mode", "at_least"),
+                    "failure_count": request.form.get("tcp_failure_count", "1"),
+                }
             config = AUTOMATION_REGISTRY.validate_condition(
                 type_id,
-                {
-                    "targets": request.form.get("condition_targets", ""),
-                    "timeout": request.form.get("condition_timeout", "1"),
-                    "failure_mode": request.form.get("condition_failure_mode", "all"),
-                    "failure_count": request.form.get("condition_failure_count", "1"),
-                },
+                condition_config,
             )
             definition_id = store.save_condition_definition(
                 definition_id=request.form.get("condition_definition_id", ""),
@@ -138,18 +186,30 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 password = str(existing["config"].get("password", ""))
         try:
             type_id = request.form.get("action_type", "ssh.collect")
+            action_config = {
+                "hosts": request.form.get("action_hosts", ""),
+                "username": request.form.get("action_username", ""),
+                "password": password,
+                "commands": request.form.get("action_commands", ""),
+                "command_timeout": request.form.get("action_command_timeout", "300"),
+                "port": request.form.get("action_port", "22"),
+                "allow_unknown_hosts": "action_allow_unknown_hosts" in request.form,
+                "send_ctrl_y": "action_send_ctrl_y" in request.form,
+            }
+            if type_id == "syslog.send":
+                action_config = {
+                    "destinations": request.form.get("syslog_destinations", ""),
+                    "protocol": request.form.get("syslog_protocol", "udp"),
+                    "facility": request.form.get("syslog_facility", "16"),
+                    "severity": request.form.get("syslog_severity", "6"),
+                    "hostname": request.form.get("syslog_hostname", "twn-toolkit"),
+                    "app_name": request.form.get("syslog_app_name", "twn-automation"),
+                    "message": request.form.get("syslog_message", ""),
+                    "timeout": request.form.get("syslog_timeout", "3"),
+                }
             config = AUTOMATION_REGISTRY.validate_action(
                 type_id,
-                {
-                    "hosts": request.form.get("action_hosts", ""),
-                    "username": request.form.get("action_username", ""),
-                    "password": password,
-                    "commands": request.form.get("action_commands", ""),
-                    "command_timeout": request.form.get("action_command_timeout", "300"),
-                    "port": request.form.get("action_port", "22"),
-                    "allow_unknown_hosts": "action_allow_unknown_hosts" in request.form,
-                    "send_ctrl_y": "action_send_ctrl_y" in request.form,
-                },
+                action_config,
             )
             definition_id = store.save_action_definition(
                 definition_id=definition_id,
@@ -223,12 +283,18 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             flash("Manual-trigger automations run only with Run now.", "error")
             return redirect(url_for("automations", focus=automation_id))
         store.set_enabled(automation_id, not automation["enabled"])
-        flash(
-            "Automation armed; its first check is due now."
-            if not automation["enabled"]
-            else "Automation paused.",
-            "success",
-        )
+        updated = store.get(automation_id)
+        if automation["enabled"]:
+            message = "Automation paused."
+        elif updated and updated["condition"]["type"] == "schedule.calendar":
+            message = (
+                "Schedule armed for its next occurrence."
+                if updated["enabled"]
+                else "Schedule has no future occurrences to arm."
+            )
+        else:
+            message = "Automation armed; its first check is due now."
+        flash(message, "success")
         return redirect(url_for("automations", focus=automation_id))
 
     @app.post("/automations/<automation_id>/run-now")
@@ -333,6 +399,12 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                         indent=2,
                     ),
                 )
+                destinations = result.get("output", {}).get("destinations", [])
+                if destinations:
+                    archive.writestr(
+                        f"action-{action_index}-destinations.json",
+                        json.dumps(destinations, indent=2),
+                    )
                 for host_index, host in enumerate(result.get("output", {}).get("hosts", []), 1):
                     host_name = _safe_filename(
                         str(host.get("host_label") or host.get("host", f"host-{host_index}"))

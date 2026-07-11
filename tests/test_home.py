@@ -41,7 +41,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
-        self.assertIn(b"v0.1.0", response.data)
+        self.assertIn(b"v0.8.0", response.data)
         self.assertIn(b'href="/help"', response.data)
         self.assertIn(b"Packet Replay", response.data)
         self.assertIn(b"FortiGate", response.data)
@@ -67,6 +67,14 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Using The WiFi Ninja", response.data)
         self.assertIn(b"Profiles, secrets, and backups", response.data)
         self.assertIn(b"Packet Replay", response.data)
+        self.assertIn(b"Conditions, actions, and automations", response.data)
+        self.assertIn(b"Home FortiGate = gate.example.com | 8443", response.data)
+        self.assertIn(b"Syslog notification action", response.data)
+        self.assertIn(b"./twn fix-permissions", response.data)
+        self.assertIn(b"Dashboard and metrics", response.data)
+        self.assertIn(b"Release notes", response.data)
+        self.assertIn(b"v0.8.0", response.data)
+        self.assertIn(b"Operational dashboard and automation milestone", response.data)
         self.assertIn(b"Use at your own risk", response.data)
 
     def test_fortinet_pages_show_workflows_without_self_profile_card(self) -> None:

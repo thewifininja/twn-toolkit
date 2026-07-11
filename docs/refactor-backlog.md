@@ -20,6 +20,22 @@ turning the codebase into a rewrite project.
 
 ## Current scan findings
 
+### 0. Formalize SQLite migrations before the next schema expansion
+
+Current automation migrations are idempotent startup checks and activity uses a
+one-time legacy import marker. This is adequate for the schemas already shipped,
+but the next material table/column/index/data-shape change should introduce a
+numbered transactional migration runner and schema-migration ledger for each
+SQLite database.
+
+Required before 1.0:
+
+1. Record version, applied timestamp, and description for every migration.
+2. Run pending migrations in order during controlled store initialization.
+3. Add upgrade tests using older database snapshots.
+4. Fail startup clearly without partially applying a migration.
+5. Alert the project owner when implementation reaches this threshold.
+
 ### 1. `app.py` was the main gravity well
 
 `twn_toolkit/app.py` previously held most of the application wiring plus many

@@ -127,11 +127,27 @@ def scan_tcp_ports(
         raise ToolInputError("Concurrency must be between 1 and 200.")
 
     jobs = [(target, port) for target in targets for port in ports]
-    workers = min(max_workers, len(jobs))
+    return scan_tcp_checks(jobs, timeout=timeout, max_workers=max_workers)
+
+
+def scan_tcp_checks(
+    checks: list[tuple[dict[str, str], int]],
+    timeout: float = 1.0,
+    max_workers: int = 100,
+) -> list[dict[str, Any]]:
+    if not checks:
+        raise ToolInputError("Select at least one TCP host/port check.")
+    if len(checks) > 5000:
+        raise ToolInputError("A scan is limited to 5,000 host/port combinations.")
+    if not 0.1 <= timeout <= 10:
+        raise ToolInputError("Connection timeout must be between 0.1 and 10 seconds.")
+    if not 1 <= max_workers <= 200:
+        raise ToolInputError("Concurrency must be between 1 and 200.")
+    workers = min(max_workers, len(checks))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
             executor.submit(_scan_tcp_port, target, port, timeout): index
-            for index, (target, port) in enumerate(jobs)
+            for index, (target, port) in enumerate(checks)
         }
         indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
     return [result for _index, result in sorted(indexed_results)]
@@ -661,13 +677,20 @@ def _ping_host(host: str, timeout: int) -> dict[str, Any]:
             "latency_ms": float(match.group(1)) if match else None,
             "elapsed_ms": round((time.monotonic() - started) * 1000, 1),
         }
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except subprocess.TimeoutExpired:
         return {
             "host": host,
             "reachable": False,
             "latency_ms": None,
             "elapsed_ms": round((time.monotonic() - started) * 1000, 1),
-            "error": str(exc),
+        }
+    except OSError as exc:
+        return {
+            "host": host,
+            "reachable": False,
+            "latency_ms": None,
+            "elapsed_ms": round((time.monotonic() - started) * 1000, 1),
+            "error": f"Unable to run the local ping command: {exc.strerror or exc}",
         }
 
 

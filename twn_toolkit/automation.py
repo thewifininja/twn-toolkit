@@ -19,6 +19,7 @@ from .automation_registry import (
     AutomationRegistry,
     ConditionResult,
 )
+from .schedule_tools import schedule_occurrence, schedule_should_fire
 
 
 class AutomationStore:
@@ -120,6 +121,7 @@ class AutomationStore:
                         cooldown_seconds = ?, condition_type = ?, condition_config = ?,
                         actions_encrypted = ?, enabled = 0, state = 'disabled',
                         consecutive_met = 0, consecutive_clear = 0, next_check_at = NULL,
+                        pending_schedule_at = NULL,
                         condition_definition_id = ?, action_definition_ids = ?, updated_at = ?
                     WHERE id = ?
                     """,
@@ -329,17 +331,39 @@ class AutomationStore:
     def set_enabled(self, automation_id: str, enabled: bool) -> None:
         now = time.time()
         with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT automations.*, automation_conditions.type AS definition_type,
+                    automation_conditions.config_json AS definition_config
+                FROM automations LEFT JOIN automation_conditions
+                    ON automation_conditions.id = automations.condition_definition_id
+                WHERE automations.id = ?
+                """,
+                (automation_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("Automation not found.")
+            condition_type = str(row["definition_type"] or row["condition_type"])
+            next_check = now if enabled else None
+            state = "healthy" if enabled else "disabled"
+            effective_enabled = enabled
+            if enabled and condition_type == "schedule.calendar":
+                config = json.loads(row["definition_config"] or row["condition_config"])
+                occurrence = schedule_occurrence(config, now - 0.001)
+                next_check = occurrence["timestamp"] if occurrence else None
+                state = "scheduled" if occurrence else "completed"
+                effective_enabled = occurrence is not None
             cursor = connection.execute(
                 """
                 UPDATE automations
                 SET enabled = ?, state = ?, consecutive_met = 0, consecutive_clear = 0,
-                    next_check_at = ?, updated_at = ?
+                    next_check_at = ?, pending_schedule_at = NULL, updated_at = ?
                 WHERE id = ?
                 """,
                 (
-                    int(enabled),
-                    "healthy" if enabled else "disabled",
-                    now if enabled else None,
+                    int(effective_enabled),
+                    state,
+                    next_check,
                     now,
                     automation_id,
                 ),
@@ -354,24 +378,131 @@ class AutomationStore:
             connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
                 """
-                SELECT automations.* FROM automations
+                SELECT automations.*,
+                    COALESCE(automation_conditions.type, automations.condition_type)
+                        AS effective_condition_type
+                FROM automations
                 LEFT JOIN automation_conditions
                     ON automation_conditions.id = automations.condition_definition_id
                 WHERE enabled = 1
                     AND COALESCE(automation_conditions.type, automations.condition_type) != 'manual.trigger'
-                    AND (next_check_at IS NULL OR next_check_at <= ?)
+                    AND (
+                        (COALESCE(automation_conditions.type, automations.condition_type) = 'schedule.calendar'
+                            AND next_check_at IS NOT NULL AND next_check_at <= ?)
+                        OR
+                        (COALESCE(automation_conditions.type, automations.condition_type) != 'schedule.calendar'
+                            AND (next_check_at IS NULL OR next_check_at <= ?))
+                    )
                 ORDER BY COALESCE(next_check_at, 0), automations.name COLLATE NOCASE
                 LIMIT ?
                 """,
-                (now, limit),
+                (now, now, limit),
             ).fetchall()
             for row in rows:
-                connection.execute(
-                    "UPDATE automations SET next_check_at = ? WHERE id = ?",
-                    (now + int(row["interval_seconds"]), row["id"]),
-                )
+                if row["effective_condition_type"] == "schedule.calendar":
+                    connection.execute(
+                        """
+                        UPDATE automations
+                        SET pending_schedule_at = COALESCE(pending_schedule_at, next_check_at),
+                            next_check_at = ?
+                        WHERE id = ?
+                        """,
+                        (now + 300, row["id"]),
+                    )
+                else:
+                    connection.execute(
+                        "UPDATE automations SET next_check_at = ? WHERE id = ?",
+                        (now + int(row["interval_seconds"]), row["id"]),
+                    )
                 claimed.append(row)
         return [self._automation_from_row(row, True) for row in claimed]
+
+    def record_schedule_occurrence(
+        self, automation_id: str, *, now: float | None = None
+    ) -> tuple[dict[str, Any], ConditionResult, bool]:
+        current_time = time.time() if now is None else now
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT automations.*, automation_conditions.config_json AS definition_config
+                FROM automations JOIN automation_conditions
+                    ON automation_conditions.id = automations.condition_definition_id
+                WHERE automations.id = ? AND automation_conditions.type = 'schedule.calendar'
+                """,
+                (automation_id,),
+            ).fetchone()
+            if not row or (row["pending_schedule_at"] is None and row["next_check_at"] is None):
+                raise ValueError("Scheduled automation is not awaiting an occurrence.")
+            config = json.loads(row["definition_config"])
+            scheduled_at = float(row["pending_schedule_at"] or row["next_check_at"])
+            occurrence = schedule_occurrence(config, scheduled_at - 0.001)
+            should_fire = schedule_should_fire(config, scheduled_at, current_time)
+            if occurrence is None:
+                raise ValueError("Scheduled occurrence could not be resolved.")
+            lateness_seconds = max(0, int(current_time - scheduled_at))
+            matched = "; ".join(occurrence["rules"])
+            if should_fire:
+                summary = f"Calendar occurrence: {matched}."
+                status = "scheduled"
+            else:
+                summary = f"Skipped missed calendar occurrence ({lateness_seconds}s late): {matched}."
+                status = "skipped"
+            result = ConditionResult(
+                met=should_fire,
+                status=status,
+                summary=summary,
+                evidence={
+                    "trigger": "schedule",
+                    "occurrence": occurrence,
+                    "lateness_seconds": lateness_seconds,
+                },
+            )
+            next_cursor = current_time if current_time - scheduled_at > 60 else scheduled_at
+            following = schedule_occurrence(config, next_cursor + 0.001)
+            next_check = following["timestamp"] if following else None
+            state = "scheduled" if following else "completed"
+            connection.execute(
+                """
+                UPDATE automations
+                SET enabled = ?, state = ?, next_check_at = ?, pending_schedule_at = NULL,
+                    last_check_at = ?,
+                    last_summary = ?, last_error = NULL,
+                    last_triggered_at = CASE WHEN ? THEN ? ELSE last_triggered_at END,
+                    consecutive_met = 0, consecutive_clear = 0, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    int(following is not None),
+                    state,
+                    next_check,
+                    current_time,
+                    summary,
+                    int(should_fire),
+                    current_time,
+                    current_time,
+                    automation_id,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO automation_checks
+                    (automation_id, checked_at, met, status, summary, evidence_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    automation_id,
+                    current_time,
+                    int(should_fire),
+                    status,
+                    summary,
+                    json.dumps(result.evidence, separators=(",", ":")),
+                ),
+            )
+        updated = self.get(automation_id, include_secrets=True)
+        if updated is None:
+            raise ValueError("Automation not found.")
+        return updated, result, should_fire
 
     def record_condition(
         self, automation_id: str, result: ConditionResult
@@ -453,14 +584,38 @@ class AutomationStore:
     def record_error(self, automation_id: str, message: str) -> None:
         now = time.time()
         with self._connect() as connection:
+            condition_type_row = connection.execute(
+                """
+                SELECT COALESCE(automation_conditions.type, automations.condition_type) AS type
+                FROM automations LEFT JOIN automation_conditions
+                    ON automation_conditions.id = automations.condition_definition_id
+                WHERE automations.id = ?
+                """,
+                (automation_id,),
+            ).fetchone()
+            is_schedule = bool(
+                condition_type_row and condition_type_row["type"] == "schedule.calendar"
+            )
             connection.execute(
                 """
                 UPDATE automations
                 SET state = 'error', last_check_at = ?, last_error = ?,
-                    last_summary = 'Condition check could not be completed.', updated_at = ?
+                    last_summary = 'Condition check could not be completed.',
+                    enabled = CASE WHEN ? THEN 0 ELSE enabled END,
+                    next_check_at = CASE WHEN ? THEN NULL ELSE next_check_at END,
+                    pending_schedule_at = CASE WHEN ? THEN NULL ELSE pending_schedule_at END,
+                    updated_at = ?
                 WHERE id = ?
                 """,
-                (now, message[:2000], now, automation_id),
+                (
+                    now,
+                    message[:2000],
+                    int(is_schedule),
+                    int(is_schedule),
+                    int(is_schedule),
+                    now,
+                    automation_id,
+                ),
             )
             connection.execute(
                 """
@@ -634,6 +789,7 @@ class AutomationStore:
             """
             UPDATE automations SET enabled = 0, state = 'disabled',
                 consecutive_met = 0, consecutive_clear = 0, next_check_at = NULL,
+                pending_schedule_at = NULL,
                 updated_at = ? WHERE condition_definition_id = ?
             """,
             (now, definition_id),
@@ -656,6 +812,7 @@ class AutomationStore:
                 """
                 UPDATE automations SET enabled = 0, state = 'disabled',
                     consecutive_met = 0, consecutive_clear = 0, next_check_at = NULL,
+                    pending_schedule_at = NULL,
                     updated_at = ? WHERE id = ?
                 """,
                 (now, automation_id),
@@ -712,6 +869,7 @@ class AutomationStore:
                 consecutive_met INTEGER NOT NULL DEFAULT 0,
                 consecutive_clear INTEGER NOT NULL DEFAULT 0,
                 next_check_at REAL,
+                pending_schedule_at REAL,
                 last_check_at REAL,
                 last_triggered_at REAL,
                 last_summary TEXT,
@@ -772,6 +930,10 @@ class AutomationStore:
         if "action_definition_ids" not in columns:
             connection.execute(
                 "ALTER TABLE automations ADD COLUMN action_definition_ids TEXT"
+            )
+        if "pending_schedule_at" not in columns:
+            connection.execute(
+                "ALTER TABLE automations ADD COLUMN pending_schedule_at REAL"
             )
         connection.execute("PRAGMA foreign_keys = ON")
 
@@ -854,6 +1016,19 @@ class AutomationEngine:
         processed = 0
         for automation in self.store.claim_due():
             processed += 1
+            if automation["condition"]["type"] == "schedule.calendar":
+                try:
+                    updated, result, should_fire = self.store.record_schedule_occurrence(
+                        automation["id"]
+                    )
+                except Exception as exc:
+                    self.store.record_error(
+                        automation["id"], f"{type(exc).__name__}: {exc}"
+                    )
+                    continue
+                if should_fire:
+                    self.execute_actions(updated, result)
+                continue
             try:
                 result = self.test_condition(automation)
             except Exception as exc:
