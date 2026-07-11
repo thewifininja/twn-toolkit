@@ -159,6 +159,110 @@ class AutomationStoreTests(unittest.TestCase):
         self.assertEqual(self.store.get(automation_id)["state"], "triggered")
         self.assertEqual(self.store.recent_runs(automation_id)[0]["status"], "success")
 
+    def test_pipeline_runs_parallel_stage_before_later_stage_with_bounded_context(self) -> None:
+        condition_id = self.store.save_condition_definition(
+            name="Pipeline trigger", type_id="test.condition", config={}
+        )
+        first_ids = [
+            self.store.save_action_definition(
+                name=name, type_id="test.action", config={"name": name}
+            )
+            for name in ("Collect switch", "Collect firewall")
+        ]
+        notify_id = self.store.save_action_definition(
+            name="Notify", type_id="test.action", config={"name": "Notify"}
+        )
+        automation_id = self.store.save(
+            name="Staged workflow",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_id=condition_id,
+            action_stages=[
+                {
+                    "id": "gather",
+                    "name": "Gather diagnostics",
+                    "continue_policy": "all_success",
+                    "action_definition_ids": first_ids,
+                },
+                {
+                    "id": "notify",
+                    "name": "Notify",
+                    "continue_policy": "all_completed",
+                    "action_definition_ids": [notify_id],
+                },
+            ],
+            created_by="user-1",
+        )
+        calls: list[tuple[str, list[str]]] = []
+        registry = AutomationRegistry()
+        registry.add_action(
+            ActionType(
+                "test.action", "Test", "", lambda value: value,
+                lambda config, trigger: (
+                    calls.append((config["name"], list(trigger.evidence.get("actions", {}).get("successful", []))))
+                    or ActionResult("success", f"{config['name']} complete", {"raw_output": "not shared", "count": 1})
+                ),
+            )
+        )
+        automation = self.store.get(automation_id, include_secrets=True)
+        AutomationEngine(self.store, registry).execute_actions(
+            automation, ConditionResult(True, "met", "triggered", {})
+        )
+        self.assertEqual({calls[0][0], calls[1][0]}, {"Collect switch", "Collect firewall"})
+        self.assertEqual(calls[2][0], "Notify")
+        self.assertEqual(set(calls[2][1]), {"Collect switch", "Collect firewall"})
+        run = self.store.recent_runs(automation_id)[0]
+        self.assertEqual(run["results"][0]["output"]["_pipeline"]["stage_id"], "gather")
+        self.assertEqual(run["results"][2]["output"]["_pipeline"]["stage_id"], "notify")
+
+    def test_pipeline_migration_is_recorded(self) -> None:
+        connection = sqlite3.connect(self.store.path)
+        try:
+            migration = connection.execute(
+                "SELECT description FROM automation_schema_migrations WHERE version = 1"
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual(migration[0], "Add ordered parallel action stages")
+
+    def test_pipeline_failure_policy_stops_later_stages(self) -> None:
+        condition_id = self.store.save_condition_definition(
+            name="Stop trigger", type_id="test.condition", config={}
+        )
+        fail_id = self.store.save_action_definition(
+            name="Fail", type_id="test.action", config={"status": "error"}
+        )
+        later_id = self.store.save_action_definition(
+            name="Should not run", type_id="test.action", config={"status": "success"}
+        )
+        automation_id = self.store.save(
+            name="Stop pipeline", interval_seconds=30, trigger_after=1,
+            recover_after=1, cooldown_seconds=0,
+            condition_definition_id=condition_id,
+            action_stages=[
+                {"id": "first", "name": "First", "continue_policy": "all_success", "action_definition_ids": [fail_id]},
+                {"id": "later", "name": "Later", "continue_policy": "all_completed", "action_definition_ids": [later_id]},
+            ],
+            created_by="user-1",
+        )
+        calls = []
+        registry = AutomationRegistry()
+        registry.add_action(ActionType(
+            "test.action", "Test", "", lambda value: value,
+            lambda config, _trigger: (
+                calls.append(config["status"])
+                or ActionResult(config["status"], config["status"], {})
+            ),
+        ))
+        AutomationEngine(self.store, registry).execute_actions(
+            self.store.get(automation_id, include_secrets=True),
+            ConditionResult(True, "met", "triggered", {}),
+        )
+        self.assertEqual(calls, ["error"])
+        self.assertEqual(self.store.recent_runs(automation_id)[0]["status"], "error")
+
     def test_manual_condition_is_never_claimed_by_scheduler(self) -> None:
         condition_id = self.store.save_condition_definition(
             name="Run on demand", type_id="manual.trigger", config={}
@@ -400,7 +504,7 @@ class AutomationRouteTests(unittest.TestCase):
                 "host": "192.0.2.10", "label": "Core Switch", "port": 22,
                 "service": "ssh", "status": "open", "detail": "", "elapsed_ms": 3.2,
             }]
-            with patch("twn_toolkit.automation_registry.scan_tcp_checks", return_value=tcp_results):
+            with patch("twn_toolkit.automation_types.conditions.scan_tcp_checks", return_value=tcp_results):
                 tested = client.post(f"/automations/conditions/{definition['id']}/test")
 
         self.assertEqual(response.status_code, 302)
@@ -438,7 +542,7 @@ class AutomationRouteTests(unittest.TestCase):
                 {"host": "192.0.2.1", "reachable": True, "latency_ms": 2.4, "elapsed_ms": 3.0},
                 {"host": "198.51.100.1", "reachable": False, "latency_ms": None, "elapsed_ms": 1001.2},
             ]
-            with patch("twn_toolkit.automation_registry.ping_hosts", return_value=ping_results):
+            with patch("twn_toolkit.automation_types.conditions.ping_hosts", return_value=ping_results):
                 response = client.post(f"/automations/conditions/{definition_id}/test")
 
         self.assertEqual(response.status_code, 200)
@@ -678,7 +782,7 @@ class AutomationRouteTests(unittest.TestCase):
                 {"host": "192.0.2.2", "status": "success", "output": "clock output"}
             ]
             with patch(
-                "twn_toolkit.automation_registry.run_ssh_hosts",
+                "twn_toolkit.automation_types.actions.run_ssh_hosts",
                 return_value=ssh_results,
             ):
                 run = client.post(f"/automations/{automation_id}/run-now")
@@ -704,6 +808,38 @@ class AutomationRouteTests(unittest.TestCase):
 
 
 class AutomationRegistryTests(unittest.TestCase):
+    def test_registered_types_own_form_parsing_and_secret_metadata(self) -> None:
+        condition = AUTOMATION_REGISTRY.condition_config_from_form(
+            "ping.multi",
+            {
+                "condition_targets": "Gateway = 192.0.2.1",
+                "condition_timeout": "2",
+                "condition_failure_mode": "all",
+                "condition_failure_count": "1",
+            },
+        )
+        self.assertEqual(condition["targets"], "Gateway = 192.0.2.1")
+        self.assertEqual(condition["timeout"], 2)
+
+        action = AUTOMATION_REGISTRY.action_config_from_form(
+            "webhook.send",
+            {
+                "webhook_endpoints": "https://example.com/events",
+                "webhook_method": "POST",
+                "webhook_body_format": "json",
+                "webhook_body": '{"status":"{{trigger.status}}"}',
+                "webhook_timeout": "5",
+                "webhook_expected_statuses": "200-299",
+                "webhook_verify_tls": "on",
+            },
+            {"headers": "Authorization: Bearer retained"},
+        )
+        self.assertEqual(action["headers"], "Authorization: Bearer retained")
+        self.assertEqual(
+            AUTOMATION_REGISTRY.secret_fields_for_action("webhook.send"),
+            ("headers",),
+        )
+
     def test_webhook_action_renders_json_safely_and_reports_partial_delivery(self) -> None:
         action = AUTOMATION_REGISTRY.actions["webhook.send"]
         trigger = ConditionResult(True, "met", 'Gateway said "down"', {"failed": 2})
@@ -718,7 +854,7 @@ class AutomationRegistryTests(unittest.TestCase):
             "redirect": "",
         }
         with patch(
-            "twn_toolkit.automation_registry.send_api_request",
+            "twn_toolkit.automation_types.actions.send_api_request",
             side_effect=[success_response, failure_response],
         ) as sender:
             result = action.execute(
@@ -749,7 +885,7 @@ class AutomationRegistryTests(unittest.TestCase):
             "bytes": 120, "wire_message": "payload",
         }
         with patch(
-            "twn_toolkit.automation_registry.send_syslog",
+            "twn_toolkit.automation_types.actions.send_syslog",
             side_effect=[sent_result, ToolInputError("Could not resolve syslog destination")],
         ) as sender:
             result = action.execute(
@@ -795,7 +931,7 @@ class AutomationRegistryTests(unittest.TestCase):
             {"host": "192.0.2.10", "label": "Switch", "port": 22, "service": "ssh", "status": "open", "detail": "", "elapsed_ms": 2.0},
             {"host": "192.0.2.10", "label": "Switch", "port": 443, "service": "https", "status": "closed", "detail": "Connection refused", "elapsed_ms": 1.0},
         ]
-        with patch("twn_toolkit.automation_registry.scan_tcp_checks", return_value=results):
+        with patch("twn_toolkit.automation_types.conditions.scan_tcp_checks", return_value=results):
             result = condition.evaluate({
                 "hosts": "Switch = 192.0.2.10", "ports": "22,443", "timeout": 1,
                 "expected_state": "open", "failure_mode": "at_least", "failure_count": 1,
@@ -811,7 +947,7 @@ class AutomationRegistryTests(unittest.TestCase):
             {"host": "192.0.2.10", "label": "", "port": 22, "service": "ssh", "status": "closed", "detail": "Connection refused", "elapsed_ms": 1.0},
             {"host": "192.0.2.10", "label": "", "port": 23, "service": "telnet", "status": "timeout", "detail": "No response before timeout", "elapsed_ms": 1000.0},
         ]
-        with patch("twn_toolkit.automation_registry.scan_tcp_checks", return_value=results):
+        with patch("twn_toolkit.automation_types.conditions.scan_tcp_checks", return_value=results):
             result = condition.evaluate({
                 "hosts": "192.0.2.10", "ports": "22-23", "timeout": 1,
                 "expected_state": "closed", "failure_mode": "at_least", "failure_count": 1,
@@ -845,7 +981,7 @@ class AutomationRegistryTests(unittest.TestCase):
                 "error": "timed out",
             },
         ]
-        with patch("twn_toolkit.automation_registry.dns_lookup_matrix", return_value=results):
+        with patch("twn_toolkit.automation_types.conditions.dns_lookup_matrix", return_value=results):
             result = condition.evaluate(
                 {
                     "hosts": "Portal = portal.example.com",
@@ -872,7 +1008,7 @@ class AutomationRegistryTests(unittest.TestCase):
             "server_label": "", "record_type": "A", "status": "success",
             "answers": ["192.0.2.10"], "response_ms": 1.0,
         }]
-        with patch("twn_toolkit.automation_registry.dns_lookup_matrix", return_value=results):
+        with patch("twn_toolkit.automation_types.conditions.dns_lookup_matrix", return_value=results):
             result = condition.evaluate({
                 "hosts": "example.com", "servers": "192.0.2.53", "record_type": "A",
                 "timeout": 1, "expected_answers": "192.0.2.10\n192.0.2.11",
@@ -887,7 +1023,7 @@ class AutomationRegistryTests(unittest.TestCase):
             {"host": "192.0.2.1", "reachable": False, "latency_ms": None},
             {"host": "192.0.2.2", "reachable": True, "latency_ms": 1.0},
         ]
-        with patch("twn_toolkit.automation_registry.ping_hosts", return_value=results):
+        with patch("twn_toolkit.automation_types.conditions.ping_hosts", return_value=results):
             all_result = condition.evaluate(
                 {
                     "targets": "192.0.2.1\n192.0.2.2",

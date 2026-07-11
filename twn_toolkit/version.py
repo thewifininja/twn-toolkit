@@ -34,6 +34,7 @@ RELEASE_NOTES = (
                     "Added prompt-aware multi-host SSH collection and RFC 5424 Syslog notification actions.",
                     "Added encrypted, templated Webhook/API notifications with JSON-safe trigger variables and per-endpoint delivery results.",
                     "Added one-second monitoring intervals, trigger/recovery debounce, cooldowns, missed-schedule policies, and timezone-aware calendar rules.",
+                    "Added user-defined action stages: actions run in parallel within a stage, stages run sequentially, and bounded earlier-stage results can feed later Webhook/API notifications.",
                 ),
             },
             {

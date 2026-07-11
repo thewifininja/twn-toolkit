@@ -107,6 +107,62 @@
   });
 
   document.querySelectorAll("form.automation-form").forEach((form) => {
+    const stageBuilder = form.querySelector("[data-action-stage-builder]");
+    if (stageBuilder) {
+      const hidden = form.querySelector("[data-action-stages-json]");
+      const list = stageBuilder.querySelector("[data-action-stage-list]");
+      const addStage = stageBuilder.querySelector("[data-add-action-stage]");
+      let choices = [];
+      let stages = [];
+      try { choices = JSON.parse(stageBuilder.dataset.actionChoices || "[]"); } catch (_error) { choices = []; }
+      try { stages = JSON.parse(hidden?.value || "[]"); } catch (_error) { stages = []; }
+      const stageId = () => globalThis.crypto?.randomUUID?.() || `stage-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      if (!stages.length) stages = [{id:stageId(), name:"Stage 1", continue_policy:"all_completed", action_definition_ids:[]}];
+      const syncStages = () => { if (hidden) hidden.value = JSON.stringify(stages); };
+      const renderStages = () => {
+        list.replaceChildren();
+        const assigned = new Set(stages.flatMap((stage) => stage.action_definition_ids || []));
+        stages.forEach((stage, index) => {
+          const card = document.createElement("section");
+          card.className = "automation-stage-card";
+          const actionRows = choices.map((choice) => {
+            const selected = (stage.action_definition_ids || []).includes(choice.id);
+            const unavailable = !selected && assigned.has(choice.id);
+            return `<label class="check automation-stage-action ${unavailable ? "is-assigned" : ""}"><input type="checkbox" value="${escapeHtml(choice.id)}" ${selected ? "checked" : ""} ${unavailable ? "disabled" : ""}><span><strong>${escapeHtml(choice.name)}</strong><small>${escapeHtml(choice.type)}${unavailable ? " · assigned to another stage" : ""}</small></span></label>`;
+          }).join("");
+          card.innerHTML = `
+            <div class="automation-stage-head">
+              <label>Stage name<input data-stage-name maxlength="100" value="${escapeHtml(stage.name || `Stage ${index + 1}`)}" required></label>
+              <label>Continue to next stage when<select data-stage-policy>
+                <option value="all_completed" ${stage.continue_policy === "all_completed" ? "selected" : ""}>This stage completes, regardless of result</option>
+                <option value="success_or_partial" ${stage.continue_policy === "success_or_partial" ? "selected" : ""}>No action completely fails</option>
+                <option value="all_success" ${stage.continue_policy === "all_success" ? "selected" : ""}>Every action succeeds</option>
+              </select></label>
+            </div>
+            <p class="field-note">Actions in this stage run in parallel. The next stage waits for all of them to finish.</p>
+            <div class="automation-stage-actions">${actionRows}</div>
+            <div class="button-row automation-stage-controls">
+              <button class="secondary" type="button" data-stage-up ${index === 0 ? "disabled" : ""}>Move up</button>
+              <button class="secondary" type="button" data-stage-down ${index === stages.length - 1 ? "disabled" : ""}>Move down</button>
+              ${stages.length > 1 ? '<button class="text-danger" type="button" data-remove-stage>Remove stage</button>' : ""}
+            </div>`;
+          list.append(card);
+          card.querySelector("[data-stage-name]").addEventListener("input", (event) => { stage.name = event.target.value; syncStages(); });
+          card.querySelector("[data-stage-policy]").addEventListener("change", (event) => { stage.continue_policy = event.target.value; syncStages(); });
+          card.querySelectorAll(".automation-stage-action input").forEach((input) => input.addEventListener("change", () => {
+            stage.action_definition_ids = [...card.querySelectorAll(".automation-stage-action input:checked")].map((item) => item.value);
+            syncStages(); renderStages();
+          }));
+          card.querySelector("[data-stage-up]").addEventListener("click", () => { [stages[index - 1], stages[index]] = [stages[index], stages[index - 1]]; syncStages(); renderStages(); });
+          card.querySelector("[data-stage-down]").addEventListener("click", () => { [stages[index + 1], stages[index]] = [stages[index], stages[index + 1]]; syncStages(); renderStages(); });
+          card.querySelector("[data-remove-stage]")?.addEventListener("click", () => { stages.splice(index, 1); syncStages(); renderStages(); });
+        });
+        syncStages();
+      };
+      addStage?.addEventListener("click", () => { stages.push({id:stageId(), name:`Stage ${stages.length + 1}`, continue_policy:"all_completed", action_definition_ids:[]}); renderStages(); });
+      renderStages();
+    }
+
     const conditionType = form.querySelector("select[name='condition_type']");
     if (conditionType) {
       const syncConditionFields = () => {

@@ -43,6 +43,15 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     ) -> str:
         automations = store.all()
         for automation in automations:
+            automation["stage_form"] = [
+                {
+                    "id": stage["id"],
+                    "name": stage["name"],
+                    "continue_policy": stage["continue_policy"],
+                    "action_definition_ids": stage["action_definition_ids"],
+                }
+                for stage in automation["action_stages"]
+            ]
             automation["recent_runs"] = [
                 _format_run(run) for run in store.recent_runs(automation["id"], 10)
             ]
@@ -75,6 +84,10 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             automations=automations,
             condition_definitions=condition_definitions,
             action_definitions=store.action_definitions(),
+            action_choices=[
+                {"id": item["id"], "name": item["name"], "type": item["type"]}
+                for item in store.action_definitions()
+            ],
             condition_types=AUTOMATION_REGISTRY.conditions.values(),
             action_types=AUTOMATION_REGISTRY.actions.values(),
             test_result=test_result,
@@ -95,6 +108,12 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         require_admin()
         form = {key: value for key, value in request.form.items()}
         form["action_definition_ids"] = request.form.getlist("action_definition_id")
+        try:
+            form["action_stages"] = json.loads(
+                request.form.get("action_stages_json", "[]")
+            )
+        except json.JSONDecodeError:
+            form["action_stages"] = []
         automation_id = request.form.get("automation_id", "").strip()
         try:
             saved_id = store.save(
@@ -106,6 +125,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 cooldown_seconds=int(request.form.get("cooldown_seconds", "300")),
                 condition_definition_id=request.form.get("condition_definition_id", ""),
                 action_definition_ids=request.form.getlist("action_definition_id"),
+                action_stages=form["action_stages"],
                 created_by=str(g.current_user["id"]),
             )
         except (ToolInputError, ValueError) as exc:
@@ -125,39 +145,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             form["rules"] = []
         try:
             type_id = request.form.get("condition_type", "ping.multi")
-            condition_config = {
-                "targets": request.form.get("condition_targets", ""),
-                "timeout": request.form.get("condition_timeout", "1"),
-                "failure_mode": request.form.get("condition_failure_mode", "all"),
-                "failure_count": request.form.get("condition_failure_count", "1"),
-                "timezone": request.form.get("schedule_timezone", ""),
-                "missed_policy": request.form.get("schedule_missed_policy", "grace"),
-                "grace_minutes": request.form.get("schedule_grace_minutes", "30"),
-                "rules": json.loads(request.form.get("schedule_rules_json", "[]")),
-            }
-            if type_id == "dns.lookup":
-                condition_config = {
-                    "hosts": request.form.get("dns_hosts", ""),
-                    "servers": request.form.get("dns_servers", ""),
-                    "record_type": request.form.get("dns_record_type", "A"),
-                    "expected_answers": request.form.get("dns_expected_answers", ""),
-                    "answer_mode": request.form.get("dns_answer_mode", "any"),
-                    "failure_mode": request.form.get("dns_failure_mode", "at_least"),
-                    "failure_count": request.form.get("dns_failure_count", "1"),
-                    "timeout": request.form.get("dns_timeout", "3"),
-                }
-            elif type_id == "tcp.reachability":
-                condition_config = {
-                    "targets": request.form.get("tcp_targets", ""),
-                    "timeout": request.form.get("tcp_timeout", "1"),
-                    "expected_state": request.form.get("tcp_expected_state", "open"),
-                    "failure_mode": request.form.get("tcp_failure_mode", "at_least"),
-                    "failure_count": request.form.get("tcp_failure_count", "1"),
-                }
-            config = AUTOMATION_REGISTRY.validate_condition(
-                type_id,
-                condition_config,
-            )
+            config = AUTOMATION_REGISTRY.condition_config_from_form(type_id, request.form)
             definition_id = store.save_condition_definition(
                 definition_id=request.form.get("condition_definition_id", ""),
                 name=request.form.get("condition_name", ""),
@@ -184,51 +172,10 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             existing = store.get_action_definition(definition_id, include_secrets=True)
             if existing:
                 existing_config = dict(existing["config"])
-        password = request.form.get("action_password", "")
-        if definition_id and not password:
-            password = str(existing_config.get("password", ""))
         try:
             type_id = request.form.get("action_type", "ssh.collect")
-            action_config = {
-                "hosts": request.form.get("action_hosts", ""),
-                "username": request.form.get("action_username", ""),
-                "password": password,
-                "commands": request.form.get("action_commands", ""),
-                "command_timeout": request.form.get("action_command_timeout", "300"),
-                "port": request.form.get("action_port", "22"),
-                "allow_unknown_hosts": "action_allow_unknown_hosts" in request.form,
-                "send_ctrl_y": "action_send_ctrl_y" in request.form,
-            }
-            if type_id == "syslog.send":
-                action_config = {
-                    "destinations": request.form.get("syslog_destinations", ""),
-                    "protocol": request.form.get("syslog_protocol", "udp"),
-                    "facility": request.form.get("syslog_facility", "16"),
-                    "severity": request.form.get("syslog_severity", "6"),
-                    "hostname": request.form.get("syslog_hostname", "twn-toolkit"),
-                    "app_name": request.form.get("syslog_app_name", "twn-automation"),
-                    "message": request.form.get("syslog_message", ""),
-                    "timeout": request.form.get("syslog_timeout", "3"),
-                }
-            elif type_id == "webhook.send":
-                headers = request.form.get("webhook_headers", "")
-                if "webhook_clear_headers" in request.form:
-                    headers = ""
-                elif definition_id and not headers.strip():
-                    headers = str(existing_config.get("headers", ""))
-                action_config = {
-                    "endpoints": request.form.get("webhook_endpoints", ""),
-                    "method": request.form.get("webhook_method", "POST"),
-                    "headers": headers,
-                    "body_format": request.form.get("webhook_body_format", "json"),
-                    "body": request.form.get("webhook_body", ""),
-                    "timeout": request.form.get("webhook_timeout", "10"),
-                    "verify_tls": "webhook_verify_tls" in request.form,
-                    "expected_statuses": request.form.get("webhook_expected_statuses", "200-299"),
-                }
-            config = AUTOMATION_REGISTRY.validate_action(
-                type_id,
-                action_config,
+            config = AUTOMATION_REGISTRY.action_config_from_form(
+                type_id, request.form, existing_config
             )
             definition_id = store.save_action_definition(
                 definition_id=definition_id,

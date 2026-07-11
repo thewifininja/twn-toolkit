@@ -86,6 +86,12 @@ service.
   collectors and retain per-destination delivery results.
 - Send encrypted-header Webhook/API notifications with JSON-safe trigger
   variables, accepted-status policy, and retained per-endpoint results.
+- Build ordered action pipelines with user-defined stages. Actions inside a
+  stage run in parallel, while additional stages wait and run sequentially.
+- Choose whether a later stage always runs, requires success-or-partial results,
+  or requires every action in the preceding stage to succeed.
+- Pass bounded, non-secret earlier-stage summaries into later Webhook/API
+  actions without automatically exposing raw SSH captures or credentials.
 - Download a run as a ZIP containing metadata and per-host text output.
 - Delete individual collected runs or clear all collected action data for an
   automation while preserving condition-check history.

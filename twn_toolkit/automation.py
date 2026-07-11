@@ -7,6 +7,7 @@ import os
 import secrets
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -47,6 +48,7 @@ class AutomationStore:
         actions: list[dict[str, Any]] | None = None,
         condition_definition_id: str = "",
         action_definition_ids: list[str] | None = None,
+        action_stages: list[dict[str, Any]] | None = None,
         created_by: str,
         automation_id: str = "",
     ) -> str:
@@ -69,7 +71,7 @@ class AutomationStore:
                 type_id=str(condition["type"]),
                 config=dict(condition["config"]),
             )
-        if not action_definition_ids:
+        if not action_definition_ids and not action_stages:
             if not actions:
                 raise ValueError("Select at least one automation action.")
             action_definition_ids = [
@@ -80,6 +82,15 @@ class AutomationStore:
                 )
                 for index, action in enumerate(actions, 1)
             ]
+        action_stages = self._normalize_action_stages(
+            action_stages,
+            action_definition_ids or [],
+        )
+        action_definition_ids = [
+            action_id
+            for stage in action_stages
+            for action_id in stage["action_definition_ids"]
+        ]
         condition_definition = self.get_condition_definition(condition_definition_id)
         if not condition_definition:
             raise ValueError("Selected condition definition was not found.")
@@ -122,7 +133,8 @@ class AutomationStore:
                         actions_encrypted = ?, enabled = 0, state = 'disabled',
                         consecutive_met = 0, consecutive_clear = 0, next_check_at = NULL,
                         pending_schedule_at = NULL,
-                        condition_definition_id = ?, action_definition_ids = ?, updated_at = ?
+                        condition_definition_id = ?, action_definition_ids = ?,
+                        action_stages = ?, updated_at = ?
                     WHERE id = ?
                     """,
                     (
@@ -136,6 +148,7 @@ class AutomationStore:
                         encrypted_actions,
                         condition_definition_id,
                         json.dumps(action_definition_ids),
+                        json.dumps(action_stages, separators=(",", ":")),
                         now,
                         automation_id,
                     ),
@@ -148,10 +161,10 @@ class AutomationStore:
                 INSERT INTO automations (
                     id, name, enabled, interval_seconds, trigger_after, recover_after,
                     cooldown_seconds, condition_type, condition_config, actions_encrypted,
-                    condition_definition_id, action_definition_ids,
+                    condition_definition_id, action_definition_ids, action_stages,
                     state, consecutive_met, consecutive_clear, next_check_at,
                     created_by, created_at, updated_at
-                ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'disabled', 0, 0, NULL, ?, ?, ?)
+                ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'disabled', 0, 0, NULL, ?, ?, ?)
                 """,
                 (
                     automation_id,
@@ -165,12 +178,55 @@ class AutomationStore:
                     encrypted_actions,
                     condition_definition_id,
                     json.dumps(action_definition_ids),
+                    json.dumps(action_stages, separators=(",", ":")),
                     created_by,
                     now,
                     now,
                 ),
             )
         return automation_id
+
+    @staticmethod
+    def _normalize_action_stages(
+        stages: list[dict[str, Any]] | None,
+        legacy_action_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        if not stages:
+            stages = [{
+                "id": "stage-1",
+                "name": "Stage 1",
+                "continue_policy": "all_completed",
+                "action_definition_ids": legacy_action_ids,
+            }]
+        normalized = []
+        seen_stage_ids: set[str] = set()
+        seen_action_ids: set[str] = set()
+        for index, raw in enumerate(stages, 1):
+            stage_id = str(raw.get("id", "")).strip() or f"stage-{index}"
+            if stage_id in seen_stage_ids or len(stage_id) > 80:
+                raise ValueError("Every automation stage must have a unique stable ID.")
+            seen_stage_ids.add(stage_id)
+            name = " ".join(str(raw.get("name", "")).strip().split()) or f"Stage {index}"
+            if len(name) > 100:
+                raise ValueError("Stage names must be 100 characters or fewer.")
+            policy = str(raw.get("continue_policy", "all_completed"))
+            if policy not in {"all_completed", "success_or_partial", "all_success"}:
+                raise ValueError("Select a valid stage continuation policy.")
+            action_ids = [str(value).strip() for value in raw.get("action_definition_ids", []) if str(value).strip()]
+            if not action_ids:
+                raise ValueError(f"{name} must contain at least one action.")
+            if any(action_id in seen_action_ids for action_id in action_ids):
+                raise ValueError("Each reusable action may appear only once in an automation pipeline.")
+            seen_action_ids.update(action_ids)
+            normalized.append({
+                "id": stage_id,
+                "name": name,
+                "continue_policy": policy,
+                "action_definition_ids": action_ids,
+            })
+        if not normalized:
+            raise ValueError("Select at least one automation action.")
+        return normalized
 
     def save_condition_definition(
         self,
@@ -637,9 +693,9 @@ class AutomationStore:
         status = (
             "success"
             if results and all(result.status == "success" for result in results)
-            else "partial"
-            if any(result.status == "success" for result in results)
             else "error"
+            if not results or all(result.status == "error" for result in results)
+            else "partial"
         )
         payload = [
             {"status": result.status, "summary": result.summary, "output": result.output}
@@ -736,11 +792,25 @@ class AutomationStore:
         condition_definition_id = str(row["condition_definition_id"] or "")
         action_definition_ids = json.loads(row["action_definition_ids"] or "[]")
         condition = self.get_condition_definition(condition_definition_id)
-        actions = [
-            self.get_action_definition(action_id, include_secrets=include_secrets)
-            for action_id in action_definition_ids
+        action_map = {}
+        for action_id in action_definition_ids:
+            action = self.get_action_definition(action_id, include_secrets=include_secrets)
+            if action is not None:
+                action_map[action_id] = action
+        raw_stages = json.loads(row["action_stages"] or "null")
+        normalized_stages = self._normalize_action_stages(raw_stages, action_definition_ids)
+        stages = [
+            {
+                **stage,
+                "actions": [
+                    action_map[action_id]
+                    for action_id in stage["action_definition_ids"]
+                    if action_id in action_map
+                ],
+            }
+            for stage in normalized_stages
         ]
-        actions = [action for action in actions if action is not None]
+        actions = [action for stage in stages for action in stage["actions"]]
         return {
             **dict(row),
             "enabled": bool(row["enabled"]),
@@ -752,6 +822,7 @@ class AutomationStore:
                 "config": json.loads(row["condition_config"]),
             },
             "actions": actions,
+            "action_stages": stages,
         }
 
     @staticmethod
@@ -765,18 +836,21 @@ class AutomationStore:
         self, row: sqlite3.Row, include_secrets: bool
     ) -> dict[str, Any]:
         config = self._decrypt(str(row["config_encrypted"]))
-        has_password = bool(config.get("password"))
-        has_headers = bool(config.get("headers"))
+        secret_fields = AUTOMATION_REGISTRY.secret_fields_for_action(str(row["type"]))
+        secret_presence = {field: bool(config.get(field)) for field in secret_fields}
         if not include_secrets:
             config = {
                 key: value for key, value in config.items()
-                if key not in {"password", "headers"}
+                if key not in secret_fields
             }
         return {
             **dict(row),
             "config": config,
-            "has_password": has_password,
-            "has_headers": has_headers,
+            "has_secrets": any(secret_presence.values()),
+            "secret_presence": secret_presence,
+            # Compatibility keys used by existing templates/tests.
+            "has_password": secret_presence.get("password", False),
+            "has_headers": secret_presence.get("headers", False),
         }
 
     @staticmethod
@@ -843,6 +917,7 @@ class AutomationStore:
             connection.execute("PRAGMA busy_timeout = 10000")
             self._initialize(connection)
             self._migrate_reusable_definitions(connection)
+            self._run_migrations(connection)
             yield connection
             connection.commit()
         except Exception:
@@ -870,6 +945,7 @@ class AutomationStore:
                 actions_encrypted TEXT NOT NULL,
                 condition_definition_id TEXT,
                 action_definition_ids TEXT,
+                action_stages TEXT,
                 state TEXT NOT NULL DEFAULT 'disabled',
                 consecutive_met INTEGER NOT NULL DEFAULT 0,
                 consecutive_clear INTEGER NOT NULL DEFAULT 0,
@@ -923,6 +999,11 @@ class AutomationStore:
             );
             CREATE INDEX IF NOT EXISTS automation_runs_recent
                 ON automation_runs(automation_id, started_at DESC);
+            CREATE TABLE IF NOT EXISTS automation_schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at REAL NOT NULL,
+                description TEXT NOT NULL
+            );
             """
         )
         columns = {
@@ -941,6 +1022,43 @@ class AutomationStore:
                 "ALTER TABLE automations ADD COLUMN pending_schedule_at REAL"
             )
         connection.execute("PRAGMA foreign_keys = ON")
+
+    @staticmethod
+    def _run_migrations(connection: sqlite3.Connection) -> None:
+        applied = {
+            int(row["version"])
+            for row in connection.execute(
+                "SELECT version FROM automation_schema_migrations"
+            )
+        }
+        if 1 not in applied:
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(automations)")
+            }
+            if "action_stages" not in columns:
+                connection.execute(
+                    "ALTER TABLE automations ADD COLUMN action_stages TEXT"
+                )
+            rows = connection.execute(
+                "SELECT id, action_definition_ids FROM automations WHERE action_stages IS NULL"
+            ).fetchall()
+            for row in rows:
+                action_ids = json.loads(row["action_definition_ids"] or "[]")
+                stages = [{
+                    "id": "stage-1",
+                    "name": "Stage 1",
+                    "continue_policy": "all_completed",
+                    "action_definition_ids": action_ids,
+                }]
+                connection.execute(
+                    "UPDATE automations SET action_stages = ? WHERE id = ?",
+                    (json.dumps(stages, separators=(",", ":")), row["id"]),
+                )
+            connection.execute(
+                "INSERT INTO automation_schema_migrations (version, applied_at, description) VALUES (1, ?, ?)",
+                (time.time(), "Add ordered parallel action stages"),
+            )
 
     def _migrate_reusable_definitions(self, connection: sqlite3.Connection) -> None:
         rows = connection.execute(
@@ -985,9 +1103,20 @@ class AutomationStore:
                     ),
                 )
                 action_ids.append(action_id)
+            stages = [{
+                "id": "stage-1",
+                "name": "Stage 1",
+                "continue_policy": "all_completed",
+                "action_definition_ids": action_ids,
+            }]
             connection.execute(
-                "UPDATE automations SET condition_definition_id = ?, action_definition_ids = ? WHERE id = ?",
-                (condition_id, json.dumps(action_ids), row["id"]),
+                "UPDATE automations SET condition_definition_id = ?, action_definition_ids = ?, action_stages = ? WHERE id = ?",
+                (
+                    condition_id,
+                    json.dumps(action_ids),
+                    json.dumps(stages, separators=(",", ":")),
+                    row["id"],
+                ),
             )
 
     @staticmethod
@@ -1050,25 +1179,118 @@ class AutomationEngine:
     def execute_actions(
         self, automation: dict[str, Any], trigger: ConditionResult
     ) -> str:
-        action_results = []
-        for action_definition in automation["actions"]:
+        action_results: list[ActionResult] = []
+        prior_context: dict[str, Any] = {
+            "results": [], "successful": [], "partial": [], "failed": []
+        }
+        for stage_index, stage in enumerate(automation["action_stages"], 1):
+            stage_results = self._execute_stage(
+                stage, trigger, prior_context, stage_index
+            )
+            action_results.extend(stage_results)
+            for action_definition, result in zip(stage["actions"], stage_results):
+                item = {
+                    "id": action_definition["id"],
+                    "name": action_definition["name"],
+                    "type": action_definition["type"],
+                    "stage_id": stage["id"],
+                    "stage_name": stage["name"],
+                    "status": result.status,
+                    "summary": result.summary,
+                    "output": self._bounded_action_context(result.output),
+                }
+                prior_context["results"].append(item)
+                bucket = "successful" if result.status == "success" else "partial" if result.status == "partial" else "failed"
+                prior_context[bucket].append(action_definition["name"])
+            policy = stage["continue_policy"]
+            statuses = [result.status for result in stage_results]
+            should_continue = (
+                policy == "all_completed"
+                or (policy == "success_or_partial" and all(status in {"success", "partial"} for status in statuses))
+                or (policy == "all_success" and all(status == "success" for status in statuses))
+            )
+            if not should_continue:
+                break
+        return self.store.record_run(automation["id"], trigger, action_results)
+
+    def _execute_stage(
+        self,
+        stage: dict[str, Any],
+        trigger: ConditionResult,
+        prior_context: dict[str, Any],
+        stage_index: int,
+    ) -> list[ActionResult]:
+        contextual_trigger = ConditionResult(
+            trigger.met,
+            trigger.status,
+            trigger.summary,
+            {**trigger.evidence, "actions": prior_context},
+        )
+
+        def execute(action_definition: dict[str, Any]) -> ActionResult:
             try:
                 action = self.registry.actions[action_definition["type"]]
-                action_results.append(
-                    action.execute(action_definition["config"], trigger)
+                result = action.execute(action_definition["config"], contextual_trigger)
+                return ActionResult(
+                    result.status,
+                    result.summary,
+                    {
+                        **result.output,
+                        "_pipeline": {
+                            "action_id": action_definition["id"],
+                            "action_name": action_definition["name"],
+                            "stage_id": stage["id"],
+                            "stage_name": stage["name"],
+                            "stage_index": stage_index,
+                        },
+                    },
                 )
             except Exception as exc:
-                action_results.append(
-                    ActionResult(
-                        status="error",
-                        summary=(
-                            f"{action_definition['type']} failed: "
-                            f"{type(exc).__name__}: {exc}"
-                        ),
-                        output={},
-                    )
+                return ActionResult(
+                    status="error",
+                    summary=(
+                        f"{action_definition['type']} failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                    output={
+                        "_pipeline": {
+                            "action_id": action_definition["id"],
+                            "action_name": action_definition["name"],
+                            "stage_id": stage["id"],
+                            "stage_name": stage["name"],
+                            "stage_index": stage_index,
+                        }
+                    },
                 )
-        return self.store.record_run(automation["id"], trigger, action_results)
+
+        actions = stage["actions"]
+        results: list[ActionResult | None] = [None] * len(actions)
+        with ThreadPoolExecutor(max_workers=min(len(actions), 20)) as executor:
+            futures = {
+                executor.submit(execute, action): index
+                for index, action in enumerate(actions)
+            }
+            for future in as_completed(futures):
+                results[futures[future]] = future.result()
+        return [result for result in results if result is not None]
+
+    @staticmethod
+    def _bounded_action_context(output: dict[str, Any]) -> dict[str, Any]:
+        context: dict[str, Any] = {}
+        for key, value in output.items():
+            if key == "hosts" and isinstance(value, list):
+                context["hosts"] = [
+                    {
+                        "host": item.get("host"),
+                        "host_label": item.get("host_label", ""),
+                        "status": item.get("status"),
+                        "error": str(item.get("error", ""))[:500],
+                    }
+                    for item in value[:100]
+                ]
+            elif key != "_pipeline" and isinstance(value, (str, int, float, bool, type(None))):
+                context[key] = value[:2000] if isinstance(value, str) else value
+        return context
 
 
 class AutomationBackupStore:
@@ -1109,6 +1331,15 @@ class AutomationBackupStore:
                 "cooldown_seconds": item["cooldown_seconds"],
                 "condition_name": item["condition"]["name"],
                 "action_names": [action["name"] for action in item["actions"]],
+                "action_stages": [
+                    {
+                        "id": stage["id"],
+                        "name": stage["name"],
+                        "continue_policy": stage["continue_policy"],
+                        "action_names": [action["name"] for action in stage["actions"]],
+                    }
+                    for stage in item["action_stages"]
+                ],
             }
             for item in self.store.all(include_secrets=True)
         ]
@@ -1189,6 +1420,11 @@ class AutomationBackupStore:
         for definition in automations:
             condition_name = str(definition.get("condition_name", ""))
             selected_action_names = [str(name) for name in definition.get("action_names", [])]
+            stage_definitions = definition.get("action_stages") or [{
+                "id": "stage-1", "name": "Stage 1",
+                "continue_policy": "all_completed",
+                "action_names": selected_action_names,
+            }]
             if condition_name not in condition_ids or any(
                 name not in action_ids for name in selected_action_names
             ):
@@ -1200,7 +1436,17 @@ class AutomationBackupStore:
                 recover_after=int(definition.get("recover_after", 3)),
                 cooldown_seconds=int(definition.get("cooldown_seconds", 300)),
                 condition_definition_id=condition_ids[condition_name],
-                action_definition_ids=[action_ids[name] for name in selected_action_names],
+                action_stages=[
+                    {
+                        "id": str(stage.get("id", "")),
+                        "name": str(stage.get("name", "")),
+                        "continue_policy": str(stage.get("continue_policy", "all_completed")),
+                        "action_definition_ids": [
+                            action_ids[str(name)] for name in stage.get("action_names", [])
+                        ],
+                    }
+                    for stage in stage_definitions
+                ],
                 created_by="backup-import",
             )
 

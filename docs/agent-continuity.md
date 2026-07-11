@@ -162,8 +162,17 @@ accepted replay frames.
   automations are excluded from due-check claims and expose an explicit Run now
   action. Calendar schedules are intentionally handled by a small scheduler
   adapter because occurrence consumption differs from monitoring state. Other
-  future types should register through `automation_registry.py` without adding
-  type-specific branches to persistence or the scheduler.
+  future types should register through `twn_toolkit/automation_types/` without
+  adding type-specific branches to routes, persistence, or the scheduler.
+- `automation_registry.py` is now a small compatibility/dispatch facade. The
+  immutable type contracts live in `automation_types/models.py`; condition and
+  action implementations own their validation, execution, form parsing, and
+  secret-field metadata in `automation_types/conditions.py` and
+  `automation_types/actions.py`. The automation route therefore does not need a
+  new `if type_id == ...` branch when another trusted internal type is added.
+- The automation page imports condition and action form macros from focused
+  partials under `templates/automations/`. Keep new type-specific fields in the
+  appropriate partial instead of growing the page-level layout again.
 - A `schedule.calendar` condition contains up to 50 reusable sub-rules. It
   supports one-time, daily, selected-weekday, every-N-weeks, monthly-date, and
   ordinal-weekday rules in an explicit IANA timezone. Simultaneous sub-rules
@@ -188,6 +197,15 @@ accepted replay frames.
   normalize automatically and are persisted in the new form on their next edit.
 - Automation definitions are a sensitive backup group. History/output is not
   backed up, and imported definitions remain paused.
+- Automations use ordered action stages. Actions inside a stage run concurrently;
+  stages run sequentially. Each stage has a stable ID, display name, and
+  continuation policy (`all_completed`, `success_or_partial`, or `all_success`).
+  Existing flat action lists migrate to one default parallel stage. Later stages
+  receive bounded, non-secret earlier-action context; raw SSH output is never
+  injected automatically.
+- `automation_schema_migrations` is the numbered migration ledger. Version 1
+  adds `action_stages` and backfills existing automations transactionally. Use
+  this runner—not new ad-hoc column checks—for future material schema changes.
 - Editing a shared definition pauses all dependent automations. Deletion is
   blocked while references remain. Existing embedded definitions are migrated
   automatically into reusable records.

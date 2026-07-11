@@ -1,0 +1,114 @@
+{% macro action_form(values, definition=none) %}
+  {% set config = definition.config if definition else values %}
+  {% set definition_id = definition.id if definition else values.get('action_definition_id', '') %}
+  <form class="form automation-form" method="post" action="{{ url_for('save_automation_action') }}" autocomplete="off">
+    {% if definition_id %}<input type="hidden" name="action_definition_id" value="{{ definition_id }}">{% endif %}
+    <label>Action name
+      <input name="action_name" maxlength="100" value="{{ definition.name if definition else values.get('action_name', '') }}" placeholder="Collect access switch logs" required>
+    </label>
+    <label>Action type
+      <select name="action_type">
+        {% for item in action_types %}<option value="{{ item.id }}" {% if (definition and definition.type == item.id) or (not definition and values.get('action_type', 'ssh.collect') == item.id) %}selected{% endif %}>{{ item.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <div data-action-fields="ssh.collect">
+      <p class="field-note">SSH output is retained with each run. The password is encrypted using this toolkit installation’s secret key.</p>
+      <label>SSH hosts
+      <textarea name="action_hosts" rows="4" placeholder="Basement Switch = 10.0.0.11&#10;10.0.0.12" required>{{ config.get('hosts', config.get('action_hosts', '')) }}</textarea>
+      <small class="field-note">Optional friendly names use <code>Name = hostname-or-IP</code>.</small>
+      </label>
+      <div class="form-grid">
+      <label>Username
+        <input name="action_username" value="{{ config.get('username', config.get('action_username', '')) }}" required>
+      </label>
+      <label>Password
+        <input name="action_password" type="password" {% if definition_id %}placeholder="Leave blank to keep saved password"{% else %}required{% endif %}>
+      </label>
+      <label>SSH port
+        <input name="action_port" type="number" min="1" max="65535" value="{{ config.get('port', config.get('action_port', '22')) }}" required>
+      </label>
+      </div>
+      <label>Commands
+      <textarea class="command-input" name="action_commands" rows="7" placeholder="show clock&#10;show logging&#10;[timeout=600] diag debug report" required>{{ config.get('commands', config.get('action_commands', '')) }}</textarea>
+      </label>
+      <label>Default command timeout
+      <div class="input-suffix"><input name="action_command_timeout" type="number" min="1" max="3600" value="{{ config.get('command_timeout', config.get('action_command_timeout', '300')) }}" required><span>seconds</span></div>
+      <small class="field-note">A command completes when the device prompt returns. Override one command with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
+      </label>
+      <div class="check-grid">
+      <label class="check"><input name="action_allow_unknown_hosts" type="checkbox" {% if config.get('allow_unknown_hosts') or config.get('action_allow_unknown_hosts') %}checked{% endif %}>Allow unknown SSH host keys</label>
+      <label class="check"><input name="action_send_ctrl_y" type="checkbox" {% if config.get('send_ctrl_y') or config.get('action_send_ctrl_y') %}checked{% endif %}>Send Ctrl+Y before commands</label>
+      </div>
+    </div>
+    <div data-action-fields="syslog.send" hidden>
+      <label>Syslog destinations
+        <textarea name="syslog_destinations" rows="4" placeholder="Primary SIEM = syslog.example.com | 514&#10;Backup collector = 192.0.2.20 | 5514" required>{{ config.get('destinations', config.get('syslog_destinations', '')) }}</textarea>
+        <small class="field-note">Use <code>Friendly Name = hostname-or-IP | port</code>. The selected protocol applies to every destination.</small>
+      </label>
+      <div class="form-grid">
+        <label>Protocol
+          {% set syslog_protocol = config.get('protocol', config.get('syslog_protocol', 'udp')) %}
+          <select name="syslog_protocol" required><option value="udp" {% if syslog_protocol == 'udp' %}selected{% endif %}>UDP</option><option value="tcp" {% if syslog_protocol == 'tcp' %}selected{% endif %}>TCP</option></select>
+        </label>
+        <label>Facility
+          {% set syslog_facility = config.get('facility', config.get('syslog_facility', 16))|int %}
+          <select name="syslog_facility" required>{% for value, label in [(0,'kern'),(1,'user'),(2,'mail'),(3,'daemon'),(4,'auth'),(5,'syslog'),(6,'lpr'),(7,'news'),(8,'uucp'),(9,'cron'),(10,'authpriv'),(11,'ftp'),(12,'ntp'),(13,'security'),(14,'console'),(15,'clock'),(16,'local0'),(17,'local1'),(18,'local2'),(19,'local3'),(20,'local4'),(21,'local5'),(22,'local6'),(23,'local7')] %}<option value="{{ value }}" {% if syslog_facility == value %}selected{% endif %}>{{ value }} · {{ label }}</option>{% endfor %}</select>
+        </label>
+        <label>Severity
+          {% set syslog_severity = config.get('severity', config.get('syslog_severity', 6))|int %}
+          <select name="syslog_severity" required>{% for value, label in [(0,'emergency'),(1,'alert'),(2,'critical'),(3,'error'),(4,'warning'),(5,'notice'),(6,'informational'),(7,'debug')] %}<option value="{{ value }}" {% if syslog_severity == value %}selected{% endif %}>{{ value }} · {{ label }}</option>{% endfor %}</select>
+        </label>
+        <label>Send timeout
+          <div class="input-suffix"><input name="syslog_timeout" type="number" min="0.2" max="10" step="0.1" value="{{ config.get('timeout', config.get('syslog_timeout', '3')) }}" required><span>seconds</span></div>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>RFC 5424 hostname
+          <input name="syslog_hostname" value="{{ config.get('hostname', config.get('syslog_hostname', 'twn-toolkit')) }}" maxlength="255" required>
+        </label>
+        <label>Application name
+          <input name="syslog_app_name" value="{{ config.get('app_name', config.get('syslog_app_name', 'twn-automation')) }}" maxlength="48" required>
+        </label>
+      </div>
+      <label>Message
+        <textarea name="syslog_message" rows="5" maxlength="8192" placeholder="Toolkit automation fired: {{ '{{trigger.summary}}' }}" required>{{ config.get('message', config.get('syslog_message', 'Toolkit automation fired: {{trigger.summary}}')) }}</textarea>
+        <small class="field-note">Available variables: <code>{{ '{{trigger.status}}' }}</code>, <code>{{ '{{trigger.summary}}' }}</code>, <code>{{ '{{trigger.met}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>.</small>
+      </label>
+    </div>
+    <div data-action-fields="webhook.send" hidden>
+      <label>Webhook endpoints
+        <textarea name="webhook_endpoints" rows="4" placeholder="Primary webhook = https://hooks.example.com/notify&#10;Backup API = https://api.example.net/v1/events" required>{{ config.get('endpoints', config.get('webhook_endpoints', '')) }}</textarea>
+        <small class="field-note">One HTTP/HTTPS URL per line. Optional friendly names use <code>Name = URL</code>. Embedded URL credentials are rejected.</small>
+      </label>
+      <div class="form-grid">
+        <label>Method
+          {% set webhook_method = config.get('method', config.get('webhook_method', 'POST')) %}
+          <select name="webhook_method" required>{% for method in ['POST','PUT','PATCH'] %}<option value="{{ method }}" {% if webhook_method == method %}selected{% endif %}>{{ method }}</option>{% endfor %}</select>
+        </label>
+        <label>Body format
+          {% set webhook_body_format = config.get('body_format', config.get('webhook_body_format', 'json')) %}
+          <select name="webhook_body_format" required><option value="json" {% if webhook_body_format == 'json' %}selected{% endif %}>JSON</option><option value="text" {% if webhook_body_format == 'text' %}selected{% endif %}>Plain text</option></select>
+        </label>
+        <label>Accepted HTTP statuses
+          <input name="webhook_expected_statuses" value="{{ config.get('expected_statuses', config.get('webhook_expected_statuses', '200-299')) }}" placeholder="200-299" required>
+          <small class="field-note">Comma/space-separated values or ranges.</small>
+        </label>
+        <label>Request timeout
+          <div class="input-suffix"><input name="webhook_timeout" type="number" min="0.2" max="30" step="0.1" value="{{ config.get('timeout', config.get('webhook_timeout', '10')) }}" required><span>seconds</span></div>
+        </label>
+      </div>
+      <label>Request headers <small>(write-only)</small>
+        <textarea name="webhook_headers" rows="5" placeholder="Authorization: Bearer …&#10;X-API-Key: …&#10;Content-Type: application/json"></textarea>
+        <small class="field-note">One <code>Name: Value</code> per line. {% if definition and definition.has_headers %}Leave blank to keep the saved headers. {% endif %}Headers are encrypted and never rendered back into this page or retained results.</small>
+      </label>
+      {% if definition and definition.has_headers %}<label class="check"><input name="webhook_clear_headers" type="checkbox">Remove all saved headers when updating</label>{% endif %}
+      <label>Request body
+        <textarea name="webhook_body" rows="8" maxlength="65536" required>{% if config.get('body') %}{{ config.get('body') }}{% elif config.get('webhook_body') %}{{ config.get('webhook_body') }}{% else %}{"event":"toolkit_automation","status":"{{ '{{trigger.status}}' }}","summary":"{{ '{{trigger.summary}}' }}","timestamp":"{{ '{{timestamp}}' }}"}{% endif %}</textarea>
+        <small class="field-note">Variables: <code>{{ '{{trigger.status}}' }}</code>, <code>{{ '{{trigger.summary}}' }}</code>, <code>{{ '{{trigger.met}}' }}</code>, <code>{{ '{{trigger.evidence}}' }}</code>, <code>{{ '{{actions.results}}' }}</code>, <code>{{ '{{actions.successful}}' }}</code>, <code>{{ '{{actions.partial}}' }}</code>, <code>{{ '{{actions.failed}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>. Action variables contain bounded, non-secret results from earlier stages only. Exact JSON-value tokens retain boolean/object types.</small>
+      </label>
+      <label class="check"><input name="webhook_verify_tls" type="checkbox" {% if config.get('verify_tls', config.get('webhook_verify_tls', true)) %}checked{% endif %}>Verify TLS certificates</label>
+      <p class="field-note">Redirects are reported but not followed. Only a 4 KiB response preview is retained per endpoint. Disable TLS verification only for a controlled internal endpoint.</p>
+    </div>
+    <div class="button-row"><button type="submit">{{ 'Update action' if definition_id else 'Save action' }}</button></div>
+  </form>
+{% endmacro %}

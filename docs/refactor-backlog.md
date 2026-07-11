@@ -22,19 +22,20 @@ turning the codebase into a rewrite project.
 
 ### 0. Formalize SQLite migrations before the next schema expansion
 
-Current automation migrations are idempotent startup checks and activity uses a
-one-time legacy import marker. This is adequate for the schemas already shipped,
-but the next material table/column/index/data-shape change should introduce a
-numbered transactional migration runner and schema-migration ledger for each
-SQLite database.
+Automation schema expansion now uses the numbered
+`automation_schema_migrations` ledger. Pipeline migration 1 adds ordered action
+stages and transactionally converts existing flat action lists into one default
+parallel stage. Activity still uses its earlier one-time legacy import marker;
+introduce the same numbered pattern there before its next material schema change.
 
-Required before 1.0:
+Remaining before 1.0:
 
-1. Record version, applied timestamp, and description for every migration.
-2. Run pending migrations in order during controlled store initialization.
-3. Add upgrade tests using older database snapshots.
-4. Fail startup clearly without partially applying a migration.
-5. Alert the project owner when implementation reaches this threshold.
+1. Expand upgrade tests from constructed legacy rows to representative older
+   database snapshots.
+2. Add a matching numbered migration ledger to activity SQLite before its next
+   schema expansion.
+3. Keep startup failures explicit and transactional as additional versions are
+   introduced.
 
 ### 1. `app.py` was the main gravity well
 
@@ -285,6 +286,17 @@ Status:
 - Add Jinja macros for common collapsible cards and action rows.
 - Convert older templates opportunistically.
 - Keep the homepage/category card design as the visual baseline.
+
+Status:
+
+- Done: the automation page's condition evidence/forms and action forms were
+  extracted into focused Jinja macro partials while preserving one shared page
+  layout.
+- Done: automation type models and trusted implementations were extracted from
+  the registry facade. Each registered type now owns form parsing, and action
+  types declare secret fields used by the encrypted store/masked UI path.
+- Done: automation save routes dispatch through registry-owned parsers instead
+  of branching on every condition/action type.
 
 ## Do-not-do list
 

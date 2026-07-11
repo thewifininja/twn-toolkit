@@ -1,0 +1,183 @@
+{% macro dns_test_evidence(result) %}
+  {% if result and result.evidence and result.evidence.get('checks') %}
+    <div class="condition-test-results">
+      {% for check in result.evidence.checks %}
+        <article>
+          <span class="pill {{ 'error' if check.failed else 'success' }}">{{ 'failed' if check.failed else 'passed' }}</span>
+          <span><strong>{{ check.host_label or check.host }} via {{ check.server_label or check.server }}</strong><small>{% if check.answers %}{{ check.answers|join(', ') }}{% else %}{{ check.reason or check.status }}{% endif %}</small></span>
+          <small>{{ check.response_ms }} ms</small>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% macro ping_test_evidence(result) %}
+  {% if result and result.evidence and result.evidence.get('targets') %}
+    <div class="condition-test-results">
+      {% for target in result.evidence.targets %}
+        <article>
+          <span class="pill {{ 'success' if target.reachable else 'error' }}">{{ 'reachable' if target.reachable else 'failed' }}</span>
+          <span><strong>{{ target.label or target.host }}</strong><small>{% if target.label %}{{ target.host }} · {% endif %}{{ 'ICMP echo reply received' if target.reachable else target.error or 'No ICMP reply before timeout' }}</small></span>
+          <small>{% if target.latency_ms is not none %}{{ target.latency_ms }} ms RTT{% elif target.elapsed_ms is defined %}{{ target.elapsed_ms }} ms elapsed{% else %}No reply{% endif %}</small>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% macro tcp_test_evidence(result) %}
+  {% if result and result.evidence and result.evidence.get('checks') %}
+    <div class="condition-test-results">
+      {% for check in result.evidence.checks %}
+        <article>
+          <span class="pill {{ 'error' if check.failed else 'success' }}">{{ 'failed' if check.failed else 'passed' }}</span>
+          <span><strong>{{ check.label or check.host }}:{{ check.port }}{% if check.service %} · {{ check.service }}{% endif %}</strong><small>{% if check.label %}{{ check.host }} · {% endif %}Observed {{ check.status }}; expected {{ check.expected_state }}{% if check.detail %} · {{ check.detail }}{% endif %}</small></span>
+          <small>{{ check.elapsed_ms }} ms</small>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% macro condition_form(values, definition=none) %}
+  {% set config = definition.config if definition else values %}
+  <form class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
+    {% set definition_id = definition.id if definition else values.get('condition_definition_id', '') %}
+    {% set timezone_list_id = 'schedule-timezones-' ~ (definition_id or 'new') %}
+    {% if definition_id %}<input type="hidden" name="condition_definition_id" value="{{ definition_id }}">{% endif %}
+    <label>Condition name
+      <input name="condition_name" maxlength="100" value="{{ definition.name if definition else values.get('condition_name', '') }}" placeholder="Production path unavailable" required>
+    </label>
+    <label>Condition type
+      <select name="condition_type">
+        {% for item in condition_types %}<option value="{{ item.id }}" {% if (definition and definition.type == item.id) or (not definition and values.get('condition_type', 'ping.multi') == item.id) %}selected{% endif %}>{{ item.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <div data-condition-fields="manual.trigger" hidden>
+      <p class="field-note">This condition is met only when a user clicks Run now on an automation that uses it.</p>
+    </div>
+    <div class="automation-condition-fields schedule-builder" data-condition-fields="schedule.calendar" hidden>
+      <div class="schedule-settings-grid">
+        <label>Timezone
+          <input name="schedule_timezone" list="{{ timezone_list_id }}" value="{{ config.get('timezone', config.get('schedule_timezone', schedule_default_timezone)) }}" placeholder="America/New_York" required>
+        </label>
+        <label>Missed occurrences
+          {% set missed_policy = config.get('missed_policy', config.get('schedule_missed_policy', 'grace')) %}
+          <select name="schedule_missed_policy" required>
+            <option value="grace" {% if missed_policy == 'grace' %}selected{% endif %}>Run within grace period</option>
+            <option value="run_late" {% if missed_policy == 'run_late' %}selected{% endif %}>Run when available</option>
+            <option value="skip" {% if missed_policy == 'skip' %}selected{% endif %}>Skip missed occurrences</option>
+          </select>
+        </label>
+        <label>Grace period
+          <div class="input-suffix"><input name="schedule_grace_minutes" type="number" min="1" max="1440" value="{{ config.get('grace_minutes', config.get('schedule_grace_minutes', '30')) }}" required><span>minutes</span></div>
+        </label>
+      </div>
+      <datalist id="{{ timezone_list_id }}"><option value="America/New_York"><option value="America/Chicago"><option value="America/Denver"><option value="America/Los_Angeles"><option value="UTC"></datalist>
+      <input type="hidden" name="schedule_rules_json" value="{{ config.get('rules', [])|tojson|forceescape }}" data-schedule-rules-json>
+      <div class="schedule-rule-editor" data-schedule-rule-editor>
+        <div class="schedule-rule-editor-head"><div><strong>Schedule rules</strong><small>Any matching rule triggers the automation once.</small></div><button class="secondary" type="button" data-add-schedule-rule>Add schedule rule</button></div>
+        <div class="schedule-rule-list" data-schedule-rule-list></div>
+        <p class="empty" data-schedule-empty>No schedule rules yet.</p>
+      </div>
+    </div>
+    <div class="automation-condition-fields" data-condition-fields="ping.multi">
+      <label>Ping targets
+        <textarea name="condition_targets" rows="5" placeholder="Gateway = 192.0.2.1&#10;1.1.1.1&#10;8.8.8.8" required>{{ config.get('targets', config.get('condition_targets', '')) }}</textarea>
+      </label>
+      <div class="form-grid">
+        <label>Per-target timeout
+          <div class="input-suffix"><input name="condition_timeout" type="number" min="1" max="10" value="{{ config.get('timeout', config.get('condition_timeout', '1')) }}" required><span>seconds</span></div>
+        </label>
+        <label>Condition is met when
+          {% set failure_mode = config.get('failure_mode', config.get('condition_failure_mode', 'all')) %}
+          <select name="condition_failure_mode">
+            <option value="all" {% if failure_mode == 'all' %}selected{% endif %}>All targets fail</option>
+            <option value="at_least" {% if failure_mode == 'at_least' %}selected{% endif %}>At least this many fail</option>
+          </select>
+        </label>
+        <label>Required failed targets
+          <input name="condition_failure_count" type="number" min="1" value="{{ config.get('failure_count', config.get('condition_failure_count', '1')) }}" required>
+        </label>
+      </div>
+    </div>
+    <div class="automation-condition-fields" data-condition-fields="dns.lookup" hidden>
+      <div class="form-grid">
+        <label>DNS names
+          <textarea name="dns_hosts" rows="5" placeholder="Primary portal = portal.example.com&#10;Secondary portal = portal-backup.example.com" required>{{ config.get('hosts', config.get('dns_hosts', '')) }}</textarea>
+          <small class="field-note">One name per line. Optional friendly names use <code>Name = hostname</code>.</small>
+        </label>
+        <label>DNS resolvers
+          <textarea name="dns_servers" rows="5" placeholder="Internal DNS = 10.0.0.10&#10;Cloudflare = 1.1.1.1" required>{{ config.get('servers', config.get('dns_servers', '')) }}</textarea>
+          <small class="field-note">Each resolver must be an IPv4 or IPv6 address.</small>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>Record type
+          {% set dns_record_type = config.get('record_type', config.get('dns_record_type', 'A')) %}
+          <select name="dns_record_type" required>{% for record_type in ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'TXT'] %}<option value="{{ record_type }}" {% if dns_record_type == record_type %}selected{% endif %}>{{ record_type }}</option>{% endfor %}</select>
+        </label>
+        <label>Per-query timeout
+          <div class="input-suffix"><input name="dns_timeout" type="number" min="0.2" max="30" step="0.1" value="{{ config.get('timeout', config.get('dns_timeout', '3')) }}" required><span>seconds</span></div>
+        </label>
+      </div>
+      <label>Expected answers <small>(optional)</small>
+        <textarea name="dns_expected_answers" rows="3" placeholder="192.0.2.10&#10;192.0.2.11">{{ config.get('expected_answers', config.get('dns_expected_answers', '')) }}</textarea>
+        <small class="field-note">Leave blank to require only a successful answer. Matching ignores letter case and a final DNS dot.</small>
+      </label>
+      <div class="form-grid">
+        <label>Expected-answer matching
+          {% set dns_answer_mode = config.get('answer_mode', config.get('dns_answer_mode', 'any')) %}
+          <select name="dns_answer_mode">
+            <option value="any" {% if dns_answer_mode == 'any' %}selected{% endif %}>At least one expected answer is returned</option>
+            <option value="all" {% if dns_answer_mode == 'all' %}selected{% endif %}>Every expected answer is returned</option>
+          </select>
+        </label>
+        <label>Condition is met when
+          {% set dns_failure_mode = config.get('failure_mode', config.get('dns_failure_mode', 'at_least')) %}
+          <select name="dns_failure_mode">
+            <option value="at_least" {% if dns_failure_mode == 'at_least' %}selected{% endif %}>At least this many checks fail</option>
+            <option value="all" {% if dns_failure_mode == 'all' %}selected{% endif %}>All hostname/resolver checks fail</option>
+          </select>
+        </label>
+        <label>Required failed checks
+          <input name="dns_failure_count" type="number" min="1" value="{{ config.get('failure_count', config.get('dns_failure_count', '1')) }}" required>
+        </label>
+      </div>
+      <p class="field-note">Each DNS name is queried through every resolver. A timeout, DNS error, empty response, or unexpected answer counts as one failed check.</p>
+    </div>
+    <div class="automation-condition-fields" data-condition-fields="tcp.reachability" hidden>
+      <label>TCP targets and ports
+        <textarea name="tcp_targets" rows="6" placeholder="Home FortiGate = gate.example.com | 8443&#10;Google = google.com | 443&#10;Core Switch = 10.0.0.10 | 22, 443, 8000-8010" required>{{ config.get('targets', config.get('tcp_targets', '')) }}</textarea>
+        <small class="field-note">Use <code>Friendly Name = hostname-or-IP | ports</code>. Each host has its own comma/space-separated ports and inclusive ranges. Maximum: 50 lines, 200 ports per line, and 5,000 total checks.</small>
+      </label>
+      <div class="form-grid tcp-policy-row">
+        <label>Expected state
+          {% set tcp_expected_state = config.get('expected_state', config.get('tcp_expected_state', 'open')) %}
+          <select name="tcp_expected_state" required>
+            <option value="open" {% if tcp_expected_state == 'open' %}selected{% endif %}>Port should be open</option>
+            <option value="closed" {% if tcp_expected_state == 'closed' %}selected{% endif %}>Port should refuse connections</option>
+          </select>
+        </label>
+        <label>Connection timeout
+          <div class="input-suffix"><input name="tcp_timeout" type="number" min="0.1" max="10" step="0.1" value="{{ config.get('timeout', config.get('tcp_timeout', '1')) }}" required><span>seconds</span></div>
+        </label>
+      </div>
+      <div class="form-grid tcp-policy-row">
+        <label>Condition is met when
+          {% set tcp_failure_mode = config.get('failure_mode', config.get('tcp_failure_mode', 'at_least')) %}
+          <select name="tcp_failure_mode">
+            <option value="at_least" {% if tcp_failure_mode == 'at_least' %}selected{% endif %}>At least this many checks fail</option>
+            <option value="all" {% if tcp_failure_mode == 'all' %}selected{% endif %}>All host/port checks fail</option>
+          </select>
+        </label>
+        <label>Required failed checks
+          <input name="tcp_failure_count" type="number" min="1" value="{{ config.get('failure_count', config.get('tcp_failure_count', '1')) }}" required>
+        </label>
+      </div>
+      <p class="field-note">Expected closed requires an explicit connection refusal. A timeout or connection error is treated as a failed check because it does not prove the port is closed.</p>
+    </div>
+    <div class="button-row"><button type="submit">{{ 'Update condition' if definition_id else 'Save condition' }}</button></div>
+  </form>
+{% endmacro %}

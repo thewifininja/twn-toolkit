@@ -126,6 +126,11 @@
     <dl class="help-definitions"><div><dt>Check every</dt><dd>Evaluation interval; minimum one second.</dd></div><div><dt>Trigger after</dt><dd>Consecutive met checks before actions fire once.</dd></div><div><dt>Recover after</dt><dd>Consecutive clear checks before rearming.</dd></div><div><dt>Cooldown</dt><dd>Minimum time between incident triggers.</dd></div></dl>
     <p>Monitoring moves through healthy, suspect, triggered, recovering, and healthy. Evaluation failures use error and do not count as a met condition. Manual/calendar triggers bypass debounce and recovery.</p>
   </div></details>
+  <details class="help-topic"><summary>Parallel actions and sequential stages</summary><div class="help-topic-body">
+    <p>Every automation begins with one stage. Actions inside a stage run in parallel; additional stages run sequentially from top to bottom after the previous stage finishes. Stages may be renamed and reordered, and an action can belong to only one stage in a pipeline.</p>
+    <p>Each stage controls whether the next stage runs: always after completion, only when no action completely fails, or only when every action succeeds. Existing automations are migrated into one default parallel stage.</p>
+    <p>Webhook actions in later stages can use bounded, non-secret results from earlier stages through <code>{{ '{{actions.results}}' }}</code>, <code>{{ '{{actions.successful}}' }}</code>, <code>{{ '{{actions.partial}}' }}</code>, and <code>{{ '{{actions.failed}}' }}</code>. Raw SSH command output is retained for download but is not automatically exposed to notifications.</p>
+  </div></details>
   <details class="help-topic"><summary>ICMP, DNS, and TCP conditions</summary><div class="help-topic-body">
     <p><strong>Ping</strong> treats every target as a check. Test displays reachability, RTT, timeout elapsed time, and friendly name/address.</p>
     <p><strong>DNS</strong> queries each name through each resolver, supports A/AAAA/CNAME/MX/NS/PTR/TXT, and optionally requires any/all expected answers. Test shows every resolver path and timing.</p>
@@ -152,7 +157,7 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
   </div></details>
   <details class="help-topic"><summary>Webhook / API notification action</summary><div class="help-topic-body">
     <p>Sends one POST, PUT, or PATCH template to up to 10 HTTP/HTTPS endpoints. Endpoints may use <code>Friendly Name = URL</code>. Configure accepted status values/ranges, timeout, TLS verification, body format, and write-only headers.</p>
-    <p>JSON templates are parsed before substitution, so exact <code>{{ '{{trigger.met}}' }}</code> and <code>{{ '{{trigger.evidence}}' }}</code> values retain boolean/object types. Text and JSON templates also support status, summary, and timestamp. Redirects are reported but not followed; retained response previews are capped at 4 KiB per endpoint.</p>
+    <p>JSON templates are parsed before substitution, so exact trigger and prior-action variables retain boolean/object/list types. Text and JSON templates also support status, summary, and timestamp. Redirects are reported but not followed; retained response previews are capped at 4 KiB per endpoint.</p>
     <p>Authorization/API-key headers are encrypted, never rendered back into the editor, and never copied into retained run output. Leave the field blank to keep saved headers, or select Remove all saved headers while updating.</p>
   </div></details>
   <details class="help-topic"><summary>History, downloads, cleanup, and scheduler</summary><div class="help-topic-body">

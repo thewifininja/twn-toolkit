@@ -90,6 +90,30 @@ New condition and action implementations register through
 tool-specific branches when a new registered type follows the common result
 contracts.
 
+## Action pipelines
+
+Each automation contains one or more user-defined stages. Actions within a
+stage run concurrently, while stages run sequentially from top to bottom. A
+new or legacy automation starts with one default stage containing all selected
+actions, preserving the original parallel behavior. Stages have stable IDs,
+editable names, ordering controls, and one of three continuation policies:
+
+- continue after every action completes, regardless of result;
+- continue only when every result is success or partial; or
+- continue only when every result is success.
+
+Later actions receive a bounded prior-action context. Webhook templates can use
+`{{actions.results}}`, `{{actions.successful}}`, `{{actions.partial}}`, and
+`{{actions.failed}}`. The context includes status, summary, stage/action
+identity, and small structured target summaries. It deliberately excludes raw
+SSH command output, secrets, and unbounded payloads. Full captures remain in
+retained runs and ZIP downloads.
+
+Pipeline structure participates in encrypted profile backup/restore. Database
+schema changes are recorded in `automation_schema_migrations`; migration 1
+adds ordered stages and converts existing action lists into a single default
+parallel stage transactionally.
+
 ## State model
 
 An armed automation moves through these states:
@@ -148,7 +172,7 @@ loops.
 
 - HTTP/API, SNMP, certificate, and syslog-pattern
   condition types.
-- Explicit action ordering and retry/continue policies for multi-action plans.
+- Per-action retry policies and optional explicit retry backoff.
 - Explicit production and out-of-band source-interface binding.
 - Optional repeated collection during a long-lived incident.
 - Retention and disk-quota policy for checks and action artifacts.
