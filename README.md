@@ -127,6 +127,8 @@ The home page separates Fortinet workflows from vendor-neutral network tools.
 ./twn restart   Restart the service
 ./twn status    Show web and automation scheduler status
 ./twn logs      Show recent web and automation scheduler errors
+./twn enable-https [hostname-or-IP ...]  Generate and enable local HTTPS
+./twn disable-https  Return to HTTP while retaining TLS files
 ./twn fix-permissions  Repair instance ownership after sudo mode
 ./twn adminreset  Remove users and return to first-launch setup
 ./twn reset-data   Remove saved profiles and API keys
@@ -143,6 +145,29 @@ when needed:
 ```bash
 TWN_TOOLKIT_PORT=8000 ./twn start
 ```
+
+### Optional HTTPS
+
+HTTP remains the default during the pre-1.0 transition. To generate a local
+self-signed certificate and enable native HTTPS:
+
+```bash
+./twn enable-https toolkit.local 192.0.2.25
+```
+
+The certificate automatically includes localhost, loopback addresses, and the
+machine hostname. Supply every additional stable hostname or IP address used to
+open the toolkit. `./twn status` prints the active `https://` URL. Browsers warn
+until the self-signed certificate is explicitly trusted; encryption still
+works despite that warning.
+
+The helper safely restarts a running toolkit. The private key is stored as
+`instance/tls/key.pem` with owner-only permissions and is excluded with the
+rest of `instance/` from source control and profile backups. Run
+`./twn disable-https` to restart over HTTP; the certificate files are retained.
+Advanced deployments can set both
+`TWN_TOOLKIT_CERTFILE` and `TWN_TOOLKIT_KEYFILE` to an externally managed PEM
+certificate and matching owner-only private key.
 
 The DHCP Discover tool binds privileged UDP client port 68 and pins traffic to
 the selected interface. Start the toolkit with suitable OS privileges when

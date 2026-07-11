@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import secrets
 import time
 from typing import Any
@@ -52,6 +53,10 @@ def create_app(instance_path: str | None = None) -> Flask:
         SECRET_KEY=load_or_create_secret_key(app.instance_path),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Strict",
+        SESSION_COOKIE_SECURE=os.environ.get("TWN_TOOLKIT_HTTPS") == "1",
+        PREFERRED_URL_SCHEME=(
+            "https" if os.environ.get("TWN_TOOLKIT_HTTPS") == "1" else "http"
+        ),
     )
     app.register_blueprint(tools_bp)
 

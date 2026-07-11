@@ -9,16 +9,24 @@ REQUIREMENTS="$ROOT/requirements.txt"
 INSTANCE="$ROOT/instance"
 REQUIREMENTS_STAMP="$INSTANCE/requirements.sha256"
 PIDFILE="$INSTANCE/twn-toolkit.pid"
+SCHEME_FILE="$INSTANCE/twn-toolkit.scheme"
 AUTOMATION_PIDFILE="$INSTANCE/twn-automation.pid"
 ACCESS_LOG="$INSTANCE/twn-toolkit-access.log"
 ERROR_LOG="$INSTANCE/twn-toolkit-error.log"
 AUTOMATION_LOG="$INSTANCE/twn-automation.log"
 SERVER_SETTINGS="$INSTANCE/server_settings.json"
 PREVIOUS_SERVER_SETTINGS="$INSTANCE/server_settings.previous.json"
+TLS_DIR="$INSTANCE/tls"
+TLS_CERT_DEFAULT="$TLS_DIR/cert.pem"
+TLS_KEY_DEFAULT="$TLS_DIR/key.pem"
+TLS_ENABLED_FILE="$TLS_DIR/enabled"
 HOST=${TWN_TOOLKIT_HOST:-}
 PORT=${TWN_TOOLKIT_PORT:-5050}
 WORKERS=${TWN_TOOLKIT_WORKERS:-2}
 STOP_TIMEOUT=${TWN_TOOLKIT_STOP_TIMEOUT:-10}
+TLS_CERT=${TWN_TOOLKIT_CERTFILE:-}
+TLS_KEY=${TWN_TOOLKIT_KEYFILE:-}
+SCHEME=http
 
 if [ -z "$HOST" ] && [ -f "$SERVER_SETTINGS" ]; then
   HOST=$(python3 -c '
@@ -37,6 +45,25 @@ DISPLAY_HOST="$HOST"
 if [ "$DISPLAY_HOST" = "0.0.0.0" ]; then
   DISPLAY_HOST="127.0.0.1"
 fi
+
+configure_tls() {
+  if { [ -n "$TLS_CERT" ] && [ -z "$TLS_KEY" ]; } || { [ -z "$TLS_CERT" ] && [ -n "$TLS_KEY" ]; }; then
+    echo "Set both TWN_TOOLKIT_CERTFILE and TWN_TOOLKIT_KEYFILE, or neither." >&2
+    exit 1
+  fi
+  if [ -z "$TLS_CERT" ] && [ -f "$TLS_ENABLED_FILE" ]; then
+    TLS_CERT="$TLS_CERT_DEFAULT"
+    TLS_KEY="$TLS_KEY_DEFAULT"
+  fi
+  if [ -n "$TLS_CERT" ]; then
+    if ! "$PYTHON" -c 'from twn_toolkit.tls_tools import validate_certificate_pair; import sys; validate_certificate_pair(sys.argv[1], sys.argv[2])' "$TLS_CERT" "$TLS_KEY"; then
+      echo "HTTPS is enabled, but its certificate or private key is invalid." >&2
+      echo "Run: ./twn disable-https" >&2
+      exit 1
+    fi
+    SCHEME=https
+  fi
+}
 
 is_running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
@@ -178,10 +205,13 @@ offer_permission_repair() {
 
 start() {
   if is_running; then
+    if [ -f "$SCHEME_FILE" ]; then
+      SCHEME=$(cat "$SCHEME_FILE")
+    fi
     start_automation
     echo "The WiFi Ninja's Toolkit is already running (PID $(cat "$PIDFILE"))."
     echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
-    echo "http://$DISPLAY_HOST:$PORT"
+    echo "$SCHEME://$DISPLAY_HOST:$PORT"
     return
   fi
 
@@ -193,6 +223,7 @@ start() {
   fi
 
   ensure_requirements
+  configure_tls
 
   if [ ! -x "$GUNICORN" ]; then
     echo "Gunicorn is not installed. Run: .venv/bin/pip install -r requirements.txt" >&2
@@ -208,7 +239,7 @@ start() {
   mkdir -p "$INSTANCE"
   rm -f "$PIDFILE"
   cd "$ROOT"
-  "$GUNICORN" \
+  set -- "$GUNICORN" \
     --bind "$HOST:$PORT" \
     --workers "$WORKERS" \
     --timeout 3700 \
@@ -216,8 +247,15 @@ start() {
     --access-logfile "$ACCESS_LOG" \
     --error-logfile "$ERROR_LOG" \
     --capture-output \
-    --daemon \
-    "twn_toolkit:create_app()"
+    --daemon
+  if [ "$SCHEME" = "https" ]; then
+    set -- "$@" --certfile "$TLS_CERT" --keyfile "$TLS_KEY"
+    export TWN_TOOLKIT_HTTPS=1
+  else
+    unset TWN_TOOLKIT_HTTPS 2>/dev/null || true
+  fi
+  set -- "$@" "twn_toolkit:create_app()"
+  "$@"
 
   attempts=0
   while [ "$attempts" -lt 30 ]; do
@@ -225,7 +263,8 @@ start() {
       start_automation
       echo "Started The WiFi Ninja's Toolkit (PID $(cat "$PIDFILE"))."
       echo "Started automation scheduler (PID $(cat "$AUTOMATION_PIDFILE"))."
-      echo "http://$DISPLAY_HOST:$PORT"
+      printf "%s\n" "$SCHEME" > "$SCHEME_FILE"
+      echo "$SCHEME://$DISPLAY_HOST:$PORT"
       return
     fi
     attempts=$((attempts + 1))
@@ -243,6 +282,7 @@ start() {
 stop() {
   if ! is_running; then
     rm -f "$PIDFILE"
+    rm -f "$SCHEME_FILE"
     stop_automation
     echo "The WiFi Ninja's Toolkit is not running."
     return
@@ -277,21 +317,81 @@ stop() {
     fi
   fi
   rm -f "$PIDFILE"
+  rm -f "$SCHEME_FILE"
   echo "Stopped The WiFi Ninja's Toolkit."
 }
 
 status() {
   if is_running; then
+    if [ -f "$SCHEME_FILE" ]; then
+      SCHEME=$(cat "$SCHEME_FILE")
+    fi
     echo "The WiFi Ninja's Toolkit is running (PID $(cat "$PIDFILE"))."
     if automation_is_running; then
       echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
     else
       echo "Automation scheduler is not running." >&2
     fi
-    echo "http://$DISPLAY_HOST:$PORT"
+    echo "$SCHEME://$DISPLAY_HOST:$PORT"
   else
     echo "The WiFi Ninja's Toolkit is not running."
     exit 1
+  fi
+}
+
+enable_https() {
+  ensure_requirements
+  restart_after=0
+  if is_running; then
+    restart_after=1
+    stop
+  fi
+  if [ -f "$TLS_CERT_DEFAULT" ] || [ -f "$TLS_KEY_DEFAULT" ]; then
+    if [ ! -f "$TLS_CERT_DEFAULT" ] || [ ! -f "$TLS_KEY_DEFAULT" ]; then
+      echo "The local TLS certificate pair is incomplete. Inspect: $TLS_DIR" >&2
+      exit 1
+    fi
+    if [ "$#" -gt 0 ]; then
+      echo "A local certificate already exists; additional names cannot be added without regenerating it." >&2
+      echo "Certificate management and safe rotation will be added in a later phase." >&2
+      exit 1
+    fi
+    "$PYTHON" -c 'from twn_toolkit.tls_tools import validate_certificate_pair; import sys; validate_certificate_pair(sys.argv[1], sys.argv[2])' "$TLS_CERT_DEFAULT" "$TLS_KEY_DEFAULT"
+    touch "$TLS_ENABLED_FILE"
+    chmod 600 "$TLS_ENABLED_FILE"
+    echo "HTTPS re-enabled with the existing local certificate."
+    if [ "$restart_after" -eq 1 ]; then
+      start
+    else
+      echo "Start with: ./twn start"
+    fi
+    return
+  fi
+  "$PYTHON" -c '
+import sys
+from twn_toolkit.tls_tools import generate_self_signed_certificate
+cert, key = generate_self_signed_certificate(sys.argv[1], extra_names=sys.argv[2:])
+print(f"Created self-signed certificate: {cert}")
+print(f"Created private key: {key}")
+' "$INSTANCE" "$@"
+  echo "HTTPS enabled. Browsers will warn until this self-signed certificate is trusted."
+  if [ "$restart_after" -eq 1 ]; then
+    start
+  else
+    echo "Start with: ./twn start"
+  fi
+}
+
+disable_https() {
+  restart_after=0
+  if is_running; then
+    restart_after=1
+    stop
+  fi
+  rm -f "$TLS_ENABLED_FILE"
+  echo "HTTPS disabled. The certificate and key were retained for future use."
+  if [ "$restart_after" -eq 1 ]; then
+    start
   fi
 }
 
@@ -409,8 +509,15 @@ case "${1:-}" in
   web-restart)
     web_restart
     ;;
+  enable-https)
+    shift
+    enable_https "$@"
+    ;;
+  disable-https)
+    disable_https
+    ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|status|logs|fix-permissions|adminreset|reset-data}" >&2
+    echo "Usage: ./twn {start|stop|restart|status|logs|enable-https|disable-https|fix-permissions|adminreset|reset-data}" >&2
     exit 2
     ;;
 esac
