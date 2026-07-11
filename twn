@@ -10,6 +10,8 @@ INSTANCE="$ROOT/instance"
 REQUIREMENTS_STAMP="$INSTANCE/requirements.sha256"
 PIDFILE="$INSTANCE/twn-toolkit.pid"
 SCHEME_FILE="$INSTANCE/twn-toolkit.scheme"
+HOST_FILE="$INSTANCE/twn-toolkit.host"
+PORT_FILE="$INSTANCE/twn-toolkit.port"
 AUTOMATION_PIDFILE="$INSTANCE/twn-automation.pid"
 ACCESS_LOG="$INSTANCE/twn-toolkit-access.log"
 ERROR_LOG="$INSTANCE/twn-toolkit-error.log"
@@ -20,7 +22,9 @@ TLS_DIR="$INSTANCE/tls"
 TLS_CERT_DEFAULT="$TLS_DIR/cert.pem"
 TLS_KEY_DEFAULT="$TLS_DIR/key.pem"
 TLS_ENABLED_FILE="$TLS_DIR/enabled"
-HOST=${TWN_TOOLKIT_HOST:-}
+REQUESTED_HOST=${TWN_TOOLKIT_HOST:-}
+REQUESTED_PORT=${TWN_TOOLKIT_PORT:-}
+HOST=$REQUESTED_HOST
 PREFERRED_HOST=${TWN_TOOLKIT_DISPLAY_HOST:-}
 PORT=${TWN_TOOLKIT_PORT:-5050}
 WORKERS=${TWN_TOOLKIT_WORKERS:-2}
@@ -56,6 +60,71 @@ DISPLAY_HOST=${PREFERRED_HOST:-$HOST}
 if [ "$DISPLAY_HOST" = "0.0.0.0" ]; then
   DISPLAY_HOST="127.0.0.1"
 fi
+
+load_running_endpoint() {
+  if [ -z "$REQUESTED_HOST" ] && [ -f "$HOST_FILE" ]; then
+    HOST=$(cat "$HOST_FILE")
+  fi
+  if [ -z "$REQUESTED_PORT" ] && [ -f "$PORT_FILE" ]; then
+    PORT=$(cat "$PORT_FILE")
+  fi
+}
+
+show_access_urls() {
+  "$PYTHON" -c '
+import ipaddress
+import re
+import socket
+import subprocess
+import sys
+
+scheme, host, port, preferred = sys.argv[1:]
+addresses = set()
+
+def add(value):
+    value = value.strip()
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return
+    if address.version == 4 and not address.is_unspecified and not address.is_multicast and not address.is_link_local:
+        addresses.add(str(address))
+
+if host == "0.0.0.0":
+    for command in (("ip", "-o", "-4", "addr", "show", "up"), ("ifconfig",)):
+        try:
+            output = subprocess.run(command, capture_output=True, text=True, timeout=3, check=True).stdout
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
+            continue
+        pattern = r"\binet\s+(\d+\.\d+\.\d+\.\d+)"
+        for match in re.findall(pattern, output):
+            add(match)
+    try:
+        for answer in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            add(answer[4][0])
+    except socket.gaierror:
+        pass
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("192.0.2.1", 9))
+            add(probe.getsockname()[0])
+    except OSError:
+        pass
+else:
+    add(host)
+
+ordered = sorted((value for value in addresses if value != "127.0.0.1"), key=ipaddress.ip_address)
+ordered.append("127.0.0.1")
+urls = []
+if preferred:
+    urls.append(f"{scheme}://{preferred}:{port}")
+urls.extend(f"{scheme}://{address}:{port}" for address in ordered)
+urls = list(dict.fromkeys(urls))
+print("Toolkit access URLs:")
+for url in urls:
+    print(f"  {url}")
+' "$SCHEME" "$HOST" "$PORT" "$PREFERRED_HOST"
+}
 
 configure_tls() {
   if { [ -n "$TLS_CERT" ] && [ -z "$TLS_KEY" ]; } || { [ -z "$TLS_CERT" ] && [ -n "$TLS_KEY" ]; }; then
@@ -216,13 +285,14 @@ offer_permission_repair() {
 
 start() {
   if is_running; then
+    load_running_endpoint
     if [ -f "$SCHEME_FILE" ]; then
       SCHEME=$(cat "$SCHEME_FILE")
     fi
     start_automation
     echo "The WiFi Ninja's Toolkit is already running (PID $(cat "$PIDFILE"))."
     echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
-    echo "$SCHEME://$DISPLAY_HOST:$PORT"
+    show_access_urls
     return
   fi
 
@@ -275,7 +345,9 @@ start() {
       echo "Started The WiFi Ninja's Toolkit (PID $(cat "$PIDFILE"))."
       echo "Started automation scheduler (PID $(cat "$AUTOMATION_PIDFILE"))."
       printf "%s\n" "$SCHEME" > "$SCHEME_FILE"
-      echo "$SCHEME://$DISPLAY_HOST:$PORT"
+      printf "%s\n" "$HOST" > "$HOST_FILE"
+      printf "%s\n" "$PORT" > "$PORT_FILE"
+      show_access_urls
       return
     fi
     attempts=$((attempts + 1))
@@ -329,11 +401,14 @@ stop() {
   fi
   rm -f "$PIDFILE"
   rm -f "$SCHEME_FILE"
+  rm -f "$HOST_FILE"
+  rm -f "$PORT_FILE"
   echo "Stopped The WiFi Ninja's Toolkit."
 }
 
 status() {
   if is_running; then
+    load_running_endpoint
     if [ -f "$SCHEME_FILE" ]; then
       SCHEME=$(cat "$SCHEME_FILE")
     fi
@@ -343,7 +418,7 @@ status() {
     else
       echo "Automation scheduler is not running." >&2
     fi
-    echo "$SCHEME://$DISPLAY_HOST:$PORT"
+    show_access_urls
   else
     echo "The WiFi Ninja's Toolkit is not running."
     exit 1
