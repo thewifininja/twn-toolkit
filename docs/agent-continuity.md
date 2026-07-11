@@ -141,6 +141,12 @@ accepted replay frames.
   third-party plugin loading.
 - Keep secrets write-only in the UI. Backups containing secrets require
   encryption.
+- Server identity lives in `server_settings.json`: `instance_name` is a
+  lowercase single DNS label used for UI identity, while `preferred_fqdn` is an
+  optional syntactically validated multi-label DNS name used for launcher URLs.
+  Saving never performs DNS resolution. Browser titles retain the product name
+  and add page/instance identity. Toolkit-managed certificate regeneration is
+  explicit because it changes the certificate fingerprint.
 
 ## Automation architecture
 

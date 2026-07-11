@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.auth import AuthStore
+from twn_toolkit.tls_tools import certificate_status, generate_self_signed_certificate
 
 
 def _setup(client, username="admin", password="correct horse battery staple"):
@@ -250,6 +251,8 @@ def test_admin_can_save_server_access_and_trigger_restart(tmp_path):
             data={
                 "listen_host": "0.0.0.0",
                 "allowed_networks": "192.0.2.0/24",
+                "instance_name": "branch-tools",
+                "preferred_fqdn": "branch-tools.example.test",
             },
             environ_base={"REMOTE_ADDR": "127.0.0.1"},
         )
@@ -260,6 +263,31 @@ def test_admin_can_save_server_access_and_trigger_restart(tmp_path):
     settings = json.loads((tmp_path / "server_settings.json").read_text())
     assert settings["listen_host"] == "0.0.0.0"
     assert settings["allowed_networks"] == ["192.0.2.0/24"]
+    assert settings["instance_name"] == "branch-tools"
+    assert settings["preferred_fqdn"] == "branch-tools.example.test"
+    page = client.get("/settings")
+    assert b"Settings \xc2\xb7 branch-tools \xc2\xb7 The WiFi Ninja" in page.data
+
+
+def test_admin_can_explicitly_regenerate_managed_certificate_for_fqdn(tmp_path):
+    generate_self_signed_certificate(tmp_path)
+    app = create_app(str(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+    with patch("twn_toolkit.admin_routes.subprocess.Popen"):
+        response = client.post(
+            "/settings/server",
+            data={
+                "listen_host": "0.0.0.0",
+                "allowed_networks": "192.0.2.0/24",
+                "instance_name": "branch-tools",
+                "preferred_fqdn": "branch-tools.example.test",
+                "regenerate_tls": "on",
+            },
+            environ_base={"REMOTE_ADDR": "127.0.0.1"},
+        )
+    assert response.status_code == 200
+    assert certificate_status(tmp_path, "branch-tools.example.test")["fqdn_covered"]
 
 
 def test_admin_can_export_and_import_selected_profile_backups(tmp_path):

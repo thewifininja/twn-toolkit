@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>The WiFi Ninja’s Toolkit</title>
+    <title>{% if page_title %}{{ page_title }} · {% endif %}{% if instance_name %}{{ instance_name }} · {% endif %}The WiFi Ninja’s Toolkit</title>
     <meta name="theme-color" content="#151b1a">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='brand/apple-touch-icon.png') }}">
@@ -175,7 +175,7 @@
               {% endfor %}
             </div>
             <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}">
-              <span class="side-nav-label">Help</span>
+              <span class="side-nav-label">Help{% if instance_name %}<small class="side-nav-instance">{{ instance_name }}</small>{% endif %}</span>
               <span class="side-nav-version">v{{ app_version }}</span>
             </a>
           </nav>

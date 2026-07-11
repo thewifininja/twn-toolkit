@@ -168,6 +168,25 @@
           class="form server-access-form"
           onsubmit="return confirm('Save server access settings and restart the toolkit now?')">
       <label>
+        Short instance name
+        <input name="instance_name" maxlength="63" value="{{ server_settings.instance_name }}" placeholder="wifi-tools" pattern="[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?">
+        <small class="field-note">Optional UI identity. Letters, numbers, and hyphens only; this does not change the operating-system hostname.</small>
+      </label>
+      <label>
+        Preferred FQDN
+        <input name="preferred_fqdn" maxlength="253" value="{{ server_settings.preferred_fqdn }}" placeholder="wifi-tools.home.arpa">
+        <small class="field-note">Optional preferred URL/certificate identity. DNS resolution is not checked; create the DNS record before browsing through this name.</small>
+      </label>
+      {% if server_settings.preferred_fqdn and tls_status.present and not tls_status.fqdn_covered %}
+        <div class="message warning"><strong>Certificate regeneration required.</strong> The active certificate does not include <code>{{ server_settings.preferred_fqdn }}</code>. Continue using an address already covered by the certificate until it is regenerated or replaced.</div>
+      {% elif server_settings.preferred_fqdn and tls_status.fqdn_covered %}
+        <div class="message success">The active certificate includes <code>{{ server_settings.preferred_fqdn }}</code>.</div>
+      {% endif %}
+      {% if tls_status.enabled and tls_status.present %}
+        <label class="check"><input name="regenerate_tls" type="checkbox">Regenerate the toolkit-managed self-signed certificate to include the saved short name and preferred FQDN</label>
+        <p class="field-note">Explicit regeneration changes the certificate fingerprint. Browsers that previously trusted it must trust the replacement certificate again.</p>
+      {% endif %}
+      <label>
         Listen interface
         <select name="listen_host">
           <option value="127.0.0.1"

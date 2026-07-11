@@ -172,6 +172,13 @@ Advanced deployments can set both
 `TWN_TOOLKIT_CERTFILE` and `TWN_TOOLKIT_KEYFILE` to an externally managed PEM
 certificate and matching owner-only private key.
 
+Administration → Settings provides a short instance name and optional preferred
+FQDN. These values are validated syntactically without performing a DNS lookup.
+The short name identifies browser tabs and the sidebar; the FQDN becomes the
+preferred launcher/status URL. When using the toolkit-managed self-signed
+certificate, explicitly select certificate regeneration while saving to add the
+new identity to its SANs. Regeneration changes the certificate fingerprint.
+
 The DHCP Discover tool binds privileged UDP client port 68 and pins traffic to
 the selected interface. Start the toolkit with suitable OS privileges when
 using that tool (for example, as root on a dedicated diagnostic host, or with

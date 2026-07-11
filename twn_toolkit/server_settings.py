@@ -4,11 +4,14 @@ import ipaddress
 import json
 import os
 import tempfile
+import re
 from pathlib import Path
 from typing import Any
 
 
 DEFAULT_LISTEN_HOST = "0.0.0.0"
+DEFAULT_INSTANCE_NAME = ""
+DEFAULT_PREFERRED_FQDN = ""
 DEFAULT_ALLOWED_NETWORKS = [
     "10.0.0.0/8",
     "172.16.0.0/12",
@@ -32,6 +35,8 @@ class ServerSettingsStore:
             return {
                 "listen_host": DEFAULT_LISTEN_HOST,
                 "allowed_networks": list(DEFAULT_ALLOWED_NETWORKS),
+                "instance_name": DEFAULT_INSTANCE_NAME,
+                "preferred_fqdn": DEFAULT_PREFERRED_FQDN,
             }
         try:
             with self.path.open("r", encoding="utf-8") as handle:
@@ -45,13 +50,40 @@ class ServerSettingsStore:
             networks = normalize_allowed_networks(data.get("allowed_networks", []))
         except ValueError:
             networks = []
-        return {"listen_host": listen_host, "allowed_networks": networks}
+        try:
+            instance_name = normalize_instance_name(data.get("instance_name", ""))
+            preferred_fqdn = normalize_preferred_fqdn(data.get("preferred_fqdn", ""))
+        except ValueError:
+            instance_name = ""
+            preferred_fqdn = ""
+        return {
+            "listen_host": listen_host,
+            "allowed_networks": networks,
+            "instance_name": instance_name,
+            "preferred_fqdn": preferred_fqdn,
+        }
 
-    def save(self, listen_host: str, allowed_networks: str | list[str]) -> dict[str, Any]:
+    def save(
+        self,
+        listen_host: str,
+        allowed_networks: str | list[str],
+        instance_name: str | None = None,
+        preferred_fqdn: str | None = None,
+    ) -> dict[str, Any]:
         if listen_host not in ALLOWED_LISTEN_HOSTS:
             raise ValueError("Choose localhost-only or all network interfaces.")
         networks = normalize_allowed_networks(allowed_networks)
-        settings = {"listen_host": listen_host, "allowed_networks": networks}
+        current = self.get()
+        settings = {
+            "listen_host": listen_host,
+            "allowed_networks": networks,
+            "instance_name": normalize_instance_name(
+                current["instance_name"] if instance_name is None else instance_name
+            ),
+            "preferred_fqdn": normalize_preferred_fqdn(
+                current["preferred_fqdn"] if preferred_fqdn is None else preferred_fqdn
+            ),
+        }
         self._write(self.previous_path, self.get())
         self._write(self.path, settings)
         return settings
@@ -121,3 +153,34 @@ def normalize_allowed_networks(values: str | list[str]) -> list[str]:
         if normalized not in networks:
             networks.append(normalized)
     return networks
+
+
+def normalize_instance_name(value: Any) -> str:
+    value = str(value or "").strip().lower()
+    if not value:
+        return ""
+    if len(value) > 63 or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", value):
+        raise ValueError(
+            "Short instance name must be 1–63 letters, numbers, or hyphens and cannot begin or end with a hyphen."
+        )
+    return value
+
+
+def normalize_preferred_fqdn(value: Any) -> str:
+    value = str(value or "").strip().lower()
+    if not value:
+        return ""
+    if len(value) > 253 or value.endswith(".") or "://" in value or "/" in value or ":" in value:
+        raise ValueError("Preferred FQDN must be a DNS name without a scheme, port, path, or trailing dot.")
+    labels = value.split(".")
+    if len(labels) < 2:
+        raise ValueError("Preferred FQDN must contain at least two DNS labels.")
+    if any(
+        len(label) > 63
+        or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", label)
+        for label in labels
+    ):
+        raise ValueError(
+            "Preferred FQDN labels must be 1–63 letters, numbers, or hyphens and cannot begin or end with a hyphen."
+        )
+    return value

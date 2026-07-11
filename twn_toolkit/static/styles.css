@@ -420,6 +420,14 @@ body {
   text-transform: uppercase;
 }
 
+.side-nav-instance {
+  color: var(--muted);
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
 .side-nav-version {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   text-transform: none;

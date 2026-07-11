@@ -52,6 +52,7 @@ RELEASE_NOTES = (
                     "Improved the launcher with separate web/scheduler status, dependency checks, permission diagnostics, and fix-permissions support.",
                     "Moved activity tracking to SQLite with time-window queries and retained automatic compatibility for older saved formats.",
                     "Made generated self-signed HTTPS the default for fresh installations while preserving existing deployments, with strict private-key validation, secure session cookies, and an HTTP fallback switch.",
+                    "Added configurable short instance names and preferred FQDNs for browser titles, sidebar identity, launcher URLs, and explicit self-signed certificate regeneration without DNS lookup validation.",
                 ),
             },
         ),

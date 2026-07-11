@@ -263,6 +263,18 @@ def create_app(instance_path: str | None = None) -> Flask:
                         "active": active_in_tools(admin_tools),
                     }
                 )
+        identity = server_settings_store.get()
+        page_title = ""
+        if current_tool_id and current_tool_id in TOOL_BY_ID:
+            page_title = TOOL_BY_ID[current_tool_id].label
+        else:
+            page_title = {
+                "index": "Dashboard",
+                "settings": "Settings",
+                "help_page": "Help",
+                "login": "Sign in",
+                "setup": "First launch",
+            }.get(request.endpoint or "", "")
         return {
             "current_user": current_user,
             "user_theme": current_user.get("theme", "light") if current_user else "system",
@@ -273,6 +285,9 @@ def create_app(instance_path: str | None = None) -> Flask:
             "sidebar_tool_groups": sidebar_tool_groups,
             "sidebar_favorites_active": sidebar_favorites_active,
             "current_tool_id": current_tool_id,
+            "instance_name": identity["instance_name"],
+            "preferred_fqdn": identity["preferred_fqdn"],
+            "page_title": page_title,
             "app_version": APP_VERSION,
             "release_notes": RELEASE_NOTES,
             "min_password_length": password_policy["min_length"],

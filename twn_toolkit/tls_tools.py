@@ -93,6 +93,25 @@ def generate_self_signed_certificate(
     return cert_path, key_path
 
 
+def regenerate_self_signed_certificate(
+    instance_path: str | Path, *, extra_names: list[str] | None = None
+) -> tuple[Path, Path]:
+    cert_path, key_path, _enabled_path = tls_paths(instance_path)
+    validate_certificate_pair(cert_path, key_path)
+    previous_cert = cert_path.read_bytes()
+    previous_key = key_path.read_bytes()
+    try:
+        return generate_self_signed_certificate(
+            instance_path, extra_names=extra_names
+        )
+    except Exception:
+        cert_path.write_bytes(previous_cert)
+        key_path.write_bytes(previous_key)
+        os.chmod(cert_path, 0o644)
+        os.chmod(key_path, 0o600)
+        raise
+
+
 def validate_certificate_pair(cert_path: str | Path, key_path: str | Path) -> x509.Certificate:
     cert_path = Path(cert_path)
     key_path = Path(key_path)
@@ -113,3 +132,34 @@ def validate_certificate_pair(cert_path: str | Path, key_path: str | Path) -> x5
     if certificate.not_valid_after_utc <= datetime.now(timezone.utc):
         raise ValueError("TLS certificate has expired.")
     return certificate
+
+
+def certificate_status(instance_path: str | Path, preferred_fqdn: str = "") -> dict[str, object]:
+    cert_path, key_path, enabled_path = tls_paths(instance_path)
+    status: dict[str, object] = {
+        "enabled": enabled_path.exists(),
+        "present": cert_path.exists() and key_path.exists(),
+        "valid": False,
+        "preferred_fqdn": preferred_fqdn,
+        "fqdn_covered": not preferred_fqdn,
+        "dns_names": [],
+        "expires_at": "",
+        "error": "",
+    }
+    if not status["present"]:
+        return status
+    try:
+        certificate = validate_certificate_pair(cert_path, key_path)
+        names = certificate.extensions.get_extension_for_class(
+            x509.SubjectAlternativeName
+        ).value.get_values_for_type(x509.DNSName)
+    except (OSError, ValueError, TypeError, x509.ExtensionNotFound) as exc:
+        status["error"] = str(exc)
+        return status
+    status.update(
+        valid=True,
+        dns_names=names,
+        fqdn_covered=not preferred_fqdn or preferred_fqdn.lower() in {name.lower() for name in names},
+        expires_at=certificate.not_valid_after_utc.isoformat(timespec="seconds"),
+    )
+    return status

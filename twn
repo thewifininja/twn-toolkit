@@ -21,6 +21,7 @@ TLS_CERT_DEFAULT="$TLS_DIR/cert.pem"
 TLS_KEY_DEFAULT="$TLS_DIR/key.pem"
 TLS_ENABLED_FILE="$TLS_DIR/enabled"
 HOST=${TWN_TOOLKIT_HOST:-}
+PREFERRED_HOST=${TWN_TOOLKIT_DISPLAY_HOST:-}
 PORT=${TWN_TOOLKIT_PORT:-5050}
 WORKERS=${TWN_TOOLKIT_WORKERS:-2}
 STOP_TIMEOUT=${TWN_TOOLKIT_STOP_TIMEOUT:-10}
@@ -41,7 +42,17 @@ print(value if value in {"127.0.0.1", "0.0.0.0"} else "0.0.0.0")
 ' "$SERVER_SETTINGS")
 fi
 HOST=${HOST:-0.0.0.0}
-DISPLAY_HOST="$HOST"
+if [ -z "$PREFERRED_HOST" ] && [ -f "$SERVER_SETTINGS" ]; then
+  PREFERRED_HOST=$(python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        print(str(json.load(handle).get("preferred_fqdn", "")).strip())
+except (OSError, ValueError):
+    print("")
+' "$SERVER_SETTINGS")
+fi
+DISPLAY_HOST=${PREFERRED_HOST:-$HOST}
 if [ "$DISPLAY_HOST" = "0.0.0.0" ]; then
   DISPLAY_HOST="127.0.0.1"
 fi
@@ -369,8 +380,17 @@ enable_https() {
   fi
   "$PYTHON" -c '
 import sys
+import json
+from pathlib import Path
 from twn_toolkit.tls_tools import generate_self_signed_certificate
-cert, key = generate_self_signed_certificate(sys.argv[1], extra_names=sys.argv[2:])
+instance = Path(sys.argv[1])
+extra_names = list(sys.argv[2:])
+try:
+    settings = json.loads((instance / "server_settings.json").read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    settings = {}
+extra_names.extend([settings.get("instance_name", ""), settings.get("preferred_fqdn", "")])
+cert, key = generate_self_signed_certificate(instance, extra_names=extra_names)
 print(f"Created self-signed certificate: {cert}")
 print(f"Created private key: {key}")
 ' "$INSTANCE" "$@"

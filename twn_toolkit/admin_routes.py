@@ -27,7 +27,13 @@ from .profile_backup import (
     selected_backup_items,
     validate_profile_backup,
 )
-from .server_settings import ServerSettingsStore, normalize_allowed_networks
+from .server_settings import (
+    ServerSettingsStore,
+    normalize_allowed_networks,
+    normalize_instance_name,
+    normalize_preferred_fqdn,
+)
+from .tls_tools import certificate_status, regenerate_self_signed_certificate
 from .tool_catalog import TOOL_BY_ID, grouped_access_tools
 
 
@@ -57,6 +63,7 @@ def register_admin_routes(
             if g.current_user.get("is_admin")
             else [g.current_user]
         )
+        active_server_settings = server_settings_store.get()
         return render_template(
             "auth/settings.html",
             users=visible_users,
@@ -65,7 +72,10 @@ def register_admin_routes(
             idle_timeout_minutes=auth_store.idle_timeout_minutes(),
             min_password_length=auth_store.min_password_length(),
             password_policy=auth_store.password_policy(),
-            server_settings=server_settings_store.get(),
+            server_settings=active_server_settings,
+            tls_status=certificate_status(
+                app.instance_path, active_server_settings["preferred_fqdn"]
+            ),
             current_client_ip=request.remote_addr or "unknown",
         )
 
@@ -207,10 +217,15 @@ def register_admin_routes(
             return Response("Administrator access is required.", status=403)
         listen_host = request.form.get("listen_host", "")
         allowed_networks = request.form.get("allowed_networks", "")
+        instance_name = request.form.get("instance_name", "")
+        preferred_fqdn = request.form.get("preferred_fqdn", "")
+        settings_saved = False
         try:
             candidate = {
                 "listen_host": listen_host,
                 "allowed_networks": normalize_allowed_networks(allowed_networks),
+                "instance_name": normalize_instance_name(instance_name),
+                "preferred_fqdn": normalize_preferred_fqdn(preferred_fqdn),
             }
             # Validate without writing so a rejected current-client check changes nothing.
             if listen_host not in {"127.0.0.1", "0.0.0.0"}:
@@ -220,8 +235,31 @@ def register_admin_routes(
                     "These trusted hosts would exclude your current client address "
                     f"({request.remote_addr or 'unknown'}). Add it or its network before restarting."
                 )
-            server_settings_store.save(listen_host, candidate["allowed_networks"])
+            server_settings_store.save(
+                listen_host,
+                candidate["allowed_networks"],
+                candidate["instance_name"],
+                candidate["preferred_fqdn"],
+            )
+            settings_saved = True
+            if request.form.get("regenerate_tls") == "on":
+                current_tls = certificate_status(
+                    app.instance_path, candidate["preferred_fqdn"]
+                )
+                if not current_tls["enabled"] or not current_tls["present"]:
+                    raise ValueError(
+                        "The toolkit-managed HTTPS certificate is not enabled and cannot be regenerated here."
+                    )
+                regenerate_self_signed_certificate(
+                    app.instance_path,
+                    extra_names=[
+                        candidate["instance_name"],
+                        candidate["preferred_fqdn"],
+                    ],
+                )
         except (RuntimeError, ValueError) as exc:
+            if settings_saved:
+                server_settings_store.restore_previous()
             flash(str(exc), "error")
             return redirect(url_for("settings"))
 
