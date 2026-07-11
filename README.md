@@ -105,9 +105,11 @@ service.
 ./install.sh
 ```
 
-The installer checks Python, creates `.venv`, installs requirements, starts the
-service, and can safely be run again. Open http://127.0.0.1:5050 and create the
-first administrator account.
+The installer checks Python, creates `.venv`, installs requirements, generates
+a self-signed certificate for a fresh installation, and starts the service. It
+can safely be run again without changing an existing installation's HTTP/HTTPS
+choice. Open the printed HTTPS URL, review the browser's certificate warning,
+and create the first administrator account.
 
 For a manual installation:
 
@@ -146,10 +148,11 @@ when needed:
 TWN_TOOLKIT_PORT=8000 ./twn start
 ```
 
-### Optional HTTPS
+### HTTPS
 
-HTTP remains the default during the pre-1.0 transition. To generate a local
-self-signed certificate and enable native HTTPS:
+Fresh installations use a generated self-signed HTTPS certificate by default.
+Existing installations retain their current protocol during upgrades. To
+enable HTTPS manually or add it to an older HTTP installation:
 
 ```bash
 ./twn enable-https toolkit.local 192.0.2.25

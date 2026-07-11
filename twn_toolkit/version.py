@@ -51,7 +51,7 @@ RELEASE_NOTES = (
                     "Added bounded device/API timeouts, shared loading feedback, clearer per-target test results, and responsive card patterns.",
                     "Improved the launcher with separate web/scheduler status, dependency checks, permission diagnostics, and fix-permissions support.",
                     "Moved activity tracking to SQLite with time-window queries and retained automatic compatibility for older saved formats.",
-                    "Added opt-in native HTTPS with local certificate generation, strict private-key validation, secure session cookies, and an HTTP fallback switch.",
+                    "Made generated self-signed HTTPS the default for fresh installations while preserving existing deployments, with strict private-key validation, secure session cookies, and an HTTP fallback switch.",
                 ),
             },
         ),

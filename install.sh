@@ -4,6 +4,12 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 VENV="$ROOT/.venv"
+INSTANCE="$ROOT/instance"
+FRESH_INSTALL=0
+
+if [ ! -d "$INSTANCE" ] || [ -z "$(ls -A "$INSTANCE" 2>/dev/null)" ]; then
+  FRESH_INSTALL=1
+fi
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "Python 3 is required but was not found in PATH." >&2
@@ -27,11 +33,21 @@ echo "Installing toolkit requirements..."
 "$VENV/bin/python" -m pip install -r "$ROOT/requirements.txt"
 
 chmod +x "$ROOT/twn"
-mkdir -p "$ROOT/instance"
+mkdir -p "$INSTANCE"
+
+if [ "$FRESH_INSTALL" -eq 1 ]; then
+  echo "Generating the default local HTTPS certificate..."
+  "$ROOT/twn" enable-https
+fi
 
 echo "Starting The WiFi Ninja's Toolkit..."
 "$ROOT/twn" start
+touch "$INSTANCE/installation.initialized"
+TOOLKIT_URL=$("$ROOT/twn" status | tail -n 1)
 
 echo
 echo "Installation complete."
-echo "Open http://127.0.0.1:${TWN_TOOLKIT_PORT:-5050} to create the administrator account."
+echo "Open $TOOLKIT_URL to create the administrator account."
+if [ "$FRESH_INSTALL" -eq 1 ]; then
+  echo "The generated certificate is self-signed, so your browser will require you to review its warning before continuing."
+fi
