@@ -2774,6 +2774,7 @@ button.danger {
 }
 
 .release-note-groups section {
+  align-content: start;
   background: color-mix(in srgb, var(--panel), var(--brand-green) 4%);
   border-radius: 8px;
   display: grid;
@@ -2807,6 +2808,7 @@ button.danger {
 
 .help-topic-body ul,
 .help-topic-body ol {
+  align-content: start;
   display: grid;
   gap: 7px;
   padding-left: 22px;

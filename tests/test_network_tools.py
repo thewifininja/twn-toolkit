@@ -383,9 +383,21 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"192.0.2.44", ip_page.data)
             self.assertIn(b"IPv4", ip_page.data)
             self.assertIn(b"https://api64.ipify.org?format=json", ip_page.data)
-            self.assertIn(b"Your public internet address", ip_page.data)
+            self.assertIn(b"Your browser\xe2\x80\x99s public internet address", ip_page.data)
+            self.assertIn(b"Toolkit server\xe2\x80\x99s public internet address", ip_page.data)
+            self.assertIn(b"/tools/whats-my-ip/server-public", ip_page.data)
             self.assertIn(b'id="check-ip-again"', ip_page.data)
             self.assertIn("no-store", ip_page.headers["Cache-Control"])
+
+            upstream = MagicMock()
+            upstream.json.return_value = {"ip": "198.51.100.22"}
+            upstream.raise_for_status.return_value = None
+            with patch("twn_toolkit.ip_info_routes.requests.get", return_value=upstream):
+                server_ip = client.get("/tools/whats-my-ip/server-public")
+            self.assertEqual(
+                server_ip.get_json(), {"ip": "198.51.100.22", "family": "IPv4"}
+            )
+            self.assertIn("no-store", server_ip.headers["Cache-Control"])
 
             speed_page = client.get("/tools/speed-test")
             self.assertEqual(speed_page.status_code, 200)
