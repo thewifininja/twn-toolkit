@@ -186,7 +186,19 @@ def _scan_tcp_port(target: dict[str, str], port: int, timeout: float) -> dict[st
 
 
 def parse_ping_targets(hosts_text: str, limit: int = 100) -> list[dict[str, str]]:
+    targets, invalid = parse_ping_targets_with_errors(hosts_text, limit=limit)
+    if invalid:
+        values = ", ".join(item["value"] for item in invalid[:5])
+        raise ToolInputError(f"Invalid host value(s): {values}")
+    return targets
+
+
+def parse_ping_targets_with_errors(
+    hosts_text: str, limit: int = 100
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     targets: list[dict[str, str]] = []
+    invalid: list[dict[str, str]] = []
+    candidate_count = 0
     for raw_line in hosts_text.splitlines():
         line = raw_line.strip()
         if not line:
@@ -194,23 +206,28 @@ def parse_ping_targets(hosts_text: str, limit: int = 100) -> list[dict[str, str]
         if "=" in line:
             label, host = (part.strip() for part in line.split("=", 1))
             if not label:
-                raise ToolInputError("Friendly names cannot be empty.")
+                invalid.append({"value": line, "error": "Friendly name cannot be empty."})
+                candidate_count += 1
+                continue
             if len(label) > 100:
-                raise ToolInputError("Friendly names must be 100 characters or fewer.")
+                invalid.append({"value": line, "error": "Friendly name exceeds 100 characters."})
+                candidate_count += 1
+                continue
             candidates = [(label, host)]
         else:
             candidates = [("", host) for host in split_values(line)]
         for label, host in candidates:
-            targets.append({"label": label, "host": host})
+            candidate_count += 1
+            if _valid_host(host):
+                targets.append({"label": label, "host": host})
+            else:
+                invalid.append({"value": host or line, "error": "Invalid IP address or hostname."})
 
-    if not targets:
+    if not candidate_count:
         raise ToolInputError("Enter at least one IP address or hostname.")
-    if len(targets) > limit:
+    if candidate_count > limit:
         raise ToolInputError(f"A maximum of {limit} hosts is allowed per run.")
-    invalid = [target["host"] for target in targets if not _valid_host(target["host"])]
-    if invalid:
-        raise ToolInputError(f"Invalid host value(s): {', '.join(invalid[:5])}")
-    return targets
+    return targets, invalid
 
 
 def parse_ssh_targets(hosts_text: str, limit: int = 50) -> list[dict[str, str]]:
@@ -639,6 +656,11 @@ def _valid_host(host: str) -> bool:
         ipaddress.ip_address(candidate)
         return True
     except ValueError:
+        # Values that are shaped like IPv4 addresses must be valid IPv4
+        # addresses; do not reinterpret an out-of-range address as a numeric
+        # DNS hostname (for example, 192.0.2.999).
+        if "." in candidate and re.fullmatch(r"[0-9.]+", candidate):
+            return False
         return bool(HOSTNAME_PATTERN.fullmatch(host))
 
 

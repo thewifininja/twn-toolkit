@@ -64,6 +64,9 @@ service.
   of UDP or TCP syslog messages during a short listening window.
 - **Traceroute:** stream UDP or ICMP traces for up to 10 destinations from
   reusable lists into live graphical paths and traditional text output.
+- **Multi-Host Ping:** snapshots validated targets when a run starts; an
+  explicit Update targets control applies later edits without clearing retained
+  history for unchanged hosts.
 
 ### Automations
 

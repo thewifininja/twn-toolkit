@@ -4,11 +4,13 @@
   const intervalInput = document.getElementById("ping-interval");
   const startButton = document.getElementById("ping-start");
   const stopButton = document.getElementById("ping-stop");
+  const updateTargetsButton = document.getElementById("ping-update-targets");
   const profileSelect = document.getElementById("ping-profile");
   const profileNameInput = document.getElementById("ping-profile-name");
   const profileSaveButton = document.getElementById("ping-profile-save");
   const profileDeleteButton = document.getElementById("ping-profile-delete");
   const status = document.getElementById("ping-status");
+  const validationWarning = document.getElementById("ping-validation-warning");
   const resultsPanel = document.getElementById("ping-results");
   const tableBody = document.querySelector(".ping-table tbody");
   const historyRange = document.getElementById("ping-history-range");
@@ -20,9 +22,9 @@
   const historyNewer = document.getElementById("ping-history-newer");
   const historyNavigationSummary = document.getElementById("ping-history-navigation-summary");
 
-  if (!form || !hostsInput || !intervalInput || !startButton || !stopButton ||
+  if (!form || !hostsInput || !intervalInput || !startButton || !stopButton || !updateTargetsButton ||
       !profileSelect || !profileNameInput || !profileSaveButton ||
-      !profileDeleteButton || !status || !resultsPanel ||
+      !profileDeleteButton || !status || !validationWarning || !resultsPanel ||
       !tableBody || !historyRange || !followLive || !historyPosition ||
       !exportHistory || !historyEnd || !historyOlder ||
       !historyNewer || !historyNavigationSummary) {
@@ -37,6 +39,9 @@
   let pendingProbesSent = 0;
   let pendingRepliesReceived = 0;
   let lastActivityReport = 0;
+  let activeHostsSource = "";
+  let activeHosts = new Set();
+  let activeTargetRevision = 0;
   const history = new Map();
   const resultRows = new Map();
   const profileStorageKey = "twn:ping-profile";
@@ -175,11 +180,24 @@
     }
   });
 
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (running) {
       return;
     }
+    startButton.disabled = true;
+    status.textContent = "Validating targets...";
+    let targets;
+    try {
+      targets = await validateTargets(hostsInput.value);
+    } catch (error) {
+      status.textContent = error.message;
+      startButton.disabled = false;
+      return;
+    }
+    activeHostsSource = targetsToSource(targets);
+    activeHosts = new Set(targets.map((target) => target.host));
+    activeTargetRevision += 1;
     running = true;
     history.clear();
     resultRows.clear();
@@ -189,14 +207,37 @@
     tableBody.innerHTML = "";
     startButton.disabled = true;
     stopButton.disabled = false;
+    updateTargetsButton.disabled = false;
     resultsPanel.hidden = false;
     resetActivityRun();
-    reportPingActivity("start", {targets: parseTargetCount(hostsInput.value)});
+    reportPingActivity("start", {targets: targets.length});
     runRound();
   });
 
   stopButton.addEventListener("click", () => {
     stopPingRun();
+  });
+  updateTargetsButton.addEventListener("click", async () => {
+    if (!running) return;
+    updateTargetsButton.disabled = true;
+    status.textContent = "Validating updated targets...";
+    try {
+      const targets = await validateTargets(hostsInput.value);
+      activeHostsSource = targetsToSource(targets);
+      activeHosts = new Set(targets.map((target) => target.host));
+      activeTargetRevision += 1;
+      resultRows.forEach((view, host) => {
+        if (!activeHosts.has(host)) {
+          view.status.textContent = "Removed";
+          view.status.className = "ping-paused";
+        }
+      });
+      status.textContent = `Updated active targets to ${targets.length}. Existing history was preserved.`;
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      updateTargetsButton.disabled = !running;
+    }
   });
   window.addEventListener("pagehide", () => {
     if (running || pendingProbesSent || pendingRepliesReceived) {
@@ -209,12 +250,14 @@
       return;
     }
     const roundStarted = performance.now();
+    const roundRevision = activeTargetRevision;
+    const roundHostsSource = activeHostsSource;
     status.textContent = "Pinging...";
     try {
       const response = await fetch(form.dataset.runUrl, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({hosts: hostsInput.value}),
+        body: JSON.stringify({hosts: roundHostsSource}),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -223,14 +266,17 @@
       if (!running) {
         return;
       }
-      renderResults(data.results || []);
-      trackPingRound(data.results || []);
-      status.textContent = `Last round completed at ${new Date().toLocaleTimeString()}.`;
+      if (roundRevision === activeTargetRevision) {
+        renderResults(data.results || []);
+        trackPingRound(data.results || []);
+        status.textContent = `Last round completed at ${new Date().toLocaleTimeString()}.`;
+      }
     } catch (error) {
       status.textContent = error.message;
       running = false;
       startButton.disabled = false;
       stopButton.disabled = true;
+      updateTargetsButton.disabled = true;
       flushPingActivity("final");
       return;
     }
@@ -245,6 +291,7 @@
     clearTimeout(timer);
     startButton.disabled = false;
     stopButton.disabled = true;
+    updateTargetsButton.disabled = true;
     status.textContent = "Stopped.";
     flushPingActivity("final");
   }
@@ -301,12 +348,41 @@
     }).catch(() => {});
   }
 
-  function parseTargetCount(source) {
-    return source
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#"))
-      .length;
+  async function validateTargets(source) {
+    const response = await fetch(form.dataset.validateUrl, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({hosts: source}),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Targets could not be validated.");
+    }
+    const targets = data.targets || [];
+    const invalid = data.invalid || [];
+    if (!targets.length) {
+      showInvalidTargets(invalid);
+      throw new Error("No valid targets were provided. Correct an entry and try again.");
+    }
+    showInvalidTargets(invalid);
+    return targets;
+  }
+
+  function showInvalidTargets(invalid) {
+    if (!invalid.length) {
+      validationWarning.hidden = true;
+      validationWarning.textContent = "";
+      return;
+    }
+    const values = invalid.map((item) => item.value).join(", ");
+    validationWarning.textContent = `${invalid.length} invalid target${invalid.length === 1 ? " was" : "s were"} skipped: ${values}`;
+    validationWarning.hidden = false;
+  }
+
+  function targetsToSource(targets) {
+    return targets
+      .map((target) => target.label ? `${target.label} = ${target.host}` : target.host)
+      .join("\n");
   }
 
   function renderResults(results) {

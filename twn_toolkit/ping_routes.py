@@ -3,7 +3,12 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import increment_current_activity, record_current_activity
-from .network_tools import ToolInputError, parse_ping_targets, ping_hosts
+from .network_tools import (
+    ToolInputError,
+    parse_ping_targets,
+    parse_ping_targets_with_errors,
+    ping_hosts,
+)
 from .profiles import PingProfileStore
 
 
@@ -23,6 +28,17 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
         for target, result in zip(targets, results):
             result["label"] = target["label"]
         return jsonify({"results": results})
+
+    @tools_bp.post("/ping/validate")
+    def ping_validate_targets():
+        payload = request.get_json(silent=True) or {}
+        try:
+            targets, invalid = parse_ping_targets_with_errors(
+                str(payload.get("hosts", "")), limit=100
+            )
+        except ToolInputError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"targets": targets, "invalid": invalid})
 
     @tools_bp.post("/ping/activity")
     def ping_activity():

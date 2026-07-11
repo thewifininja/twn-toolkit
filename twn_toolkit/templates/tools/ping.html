@@ -12,6 +12,7 @@
     data-delete-profile-url="{{ url_for('tools.delete_ping_profile') }}"
     data-activity-url="{{ url_for('tools.ping_activity') }}"
     data-run-url="{{ url_for('tools.ping_run') }}"
+    data-validate-url="{{ url_for('tools.ping_validate_targets') }}"
     data-save-profile-url="{{ url_for('tools.save_ping_profile') }}"
   >
     <div class="ping-profile-manager">
@@ -41,7 +42,7 @@
       Hosts
       <textarea id="ping-hosts" rows="6" placeholder="Core Router = 192.0.2.1&#10;8.8.8.8&#10;router.example.com" required></textarea>
     </label>
-    <span class="field-note">Optional friendly names use <code>Name = host</code>. Enter unnamed hosts normally.</span>
+    <span class="field-note">Optional friendly names use <code>Name = host</code>. Starting a run snapshots this list. Edits take effect only after selecting <strong>Update targets</strong>, which preserves history for existing targets.</span>
     <label>
       Interval in seconds
       <input id="ping-interval" type="number" min="1" max="60" value="2">
@@ -49,9 +50,11 @@
     <div class="button-row">
       <button id="ping-start" type="submit">Start</button>
       <button class="secondary" id="ping-stop" type="button" disabled>Stop</button>
+      <button class="secondary" id="ping-update-targets" type="button" disabled>Update targets</button>
       <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
     </div>
     <span class="tool-status" id="ping-status"></span>
+    <div class="message warning" id="ping-validation-warning" hidden></div>
   </form>
 </section>
 

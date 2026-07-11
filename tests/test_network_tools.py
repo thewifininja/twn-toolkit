@@ -252,6 +252,11 @@ class NetworkToolTests(unittest.TestCase):
             ],
         )
 
+    def test_rejects_out_of_range_ipv4_shaped_ping_targets(self) -> None:
+        for value in ("192.0.2.256", "999.999.999.999", "1.2.3.4.5"):
+            with self.subTest(value=value), self.assertRaises(ToolInputError):
+                parse_ping_targets(value)
+
     def test_parses_named_dns_servers_and_rejects_hostnames(self) -> None:
         self.assertEqual(
             parse_dns_servers("Cloudflare = 1.1.1.1\nGoogle IPv6 = 2001:4860:4860::8888"),
@@ -443,6 +448,37 @@ class NetworkToolTests(unittest.TestCase):
             with patch("twn_toolkit.ping_routes.ping_hosts", return_value=[ping_result]):
                 response = client.post("/tools/ping/run", json={"hosts": "Localhost = localhost"})
             self.assertEqual(response.get_json()["results"], [{**ping_result, "label": "Localhost"}])
+
+            response = client.post(
+                "/tools/ping/validate",
+                json={"hosts": "Gateway = 192.0.2.1\nexample.com"},
+            )
+            self.assertEqual(
+                response.get_json()["targets"],
+                [
+                    {"label": "Gateway", "host": "192.0.2.1"},
+                    {"label": "", "host": "example.com"},
+                ],
+            )
+            response = client.post(
+                "/tools/ping/validate", json={"hosts": "192.0.2.999"}
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json()["targets"], [])
+            self.assertEqual(response.get_json()["invalid"][0]["value"], "192.0.2.999")
+
+            response = client.post(
+                "/tools/ping/validate",
+                json={"hosts": "Gateway = 192.0.2.1\n192.0.2.999\nexample.com"},
+            )
+            self.assertEqual(
+                response.get_json()["targets"],
+                [
+                    {"label": "Gateway", "host": "192.0.2.1"},
+                    {"label": "", "host": "example.com"},
+                ],
+            )
+            self.assertEqual(response.get_json()["invalid"][0]["value"], "192.0.2.999")
 
             response = client.post(
                 "/tools/ping/profiles",

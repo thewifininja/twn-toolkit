@@ -1058,6 +1058,14 @@ class AutomationUiRegressionTests(unittest.TestCase):
         self.assertNotIn(".card-action-details summary {", stylesheet)
         self.assertNotIn(".profile-create-details.card-action-details summary {", stylesheet)
 
+    def test_live_ping_uses_a_target_snapshot_and_explicit_update_control(self) -> None:
+        root = Path(__file__).resolve().parents[1] / "twn_toolkit"
+        script = (root / "static" / "ping-tool.js").read_text(encoding="utf-8")
+        template = (root / "templates" / "tools" / "ping.html").read_text(encoding="utf-8")
+        self.assertIn('body: JSON.stringify({hosts: roundHostsSource})', script)
+        self.assertIn('id="ping-update-targets"', template)
+        self.assertIn("Existing history was preserved", script)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -288,6 +288,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "tools.subnet_excluder": "tools.subnet_excluder",
             "tools.ping_tool": "tools.ping",
             "tools.ping_run": "tools.ping",
+            "tools.ping_validate_targets": "tools.ping",
             "tools.ping_activity": "tools.ping",
             "tools.save_ping_profile": "tools.ping",
             "tools.delete_ping_profile": "tools.ping",

@@ -3268,11 +3268,19 @@ button.danger {
 .ping-up {
   color: var(--ok);
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .ping-down {
   color: var(--bad);
   font-weight: 800;
+  white-space: nowrap;
+}
+
+.ping-paused {
+  color: var(--muted);
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .ping-history-cell {
