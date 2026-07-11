@@ -18,6 +18,12 @@ HOSTNAME_PATTERN = re.compile(
     r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.?$"
 )
 PING_TIME_PATTERN = re.compile(r"time[=<]([\d.]+)\s*ms", re.IGNORECASE)
+SSH_TIMEOUT_PREFIX = re.compile(r"^\[timeout=(\d+)\]\s+(.+)$", re.IGNORECASE)
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+SSH_DEFAULT_COMMAND_TIMEOUT = 300
+SSH_MAX_COMMAND_TIMEOUT = 3600
+SSH_MAX_RUN_TIMEOUT = 3600
+SSH_OUTPUT_LIMIT = 5 * 1024 * 1024
 
 
 class ToolInputError(ValueError):
@@ -498,17 +504,13 @@ def run_ssh_hosts(
     allow_unknown_hosts: bool = False,
     send_ctrl_y: bool = False,
     command_delay: float = 1.0,
+    default_command_timeout: int = SSH_DEFAULT_COMMAND_TIMEOUT,
 ) -> list[dict[str, Any]]:
     if not username:
         raise ToolInputError("Enter an SSH username.")
     if not password:
         raise ToolInputError("Enter an SSH password.")
-    if not commands:
-        raise ToolInputError("Enter at least one command.")
-    if len(commands) > 50:
-        raise ToolInputError("A maximum of 50 SSH commands is allowed per run.")
-    if any(len(command) > 500 for command in commands):
-        raise ToolInputError("Each SSH command must be 500 characters or fewer.")
+    command_specs = parse_ssh_commands(commands, default_command_timeout)
     if not 1 <= port <= 65535:
         raise ToolInputError("SSH port must be between 1 and 65535.")
 
@@ -520,7 +522,7 @@ def run_ssh_hosts(
                 host,
                 username,
                 password,
-                commands,
+                command_specs,
                 port,
                 allow_unknown_hosts,
                 send_ctrl_y,
@@ -530,6 +532,46 @@ def run_ssh_hosts(
         }
         indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
     return [result for _index, result in sorted(indexed_results)]
+
+
+def parse_ssh_commands(
+    commands: list[str], default_timeout: int = SSH_DEFAULT_COMMAND_TIMEOUT
+) -> list[dict[str, Any]]:
+    try:
+        normalized_default = int(default_timeout)
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError("Default command timeout must be a whole number.") from exc
+    if not 1 <= normalized_default <= SSH_MAX_COMMAND_TIMEOUT:
+        raise ToolInputError(
+            f"Default command timeout must be between 1 and {SSH_MAX_COMMAND_TIMEOUT} seconds."
+        )
+    normalized = [str(command).strip() for command in commands if str(command).strip()]
+    if not normalized:
+        raise ToolInputError("Enter at least one command.")
+    if len(normalized) > 50:
+        raise ToolInputError("A maximum of 50 SSH commands is allowed per run.")
+    parsed: list[dict[str, Any]] = []
+    for raw_command in normalized:
+        timeout = normalized_default
+        command = raw_command
+        match = SSH_TIMEOUT_PREFIX.fullmatch(raw_command)
+        if match:
+            timeout = int(match.group(1))
+            command = match.group(2).strip()
+            if not 1 <= timeout <= SSH_MAX_COMMAND_TIMEOUT:
+                raise ToolInputError(
+                    f"Command timeout must be between 1 and {SSH_MAX_COMMAND_TIMEOUT} seconds."
+                )
+        if not command:
+            raise ToolInputError("A timeout override must be followed by a command.")
+        if len(command) > 500:
+            raise ToolInputError("Each SSH command must be 500 characters or fewer.")
+        parsed.append({"command": command, "timeout": timeout})
+    if sum(item["timeout"] for item in parsed) > SSH_MAX_RUN_TIMEOUT:
+        raise ToolInputError(
+            f"Combined command timeout budget cannot exceed {SSH_MAX_RUN_TIMEOUT} seconds per host."
+        )
+    return parsed
 
 
 def _parse_networks(values: list[str], label: str) -> list[ipaddress._BaseNetwork]:
@@ -612,7 +654,7 @@ def _ssh_host(
     host: str,
     username: str,
     password: str,
-    commands: list[str],
+    commands: list[dict[str, Any]],
     port: int,
     allow_unknown_hosts: bool,
     send_ctrl_y: bool,
@@ -640,13 +682,35 @@ def _ssh_host(
         )
         channel = client.invoke_shell(width=200, height=1000)
         channel.settimeout(0.2)
-        output.append(_read_channel(channel, max_wait=1.0))
+        initial_output = _read_channel(channel, max_wait=5.0, quiet_after=0.5)
+        output.append(initial_output)
+        prompt = _extract_ssh_prompt(initial_output)
         if send_ctrl_y:
             channel.send("\x19")
-        for command in commands:
+        for command_spec in commands:
+            command = str(command_spec["command"])
+            command_timeout = int(command_spec["timeout"])
             channel.send(f"{command}\n")
-            time.sleep(command_delay)
-            output.append(_read_channel(channel, max_wait=3.0))
+            if command_delay > 0:
+                time.sleep(min(command_delay, 0.25))
+            command_output, completed = _read_ssh_command(
+                channel,
+                command_timeout,
+                prompt,
+                capture_limit=max(0, SSH_OUTPUT_LIMIT - sum(len(item) for item in output)),
+            )
+            output.append(command_output)
+            if not completed:
+                return {
+                    "host": host,
+                    "status": "timeout",
+                    "output": _bounded_output("".join(output)),
+                    "error": (
+                        f"Command exceeded its {command_timeout}-second timeout: {command}"
+                    ),
+                    "timed_out_command": command,
+                    "command_timeout": command_timeout,
+                }
         return {
             "host": host,
             "status": "success",
@@ -663,7 +727,7 @@ def _ssh_host(
         client.close()
 
 
-def _read_channel(channel: Any, max_wait: float) -> str:
+def _read_channel(channel: Any, max_wait: float, quiet_after: float = 0.35) -> str:
     chunks: list[str] = []
     deadline = time.monotonic() + max_wait
     quiet_since = time.monotonic()
@@ -671,14 +735,87 @@ def _read_channel(channel: Any, max_wait: float) -> str:
         if channel.recv_ready():
             chunks.append(channel.recv(65535).decode("utf-8", errors="replace"))
             quiet_since = time.monotonic()
-        elif time.monotonic() - quiet_since >= 0.35:
+        elif time.monotonic() - quiet_since >= quiet_after:
             break
         else:
             time.sleep(0.05)
     return "".join(chunks)
 
 
-def _bounded_output(value: str, limit: int = 500_000) -> str:
+def _extract_ssh_prompt(value: str) -> str:
+    lines = [
+        line.strip()
+        for line in ANSI_ESCAPE_PATTERN.sub("", value).replace("\r", "").splitlines()
+        if line.strip()
+    ]
+    if not lines:
+        return ""
+    candidate = lines[-1]
+    return candidate if _looks_like_prompt(candidate) else ""
+
+
+def _looks_like_prompt(value: str) -> bool:
+    return bool(value) and len(value) <= 200 and value.rstrip().endswith(("#", ">", "$"))
+
+
+def _prompt_returned(value: str, prompt: str) -> bool:
+    lines = [
+        line.strip()
+        for line in ANSI_ESCAPE_PATTERN.sub("", value).replace("\r", "").splitlines()
+        if line.strip()
+    ]
+    if not lines:
+        return False
+    candidate = lines[-1]
+    if candidate == prompt:
+        return True
+    prompt_host = prompt.split(" ", 1)[0] if prompt else ""
+    return bool(prompt_host) and candidate.startswith(prompt_host) and _looks_like_prompt(candidate)
+
+
+def _read_ssh_command(
+    channel: Any,
+    max_wait: int,
+    prompt: str,
+    capture_limit: int = SSH_OUTPUT_LIMIT,
+) -> tuple[str, bool]:
+    chunks: list[str] = []
+    captured = 0
+    truncated = False
+    detection_tail = ""
+    deadline = time.monotonic() + max_wait
+    quiet_since = time.monotonic()
+    received_output = False
+    while time.monotonic() < deadline:
+        if channel.recv_ready():
+            value = channel.recv(65535).decode("utf-8", errors="replace")
+            detection_tail = (detection_tail + value)[-4096:]
+            remaining = max(0, capture_limit - captured)
+            if remaining:
+                kept = value[:remaining]
+                chunks.append(kept)
+                captured += len(kept)
+            if len(value) > remaining:
+                truncated = True
+            received_output = True
+            quiet_since = time.monotonic()
+            if prompt and _prompt_returned(detection_tail, prompt):
+                return _captured_ssh_output(chunks, truncated), True
+        elif not prompt and received_output and time.monotonic() - quiet_since >= 2.0:
+            return _captured_ssh_output(chunks, truncated), True
+        else:
+            time.sleep(0.05)
+    return _captured_ssh_output(chunks, truncated), False
+
+
+def _captured_ssh_output(chunks: list[str], truncated: bool) -> str:
+    value = "".join(chunks)
+    if not truncated:
+        return value
+    return f"{value}\n\n[Additional command output omitted after reaching the per-host capture limit.]"
+
+
+def _bounded_output(value: str, limit: int = SSH_OUTPUT_LIMIT) -> str:
     cleaned = value.strip()
     if len(cleaned) <= limit:
         return cleaned

@@ -19,13 +19,21 @@ service.
 - Debounce: require consecutive met checks before firing.
 - Recovery: require consecutive clear checks before rearming.
 - Cooldown: minimum interval between incident triggers.
-- Action: run a command set on up to 50 SSH targets concurrently.
+- Action: run a command set on up to 50 SSH targets concurrently. Commands use
+  a 300-second default ceiling and complete as soon as the original device
+  prompt returns. Prefix an individual command with `[timeout=600]` when it
+  needs a different ceiling; accepted values are 1 through 3600 seconds. The
+  combined timeout budget across commands is limited to one hour per host.
 - History: retain condition checks, triggers, per-host command output, and
   action status in `instance/automations.sqlite3`.
 - Downloads: each action run can be downloaded as a ZIP containing JSON run
   metadata and one text file per SSH host. Host filenames begin with the run's
   sortable local timestamp, such as `20260710172428-Core-Switch.txt` or
   `20260710172428-10.0.0.12.txt`.
+- Capture: retain at most 5 MiB per host. A timed-out command keeps its partial
+  output, identifies the command and timeout, and stops later commands on that
+  host while other hosts continue. Long browser previews are shortened without
+  changing the complete retained ZIP output.
 - Cleanup: delete a single collected run or clear all collected action runs for
   an automation without deleting its condition-check history.
 

@@ -145,6 +145,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                     "username": request.form.get("action_username", ""),
                     "password": password,
                     "commands": request.form.get("action_commands", ""),
+                    "command_timeout": request.form.get("action_command_timeout", "300"),
                     "port": request.form.get("action_port", "22"),
                     "allow_unknown_hosts": "action_allow_unknown_hosts" in request.form,
                     "send_ctrl_y": "action_send_ctrl_y" in request.form,
@@ -376,7 +377,27 @@ def _filename_timestamp(value: Any) -> str:
 
 
 def _format_run(run: dict[str, Any]) -> dict[str, Any]:
-    return {**run, "started_display": _format_time(run["started_at"])}
+    formatted_results = []
+    for result in run.get("results", []):
+        output = dict(result.get("output", {}))
+        hosts = []
+        for host in output.get("hosts", []):
+            formatted_host = dict(host)
+            captured = str(formatted_host.get("output", ""))
+            if len(captured) > 40_000:
+                formatted_host["output"] = (
+                    f"{captured[:40_000]}\n\n"
+                    "[Browser preview shortened. Download the ZIP for the complete captured output.]"
+                )
+            hosts.append(formatted_host)
+        if "hosts" in output:
+            output["hosts"] = hosts
+        formatted_results.append({**result, "output": output})
+    return {
+        **run,
+        "results": formatted_results,
+        "started_display": _format_time(run["started_at"]),
+    }
 
 
 def _format_check(check: dict[str, Any]) -> dict[str, Any]:

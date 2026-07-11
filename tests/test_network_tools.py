@@ -2,23 +2,122 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
 from twn_toolkit.fortigate import FortiGateError
 from twn_toolkit.fortigate_routes import managed_switch_order, switch_order_moves
 from twn_toolkit.network_tools import (
+    _extract_ssh_prompt,
+    _read_ssh_command,
+    _ssh_host,
     ToolInputError,
     parse_dns_servers,
     parse_ping_targets,
     parse_radius_attributes,
+    parse_ssh_commands,
     subtract_subnets,
     validate_hosts,
 )
 
 
 class NetworkToolTests(unittest.TestCase):
+    def test_ssh_commands_support_per_command_timeout_overrides(self) -> None:
+        commands = parse_ssh_commands(
+            ["get system status", "[timeout=600] diag debug report"], 300
+        )
+        self.assertEqual(
+            commands,
+            [
+                {"command": "get system status", "timeout": 300},
+                {"command": "diag debug report", "timeout": 600},
+            ],
+        )
+        with self.assertRaisesRegex(ToolInputError, "between 1 and 3600"):
+            parse_ssh_commands(["[timeout=3601] show report"], 300)
+        with self.assertRaisesRegex(ToolInputError, "Combined command timeout budget"):
+            parse_ssh_commands(["[timeout=2000] one", "[timeout=2000] two"], 300)
+
+    def test_ssh_command_waits_for_the_original_device_prompt(self) -> None:
+        class Channel:
+            def __init__(self) -> None:
+                self.chunks = [
+                    b"diag debug report\r\ncollecting...\r\n",
+                    b"finished\r\nDXHS-BSMT-SW5 # ",
+                ]
+
+            def recv_ready(self) -> bool:
+                return bool(self.chunks)
+
+            def recv(self, _size: int) -> bytes:
+                return self.chunks.pop(0)
+
+        prompt = _extract_ssh_prompt("Welcome\r\nDXHS-BSMT-SW5 # ")
+        output, completed = _read_ssh_command(Channel(), 600, prompt)
+        self.assertEqual(prompt, "DXHS-BSMT-SW5 #")
+        self.assertTrue(completed)
+        self.assertIn("finished", output)
+
+    def test_ssh_command_timeout_returns_partial_output(self) -> None:
+        class Channel:
+            def recv_ready(self) -> bool:
+                return False
+
+        with patch("twn_toolkit.network_tools.time.monotonic", side_effect=[0, 0, 2]), patch(
+            "twn_toolkit.network_tools.time.sleep"
+        ):
+            output, completed = _read_ssh_command(
+                Channel(), 1, "DXHS-BSMT-SW5 #"
+            )
+        self.assertEqual(output, "")
+        self.assertFalse(completed)
+
+    def test_ssh_capture_limit_does_not_prevent_prompt_detection(self) -> None:
+        class Channel:
+            def __init__(self) -> None:
+                self.chunks = [b"abcdefghijklmnop", b"\r\nSWITCH-1 # "]
+
+            def recv_ready(self) -> bool:
+                return bool(self.chunks)
+
+            def recv(self, _size: int) -> bytes:
+                return self.chunks.pop(0)
+
+        output, completed = _read_ssh_command(
+            Channel(), 300, "SWITCH-1 #", capture_limit=10
+        )
+        self.assertTrue(completed)
+        self.assertTrue(output.startswith("abcdefghij"))
+        self.assertIn("capture limit", output)
+
+    def test_ssh_host_stops_after_a_timed_out_command(self) -> None:
+        client = MagicMock()
+        channel = MagicMock()
+        client.invoke_shell.return_value = channel
+        with patch("paramiko.SSHClient", return_value=client), patch(
+            "twn_toolkit.network_tools._read_channel", return_value="SWITCH-1 # "
+        ), patch(
+            "twn_toolkit.network_tools._read_ssh_command",
+            return_value=("partial diagnostic output", False),
+        ):
+            result = _ssh_host(
+                "switch-1",
+                "admin",
+                "secret",
+                [
+                    {"command": "diag debug report", "timeout": 600},
+                    {"command": "get system status", "timeout": 300},
+                ],
+                22,
+                True,
+                False,
+                0,
+            )
+        self.assertEqual(result["status"], "timeout")
+        self.assertEqual(result["timed_out_command"], "diag debug report")
+        channel.send.assert_called_once_with("diag debug report\n")
+
     def test_switch_order_keeps_name_primary_and_description_separate(self) -> None:
         switches = managed_switch_order(
             [

@@ -33,7 +33,9 @@ service.
 - **Multi-Host Ping:** troubleshoot reachability, latency, and loss with
   reusable host profiles, live Canvas charts, lockable history views, and CSV
   export. History exists only in the current browser session.
-- **Multi-SSH:** run one command sequence across multiple SSH hosts.
+- **Multi-SSH:** run one command sequence across multiple SSH hosts with
+  prompt-aware completion, a configurable default timeout, and per-command
+  overrides such as `[timeout=600] diag debug report`.
 - **DNS Lookup Tester:** compare DNS answers and lookup latency across resolvers.
 - **RADIUS Authentication Test:** compare PAP or CHAP authentication and decode
   returned attributes. Optional `eapol_test` integration adds PEAP/MSCHAPv2 and

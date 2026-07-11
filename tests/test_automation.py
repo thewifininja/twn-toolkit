@@ -259,10 +259,15 @@ class AutomationRouteTests(unittest.TestCase):
                     "action_password": "secret",
                     "action_port": "22",
                     "action_commands": "show clock",
+                    "action_command_timeout": "600",
                 },
             )
             self.assertEqual(action_response.status_code, 302)
             store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
+            self.assertEqual(
+                store.action_definitions(include_secrets=True)[0]["config"]["command_timeout"],
+                600,
+            )
             condition_id = store.condition_definitions()[0]["id"]
             action_id = store.action_definitions()[0]["id"]
             response = client.post(

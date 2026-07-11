@@ -211,7 +211,7 @@ start() {
   "$GUNICORN" \
     --bind "$HOST:$PORT" \
     --workers "$WORKERS" \
-    --timeout 120 \
+    --timeout 3700 \
     --pid "$PIDFILE" \
     --access-logfile "$ACCESS_LOG" \
     --error-logfile "$ERROR_LOG" \

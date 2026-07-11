@@ -4274,7 +4274,9 @@ th {
   color: var(--warn);
 }
 
-.pill.error {
+.pill.error,
+.pill.timeout,
+.pill.partial {
   background: #f9e9e9;
   color: var(--bad);
 }
@@ -4722,6 +4724,8 @@ th {
 
 [data-theme="dark"] .message.error,
 [data-theme="dark"] .pill.error,
+[data-theme="dark"] .pill.timeout,
+[data-theme="dark"] .pill.partial,
 [data-theme="dark"] .traceroute-hop.slow .traceroute-marker {
   background: #3a2022;
 }

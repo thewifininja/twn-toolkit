@@ -3,7 +3,12 @@ from __future__ import annotations
 from flask import Blueprint, render_template, request
 
 from .activity_context import record_current_activity
-from .network_tools import ToolInputError, run_ssh_hosts, validate_hosts
+from .network_tools import (
+    SSH_DEFAULT_COMMAND_TIMEOUT,
+    ToolInputError,
+    run_ssh_hosts,
+    validate_hosts,
+)
 
 
 def register_ssh_routes(tools_bp: Blueprint) -> None:
@@ -14,6 +19,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             "username": "",
             "port": "22",
             "commands": "",
+            "command_timeout": str(SSH_DEFAULT_COMMAND_TIMEOUT),
             "allow_unknown_hosts": False,
             "send_ctrl_y": False,
         }
@@ -25,6 +31,9 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                 "username": request.form.get("username", "").strip(),
                 "port": request.form.get("port", "22").strip(),
                 "commands": request.form.get("commands", "").strip(),
+                "command_timeout": request.form.get(
+                    "command_timeout", str(SSH_DEFAULT_COMMAND_TIMEOUT)
+                ).strip(),
                 "allow_unknown_hosts": request.form.get("allow_unknown_hosts") == "on",
                 "send_ctrl_y": request.form.get("send_ctrl_y") == "on",
             }
@@ -42,6 +51,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     port=port,
                     allow_unknown_hosts=bool(form["allow_unknown_hosts"]),
                     send_ctrl_y=bool(form["send_ctrl_y"]),
+                    default_command_timeout=int(str(form["command_timeout"])),
                 )
             except (ToolInputError, ValueError) as exc:
                 error = str(exc) if str(exc) else "Enter a valid SSH port."

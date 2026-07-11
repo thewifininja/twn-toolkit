@@ -28,7 +28,11 @@
     </div>
     <label>
       Commands
-      <textarea class="command-input" name="commands" rows="8" placeholder="show version&#10;show interfaces status" required>{{ form.commands }}</textarea>
+      <textarea class="command-input" name="commands" rows="8" placeholder="show version&#10;[timeout=600] diag debug report" required>{{ form.commands }}</textarea>
+    </label>
+    <label>Default command timeout
+      <div class="input-suffix"><input name="command_timeout" type="number" min="1" max="3600" value="{{ form.command_timeout }}" required><span>seconds</span></div>
+      <small class="field-note">Commands finish as soon as the device prompt returns. Override one line with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
     </label>
     <label class="check">
       <input name="allow_unknown_hosts" type="checkbox" {% if form.allow_unknown_hosts %}checked{% endif %}>
@@ -58,7 +62,7 @@
     </div>
     <div class="ssh-results">
       {% for result in results %}
-        <details class="ssh-result" {% if result.status == 'error' %}open{% endif %}>
+        <details class="ssh-result" {% if result.status != 'success' %}open{% endif %}>
           <summary>
             <strong>{{ result.host }}</strong>
             <span class="pill {{ result.status }}">{{ result.status }}</span>

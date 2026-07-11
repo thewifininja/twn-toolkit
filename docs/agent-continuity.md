@@ -147,6 +147,17 @@ accepted replay frames.
 - Action runs have a ZIP download containing summary metadata and per-host SSH
   text output.
 - Collected action runs can be deleted individually or cleared per automation.
+- Multi-SSH and `ssh.collect` share the same prompt-aware executor. Connection,
+  authentication, and banner timeouts remain 8 seconds. Command ceilings default
+  to 300 seconds and support an inline `[timeout=N] command` override from 1 to
+  3600 seconds, with a one-hour combined ceiling per host. Completion is the
+  return of the device prompt, not a short quiet period. Timeouts retain partial
+  output and stop later commands for that host. Gunicorn's worker timeout is
+  3700 seconds so synchronous Multi-SSH can honor that bounded SSH budget.
+- SSH capture is bounded to 5 MiB per host while reading; prompt detection keeps
+  using a small rolling tail after that limit. Automation browser previews are
+  shortened to 40,000 characters per host, but ZIP downloads use the complete
+  retained capture.
   Clearing runs must not delete condition-check history.
 - Automation creation is administrator-only for the initial vertical slice.
   Granular view/arm/edit/output permissions are a planned extension.

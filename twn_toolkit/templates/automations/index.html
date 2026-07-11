@@ -69,7 +69,11 @@
       </label>
     </div>
     <label>Commands
-      <textarea class="command-input" name="action_commands" rows="7" placeholder="show clock&#10;show logging&#10;show interfaces" required>{{ config.get('commands', config.get('action_commands', '')) }}</textarea>
+      <textarea class="command-input" name="action_commands" rows="7" placeholder="show clock&#10;show logging&#10;[timeout=600] diag debug report" required>{{ config.get('commands', config.get('action_commands', '')) }}</textarea>
+    </label>
+    <label>Default command timeout
+      <div class="input-suffix"><input name="action_command_timeout" type="number" min="1" max="3600" value="{{ config.get('command_timeout', config.get('action_command_timeout', '300')) }}" required><span>seconds</span></div>
+      <small class="field-note">A command completes when the device prompt returns. Override one command with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
     </label>
     <div class="check-grid">
       <label class="check"><input name="action_allow_unknown_hosts" type="checkbox" {% if config.get('allow_unknown_hosts') or config.get('action_allow_unknown_hosts') %}checked{% endif %}>Allow unknown SSH host keys</label>
@@ -222,7 +226,7 @@
                           <div class="automation-result-head"><span>Action {{ loop.index }}</span><strong>{{ result.summary }}</strong></div>
                           <div class="automation-host-list">
                             {% for host in result.output.get('hosts', []) %}
-                              <details class="ssh-result automation-host-result">
+                              <details class="ssh-result automation-host-result" {% if host.status != 'success' %}open{% endif %}>
                                 <summary><strong>{{ host.host }}</strong><span class="pill {{ host.status }}">{{ host.status }}</span></summary>
                                 {% if host.error %}<div class="message error">{{ host.error }}</div>{% endif %}
                                 <pre class="result-output">{{ host.output or 'No output captured.' }}</pre>

@@ -6,6 +6,7 @@ from typing import Any, Callable
 from .network_tools import (
     ToolInputError,
     parse_ping_targets,
+    parse_ssh_commands,
     ping_hosts,
     run_ssh_hosts,
     validate_hosts,
@@ -150,8 +151,9 @@ def _validate_ssh(config: dict[str, Any]) -> dict[str, Any]:
     ]
     try:
         port = int(config.get("port", 22))
+        command_timeout = int(config.get("command_timeout", 300))
     except (TypeError, ValueError) as exc:
-        raise ToolInputError("SSH port must be a whole number.") from exc
+        raise ToolInputError("SSH port and command timeout must be whole numbers.") from exc
     # Reuse the execution helper's complete validation without opening a connection.
     if not username:
         raise ToolInputError("Enter an SSH username.")
@@ -165,12 +167,16 @@ def _validate_ssh(config: dict[str, Any]) -> dict[str, Any]:
         raise ToolInputError("Each SSH command must be 500 characters or fewer.")
     if not 1 <= port <= 65535:
         raise ToolInputError("SSH port must be between 1 and 65535.")
+    if not 1 <= command_timeout <= 3600:
+        raise ToolInputError("Default command timeout must be between 1 and 3600 seconds.")
+    parse_ssh_commands(commands, command_timeout)
     return {
         "hosts": "\n".join(hosts),
         "username": username,
         "password": password,
         "commands": "\n".join(commands),
         "port": port,
+        "command_timeout": command_timeout,
         "allow_unknown_hosts": bool(config.get("allow_unknown_hosts", False)),
         "send_ctrl_y": bool(config.get("send_ctrl_y", False)),
     }
@@ -188,6 +194,7 @@ def _execute_ssh(config: dict[str, Any], trigger: ConditionResult) -> ActionResu
         port=normalized["port"],
         allow_unknown_hosts=normalized["allow_unknown_hosts"],
         send_ctrl_y=normalized["send_ctrl_y"],
+        default_command_timeout=normalized["command_timeout"],
     )
     successes = sum(result.get("status") == "success" for result in results)
     status = "success" if successes == len(results) else "partial" if successes else "error"
