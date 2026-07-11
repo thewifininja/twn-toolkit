@@ -3761,6 +3761,12 @@ button.danger {
   margin-top: 12px;
 }
 
+.automation-policy-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+
 .automation-condition-fields {
   display: grid;
   gap: 12px;

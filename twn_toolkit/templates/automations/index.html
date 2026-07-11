@@ -87,7 +87,7 @@
     <label>Automation name
       <input name="name" maxlength="100" value="{{ automation.name if automation else values.get('name', '') }}" placeholder="Branch outage collection" required>
     </label>
-    <div class="form-grid" data-scheduled-policy>
+    <div class="automation-policy-grid" data-scheduled-policy>
       <label>Check every
         <div class="input-suffix"><input name="interval_seconds" type="number" min="1" max="86400" value="{{ automation.interval_seconds if automation else values.get('interval_seconds', '30') }}" required><span>seconds</span></div>
       </label>
