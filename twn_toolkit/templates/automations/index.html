@@ -55,7 +55,8 @@
     </label>
     <p class="field-note">SSH output is retained with each run. The password is encrypted using this toolkit installation’s secret key.</p>
     <label>SSH hosts
-      <textarea name="action_hosts" rows="4" placeholder="10.0.0.11&#10;10.0.0.12" required>{{ config.get('hosts', config.get('action_hosts', '')) }}</textarea>
+      <textarea name="action_hosts" rows="4" placeholder="Basement Switch = 10.0.0.11&#10;10.0.0.12" required>{{ config.get('hosts', config.get('action_hosts', '')) }}</textarea>
+      <small class="field-note">Optional friendly names use <code>Name = hostname-or-IP</code>.</small>
     </label>
     <div class="form-grid">
       <label>Username
@@ -227,7 +228,7 @@
                           <div class="automation-host-list">
                             {% for host in result.output.get('hosts', []) %}
                               <details class="ssh-result automation-host-result" {% if host.status != 'success' %}open{% endif %}>
-                                <summary><strong>{{ host.host }}</strong><span class="pill {{ host.status }}">{{ host.status }}</span></summary>
+                                <summary><span class="ssh-result-identity"><strong>{{ host.host_label or host.host }}</strong>{% if host.host_label %}<small>{{ host.host }}</small>{% endif %}</span><span class="pill {{ host.status }}">{{ host.status }}</span></summary>
                                 {% if host.error %}<div class="message error">{{ host.error }}</div>{% endif %}
                                 <pre class="result-output">{{ host.output or 'No output captured.' }}</pre>
                               </details>

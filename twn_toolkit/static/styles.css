@@ -3265,6 +3265,16 @@ button.danger {
   gap: 10px;
 }
 
+.ssh-export-actions {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.ssh-result-actions {
+  justify-content: flex-end;
+  margin: 8px 0 2px;
+}
+
 .ssh-result {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -3277,6 +3287,17 @@ button.danger {
   display: flex;
   gap: 10px;
   justify-content: space-between;
+}
+
+.ssh-result-identity {
+  display: grid;
+  gap: 2px;
+}
+
+.ssh-result-identity small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .ssh-result[open] summary {

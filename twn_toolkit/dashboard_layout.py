@@ -92,3 +92,44 @@ class DashboardLayoutStore:
         finally:
             if os.path.exists(temporary_name):
                 os.unlink(temporary_name)
+
+
+class DashboardLayoutBackupStore:
+    """Profile-backup adapter for the global, non-secret dashboard layout."""
+
+    def __init__(self, store: DashboardLayoutStore) -> None:
+        self.store = store
+        self.path = store.path
+
+    def all(self) -> list[dict[str, Any]]:
+        raw = self.store._read()
+        if not raw:
+            return []
+        return [
+            {
+                "name": "Global dashboard layout",
+                "version": 1,
+                "order": [str(item) for item in raw.get("order", [])],
+                "hidden": [str(item) for item in raw.get("hidden", [])],
+            }
+        ]
+
+    def replace_all(self, profiles: list[dict[str, Any]]) -> None:
+        if not profiles:
+            self.clear()
+            return
+        profile = profiles[-1]
+        order = profile.get("order", [])
+        hidden = profile.get("hidden", [])
+        if not isinstance(order, list) or not isinstance(hidden, list):
+            raise ValueError("Dashboard layout order and hidden widgets must be lists.")
+        self.store._write(
+            {
+                "version": 1,
+                "order": list(dict.fromkeys(str(item) for item in order)),
+                "hidden": list(dict.fromkeys(str(item) for item in hidden)),
+            }
+        )
+
+    def clear(self) -> None:
+        self.store.reset()

@@ -316,7 +316,7 @@ class AutomationRouteTests(unittest.TestCase):
                         "Collected two hosts",
                         {
                             "hosts": [
-                                {"host": "10.0.0.1", "status": "success", "output": "show clock output"},
+                                {"host": "10.0.0.1", "host_label": "Core Switch", "status": "success", "output": "show clock output"},
                                 {"host": "10.0.0.2", "status": "success", "output": "show log output"},
                             ]
                         },
@@ -332,7 +332,7 @@ class AutomationRouteTests(unittest.TestCase):
                 self.assertEqual(len(host_files), 2)
                 self.assertTrue(
                     all(
-                        re.fullmatch(r"action-1/\d{14}-10\.0\.0\.[12]\.txt", name)
+                        re.fullmatch(r"action-1/\d{14}-(?:Core-Switch|10\.0\.0\.2)\.txt", name)
                         for name in host_files
                     )
                 )

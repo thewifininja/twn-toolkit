@@ -197,6 +197,11 @@ def parse_ping_targets(hosts_text: str, limit: int = 100) -> list[dict[str, str]
     return targets
 
 
+def parse_ssh_targets(hosts_text: str, limit: int = 50) -> list[dict[str, str]]:
+    """Parse SSH targets using the shared `Friendly Name = host` syntax."""
+    return parse_ping_targets(hosts_text, limit=limit)
+
+
 def parse_dns_hosts(hosts_text: str, limit: int = 100) -> list[dict[str, str]]:
     return parse_ping_targets(hosts_text, limit=limit)
 
@@ -496,7 +501,7 @@ def ping_hosts(hosts: list[str], timeout: int = 1) -> list[dict[str, Any]]:
 
 
 def run_ssh_hosts(
-    hosts: list[str],
+    hosts: list[str] | list[dict[str, str]],
     username: str,
     password: str,
     commands: list[str],
@@ -511,15 +516,30 @@ def run_ssh_hosts(
     if not password:
         raise ToolInputError("Enter an SSH password.")
     command_specs = parse_ssh_commands(commands, default_command_timeout)
+    targets = []
+    for item in hosts:
+        if isinstance(item, dict):
+            host = str(item.get("host", "")).strip()
+            label = str(item.get("label", "")).strip()
+        else:
+            host = str(item).strip()
+            label = ""
+        if not _valid_host(host):
+            raise ToolInputError(f"Invalid host value: {host}")
+        if len(label) > 100:
+            raise ToolInputError("Friendly names must be 100 characters or fewer.")
+        targets.append({"host": host, "label": label})
+    if not targets:
+        raise ToolInputError("Enter at least one IP address or hostname.")
     if not 1 <= port <= 65535:
         raise ToolInputError("SSH port must be between 1 and 65535.")
 
-    workers = min(10, len(hosts))
+    workers = min(10, len(targets))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
             executor.submit(
                 _ssh_host,
-                host,
+                target["host"],
                 username,
                 password,
                 command_specs,
@@ -527,8 +547,9 @@ def run_ssh_hosts(
                 allow_unknown_hosts,
                 send_ctrl_y,
                 command_delay,
+                target["label"],
             ): index
-            for index, host in enumerate(hosts)
+            for index, target in enumerate(targets)
         }
         indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
     return [result for _index, result in sorted(indexed_results)]
@@ -659,6 +680,7 @@ def _ssh_host(
     allow_unknown_hosts: bool,
     send_ctrl_y: bool,
     command_delay: float,
+    host_label: str = "",
 ) -> dict[str, Any]:
     import paramiko
 
@@ -703,6 +725,7 @@ def _ssh_host(
             if not completed:
                 return {
                     "host": host,
+                    "host_label": host_label,
                     "status": "timeout",
                     "output": _bounded_output("".join(output)),
                     "error": (
@@ -713,12 +736,14 @@ def _ssh_host(
                 }
         return {
             "host": host,
+            "host_label": host_label,
             "status": "success",
             "output": _bounded_output("".join(output)),
         }
     except Exception as exc:
         return {
             "host": host,
+            "host_label": host_label,
             "status": "error",
             "output": _bounded_output("".join(output)),
             "error": f"{type(exc).__name__}: {exc}",

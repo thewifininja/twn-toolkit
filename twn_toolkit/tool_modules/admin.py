@@ -3,6 +3,23 @@ from __future__ import annotations
 from twn_toolkit.tool_catalog import ToolLink, ToolRegistry
 
 
+def backup_items(instance_path: str):
+    from twn_toolkit.dashboard_layout import (
+        DashboardLayoutBackupStore,
+        DashboardLayoutStore,
+    )
+
+    return [
+        {
+            "id": "dashboard_layout",
+            "label": "Dashboard layout",
+            "description": "Global metric widget order and visibility. No activity history is included.",
+            "store": DashboardLayoutBackupStore(DashboardLayoutStore(instance_path)),
+            "sensitive": False,
+        }
+    ]
+
+
 def register_tools(registry: ToolRegistry) -> None:
     registry.add_tool(
         ToolLink(

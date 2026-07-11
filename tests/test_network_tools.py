@@ -17,6 +17,7 @@ from twn_toolkit.network_tools import (
     parse_ping_targets,
     parse_radius_attributes,
     parse_ssh_commands,
+    parse_ssh_targets,
     subtract_subnets,
     validate_hosts,
 )
@@ -38,6 +39,17 @@ class NetworkToolTests(unittest.TestCase):
             parse_ssh_commands(["[timeout=3601] show report"], 300)
         with self.assertRaisesRegex(ToolInputError, "Combined command timeout budget"):
             parse_ssh_commands(["[timeout=2000] one", "[timeout=2000] two"], 300)
+
+    def test_ssh_targets_support_optional_friendly_names(self) -> None:
+        self.assertEqual(
+            parse_ssh_targets(
+                "Basement Switch = 192.0.2.20\ncore-switch.example.com"
+            ),
+            [
+                {"label": "Basement Switch", "host": "192.0.2.20"},
+                {"label": "", "host": "core-switch.example.com"},
+            ],
+        )
 
     def test_ssh_command_waits_for_the_original_device_prompt(self) -> None:
         class Channel:
@@ -572,12 +584,12 @@ class NetworkToolTests(unittest.TestCase):
 
             with patch(
                 "twn_toolkit.ssh_routes.run_ssh_hosts",
-                return_value=[{"host": "switch-1", "status": "success", "output": "ok"}],
-            ):
+                return_value=[{"host": "switch-1", "host_label": "Closet Switch", "status": "success", "output": "ok"}],
+            ) as ssh_run:
                 response = client.post(
                     "/tools/multi-ssh",
                     data={
-                        "hosts": "switch-1",
+                        "hosts": "Closet Switch = switch-1",
                         "username": "admin",
                         "password": "not-rendered",
                         "port": "22",
@@ -586,7 +598,16 @@ class NetworkToolTests(unittest.TestCase):
                     },
                 )
             self.assertIn(b"ok", response.data)
+            self.assertIn(b"Closet Switch", response.data)
+            self.assertIn(b'data-address="switch-1"', response.data)
             self.assertNotIn(b"not-rendered", response.data)
+            self.assertIn(b"Download all results", response.data)
+            self.assertIn(b"Download this host", response.data)
+            self.assertIn(b"multi-ssh-export.js", response.data)
+            self.assertEqual(
+                ssh_run.call_args.kwargs["hosts"],
+                [{"label": "Closet Switch", "host": "switch-1"}],
+            )
             summary = ActivityStore(instance).summary()
             self.assertEqual(summary["counters"]["ip"]["lookups"], 1)
             self.assertEqual(summary["counters"]["speedtest"]["runs"], 1)

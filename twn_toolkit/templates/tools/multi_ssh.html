@@ -10,7 +10,8 @@
   <form class="form" method="post" autocomplete="off" data-loading-message="Running SSH commands…">
     <label>
       Hosts
-      <textarea name="hosts" rows="5" placeholder="switch-01.example.com&#10;192.0.2.20" required>{{ form.hosts }}</textarea>
+      <textarea name="hosts" rows="5" placeholder="Basement Switch = 192.0.2.20&#10;core-switch.example.com" required>{{ form.hosts }}</textarea>
+      <small class="field-note">Optional friendly names use <code>Name = hostname-or-IP</code>.</small>
     </label>
     <div class="form-grid">
       <label>
@@ -58,20 +59,22 @@
   <section class="panel tool-panel">
     <div class="preview-head">
       <h2>SSH Results</h2>
-      <span>{{ results | length }} host(s)</span>
+      <div class="button-row ssh-export-actions"><span>{{ results | length }} host(s)</span><button class="secondary" type="button" data-ssh-download-all>Download all results</button></div>
     </div>
     <div class="ssh-results">
       {% for result in results %}
-        <details class="ssh-result" {% if result.status != 'success' %}open{% endif %}>
+        <details class="ssh-result" data-ssh-result data-host="{{ result.host_label or result.host }}" data-address="{{ result.host }}" data-status="{{ result.status }}" {% if result.status != 'success' %}open{% endif %}>
           <summary>
-            <strong>{{ result.host }}</strong>
+            <span class="ssh-result-identity"><strong>{{ result.host_label or result.host }}</strong>{% if result.host_label %}<small>{{ result.host }}</small>{% endif %}</span>
             <span class="pill {{ result.status }}">{{ result.status }}</span>
           </summary>
+          <div class="button-row ssh-result-actions"><button class="link-button subtle" type="button" data-ssh-download-host>Download this host</button></div>
           {% if result.error %}<div class="message error">{{ result.error }}</div>{% endif %}
           <pre class="result-output">{{ result.output or 'No output captured.' }}</pre>
         </details>
       {% endfor %}
     </div>
   </section>
+  <script src="{{ url_for('static', filename='multi-ssh-export.js') }}"></script>
 {% endif %}
 {% endblock %}

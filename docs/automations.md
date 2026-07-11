@@ -24,6 +24,8 @@ service.
   prompt returns. Prefix an individual command with `[timeout=600]` when it
   needs a different ceiling; accepted values are 1 through 3600 seconds. The
   combined timeout budget across commands is limited to one hour per host.
+  Targets may use `Friendly Name = hostname-or-IP`; the address is retained for
+  troubleshooting while the friendly name is used in results and ZIP filenames.
 - History: retain condition checks, triggers, per-host command output, and
   action status in `instance/automations.sqlite3`.
 - Downloads: each action run can be downloaded as a ZIP containing JSON run

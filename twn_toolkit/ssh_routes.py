@@ -6,8 +6,8 @@ from .activity_context import record_current_activity
 from .network_tools import (
     SSH_DEFAULT_COMMAND_TIMEOUT,
     ToolInputError,
+    parse_ssh_targets,
     run_ssh_hosts,
-    validate_hosts,
 )
 
 
@@ -40,7 +40,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             try:
                 if request.form.get("confirm_execution") != "on":
                     raise ToolInputError("Confirm that you intend to execute these commands.")
-                hosts = validate_hosts(str(form["hosts"]), limit=50)
+                hosts = parse_ssh_targets(str(form["hosts"]), limit=50)
                 commands = [command for command in str(form["commands"]).splitlines() if command.strip()]
                 port = int(str(form["port"]))
                 results = run_ssh_hosts(

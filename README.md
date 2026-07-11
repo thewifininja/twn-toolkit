@@ -12,6 +12,8 @@ service.
 - Track time-filtered toolkit metrics, user rankings, and recent activity.
 - Administrators can globally show, hide, and reorder metric widgets; hidden
   widgets remain available in edit mode and new metrics appear automatically.
+- Dashboard layout can be selected independently during profile backup/restore;
+  activity history and counters are intentionally excluded.
 
 ### Fortinet Workflows
 
@@ -35,7 +37,8 @@ service.
   export. History exists only in the current browser session.
 - **Multi-SSH:** run one command sequence across multiple SSH hosts with
   prompt-aware completion, a configurable default timeout, and per-command
-  overrides such as `[timeout=600] diag debug report`.
+  overrides such as `[timeout=600] diag debug report`. Targets optionally use
+  `Friendly Name = hostname-or-IP` for clearer results and export filenames.
 - **DNS Lookup Tester:** compare DNS answers and lookup latency across resolvers.
 - **RADIUS Authentication Test:** compare PAP or CHAP authentication and decode
   returned attributes. Optional `eapol_test` integration adds PEAP/MSCHAPv2 and

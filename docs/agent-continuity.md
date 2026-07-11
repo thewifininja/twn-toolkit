@@ -45,6 +45,8 @@ conversation compaction and future development sessions.
   below a clear divider; Cancel restores the pre-edit DOM order and visibility,
   while Save persists both. Reordering supports mouse drag, touch/pointer drag,
   and arrow keys from the widget drag handle.
+- The global dashboard layout is a selectable, non-sensitive backup item.
+  Activity counters, scoreboard data, and recent history are not included.
 - New metrics should be attributable to the current user whenever the action is
   authenticated.
 
@@ -154,6 +156,10 @@ accepted replay frames.
   return of the device prompt, not a short quiet period. Timeouts retain partial
   output and stop later commands for that host. Gunicorn's worker timeout is
   3700 seconds so synchronous Multi-SSH can honor that bounded SSH budget.
+- Both SSH surfaces accept `Friendly Name = hostname-or-IP`. Preserve the
+  connection target as `host` and the optional display value as `host_label` in
+  execution results. UI output and filenames prefer the label but still expose
+  the actual address.
 - SSH capture is bounded to 5 MiB per host while reading; prompt detection keeps
   using a small rolling tail after that limit. Automation browser previews are
   shortened to 40,000 characters per host, but ZIP downloads use the complete

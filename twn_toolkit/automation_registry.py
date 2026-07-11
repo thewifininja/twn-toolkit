@@ -7,9 +7,9 @@ from .network_tools import (
     ToolInputError,
     parse_ping_targets,
     parse_ssh_commands,
+    parse_ssh_targets,
     ping_hosts,
     run_ssh_hosts,
-    validate_hosts,
 )
 
 
@@ -141,7 +141,7 @@ def _evaluate_ping(config: dict[str, Any]) -> ConditionResult:
 
 
 def _validate_ssh(config: dict[str, Any]) -> dict[str, Any]:
-    hosts = validate_hosts(str(config.get("hosts", "")), limit=50)
+    targets = parse_ssh_targets(str(config.get("hosts", "")), limit=50)
     username = str(config.get("username", "")).strip()
     password = str(config.get("password", ""))
     commands = [
@@ -171,7 +171,10 @@ def _validate_ssh(config: dict[str, Any]) -> dict[str, Any]:
         raise ToolInputError("Default command timeout must be between 1 and 3600 seconds.")
     parse_ssh_commands(commands, command_timeout)
     return {
-        "hosts": "\n".join(hosts),
+        "hosts": "\n".join(
+            f"{target['label']} = {target['host']}" if target["label"] else target["host"]
+            for target in targets
+        ),
         "username": username,
         "password": password,
         "commands": "\n".join(commands),
@@ -184,7 +187,7 @@ def _validate_ssh(config: dict[str, Any]) -> dict[str, Any]:
 
 def _execute_ssh(config: dict[str, Any], trigger: ConditionResult) -> ActionResult:
     normalized = _validate_ssh(config)
-    hosts = validate_hosts(normalized["hosts"], limit=50)
+    hosts = parse_ssh_targets(normalized["hosts"], limit=50)
     commands = normalized["commands"].splitlines()
     results = run_ssh_hosts(
         hosts=hosts,

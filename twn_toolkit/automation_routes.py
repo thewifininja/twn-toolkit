@@ -334,8 +334,12 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                     ),
                 )
                 for host_index, host in enumerate(result.get("output", {}).get("hosts", []), 1):
-                    host_name = _safe_filename(str(host.get("host", f"host-{host_index}")))
+                    host_name = _safe_filename(
+                        str(host.get("host_label") or host.get("host", f"host-{host_index}"))
+                    )
                     body = str(host.get("output", ""))
+                    if host.get("host_label"):
+                        body = f"Friendly name: {host['host_label']}\nTarget: {host.get('host', '')}\n\n{body}"
                     if host.get("error"):
                         body = f"ERROR: {host['error']}\n\n{body}"
                     archive.writestr(
