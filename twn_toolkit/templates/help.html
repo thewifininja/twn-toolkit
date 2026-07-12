@@ -180,6 +180,8 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
   </div></details>
   <details class="help-topic"><summary>History, downloads, cleanup, and scheduler</summary><div class="help-topic-body">
     <p>Checks, triggers, action status, and retained output live in <code>instance/automations.sqlite3</code>. SSH ZIPs contain timestamped host files; syslog ZIPs contain destination JSON. Delete run removes one result; Clear collected data removes action runs but preserves condition history.</p>
+    <p>Administration → Settings controls global retention. Check records default to 7 days; collected action runs default to never expire. Use 0 for indefinite retention. The card previews eligible records, supports an immediate policy-based prune, and reports database size and oldest records.</p>
+    <p>The scheduler prunes at most once daily. Optimize database is a separate manual action that reclaims unused SQLite file space and may briefly pause automation writes.</p>
     <p><code>./twn start</code> launches one scheduler beside the web service. Work continues without a browser. Imported automations remain paused.</p>
   </div></details>
 </section>

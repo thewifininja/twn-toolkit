@@ -3750,6 +3750,58 @@ button.danger {
   padding: 26px;
 }
 
+.automation-storage-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.automation-storage-stats > div {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card-tint);
+}
+
+.automation-storage-stats span,
+.automation-storage-stats small {
+  color: var(--muted);
+}
+
+.automation-retention-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.automation-retention-form button {
+  justify-self: start;
+}
+
+.automation-retention-actions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.75rem 1rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.automation-retention-actions form,
+.automation-retention-actions p {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .automation-storage-stats,
+  .automation-retention-form,
+  .automation-retention-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 .server-access-form {
   gap: 18px;
   max-width: 760px;

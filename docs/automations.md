@@ -90,7 +90,10 @@ to the next future occurrence rather than replaying a backlog.
   host while other hosts continue. Long browser previews are shortened without
   changing the complete retained ZIP output.
 - Cleanup: delete a single collected run or clear all collected action runs for
-  an automation without deleting its condition-check history.
+  an automation without deleting its condition-check history. Global retention
+  is managed in Administration → Settings. Check history defaults to 7 days;
+  collected action runs default to indefinite retention. Setting either policy
+  to 0 disables automatic deletion for that record type.
 
 New condition and action implementations register through
 `automation_registry.py`. The scheduler and state machine do not need
@@ -127,7 +130,7 @@ schema changes are recorded in `automation_schema_migrations`; migration 1
 adds ordered stages and converts existing action lists into a single default
 parallel stage transactionally. Migration 2 converts the first SNMP condition
 format into persisted per-host AND rules and pauses dependent automations for
-review.
+review. Migration 3 adds the global retention policy and daily-pruning ledger.
 
 ## State model
 
@@ -159,6 +162,13 @@ Automation definitions participate in profile backup and restore. Because the
 definitions can contain credentials, selecting them makes backup encryption
 mandatory. Runtime check history and captured SSH output are intentionally not
 included in backups. Imported automations are paused.
+
+The scheduler checks the retention policy hourly and performs pruning at most
+once per day. Settings previews the currently eligible check/run counts before
+manual pruning. Database optimization is a separate manual operation because
+SQLite compaction can briefly pause writers; ordinary pruning does not run
+`VACUUM`. Runtime check history, retained output, and the local retention policy
+are intentionally not included in profile backups.
 
 Editing a reusable condition or action pauses every automation that references
 it. Definitions cannot be deleted while an automation still references them.

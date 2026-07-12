@@ -386,6 +386,7 @@ def create_app(instance_path: str | None = None) -> Flask:
     register_admin_routes(
         app,
         auth_store=auth_store,
+        automation_store=automation_store,
         server_settings_store=server_settings_store,
         backup_catalog=backup_catalog,
         start_session=_start_session,

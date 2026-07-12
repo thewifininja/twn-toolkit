@@ -43,6 +43,9 @@ def register_tools(registry: ToolRegistry) -> None:
             "delete_user": "admin.settings",
             "update_session_settings": "admin.settings",
             "update_server_settings": "admin.settings",
+            "update_automation_retention": "admin.settings",
+            "prune_automation_history": "admin.settings",
+            "optimize_automation_database": "admin.settings",
             "export_profile_backup": "admin.settings",
             "import_profile_backup": "admin.settings",
         }

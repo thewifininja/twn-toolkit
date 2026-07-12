@@ -29,6 +29,7 @@ def main() -> None:
     )
     engine = AutomationEngine(store)
     running = True
+    next_retention_check = 0.0
 
     def stop(_signum: int, _frame: object) -> None:
         nonlocal running
@@ -38,6 +39,13 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     try:
         while running:
+            now = time.time()
+            if now >= next_retention_check:
+                try:
+                    store.prune_history_if_due(now)
+                except Exception as exc:
+                    print(f"Automation history pruning failed: {exc}", file=sys.stderr)
+                next_retention_check = now + 3600
             engine.run_once()
             time.sleep(max(0.2, args.poll_seconds))
     finally:

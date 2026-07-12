@@ -50,6 +50,43 @@
 {% endif %}
 
 {% if current_user.is_admin %}
+  <section class="panel server-access-panel" id="automation-retention">
+    <div class="auth-users-head">
+      <h2>Automation history retention</h2>
+      <p class="field-note">Limit routine check history while keeping collected action output for as long as your workflows require.</p>
+    </div>
+    <div class="automation-storage-stats">
+      <div><span>Database</span><strong>{{ automation_storage.database_size }}</strong></div>
+      <div><span>Check records</span><strong>{{ automation_storage.check_count }}</strong><small>Oldest: {{ automation_storage.oldest_check }}</small></div>
+      <div><span>Collected runs</span><strong>{{ automation_storage.run_count }}</strong><small>Oldest: {{ automation_storage.oldest_run }}</small></div>
+      <div><span>Last automatic prune</span><strong>{{ automation_storage.last_pruned }}</strong></div>
+    </div>
+    <form method="post" action="{{ url_for('update_automation_retention') }}" class="form automation-retention-form">
+      <label>Check history retention (days)
+        <input type="number" name="check_retention_days" min="0" max="3650" value="{{ automation_storage.check_retention_days }}" required>
+        <small class="field-note">Default is 7 days. Use 0 to retain checks indefinitely.</small>
+      </label>
+      <label>Collected action run retention (days)
+        <input type="number" name="run_retention_days" min="0" max="3650" value="{{ automation_storage.run_retention_days }}" required>
+        <small class="field-note">Default is 0 (never automatically delete downloaded SSH output and other action evidence).</small>
+      </label>
+      <button type="submit">Save retention policy</button>
+    </form>
+    <div class="automation-retention-actions">
+      <form method="post" action="{{ url_for('prune_automation_history') }}" onsubmit="return confirm('Delete {{ automation_storage.eligible_check_count }} eligible check record(s) and {{ automation_storage.eligible_run_count }} eligible collected run(s) now?')">
+        <button type="submit" class="danger">Prune eligible history now</button>
+      </form>
+      <div>
+        <strong>Eligible now:</strong> {{ automation_storage.eligible_check_count }} checks · {{ automation_storage.eligible_run_count }} collected runs
+        <p class="field-note">The scheduler prunes once daily. Manual pruning follows the saved policy.</p>
+      </div>
+      <form method="post" action="{{ url_for('optimize_automation_database') }}" onsubmit="return confirm('Optimize the automation database now? Automation writes may pause briefly.')">
+        <button type="submit" class="secondary">Optimize database</button>
+      </form>
+      <p class="field-note">Optimization reclaims unused database file space after deletion. It is intentionally manual.</p>
+    </div>
+  </section>
+
   <section class="panel access-profile-panel">
     <div class="auth-users-head">
       <h2>Access profiles</h2>

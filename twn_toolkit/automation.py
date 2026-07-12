@@ -786,6 +786,135 @@ class AutomationStore:
             for row in rows
         ]
 
+    def retention_settings(self) -> dict[str, int | float]:
+        with self._connect() as connection:
+            values = {
+                str(row["key"]): str(row["value"])
+                for row in connection.execute(
+                    "SELECT key, value FROM automation_settings"
+                )
+            }
+        return {
+            "check_retention_days": int(values.get("check_retention_days", "7")),
+            "run_retention_days": int(values.get("run_retention_days", "0")),
+            "last_pruned_at": float(values.get("last_pruned_at", "0")),
+        }
+
+    def update_retention_settings(
+        self, *, check_retention_days: int, run_retention_days: int
+    ) -> None:
+        for value, label in (
+            (check_retention_days, "Check history retention"),
+            (run_retention_days, "Collected action run retention"),
+        ):
+            if not 0 <= value <= 3650:
+                raise ValueError(f"{label} must be 0–3650 days (0 means never delete).")
+        now = time.time()
+        with self._connect() as connection:
+            for key, value in (
+                ("check_retention_days", check_retention_days),
+                ("run_retention_days", run_retention_days),
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO automation_settings (key, value, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+                        updated_at = excluded.updated_at
+                    """,
+                    (key, str(value), now),
+                )
+
+    def storage_stats(self, now: float | None = None) -> dict[str, Any]:
+        now = time.time() if now is None else now
+        settings = self.retention_settings()
+        check_days = int(settings["check_retention_days"])
+        run_days = int(settings["run_retention_days"])
+        check_cutoff = now - (check_days * 86400) if check_days else None
+        run_cutoff = now - (run_days * 86400) if run_days else None
+        with self._connect() as connection:
+            checks = connection.execute(
+                "SELECT COUNT(*) AS count, MIN(checked_at) AS oldest FROM automation_checks"
+            ).fetchone()
+            runs = connection.execute(
+                "SELECT COUNT(*) AS count, MIN(started_at) AS oldest FROM automation_runs"
+            ).fetchone()
+            eligible_checks = (
+                connection.execute(
+                    "SELECT COUNT(*) FROM automation_checks WHERE checked_at < ?",
+                    (check_cutoff,),
+                ).fetchone()[0]
+                if check_cutoff is not None else 0
+            )
+            eligible_runs = (
+                connection.execute(
+                    "SELECT COUNT(*) FROM automation_runs WHERE started_at < ?",
+                    (run_cutoff,),
+                ).fetchone()[0]
+                if run_cutoff is not None else 0
+            )
+        database_bytes = sum(
+            path.stat().st_size
+            for path in (self.path, Path(f"{self.path}-wal"), Path(f"{self.path}-shm"))
+            if path.exists()
+        )
+        return {
+            **settings,
+            "database_bytes": database_bytes,
+            "check_count": int(checks["count"]),
+            "oldest_check_at": checks["oldest"],
+            "run_count": int(runs["count"]),
+            "oldest_run_at": runs["oldest"],
+            "eligible_check_count": int(eligible_checks),
+            "eligible_run_count": int(eligible_runs),
+        }
+
+    def prune_history(self, now: float | None = None) -> dict[str, int]:
+        now = time.time() if now is None else now
+        settings = self.retention_settings()
+        deleted_checks = 0
+        deleted_runs = 0
+        with self._connect() as connection:
+            check_days = int(settings["check_retention_days"])
+            if check_days:
+                deleted_checks = connection.execute(
+                    "DELETE FROM automation_checks WHERE checked_at < ?",
+                    (now - check_days * 86400,),
+                ).rowcount
+            run_days = int(settings["run_retention_days"])
+            if run_days:
+                deleted_runs = connection.execute(
+                    "DELETE FROM automation_runs WHERE started_at < ?",
+                    (now - run_days * 86400,),
+                ).rowcount
+            connection.execute(
+                """
+                INSERT INTO automation_settings (key, value, updated_at)
+                VALUES ('last_pruned_at', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+                    updated_at = excluded.updated_at
+                """,
+                (str(now), now),
+            )
+        return {"checks": int(deleted_checks), "runs": int(deleted_runs)}
+
+    def prune_history_if_due(self, now: float | None = None) -> dict[str, int] | None:
+        now = time.time() if now is None else now
+        if now - float(self.retention_settings()["last_pruned_at"]) < 86400:
+            return None
+        return self.prune_history(now)
+
+    def optimize_database(self) -> None:
+        connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
+        try:
+            connection.execute("PRAGMA busy_timeout = 30000")
+            connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            connection.execute("VACUUM")
+        finally:
+            connection.close()
+            if self.path.exists():
+                os.chmod(self.path, 0o600)
+
     def _automation_from_row(
         self, row: sqlite3.Row, include_secrets: bool
     ) -> dict[str, Any]:
@@ -1004,6 +1133,11 @@ class AutomationStore:
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS automation_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            );
             """
         )
         columns = {
@@ -1093,6 +1227,20 @@ class AutomationStore:
             connection.execute(
                 "INSERT INTO automation_schema_migrations (version, applied_at, description) VALUES (2, ?, ?)",
                 (time.time(), "Normalize SNMP conditions into per-host AND rules"),
+            )
+        if 3 not in applied:
+            now = time.time()
+            connection.executemany(
+                "INSERT OR IGNORE INTO automation_settings (key, value, updated_at) VALUES (?, ?, ?)",
+                [
+                    ("check_retention_days", "7", now),
+                    ("run_retention_days", "0", now),
+                    ("last_pruned_at", "0", now),
+                ],
+            )
+            connection.execute(
+                "INSERT INTO automation_schema_migrations (version, applied_at, description) VALUES (3, ?, ?)",
+                (now, "Add configurable automation history retention"),
             )
 
     def _migrate_reusable_definitions(self, connection: sqlite3.Connection) -> None:

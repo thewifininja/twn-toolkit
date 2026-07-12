@@ -19,6 +19,7 @@ from flask import (
 )
 
 from .auth import AuthStore
+from .automation import AutomationStore
 from .profile_backup import (
     build_profile_backup,
     decrypt_backup,
@@ -37,10 +38,20 @@ from .tls_tools import certificate_status, regenerate_self_signed_certificate
 from .tool_catalog import TOOL_BY_ID, grouped_access_tools
 
 
+def _format_bytes(value: int) -> str:
+    amount = float(value)
+    for unit in ("bytes", "KiB", "MiB", "GiB"):
+        if amount < 1024 or unit == "GiB":
+            return f"{amount:.1f} {unit}" if unit != "bytes" else f"{int(amount)} bytes"
+        amount /= 1024
+    return f"{amount:.1f} GiB"
+
+
 def register_admin_routes(
     app: Flask,
     *,
     auth_store: AuthStore,
+    automation_store: AutomationStore,
     server_settings_store: ServerSettingsStore,
     backup_catalog: list[dict[str, Any]],
     start_session: Callable[[dict[str, Any]], None],
@@ -64,6 +75,20 @@ def register_admin_routes(
             else [g.current_user]
         )
         active_server_settings = server_settings_store.get()
+        automation_storage = automation_store.storage_stats()
+        automation_storage["database_size"] = _format_bytes(
+            int(automation_storage["database_bytes"])
+        )
+        for source, target in (
+            ("oldest_check_at", "oldest_check"),
+            ("oldest_run_at", "oldest_run"),
+            ("last_pruned_at", "last_pruned"),
+        ):
+            value = automation_storage[source]
+            automation_storage[target] = (
+                datetime.fromtimestamp(float(value)).astimezone().strftime("%b %-d, %Y %-I:%M %p")
+                if value else "Never"
+            )
         return render_template(
             "auth/settings.html",
             users=visible_users,
@@ -77,7 +102,48 @@ def register_admin_routes(
                 app.instance_path, active_server_settings["preferred_fqdn"]
             ),
             current_client_ip=request.remote_addr or "unknown",
+            automation_storage=automation_storage,
         )
+
+    @app.post("/settings/automation-retention")
+    def update_automation_retention():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            check_days = int(request.form.get("check_retention_days", ""))
+            run_days = int(request.form.get("run_retention_days", ""))
+            automation_store.update_retention_settings(
+                check_retention_days=check_days,
+                run_retention_days=run_days,
+            )
+        except (TypeError, ValueError) as exc:
+            flash(str(exc) or "Enter whole numbers for retention days.", "error")
+        else:
+            flash("Automation retention settings updated.", "success")
+        return redirect(url_for("settings", _anchor="automation-retention"))
+
+    @app.post("/settings/automation-retention/prune")
+    def prune_automation_history():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        deleted = automation_store.prune_history()
+        flash(
+            f"Pruned {deleted['checks']} check record(s) and {deleted['runs']} collected action run(s).",
+            "success",
+        )
+        return redirect(url_for("settings", _anchor="automation-retention"))
+
+    @app.post("/settings/automation-retention/optimize")
+    def optimize_automation_database():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            automation_store.optimize_database()
+        except Exception as exc:
+            flash(f"Automation database optimization failed: {exc}", "error")
+        else:
+            flash("Automation database optimized.", "success")
+        return redirect(url_for("settings", _anchor="automation-retention"))
 
     @app.post("/settings/users")
     def create_user():

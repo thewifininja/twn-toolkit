@@ -132,6 +132,89 @@ class AutomationStoreTests(unittest.TestCase):
         self.assertEqual(len(migrated_store.condition_definitions()), 1)
         self.assertEqual(len(migrated_store.action_definitions()), 1)
 
+    def test_retention_defaults_prune_checks_but_preserve_runs(self) -> None:
+        automation_id = self.save()
+        now = 2_000_000_000.0
+        old = now - 8 * 86400
+        recent = now - 2 * 86400
+        connection = sqlite3.connect(self.store.path)
+        try:
+            connection.executemany(
+                "INSERT INTO automation_checks (automation_id, checked_at, met, status, summary, evidence_json) VALUES (?, ?, 0, 'clear', 'test', '{}')",
+                [(automation_id, old), (automation_id, recent)],
+            )
+            connection.executemany(
+                "INSERT INTO automation_runs (id, automation_id, started_at, finished_at, status, trigger_summary, results_json) VALUES (?, ?, ?, ?, 'success', 'test', '[]')",
+                [("old-run", automation_id, old, old), ("new-run", automation_id, recent, recent)],
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        settings = self.store.retention_settings()
+        self.assertEqual(settings["check_retention_days"], 7)
+        self.assertEqual(settings["run_retention_days"], 0)
+        preview = self.store.storage_stats(now)
+        self.assertEqual(preview["eligible_check_count"], 1)
+        self.assertEqual(preview["eligible_run_count"], 0)
+        deleted = self.store.prune_history(now)
+        self.assertEqual(deleted, {"checks": 1, "runs": 0})
+        self.assertEqual(self.store.storage_stats(now)["check_count"], 1)
+        self.assertEqual(self.store.storage_stats(now)["run_count"], 2)
+
+    def test_configured_run_retention_and_daily_prune_gate(self) -> None:
+        automation_id = self.save()
+        now = 2_000_000_000.0
+        old = now - 31 * 86400
+        connection = sqlite3.connect(self.store.path)
+        try:
+            connection.execute(
+                "INSERT INTO automation_runs (id, automation_id, started_at, finished_at, status, trigger_summary, results_json) VALUES ('old-run', ?, ?, ?, 'success', 'test', '[]')",
+                (automation_id, old, old),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        self.store.update_retention_settings(
+            check_retention_days=14, run_retention_days=30
+        )
+        self.assertEqual(self.store.prune_history(now)["runs"], 1)
+        self.assertIsNone(self.store.prune_history_if_due(now + 60))
+
+        with self.assertRaisesRegex(ValueError, "0–3650"):
+            self.store.update_retention_settings(
+                check_retention_days=3651, run_retention_days=0
+            )
+
+    def test_migration_ledger_includes_retention_schema(self) -> None:
+        connection = sqlite3.connect(self.store.path)
+        try:
+            row = connection.execute(
+                "SELECT description FROM automation_schema_migrations WHERE version = 3"
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual(row[0], "Add configurable automation history retention")
+
+    def test_admin_can_update_and_prune_automation_retention(self) -> None:
+        app = create_app(self.temp.name)
+        app.testing = True
+        client = app.test_client()
+        page = client.get("/settings")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Automation history retention", page.data)
+        response = client.post(
+            "/settings/automation-retention",
+            data={"check_retention_days": "14", "run_retention_days": "30"},
+        )
+        self.assertEqual(response.status_code, 302)
+        settings = self.store.retention_settings()
+        self.assertEqual(settings["check_retention_days"], 14)
+        self.assertEqual(settings["run_retention_days"], 30)
+        self.assertEqual(
+            client.post("/settings/automation-retention/prune").status_code, 302
+        )
+
     def test_engine_runs_registered_action_once_when_threshold_is_met(self) -> None:
         automation_id = self.save(trigger_after=1)
         calls: list[str] = []
