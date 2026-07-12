@@ -162,8 +162,9 @@ accepted replay frames.
 - Current states are disabled, healthy, suspect, triggered, recovering, and
   error. A triggered automation fires once and must recover/rearm before it can
   fire again.
-- Registered condition types are `manual.trigger`, `ping.multi`, `dns.lookup`,
-  `tcp.reachability`, and `schedule.calendar`. Registered action types are
+- Registered condition types are `manual.trigger`, `schedule.calendar`,
+  `ping.multi`, `dns.lookup`, `tcp.reachability`, `snmp.value`, and
+  `certificate.health`. Registered action types are
   `ssh.collect`, `syslog.send`, and `webhook.send`. Manual-trigger
   automations are excluded from due-check claims and expose an explicit Run now
   action. Calendar schedules are intentionally handled by a small scheduler
@@ -173,7 +174,9 @@ accepted replay frames.
 - `automation_registry.py` is now a small compatibility/dispatch facade. The
   immutable type contracts live in `automation_types/models.py`; condition and
   action implementations own their validation, execution, form parsing, and
-  secret-field metadata in `automation_types/conditions.py` and
+  secret-field metadata. Condition implementations and registrations are
+  grouped under `automation_types/condition_types/`; the stable compatibility
+  facade is `automation_types/conditions.py`. Actions remain in
   `automation_types/actions.py`. The automation route therefore does not need a
   new `if type_id == ...` branch when another trusted internal type is added.
 - The automation page imports condition and action form macros from focused
@@ -201,6 +204,13 @@ accepted replay frames.
   connections. A timeout or generic socket error does not satisfy
   expected-closed because it is not definitive. Legacy global host/port configs
   normalize automatically and are persisted in the new form on their next edit.
+- `snmp.value` selects saved SNMP hosts once, evaluates an AND group of named
+  OID rules independently on each host, then applies a matching-host threshold.
+  OID profiles support safe calculated scalar values. SNMP numeric decoding is
+  centralized in `snmp_tools.parse_snmp_numeric` for thresholds and formulas.
+- `certificate.health` monitors up to 20 TLS targets and can enforce expiration,
+  hostname/IP SAN, system trust, chain order, likely missing intermediates, and
+  endpoint availability.
 - Automation definitions are a sensitive backup group. History/output is not
   backed up, and imported definitions remain paused.
 - Automations use ordered action stages. Actions inside a stage run concurrently;
@@ -210,8 +220,9 @@ accepted replay frames.
   receive bounded, non-secret earlier-action context; raw SSH output is never
   injected automatically.
 - `automation_schema_migrations` is the numbered migration ledger. Version 1
-  adds `action_stages` and backfills existing automations transactionally. Use
-  this runner—not new ad-hoc column checks—for future material schema changes.
+  adds `action_stages`; version 2 persists first-generation SNMP definitions as
+  per-host AND rules and pauses dependents. Use this runner—not new ad-hoc
+  column checks—for future material schema changes.
 - Editing a shared definition pauses all dependent automations. Deletion is
   blocked while references remain. Existing embedded definitions are migrated
   automatically into reusable records.

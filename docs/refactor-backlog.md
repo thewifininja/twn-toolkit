@@ -25,7 +25,8 @@ turning the codebase into a rewrite project.
 Automation schema expansion now uses the numbered
 `automation_schema_migrations` ledger. Pipeline migration 1 adds ordered action
 stages and transactionally converts existing flat action lists into one default
-parallel stage. Activity still uses its earlier one-time legacy import marker;
+parallel stage. Migration 2 persists first-generation SNMP definitions as
+per-host AND rules. Activity still uses its earlier one-time legacy import marker;
 introduce the same numbered pattern there before its next material schema change.
 
 Remaining before 1.0:
@@ -292,8 +293,12 @@ Status:
 - Done: the automation page's condition evidence/forms and action forms were
   extracted into focused Jinja macro partials while preserving one shared page
   layout.
+- Done: SNMP rule-builder behavior was extracted from the shared automation
+  script into `automation-snmp.js`, and condition evidence moved into its own
+  Jinja partial.
 - Done: automation type models and trusted implementations were extracted from
-  the registry facade. Each registered type now owns form parsing, and action
+  the registry facade and grouped under `automation_types/condition_types/`.
+  Each registered type now owns form parsing, and action
   types declare secret fields used by the encrypted store/masked UI path.
 - Done: automation save routes dispatch through registry-owned parsers instead
   of branching on every condition/action type.

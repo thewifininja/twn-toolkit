@@ -10,12 +10,19 @@ from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.snmp_tools import (
     _append_calculated_rows,
     parse_oid_profile,
+    parse_snmp_numeric,
     resolve_oid_selection,
     validate_snmp_credential,
 )
 
 
 class SNMPToolTests(unittest.TestCase):
+    def test_shared_snmp_numeric_decoder_handles_common_scalar_renderings(self) -> None:
+        self.assertEqual(parse_snmp_numeric("42"), 42)
+        self.assertEqual(parse_snmp_numeric("(12345) 0:02:03.45"), 12345)
+        self.assertEqual(parse_snmp_numeric("Gauge32: 87"), 87)
+        self.assertIsNone(parse_snmp_numeric("not-a-number"))
+
     def test_parses_get_and_walk_oid_entries(self) -> None:
         self.assertEqual(
             parse_oid_profile(

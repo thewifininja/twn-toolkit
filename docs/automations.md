@@ -44,6 +44,13 @@ to the next future occurrence rather than replaying a backlog.
   definitive connection refusal. Timeouts remain failures rather than being
   mistaken for proof that a port is closed. Legacy definitions with one global
   port list are normalized by applying that list to each saved host.
+- Condition: SNMP OID rules evaluated with AND logic independently on every
+  selected host, followed by a host-count threshold. OID profiles can expose
+  safe calculated scalar values for percentage, remaining percentage,
+  difference, and sum operations.
+- Condition: multi-target TLS certificate health with expiration, hostname,
+  system-trust, chain-order, likely-missing-intermediate, and connectivity
+  policy.
 - Condition: reusable manual trigger for explicitly started, on-demand
   automations. Manual conditions are never claimed by the scheduler.
 - Check intervals: 1 second through 24 hours. The scheduler polls due work four
@@ -90,6 +97,12 @@ New condition and action implementations register through
 tool-specific branches when a new registered type follows the common result
 contracts.
 
+Condition registrations live under `automation_types/condition_types/` and are
+grouped into network, trigger, SNMP, and certificate domains. The compatibility
+facade remains `automation_types/conditions.py`. Condition result rendering is
+kept in `_condition_evidence.html`, while dynamic SNMP rule editing is isolated
+in `automation-snmp.js` instead of expanding the shared automation script.
+
 ## Action pipelines
 
 Each automation contains one or more user-defined stages. Actions within a
@@ -112,7 +125,9 @@ retained runs and ZIP downloads.
 Pipeline structure participates in encrypted profile backup/restore. Database
 schema changes are recorded in `automation_schema_migrations`; migration 1
 adds ordered stages and converts existing action lists into a single default
-parallel stage transactionally.
+parallel stage transactionally. Migration 2 converts the first SNMP condition
+format into persisted per-host AND rules and pauses dependent automations for
+review.
 
 ## State model
 
@@ -170,8 +185,7 @@ loops.
 
 ## Planned extensions
 
-- HTTP/API, SNMP, certificate, and syslog-pattern
-  condition types.
+- HTTP/API, NTP health, and syslog-pattern condition types.
 - Per-action retry policies and optional explicit retry backoff.
 - Explicit production and out-of-band source-interface binding.
 - Optional repeated collection during a long-lived incident.

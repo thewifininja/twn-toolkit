@@ -1059,6 +1059,41 @@ class AutomationStore:
                 "INSERT INTO automation_schema_migrations (version, applied_at, description) VALUES (1, ?, ?)",
                 (time.time(), "Add ordered parallel action stages"),
             )
+        if 2 not in applied:
+            rows = connection.execute(
+                "SELECT id, config_json FROM automation_conditions WHERE type = 'snmp.value'"
+            ).fetchall()
+            normalized_by_id: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                config = json.loads(row["config_json"] or "{}")
+                if isinstance(config.get("rules"), list):
+                    continue
+                normalized = AUTOMATION_REGISTRY.validate_condition("snmp.value", config)
+                normalized_by_id[row["id"]] = normalized
+                connection.execute(
+                    "UPDATE automation_conditions SET config_json = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(normalized, separators=(",", ":")), time.time(), row["id"]),
+                )
+            for definition_id, normalized in normalized_by_id.items():
+                connection.execute(
+                    """
+                    UPDATE automations
+                    SET condition_config = ?, enabled = 0, state = 'disabled',
+                        consecutive_met = 0, consecutive_clear = 0,
+                        next_check_at = NULL, pending_schedule_at = NULL,
+                        updated_at = ?
+                    WHERE condition_definition_id = ?
+                    """,
+                    (
+                        json.dumps(normalized, separators=(",", ":")),
+                        time.time(),
+                        definition_id,
+                    ),
+                )
+            connection.execute(
+                "INSERT INTO automation_schema_migrations (version, applied_at, description) VALUES (2, ?, ?)",
+                (time.time(), "Normalize SNMP conditions into per-host AND rules"),
+            )
 
     def _migrate_reusable_definitions(self, connection: sqlite3.Connection) -> None:
         rows = connection.execute(

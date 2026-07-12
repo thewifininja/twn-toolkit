@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
-{% from "automations/_condition_forms.html" import condition_form, dns_test_evidence, ping_test_evidence, tcp_test_evidence, snmp_test_evidence, certificate_test_evidence with context %}
+{% from "automations/_condition_forms.html" import condition_form with context %}
+{% from "automations/_condition_evidence.html" import dns_test_evidence, ping_test_evidence, tcp_test_evidence, snmp_test_evidence, certificate_test_evidence with context %}
 {% from "automations/_action_forms.html" import action_form with context %}
 
 {% macro automation_form(values, automation=none) %}
@@ -201,4 +202,5 @@
   </div>{% else %}<div class="empty-state"><strong>No automations yet.</strong><span>Create reusable conditions and actions above, then connect them here.</span></div>{% endif %}
 </section>
 <script src="{{ url_for('static', filename='automation.js') }}"></script>
+<script src="{{ url_for('static', filename='automation-snmp.js') }}"></script>
 {% endblock %}

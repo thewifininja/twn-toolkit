@@ -233,6 +233,40 @@ class AutomationStoreTests(unittest.TestCase):
             connection.close()
         self.assertEqual(migration[0], "Add ordered parallel action stages")
 
+    def test_legacy_snmp_condition_migration_is_persisted(self) -> None:
+        now = 1.0
+        legacy = {
+            "host_names": ["Core"],
+            "oid_profile_names": ["Health"],
+            "comparison": "at_most",
+            "expected_value": "80",
+            "case_sensitive": False,
+            "failure_mode": "at_least",
+            "failure_count": 1,
+        }
+        connection = sqlite3.connect(self.store.path)
+        try:
+            connection.execute("DELETE FROM automation_schema_migrations WHERE version = 2")
+            connection.execute(
+                "INSERT INTO automation_conditions (id, name, type, config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                ("legacy-snmp", "Legacy SNMP", "snmp.value", json.dumps(legacy), now, now),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        migrated = AutomationStore(self.temp.name, "installation secret")
+        definition = migrated.get_condition_definition("legacy-snmp")
+        self.assertEqual(definition["config"]["rules"][0]["comparison"], "greater_than")
+        self.assertEqual(definition["config"]["rules"][0]["oid"], "*")
+        connection = sqlite3.connect(self.store.path)
+        try:
+            description = connection.execute(
+                "SELECT description FROM automation_schema_migrations WHERE version = 2"
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual(description, "Normalize SNMP conditions into per-host AND rules")
+
     def test_pipeline_failure_policy_stops_later_stages(self) -> None:
         condition_id = self.store.save_condition_definition(
             name="Stop trigger", type_id="test.condition", config={}
@@ -510,7 +544,7 @@ class AutomationRouteTests(unittest.TestCase):
                 "host": "192.0.2.10", "label": "Core Switch", "port": 22,
                 "service": "ssh", "status": "open", "detail": "", "elapsed_ms": 3.2,
             }]
-            with patch("twn_toolkit.automation_types.conditions.scan_tcp_checks", return_value=tcp_results):
+            with patch("twn_toolkit.automation_types.condition_types.network_triggers.scan_tcp_checks", return_value=tcp_results):
                 tested = client.post(f"/automations/conditions/{definition['id']}/test")
 
         self.assertEqual(response.status_code, 302)
@@ -548,7 +582,7 @@ class AutomationRouteTests(unittest.TestCase):
                 {"host": "192.0.2.1", "reachable": True, "latency_ms": 2.4, "elapsed_ms": 3.0},
                 {"host": "198.51.100.1", "reachable": False, "latency_ms": None, "elapsed_ms": 1001.2},
             ]
-            with patch("twn_toolkit.automation_types.conditions.ping_hosts", return_value=ping_results):
+            with patch("twn_toolkit.automation_types.condition_types.network_triggers.ping_hosts", return_value=ping_results):
                 response = client.post(f"/automations/conditions/{definition_id}/test")
 
         self.assertEqual(response.status_code, 200)
@@ -830,7 +864,7 @@ class AutomationRegistryTests(unittest.TestCase):
             "chain_order_valid": True, "likely_missing_intermediate": False,
         }
         with patch(
-            "twn_toolkit.automation_types.conditions.inspect_certificate_chain",
+            "twn_toolkit.automation_types.condition_types.monitoring.inspect_certificate_chain",
             return_value=certificate,
         ):
             result = condition.evaluate({
@@ -859,7 +893,7 @@ class AutomationRegistryTests(unittest.TestCase):
             "chain_order_valid": True, "likely_missing_intermediate": False,
         }
         with patch(
-            "twn_toolkit.automation_types.conditions.inspect_certificate_chain",
+            "twn_toolkit.automation_types.condition_types.monitoring.inspect_certificate_chain",
             return_value=certificate,
         ):
             result = condition.evaluate({
@@ -901,7 +935,7 @@ class AutomationRegistryTests(unittest.TestCase):
             condition = AUTOMATION_REGISTRY.conditions["snmp.value"]
             with (
                 patch.dict("os.environ", {"TWN_TOOLKIT_INSTANCE_PATH": instance}),
-                patch("twn_toolkit.automation_types.conditions.run_snmp_tests", return_value=polls),
+                patch("twn_toolkit.automation_types.condition_types.monitoring.run_snmp_tests", return_value=polls),
             ):
                 result = condition.evaluate({
                     "host_names": ["Core"],
@@ -978,7 +1012,7 @@ class AutomationRegistryTests(unittest.TestCase):
             }
             with (
                 patch.dict("os.environ", {"TWN_TOOLKIT_INSTANCE_PATH": instance}),
-                patch("twn_toolkit.automation_types.conditions.run_snmp_tests", return_value=polls),
+                patch("twn_toolkit.automation_types.condition_types.monitoring.run_snmp_tests", return_value=polls),
             ):
                 result = AUTOMATION_REGISTRY.conditions["snmp.value"].evaluate(config)
             self.assertFalse(result.met)
@@ -1108,7 +1142,7 @@ class AutomationRegistryTests(unittest.TestCase):
             {"host": "192.0.2.10", "label": "Switch", "port": 22, "service": "ssh", "status": "open", "detail": "", "elapsed_ms": 2.0},
             {"host": "192.0.2.10", "label": "Switch", "port": 443, "service": "https", "status": "closed", "detail": "Connection refused", "elapsed_ms": 1.0},
         ]
-        with patch("twn_toolkit.automation_types.conditions.scan_tcp_checks", return_value=results):
+        with patch("twn_toolkit.automation_types.condition_types.network_triggers.scan_tcp_checks", return_value=results):
             result = condition.evaluate({
                 "hosts": "Switch = 192.0.2.10", "ports": "22,443", "timeout": 1,
                 "expected_state": "open", "failure_mode": "at_least", "failure_count": 1,
@@ -1124,7 +1158,7 @@ class AutomationRegistryTests(unittest.TestCase):
             {"host": "192.0.2.10", "label": "", "port": 22, "service": "ssh", "status": "closed", "detail": "Connection refused", "elapsed_ms": 1.0},
             {"host": "192.0.2.10", "label": "", "port": 23, "service": "telnet", "status": "timeout", "detail": "No response before timeout", "elapsed_ms": 1000.0},
         ]
-        with patch("twn_toolkit.automation_types.conditions.scan_tcp_checks", return_value=results):
+        with patch("twn_toolkit.automation_types.condition_types.network_triggers.scan_tcp_checks", return_value=results):
             result = condition.evaluate({
                 "hosts": "192.0.2.10", "ports": "22-23", "timeout": 1,
                 "expected_state": "closed", "failure_mode": "at_least", "failure_count": 1,
@@ -1158,7 +1192,7 @@ class AutomationRegistryTests(unittest.TestCase):
                 "error": "timed out",
             },
         ]
-        with patch("twn_toolkit.automation_types.conditions.dns_lookup_matrix", return_value=results):
+        with patch("twn_toolkit.automation_types.condition_types.network_triggers.dns_lookup_matrix", return_value=results):
             result = condition.evaluate(
                 {
                     "hosts": "Portal = portal.example.com",
@@ -1185,7 +1219,7 @@ class AutomationRegistryTests(unittest.TestCase):
             "server_label": "", "record_type": "A", "status": "success",
             "answers": ["192.0.2.10"], "response_ms": 1.0,
         }]
-        with patch("twn_toolkit.automation_types.conditions.dns_lookup_matrix", return_value=results):
+        with patch("twn_toolkit.automation_types.condition_types.network_triggers.dns_lookup_matrix", return_value=results):
             result = condition.evaluate({
                 "hosts": "example.com", "servers": "192.0.2.53", "record_type": "A",
                 "timeout": 1, "expected_answers": "192.0.2.10\n192.0.2.11",
@@ -1200,7 +1234,7 @@ class AutomationRegistryTests(unittest.TestCase):
             {"host": "192.0.2.1", "reachable": False, "latency_ms": None},
             {"host": "192.0.2.2", "reachable": True, "latency_ms": 1.0},
         ]
-        with patch("twn_toolkit.automation_types.conditions.ping_hosts", return_value=results):
+        with patch("twn_toolkit.automation_types.condition_types.network_triggers.ping_hosts", return_value=results):
             all_result = condition.evaluate(
                 {
                     "targets": "192.0.2.1\n192.0.2.2",

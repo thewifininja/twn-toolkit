@@ -164,6 +164,28 @@ def resolve_oid_selection(entries: list[dict[str, Any]], oid: str) -> list[dict[
     return [entry for entry in entries if entry["label"] in required]
 
 
+def parse_snmp_numeric(value: Any) -> float | None:
+    """Decode common scalar SNMP numeric renderings without guessing units."""
+    text = str(value).strip()
+    candidates = [text]
+    parenthesized = re.match(r"^\(([-+]?\d+(?:\.\d+)?)\)", text)
+    if parenthesized:
+        candidates.append(parenthesized.group(1))
+    typed = re.match(
+        r"^(?:Counter\d*|Gauge\d*|Integer\d*|Unsigned\d*):\s*([-+]?\d+(?:\.\d+)?)$",
+        text,
+        re.IGNORECASE,
+    )
+    if typed:
+        candidates.append(typed.group(1))
+    for candidate in candidates:
+        try:
+            return float(candidate)
+        except ValueError:
+            continue
+    return None
+
+
 def validate_snmp_credential(profile: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
     name = str(profile.get("name", "")).strip()
     version = str(profile.get("version", "")).lower()
@@ -298,10 +320,9 @@ def _append_calculated_rows(
         matching = [row for row in rows if row["label"] == entry["label"]]
         if len(matching) != 1:
             continue
-        try:
-            values[entry["label"]] = float(str(matching[0]["value"]).strip())
-        except ValueError:
-            continue
+        numeric = parse_snmp_numeric(matching[0]["value"])
+        if numeric is not None:
+            values[entry["label"]] = numeric
     pending = [entry for entry in entries if entry["operation"] == "calculate"]
     while pending:
         progressed = False
