@@ -36,6 +36,7 @@ RELEASE_NOTES = (
                     "Added one-second monitoring intervals, trigger/recovery debounce, cooldowns, missed-schedule policies, and timezone-aware calendar rules.",
                     "Added user-defined action stages: actions run in parallel within a stage, stages run sequentially, and bounded earlier-stage results can feed later Webhook/API notifications.",
                     "Added per-host AND logic and reusable calculated values for SNMP conditions, including percentage, remaining-percentage, difference, and sum formulas over scalar OIDs.",
+                    "Added multi-target certificate health conditions with expiration, hostname, system-trust, chain-order, and connection-failure policies.",
                 ),
             },
             {

@@ -151,6 +151,13 @@ Total Memory KB = 1.3.6.1.4.1.example.2.0
 calc: Memory Usage % = percent(Current Memory KB, Total Memory KB)</code></pre>
     <p>Supported functions are <code>percent(A, B)</code>, <code>remaining_percent(A, B)</code>, <code>difference(A, B)</code>, and <code>sum(A, B)</code>. Inputs must resolve to scalar numeric GET values. Unknown labels, circular dependencies, walked inputs, missing/nonnumeric values, and division by zero are rejected or reported.</p>
   </div></details>
+  <details class="help-topic"><summary>Certificate health conditions</summary><div class="help-topic-body">
+    <p>Monitor up to 20 TLS endpoints with optional friendly names and custom ports:</p>
+    <pre><code>Home FortiGate = gate.example.com | 8443
+Public Portal = portal.example.com | 443</code></pre>
+    <p>Connection failures, expired certificates, and not-yet-valid certificates always fail. Configure an expiration warning from 0 to 3650 days, and optionally require hostname/IP SAN matching, validation through the toolkit server’s system trust store, and a correctly ordered chain with no likely missing intermediate.</p>
+    <p>Disable the optional trust, name, or chain policies when monitoring intentional private/self-signed infrastructure. Test results show the endpoint, common name, expiration horizon, TLS version, timing, and every policy failure reason.</p>
+  </div></details>
   <details class="help-topic"><summary>Manual and calendar conditions</summary><div class="help-topic-body">
     <p>Manual triggers run only when an administrator selects Run now. Calendar conditions contain up to 50 one-time, daily, weekday, every-N-weeks, monthly-date, or ordinal-weekday rules with an explicit timezone.</p>
     <p>Missed occurrences may run late, run only within a grace period, or skip. Refresh next run time is read-only. Simultaneous rules collapse into one occurrence.</p>

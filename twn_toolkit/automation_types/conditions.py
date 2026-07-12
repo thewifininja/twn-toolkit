@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Mapping
 
 from flask import current_app, has_app_context
@@ -16,6 +17,11 @@ from ..network_tools import (
     parse_tcp_ports,
     ping_hosts,
     scan_tcp_checks,
+)
+from ..certificate_tools import (
+    CertificateInspectionError,
+    inspect_certificate_chain,
+    normalize_certificate_target,
 )
 from ..schedule_tools import schedule_occurrence, validate_schedule_config
 from ..profiles import SNMPCredentialProfileStore, SNMPHostProfileStore, SNMPOidProfileStore
@@ -507,6 +513,126 @@ def _evaluate_snmp(config: dict[str, Any]) -> ConditionResult:
     )
 
 
+def _validate_certificate(config: dict[str, Any]) -> dict[str, Any]:
+    targets: list[dict[str, Any]] = []
+    for raw_line in str(config.get("targets", "")).splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "|" in line:
+            target_text, port_text = (part.strip() for part in line.rsplit("|", 1))
+        else:
+            target_text, port_text = line, "443"
+        if "=" in target_text:
+            label, address = (part.strip() for part in target_text.split("=", 1))
+            if not label or len(label) > 100:
+                raise ToolInputError("Certificate target names must be 1 to 100 characters.")
+        else:
+            label, address = "", target_text
+        try:
+            host, port = normalize_certificate_target(address, port_text)
+        except ValueError as exc:
+            raise ToolInputError(f"Invalid certificate target '{line}': {exc}") from exc
+        targets.append({"label": label, "host": host, "port": port})
+    if not 1 <= len(targets) <= 20:
+        raise ToolInputError("Enter between 1 and 20 certificate targets.")
+    try:
+        timeout = float(config.get("timeout", 8))
+        expiry_days = int(config.get("expiry_days", 30))
+        failure_count = int(config.get("failure_count", 1))
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError("Enter valid certificate timeout, expiry, and threshold values.") from exc
+    if not 0.2 <= timeout <= 30:
+        raise ToolInputError("Certificate timeout must be between 0.2 and 30 seconds.")
+    if not 0 <= expiry_days <= 3650:
+        raise ToolInputError("Certificate expiry warning must be between 0 and 3650 days.")
+    failure_mode = str(config.get("failure_mode", "at_least"))
+    if failure_mode not in {"all", "at_least"}:
+        raise ToolInputError("Select a valid certificate failure threshold.")
+    if failure_mode == "all":
+        failure_count = len(targets)
+    if not 1 <= failure_count <= len(targets):
+        raise ToolInputError(f"Required certificate failures must be between 1 and {len(targets)}.")
+    return {
+        "targets": "\n".join(
+            f"{target['label']} = {target['host']} | {target['port']}"
+            if target["label"] else f"{target['host']} | {target['port']}"
+            for target in targets
+        ),
+        "target_count": len(targets), "timeout": timeout,
+        "expiry_days": expiry_days,
+        "check_hostname": bool(config.get("check_hostname", True)),
+        "check_trust": bool(config.get("check_trust", True)),
+        "check_chain": bool(config.get("check_chain", True)),
+        "failure_mode": failure_mode, "failure_count": failure_count,
+    }
+
+
+def _inspect_certificate_target(target: dict[str, Any], timeout: float) -> dict[str, Any]:
+    try:
+        result = inspect_certificate_chain(target["host"], target["port"], timeout)
+        return {"target": target, "result": result, "error": ""}
+    except (CertificateInspectionError, ValueError, OSError) as exc:
+        return {"target": target, "result": None, "error": str(exc)}
+
+
+def _evaluate_certificate(config: dict[str, Any]) -> ConditionResult:
+    normalized = _validate_certificate(config)
+    targets = []
+    for line in normalized["targets"].splitlines():
+        target_text, port_text = (part.strip() for part in line.rsplit("|", 1))
+        if "=" in target_text:
+            label, host = (part.strip() for part in target_text.split("=", 1))
+        else:
+            label, host = "", target_text
+        targets.append({"label": label, "host": host, "port": int(port_text)})
+    with ThreadPoolExecutor(max_workers=min(10, len(targets))) as executor:
+        inspected = list(executor.map(
+            lambda target: _inspect_certificate_target(target, normalized["timeout"]),
+            targets,
+        ))
+    checks: list[dict[str, Any]] = []
+    for inspection in inspected:
+        target = inspection["target"]
+        result = inspection["result"]
+        reasons: list[str] = []
+        if not result:
+            reasons.append(inspection["error"] or "TLS connection failed.")
+            checks.append({**target, "failed": True, "reasons": reasons, "error": reasons[0]})
+            continue
+        leaf = result["certificates"][0]
+        if not leaf["time_valid"]:
+            reasons.append("Certificate is expired or not yet valid.")
+        elif leaf["days_remaining"] <= normalized["expiry_days"]:
+            reasons.append(f"Certificate expires in {leaf['days_remaining']} day(s).")
+        if normalized["check_hostname"] and not result["hostname"]["valid"]:
+            reasons.append(result["hostname"]["error"] or "Hostname does not match.")
+        if normalized["check_trust"] and not result["trust"]["valid"]:
+            reasons.append(result["trust"]["error"] or "System trust validation failed.")
+        if normalized["check_chain"]:
+            if not result["chain_order_valid"]:
+                reasons.append("Presented certificate chain order is invalid.")
+            if result["likely_missing_intermediate"]:
+                reasons.append("Certificate chain likely has a missing intermediate.")
+        checks.append({
+            **target, "failed": bool(reasons), "reasons": reasons, "error": "",
+            "common_name": leaf["common_name"], "issuer": leaf["issuer"],
+            "not_after": leaf["not_after"].isoformat(),
+            "days_remaining": leaf["days_remaining"],
+            "fingerprint": leaf["sha256_fingerprint"],
+            "hostname_valid": result["hostname"]["valid"],
+            "trust_valid": result["trust"]["valid"],
+            "chain_valid": result["chain_order_valid"] and not result["likely_missing_intermediate"],
+            "tls_version": result["tls"]["version"], "elapsed_ms": result["elapsed_ms"],
+        })
+    failed = sum(1 for check in checks if check["failed"])
+    required = normalized["failure_count"]
+    met = failed >= required
+    return ConditionResult(
+        met=met, status="met" if met else "clear",
+        summary=f"{failed} of {len(checks)} certificate targets failed policy; threshold is {required}.",
+        evidence={"checks": checks, "failed": failed, "healthy": len(checks) - failed, "required_failed": required, "expiry_days": normalized["expiry_days"]},
+    )
 def _validate_manual(_config: dict[str, Any]) -> dict[str, Any]:
     return {}
 
@@ -569,6 +695,19 @@ def _parse_snmp_form(form: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _parse_certificate_form(form: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "targets": form.get("certificate_targets", ""),
+        "timeout": form.get("certificate_timeout", "8"),
+        "expiry_days": form.get("certificate_expiry_days", "30"),
+        "check_hostname": str(form.get("certificate_check_hostname", "")) == "1",
+        "check_trust": str(form.get("certificate_check_trust", "")) == "1",
+        "check_chain": str(form.get("certificate_check_chain", "")) == "1",
+        "failure_mode": form.get("certificate_failure_mode", "at_least"),
+        "failure_count": form.get("certificate_failure_count", "1"),
+    }
+
+
 def _parse_schedule_form(form: Mapping[str, Any]) -> dict[str, Any]:
     try:
         rules = json.loads(str(form.get("schedule_rules_json", "[]")))
@@ -589,4 +728,5 @@ def registered_conditions() -> tuple[ConditionType, ...]:
         ConditionType("dns.lookup", "DNS lookup", "Trigger when DNS queries fail or return unexpected answers.", _validate_dns, _evaluate_dns, _parse_dns_form),
         ConditionType("tcp.reachability", "TCP service reachability", "Trigger when TCP services do not match their expected open or closed state.", _validate_tcp, _evaluate_tcp, _parse_tcp_form),
         ConditionType("snmp.value", "SNMP OID value", "Trigger when saved SNMP hosts fail to return expected OID values.", _validate_snmp, _evaluate_snmp, _parse_snmp_form),
+        ConditionType("certificate.health", "Certificate health", "Trigger when TLS certificates are unavailable, expiring, untrusted, mismatched, or incorrectly chained.", _validate_certificate, _evaluate_certificate, _parse_certificate_form),
     )

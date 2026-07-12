@@ -79,6 +79,8 @@ service.
 - Build SNMP conditions from shared hosts and per-host AND rules. OID profiles
   can expose reusable derived values such as
   `calc: Memory Usage % = percent(Current Memory KB, Total Memory KB)`.
+- Monitor TLS certificate expiration, hostname matching, system trust, chain
+  order, missing intermediates, and endpoint availability across custom ports.
 - Schedule checks as frequently as once per second with consecutive failure,
   recovery, and cooldown thresholds.
 - Use a reusable Manual trigger condition for on-demand automations that run

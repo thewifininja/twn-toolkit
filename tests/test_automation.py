@@ -7,6 +7,7 @@ import json
 import re
 import sqlite3
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -813,6 +814,63 @@ class AutomationRouteTests(unittest.TestCase):
 
 
 class AutomationRegistryTests(unittest.TestCase):
+    def test_certificate_condition_applies_expiry_and_validation_policy(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["certificate.health"]
+        certificate = {
+            "host": "portal.example.com", "port": 443, "elapsed_ms": 12.5,
+            "tls": {"version": "TLSv1.3"},
+            "certificates": [{
+                "common_name": "portal.example.com", "issuer": "CN=Test CA",
+                "not_after": datetime(2026, 8, 1, tzinfo=timezone.utc),
+                "time_valid": True, "days_remaining": 10,
+                "sha256_fingerprint": "AA:BB",
+            }],
+            "hostname": {"valid": True, "error": ""},
+            "trust": {"valid": True, "error": ""},
+            "chain_order_valid": True, "likely_missing_intermediate": False,
+        }
+        with patch(
+            "twn_toolkit.automation_types.conditions.inspect_certificate_chain",
+            return_value=certificate,
+        ):
+            result = condition.evaluate({
+                "targets": "Portal = portal.example.com | 443",
+                "timeout": 2, "expiry_days": 30,
+                "check_hostname": True, "check_trust": True, "check_chain": True,
+                "failure_mode": "at_least", "failure_count": 1,
+            })
+        self.assertTrue(result.met)
+        self.assertEqual(result.evidence["failed"], 1)
+        self.assertIn("expires in 10", result.evidence["checks"][0]["reasons"][0])
+        self.assertEqual(result.evidence["checks"][0]["tls_version"], "TLSv1.3")
+
+    def test_certificate_condition_can_relax_private_certificate_checks(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["certificate.health"]
+        certificate = {
+            "elapsed_ms": 4, "tls": {"version": "TLSv1.2"},
+            "certificates": [{
+                "common_name": "switch.local", "issuer": "CN=Private CA",
+                "not_after": datetime(2027, 8, 1, tzinfo=timezone.utc),
+                "time_valid": True, "days_remaining": 300,
+                "sha256_fingerprint": "CC:DD",
+            }],
+            "hostname": {"valid": False, "error": "name mismatch"},
+            "trust": {"valid": False, "error": "self-signed"},
+            "chain_order_valid": True, "likely_missing_intermediate": False,
+        }
+        with patch(
+            "twn_toolkit.automation_types.conditions.inspect_certificate_chain",
+            return_value=certificate,
+        ):
+            result = condition.evaluate({
+                "targets": "Switch = 192.0.2.10 | 8443",
+                "timeout": 2, "expiry_days": 30,
+                "check_hostname": False, "check_trust": False, "check_chain": False,
+                "failure_mode": "all", "failure_count": 1,
+            })
+        self.assertFalse(result.met)
+        self.assertEqual(result.evidence["healthy"], 1)
+
     def test_snmp_condition_uses_saved_profiles_and_compares_each_value(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             SNMPCredentialProfileStore(instance).upsert(

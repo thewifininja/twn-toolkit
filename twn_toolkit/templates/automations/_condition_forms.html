@@ -54,6 +54,20 @@
   {% endif %}
 {% endmacro %}
 
+{% macro certificate_test_evidence(result) %}
+  {% if result and result.evidence and result.evidence.get('checks') %}
+    <div class="condition-test-results">
+      {% for check in result.evidence.checks %}
+        <article>
+          <span class="pill {{ 'error' if check.failed else 'success' }}">{{ 'failed' if check.failed else 'healthy' }}</span>
+          <span><strong>{{ check.label or check.host }}:{{ check.port }}</strong><small>{% if check.error %}{{ check.error }}{% elif check.reasons %}{{ check.reasons|join(' · ') }}{% else %}{{ check.common_name or 'Certificate presented' }} · expires in {{ check.days_remaining }} days · {{ check.tls_version }}{% endif %}</small></span>
+          <small>{% if check.elapsed_ms is defined %}{{ check.elapsed_ms }} ms{% else %}No TLS session{% endif %}</small>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
 {% macro condition_form(values, definition=none) %}
   {% set config = definition.config if definition else values %}
   <form class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
@@ -214,6 +228,36 @@
         </label>
       </div>
       <p class="field-note">Rules are correlated per host. CPU on one switch and memory on another cannot satisfy the same condition. A walk rule matches when at least one returned value matches.</p>
+    </div>
+    <div class="automation-condition-fields" data-condition-fields="certificate.health" hidden>
+      <label>TLS targets
+        <textarea name="certificate_targets" rows="6" placeholder="Home FortiGate = gate.example.com | 8443&#10;Public Portal = portal.example.com | 443" required>{{ config.get('targets', config.get('certificate_targets', '')) }}</textarea>
+        <small class="field-note">One target per line using <code>Friendly Name = hostname-or-IP | port</code>. Port defaults to 443.</small>
+      </label>
+      <div class="form-grid">
+        <label>Warn before expiration
+          <div class="input-suffix"><input name="certificate_expiry_days" type="number" min="0" max="3650" value="{{ config.get('expiry_days', config.get('certificate_expiry_days', '30')) }}" required><span>days</span></div>
+        </label>
+        <label>Connection timeout
+          <div class="input-suffix"><input name="certificate_timeout" type="number" min="0.2" max="30" step="0.1" value="{{ config.get('timeout', config.get('certificate_timeout', '8')) }}" required><span>seconds</span></div>
+        </label>
+      </div>
+      <fieldset class="choice-group compact-choice-group">
+        <legend>Additional certificate policy</legend>
+        <label class="check"><input type="checkbox" name="certificate_check_hostname" value="1" {% if config.get('check_hostname', config.get('certificate_check_hostname', true)) %}checked{% endif %}>Require hostname or IP SAN match</label>
+        <label class="check"><input type="checkbox" name="certificate_check_trust" value="1" {% if config.get('check_trust', config.get('certificate_check_trust', true)) %}checked{% endif %}>Require validation by the toolkit server’s system trust store</label>
+        <label class="check"><input type="checkbox" name="certificate_check_chain" value="1" {% if config.get('check_chain', config.get('certificate_check_chain', true)) %}checked{% endif %}>Require valid presented chain order with no likely missing intermediate</label>
+      </fieldset>
+      <div class="form-grid tcp-policy-row">
+        <label>Condition is met when
+          {% set certificate_failure_mode = config.get('failure_mode', config.get('certificate_failure_mode', 'at_least')) %}
+          <select name="certificate_failure_mode"><option value="at_least" {% if certificate_failure_mode == 'at_least' %}selected{% endif %}>At least this many targets fail</option><option value="all" {% if certificate_failure_mode == 'all' %}selected{% endif %}>All targets fail</option></select>
+        </label>
+        <label>Required failed targets
+          <input name="certificate_failure_count" type="number" min="1" value="{{ config.get('failure_count', config.get('certificate_failure_count', '1')) }}" required>
+        </label>
+      </div>
+      <p class="field-note">Connection failures, expired certificates, and not-yet-valid certificates always fail. The additional policy checks can be relaxed for private or self-signed infrastructure.</p>
     </div>
     <div class="button-row"><button type="submit">{{ 'Update condition' if definition_id else 'Save condition' }}</button></div>
   </form>

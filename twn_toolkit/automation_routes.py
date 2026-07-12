@@ -76,7 +76,9 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 definition["schedule_preview"] = schedule_preview(
                     definition["config"], time.time(), 5
                 )
-            elif definition["type"] in {"tcp.reachability", "snmp.value"}:
+            elif definition["type"] in {
+                "tcp.reachability", "snmp.value", "certificate.health"
+            }:
                 # Normalize legacy global host/port definitions for display.
                 definition["config"] = AUTOMATION_REGISTRY.validate_condition(
                     definition["type"], definition["config"]
