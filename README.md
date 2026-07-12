@@ -39,6 +39,9 @@ service.
   prompt-aware completion, a configurable default timeout, and per-command
   overrides such as `[timeout=600] diag debug report`. Targets optionally use
   `Friendly Name = hostname-or-IP` for clearer results and export filenames.
+- **Multi-Transfer:** fetch files concurrently from named hosts over SFTP, SCP, or FTP
+  into a selected datastore folder or a one-shot ZIP, with a per-transfer report
+  and configurable token-based output filenames.
 - **DNS Lookup Tester:** compare DNS answers and lookup latency across resolvers.
 - **RADIUS Authentication Test:** compare PAP or CHAP authentication and decode
   returned attributes. Optional `eapol_test` integration adds PEAP/MSCHAPv2 and
@@ -90,6 +93,8 @@ service.
   schedule has an explicit timezone and configurable missed-run policy.
 - Trigger concurrent SSH command collection against management targets and
   retain per-host output with the incident run.
+- Fetch files from multiple SFTP hosts into retained run artifacts or a selected
+  datastore folder, with optional per-host subfolders and token-based filenames.
 - Send templated RFC 5424 syslog notifications to multiple UDP or TCP
   collectors and retain per-destination delivery results.
 - Send encrypted-header Webhook/API notifications with JSON-safe trigger
@@ -100,12 +105,47 @@ service.
   or requires every action in the preceding stage to succeed.
 - Pass bounded, non-secret earlier-stage summaries into later Webhook/API
   actions without automatically exposing raw SSH captures or credentials.
-- Download a run as a ZIP containing metadata and per-host text output.
+- Download a run as a ZIP containing metadata, per-host text output, and retained
+  SFTP file artifacts.
 - Delete individual collected runs or clear all collected action data for an
   automation while preserving condition-check history.
 - Run checks in a dedicated scheduler process even when no browser is open.
 - Extend trusted internal condition and action registries without rewriting the
   scheduler. See [Automations](docs/automations.md).
+
+### Local Tools
+
+- **Datastore:** manage persistent toolkit-local files beneath
+  `instance/datastore/` with contained folder browsing, atomic uploads,
+  downloads, renaming, empty-folder deletion, remembered list/grid views,
+  multi-select file/folder bulk move/delete, folder drop targets, and drag-and-drop uploads.
+- Datastore access is grantable through custom access profiles. Paths cannot
+  escape the datastore root, symbolic links are ignored, existing names are
+  never overwritten, and upload requests are limited to 1 GiB.
+- Datastore files are intentionally excluded from profile backup/restore. The
+  contained storage layer is also used by an optional managed TFTP service.
+- Administrators can configure the TFTP bind IP/UDP port, trusted IPv4/IPv6
+  networks, read/write access, atomic overwrite policy, and a selected datastore
+  root. **File Transfers** has its own Local Tools sidebar entry. TFTP is disabled
+  by default on `127.0.0.1:1069`; standard UDP 69 may require root or
+  `CAP_NET_BIND_SERVICE`. TFTP has no authentication or encryption.
+- TFTP may instead serve one runtime-only uploaded file that is erased whenever
+  the service stops. Incoming writes support safe naming tokens including
+  `{timestamp}`, `{client_ip}`, `{filename}`, `{stem}`, and `{suffix}`.
+- File Transfers also provides a managed, file-transfer-only SSH listener for
+  SFTP, SCP, or both. It uses a password hash, persistent host key, trusted
+  CIDRs, selected datastore/runtime roots, atomic uploads, filename rewrites,
+  and retained history; it never provides an interactive shell.
+- A separate managed FTP listener supports contained datastore or runtime-only
+  roots, passive port ranges, trusted client CIDRs, atomic upload rewrites, and
+  protocol-specific transfer history. Total/per-client connection limits and the
+  shared 1 GiB inbound-file ceiling bound resource use. FTP credentials and payloads are plaintext on the network;
+  use it only for legacy devices that cannot use SFTP/SCP.
+- Operational hardening includes bounded concurrent/queued automations,
+  overlap prevention, datastore/artifact quotas, a minimum free-space reserve,
+  worker heartbeats and supervision, numbered migration snapshots, and a
+  structured secret-free administrative audit ledger. Administrators can review
+  all of this under **System Diagnostics**.
 
 ## Quick Start
 
@@ -300,6 +340,12 @@ configuration is encrypted at rest using the installation's private session
 secret. Automation definitions containing credentials can only be exported in
 an encrypted profile backup; runtime history and captured output are excluded
 from backups.
+
+Local Datastore content is stored beneath owner-only `instance/datastore/`.
+These operational files are excluded from Git and profile backup/restore; back
+up that directory separately when its contents matter. Managed TFTP settings
+and the newest 1,000 transfer records live in owner-only instance files and are
+also excluded from profile backups.
 
 Multi-Host Ping measurements and chart history are held in the browser session.
 Reloading or closing the page discards that history unless it was exported.

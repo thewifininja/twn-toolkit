@@ -135,6 +135,13 @@ have their own reusable profiles, but none require a FortiGate profile.
 - **Multi-SSH** sends the same command sequence to multiple devices using an
   interactive SSH shell. Passwords are used only for the current request and
   are not saved. Unknown host keys are rejected unless explicitly allowed.
+- **Multi-Transfer** fetches the same remote file paths from multiple named hosts
+  using SFTP, SCP, or legacy plaintext FTP.
+  Store timestamped, host-qualified files in a chosen datastore folder or use
+  the one-shot ZIP mode, which discards temporary server files after download.
+  Customize output names with timestamp, host, friendly-label/identity, filename,
+  stem, and suffix tokens; duplicate names receive a numeric suffix.
+  Each file is limited to 256 MiB; a run is limited to 1 GiB and 200 transfers.
 - **DNS Lookup Tester** runs each hostname lookup through each resolver, showing
   returned records and response time. Host lists and resolver lists are saved
   independently, so either can be reused in different test combinations.
@@ -195,6 +202,44 @@ have their own reusable profiles, but none require a FortiGate profile.
 
 Multi-SSH commands execute on real devices. Review the host list and commands
 carefully before selecting the required execution confirmation.
+
+## Local Datastore
+
+Open **Local Tools → Datastore** to manage persistent files contained beneath
+`instance/datastore/`. Access can be assigned through custom user profiles.
+Uploads are limited to 1 GiB per request, existing files are never overwritten,
+and populated folders must be emptied before deletion. Datastore content is not
+included in profile backup/restore; back up the directory separately if needed.
+Choose list or grid view, select files or folders for bulk move/delete, drag selected items
+onto a folder, or drop desktop files onto the upload area.
+
+Administrators can open **Local Tools → File Transfers** to configure a contained
+RRQ/WRQ server. It is disabled by default on `127.0.0.1:1069`. Choose the
+listener, trusted client CIDRs, read/write access, overwrite policy, and any
+datastore folder as its root. Temporary mode serves one staged file and erases
+it when TFTP stops. Incoming uploads may be renamed with patterns such as
+`{timestamp}-{client_ip}-{filename}`. Saving applies changes without restarting
+the web service. TFTP is unencrypted and unauthenticated; keep client networks
+narrow. UDP 69 may require root or `CAP_NET_BIND_SERVICE`.
+
+The same page includes a managed inbound **SFTP / SCP service**, disabled by
+default on TCP 2022. Choose either or both protocols, set a service username and
+password, and select a datastore folder or runtime-only download file. The
+password is stored only as a one-way hash; untrusted CIDRs are rejected before
+authentication and no interactive shell is provided. `./twn status` and
+`./twn logs` include this worker.
+
+It also includes a separate managed **FTP service** with configurable control and
+passive ports, hashed local credentials, trusted client CIDRs, contained roots,
+the same upload filename rewrites, and total/per-client connection limits. FTP
+and SFTP/SCP inbound files share the datastore's 1 GiB per-file ceiling. FTP authentication and content are not
+encrypted in transit, so prefer SFTP/SCP whenever the client supports them.
+
+Use **Administration → Settings → Operational limits** to size automation
+concurrency and local storage quotas for the host. **Administration → System
+Diagnostics** shows worker heartbeats, disk use, database integrity, optional
+command dependencies, applied migrations, reclaimable artifacts, and recent
+administrative changes.
 
 ## Reset Before Sharing
 

@@ -23,6 +23,11 @@ from flask import (
 from .activity import ActivityStore
 from .automation import AutomationStore
 from .automation_routes import register_automation_routes
+from .datastore import LocalDatastore, MAX_UPLOAD_BYTES
+from .datastore_routes import register_datastore_routes
+from .tftp import TFTPHistoryStore, TFTPSettingsStore
+from .ssh_transfer_server import SSHTransferHistoryStore, SSHTransferSettingsStore
+from .ftp_server import FTPSettingsStore
 from .auth import AuthStore, load_or_create_secret_key
 from .admin_routes import register_admin_routes
 from .dashboard_layout import DashboardLayoutStore
@@ -44,6 +49,9 @@ from .tool_catalog import (
 )
 from .tools import tools_bp
 from .version import APP_VERSION, RELEASE_NOTES
+from .audit import AuditStore
+from .migrations import run_toolkit_migrations
+from .operational import OperationalSettingsStore
 
 
 def create_app(instance_path: str | None = None) -> Flask:
@@ -57,17 +65,30 @@ def create_app(instance_path: str | None = None) -> Flask:
         PREFERRED_URL_SCHEME=(
             "https" if os.environ.get("TWN_TOOLKIT_HTTPS") == "1" else "http"
         ),
+        MAX_CONTENT_LENGTH=MAX_UPLOAD_BYTES + 1024 * 1024,
     )
     app.register_blueprint(tools_bp)
+    run_toolkit_migrations(app.instance_path)
 
     auth_store = AuthStore(app.instance_path)
     automation_store = AutomationStore(app.instance_path, app.config["SECRET_KEY"])
+    datastore_store = LocalDatastore(app.instance_path)
+    tftp_runtime_store = LocalDatastore(app.instance_path, "tftp_runtime")
+    tftp_settings_store = TFTPSettingsStore(app.instance_path)
+    tftp_history_store = TFTPHistoryStore(app.instance_path)
+    ssh_transfer_runtime_store = LocalDatastore(app.instance_path, "ssh_transfer_runtime")
+    ssh_transfer_settings_store = SSHTransferSettingsStore(app.instance_path)
+    ssh_transfer_history_store = SSHTransferHistoryStore(app.instance_path)
+    ftp_runtime_store = LocalDatastore(app.instance_path, "ftp_runtime")
+    ftp_settings_store = FTPSettingsStore(app.instance_path)
     activity_store = ActivityStore(app.instance_path)
     dashboard_layout_store = DashboardLayoutStore(app.instance_path)
     server_settings_store = ServerSettingsStore(app.instance_path)
     store = ProfileStore(app.instance_path)
     fortiauthenticator_store = FortiAuthenticatorProfileStore(app.instance_path)
     backup_catalog = build_backup_catalog(app.instance_path)
+    audit_store = AuditStore(app.instance_path)
+    operational_store = OperationalSettingsStore(app.instance_path)
 
     @app.before_request
     def require_authentication():
@@ -135,6 +156,23 @@ def create_app(instance_path: str | None = None) -> Flask:
         if denied_tool_id and not _tool_access_allowed(denied_tool_id):
             return Response("This user does not have access to that tool.", status=403)
         return None
+
+    @app.after_request
+    def audit_administrative_mutations(response: Response):
+        user = getattr(g, "current_user", None)
+        audited_reads = {"download_automation_run", "download_datastore_file", "download_automation_artifact"}
+        should_audit = request.method in {"POST", "PUT", "PATCH", "DELETE"} or (request.endpoint or "") in audited_reads
+        if should_audit and user and user.get("is_admin"):
+            try:
+                audit_store.record(
+                    user_id=user.get("id", ""), username=user.get("username", ""),
+                    remote_ip=request.remote_addr or "", method=request.method,
+                    endpoint=request.endpoint or "", path=request.path,
+                    status_code=response.status_code,
+                )
+            except Exception:
+                app.logger.exception("Administrative audit event could not be recorded")
+        return response
 
     @app.context_processor
     def authentication_context():
@@ -237,6 +275,7 @@ def create_app(instance_path: str | None = None) -> Flask:
 
             network_tools = [tool for tool in visible if tool.category == "network"]
             automation_tools = [tool for tool in visible if tool.category == "automation"]
+            local_tools = [tool for tool in visible if tool.category == "local"]
             if automation_tools:
                 sidebar_tool_groups.append(
                     {
@@ -246,11 +285,28 @@ def create_app(instance_path: str | None = None) -> Flask:
                     }
                 )
             if network_tools:
+                multi_host_ids = {"tools.ping", "tools.multi_ssh", "tools.multi_sftp"}
+                multi_host_tools = [tool for tool in network_tools if tool.id in multi_host_ids]
+                regular_network_tools = [tool for tool in network_tools if tool.id not in multi_host_ids]
                 sidebar_tool_groups.append(
                     {
                         "label": "Network Tools",
-                        "tools": network_tools,
+                        "tools": regular_network_tools,
+                        "children": [{
+                            "label": "Multi-Host Tools",
+                            "tools": multi_host_tools,
+                            "active": active_in_tools(multi_host_tools),
+                        }] if multi_host_tools else [],
+                        "count": len(network_tools),
                         "active": active_in_tools(network_tools),
+                    }
+                )
+            if local_tools:
+                sidebar_tool_groups.append(
+                    {
+                        "label": "Local Tools",
+                        "tools": local_tools,
+                        "active": active_in_tools(local_tools),
                     }
                 )
 
@@ -318,6 +374,18 @@ def create_app(instance_path: str | None = None) -> Flask:
         tool_access_allowed=_tool_access_allowed,
     )
     register_automation_routes(app, automation_store)
+    register_datastore_routes(
+        app,
+        datastore_store,
+        tftp_runtime_store,
+        tftp_settings_store,
+        tftp_history_store,
+        ssh_transfer_runtime_store,
+        ssh_transfer_settings_store,
+        ssh_transfer_history_store,
+        ftp_runtime_store,
+        ftp_settings_store,
+    )
 
     @app.route("/setup", methods=["GET", "POST"])
     def setup():
@@ -390,6 +458,8 @@ def create_app(instance_path: str | None = None) -> Flask:
         server_settings_store=server_settings_store,
         backup_catalog=backup_catalog,
         start_session=_start_session,
+        audit_store=audit_store,
+        operational_store=operational_store,
     )
 
     @app.cli.command("reset-auth")

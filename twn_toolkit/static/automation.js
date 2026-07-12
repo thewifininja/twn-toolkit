@@ -197,6 +197,30 @@
       };
       actionType.addEventListener("change", syncActionFields);
       syncActionFields();
+
+      const sftpOutput = form.querySelector("[data-sftp-action-output]");
+      const sftpDatastore = form.querySelector("[data-sftp-action-datastore]");
+      const syncSftpOutput = () => {
+        const selected = sftpOutput?.querySelector("input:checked");
+        if (sftpDatastore) sftpDatastore.hidden = selected?.value !== "datastore";
+      };
+      sftpOutput?.addEventListener("change", syncSftpOutput);
+      syncSftpOutput();
+
+      const transferProtocol = form.querySelector("[data-action-transfer-protocol]");
+      const transferPort = form.querySelector("[data-action-transfer-port]");
+      const hostKeyOption = form.querySelector("[data-action-ssh-host-key-option]");
+      let previousTransferProtocol = transferProtocol?.value;
+      const syncTransferProtocol = () => {
+        if (transferProtocol && transferPort) {
+          const previousDefault = previousTransferProtocol === "ftp" ? "21" : "22";
+          if (!transferPort.value || transferPort.value === previousDefault) transferPort.value = transferProtocol.value === "ftp" ? "21" : "22";
+          previousTransferProtocol = transferProtocol.value;
+        }
+        if (hostKeyOption && transferProtocol) hostKeyOption.hidden = transferProtocol.value === "ftp";
+      };
+      transferProtocol?.addEventListener("change", syncTransferProtocol);
+      syncTransferProtocol();
     }
 
     const automationCondition = form.querySelector("[data-automation-condition-select]");

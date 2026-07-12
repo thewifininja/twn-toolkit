@@ -187,6 +187,12 @@
                                 </div>
                               </details>
                             {% endfor %}
+                            {% for transfer in result.output.get('transfers', []) %}
+                              <article class="automation-destination-result">
+                                <span class="pill {{ transfer.status }}">{{ transfer.status }}</span>
+                                <span><strong>{{ transfer.host_label or transfer.host }}</strong><small>{% if transfer.host_label %}{{ transfer.host }} · {% endif %}{{ transfer.remote_path }}{% if transfer.stored_path %} → {{ transfer.stored_path }}{% elif transfer.filename and transfer.status == 'success' %} · retained as {{ transfer.filename }}{% endif %}{% if transfer.error %} · {{ transfer.error }}{% endif %}</small></span>
+                              </article>
+                            {% endfor %}
                           </div>
                         </section>
                       {% endfor %}

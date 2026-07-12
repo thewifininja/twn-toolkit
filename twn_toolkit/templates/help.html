@@ -14,7 +14,7 @@
   <div class="section-head"><div><h2 id="help-contents">Guide contents</h2><p>Jump directly to the area you need.</p></div></div>
   <div class="help-search"><label for="help-search-input">Search this guide</label><div class="help-search-controls"><input id="help-search-input" type="search" placeholder="Try automation, VLAN, backup, sudo…" autocomplete="off" data-help-search><button class="secondary" type="button" data-help-search-clear hidden>Clear</button></div><small data-help-search-status aria-live="polite"></small></div>
   <nav class="help-toc" aria-label="Help topics">
-    <a href="#release-notes">Release notes</a><a href="#getting-started">Getting started</a><a href="#dashboard">Dashboard</a><a href="#accounts">Accounts &amp; access</a><a href="#profiles">Profiles &amp; backups</a><a href="#fortinet">Fortinet</a><a href="#network-tools">Network tools</a><a href="#automations">Automations</a><a href="#packet-replay">Packet Replay</a><a href="#operations">Operations</a><a href="#security">Security</a>
+    <a href="#release-notes">Release notes</a><a href="#getting-started">Getting started</a><a href="#dashboard">Dashboard</a><a href="#accounts">Accounts &amp; access</a><a href="#profiles">Profiles &amp; backups</a><a href="#fortinet">Fortinet</a><a href="#network-tools">Network tools</a><a href="#local-tools">Local tools</a><a href="#automations">Automations</a><a href="#packet-replay">Packet Replay</a><a href="#operations">Operations</a><a href="#security">Security</a>
   </nav>
 </section>
 
@@ -111,8 +111,36 @@
   <details class="help-topic"><summary>Protocol and authentication tools</summary><div class="help-topic-body">
     <ul><li><strong>Ping:</strong> snapshots validated targets at Start; use Update targets to apply edits without clearing existing history.</li><li><strong>DNS:</strong> compares answers/timing across resolvers.</li><li><strong>SNMP:</strong> reusable v2c/v3 credentials, hosts, and OID collections.</li><li><strong>RADIUS:</strong> PAP/CHAP plus decoded attributes; EAP methods require <code>eapol_test</code>.</li><li><strong>NTP:</strong> compares offset, delay, jitter, stratum, identity, and sync health.</li><li><strong>Syslog:</strong> sends RFC 5424 or listens for bounded UDP/TCP messages.</li><li><strong>Webhook/API Tester:</strong> bounded HTTP requests without redirect following.</li></ul>
   </div></details>
-  <details class="help-topic"><summary>DHCP, Multi-SSH, and utilities</summary><div class="help-topic-body">
-    <ul><li><strong>DHCP Discover:</strong> inspects Offers without requesting a lease. Port 68/raw interface access may need root/capabilities.</li><li><strong>Multi-SSH:</strong> concurrent prompt-aware commands. Use <code>Friendly Name = host</code> and <code>[timeout=600] command</code>. Results can be exported.</li><li><strong>Subnet Excluder:</strong> subtracts IPv4/IPv6 child networks.</li><li><strong>What’s My IP?:</strong> shows the toolkit-observed client and attempts a browser-side public lookup.</li></ul>
+  <details class="help-topic"><summary>DHCP, Multi-SSH, Multi-Transfer, and utilities</summary><div class="help-topic-body">
+    <ul><li><strong>DHCP Discover:</strong> inspects Offers without requesting a lease. Port 68/raw interface access may need root/capabilities.</li><li><strong>Multi-SSH:</strong> concurrent prompt-aware commands. Use <code>Friendly Name = host</code> and <code>[timeout=600] command</code>. Results can be exported.</li><li><strong>Multi-Transfer:</strong> fetches the same remote file list concurrently from named hosts over SFTP, SCP, or FTP. Choose a datastore folder for retained files or download a one-shot ZIP whose temporary server files are discarded. The default <code>{timestamp}-{identity}-{filename}</code> pattern can be customized with timestamp, host, friendly-label, identity, filename, stem, and suffix tokens. Duplicate names receive a numeric suffix; the ZIP also contains a transfer report. Unknown SSH host keys remain blocked unless explicitly allowed. FTP is plaintext and should be reserved for legacy targets.</li><li><strong>Subnet Excluder:</strong> subtracts IPv4/IPv6 child networks.</li><li><strong>What’s My IP?:</strong> shows the toolkit-observed client and attempts a browser-side public lookup.</li></ul>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="local-tools">
+  <div class="section-head"><div><span class="eyebrow">Host-side utilities</span><h2>Local tools and datastore</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Contained file management</summary><div class="help-topic-body">
+    <p>The Datastore manages persistent files beneath <code>instance/datastore/</code>. Access is assigned like any other tool through custom profiles. Users can create and browse folders, upload multiple files, download files, rename entries, and delete files or empty folders.</p>
+    <p>Uploads are atomic and limited to 1 GiB per request. Existing names are never overwritten. The manager rejects traversal outside its root, does not follow symbolic links, and does not recursively delete populated folders.</p>
+    <p>Switch between list and grid layouts; the browser remembers the preference. Select files or folders to reveal bulk move/delete controls, or drag selected items directly onto a folder. Non-empty folders cannot be deleted accidentally, and folders cannot be moved into themselves. The upload target accepts one or more files through the picker or desktop drag-and-drop. Bulk operations validate every source and destination before changing files.</p>
+  </div></details>
+  <details class="help-topic"><summary>Managed TFTP service</summary><div class="help-topic-body">
+    <p><strong>Local Tools → File Transfers</strong> contains managed TFTP, FTP, and authenticated SFTP/SCP listeners; outbound retrieval is available separately under <strong>Network Tools → Multi-Host Tools → Multi-Transfer</strong>. All listeners are disabled by default and remain contained beneath a selected datastore folder or one runtime-only file.</p>
+    <p>The SSH transfer listener defaults to <code>127.0.0.1:2022</code>, stores only a password hash, rejects untrusted CIDRs before authentication, and never provides an interactive shell. SFTP and SCP, downloads, atomic uploads, overwrites, and incoming filename rewriting are independently controlled.</p>
+    <p>The TFTP root may be the datastore root or any saved subfolder. Alternatively, temporary mode serves one uploaded file that is erased whenever TFTP stops or restarts. Temporary mode is download-only.</p>
+    <p>The FTP listener has configurable control and passive port ranges, a one-way password hash, trusted-client CIDRs, total/per-client connection limits, atomic upload replacement, and the same incoming filename templates. FTP and SFTP/SCP reject inbound files beyond the datastore’s 1 GiB per-file ceiling. FTP does not encrypt authentication or file contents; prefer SFTP/SCP wherever possible.</p>
+    <p>Incoming uploads may keep <code>{filename}</code> or use a pattern such as <code>{timestamp}-{client_ip}-{filename}</code>. The <code>{stem}</code> and <code>{suffix}</code> tokens are also available. Custom naming stores files directly in the selected root; overwrite policy applies to the resulting stored name.</p>
+    <p>TFTP provides no authentication or encryption. Keep the trusted-client list narrow. Port 1069 works without elevation; binding standard UDP port 69 may require root or <code>CAP_NET_BIND_SERVICE</code> on Linux. The service supports binary RRQ/WRQ transfers plus block-size, timeout, and transfer-size negotiation.</p>
+    <p>Uploads are committed atomically after the final block. Existing files are rejected unless the administrator explicitly enables overwrite. Up to 20 transfers run concurrently. The latest 1,000 successful and failed transfers are visible in the datastore and can be cleared by an administrator.</p>
+  </div></details>
+  <details class="help-topic"><summary>Operational limits, diagnostics, and audit history</summary><div class="help-topic-body">
+    <p><strong>Administration → Settings</strong> groups system controls before account controls. Operational limits bound concurrent and queued automation runs, skip overlapping checks, cap datastore and automation-artifact usage, and preserve a configured amount of free disk.</p>
+    <p><strong>Administration → System Diagnostics</strong> reports web, supervisor, scheduler, and transfer-listener health; scheduler heartbeat age; disk and quota use; SQLite quick-check results; optional command dependencies; numbered migrations; reclaimable orphan artifacts; and the newest administrative audit events.</p>
+    <p>The audit ledger records the administrator, source address, endpoint, HTTP method, path, result code, and time. Request bodies, passwords, tokens, and other secret values are deliberately excluded.</p>
+    <p>The supervisor restarts a failed scheduler or enabled transfer worker. Numbered toolkit migrations take a consistent SQLite snapshot before applying a new version.</p>
+  </div></details>
+  <details class="help-topic"><summary>Backups and future services</summary><div class="help-topic-body">
+    <p>Datastore contents are operational files and are intentionally excluded from profile backup/restore. Back up <code>instance/datastore/</code> separately when those files matter.</p>
+    <p>TFTP and SSH-transfer settings/history are local operational state. Runtime-only staging is deliberately removed whenever its corresponding service stops.</p>
   </div></details>
 </section>
 
@@ -167,6 +195,11 @@ Public Portal = portal.example.com | 443</code></pre>
     <pre><code>[timeout=600] diag debug report</code></pre>
     <p>Overrides are 1–3600 seconds with a one-hour combined budget per host. Timeouts retain partial output and stop later commands only on that host.</p>
   </div></details>
+  <details class="help-topic"><summary>SSH file collection action</summary><div class="help-topic-body">
+    <p>Fetches up to 200 host/path combinations over SFTP, SCP, or FTP using write-only credentials. Use <code>Friendly Name = host</code> targets and the same token-based filename patterns as Multi-Transfer. SFTP/SCP encrypt traffic; FTP does not.</p>
+    <p><strong>Collected action run</strong> retains successful files beside the run and adds them to Download ZIP without placing them in the datastore. <strong>Datastore</strong> persists files beneath a selected folder and can create one friendly-name/host subfolder per target. Cross-run filename collisions receive a numeric suffix rather than overwriting.</p>
+    <p>Retained binary files are stored outside SQLite under <code>instance/automation_artifacts/</code>. Deleting, clearing, or retention-pruning a run deletes its artifact directory too.</p>
+  </div></details>
   <details class="help-topic"><summary>Syslog notification action</summary><div class="help-topic-body">
     <p>Sends RFC 5424 to up to 20 UDP/TCP collectors:</p>
     <pre><code>Primary SIEM = syslog.example.com | 514
@@ -179,7 +212,7 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
     <p>Authorization/API-key headers are encrypted, never rendered back into the editor, and never copied into retained run output. Leave the field blank to keep saved headers, or select Remove all saved headers while updating.</p>
   </div></details>
   <details class="help-topic"><summary>History, downloads, cleanup, and scheduler</summary><div class="help-topic-body">
-    <p>Checks, triggers, action status, and retained output live in <code>instance/automations.sqlite3</code>. SSH ZIPs contain timestamped host files; syslog ZIPs contain destination JSON. Delete run removes one result; Clear collected data removes action runs but preserves condition history.</p>
+    <p>Checks, triggers, action status, and structured retained output live in <code>instance/automations.sqlite3</code>; binary transfer artifacts live in <code>instance/automation_artifacts/</code>. SSH ZIPs contain timestamped host files, SFTP/SCP ZIPs include retained fetched files, and syslog ZIPs contain destination JSON. Delete run removes one result and its artifacts; Clear collected data removes action runs but preserves condition history.</p>
     <p>Administration → Settings controls global retention. Check records default to 7 days; collected action runs default to never expire. Use 0 for indefinite retention. The card previews eligible records, supports an immediate policy-based prune, and reports database size and oldest records.</p>
     <p>The scheduler prunes at most once daily. Optimize database is a separate manual action that reclaims unused SQLite file space and may briefly pause automation writes.</p>
     <p><code>./twn start</code> launches one scheduler beside the web service. Work continues without a browser. Imported automations remain paused.</p>

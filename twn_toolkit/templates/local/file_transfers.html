@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% from "local/_transfer_components.html" import transfer_history with context %}
+{% block content %}
+<section class="home-hero">
+  <div>
+    <p class="eyebrow">Local tools</p>
+    <h1>File Transfers</h1>
+    <p>Expose carefully scoped transfer services backed by the contained local datastore.</p>
+  </div>
+  <div class="home-hero-card">
+    <span>Managed listeners</span>
+    <strong>{{ (1 if tftp_status.running else 0) + (1 if ssh_transfer_status.running else 0) + (1 if ftp_status.running else 0) }} running</strong>
+    <small>TFTP, FTP, and authenticated SFTP/SCP</small>
+  </div>
+</section>
+
+<section class="panel tftp-panel" id="tftp-service">
+  <details class="tftp-service-details" {{ 'open' if tftp_settings.enabled or current_user.is_admin else '' }}>
+    <summary>
+      <span>
+        <strong>TFTP service</strong>
+        <small>{{ tftp_settings.bind_host }}:{{ tftp_settings.port }} · {{ 'read/write' if tftp_settings.allow_write and tftp_settings.allow_read else 'write only' if tftp_settings.allow_write else 'read only' }}</small>
+      </span>
+      <span class="pill {{ 'success' if tftp_status.running else 'planned' if not tftp_settings.enabled else 'error' }}">
+        {{ 'running' if tftp_status.running else 'disabled' if not tftp_settings.enabled else 'stopped' }}
+      </span>
+    </summary>
+    <div class="tftp-service-body">
+      <p class="field-note">TFTP has no authentication or encryption. The selected root and trusted client CIDRs are its primary boundaries.</p>
+      {% if current_user.is_admin %}
+      <form method="post" action="{{ url_for('save_tftp_settings') }}" class="form tftp-settings-form" data-loading-message="Applying TFTP service settings…">
+        <label class="check tftp-enable-check">
+          <input type="checkbox" name="enabled" {% if tftp_settings.enabled %}checked{% endif %}>
+          Enable managed TFTP service
+        </label>
+        <div class="form-grid tftp-listener-grid">
+          <label>Bind address
+            <input name="bind_host" value="{{ tftp_settings.bind_host }}" placeholder="0.0.0.0" required>
+            <small class="field-note">Use <code>0.0.0.0</code> for all IPv4 interfaces or <code>::</code> for IPv6.</small>
+          </label>
+          <label>UDP port
+            <input type="number" name="port" min="1" max="65535" value="{{ tftp_settings.port }}" required>
+            <small class="field-note">1069 works without elevation. UDP 69 may require root or <code>CAP_NET_BIND_SERVICE</code>.</small>
+          </label>
+        </div>
+        <fieldset class="choice-group tftp-root-policy">
+          <legend>TFTP root</legend>
+          <label class="check">
+            <input type="radio" name="root_mode" value="datastore" {% if tftp_settings.root_mode == 'datastore' %}checked{% endif %}>
+            Use a datastore folder
+          </label>
+          <label>Datastore folder
+            <select name="datastore_root">
+              {% for folder in datastore_folders %}
+                <option value="{{ folder.path }}" {% if folder.path == tftp_settings.datastore_root %}selected{% endif %}>{{ folder.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="check">
+            <input type="radio" name="root_mode" value="temporary" {% if tftp_settings.root_mode == 'temporary' %}checked{% endif %}>
+            Use one runtime-only temporary file
+          </label>
+          <small class="field-note">Temporary mode is download-only. Stage the file after the service starts; it is erased whenever TFTP stops or restarts.</small>
+        </fieldset>
+        <fieldset class="choice-group tftp-permissions">
+          <legend>Transfer permissions</legend>
+          <label class="check"><input type="checkbox" name="allow_read" {% if tftp_settings.allow_read %}checked{% endif %}>Allow clients to download files</label>
+          <label class="check"><input type="checkbox" name="allow_write" {% if tftp_settings.allow_write %}checked{% endif %}>Allow clients to upload into the selected datastore root</label>
+          <label class="check"><input type="checkbox" name="allow_overwrite" {% if tftp_settings.allow_overwrite %}checked{% endif %}>Allow uploads to atomically replace an existing stored filename</label>
+        </fieldset>
+        <label>Incoming upload filename pattern
+          <input name="incoming_filename_pattern" maxlength="200" value="{{ tftp_settings.incoming_filename_pattern }}" required>
+          <small class="field-note">Default: <code>{filename}</code>. Example: <code>{timestamp}-{client_ip}-{filename}</code>. Also available: <code>{stem}</code> and <code>{suffix}</code>. Custom patterns store uploads at the selected root.</small>
+        </label>
+        <label>Trusted TFTP client addresses and networks
+          <textarea name="allowed_networks" rows="5" required>{{ tftp_settings.allowed_networks | join('\n') }}</textarea>
+          <small class="field-note">One IPv4/IPv6 address or CIDR per line. Every other source is rejected before transfer.</small>
+        </label>
+        <button type="submit">Save and apply TFTP settings</button>
+      </form>
+
+      {% if tftp_settings.root_mode == 'temporary' %}
+      <section class="tftp-temporary-file">
+        <div>
+          <h3>Runtime-only TFTP file</h3>
+          <p class="field-note">Available only while this TFTP process remains running.</p>
+        </div>
+        {% if temporary_file %}
+          <article class="datastore-row">
+            <div class="datastore-entry-icon" aria-hidden="true">▤</div>
+            <div class="datastore-entry-name"><strong>{{ temporary_file.name }}</strong><small>{{ temporary_file.size_display }}</small></div>
+            <form method="post" action="{{ url_for('delete_tftp_temporary_file') }}" onsubmit="return confirm('Remove the staged temporary TFTP file?')"><button class="danger" type="submit">Remove</button></form>
+          </article>
+        {% elif tftp_status.running %}
+          <form method="post" action="{{ url_for('upload_tftp_temporary_file') }}" enctype="multipart/form-data" class="form tftp-temporary-upload" data-loading-message="Staging temporary TFTP file…">
+            <label>Temporary file
+              <input type="file" name="file" required>
+            </label>
+            <small class="field-note">Maximum {{ max_upload_display }}. Uploading another file replaces the staged temporary file.</small>
+            <button type="submit">Stage temporary file</button>
+          </form>
+        {% else %}
+          <div class="message warning">Start TFTP in temporary-file mode before staging a file.</div>
+        {% endif %}
+      </section>
+      {% endif %}
+      {% endif %}
+
+      {{ transfer_history('Recent transfers', 'The newest 1,000 transfer records are retained.', tftp_transfers, 'clear_tftp_history', 'Clear all retained TFTP transfer history?', 'No TFTP transfers have been recorded.') }}
+    </div>
+  </details>
+</section>
+
+<section class="panel tftp-panel" id="ssh-transfer-service">
+  <details class="tftp-service-details" {{ 'open' if ssh_transfer_settings.enabled else '' }}>
+    <summary>
+      <span><strong>SFTP / SCP service</strong><small>{{ ssh_transfer_settings.bind_host }}:{{ ssh_transfer_settings.port }} · {% if ssh_transfer_settings.allow_sftp %}SFTP{% endif %}{% if ssh_transfer_settings.allow_sftp and ssh_transfer_settings.allow_scp %} + {% endif %}{% if ssh_transfer_settings.allow_scp %}SCP{% endif %}</small></span>
+      <span class="pill {{ 'success' if ssh_transfer_status.running else 'planned' if not ssh_transfer_settings.enabled else 'error' }}">{{ 'running' if ssh_transfer_status.running else 'disabled' if not ssh_transfer_settings.enabled else 'stopped' }}</span>
+    </summary>
+    <div class="tftp-service-body">
+      <p class="field-note">A contained SSH listener for file transfer only. It does not provide an interactive shell. Authentication uses a stored password hash and a persistent toolkit-owned SSH host key.</p>
+      {% if current_user.is_admin %}
+      <form method="post" action="{{ url_for('save_ssh_transfer_settings') }}" class="form tftp-settings-form" data-loading-message="Applying SSH transfer settings…">
+        <label class="check"><input type="checkbox" name="enabled" {% if ssh_transfer_settings.enabled %}checked{% endif %}>Enable managed SFTP / SCP service</label>
+        <div class="form-grid">
+          <label>Bind address<input name="bind_host" value="{{ ssh_transfer_settings.bind_host }}" required><small class="field-note"><code>0.0.0.0</code> or <code>::</code> listens on every matching interface.</small></label>
+          <label>TCP port<input name="port" type="number" min="1" max="65535" value="{{ ssh_transfer_settings.port }}" required><small class="field-note">2022 works without elevation; TCP 22 normally requires elevated bind permission.</small></label>
+        </div>
+        <fieldset class="choice-group"><legend>Enabled protocols</legend>
+          <label class="check"><input type="checkbox" name="allow_sftp" {% if ssh_transfer_settings.allow_sftp %}checked{% endif %}>SFTP subsystem</label>
+          <label class="check"><input type="checkbox" name="allow_scp" {% if ssh_transfer_settings.allow_scp %}checked{% endif %}>SCP protocol</label>
+        </fieldset>
+        <div class="form-grid">
+          <label>Service username<input name="username" value="{{ ssh_transfer_settings.username }}" maxlength="64" required></label>
+          <label><span>Service password <small class="inline-label-note">(write-only)</small></span><input name="password" type="password" minlength="12" {% if ssh_transfer_settings.password_hash %}placeholder="Leave blank to keep saved password"{% else %}required{% endif %}><small class="field-note">Stored as a one-way password hash and never rendered back.</small></label>
+        </div>
+        <fieldset class="choice-group tftp-root-policy"><legend>Transfer root</legend>
+          <label class="check"><input type="radio" name="root_mode" value="datastore" {% if ssh_transfer_settings.root_mode == 'datastore' %}checked{% endif %}>Use a datastore folder</label>
+          <label>Datastore folder<select name="datastore_root">{% for folder in datastore_folders %}<option value="{{ folder.path }}" {% if folder.path == ssh_transfer_settings.datastore_root %}selected{% endif %}>{{ folder.name }}</option>{% endfor %}</select></label>
+          <label class="check"><input type="radio" name="root_mode" value="temporary" {% if ssh_transfer_settings.root_mode == 'temporary' %}checked{% endif %}>Use one runtime-only temporary file</label>
+          <small class="field-note">Temporary mode is download-only and is erased whenever the listener stops or restarts.</small>
+        </fieldset>
+        <fieldset class="choice-group"><legend>Transfer permissions</legend>
+          <label class="check"><input type="checkbox" name="allow_read" {% if ssh_transfer_settings.allow_read %}checked{% endif %}>Allow downloads</label>
+          <label class="check"><input type="checkbox" name="allow_write" {% if ssh_transfer_settings.allow_write %}checked{% endif %}>Allow uploads into the selected root</label>
+          <label class="check"><input type="checkbox" name="allow_overwrite" {% if ssh_transfer_settings.allow_overwrite %}checked{% endif %}>Allow atomic replacement of existing filenames</label>
+        </fieldset>
+        <label>Incoming upload filename pattern<input name="incoming_filename_pattern" maxlength="200" value="{{ ssh_transfer_settings.incoming_filename_pattern }}" required><small class="field-note">Tokens: <code>{timestamp}</code>, <code>{client_ip}</code>, <code>{filename}</code>, <code>{stem}</code>, and <code>{suffix}</code>. Uploads are stored at the selected root.</small></label>
+        <label>Trusted client addresses and networks<textarea name="allowed_networks" rows="5" required>{{ ssh_transfer_settings.allowed_networks|join('\n') }}</textarea><small class="field-note">Untrusted sources are disconnected before SSH authentication.</small></label>
+        <button type="submit">Save and apply SFTP / SCP settings</button>
+      </form>
+
+      {% if ssh_transfer_settings.root_mode == 'temporary' %}
+      <section class="tftp-temporary-file">
+        <div><h3>Runtime-only SSH transfer file</h3><p class="field-note">Available for SFTP/SCP download only while this listener remains running.</p></div>
+        {% if ssh_temporary_file %}
+          <article class="datastore-row"><div class="datastore-entry-icon">▤</div><div class="datastore-entry-name"><strong>{{ ssh_temporary_file.name }}</strong><small>{{ ssh_temporary_file.size_display }}</small></div><form method="post" action="{{ url_for('delete_ssh_transfer_temporary_file') }}"><button class="danger">Remove</button></form></article>
+        {% elif ssh_transfer_status.running %}
+          <form method="post" action="{{ url_for('upload_ssh_transfer_temporary_file') }}" enctype="multipart/form-data" class="form"><label>Temporary file<input type="file" name="file" required></label><button>Stage temporary file</button></form>
+        {% else %}<div class="message warning">Start the listener in temporary-file mode before staging a file.</div>{% endif %}
+      </section>
+      {% endif %}
+      {% endif %}
+
+      {{ transfer_history('Recent SFTP / SCP transfers', 'The newest 1,000 records per protocol are retained.', ssh_transfers, 'clear_ssh_transfer_history', 'Clear retained SFTP/SCP transfer history?', 'No SFTP/SCP transfers have been recorded.', true) }}
+    </div>
+  </details>
+</section>
+<section class="panel tftp-panel" id="ftp-service">
+  <details class="tftp-service-details" {{ 'open' if ftp_settings.enabled else '' }}>
+    <summary>
+      <span><strong>FTP service</strong><small>{{ ftp_settings.bind_host }}:{{ ftp_settings.port }} · passive {{ ftp_settings.passive_start }}–{{ ftp_settings.passive_end }}</small></span>
+      <span class="pill {{ 'success' if ftp_status.running else 'planned' if not ftp_settings.enabled else 'error' }}">{{ 'running' if ftp_status.running else 'disabled' if not ftp_settings.enabled else 'stopped' }}</span>
+    </summary>
+    <div class="tftp-service-body">
+      <div class="message warning"><strong>FTP is plaintext.</strong> Usernames, passwords, filenames, and file contents are not encrypted in transit. Prefer SFTP/SCP unless the target only supports FTP.</div>
+      {% if current_user.is_admin %}
+      <form method="post" action="{{ url_for('save_ftp_settings') }}" class="form tftp-settings-form" data-loading-message="Applying FTP service settings…">
+        <label class="check"><input type="checkbox" name="enabled" {% if ftp_settings.enabled %}checked{% endif %}>Enable managed FTP service</label>
+        <div class="form-grid">
+          <label>Bind address<input name="bind_host" value="{{ ftp_settings.bind_host }}" required><small class="field-note"><code>0.0.0.0</code> or <code>::</code> listens on every matching interface.</small></label>
+          <label>Control port<input name="port" type="number" min="1" max="65535" value="{{ ftp_settings.port }}" required><small class="field-note">2121 works without elevation; TCP 21 normally requires elevated bind permission.</small></label>
+        </div>
+        <div class="form-grid">
+          <label>Passive port start<input name="passive_start" type="number" min="1" max="65535" value="{{ ftp_settings.passive_start }}" required></label>
+          <label>Passive port end<input name="passive_end" type="number" min="1" max="65535" value="{{ ftp_settings.passive_end }}" required><small class="field-note">Permit this range through the host firewall/NAT for passive transfers.</small></label>
+        </div>
+        <div class="form-grid">
+          <label>Maximum connections<input name="max_connections" type="number" min="1" max="500" value="{{ ftp_settings.max_connections }}" required></label>
+          <label>Maximum per client IP<input name="max_connections_per_ip" type="number" min="1" max="500" value="{{ ftp_settings.max_connections_per_ip }}" required><small class="field-note">Bounds concurrent sessions and basic connection abuse.</small></label>
+        </div>
+        <div class="form-grid">
+          <label>Service username<input name="username" value="{{ ftp_settings.username }}" maxlength="64" required></label>
+          <label><span>Service password <small class="inline-label-note">(write-only)</small></span><input name="password" type="password" minlength="12" {% if ftp_settings.password_hash %}placeholder="Leave blank to keep saved password"{% else %}required{% endif %}><small class="field-note">Stored as a one-way password hash and never rendered back.</small></label>
+        </div>
+        <fieldset class="choice-group tftp-root-policy"><legend>FTP root</legend>
+          <label class="check"><input type="radio" name="root_mode" value="datastore" {% if ftp_settings.root_mode == 'datastore' %}checked{% endif %}>Use a datastore folder</label>
+          <label>Datastore folder<select name="datastore_root">{% for folder in datastore_folders %}<option value="{{ folder.path }}" {% if folder.path == ftp_settings.datastore_root %}selected{% endif %}>{{ folder.name }}</option>{% endfor %}</select></label>
+          <label class="check"><input type="radio" name="root_mode" value="temporary" {% if ftp_settings.root_mode == 'temporary' %}checked{% endif %}>Use one runtime-only temporary file</label>
+          <small class="field-note">Temporary mode is download-only and is erased whenever FTP stops or restarts.</small>
+        </fieldset>
+        <fieldset class="choice-group"><legend>Transfer permissions</legend>
+          <label class="check"><input type="checkbox" name="allow_read" {% if ftp_settings.allow_read %}checked{% endif %}>Allow downloads</label>
+          <label class="check"><input type="checkbox" name="allow_write" {% if ftp_settings.allow_write %}checked{% endif %}>Allow uploads into the selected root</label>
+          <label class="check"><input type="checkbox" name="allow_overwrite" {% if ftp_settings.allow_overwrite %}checked{% endif %}>Allow atomic replacement of existing filenames</label>
+        </fieldset>
+        <label>Incoming upload filename pattern<input name="incoming_filename_pattern" maxlength="200" value="{{ ftp_settings.incoming_filename_pattern }}" required><small class="field-note">Tokens: <code>{timestamp}</code>, <code>{client_ip}</code>, <code>{filename}</code>, <code>{stem}</code>, and <code>{suffix}</code>.</small></label>
+        <label>Trusted client addresses and networks<textarea name="allowed_networks" rows="5" required>{{ ftp_settings.allowed_networks|join('\n') }}</textarea><small class="field-note">Every other source is disconnected before FTP authentication.</small></label>
+        <button type="submit">Save and apply FTP settings</button>
+      </form>
+      {% if ftp_settings.root_mode == 'temporary' %}
+      <section class="tftp-temporary-file">
+        <div><h3>Runtime-only FTP file</h3><p class="field-note">Available for download only while this listener remains running.</p></div>
+        {% if ftp_temporary_file %}
+          <article class="datastore-row"><div class="datastore-entry-icon">▤</div><div class="datastore-entry-name"><strong>{{ ftp_temporary_file.name }}</strong><small>{{ ftp_temporary_file.size_display }}</small></div><form method="post" action="{{ url_for('delete_ftp_temporary_file') }}"><button class="danger">Remove</button></form></article>
+        {% elif ftp_status.running %}
+          <form method="post" action="{{ url_for('upload_ftp_temporary_file') }}" enctype="multipart/form-data" class="form"><label>Temporary file<input type="file" name="file" required></label><button>Stage temporary file</button></form>
+        {% else %}<div class="message warning">Start FTP in temporary-file mode before staging a file.</div>{% endif %}
+      </section>
+      {% endif %}
+      {% endif %}
+      {{ transfer_history('Recent FTP transfers', 'The newest 1,000 FTP records are retained independently.', ftp_transfers, 'clear_ftp_history', 'Clear retained FTP transfer history?', 'No FTP transfers have been recorded.', true) }}
+    </div>
+  </details>
+</section>
+
+<script src="{{ url_for('static', filename='file-transfers.js') }}"></script>
+{% endblock %}

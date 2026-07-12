@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -29,6 +30,8 @@ class AutomationStore:
     def __init__(self, instance_path: str, secret_key: str) -> None:
         self.instance_path = Path(instance_path)
         self.path = self.instance_path / "automations.sqlite3"
+        self.artifact_root = self.instance_path / "automation_artifacts"
+        self.artifact_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         encryption_key = base64.urlsafe_b64encode(
             hashlib.sha256(secret_key.encode("utf-8")).digest()
         )
@@ -682,6 +685,18 @@ class AutomationStore:
                 (automation_id, now, message[:2000]),
             )
 
+    def record_observation(self, automation_id: str, status: str, summary: str) -> None:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE automations SET last_check_at = ?, last_summary = ?, updated_at = ? WHERE id = ?",
+                (now, summary[:2000], now, automation_id),
+            )
+            connection.execute(
+                "INSERT INTO automation_checks (automation_id, checked_at, met, status, summary, evidence_json) VALUES (?, ?, 0, ?, ?, '{}')",
+                (automation_id, now, status[:40], summary[:2000]),
+            )
+
     def record_run(
         self,
         automation_id: str,
@@ -697,19 +712,45 @@ class AutomationStore:
             if not results or all(result.status == "error" for result in results)
             else "partial"
         )
-        payload = [
-            {"status": result.status, "summary": result.summary, "output": result.output}
-            for result in results
-        ]
-        with self._connect() as connection:
-            connection.execute(
+        run_root = self.artifact_root / run_id
+        payload = []
+        staging_roots: set[Path] = set()
+        try:
+            for action_index, result in enumerate(results, 1):
+                output = dict(result.output)
+                sources = output.pop("_artifact_sources", [])
+                artifacts = []
+                for source_index, item in enumerate(sources, 1):
+                    source = Path(str(item.get("source_path", ""))).resolve()
+                    if not source.is_file() or source.is_symlink():
+                        raise ValueError("Automation artifact source is unavailable.")
+                    from .operational import ensure_storage_capacity
+                    ensure_storage_capacity(self.instance_path, "automation_artifacts", source.stat().st_size)
+                    staging_roots.add(source.parent)
+                    action_folder = run_root / f"action-{action_index}"
+                    action_folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    filename = self._artifact_filename(str(item.get("filename", source.name)), source_index)
+                    target = action_folder / filename
+                    if target.exists():
+                        filename = f"{source_index}-{filename}"
+                        target = action_folder / filename
+                    shutil.move(str(source), target)
+                    os.chmod(target, 0o600)
+                    artifacts.append({
+                        key: value for key, value in item.items() if key != "source_path"
+                    } | {"artifact_path": f"action-{action_index}/{filename}"})
+                if artifacts:
+                    output["artifacts"] = artifacts
+                payload.append({"status": result.status, "summary": result.summary, "output": output})
+            with self._connect() as connection:
+                connection.execute(
                 """
                 INSERT INTO automation_runs
                     (id, automation_id, started_at, finished_at, status,
                      trigger_summary, results_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
+                    (
                     run_id,
                     automation_id,
                     now,
@@ -717,8 +758,14 @@ class AutomationStore:
                     status,
                     trigger.summary,
                     json.dumps(payload, separators=(",", ":")),
-                ),
-            )
+                    ),
+                )
+        except Exception:
+            shutil.rmtree(run_root, ignore_errors=True)
+            raise
+        finally:
+            for folder in staging_roots:
+                shutil.rmtree(folder, ignore_errors=True)
         return run_id
 
     def recent_runs(self, automation_id: str, limit: int = 20) -> list[dict[str, Any]]:
@@ -760,6 +807,7 @@ class AutomationStore:
             )
             if not cursor.rowcount:
                 raise ValueError("Collected action run not found.")
+        shutil.rmtree(self.artifact_root / run_id, ignore_errors=True)
 
     def clear_runs(self, automation_id: str) -> int:
         with self._connect() as connection:
@@ -767,10 +815,32 @@ class AutomationStore:
                 "SELECT 1 FROM automations WHERE id = ?", (automation_id,)
             ).fetchone():
                 raise ValueError("Automation not found.")
+            run_ids = [row[0] for row in connection.execute(
+                "SELECT id FROM automation_runs WHERE automation_id = ?", (automation_id,)
+            )]
             cursor = connection.execute(
                 "DELETE FROM automation_runs WHERE automation_id = ?", (automation_id,)
             )
-            return int(cursor.rowcount)
+        for run_id in run_ids:
+            shutil.rmtree(self.artifact_root / str(run_id), ignore_errors=True)
+        return int(cursor.rowcount)
+
+    def run_artifact(self, run_id: str, relative_path: str) -> Path:
+        root = (self.artifact_root / run_id).resolve()
+        candidate = (root / relative_path).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("Automation artifact path is invalid.") from exc
+        if not candidate.is_file() or candidate.is_symlink():
+            raise ValueError("Automation artifact was not found.")
+        return candidate
+
+    @staticmethod
+    def _artifact_filename(value: str, fallback_index: int) -> str:
+        name = Path(value.replace("\\", "/")).name
+        cleaned = "".join(character if character.isalnum() or character in "._-" else "-" for character in name).strip(".-")
+        return (cleaned or f"artifact-{fallback_index}")[:255]
 
     def recent_checks(self, automation_id: str, limit: int = 20) -> list[dict[str, Any]]:
         with self._connect() as connection:
@@ -869,6 +939,26 @@ class AutomationStore:
             "eligible_run_count": int(eligible_runs),
         }
 
+    def orphan_artifact_stats(self) -> dict[str, int]:
+        with self._connect() as connection:
+            known = {str(row[0]) for row in connection.execute("SELECT id FROM automation_runs")}
+        folders = [path for path in self.artifact_root.iterdir() if path.is_dir() and path.name not in known]
+        total = 0
+        for folder in folders:
+            for root, _dirs, files in os.walk(folder):
+                for name in files:
+                    try: total += (Path(root) / name).stat().st_size
+                    except OSError: pass
+        return {"count": len(folders), "bytes": total}
+
+    def cleanup_orphan_artifacts(self) -> dict[str, int]:
+        stats = self.orphan_artifact_stats()
+        with self._connect() as connection:
+            known = {str(row[0]) for row in connection.execute("SELECT id FROM automation_runs")}
+        for folder in self.artifact_root.iterdir():
+            if folder.is_dir() and folder.name not in known: shutil.rmtree(folder, ignore_errors=True)
+        return stats
+
     def prune_history(self, now: float | None = None) -> dict[str, int]:
         now = time.time() if now is None else now
         settings = self.retention_settings()
@@ -883,10 +973,16 @@ class AutomationStore:
                 ).rowcount
             run_days = int(settings["run_retention_days"])
             if run_days:
+                expired_run_ids = [row[0] for row in connection.execute(
+                    "SELECT id FROM automation_runs WHERE started_at < ?",
+                    (now - run_days * 86400,),
+                )]
                 deleted_runs = connection.execute(
                     "DELETE FROM automation_runs WHERE started_at < ?",
                     (now - run_days * 86400,),
                 ).rowcount
+            else:
+                expired_run_ids = []
             connection.execute(
                 """
                 INSERT INTO automation_settings (key, value, updated_at)
@@ -896,6 +992,8 @@ class AutomationStore:
                 """,
                 (str(now), now),
             )
+        for run_id in expired_run_ids:
+            shutil.rmtree(self.artifact_root / str(run_id), ignore_errors=True)
         return {"checks": int(deleted_checks), "runs": int(deleted_runs)}
 
     def prune_history_if_due(self, now: float | None = None) -> dict[str, int] | None:
@@ -914,6 +1012,13 @@ class AutomationStore:
             connection.close()
             if self.path.exists():
                 os.chmod(self.path, 0o600)
+
+    def migration_status(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            return [
+                {"version": f"automation-{row['version']}", "applied_at": row["applied_at"], "description": row["description"]}
+                for row in connection.execute("SELECT version, applied_at, description FROM automation_schema_migrations ORDER BY version")
+            ]
 
     def _automation_from_row(
         self, row: sqlite3.Row, include_secrets: bool
@@ -1333,31 +1438,37 @@ class AutomationEngine:
         processed = 0
         for automation in self.store.claim_due():
             processed += 1
-            if automation["condition"]["type"] == "schedule.calendar":
-                try:
-                    updated, result, should_fire = self.store.record_schedule_occurrence(
-                        automation["id"]
-                    )
-                except Exception as exc:
-                    self.store.record_error(
-                        automation["id"], f"{type(exc).__name__}: {exc}"
-                    )
-                    continue
-                if should_fire:
-                    self.execute_actions(updated, result)
-                continue
+            self.process_automation(automation)
+        return processed
+
+    def process_automation(self, automation: dict[str, Any]) -> None:
+        if automation["condition"]["type"] == "schedule.calendar":
             try:
-                result = self.test_condition(automation)
+                updated, result, should_fire = self.store.record_schedule_occurrence(
+                    automation["id"]
+                )
             except Exception as exc:
                 self.store.record_error(
                     automation["id"], f"{type(exc).__name__}: {exc}"
                 )
-                continue
-            updated, should_fire = self.store.record_condition(automation["id"], result)
-            if not should_fire:
-                continue
-            self.execute_actions(updated, result)
-        return processed
+                return
+            if should_fire:
+                self.execute_actions(updated, result)
+            return
+        try:
+            result = self.test_condition(automation)
+        except Exception as exc:
+            self.store.record_error(
+                automation["id"], f"{type(exc).__name__}: {exc}"
+            )
+            return
+        updated, should_fire = self.store.record_condition(automation["id"], result)
+        if not should_fire:
+            return
+        self.execute_actions(updated, result)
+
+    def record_backpressure(self, automation_id: str, reason: str) -> None:
+        self.store.record_observation(automation_id, "skipped", reason)
 
     def execute_actions(
         self, automation: dict[str, Any], trigger: ConditionResult
@@ -1413,7 +1524,10 @@ class AutomationEngine:
         def execute(action_definition: dict[str, Any]) -> ActionResult:
             try:
                 action = self.registry.actions[action_definition["type"]]
-                result = action.execute(action_definition["config"], contextual_trigger)
+                result = action.execute(
+                    {**action_definition["config"], "_instance_path": str(self.store.instance_path)},
+                    contextual_trigger,
+                )
                 return ActionResult(
                     result.status,
                     result.summary,
@@ -1470,6 +1584,20 @@ class AutomationEngine:
                         "error": str(item.get("error", ""))[:500],
                     }
                     for item in value[:100]
+                ]
+            elif key == "transfers" and isinstance(value, list):
+                context["transfers"] = [
+                    {
+                        "host": item.get("host"),
+                        "host_label": item.get("host_label", ""),
+                        "remote_path": str(item.get("remote_path", ""))[:500],
+                        "status": item.get("status"),
+                        "filename": str(item.get("filename", ""))[:255],
+                        "stored_path": str(item.get("stored_path", ""))[:500],
+                        "size": item.get("size", 0),
+                        "error": str(item.get("error", ""))[:500],
+                    }
+                    for item in value[:200]
                 ]
             elif key != "_pipeline" and isinstance(value, (str, int, float, bool, type(None))):
                 context[key] = value[:2000] if isinstance(value, str) else value

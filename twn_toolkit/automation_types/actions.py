@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+from pathlib import Path
 import re
+import shutil
+import tempfile
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
@@ -13,6 +16,13 @@ from ..network_tools import (
     parse_ssh_targets,
     run_ssh_hosts,
     validate_hosts,
+)
+from ..datastore import DatastoreError, LocalDatastore
+from ..transfer_tools import (
+    DEFAULT_TRANSFER_FILENAME_PATTERN as SFTP_DEFAULT_FILENAME_PATTERN,
+    fetch_transfer_files as fetch_ssh_files,
+    parse_remote_paths as parse_sftp_paths,
+    validate_transfer_filename_pattern as validate_sftp_filename_pattern,
 )
 from .models import ActionResult, ActionType, ConditionResult
 
@@ -86,6 +96,117 @@ def _execute_ssh(config: dict[str, Any], trigger: ConditionResult) -> ActionResu
             "command_count": len(commands),
         },
     )
+
+
+def _validate_sftp(config: dict[str, Any]) -> dict[str, Any]:
+    targets = parse_ssh_targets(str(config.get("hosts", "")), limit=50)
+    paths = parse_sftp_paths(str(config.get("remote_paths", "")))
+    username = str(config.get("username", "")).strip()
+    password = str(config.get("password", ""))
+    try:
+        port = int(config.get("port", 22))
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError("SFTP port must be a whole number.") from exc
+    if not username or not password:
+        raise ToolInputError("Enter a transfer username and password.")
+    if not 1 <= port <= 65535:
+        raise ToolInputError("SFTP port must be between 1 and 65535.")
+    if len(targets) * len(paths) > 200:
+        raise ToolInputError("An SFTP action may contain no more than 200 host/file transfers.")
+    destination_mode = str(config.get("destination_mode", "run"))
+    if destination_mode not in {"run", "datastore"}:
+        raise ToolInputError("Choose retained-run or datastore file-transfer output.")
+    protocol = str(config.get("protocol", "sftp")).lower()
+    if protocol not in {"sftp", "scp", "ftp"}:
+        raise ToolInputError("Choose SFTP, SCP, or FTP.")
+    datastore_folder = str(config.get("datastore_folder", "")).replace("\\", "/").strip("/")
+    if any(part == ".." for part in Path(datastore_folder).parts):
+        raise ToolInputError("The SFTP datastore destination is invalid.")
+    return {
+        "hosts": "\n".join(f"{item['label']} = {item['host']}" if item["label"] else item["host"] for item in targets),
+        "remote_paths": "\n".join(paths), "username": username, "password": password,
+        "port": port, "allow_unknown_hosts": bool(config.get("allow_unknown_hosts", False)),
+        "destination_mode": destination_mode, "datastore_folder": datastore_folder,
+        "per_host_folders": bool(config.get("per_host_folders", False)),
+        "protocol": protocol,
+        "filename_pattern": validate_sftp_filename_pattern(str(config.get("filename_pattern", SFTP_DEFAULT_FILENAME_PATTERN))),
+    }
+
+
+def _execute_sftp(config: dict[str, Any], trigger: ConditionResult) -> ActionResult:
+    normalized = _validate_sftp(config)
+    instance_path = str(config.get("_instance_path", ""))
+    staging = Path(tempfile.mkdtemp(prefix="twn-automation-sftp-"))
+    keep_staging = False
+    try:
+        results = fetch_ssh_files(
+            hosts=parse_ssh_targets(normalized["hosts"], limit=50),
+            remote_paths=normalized["remote_paths"].splitlines(),
+            username=normalized["username"], password=normalized["password"],
+            port=normalized["port"], allow_unknown_hosts=normalized["allow_unknown_hosts"],
+            output_dir=staging, filename_pattern=normalized["filename_pattern"],
+            protocol=normalized["protocol"],
+        )
+        successes = [item for item in results if item["status"] == "success"]
+        artifacts: list[dict[str, Any]] = []
+        if normalized["destination_mode"] == "datastore":
+            if not instance_path:
+                raise ToolInputError("Automation datastore context is unavailable.")
+            store = LocalDatastore(instance_path)
+            store.list(normalized["datastore_folder"])
+            for item in successes:
+                destination = normalized["datastore_folder"]
+                if normalized["per_host_folders"]:
+                    folder = _safe_sftp_folder(str(item.get("host_label") or item["host"]))
+                    destination = f"{destination}/{folder}".strip("/")
+                    try:
+                        store.list(destination)
+                    except DatastoreError:
+                        store.create_folder(normalized["datastore_folder"], folder)
+                with (staging / str(item["filename"])).open("rb") as source:
+                    saved = _save_sftp_datastore_file(
+                        store, destination, str(item["filename"]), source
+                    )
+                item["stored_path"] = store.relative(saved)
+        else:
+            artifacts = [
+                {"source_path": str(staging / str(item["filename"])), "filename": item["filename"],
+                 "host": item["host"], "host_label": item.get("host_label", ""),
+                 "remote_path": item["remote_path"], "size": item["size"]}
+                for item in successes
+            ]
+            keep_staging = bool(artifacts)
+        count = len(successes)
+        status = "success" if count == len(results) else "partial" if count else "error"
+        output = {"trigger": trigger.evidence, "transfers": results, "destination_mode": normalized["destination_mode"], "protocol": normalized["protocol"]}
+        if artifacts:
+            output["_artifact_sources"] = artifacts
+        return ActionResult(status, f"SFTP collection succeeded for {count} of {len(results)} transfers.", output)
+    finally:
+        if not keep_staging:
+            shutil.rmtree(staging, ignore_errors=True)
+
+
+def _safe_sftp_folder(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip(".-_")
+    return (cleaned or "host")[:120]
+
+
+def _save_sftp_datastore_file(
+    store: LocalDatastore, destination: str, filename: str, source: Any
+) -> Path:
+    stem, suffix = Path(filename).stem, Path(filename).suffix
+    candidate = filename
+    for index in range(1, 1001):
+        try:
+            saved, _size = store.save_upload(destination, candidate, source)
+            return saved
+        except DatastoreError as exc:
+            if "already exists" not in str(exc):
+                raise
+            source.seek(0)
+            candidate = f"{stem}-{index + 1}{suffix}"
+    raise DatastoreError("Unable to choose an unused datastore filename.")
 
 
 def _validate_syslog(config: dict[str, Any]) -> dict[str, Any]:
@@ -375,6 +496,21 @@ def _parse_ssh_form(form: Mapping[str, Any], existing: dict[str, Any]) -> dict[s
     return {"hosts": form.get("action_hosts", ""), "username": form.get("action_username", ""), "password": password, "commands": form.get("action_commands", ""), "command_timeout": form.get("action_command_timeout", "300"), "port": form.get("action_port", "22"), "allow_unknown_hosts": "action_allow_unknown_hosts" in form, "send_ctrl_y": "action_send_ctrl_y" in form}
 
 
+def _parse_sftp_form(form: Mapping[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
+    password = str(form.get("sftp_action_password", "")) or str(existing.get("password", ""))
+    return {
+        "hosts": form.get("sftp_action_hosts", ""), "username": form.get("sftp_action_username", ""),
+        "password": password, "port": form.get("sftp_action_port", "22"),
+        "remote_paths": form.get("sftp_action_remote_paths", ""),
+        "filename_pattern": form.get("sftp_action_filename_pattern", SFTP_DEFAULT_FILENAME_PATTERN),
+        "destination_mode": form.get("sftp_action_destination_mode", "run"),
+        "datastore_folder": form.get("sftp_action_datastore_folder", ""),
+        "per_host_folders": "sftp_action_per_host_folders" in form,
+        "allow_unknown_hosts": "sftp_action_allow_unknown_hosts" in form,
+        "protocol": form.get("sftp_action_protocol", "sftp"),
+    }
+
+
 def _parse_syslog_form(form: Mapping[str, Any], _existing: dict[str, Any]) -> dict[str, Any]:
     return {"destinations": form.get("syslog_destinations", ""), "protocol": form.get("syslog_protocol", "udp"), "facility": form.get("syslog_facility", "16"), "severity": form.get("syslog_severity", "6"), "hostname": form.get("syslog_hostname", "twn-toolkit"), "app_name": form.get("syslog_app_name", "twn-automation"), "message": form.get("syslog_message", ""), "timeout": form.get("syslog_timeout", "3")}
 
@@ -391,6 +527,7 @@ def _parse_webhook_form(form: Mapping[str, Any], existing: dict[str, Any]) -> di
 def registered_actions() -> tuple[ActionType, ...]:
     return (
         ActionType("ssh.collect", "SSH command collection", "Run a command set on one or more SSH targets and retain the output.", _validate_ssh, _execute_ssh, _parse_ssh_form, ("password",)),
+        ActionType("sftp.fetch", "Remote file collection", "Fetch files from multiple hosts over SFTP, SCP, or FTP into retained run output or the datastore.", _validate_sftp, _execute_sftp, _parse_sftp_form, ("password",)),
         ActionType("syslog.send", "Send syslog message", "Send an RFC 5424 message to one or more UDP or TCP collectors.", _validate_syslog, _execute_syslog, _parse_syslog_form),
         ActionType("webhook.send", "Webhook / API notification", "Send a templated HTTP notification to one or more endpoints.", _validate_webhook, _execute_webhook, _parse_webhook_form, ("headers",)),
     )

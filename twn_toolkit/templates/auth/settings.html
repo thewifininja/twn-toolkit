@@ -2,12 +2,14 @@
 {% block content %}
 <div class="page-head auth-settings-head">
   <p class="eyebrow">Administration</p>
-  <h1>Authentication settings</h1>
+  <h1>Toolkit settings</h1>
 </div>
+<nav class="settings-jump-nav" aria-label="Settings sections"><a href="#server-access">System</a><a href="#operational-limits">Operations</a><a href="#authentication-policy">Authentication</a><a href="#access-profiles">Access profiles</a><a href="#users">Users</a></nav>
+<div class="settings-organizer">
 
 {% if current_user.is_admin %}
-  <div class="settings-grid">
-    <section class="panel auth-settings-panel">
+  <div class="settings-grid settings-auth-group">
+    <section class="panel auth-settings-panel" id="authentication-policy">
       <h2>Authentication policy</h2>
       <p>Configure session expiry and the requirements for newly assigned passwords.</p>
       <form method="post" action="{{ url_for('update_session_settings') }}" class="form auth-policy-form">
@@ -50,7 +52,7 @@
 {% endif %}
 
 {% if current_user.is_admin %}
-  <section class="panel server-access-panel" id="automation-retention">
+  <section class="panel server-access-panel settings-automation-group" id="automation-retention">
     <div class="auth-users-head">
       <h2>Automation history retention</h2>
       <p class="field-note">Limit routine check history while keeping collected action output for as long as your workflows require.</p>
@@ -87,7 +89,19 @@
     </div>
   </section>
 
-  <section class="panel access-profile-panel">
+  <section class="panel server-access-panel settings-operations-group" id="operational-limits">
+    <div class="auth-users-head"><h2>Operational limits</h2><p class="field-note">Bound automation concurrency and storage consumption before routine work can exhaust the host.</p></div>
+    <div class="automation-storage-stats"><div><span>Datastore</span><strong>{{ operational_storage.datastore_display }}</strong><small>{{ operational_settings.datastore_quota_gib }} GiB quota</small></div><div><span>Automation artifacts</span><strong>{{ operational_storage.artifact_display }}</strong><small>{{ operational_settings.automation_artifact_quota_gib }} GiB quota</small></div><div><span>Free disk</span><strong>{{ operational_storage.disk_free_display }}</strong><small>{{ operational_settings.minimum_free_gib }} GiB reserved</small></div></div>
+    <form method="post" action="{{ url_for('update_operational_settings') }}" class="form">
+      <div class="form-grid"><label>Concurrent automation workers<input type="number" name="max_concurrent_automations" min="1" max="32" value="{{ operational_settings.max_concurrent_automations }}" required></label><label>Queued automation runs<input type="number" name="max_queued_automations" min="0" max="200" value="{{ operational_settings.max_queued_automations }}" required></label></div>
+      <label class="check"><input type="checkbox" name="skip_overlapping_automations" {% if operational_settings.skip_overlapping_automations %}checked{% endif %}>Skip a new check when the same automation is still running</label>
+      <div class="form-grid"><label>Datastore quota<input type="number" name="datastore_quota_gib" min="1" max="1024" value="{{ operational_settings.datastore_quota_gib }}" required><small class="field-note">GiB</small></label><label>Automation artifact quota<input type="number" name="automation_artifact_quota_gib" min="1" max="1024" value="{{ operational_settings.automation_artifact_quota_gib }}" required><small class="field-note">GiB</small></label><label>Minimum free disk reserve<input type="number" name="minimum_free_gib" min="0" max="100" value="{{ operational_settings.minimum_free_gib }}" required><small class="field-note">GiB</small></label></div>
+      <button type="submit">Save operational limits</button>
+    </form>
+    <div class="button-row"><a class="button-link secondary" href="{{ url_for('diagnostics') }}">Open System Diagnostics</a></div>
+  </section>
+
+  <section class="panel access-profile-panel settings-profiles-group" id="access-profiles">
     <div class="auth-users-head">
       <h2>Access profiles</h2>
       <p class="field-note">
@@ -193,7 +207,7 @@
 {% endif %}
 
 {% if current_user.is_admin %}
-  <section class="panel server-access-panel">
+  <section class="panel server-access-panel settings-server-group" id="server-access">
     <div class="auth-users-head">
       <h2>Server access</h2>
       <p class="field-note">
@@ -250,7 +264,7 @@
   </section>
 {% endif %}
 
-<section class="panel auth-users-panel">
+<section class="panel auth-users-panel settings-users-group" id="users">
   <div class="auth-users-head">
     <h2>Users</h2>
     <p class="field-note">Password changes use the currently configured policy.</p>
@@ -365,7 +379,7 @@
 </section>
 
 {% if current_user.is_admin %}
-  <section class="panel server-access-panel">
+  <section class="panel server-access-panel settings-backup-group">
     <div class="auth-users-head">
       <h2>Profile backup</h2>
       <p class="field-note">
@@ -375,10 +389,11 @@
     <a class="button-link secondary" href="{{ url_for('backup_settings') }}">Open Backup / Restore</a>
   </section>
 
-  <section class="panel recovery-note">
+  <section class="panel recovery-note settings-recovery-group">
     <h2>Lockout recovery</h2>
     <p>On the server, stop the toolkit and delete <code>instance/auth.json</code>, then start it again.
        The next visit will create a new administrator. Device profiles and credentials are untouched.</p>
   </section>
 {% endif %}
+</div>
 {% endblock %}

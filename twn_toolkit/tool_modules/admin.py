@@ -33,6 +33,14 @@ def register_tools(registry: ToolRegistry) -> None:
             grantable=False,
         )
     )
+    registry.add_tool(
+        ToolLink(
+            "admin.diagnostics", "System Diagnostics",
+            "Review process health, storage, databases, dependencies, migrations, and audit history.",
+            "diagnostics", "administration", "Administration",
+            admin_only=True, grantable=False,
+        )
+    )
     registry.map_endpoints(
         {
             "backup_settings": "admin.settings",
@@ -48,5 +56,8 @@ def register_tools(registry: ToolRegistry) -> None:
             "optimize_automation_database": "admin.settings",
             "export_profile_backup": "admin.settings",
             "import_profile_backup": "admin.settings",
+            "update_operational_settings": "admin.settings",
+            "diagnostics": "admin.diagnostics",
+            "cleanup_orphan_artifacts": "admin.diagnostics",
         }
     )

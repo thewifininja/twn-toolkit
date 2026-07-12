@@ -38,6 +38,41 @@ class AutomationStoreTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
+    def test_binary_run_artifacts_follow_run_lifecycle(self) -> None:
+        automation_id = self.store.save(
+            name="Artifact lifecycle",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition={"type": "manual.trigger", "config": {}},
+            actions=[{"type": "ssh.collect", "config": {
+                "hosts": "192.0.2.10", "username": "admin", "password": "secret",
+                "commands": "show clock", "port": 22, "command_timeout": 300,
+                "allow_unknown_hosts": False, "send_ctrl_y": False,
+            }}],
+            created_by="user-1",
+        )
+        staging = Path(tempfile.mkdtemp())
+        source = staging / "config.cfg"
+        source.write_bytes(b"configuration")
+        run_id = self.store.record_run(
+            automation_id,
+            ConditionResult(True, "met", "manual", {}),
+            [ActionResult("success", "fetched", {
+                "transfers": [],
+                "_artifact_sources": [{
+                    "source_path": str(source), "filename": "config.cfg", "size": 13,
+                }],
+            })],
+        )
+        run = self.store.get_run(run_id)
+        artifact = run["results"][0]["output"]["artifacts"][0]
+        self.assertEqual(self.store.run_artifact(run_id, artifact["artifact_path"]).read_bytes(), b"configuration")
+        self.assertFalse(staging.exists())
+        self.store.delete_run(run_id)
+        self.assertFalse((self.store.artifact_root / run_id).exists())
+
     def save(self, trigger_after: int = 2, recover_after: int = 2) -> str:
         return self.store.save(
             name="Branch outage collection",
@@ -931,6 +966,49 @@ class AutomationRouteTests(unittest.TestCase):
 
 
 class AutomationRegistryTests(unittest.TestCase):
+    def test_sftp_action_can_retain_or_store_fetched_files(self) -> None:
+        action = AUTOMATION_REGISTRY.actions["sftp.fetch"]
+        base = {
+            "hosts": "Core Switch = 192.0.2.10", "remote_paths": "/config.cfg",
+            "username": "admin", "password": "secret", "port": 22,
+            "allow_unknown_hosts": False,
+            "filename_pattern": "{identity}-{filename}",
+        }
+
+        def fake_fetch(**kwargs):
+            filename = "Core-Switch-config.cfg"
+            (kwargs["output_dir"] / filename).write_bytes(b"config")
+            return [{
+                "host": "192.0.2.10", "host_label": "Core Switch",
+                "remote_path": "/config.cfg", "status": "success",
+                "filename": filename, "size": 6, "error": "",
+            }]
+
+        with tempfile.TemporaryDirectory() as instance, patch(
+            "twn_toolkit.automation_types.actions.fetch_ssh_files",
+            side_effect=fake_fetch,
+        ):
+            retained = action.execute(
+                {**base, "destination_mode": "run", "_instance_path": instance},
+                ConditionResult(True, "met", "manual", {}),
+            )
+            self.assertEqual(retained.status, "success")
+            source = Path(retained.output["_artifact_sources"][0]["source_path"])
+            self.assertEqual(source.read_bytes(), b"config")
+            source.unlink()
+            source.parent.rmdir()
+
+            stored = action.execute(
+                {**base, "destination_mode": "datastore", "datastore_folder": "",
+                 "per_host_folders": True, "_instance_path": instance},
+                ConditionResult(True, "met", "manual", {}),
+            )
+            self.assertEqual(stored.status, "success")
+            self.assertEqual(
+                stored.output["transfers"][0]["stored_path"],
+                "Core-Switch/Core-Switch-config.cfg",
+            )
+
     def test_certificate_condition_applies_expiry_and_validation_policy(self) -> None:
         condition = AUTOMATION_REGISTRY.conditions["certificate.health"]
         certificate = {

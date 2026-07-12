@@ -13,9 +13,20 @@ SCHEME_FILE="$INSTANCE/twn-toolkit.scheme"
 HOST_FILE="$INSTANCE/twn-toolkit.host"
 PORT_FILE="$INSTANCE/twn-toolkit.port"
 AUTOMATION_PIDFILE="$INSTANCE/twn-automation.pid"
+SUPERVISOR_PIDFILE="$INSTANCE/twn-supervisor.pid"
+TFTP_PIDFILE="$INSTANCE/twn-tftp.pid"
+SSH_TRANSFER_PIDFILE="$INSTANCE/twn-ssh-transfer.pid"
+FTP_PIDFILE="$INSTANCE/twn-ftp.pid"
 ACCESS_LOG="$INSTANCE/twn-toolkit-access.log"
 ERROR_LOG="$INSTANCE/twn-toolkit-error.log"
 AUTOMATION_LOG="$INSTANCE/twn-automation.log"
+SUPERVISOR_LOG="$INSTANCE/twn-supervisor.log"
+TFTP_LOG="$INSTANCE/twn-tftp.log"
+TFTP_SETTINGS="$INSTANCE/tftp_settings.json"
+SSH_TRANSFER_LOG="$INSTANCE/twn-ssh-transfer.log"
+SSH_TRANSFER_SETTINGS="$INSTANCE/ssh_transfer_settings.json"
+FTP_LOG="$INSTANCE/twn-ftp.log"
+FTP_SETTINGS="$INSTANCE/ftp_settings.json"
 SERVER_SETTINGS="$INSTANCE/server_settings.json"
 PREVIOUS_SERVER_SETTINGS="$INSTANCE/server_settings.previous.json"
 TLS_DIR="$INSTANCE/tls"
@@ -153,6 +164,81 @@ automation_is_running() {
   [ -f "$AUTOMATION_PIDFILE" ] && kill -0 "$(cat "$AUTOMATION_PIDFILE")" 2>/dev/null
 }
 
+supervisor_is_running() {
+  [ -f "$SUPERVISOR_PIDFILE" ] && kill -0 "$(cat "$SUPERVISOR_PIDFILE")" 2>/dev/null
+}
+
+managed_worker_is_running() {
+  [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null
+}
+
+managed_worker_enabled() {
+  [ -f "$1" ] || return 1
+  "$PYTHON" -c 'import json, sys; raise SystemExit(0 if json.load(open(sys.argv[1], encoding="utf-8")).get("enabled") else 1)' "$1" >/dev/null 2>&1
+}
+
+clear_managed_runtime() {
+  if [ -x "$PYTHON" ]; then
+    "$PYTHON" -c 'import importlib, sys; module, function = sys.argv[1].split(":", 1); getattr(importlib.import_module(module), function)(sys.argv[2])' "$1" "$INSTANCE"
+  fi
+}
+
+stop_managed_worker() {
+  worker_pidfile=$1
+  cleanup=$2
+  if ! managed_worker_is_running "$worker_pidfile"; then
+    rm -f "$worker_pidfile"
+    clear_managed_runtime "$cleanup"
+    return
+  fi
+  worker_pid=$(cat "$worker_pidfile")
+  kill "$worker_pid"
+  attempts=0
+  while kill -0 "$worker_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do attempts=$((attempts + 1)); sleep 0.1; done
+  if kill -0 "$worker_pid" 2>/dev/null; then kill -KILL "$worker_pid" 2>/dev/null || true; fi
+  rm -f "$worker_pidfile"
+  clear_managed_runtime "$cleanup"
+}
+
+start_managed_worker() {
+  settings_file=$1
+  worker_pidfile=$2
+  worker_log=$3
+  worker_module=$4
+  worker_label=$5
+  cleanup=$6
+  if ! managed_worker_enabled "$settings_file"; then
+    stop_managed_worker "$worker_pidfile" "$cleanup"
+    return 0
+  fi
+  if managed_worker_is_running "$worker_pidfile"; then return 0; fi
+  rm -f "$worker_pidfile"
+  cd "$ROOT"
+  "$PYTHON" -m "$worker_module" --instance "$INSTANCE" --daemon --pid-file "$worker_pidfile" --log-file "$worker_log"
+  attempts=0
+  while [ "$attempts" -lt 30 ]; do
+    if managed_worker_is_running "$worker_pidfile"; then sleep 0.2; if managed_worker_is_running "$worker_pidfile"; then return 0; fi; fi
+    attempts=$((attempts + 1)); sleep 0.1
+  done
+  echo "The $worker_label service did not start. Check: $worker_log" >&2
+  return 1
+}
+
+tftp_is_running() { managed_worker_is_running "$TFTP_PIDFILE"; }
+tftp_enabled() { managed_worker_enabled "$TFTP_SETTINGS"; }
+start_tftp() { start_managed_worker "$TFTP_SETTINGS" "$TFTP_PIDFILE" "$TFTP_LOG" "twn_toolkit.tftp_worker" "TFTP" "twn_toolkit.tftp:clear_tftp_runtime"; }
+stop_tftp() { stop_managed_worker "$TFTP_PIDFILE" "twn_toolkit.tftp:clear_tftp_runtime"; }
+
+ssh_transfer_is_running() { managed_worker_is_running "$SSH_TRANSFER_PIDFILE"; }
+ssh_transfer_enabled() { managed_worker_enabled "$SSH_TRANSFER_SETTINGS"; }
+start_ssh_transfer() { start_managed_worker "$SSH_TRANSFER_SETTINGS" "$SSH_TRANSFER_PIDFILE" "$SSH_TRANSFER_LOG" "twn_toolkit.ssh_transfer_worker" "SSH transfer" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime"; }
+stop_ssh_transfer() { stop_managed_worker "$SSH_TRANSFER_PIDFILE" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime"; }
+
+ftp_is_running() { managed_worker_is_running "$FTP_PIDFILE"; }
+ftp_enabled() { managed_worker_enabled "$FTP_SETTINGS"; }
+start_ftp() { start_managed_worker "$FTP_SETTINGS" "$FTP_PIDFILE" "$FTP_LOG" "twn_toolkit.ftp_worker" "FTP" "twn_toolkit.ftp_server:clear_ftp_runtime"; }
+stop_ftp() { stop_managed_worker "$FTP_PIDFILE" "twn_toolkit.ftp_server:clear_ftp_runtime"; }
+
 start_automation() {
   if automation_is_running; then
     return
@@ -192,6 +278,28 @@ stop_automation() {
     kill -KILL "$automation_pid" 2>/dev/null || true
   fi
   rm -f "$AUTOMATION_PIDFILE"
+}
+
+start_supervisor() {
+  if supervisor_is_running; then return; fi
+  rm -f "$SUPERVISOR_PIDFILE"
+  cd "$ROOT"
+  "$PYTHON" -m twn_toolkit.supervisor_worker --instance "$INSTANCE" --root "$ROOT" --daemon --pid-file "$SUPERVISOR_PIDFILE" --log-file "$SUPERVISOR_LOG"
+  attempts=0
+  while [ "$attempts" -lt 20 ]; do
+    if supervisor_is_running; then return; fi
+    attempts=$((attempts + 1)); sleep 0.1
+  done
+  echo "The worker supervisor did not start. Check: $SUPERVISOR_LOG" >&2
+  return 1
+}
+
+stop_supervisor() {
+  if ! supervisor_is_running; then rm -f "$SUPERVISOR_PIDFILE"; return; fi
+  supervisor_pid=$(cat "$SUPERVISOR_PIDFILE"); kill "$supervisor_pid"; attempts=0
+  while kill -0 "$supervisor_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do attempts=$((attempts + 1)); sleep 0.1; done
+  if kill -0 "$supervisor_pid" 2>/dev/null; then kill -KILL "$supervisor_pid" 2>/dev/null || true; fi
+  rm -f "$SUPERVISOR_PIDFILE"
 }
 
 requirements_hash() {
@@ -290,8 +398,17 @@ start() {
       SCHEME=$(cat "$SCHEME_FILE")
     fi
     start_automation
+    start_tftp || true
+    start_ssh_transfer || true
+    start_ftp || true
+    start_supervisor || true
     echo "The WiFi Ninja's Toolkit is already running (PID $(cat "$PIDFILE"))."
     echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
+    if tftp_is_running; then
+      echo "TFTP service is running (PID $(cat "$TFTP_PIDFILE"))."
+    fi
+    if ssh_transfer_is_running; then echo "SSH transfer service is running (PID $(cat "$SSH_TRANSFER_PIDFILE"))."; fi
+    if ftp_is_running; then echo "FTP service is running (PID $(cat "$FTP_PIDFILE"))."; fi
     show_access_urls
     return
   fi
@@ -342,8 +459,30 @@ start() {
   while [ "$attempts" -lt 30 ]; do
     if is_running; then
       start_automation
+      tftp_started=0
+      if start_tftp; then tftp_started=1; fi
+      ssh_transfer_started=0
+      if start_ssh_transfer; then ssh_transfer_started=1; fi
+      ftp_started=0
+      if start_ftp; then ftp_started=1; fi
+      start_supervisor || true
       echo "Started The WiFi Ninja's Toolkit (PID $(cat "$PIDFILE"))."
       echo "Started automation scheduler (PID $(cat "$AUTOMATION_PIDFILE"))."
+      if tftp_is_running; then
+        echo "Started TFTP service (PID $(cat "$TFTP_PIDFILE"))."
+      elif tftp_enabled && [ "$tftp_started" -eq 0 ]; then
+        echo "Warning: TFTP is enabled but did not start. Check: $TFTP_LOG" >&2
+      fi
+      if ssh_transfer_is_running; then
+        echo "Started SSH transfer service (PID $(cat "$SSH_TRANSFER_PIDFILE"))."
+      elif ssh_transfer_enabled && [ "$ssh_transfer_started" -eq 0 ]; then
+        echo "Warning: SSH transfer service is enabled but did not start. Check: $SSH_TRANSFER_LOG" >&2
+      fi
+      if ftp_is_running; then
+        echo "Started FTP service (PID $(cat "$FTP_PIDFILE"))."
+      elif ftp_enabled && [ "$ftp_started" -eq 0 ]; then
+        echo "Warning: FTP is enabled but did not start. Check: $FTP_LOG" >&2
+      fi
       printf "%s\n" "$SCHEME" > "$SCHEME_FILE"
       printf "%s\n" "$HOST" > "$HOST_FILE"
       printf "%s\n" "$PORT" > "$PORT_FILE"
@@ -366,12 +505,20 @@ stop() {
   if ! is_running; then
     rm -f "$PIDFILE"
     rm -f "$SCHEME_FILE"
+    stop_supervisor
     stop_automation
+    stop_tftp
+    stop_ssh_transfer
+    stop_ftp
     echo "The WiFi Ninja's Toolkit is not running."
     return
   fi
 
+  stop_supervisor
   stop_automation
+  stop_tftp
+  stop_ssh_transfer
+  stop_ftp
   pid=$(cat "$PIDFILE")
   kill "$pid"
   attempts=0
@@ -417,6 +564,32 @@ status() {
       echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
     else
       echo "Automation scheduler is not running." >&2
+    fi
+    if supervisor_is_running; then
+      echo "Worker supervisor is running (PID $(cat "$SUPERVISOR_PIDFILE"))."
+    else
+      echo "Worker supervisor is not running." >&2
+    fi
+    if tftp_is_running; then
+      echo "TFTP service is running (PID $(cat "$TFTP_PIDFILE"))."
+    elif tftp_enabled; then
+      echo "TFTP service is enabled but not running." >&2
+    else
+      echo "TFTP service is disabled."
+    fi
+    if ssh_transfer_is_running; then
+      echo "SSH transfer service is running (PID $(cat "$SSH_TRANSFER_PIDFILE"))."
+    elif ssh_transfer_enabled; then
+      echo "SSH transfer service is enabled but not running." >&2
+    else
+      echo "SSH transfer service is disabled."
+    fi
+    if ftp_is_running; then
+      echo "FTP service is running (PID $(cat "$FTP_PIDFILE"))."
+    elif ftp_enabled; then
+      echo "FTP service is enabled but not running." >&2
+    else
+      echo "FTP service is disabled."
     fi
     show_access_urls
   else
@@ -500,6 +673,42 @@ logs() {
     echo "Automation scheduler log:"
     tail -n 100 "$AUTOMATION_LOG"
   fi
+  if [ -f "$SUPERVISOR_LOG" ]; then
+    echo "Worker supervisor log:"
+    tail -n 100 "$SUPERVISOR_LOG"
+  fi
+  if [ -f "$TFTP_LOG" ]; then
+    echo "TFTP service log:"
+    tail -n 100 "$TFTP_LOG"
+  fi
+  if [ -f "$SSH_TRANSFER_LOG" ]; then
+    echo "SSH transfer service log:"
+    tail -n 100 "$SSH_TRANSFER_LOG"
+  fi
+  if [ -f "$FTP_LOG" ]; then
+    echo "FTP service log:"
+    tail -n 100 "$FTP_LOG"
+  fi
+}
+
+tftp_restart() {
+  stop_tftp
+  start_tftp
+}
+
+ssh_transfer_restart() {
+  stop_ssh_transfer
+  start_ssh_transfer
+}
+
+ftp_restart() {
+  stop_ftp
+  start_ftp
+}
+
+automation_restart() {
+  stop_automation
+  start_automation
 }
 
 fix_permissions() {
@@ -604,6 +813,18 @@ case "${1:-}" in
   web-restart)
     web_restart
     ;;
+  tftp-restart)
+    tftp_restart
+    ;;
+  ssh-transfer-restart)
+    ssh_transfer_restart
+    ;;
+  ftp-restart)
+    ftp_restart
+    ;;
+  automation-restart)
+    automation_restart
+    ;;
   enable-https)
     shift
     enable_https "$@"
@@ -612,7 +833,7 @@ case "${1:-}" in
     disable_https
     ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|status|logs|enable-https|disable-https|fix-permissions|adminreset|reset-data}" >&2
+    echo "Usage: ./twn {start|stop|restart|status|logs|enable-https|disable-https|fix-permissions|adminreset|reset-data|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
     exit 2
     ;;
 esac

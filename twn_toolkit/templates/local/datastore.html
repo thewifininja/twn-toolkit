@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="home-hero datastore-hero">
+  <div>
+    <p class="eyebrow">Local tools</p>
+    <h1>Datastore</h1>
+    <p>Contained file storage for the toolkit, future transfer services, and reusable tool inputs.</p>
+  </div>
+  <div class="home-hero-card datastore-usage" aria-label="Datastore usage">
+    <strong>{{ usage.size_display }}</strong>
+    <span>{{ usage.files }} file{{ '' if usage.files == 1 else 's' }} · {{ usage.folders }} folder{{ '' if usage.folders == 1 else 's' }}</span>
+  </div>
+</section>
+
+<section class="panel datastore-panel">
+  <div class="datastore-toolbar">
+    <nav class="datastore-breadcrumbs" aria-label="Datastore folder path">
+      {% for crumb in listing.breadcrumbs %}
+        {% if not loop.first %}<span aria-hidden="true">/</span>{% endif %}
+        {% if loop.last %}<strong>{{ crumb.name }}</strong>{% else %}<a href="{{ url_for('local_datastore', path=crumb.path) }}">{{ crumb.name }}</a>{% endif %}
+      {% endfor %}
+    </nav>
+    <div class="datastore-toolbar-actions">
+      <details class="datastore-create-control">
+        <summary class="button-link secondary">New folder</summary>
+        <form method="post" action="{{ url_for('create_datastore_folder') }}" class="form">
+          <input type="hidden" name="path" value="{{ listing.path }}">
+          <label>Folder name
+            <input name="name" maxlength="255" required autofocus>
+          </label>
+          <button type="submit">Create folder</button>
+        </form>
+      </details>
+      <div class="datastore-view-toggle" role="group" aria-label="Datastore view">
+        <button type="button" class="secondary active" data-datastore-view="list" aria-pressed="true" title="List view">☷ <span>List</span></button>
+        <button type="button" class="secondary" data-datastore-view="grid" aria-pressed="false" title="Grid view">▦ <span>Grid</span></button>
+      </div>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('upload_datastore_files', path=listing.path) }}" enctype="multipart/form-data" class="datastore-upload-dropzone" data-datastore-upload data-loading-message="Uploading files…">
+    <input type="hidden" name="path" value="{{ listing.path }}">
+    <input id="datastore-upload-input" type="file" name="files" multiple required hidden>
+    <label for="datastore-upload-input">
+      <strong>Drop files here to upload</strong>
+      <span>or choose one or more files · {{ max_upload_display }} maximum per request</span>
+    </label>
+  </form>
+
+  <div class="datastore-bulk-toolbar" data-datastore-bulk-toolbar hidden>
+    <label class="check datastore-selection-control"><input type="checkbox" data-datastore-select-all> <span>Select all items</span></label>
+    <strong><span data-datastore-selected-count>0</span> selected</strong>
+    <label>Move to
+      <select data-datastore-destination>
+        {% for folder in datastore_folders %}
+          {% if folder.path != listing.path %}<option value="{{ folder.path }}">{{ folder.name }}</option>{% endif %}
+        {% endfor %}
+      </select>
+    </label>
+    <button type="button" class="secondary" data-datastore-move>Move selected</button>
+    <button type="button" class="danger" data-datastore-delete>Delete selected</button>
+  </div>
+
+  <form method="post" action="{{ url_for('bulk_move_datastore_files') }}" data-datastore-move-form hidden>
+    <input type="hidden" name="path" value="{{ listing.path }}">
+    <input type="hidden" name="paths_json">
+    <input type="hidden" name="destination">
+  </form>
+  <form method="post" action="{{ url_for('bulk_delete_datastore_files') }}" data-datastore-delete-form hidden>
+    <input type="hidden" name="path" value="{{ listing.path }}">
+    <input type="hidden" name="paths_json">
+  </form>
+
+  {% if listing.entries %}
+    <div class="datastore-list" role="list" data-datastore-browser data-view="list">
+      {% for entry in listing.entries %}
+        <article class="datastore-row {{ 'datastore-folder-row' if entry.is_dir else 'datastore-file-row' }}" role="listitem" draggable="true"
+                 data-datastore-entry="{{ entry.path }}"{% if entry.is_dir %} data-datastore-folder="{{ entry.path }}"{% endif %}>
+          <label class="datastore-select-file datastore-selection-control" aria-label="Select {{ entry.name }}"><input type="checkbox" value="{{ entry.path }}" data-datastore-select></label>
+          <div class="datastore-entry-icon" aria-hidden="true">
+            {% if entry.is_dir %}
+              <svg class="datastore-folder-icon" viewBox="0 0 24 24" focusable="false">
+                <path d="M3 6.75A1.75 1.75 0 0 1 4.75 5h5.1c.55 0 1.08.26 1.41.7l1.1 1.45h6.89A1.75 1.75 0 0 1 21 8.9v8.35A1.75 1.75 0 0 1 19.25 19H4.75A1.75 1.75 0 0 1 3 17.25V6.75Z"/>
+                <path class="datastore-folder-lip" d="M3.75 9h16.5"/>
+              </svg>
+            {% else %}
+              ▤
+            {% endif %}
+          </div>
+          <div class="datastore-entry-name">
+            {% if entry.is_dir %}
+              <a href="{{ url_for('local_datastore', path=entry.path) }}"><strong>{{ entry.name }}</strong></a>
+            {% else %}
+              <a href="{{ url_for('download_datastore_file', path=entry.path) }}"><strong>{{ entry.name }}</strong></a>
+            {% endif %}
+            <small>{{ entry.size_display }}</small>
+          </div>
+          <time datetime="{{ entry.modified_at }}">{{ entry.modified_display }}</time>
+          <details class="datastore-entry-actions">
+            <summary class="datastore-overflow-button" aria-label="Manage {{ entry.name }}" title="Manage {{ entry.name }}">
+              <span aria-hidden="true">⋯</span>
+            </summary>
+            <div>
+              {% if not entry.is_dir %}
+                <a class="button-link secondary" href="{{ url_for('download_datastore_file', path=entry.path) }}">Download</a>
+              {% endif %}
+              <form method="post" action="{{ url_for('rename_datastore_entry') }}" class="datastore-rename-form">
+                <input type="hidden" name="path" value="{{ entry.path }}">
+                <label>Rename
+                  <input name="name" maxlength="255" value="{{ entry.name }}" required>
+                </label>
+                <button type="submit" class="secondary">Rename</button>
+              </form>
+              <form method="post" action="{{ url_for('delete_datastore_entry') }}" onsubmit="return confirm('Delete {{ entry.name }}?{% if entry.is_dir %} The folder must be empty.{% endif %}')">
+                <input type="hidden" name="path" value="{{ entry.path }}">
+                <button type="submit" class="danger">Delete</button>
+              </form>
+            </div>
+          </details>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state datastore-empty-state" data-datastore-browser data-view="list">
+      <strong>This folder is empty.</strong>
+      <p>Upload a file or create a folder to begin organizing the local datastore.</p>
+    </div>
+  {% endif %}
+</section>
+
+<section class="panel datastore-boundary-note">
+  <h2>Contained by design</h2>
+  <p>Files live beneath <code>instance/datastore/</code>. The manager does not follow symbolic links, expose other server paths, overwrite existing names, or recursively delete populated folders.</p>
+</section>
+<script src="{{ url_for('static', filename='datastore.js') }}"></script>
+{% endblock %}

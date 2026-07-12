@@ -200,6 +200,17 @@ body {
   color: #d9a515;
 }
 
+@media (hover: none), (pointer: coarse) {
+  .side-nav-favorite-button {
+    opacity: 0.55;
+    transform: none;
+  }
+
+  .side-nav-favorite-button.active {
+    opacity: 1;
+  }
+}
+
 .side-nav-home {
   background: var(--card-tint);
   border: 1px solid var(--line);
@@ -3186,6 +3197,13 @@ button.danger {
   margin: -6px 0 0;
 }
 
+.inline-label-note {
+  color: var(--muted);
+  display: inline;
+  font-size: inherit;
+  font-weight: 600;
+}
+
 .packet-replay-note {
   margin: 8px 0 0;
 }
@@ -3794,11 +3812,699 @@ button.danger {
   margin: 0;
 }
 
+.datastore-hero {
+  align-items: stretch;
+}
+
+.datastore-usage {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.2rem;
+  justify-items: end;
+}
+
+.datastore-usage strong {
+  font-size: 1.45rem;
+}
+
+.datastore-usage span,
+.datastore-row time,
+.datastore-entry-name small {
+  color: var(--muted);
+}
+
+.datastore-panel {
+  padding: 0;
+}
+
+.datastore-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1.25rem;
+}
+
+.datastore-breadcrumbs,
+.datastore-toolbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.datastore-view-toggle {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.datastore-view-toggle button {
+  min-height: 40px;
+  padding: 0.55rem 0.75rem;
+}
+
+.datastore-view-toggle button.active {
+  background: var(--nav-raised);
+  color: #fff;
+}
+
+.datastore-upload-dropzone {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 5%);
+  border-bottom: 1px dashed var(--line);
+  border-top: 1px dashed var(--line);
+  padding: 0.85rem 1.25rem;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.datastore-upload-dropzone.drag-active {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 16%);
+  border-color: var(--brand-green-dark);
+}
+
+.datastore-upload-dropzone label {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  text-align: center;
+}
+
+.datastore-upload-dropzone span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.datastore-bulk-toolbar {
+  align-items: end;
+  background: var(--nav-raised);
+  color: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  padding: 0.75rem 1.25rem;
+}
+
+.datastore-bulk-toolbar[hidden] {
+  display: none;
+}
+
+.datastore-bulk-toolbar label {
+  color: inherit;
+}
+
+.datastore-bulk-toolbar label:not(.check) {
+  margin-left: auto;
+}
+
+.datastore-bulk-toolbar select {
+  min-width: 180px;
+}
+
+.datastore-create-control,
+.datastore-entry-actions {
+  position: relative;
+}
+
+.datastore-create-control > summary,
+.datastore-entry-actions > summary {
+  list-style: none;
+}
+
+.datastore-create-control > summary::-webkit-details-marker,
+.datastore-entry-actions > summary::-webkit-details-marker {
+  display: none;
+}
+
+.datastore-create-control[open] > summary,
+.datastore-entry-actions[open] > summary {
+  background: var(--nav-raised);
+  color: #fff;
+}
+
+.datastore-overflow-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 1.25rem;
+  font-weight: 800;
+  height: 2.25rem;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  width: 2.25rem;
+}
+
+.datastore-overflow-button:hover,
+.datastore-overflow-button:focus-visible {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 10%);
+  border-color: var(--line);
+  color: var(--ink);
+  outline: none;
+}
+
+.datastore-entry-actions[open] > .datastore-overflow-button {
+  border-color: var(--nav-raised);
+}
+
+.datastore-overflow-button > span {
+  transform: translateY(-0.18rem);
+}
+
+.datastore-create-control > form,
+.datastore-entry-actions > div {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 16px 38px rgb(25 33 31 / 18%);
+  min-width: min(360px, calc(100vw - 40px));
+  padding: 1rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.55rem);
+  z-index: 20;
+}
+
+.datastore-list {
+  border-top: 1px solid var(--line);
+}
+
+.datastore-row {
+  align-items: center;
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  min-height: 74px;
+  padding: 0.8rem 1.25rem;
+}
+
+.datastore-row[draggable="true"] {
+  cursor: grab;
+}
+
+.datastore-row[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.datastore-row.drag-source {
+  opacity: 0.48;
+}
+
+.datastore-drag-ghost {
+  align-items: center;
+  background: var(--nav-raised);
+  border: 1px solid color-mix(in srgb, var(--brand-green), white 20%);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 24%);
+  color: #fff;
+  display: flex;
+  gap: 0.7rem;
+  left: -10000px;
+  max-width: 260px;
+  min-width: 170px;
+  padding: 0.7rem 0.85rem;
+  pointer-events: none;
+  position: fixed;
+  top: -10000px;
+  z-index: 9999;
+}
+
+.datastore-drag-ghost > span {
+  align-items: center;
+  background: var(--brand-green-dark);
+  border-radius: 50%;
+  display: inline-flex;
+  flex: 0 0 2rem;
+  font-size: 1.2rem;
+  height: 2rem;
+  justify-content: center;
+}
+
+.datastore-drag-ghost > div { display: grid; min-width: 0; }
+.datastore-drag-ghost strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.datastore-drag-ghost small { color: rgb(255 255 255 / 72%); }
+
+.datastore-select-file {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.datastore-selection-control input[type="checkbox"] {
+  appearance: none;
+  aspect-ratio: 1;
+  background: var(--panel);
+  border: 2px solid var(--line-strong, var(--line));
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-grid;
+  flex: 0 0 1.15rem;
+  height: 1.15rem;
+  max-height: 1.15rem;
+  max-width: 1.15rem;
+  margin: 0;
+  min-height: 1.15rem;
+  min-width: 1.15rem;
+  padding: 0;
+  place-content: center;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  width: 1.15rem;
+}
+
+.datastore-selection-control input[type="checkbox"]::before {
+  border-bottom: 2px solid white;
+  border-right: 2px solid white;
+  content: "";
+  height: 0.5rem;
+  transform: rotate(45deg) scale(0);
+  transform-origin: center;
+  transition: transform 120ms ease;
+  width: 0.25rem;
+}
+
+.datastore-selection-control input[type="checkbox"]:checked,
+.datastore-selection-control input[type="checkbox"]:indeterminate {
+  background: var(--brand-green-dark);
+  border-color: var(--brand-green-dark);
+}
+
+.datastore-selection-control input[type="checkbox"]:checked::before,
+.datastore-selection-control input[type="checkbox"]:indeterminate::before {
+  transform: rotate(45deg) scale(1);
+}
+
+.datastore-selection-control input[type="checkbox"]:indeterminate::before {
+  border: 0;
+  border-top: 2px solid white;
+  height: 0;
+  transform: scale(1);
+  width: 0.5rem;
+}
+
+.datastore-selection-control input[type="checkbox"]:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-green), transparent 65%);
+  outline: none;
+}
+
+.datastore-folder-row.drag-target {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 18%);
+  box-shadow: inset 0 0 0 2px var(--brand-green-dark), 0 8px 22px rgb(34 141 57 / 14%);
+  position: relative;
+  transform: translateY(-2px);
+}
+
+.datastore-folder-row.drag-target::after {
+  background: var(--brand-green-dark);
+  border-radius: 999px;
+  color: #fff;
+  content: "Move here";
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.3rem 0.55rem;
+  position: absolute;
+  right: 0.8rem;
+  top: 0.55rem;
+}
+
+.datastore-folder-row.drag-target-invalid {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.datastore-is-dragging .datastore-folder-row:not(.drag-source) {
+  transition: background 120ms ease, box-shadow 120ms ease, opacity 120ms ease, transform 120ms ease;
+}
+
+.datastore-list[data-view="grid"] {
+  background: var(--bg);
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  padding: 1rem;
+}
+
+.datastore-list[data-view="grid"] .datastore-row {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  grid-template-areas:
+    "select icon actions"
+    "name name name"
+    "time time time";
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 180px;
+  padding: 1rem;
+}
+
+.datastore-list[data-view="grid"] .datastore-row + .datastore-row {
+  border-top: 1px solid var(--line);
+}
+
+.datastore-list[data-view="grid"] .datastore-select-file {
+  grid-area: select;
+}
+
+.datastore-list[data-view="grid"] .datastore-entry-icon {
+  align-self: center;
+  font-size: 2.5rem;
+  grid-area: icon;
+  justify-self: center;
+}
+
+.datastore-list[data-view="grid"] .datastore-entry-name {
+  grid-area: name;
+  text-align: center;
+}
+
+.datastore-list[data-view="grid"] time {
+  grid-area: time;
+  justify-self: center;
+}
+
+.datastore-list[data-view="grid"] .datastore-entry-actions {
+  grid-area: actions;
+  justify-self: end;
+}
+
+.datastore-row + .datastore-row {
+  border-top: 1px solid var(--line);
+}
+
+.datastore-entry-icon {
+  color: var(--brand-green-dark);
+  font-size: 1.25rem;
+}
+
+.datastore-folder-icon {
+  display: block;
+  fill: color-mix(in srgb, var(--brand-green), transparent 12%);
+  height: 1.8rem;
+  stroke: var(--brand-green-dark);
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  width: 1.8rem;
+}
+
+.datastore-folder-lip {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.datastore-entry-name {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.datastore-entry-name a {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.datastore-entry-name a:hover,
+.datastore-entry-name a:focus {
+  color: var(--accent);
+}
+
+.datastore-entry-actions > div {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.datastore-entry-actions > div > .button-link,
+.datastore-entry-actions > div > form > button {
+  width: 100%;
+}
+
+.datastore-rename-form {
+  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.75rem 0;
+}
+
+.datastore-empty-state {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+
+.datastore-boundary-note h2 {
+  font-size: 1rem;
+}
+
+.sftp-output-options .check {
+  align-items: start;
+}
+
+.sftp-output-options .check > span,
+.sftp-result > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.sftp-output-options small,
+.sftp-result small {
+  color: var(--muted);
+}
+
+.sftp-results {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.sftp-result {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(180px, 0.8fr) auto minmax(220px, 1fr);
+  padding: 1rem;
+}
+
+.sftp-result code {
+  overflow-wrap: anywhere;
+}
+
+.tftp-panel {
+  padding: 0;
+}
+
+.tftp-service-details > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  list-style: none;
+  padding: 1.25rem 1.4rem;
+}
+
+.tftp-service-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tftp-service-details > summary > span:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.tftp-service-details > summary small {
+  color: var(--muted);
+}
+
+.tftp-service-body {
+  border-top: 1px solid var(--line);
+  padding: 1.4rem;
+}
+
+.tftp-settings-form {
+  margin-top: 1rem;
+}
+
+.tftp-enable-check {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+}
+
+.tftp-listener-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.45fr);
+}
+
+.tftp-permissions {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.tftp-root-policy {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: minmax(0, 0.7fr) minmax(240px, 1fr);
+}
+
+.tftp-root-policy > legend,
+.tftp-root-policy > small {
+  grid-column: 1 / -1;
+}
+
+.tftp-temporary-file {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 1.25rem;
+  padding: 1rem;
+}
+
+.tftp-temporary-file h3,
+.tftp-temporary-file p {
+  margin: 0;
+}
+
+.tftp-temporary-file .datastore-row {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  margin-top: 0.8rem;
+}
+
+.tftp-temporary-upload {
+  margin-top: 0.8rem;
+}
+
+.tftp-history-head {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+}
+
+.tftp-history-head h3,
+.tftp-history-head p {
+  margin: 0;
+}
+
+.tftp-history-list {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 0.85rem;
+  overflow: hidden;
+}
+
+.tftp-history-list article {
+  align-items: center;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 0.8rem 1rem;
+}
+
+.tftp-history-list article + article {
+  border-top: 1px solid var(--line);
+}
+
+.tftp-history-list article > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.tftp-history-list article small,
+.tftp-history-list article time {
+  color: var(--muted);
+}
+
+.tftp-transfer-message {
+  grid-column: 2 / -1;
+}
+
 @media (max-width: 760px) {
   .automation-storage-stats,
   .automation-retention-form,
   .automation-retention-actions {
     grid-template-columns: 1fr;
+  }
+
+  .datastore-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .datastore-usage {
+    justify-items: start;
+  }
+
+  .datastore-toolbar-actions > details {
+    flex: 1 1 auto;
+  }
+
+  .datastore-upload-dropzone label,
+  .datastore-bulk-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .datastore-bulk-toolbar label:not(.check) {
+    margin-left: 0;
+  }
+
+  .datastore-bulk-toolbar button,
+  .datastore-bulk-toolbar select {
+    width: 100%;
+  }
+
+  .datastore-toolbar-actions > details > summary {
+    text-align: center;
+    width: 100%;
+  }
+
+  .datastore-create-control > form {
+    left: 0;
+    right: auto;
+  }
+
+  .datastore-row {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+
+  .datastore-row time {
+    display: none;
+  }
+
+  .tftp-listener-grid,
+  .tftp-root-policy,
+  .tftp-history-list article {
+    grid-template-columns: 1fr;
+  }
+
+  .tftp-root-policy > legend,
+  .tftp-root-policy > small {
+    grid-column: auto;
+  }
+
+  .tftp-history-list article > .pill {
+    justify-self: start;
+  }
+
+  .tftp-transfer-message {
+    grid-column: auto;
+  }
+
+  .tftp-history-head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.75rem;
   }
 }
 
@@ -5159,6 +5865,10 @@ th {
 }
 
 @media (max-width: 640px) {
+  :root {
+    --topbar-height: 67px;
+  }
+
   .schedule-rule-editor-head {
     align-items: stretch;
     flex-direction: column;
@@ -5203,18 +5913,58 @@ th {
   }
 
   .topbar {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 7px;
+    min-height: var(--topbar-height);
+    padding: 7px 12px;
   }
 
   .brand {
-    flex: initial;
+    flex: 0 0 auto;
+    gap: 0;
+  }
+
+  .brand img {
+    height: 42px;
+    width: 42px;
+  }
+
+  .brand span {
+    display: none;
   }
 
   .topnav {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: 7px;
+    justify-content: flex-end;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  .topnav a,
+  .topnav .link-button {
+    font-size: 0.84rem;
+  }
+
+  .theme-toggle {
+    height: 38px;
+    min-height: 38px;
+    padding: 5px 10px;
+  }
+
+  .nav-logout-username {
+    display: none;
+  }
+
+  .sftp-result {
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .sftp-result > div:last-child {
     grid-column: 1 / -1;
-    justify-content: flex-start;
-    margin-left: 0;
   }
 
   .theme-toggle-label {
@@ -5446,3 +6196,29 @@ th {
   background: #3a2022;
   color: #ffaaa6;
 }
+.settings-jump-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+  margin: 0 0 1rem;
+}
+.settings-jump-nav a {
+  background: var(--panel, #fff);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: inherit;
+  padding: .45rem .8rem;
+  text-decoration: none;
+}
+.settings-organizer { display: flex; flex-direction: column; gap: 1rem; }
+.settings-organizer > * { margin-block: 0 !important; }
+.settings-server-group { order: 10; }
+.settings-automation-group { order: 20; }
+.settings-operations-group { order: 30; }
+.settings-operations-group > .button-row { margin-top: 1rem; }
+.settings-backup-group { order: 40; }
+.settings-auth-group { order: 50; }
+.settings-profiles-group { order: 60; }
+.settings-users-group { order: 70; }
+.settings-recovery-group { order: 80; }
+.settings-organizer .settings-grid { display: block; }

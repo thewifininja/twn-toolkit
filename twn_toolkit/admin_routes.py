@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import sqlite3
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -36,6 +40,12 @@ from .server_settings import (
 )
 from .tls_tools import certificate_status, regenerate_self_signed_certificate
 from .tool_catalog import TOOL_BY_ID, grouped_access_tools
+from .audit import AuditStore
+from .operational import OperationalSettingsStore
+from .migrations import MigrationManager
+from .tftp import tftp_process_status
+from .ssh_transfer_server import ssh_transfer_process_status
+from .ftp_server import ftp_process_status
 
 
 def _format_bytes(value: int) -> str:
@@ -47,6 +57,29 @@ def _format_bytes(value: int) -> str:
     return f"{amount:.1f} GiB"
 
 
+def _format_storage_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **summary,
+        "datastore_display": _format_bytes(int(summary["datastore_bytes"])),
+        "artifact_display": _format_bytes(int(summary["artifact_bytes"])),
+        "disk_free_display": _format_bytes(int(summary["disk_free_bytes"])),
+        "disk_total_display": _format_bytes(int(summary["disk_total_bytes"])),
+    }
+
+
+def _process_health(instance: Path, name: str, pid_name: str, heartbeat_name: str) -> dict[str, Any]:
+    pid = None; running = False
+    try:
+        pid = int((instance / pid_name).read_text(encoding="utf-8").strip()); os.kill(pid, 0); running = True
+    except (OSError, ValueError): pass
+    heartbeat_age = None
+    if heartbeat_name:
+        try:
+            heartbeat = json.loads((instance / heartbeat_name).read_text(encoding="utf-8")); heartbeat_age = max(0, int(time.time() - float(heartbeat["updated_at"])))
+        except (OSError, ValueError, KeyError): pass
+    return {"name": name, "running": running, "pid": pid, "heartbeat_age": heartbeat_age}
+
+
 def register_admin_routes(
     app: Flask,
     *,
@@ -55,6 +88,8 @@ def register_admin_routes(
     server_settings_store: ServerSettingsStore,
     backup_catalog: list[dict[str, Any]],
     start_session: Callable[[dict[str, Any]], None],
+    audit_store: AuditStore,
+    operational_store: OperationalSettingsStore,
 ) -> None:
     @app.post("/settings/theme")
     def update_theme():
@@ -103,7 +138,66 @@ def register_admin_routes(
             ),
             current_client_ip=request.remote_addr or "unknown",
             automation_storage=automation_storage,
+            operational_settings=operational_store.get(),
+            operational_storage=_format_storage_summary(operational_store.storage_summary()),
         )
+
+    @app.post("/settings/operations")
+    def update_operational_settings():
+        if not g.current_user.get("is_admin"): return Response("Administrator access is required.", status=403)
+        try:
+            operational_store.save({
+                "max_concurrent_automations": request.form.get("max_concurrent_automations", ""),
+                "max_queued_automations": request.form.get("max_queued_automations", ""),
+                "skip_overlapping_automations": request.form.get("skip_overlapping_automations") == "on",
+                "datastore_quota_gib": request.form.get("datastore_quota_gib", ""),
+                "automation_artifact_quota_gib": request.form.get("automation_artifact_quota_gib", ""),
+                "minimum_free_gib": request.form.get("minimum_free_gib", ""),
+            })
+        except ValueError as exc: flash(str(exc), "error")
+        else: flash("Operational limits saved. Scheduler concurrency changes apply after toolkit restart.", "success")
+        return redirect(url_for("settings", _anchor="operational-limits"))
+
+    @app.get("/settings/diagnostics")
+    def diagnostics():
+        if not g.current_user.get("is_admin"): return Response("Administrator access is required.", status=403)
+        instance = Path(app.instance_path)
+        processes = [
+            _process_health(instance, "Web service", "twn-toolkit.pid", ""),
+            _process_health(instance, "Worker supervisor", "twn-supervisor.pid", "supervisor-heartbeat.json"),
+            _process_health(instance, "Automation scheduler", "twn-automation.pid", "automation-heartbeat.json"),
+            {"name": "TFTP service", **tftp_process_status(app.instance_path)},
+            {"name": "SFTP / SCP service", **ssh_transfer_process_status(app.instance_path)},
+            {"name": "FTP service", **ftp_process_status(app.instance_path)},
+        ]
+        databases = []
+        for path in sorted(instance.glob("*.sqlite3")):
+            status = "ok"
+            try:
+                connection = sqlite3.connect(path, timeout=2)
+                try: status = str(connection.execute("PRAGMA quick_check").fetchone()[0])
+                finally: connection.close()
+            except sqlite3.Error as exc: status = str(exc)
+            databases.append({"name": path.name, "size": _format_bytes(path.stat().st_size), "status": status})
+        dependencies = [{"name": name, "available": bool(shutil.which(name))} for name in ("ping", "traceroute", "tcpdump", "openssl")]
+        audit = audit_store.recent(100)
+        for event in audit:
+            event["recorded_display"] = datetime.fromtimestamp(float(event["recorded_at"])).astimezone().strftime("%b %-d, %Y %-I:%M:%S %p")
+        return render_template(
+            "auth/diagnostics.html", processes=processes, databases=databases,
+            dependencies=dependencies, audit_events=audit,
+            storage=_format_storage_summary(operational_store.storage_summary()),
+            migrations=[*MigrationManager(app.instance_path).applied(), *automation_store.migration_status()],
+            automation_storage=automation_store.storage_stats(),
+            orphan_artifacts=automation_store.orphan_artifact_stats(),
+        )
+
+    @app.post("/settings/diagnostics/cleanup-artifacts")
+    def cleanup_orphan_artifacts():
+        if not g.current_user.get("is_admin"): return Response("Administrator access is required.", status=403)
+        cleaned = automation_store.cleanup_orphan_artifacts()
+        flash(f"Removed {cleaned['count']} orphaned artifact folder(s), reclaiming {_format_bytes(cleaned['bytes'])}.", "success")
+        return redirect(url_for("diagnostics", _anchor="storage-health"))
 
     @app.post("/settings/automation-retention")
     def update_automation_retention():

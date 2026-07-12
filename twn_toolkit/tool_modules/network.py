@@ -149,6 +149,15 @@ def register_tools(registry: ToolRegistry) -> None:
                 risk="advanced",
             ),
             ToolLink(
+                "tools.multi_sftp",
+                "Multi-Transfer",
+                "Fetch files from multiple hosts over SFTP or SCP into the datastore or a one-shot ZIP.",
+                "tools.multi_transfer",
+                "network",
+                "Network Tools",
+                risk="advanced",
+            ),
+            ToolLink(
                 "tools.dns_response",
                 "DNS Lookup Tester",
                 "Compare DNS answers and lookup latency across multiple resolvers.",
@@ -300,5 +309,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "tools.save_radius_profile": "tools.radius_test",
             "tools.delete_radius_profile": "tools.radius_test",
             "tools.multi_ssh": "tools.multi_ssh",
+            "tools.multi_transfer": "tools.multi_sftp",
+            "tools.multi_sftp": "tools.multi_sftp",
         }
     )

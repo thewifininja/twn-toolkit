@@ -40,6 +40,42 @@
       <label class="check"><input name="action_send_ctrl_y" type="checkbox" {% if config.get('send_ctrl_y') or config.get('action_send_ctrl_y') %}checked{% endif %}>Send Ctrl+Y before commands</label>
       </div>
     </div>
+    <div data-action-fields="sftp.fetch" hidden>
+      <p class="field-note">Fetch regular files over SFTP, SCP, or FTP. The encrypted password is write-only. FTP is plaintext and should stay on trusted management networks.</p>
+      {% set sftp_action_protocol = config.get('protocol', config.get('sftp_action_protocol', 'sftp')) %}
+      <label>Transfer protocol<select name="sftp_action_protocol" required data-action-transfer-protocol><option value="sftp" {% if sftp_action_protocol == 'sftp' %}selected{% endif %}>SFTP</option><option value="scp" {% if sftp_action_protocol == 'scp' %}selected{% endif %}>SCP</option><option value="ftp" {% if sftp_action_protocol == 'ftp' %}selected{% endif %}>FTP</option></select></label>
+      <label>Hosts
+        <textarea name="sftp_action_hosts" rows="4" placeholder="Basement Switch = 10.0.0.11&#10;10.0.0.12" required>{{ config.get('hosts', config.get('sftp_action_hosts', '')) }}</textarea>
+        <small class="field-note">Optional friendly names use <code>Name = hostname-or-IP</code>.</small>
+      </label>
+      <div class="form-grid">
+        <label>Username<input name="sftp_action_username" value="{{ config.get('username', config.get('sftp_action_username', '')) }}" required></label>
+        <label>Password<input name="sftp_action_password" type="password" {% if definition_id %}placeholder="Leave blank to keep saved password"{% else %}required{% endif %}></label>
+        <label>Service port<input name="sftp_action_port" type="number" min="1" max="65535" value="{{ config.get('port', config.get('sftp_action_port', '22')) }}" required data-action-transfer-port></label>
+      </div>
+      <label>Remote file paths
+        <textarea name="sftp_action_remote_paths" rows="6" placeholder="/var/log/messages&#10;/data/config.cfg" required>{{ config.get('remote_paths', config.get('sftp_action_remote_paths', '')) }}</textarea>
+        <small class="field-note">The same paths are fetched from every host. Maximum: 200 combined host/file transfers.</small>
+      </label>
+      <label>Filename pattern
+        <input name="sftp_action_filename_pattern" maxlength="240" value="{{ config.get('filename_pattern', config.get('sftp_action_filename_pattern', '{timestamp}-{identity}-{filename}')) }}" required>
+        <small class="field-note">Tokens: <code>{timestamp}</code>, <code>{host}</code>, <code>{label}</code>, <code>{identity}</code>, <code>{filename}</code>, <code>{stem}</code>, and <code>{suffix}</code>. Duplicate names never overwrite.</small>
+      </label>
+      {% set sftp_destination_mode = config.get('destination_mode', config.get('sftp_action_destination_mode', 'run')) %}
+      <fieldset class="choice-group" data-sftp-action-output>
+        <legend>Collection destination</legend>
+        <label class="check"><input type="radio" name="sftp_action_destination_mode" value="run" {% if sftp_destination_mode == 'run' %}checked{% endif %}><span><strong>Collected action run</strong><small>Keep files with the run and include them in Download ZIP. Do not place them in the datastore.</small></span></label>
+        <label class="check"><input type="radio" name="sftp_action_destination_mode" value="datastore" {% if sftp_destination_mode == 'datastore' %}checked{% endif %}><span><strong>Datastore</strong><small>Persist files beneath a selected datastore folder.</small></span></label>
+      </fieldset>
+      <div data-sftp-action-datastore {% if sftp_destination_mode != 'datastore' %}hidden{% endif %}>
+        <label>Datastore folder
+          <select name="sftp_action_datastore_folder">{% for folder in datastore_folders %}<option value="{{ folder.path }}" {% if config.get('datastore_folder', config.get('sftp_action_datastore_folder', '')) == folder.path %}selected{% endif %}>{{ folder.name }}</option>{% endfor %}</select>
+        </label>
+        <label class="check"><input name="sftp_action_per_host_folders" type="checkbox" {% if config.get('per_host_folders') or config.get('sftp_action_per_host_folders') %}checked{% endif %}>Create a friendly-name/host subfolder for each target</label>
+      </div>
+      <label class="check" data-action-ssh-host-key-option><input name="sftp_action_allow_unknown_hosts" type="checkbox" {% if config.get('allow_unknown_hosts') or config.get('sftp_action_allow_unknown_hosts') %}checked{% endif %}>Allow unknown SSH host keys</label>
+      <p class="field-note">Limits: 256 MiB per file and 1 GiB per action run.</p>
+    </div>
     <div data-action-fields="syslog.send" hidden>
       <label>Syslog destinations
         <textarea name="syslog_destinations" rows="4" placeholder="Primary SIEM = syslog.example.com | 514&#10;Backup collector = 192.0.2.20 | 5514" required>{{ config.get('destinations', config.get('syslog_destinations', '')) }}</textarea>

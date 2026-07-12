@@ -44,6 +44,12 @@
   }
 
   button.addEventListener("click", toggle);
+  sidebar.addEventListener("click", (event) => {
+    if (!desktopQuery.matches && event.target.closest("a")) {
+      document.body.classList.remove("sidebar-open");
+      applyState();
+    }
+  });
   desktopQuery.addEventListener("change", () => {
     document.body.classList.remove("sidebar-open");
     if (!desktopQuery.matches) {

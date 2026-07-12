@@ -145,7 +145,7 @@ class AccessProfileTests(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             self.assertIn(b"Access profile deleted.", response.data)
-            self.assertIn(b"Authentication settings", response.data)
+            self.assertIn(b"Toolkit settings", response.data)
             updated_admin = store.get_user("admin")
             self.assertIsNotNone(updated_admin)
             self.assertEqual(updated_admin["session_version"], original_session_version)

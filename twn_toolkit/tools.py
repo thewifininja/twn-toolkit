@@ -19,6 +19,7 @@ from .port_scanner_routes import register_port_scanner_routes
 from .radius_routes import register_radius_routes
 from .snmp_routes import register_snmp_routes
 from .speed_test_routes import register_speed_test_routes
+from .sftp_routes import register_sftp_routes
 from .ssh_routes import register_ssh_routes
 from .subnet_routes import register_subnet_routes
 from .syslog_routes import register_syslog_routes
@@ -40,6 +41,7 @@ register_port_scanner_routes(tools_bp)
 register_radius_routes(tools_bp)
 register_snmp_routes(tools_bp)
 register_speed_test_routes(tools_bp)
+register_sftp_routes(tools_bp)
 register_ssh_routes(tools_bp)
 register_subnet_routes(tools_bp)
 register_syslog_routes(tools_bp)

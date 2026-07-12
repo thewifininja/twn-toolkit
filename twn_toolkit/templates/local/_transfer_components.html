@@ -1,0 +1,25 @@
+{% macro transfer_history(title, note, transfers, clear_endpoint, confirm_text, empty_text, show_protocol=false) -%}
+<div class="tftp-history-head">
+  <div><h3>{{ title }}</h3><p class="field-note">{{ note }}</p></div>
+  {% if current_user.is_admin and transfers %}
+    <form method="post" action="{{ url_for(clear_endpoint) }}" onsubmit="return confirm('{{ confirm_text }}')"><button type="submit" class="danger secondary">Clear history</button></form>
+  {% endif %}
+</div>
+{% if transfers %}
+  <div class="tftp-history-list">
+    {% for transfer in transfers %}
+      <article>
+        <span class="pill {{ 'success' if transfer.status == 'success' else 'error' }}">{{ transfer.status }}</span>
+        <div>
+          <strong>{{ transfer.filename }}</strong>
+          <small>{% if show_protocol %}{{ transfer.protocol }} {% endif %}{{ transfer.operation }} · {{ transfer.client }} · {{ transfer.size_display }}{% if transfer.stored_filename and transfer.stored_filename != transfer.filename %} · stored as {{ transfer.stored_filename }}{% endif %}</small>
+        </div>
+        <time>{{ transfer.started_display }}</time>
+        {% if transfer.message %}<small class="tftp-transfer-message">{{ transfer.message }}</small>{% endif %}
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="side-nav-empty">{{ empty_text }}</p>
+{% endif %}
+{%- endmacro %}

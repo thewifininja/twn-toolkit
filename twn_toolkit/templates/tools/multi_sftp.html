@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel">
+  <div class="panel-head">
+    <p class="eyebrow">Network tools</p>
+    <h1>Multi-Transfer</h1>
+    <p>Fetch the same file set from multiple hosts using SFTP, SCP, or FTP, then retain it in the datastore or download an ephemeral ZIP.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  <form class="form" method="post" autocomplete="off" data-loading-message="Fetching files from multiple hosts…" data-sftp-form>
+    <label>Transfer protocol
+      <select name="protocol" required data-transfer-protocol>
+        <option value="sftp" {% if form.protocol == 'sftp' %}selected{% endif %}>SFTP</option>
+        <option value="scp" {% if form.protocol == 'scp' %}selected{% endif %}>SCP</option>
+        <option value="ftp" {% if form.protocol == 'ftp' %}selected{% endif %}>FTP</option>
+      </select>
+      <small class="field-note">SFTP and SCP use SSH. FTP is plaintext and should be limited to trusted management networks.</small>
+    </label>
+    <label>
+      Hosts
+      <textarea name="hosts" rows="5" placeholder="Basement Switch = 192.0.2.20&#10;core-switch.example.com" required>{{ form.hosts }}</textarea>
+      <small class="field-note">One host per line. Optional friendly names use <code>Name = hostname-or-IP</code>.</small>
+    </label>
+    <div class="form-grid">
+      <label>Username
+        <input name="username" value="{{ form.username }}" required>
+      </label>
+      <label>Password
+        <input name="password" type="password" required>
+      </label>
+      <label>Service port
+        <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required data-transfer-port>
+      </label>
+    </div>
+    <label>
+      Remote file paths
+      <textarea name="remote_paths" rows="6" placeholder="/var/log/messages&#10;/data/config.cfg" required>{{ form.remote_paths }}</textarea>
+      <small class="field-note">One regular remote file per line. The same paths are fetched from every host. Up to 200 combined host/file transfers.</small>
+    </label>
+    <label>
+      Output filename pattern
+      <input name="filename_pattern" maxlength="240" value="{{ form.filename_pattern }}" required>
+      <small class="field-note">Default: <code>{timestamp}-{identity}-{filename}</code>. Available tokens: <code>{timestamp}</code>, <code>{host}</code>, <code>{label}</code>, <code>{identity}</code>, <code>{filename}</code>, <code>{stem}</code>, and <code>{suffix}</code>. Duplicate results receive a numeric suffix and never overwrite one another.</small>
+    </label>
+    <fieldset class="choice-group sftp-output-options">
+      <legend>Where should fetched files go?</legend>
+      <label class="check">
+        <input type="radio" name="output_mode" value="download" {% if form.output_mode == 'download' %}checked{% endif %} data-sftp-output-mode>
+        <span><strong>Fetch and download</strong><small>Build a one-shot ZIP, send it to this browser, then discard the temporary server files.</small></span>
+      </label>
+      <label class="check">
+        <input type="radio" name="output_mode" value="datastore" {% if form.output_mode == 'datastore' %}checked{% endif %} data-sftp-output-mode>
+        <span><strong>Store in the datastore</strong><small>Keep the fetched files for later download, TFTP, or use by other toolkit workflows.</small></span>
+      </label>
+    </fieldset>
+    <label data-sftp-destination {% if form.output_mode != 'datastore' %}hidden{% endif %}>
+      Datastore destination
+      <select name="destination">
+        {% for folder in datastore_folders %}<option value="{{ folder.path }}" {% if form.destination == folder.path %}selected{% endif %}>{{ folder.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="check" data-ssh-host-key-option>
+      <input name="allow_unknown_hosts" type="checkbox" {% if form.allow_unknown_hosts %}checked{% endif %}>
+      Allow unknown SSH host keys for this run
+    </label>
+    <div class="message info compact-message">
+      Files are capped at 256 MiB each and 1 GiB per run. Credentials exist only for this request and are never stored.
+    </div>
+    <div class="button-row">
+      <button type="submit">Fetch Files</button>
+      <a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a>
+    </div>
+  </form>
+</section>
+
+{% if results is not none %}
+<section class="panel tool-panel">
+  <div class="preview-head">
+    <div><h2>{{ form.protocol|upper }} Results</h2><p>{{ results | selectattr('status', 'equalto', 'success') | list | length }} of {{ results | length }} transfer(s) stored.</p></div>
+    <a class="button-link secondary" href="{{ url_for('local_datastore', path=form.destination) }}">Open destination</a>
+  </div>
+  <div class="sftp-results">
+    {% for result in results %}
+      <article class="sftp-result">
+        <div>
+          <strong>{{ result.host_label or result.host }}</strong>
+          {% if result.host_label %}<small>{{ result.host }}</small>{% endif %}
+          <code>{{ result.remote_path }}</code>
+        </div>
+        <span class="pill {{ result.status }}">{{ result.status }}</span>
+        <div>
+          {% if result.status == 'success' %}
+            <a href="{{ url_for('download_datastore_file', path=result.stored_path) }}">{{ result.filename }}</a>
+            <small>{{ result.size_display }}</small>
+          {% else %}
+            <span class="muted">{{ result.error }}</span>
+          {% endif %}
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+<script src="{{ url_for('static', filename='multi-sftp.js') }}"></script>
+{% endblock %}

@@ -14,6 +14,23 @@ conversation compaction and future development sessions.
 - Prefer reusable, systematic UI patterns over tool-specific CSS or markup.
 - Slow server-side actions should use the shared loading presentation and a
   task-specific loading message.
+- Local operational files live beneath owner-only `instance/datastore/` and are
+  managed through the grantable `local.datastore` tool. Keep every future
+  transfer integration and cross-tool file picker constrained to this root;
+  never accept arbitrary server filesystem paths. The managed TFTP worker uses
+  this boundary, is disabled by default, and exposes admin-only listener/write/
+  CIDR policy. Datastore contents, TFTP settings, and transfer history are not
+  profile-backup data.
+- Datastore list/grid preference is browser-local. Multi-file moves and deletes
+  use server-validated batch endpoints; validate the complete batch before any
+  mutation and roll back completed moves after filesystem failure. Internal
+  file drags target datastore folders, while external file drops use the normal
+  bounded multipart upload route.
+- TFTP configuration lives on the separate grantable `local.file_transfers`
+  page. It can scope its namespace to any datastore folder or a single
+  runtime-only download file. Temporary staging must be cleared whenever the
+  service stops. Incoming WRQ naming patterns support only the documented safe
+  timestamp/client/filename tokens and resolve inside the selected root.
 
 ## Activity and dashboard rules
 
@@ -65,7 +82,7 @@ When wiring a tool into metrics:
 Activity instrumentation now covers every registered diagnostic/workflow tool:
 ping, FortiGate/FortiAuthenticator API work, traceroute, SNMP, RADIUS, DNS,
 syslog send/receive, packet replay sends, completed speed tests, TCP scans, NTP,
-DHCP Discover, certificate inspection, manual API requests, Path MTU, Multi-SSH,
+DHCP Discover, certificate inspection, manual API requests, Path MTU, Multi-SSH, Multi-Transfer,
 Subnet Excluder, and What's My IP.
 
 Speed-test helper requests are a special case: latency/download/upload endpoints
@@ -165,7 +182,7 @@ accepted replay frames.
 - Registered condition types are `manual.trigger`, `schedule.calendar`,
   `ping.multi`, `dns.lookup`, `tcp.reachability`, `snmp.value`, and
   `certificate.health`. Registered action types are
-  `ssh.collect`, `syslog.send`, and `webhook.send`. Manual-trigger
+  `ssh.collect`, `sftp.fetch`, `syslog.send`, and `webhook.send`. Manual-trigger
   automations are excluded from due-check claims and expose an explicit Run now
   action. Calendar schedules are intentionally handled by a small scheduler
   adapter because occurrence consumption differs from monitoring state. Other
@@ -231,6 +248,13 @@ accepted replay frames.
 - Action runs have a ZIP download containing summary metadata and per-host SSH
   text output.
 - Collected action runs can be deleted individually or cleared per automation.
+- `sftp.fetch` can write to a selected datastore folder (optionally one folder
+  per host) or stage binary artifacts for the collected run. `record_run()`
+  moves staged files into `instance/automation_artifacts/<run-id>/`, removes
+  staging, and stores only bounded metadata in SQLite. Run delete, clear, and
+  retention pruning must remove matching artifact directories. Download ZIP
+  resolves files through `AutomationStore.run_artifact()`; never trust a stored
+  artifact path directly.
 - Multi-SSH and `ssh.collect` share the same prompt-aware executor. Connection,
   authentication, and banner timeouts remain 8 seconds. Command ceilings default
   to 300 seconds and support an inline `[timeout=N] command` override from 1 to
@@ -238,6 +262,25 @@ accepted replay frames.
   return of the device prompt, not a short quiet period. Timeouts retain partial
   output and stop later commands for that host. Gunicorn's worker timeout is
   3700 seconds so synchronous Multi-SSH can honor that bounded SSH budget.
+- Multi-Transfer uses the request-independent `sftp_tools.fetch_ssh_files` service,
+  which writes into a caller-provided output directory and returns structured
+  per-host/per-path results with SFTP, SCP, and FTP protocol adapters. Routes either persist through
+  `LocalDatastore` or package an ephemeral ZIP. The legacy action type ID remains
+  `sftp.fetch`, but its UI label is SSH file collection and its saved `protocol`
+  defaults to SFTP for compatibility.
+  FTP intentionally uses Python's standard-library client and is visibly marked plaintext.
+  New code should import the protocol-neutral aliases from `transfer_tools`; the
+  `sftp.fetch` action ID and older imports remain compatibility surfaces.
+- `ssh_transfer_worker.py` is the inbound file-transfer-only SSH listener managed
+  by `./twn`. It supports SFTP subsystem and regular-file SCP `-f/-t`, denies
+  shells/arbitrary exec, checks trusted CIDRs before SSH, and authenticates with
+  a password hash. Preserve contained resolution, symlink rejection, atomic
+  `.part` uploads, runtime-root cleanup, and managed process/log integration.
+- A separate `ftp_worker` process provides contained legacy FTP with configurable
+  control/passive ports, hashed authentication, trusted CIDRs, atomic upload
+  rewriting, per-protocol bounded transfer history, total/per-client connection
+  limits, and datastore/runtime-only roots. FTP and SSH uploads must preserve the
+  shared `MAX_UPLOAD_BYTES` ceiling and delete incomplete `.part` files.
 - Both SSH surfaces accept `Friendly Name = hostname-or-IP`. Preserve the
   connection target as `host` and the optional display value as `host_label` in
   execution results. UI output and filenames prefer the label but still expose
@@ -262,6 +305,15 @@ accepted replay frames.
 - Automation creation is administrator-only for the initial vertical slice.
   Granular view/arm/edit/output permissions are a planned extension.
 - See `docs/automations.md` for operations, security, and planned extensions.
+- `OperationalSettingsStore` owns scheduler concurrency/queue/overlap policy and
+  datastore/artifact/free-space limits. Preserve quota enforcement at write time.
+- `supervisor_worker.py` watches scheduler heartbeats and enabled transfer-worker
+  PIDs. The launcher must stop the supervisor before intentionally stopping workers.
+- `MigrationManager` maintains the toolkit-wide migration ledger and creates
+  consistent SQLite snapshots before new numbered migrations. Automation retains
+  its existing internal migration ledger, both shown in System Diagnostics.
+- `AuditStore` records sanitized administrative requests only; never add request
+  bodies, credentials, tokens, or secret headers to audit events.
 
 ## Verification
 

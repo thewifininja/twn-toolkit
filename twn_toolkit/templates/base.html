@@ -56,7 +56,9 @@
             <span class="theme-toggle-label">{{ 'Dark' if user_theme == 'dark' else 'Light' }}</span>
           </button>
           <form method="post" action="{{ url_for('logout') }}" class="nav-logout">
-            <button type="submit" class="link-button">Sign out ({{ current_user.username }})</button>
+            <button type="submit" class="link-button" aria-label="Sign out {{ current_user.username }}">
+              Sign out <span class="nav-logout-username">({{ current_user.username }})</span>
+            </button>
           </form>
         {% endif %}
       </nav>
@@ -112,7 +114,7 @@
                 <details class="side-nav-section" {{ 'open' if group.active else '' }}>
                   <summary>
                     <span>{{ group.label }}</span>
-                    <small>{{ (group.tools|default([])|length) + (group.children|default([])|length) }}</small>
+                    <small>{{ group.count|default((group.tools|default([])|length) + (group.children|default([])|length)) }}</small>
                   </summary>
                   {% if group.tools %}
                     <ul>
@@ -127,16 +129,16 @@
                     <ul class="side-nav-tree">
                       {% for child in group.children %}
                         <li>
-                          <div class="side-nav-parent-row">
+                          {% if child.tool or not child.tools %}<div class="side-nav-parent-row">
                             {% if child.tool %}
                               {{ sidebar_tool_row(child.tool, child.label, true, child.favorite_enabled|default(true)) }}
-                            {% else %}
+                            {% elif not child.tools %}
                               <span class="side-nav-parent-label">
                                 <span class="side-nav-dot" aria-hidden="true"></span>
                                 <span class="side-nav-label">{{ child.label }}</span>
                               </span>
                             {% endif %}
-                          </div>
+                          </div>{% endif %}
 
                           {% if child.children %}
                             <div class="side-nav-nested-groups">
@@ -159,13 +161,16 @@
                           {% endif %}
 
                           {% if child.tools %}
-                            <ul class="side-nav-child-list">
-                              {% for tool in child.tools %}
-                                <li>
-                                  {{ sidebar_tool_row(tool) }}
-                                </li>
-                              {% endfor %}
-                            </ul>
+                            {% if child.tool %}
+                              <ul class="side-nav-child-list">
+                                {% for tool in child.tools %}<li>{{ sidebar_tool_row(tool) }}</li>{% endfor %}
+                              </ul>
+                            {% else %}
+                              <details class="side-nav-subsection" {{ 'open' if child.active else '' }}>
+                                <summary><span>{{ child.label }}</span><small>{{ child.tools|length }}</small></summary>
+                                <ul>{% for tool in child.tools %}<li>{{ sidebar_tool_row(tool) }}</li>{% endfor %}</ul>
+                              </details>
+                            {% endif %}
                           {% endif %}
                         </li>
                       {% endfor %}

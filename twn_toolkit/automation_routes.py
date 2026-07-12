@@ -25,6 +25,7 @@ from flask import (
 from .automation import AutomationEngine, AutomationStore
 from .automation_registry import AUTOMATION_REGISTRY
 from .activity_context import record_current_activity
+from .datastore import LocalDatastore
 from .network_tools import ToolInputError
 from .schedule_tools import describe_schedule_rule, local_timezone_name, schedule_preview
 from .profiles import SNMPHostProfileStore, SNMPOidProfileStore
@@ -103,6 +104,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             form_section=form_section,
             scheduler=_scheduler_status(store.instance_path),
             schedule_default_timezone=local_timezone_name(),
+            datastore_folders=LocalDatastore(store.instance_path).folders(),
         )
 
     @app.get("/automations")
@@ -398,6 +400,15 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                     archive.writestr(
                         f"action-{action_index}/{file_timestamp}-{host_name}.txt",
                         body or "No output captured.\n",
+                    )
+                for artifact in result.get("output", {}).get("artifacts", []):
+                    try:
+                        source = store.run_artifact(run_id, str(artifact["artifact_path"]))
+                    except (KeyError, ValueError):
+                        continue
+                    archive.write(
+                        source,
+                        f"action-{action_index}/files/{_safe_filename(str(artifact.get('filename', source.name)))}",
                     )
         filename = _safe_filename(str(run["automation_name"])) or "automation-run"
         return Response(
