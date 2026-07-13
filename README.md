@@ -1,5 +1,7 @@
 # The WiFi Ninja’s Toolkit
 
+[![CI](https://github.com/thewifininja/twn-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/thewifininja/twn-toolkit/actions/workflows/ci.yml)
+
 ![The WiFi Ninja’s Toolkit dragon](twn_toolkit/static/brand/dragon-mark-128.png)
 
 A local-first web toolkit for network diagnostics, repeatable Fortinet
@@ -334,6 +336,10 @@ Run the complete test suite:
 ```bash
 .venv/bin/python -m unittest discover -s tests
 ```
+
+Changes are developed on focused branches and merged into `main` through pull
+requests after the Ubuntu and macOS CI jobs pass. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the branch, review, and release workflow.
 
 For a local development server with automatic reload, first stop the background
 service and then run:
