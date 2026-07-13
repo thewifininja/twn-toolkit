@@ -109,11 +109,10 @@ accepted replay frames.
   can grow without a destructive migration.
 - If activity volume becomes substantial, add daily rollups and a documented
   raw-sample retention policy before deleting historical samples.
-- Alert the project owner before the next material SQLite schema change. At
-  that point, replace ad-hoc column checks with numbered, transactional
-  migrations recorded per database (version, applied timestamp, description).
-  This migration runner is a pre-1.0 requirement even if no earlier schema
-  change forces it first. Add upgrade tests using snapshots from older schemas.
+- Alert the project owner before a material SQLite schema change. Use the
+  existing numbered, transactional migration ledgers and create consistent
+  pre-change snapshots through `MigrationManager`. Add upgrade tests using
+  representative snapshots from every affected older schema.
 
 ## Versioning and release expectations
 
@@ -125,9 +124,10 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Suggested current milestone is 0.8.0: the toolkit is broad and operationally
-  useful, while automation/API notifications, formal migrations, upgrade-path
-  testing, and release packaging still need hardening before 1.0.
+- Current milestone is 0.9.0: local file services, multi-protocol transfer
+  workflows, formal migrations, operational limits, diagnostics, and worker
+  supervision are implemented. Audit detail, upgrade-path breadth, packaging,
+  and the supported 1.0 compatibility contract still need deliberate hardening.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.

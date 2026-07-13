@@ -14,13 +14,16 @@
     let matches = 0;
     sections.forEach((section) => {
       const topics = [...section.querySelectorAll(".help-topic")];
+      const isReleaseNotes = section.id === "release-notes";
       const headingMatch = section.querySelector("h2")?.textContent.toLocaleLowerCase().includes(query);
       let sectionMatches = 0;
       topics.forEach((topic) => {
         const match = !query || headingMatch || topic.textContent.toLocaleLowerCase().includes(query);
         topic.hidden = !match;
         topic.classList.toggle("help-search-match", Boolean(query) && match);
-        topic.open = query ? match : initialOpenTopics.has(topic);
+        // Release notes can match broad searches and contain a great deal of text.
+        // Keep them visible as a result without letting them dominate the page.
+        topic.open = query ? match && !isReleaseNotes : initialOpenTopics.has(topic);
         if (match) sectionMatches += 1;
       });
       section.hidden = Boolean(query) && sectionMatches === 0;
@@ -30,7 +33,7 @@
     status.classList.toggle("empty", Boolean(query) && matches === 0);
     status.textContent = query
       ? matches
-        ? `${matches} matching topic${matches === 1 ? "" : "s"}. Results are expanded below.`
+        ? `${matches} matching topic${matches === 1 ? "" : "s"}. Matching guide topics are expanded below.`
         : `No help topics match “${input.value.trim()}”.`
       : "";
   };

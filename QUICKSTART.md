@@ -33,7 +33,10 @@ python3 -m venv .venv
 ./twn start
 ```
 
-Open <http://127.0.0.1:5050>.
+Open the HTTPS URL printed by the launcher (normally
+<https://127.0.0.1:5050> on a fresh installation) and continue through the
+self-signed certificate warning. Existing installations retain their selected
+HTTP/HTTPS mode during upgrades.
 
 The service runs in the background. Manage it with:
 

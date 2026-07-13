@@ -78,6 +78,11 @@ to the next future occurrence rather than replaying a backlog.
   verification are explicit, redirects are not followed, and retained response
   previews are capped at 4 KiB per endpoint. JSON templates preserve typed
   boolean/object substitutions for trigger state and evidence.
+- Action: fetch regular files concurrently from named hosts over SFTP, SCP, or
+  FTP. Results can be written beneath a selected datastore folder (optionally
+  grouped per host) or retained as bounded run artifacts for ZIP download.
+  Collision-safe token filenames and per-host/per-path outcomes are preserved
+  for both successful and partial runs.
 - History: retain condition checks, triggers, per-host command output, and
   action status in `instance/automations.sqlite3`.
 - Downloads: each action run can be downloaded as a ZIP containing JSON run
@@ -195,11 +200,10 @@ loops.
 
 ## Planned extensions
 
-- HTTP/API, NTP health, and syslog-pattern condition types.
+- HTTP response health, NTP health, and syslog-pattern condition types.
 - Per-action retry policies and optional explicit retry backoff.
 - Explicit production and out-of-band source-interface binding.
 - Optional repeated collection during a long-lived incident.
-- Retention and disk-quota policy for checks and action artifacts.
 - Granular permissions for viewing, arming, editing, and downloading output.
 - Multiple conditions with `ALL`/`ANY` grouping after the single-condition
   workflow is proven.

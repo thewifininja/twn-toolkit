@@ -93,8 +93,9 @@ service.
   schedule has an explicit timezone and configurable missed-run policy.
 - Trigger concurrent SSH command collection against management targets and
   retain per-host output with the incident run.
-- Fetch files from multiple SFTP hosts into retained run artifacts or a selected
-  datastore folder, with optional per-host subfolders and token-based filenames.
+- Fetch files from multiple SFTP, SCP, or FTP hosts into retained run artifacts
+  or a selected datastore folder, with optional per-host subfolders and
+  token-based filenames.
 - Send templated RFC 5424 syslog notifications to multiple UDP or TCP
   collectors and retain per-destination delivery results.
 - Send encrypted-header Webhook/API notifications with JSON-safe trigger
@@ -106,7 +107,7 @@ service.
 - Pass bounded, non-secret earlier-stage summaries into later Webhook/API
   actions without automatically exposing raw SSH captures or credentials.
 - Download a run as a ZIP containing metadata, per-host text output, and retained
-  SFTP file artifacts.
+  SSH/FTP file artifacts.
 - Delete individual collected runs or clear all collected action data for an
   automation while preserving condition-check history.
 - Run checks in a dedicated scheduler process even when no browser is open.
@@ -167,7 +168,9 @@ python3 -m venv .venv
 ./twn start
 ```
 
-The home page separates Fortinet workflows from vendor-neutral network tools.
+The home page is an operational dashboard. The persistent sidebar organizes
+Fortinet workflows, vendor-neutral network tools, local services, automation,
+and administration according to the signed-in user's access profiles.
 
 ## Local Service
 

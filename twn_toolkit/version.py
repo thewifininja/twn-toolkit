@@ -1,6 +1,52 @@
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.9.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.9.0",
+        "date": "2026-07-13",
+        "title": "Local services, transfer workflows, and operational hardening",
+        "summary": (
+            "A release focused on contained local file services, reusable multi-host "
+            "transfers, richer automation, and safer day-to-day operation."
+        ),
+        "groups": (
+            {
+                "title": "Datastore and local file services",
+                "items": (
+                    "Added a contained Datastore browser with list/grid views, drag-and-drop and bulk uploads, multi-select move/delete/download, folder drop targets, and collision-safe filenames.",
+                    "Added managed TFTP, SFTP/SCP, and FTP services with selectable datastore roots or runtime-only one-file staging, trusted-client networks, bounded transfer history, and safe incoming filename templates.",
+                    "Added atomic uploads, protocol-specific resource limits, persistent SSH host keys, hashed service passwords, passive FTP port controls, and explicit warnings for plaintext protocols.",
+                ),
+            },
+            {
+                "title": "Multi-host transfers and automation",
+                "items": (
+                    "Added Multi-Transfer for concurrent SFTP, SCP, and FTP collection from named hosts into the Datastore or an ephemeral ZIP with per-transfer results.",
+                    "Added reusable SSH/FTP file-collection actions with per-host folders, token-based filenames, datastore output, or retained downloadable action artifacts.",
+                    "Added user-defined action pipelines: actions run in parallel within each stage, stages run sequentially, and bounded earlier-stage results can feed later Webhook/API notifications.",
+                    "Added per-host SNMP AND rules and calculated values, certificate-health conditions, calendar schedules, and richer ICMP/DNS/TCP condition evidence.",
+                ),
+            },
+            {
+                "title": "Operations and reliability",
+                "items": (
+                    "Added global automation worker and queue limits, overlap prevention, check/run retention, datastore and artifact quotas, and a configurable minimum free-disk reserve.",
+                    "Added worker heartbeats and supervision, numbered transactional migrations with pre-change snapshots, System Diagnostics, and a structured secret-free administrative audit trail.",
+                    "Improved launcher access URLs, hostname/FQDN identity, HTTPS-first fresh installs, permission repair, transfer-service recovery, and clearer partial/failure reporting.",
+                    "Added validated and updatable Multi-Host Ping target snapshots so invalid entries do not block valid hosts or mutate an active run while typing.",
+                ),
+            },
+            {
+                "title": "Navigation, Help, and interface",
+                "items": (
+                    "Reorganized the sidebar into functional Network Tool groups, added meaningful icons, and made collapsed navigation hide completely instead of leaving an unusable icon rail.",
+                    "Expanded the built-in Help guide for automation, local services, transfers, operations, and release history, with improved search behavior and consistent topic cards.",
+                    "Added a custom protocol-themed loading visualization with immediate motion, calmer rotating messages, stable text layout, and reduced-motion support.",
+                    "Reorganized Administration settings into coherent system, operations, authentication, access-profile, user, backup, and recovery sections.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.8.0",
         "date": "2026-07-11",
@@ -30,41 +76,18 @@ RELEASE_NOTES = (
                 "title": "Automation",
                 "items": (
                     "Added a dedicated scheduler process with reusable conditions, reusable actions, retained checks, and downloadable action runs.",
-                    "Added manual, calendar, multi-host ICMP, DNS lookup, per-host TCP service, and saved-profile SNMP OID value conditions.",
-                    "Added prompt-aware multi-host SSH collection and RFC 5424 Syslog notification actions.",
-                    "Added encrypted, templated Webhook/API notifications with JSON-safe trigger variables and per-endpoint delivery results.",
+                    "Added manual, calendar, multi-host ICMP, DNS lookup, per-host TCP service, and saved-profile SNMP conditions.",
+                    "Added prompt-aware multi-host SSH collection, RFC 5424 Syslog notifications, and encrypted templated Webhook/API notifications.",
                     "Added one-second monitoring intervals, trigger/recovery debounce, cooldowns, missed-schedule policies, and timezone-aware calendar rules.",
-                    "Added user-defined action stages: actions run in parallel within a stage, stages run sequentially, and bounded earlier-stage results can feed later Webhook/API notifications.",
-                    "Added per-host AND logic and reusable calculated values for SNMP conditions, including percentage, remaining-percentage, difference, and sum formulas over scalar OIDs.",
-                    "Added multi-target certificate health conditions with expiration, hostname, system-trust, chain-order, and connection-failure policies.",
                 ),
             },
             {
-                "title": "Network and Fortinet tooling",
+                "title": "Network, Fortinet, and platform",
                 "items": (
-                    "Expanded FortiGate/FortiAuthenticator profile workflows, managed device exports, rename/reorder tasks, and wireless client history.",
-                    "Added or expanded DNS, SNMP, RADIUS, NTP, traceroute, TCP scan, certificate, Path MTU, DHCP, Syslog, Webhook/API, speed test, and Multi-SSH tools.",
-                    "Made Packet Replay functional across macOS/Linux with multi-packet PCAP replay, VLAN fanout/ranges, rewrites, detailed preview, and profile-based access.",
-                ),
-            },
-            {
-                "title": "Operations and reliability",
-                "items": (
-                    "Added bounded device/API timeouts, shared loading feedback, clearer per-target test results, and responsive card patterns.",
-                    "Improved the launcher with separate web/scheduler status, dependency checks, permission diagnostics, and fix-permissions support.",
-                    "Moved activity tracking to SQLite with time-window queries and retained automatic compatibility for older saved formats.",
-                    "Made generated self-signed HTTPS the default for fresh installations while preserving existing deployments, with strict private-key validation, secure session cookies, and an HTTP fallback switch.",
-                    "Added configurable short instance names and preferred FQDNs for browser titles, sidebar identity, launcher URLs, and explicit self-signed certificate regeneration without DNS lookup validation.",
-                    "Added separate Datastore and File Transfers tools with selectable TFTP roots, runtime-only one-file staging, safe incoming filename templates, trusted-client CIDRs, and transfer history.",
-                    "Added remembered Datastore list/grid views, circular multi-select controls, file/folder bulk move/delete, folder drag targets, and multi-file drag-and-drop uploads.",
-                    "Added Multi-SFTP with concurrent named-host fetches, token-based output filenames, datastore destinations, and ephemeral ZIP downloads with transfer reports.",
-                    "Added reusable SFTP automation actions with datastore/per-host-folder output or binary artifacts retained with downloadable action runs.",
-                    "Evolved Multi-SFTP into Multi-Transfer with selectable SFTP/SCP adapters, a matching SSH file-collection action, and a collapsible Multi-Host Tools navigation group.",
-                    "Added a managed inbound SFTP/SCP service with hashed authentication, trusted networks, contained roots, atomic uploads, filename rewrites, and transfer history.",
-                    "Added FTP to Multi-Transfer and automation file collection, plus a separate contained managed FTP listener with passive ranges, trusted clients, atomic filename rewrites, and explicit plaintext warnings.",
-                    "Hardened transfer services with bounded FTP connections, enforced FTP/SFTP upload ceilings, protocol-specific history retention, legacy FTP servers without SIZE support, and shared worker/route/template lifecycle components.",
-                    "Added global automation concurrency and queue limits, overlap prevention, datastore/artifact quotas, free-space reserves, worker heartbeats and supervision, numbered migration snapshots, system diagnostics, and structured administrative audit history.",
-                    "Reorganized Administration settings into system, operations, authentication, access-profile, user, backup, and recovery sections, and introduced protocol-neutral transfer APIs while retaining legacy identifiers.",
+                    "Expanded FortiGate/FortiAuthenticator workflows, managed-device exports, rename/reorder tasks, and wireless client history.",
+                    "Added or expanded DNS, SNMP, RADIUS, NTP, traceroute, TCP scan, certificate, Path MTU, DHCP, Syslog, Webhook/API, speed-test, and Multi-SSH tools.",
+                    "Made Packet Replay functional across macOS and Linux with multi-packet PCAP replay, VLAN fanout/ranges, rewrites, detailed preview, and profile-based access.",
+                    "Moved activity tracking to SQLite and made generated self-signed HTTPS the default for fresh installations while preserving existing deployments.",
                 ),
             },
         ),

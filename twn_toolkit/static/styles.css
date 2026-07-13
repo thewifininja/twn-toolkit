@@ -899,7 +899,6 @@ button.danger {
 .packet-movers circle {
   fill: var(--brand-green);
   filter: url("#packet-glow");
-  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
