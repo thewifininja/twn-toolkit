@@ -40,9 +40,6 @@
       <span class="subtitle">Fortinet workflows and network diagnostics</span>
       <nav class="topnav">
         {% if current_user %}
-          {% if current_user.is_admin %}
-            <a href="{{ url_for('settings') }}">Settings</a>
-          {% endif %}
           <button
             type="button"
             class="theme-toggle"

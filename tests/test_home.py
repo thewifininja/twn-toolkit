@@ -43,6 +43,8 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Syslog", response.data)
         self.assertIn(b"v0.9.0", response.data)
         self.assertIn(b'href="/help"', response.data)
+        topnav = response.data.split(b'<nav class="topnav">', 1)[1].split(b"</nav>", 1)[0]
+        self.assertNotIn(b"Settings", topnav)
         self.assertIn(b"Packet Replay", response.data)
         self.assertIn(b"FortiGate", response.data)
         self.assertNotIn(b"Find Wireless Client History", response.data)
