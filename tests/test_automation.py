@@ -981,7 +981,8 @@ class AutomationRegistryTests(unittest.TestCase):
             return [{
                 "host": "192.0.2.10", "host_label": "Core Switch",
                 "remote_path": "/config.cfg", "status": "success",
-                "filename": filename, "size": 6, "error": "",
+                "filename": filename, "preferred_filename": "config.cfg",
+                "size": 6, "error": "",
             }]
 
         with tempfile.TemporaryDirectory() as instance, patch(
@@ -1006,8 +1007,55 @@ class AutomationRegistryTests(unittest.TestCase):
             self.assertEqual(stored.status, "success")
             self.assertEqual(
                 stored.output["transfers"][0]["stored_path"],
-                "Core-Switch/Core-Switch-config.cfg",
+                "Core-Switch/config.cfg",
             )
+
+    def test_sftp_action_scopes_duplicate_names_to_each_host_folder(self) -> None:
+        action = AUTOMATION_REGISTRY.actions["sftp.fetch"]
+        config = {
+            "hosts": "First = 192.0.2.10\nSecond = 192.0.2.10",
+            "remote_paths": "/config.cfg", "username": "admin",
+            "password": "secret", "port": 22, "allow_unknown_hosts": False,
+            "filename_pattern": "{filename}", "destination_mode": "datastore",
+            "datastore_folder": "", "per_host_folders": True,
+            "protocol": "ftp",
+        }
+
+        def fake_fetch(**kwargs):
+            results = []
+            for index, label in enumerate(("First", "Second"), 1):
+                staging_name = "config.cfg" if index == 1 else "config-2.cfg"
+                (kwargs["output_dir"] / staging_name).write_bytes(label.encode())
+                results.append({
+                    "host": "192.0.2.10", "host_label": label,
+                    "remote_path": "/config.cfg", "status": "success",
+                    "filename": staging_name, "preferred_filename": "config.cfg",
+                    "size": len(label), "error": "",
+                })
+            return results
+
+        with tempfile.TemporaryDirectory() as instance, patch(
+            "twn_toolkit.automation_types.actions.fetch_ssh_files",
+            side_effect=fake_fetch,
+        ):
+            first = action.execute(
+                {**config, "_instance_path": instance},
+                ConditionResult(True, "met", "manual", {}),
+            )
+            second = action.execute(
+                {**config, "_instance_path": instance},
+                ConditionResult(True, "met", "manual", {}),
+            )
+
+            self.assertEqual(
+                [item["stored_path"] for item in first.output["transfers"]],
+                ["First/config.cfg", "Second/config.cfg"],
+            )
+            self.assertEqual(
+                [item["stored_path"] for item in second.output["transfers"]],
+                ["First/config-2.cfg", "Second/config-2.cfg"],
+            )
+            self.assertEqual(first.summary, "FTP collection succeeded for 2 of 2 transfers.")
 
     def test_certificate_condition_applies_expiry_and_validation_policy(self) -> None:
         condition = AUTOMATION_REGISTRY.conditions["certificate.health"]

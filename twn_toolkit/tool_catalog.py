@@ -17,6 +17,8 @@ class ToolLink:
     risk: str = "standard"
     show_on_home: bool = True
     grantable: bool = True
+    nav_icon: str = "•"
+    nav_group: str = ""
 
 
 class ToolRegistry:
@@ -84,41 +86,57 @@ class ToolRegistry:
 TOOL_CATEGORIES = [
     {
         "id": "fortigate",
+        "icon": "FG",
         "label": "FortiGate / FortiAP / FortiSwitch",
         "description": "Profiles, inventory exports, bulk renaming, switch ordering, and wireless client history.",
         "endpoint": "fortigate_home",
     },
     {
         "id": "fortiauthenticator",
+        "icon": "FA",
         "label": "FortiAuthenticator",
         "description": "MAC device exports, group membership review, and cleanup workflows.",
         "endpoint": "fortiauthenticator_home",
     },
     {
         "id": "network",
+        "icon": "⌁",
         "label": "Network Tools",
         "description": "Vendor-neutral diagnostics that run from the toolkit host or your browser.",
         "endpoint": "tools.index",
     },
     {
         "id": "automation",
+        "icon": "⚙",
         "label": "Automation",
         "description": "Scheduled conditions, response actions, and retained incident output.",
         "endpoint": "automations",
     },
     {
         "id": "local",
+        "icon": "⌂",
         "label": "Local Tools",
         "description": "Toolkit-local storage and contained file-transfer services.",
         "endpoint": "local_datastore",
     },
     {
         "id": "administration",
+        "icon": "⚙",
         "label": "Administration",
         "description": "User settings, access controls, profile backup, and server listener settings.",
         "endpoint": "settings",
     },
 ]
+
+
+NAVIGATION_SUBGROUPS = {
+    "network": (
+        {"id": "addressing", "label": "Addressing & Reachability", "icon": "◎"},
+        {"id": "multi-host", "label": "Multi-Host Tools", "icon": "⇄"},
+        {"id": "services", "label": "Services & Protocols", "icon": "S"},
+        {"id": "traffic", "label": "Traffic & Interfaces", "icon": "≋"},
+    ),
+}
 
 
 def build_registry() -> ToolRegistry:

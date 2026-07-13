@@ -31,6 +31,7 @@ def register_tools(registry: ToolRegistry) -> None:
             admin_only=True,
             risk="advanced",
             grantable=False,
+            nav_icon="⚙",
         )
     )
     registry.map_endpoints(

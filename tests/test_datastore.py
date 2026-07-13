@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -96,6 +97,22 @@ class LocalDatastoreTests(unittest.TestCase):
         with self.assertRaisesRegex(DatastoreError, "into itself"):
             self.store.move_files(["archive"], "archive/nested")
 
+    def test_archive_members_preserve_folders_and_skip_nested_duplicates(self) -> None:
+        self.store.create_folder("", "configs")
+        self.store.create_folder("configs", "empty")
+        self.store.save_upload("configs", "one.txt", io.BytesIO(b"one"))
+        members = self.store.archive_members(
+            ["configs", "configs/one.txt"], ""
+        )
+        self.assertEqual(
+            [(name, is_directory) for _path, name, is_directory in members],
+            [
+                ("configs", True),
+                ("configs/one.txt", False),
+                ("configs/empty", True),
+            ],
+        )
+
 
 class LocalDatastoreRouteTests(unittest.TestCase):
     def test_page_upload_download_and_navigation(self) -> None:
@@ -164,6 +181,35 @@ class LocalDatastoreRouteTests(unittest.TestCase):
             )
             self.assertEqual(deleted.status_code, 302)
             self.assertEqual(store.list("archive")["entries"], [])
+
+    def test_bulk_download_returns_selected_files_and_folders_as_zip(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            store = LocalDatastore(instance)
+            store.create_folder("", "configs")
+            store.create_folder("configs", "empty")
+            store.save_upload("configs", "one.txt", io.BytesIO(b"one"))
+            store.save_upload("", "readme.txt", io.BytesIO(b"readme"))
+
+            response = client.post(
+                "/local/datastore/bulk-download",
+                data={
+                    "path": "",
+                    "paths_json": json.dumps(["configs", "readme.txt"]),
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.mimetype, "application/zip")
+            with zipfile.ZipFile(io.BytesIO(response.data)) as archive:
+                self.assertEqual(
+                    set(archive.namelist()),
+                    {"configs/", "configs/empty/", "configs/one.txt", "readme.txt"},
+                )
+                self.assertEqual(archive.read("configs/one.txt"), b"one")
+                self.assertEqual(archive.read("readme.txt"), b"readme")
+            response.close()
 
     def test_datastore_is_grantable_through_access_profiles(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

@@ -17,7 +17,10 @@
   const applyState = () => {
     const collapsed = document.body.classList.contains("sidebar-collapsed");
     const open = document.body.classList.contains("sidebar-open");
-    button.setAttribute("aria-expanded", desktopQuery.matches ? String(!collapsed) : String(open));
+    const expanded = desktopQuery.matches ? !collapsed : open;
+    button.setAttribute("aria-expanded", String(expanded));
+    button.setAttribute("aria-label", expanded ? "Hide navigation" : "Show navigation");
+    button.setAttribute("title", expanded ? "Hide navigation" : "Show navigation");
   };
 
   const toggle = () => {

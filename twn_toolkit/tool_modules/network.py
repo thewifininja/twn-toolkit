@@ -122,6 +122,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.whats_my_ip",
                 "network",
                 "Network Tools",
+                nav_icon="◎",
+                nav_group="addressing",
             ),
             ToolLink(
                 "tools.subnet_excluder",
@@ -130,6 +132,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.subnet_excluder",
                 "network",
                 "Network Tools",
+                nav_icon="⌗",
+                nav_group="addressing",
             ),
             ToolLink(
                 "tools.ping",
@@ -138,6 +142,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.ping_tool",
                 "network",
                 "Network Tools",
+                nav_icon="↔",
+                nav_group="multi-host",
             ),
             ToolLink(
                 "tools.multi_ssh",
@@ -147,6 +153,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "network",
                 "Network Tools",
                 risk="advanced",
+                nav_icon="⌘",
+                nav_group="multi-host",
             ),
             ToolLink(
                 "tools.multi_sftp",
@@ -156,6 +164,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "network",
                 "Network Tools",
                 risk="advanced",
+                nav_icon="⇄",
+                nav_group="multi-host",
             ),
             ToolLink(
                 "tools.dns_response",
@@ -164,6 +174,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.dns_response",
                 "network",
                 "Network Tools",
+                nav_icon="Aa",
+                nav_group="addressing",
             ),
             ToolLink(
                 "tools.radius_test",
@@ -173,6 +185,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "network",
                 "Network Tools",
                 risk="advanced",
+                nav_icon="◉",
+                nav_group="services",
             ),
             ToolLink(
                 "tools.speed_test",
@@ -181,6 +195,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.speed_test",
                 "network",
                 "Network Tools",
+                nav_icon="≋",
+                nav_group="traffic",
             ),
             ToolLink(
                 "tools.certificate_inspector",
@@ -189,6 +205,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.certificate_inspector",
                 "network",
                 "Network Tools",
+                nav_icon="✓",
+                nav_group="services",
             ),
             ToolLink(
                 "tools.snmp_test",
@@ -197,6 +215,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.snmp_test",
                 "network",
                 "Network Tools",
+                nav_icon="≣",
+                nav_group="services",
             ),
             ToolLink(
                 "tools.port_scanner",
@@ -206,6 +226,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "network",
                 "Network Tools",
                 risk="advanced",
+                nav_icon="#",
+                nav_group="multi-host",
             ),
             ToolLink(
                 "tools.ntp_test",
@@ -214,6 +236,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.ntp_test",
                 "network",
                 "Network Tools",
+                nav_icon="◷",
+                nav_group="addressing",
             ),
             ToolLink(
                 "tools.dhcp_discover",
@@ -223,6 +247,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "network",
                 "Network Tools",
                 risk="advanced",
+                nav_icon="⇣",
+                nav_group="traffic",
             ),
             ToolLink(
                 "tools.packet_replay",
@@ -232,6 +258,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "network",
                 "Network Tools",
                 risk="high",
+                nav_icon="▶",
+                nav_group="traffic",
             ),
             ToolLink(
                 "tools.path_mtu",
@@ -240,6 +268,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.path_mtu",
                 "network",
                 "Network Tools",
+                nav_icon="↕",
+                nav_group="addressing",
             ),
             ToolLink(
                 "tools.api_request",
@@ -248,6 +278,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.api_request",
                 "network",
                 "Network Tools",
+                nav_icon="{}",
+                nav_group="services",
             ),
             ToolLink(
                 "tools.syslog_receiver",
@@ -256,6 +288,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.syslog_receiver",
                 "network",
                 "Network Tools",
+                nav_icon="≡",
+                nav_group="services",
             ),
             ToolLink(
                 "tools.traceroute",
@@ -264,6 +298,8 @@ def register_tools(registry: ToolRegistry) -> None:
                 "tools.traceroute",
                 "network",
                 "Network Tools",
+                nav_icon="⌁",
+                nav_group="addressing",
             ),
         ]
     )

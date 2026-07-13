@@ -12,6 +12,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "local_datastore",
             "local",
             "Local Tools",
+            nav_icon="DB",
         )
     )
     registry.add_tool(
@@ -24,6 +25,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "Local Tools",
             admin_only=True,
             risk="advanced",
+            nav_icon="⇄",
         )
     )
     registry.map_endpoints(
@@ -32,6 +34,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "create_datastore_folder": "local.datastore",
             "upload_datastore_files": "local.datastore",
             "download_datastore_file": "local.datastore",
+            "bulk_download_datastore_files": "local.datastore",
             "rename_datastore_entry": "local.datastore",
             "delete_datastore_entry": "local.datastore",
             "bulk_delete_datastore_files": "local.datastore",

@@ -10,8 +10,10 @@
   const selectAll = document.querySelector("[data-datastore-select-all]");
   const destination = document.querySelector("[data-datastore-destination]");
   const moveButton = document.querySelector("[data-datastore-move]");
+  const downloadButton = document.querySelector("[data-datastore-download]");
   const deleteButton = document.querySelector("[data-datastore-delete]");
   const moveForm = document.querySelector("[data-datastore-move-form]");
+  const downloadForm = document.querySelector("[data-datastore-download-form]");
   const deleteForm = document.querySelector("[data-datastore-delete-form]");
   const uploadInput = upload.querySelector("input[type='file']");
   let dragGhost = null;
@@ -52,9 +54,11 @@
     if (toolbar) toolbar.hidden = paths.length === 0;
     if (count) count.textContent = String(paths.length);
     if (selectAll) {
-      selectAll.checked = selectedInputs.length > 0 && paths.length === selectedInputs.length;
-      selectAll.indeterminate = paths.length > 0 && paths.length < selectedInputs.length;
+      const allSelected = selectedInputs.length > 0 && paths.length === selectedInputs.length;
+      selectAll.textContent = allSelected ? "Deselect all" : "Select all";
+      selectAll.setAttribute("aria-pressed", String(allSelected));
     }
+    if (downloadButton) downloadButton.disabled = paths.length === 0;
     if (moveButton) moveButton.disabled = paths.length === 0 || !destination?.options.length;
     if (deleteButton) deleteButton.disabled = paths.length === 0;
   };
@@ -78,8 +82,9 @@
   }
 
   for (const input of selectedInputs) input.addEventListener("change", updateSelection);
-  selectAll?.addEventListener("change", () => {
-    for (const input of selectedInputs) input.checked = selectAll.checked;
+  selectAll?.addEventListener("click", () => {
+    const allSelected = selectedInputs.length > 0 && selectedInputs.every((input) => input.checked);
+    for (const input of selectedInputs) input.checked = !allSelected;
     updateSelection();
   });
   destination?.addEventListener("change", updateSelection);
@@ -90,6 +95,13 @@
     moveForm.elements.paths_json.value = JSON.stringify(paths);
     moveForm.elements.destination.value = destination.value;
     moveForm.requestSubmit();
+  });
+
+  downloadButton?.addEventListener("click", () => {
+    const paths = selectedPaths();
+    if (!paths.length || !downloadForm) return;
+    downloadForm.elements.paths_json.value = JSON.stringify(paths);
+    downloadForm.requestSubmit();
   });
 
   deleteButton?.addEventListener("click", () => {

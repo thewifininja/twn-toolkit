@@ -5,43 +5,48 @@
   if (!overlay || !message) return;
 
   const quips = [
-    "The toolkit is talking to the gear. Tiny packets are doing tiny packet things.",
-    "Asking the firewall politely. Results may depend on its mood.",
-    "Packets have been dispatched. Clipboards have been warned.",
-    "Consulting the network goblins. They prefer structured data.",
-    "Negotiating with APIs. Everyone is being very professional about it.",
-    "Tiny packets are forming an orderly queue.",
-    "The gear is thinking. We are choosing to call that progress.",
+    "Tiny packets are doing tiny packet things.",
+    "Asking the firewall politely about its current mood.",
+    "Negotiating with APIs. Everyone is being professional.",
     "Shaking the logs gently to see what falls out.",
-    "Rounding up the bits. Some of them are being dramatic.",
-    "Checking under the routing table cushions.",
-    "The toolkit has put on its serious troubleshooting hat.",
-    "Waiting on the gear to finish its little monologue.",
-    "Counting packets without making direct eye contact.",
-    "Asking FortiThings FortiQuestions.",
+    "Checking under the routing table cushions.",
+    "Waiting for the gear to finish its little monologue.",
+    "Counting packets without making direct eye contact.",
+    "Asking FortiThings a few FortiQuestions.",
   ];
 
   let depth = 0;
   let quipTimer = 0;
+  let quipSwapTimer = 0;
   let quipIndex = -1;
 
   function nextQuip() {
     if (!quip) return;
-    quipIndex = (quipIndex + 1) % quips.length;
-    quip.textContent = quips[quipIndex];
+    quip.classList.add("is-changing");
+    window.clearTimeout(quipSwapTimer);
+    quipSwapTimer = window.setTimeout(() => {
+      quipIndex = (quipIndex + 1) % quips.length;
+      quip.textContent = quips[quipIndex];
+      quip.classList.remove("is-changing");
+      quipSwapTimer = 0;
+    }, 220);
   }
 
   function startQuips() {
-    if (!quip || quipTimer) return;
+    if (!quip || quipTimer || document.hidden) return;
     quipIndex = Math.floor(Math.random() * quips.length) - 1;
-    nextQuip();
-    quipTimer = window.setInterval(nextQuip, 4500);
+    quipIndex = (quipIndex + 1) % quips.length;
+    quip.textContent = quips[quipIndex];
+    quip.classList.remove("is-changing");
+    quipTimer = window.setInterval(nextQuip, 8000);
   }
 
   function stopQuips() {
-    if (!quipTimer) return;
-    window.clearInterval(quipTimer);
+    if (quipTimer) window.clearInterval(quipTimer);
+    if (quipSwapTimer) window.clearTimeout(quipSwapTimer);
     quipTimer = 0;
+    quipSwapTimer = 0;
+    quip?.classList.remove("is-changing");
   }
 
   function show(text = "Working on it…") {
@@ -75,5 +80,13 @@
   window.addEventListener("pageshow", () => {
     depth = 0;
     hide();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopQuips();
+    } else if (depth > 0) {
+      startQuips();
+    }
   });
 })();

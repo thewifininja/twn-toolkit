@@ -11,7 +11,7 @@ from twn_toolkit.dashboard_layout import DashboardLayoutStore
 
 class HomePageTests(unittest.TestCase):
     def assert_sidebar_section_open(self, html: str, label: str) -> None:
-        label_index = html.index(f"<span>{label}</span>")
+        label_index = html.index(f">{label}</span>")
         section_index = html.rfind('<details class="side-nav-section"', 0, label_index)
         self.assertNotEqual(section_index, -1)
         section_tag = html[section_index : html.index(">", section_index)]
@@ -75,6 +75,8 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Release notes", response.data)
         self.assertIn(b"v0.8.0", response.data)
         self.assertIn(b"Operational dashboard and automation milestone", response.data)
+        self.assertIn(b"data-help-search-status", response.data)
+        self.assertNotIn(b'class="help-topic release-note" open', response.data)
         self.assertIn(b"Use at your own risk", response.data)
 
     def test_fortinet_pages_show_workflows_without_self_profile_card(self) -> None:
@@ -135,6 +137,29 @@ class HomePageTests(unittest.TestCase):
         self.assert_sidebar_section_open(settings, "Administration")
         self.assertIn('active" href="/settings"', settings)
         self.assertNotIn('/favorites/tools/admin.settings', settings)
+
+    def test_network_sidebar_uses_purpose_groups_and_tool_icons(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+
+            page = client.get("/tools/ping").data.decode()
+
+        self.assert_sidebar_section_open(page, "Network Tools")
+        self.assertIn("Addressing &amp; Reachability", page)
+        self.assertIn("Multi-Host Tools", page)
+        self.assertIn("Services &amp; Protocols", page)
+        self.assertIn("Traffic &amp; Interfaces", page)
+        self.assertIn('<span class="side-nav-icon" aria-hidden="true">↔</span>', page)
+        self.assertNotIn('<span class="side-nav-icon" aria-hidden="true">•</span>', page)
 
     def test_fortigate_profile_test_uses_loading_animation(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

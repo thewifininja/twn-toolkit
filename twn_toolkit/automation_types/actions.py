@@ -165,7 +165,10 @@ def _execute_sftp(config: dict[str, Any], trigger: ConditionResult) -> ActionRes
                         store.create_folder(normalized["datastore_folder"], folder)
                 with (staging / str(item["filename"])).open("rb") as source:
                     saved = _save_sftp_datastore_file(
-                        store, destination, str(item["filename"]), source
+                        store,
+                        destination,
+                        str(item.get("preferred_filename") or item["filename"]),
+                        source,
                     )
                 item["stored_path"] = store.relative(saved)
         else:
@@ -181,7 +184,12 @@ def _execute_sftp(config: dict[str, Any], trigger: ConditionResult) -> ActionRes
         output = {"trigger": trigger.evidence, "transfers": results, "destination_mode": normalized["destination_mode"], "protocol": normalized["protocol"]}
         if artifacts:
             output["_artifact_sources"] = artifacts
-        return ActionResult(status, f"SFTP collection succeeded for {count} of {len(results)} transfers.", output)
+        protocol_label = normalized["protocol"].upper()
+        return ActionResult(
+            status,
+            f"{protocol_label} collection succeeded for {count} of {len(results)} transfers.",
+            output,
+        )
     finally:
         if not keep_staging:
             shutil.rmtree(staging, ignore_errors=True)

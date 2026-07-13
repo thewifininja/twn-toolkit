@@ -240,6 +240,13 @@ def _fetch_sftp_host(
                     raise ToolInputError("Remote file exceeds the 256 MiB per-file limit.")
                 budget.reserve(size)
                 reserved = size
+                preferred_filename = format_sftp_filename(
+                    filename_pattern,
+                    timestamp=timestamp,
+                    host=address,
+                    label=label,
+                    remote_path=remote_path,
+                )
                 filename = _unique_output_name(
                     filename_pattern, timestamp, address, label, remote_path,
                     used_names, name_lock
@@ -259,7 +266,11 @@ def _fetch_sftp_host(
                 os.chmod(temporary, 0o600)
                 temporary.replace(destination)
                 results.append(
-                    _result(address, label, remote_path, "success", filename=filename, size=written)
+                    _result(
+                        address, label, remote_path, "success",
+                        filename=filename, preferred_filename=preferred_filename,
+                        size=written,
+                    )
                 )
             except Exception as exc:
                 if temporary and temporary.exists():
@@ -333,6 +344,13 @@ def _fetch_scp_host(
                     raise ToolInputError("Remote file exceeds the 256 MiB per-file limit.")
                 budget.reserve(size)
                 reserved = size
+                preferred_filename = format_sftp_filename(
+                    filename_pattern,
+                    timestamp=timestamp,
+                    host=address,
+                    label=label,
+                    remote_path=remote_path,
+                )
                 filename = _unique_output_name(
                     filename_pattern, timestamp, address, label, remote_path,
                     used_names, name_lock,
@@ -355,7 +373,10 @@ def _fetch_scp_host(
                 channel.sendall(b"\x00")
                 os.chmod(temporary, 0o600)
                 temporary.replace(destination)
-                results.append(_result(address, label, remote_path, "success", filename=filename, size=size))
+                results.append(_result(
+                    address, label, remote_path, "success",
+                    filename=filename, preferred_filename=preferred_filename, size=size,
+                ))
             except Exception as exc:
                 if temporary and temporary.exists():
                     temporary.unlink()
@@ -396,6 +417,13 @@ def _fetch_ftp_host(
                     reported_size = None
                 if reported_size is not None and (int(reported_size) < 0 or int(reported_size) > SFTP_MAX_FILE_BYTES):
                     raise ToolInputError("Remote file exceeds the 256 MiB per-file limit.")
+                preferred_filename = format_sftp_filename(
+                    filename_pattern,
+                    timestamp=timestamp,
+                    host=address,
+                    label=label,
+                    remote_path=remote_path,
+                )
                 filename = _unique_output_name(filename_pattern, timestamp, address, label, remote_path, used_names, name_lock)
                 destination = output_dir / filename; temporary = output_dir / f".{filename}.part"; written = 0
                 with temporary.open("wb") as target:
@@ -407,7 +435,11 @@ def _fetch_ftp_host(
                         target.write(chunk)
                     ftp.retrbinary(f"RETR {remote_path}", consume, blocksize=1024 * 1024)
                 os.chmod(temporary, 0o600); temporary.replace(destination)
-                results.append(_result(address, label, remote_path, "success", filename=filename, size=written))
+                results.append(_result(
+                    address, label, remote_path, "success",
+                    filename=filename, preferred_filename=preferred_filename,
+                    size=written,
+                ))
             except Exception as exc:
                 if temporary and temporary.exists(): temporary.unlink()
                 if reserved: budget.release(reserved)
@@ -445,6 +477,7 @@ def _result(
     status: str,
     *,
     filename: str = "",
+    preferred_filename: str = "",
     size: int = 0,
     error: str = "",
 ) -> dict[str, Any]:
@@ -454,6 +487,7 @@ def _result(
         "remote_path": remote_path,
         "status": status,
         "filename": filename,
+        "preferred_filename": preferred_filename,
         "size": size,
         "error": error,
     }

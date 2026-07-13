@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import io
+import json
+import os
+import re
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
-from flask import Blueprint, current_app, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, current_app, g, redirect, render_template, request, send_file, url_for
 
 from .activity_context import record_current_activity
 from .datastore import DatastoreError, LocalDatastore, format_bytes
@@ -36,6 +40,15 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
         }
         results: list[dict[str, object]] | None = None
         error = ""
+        if request.method == "GET":
+            snapshot = _take_download_results(
+                current_app.instance_path,
+                request.args.get("download_result", ""),
+                str(g.current_user.get("id", "")),
+            )
+            if snapshot:
+                form = {**form, **snapshot["form"]}
+                results = snapshot["results"]
         if request.method == "POST":
             form = {
                 "hosts": request.form.get("hosts", "").strip(),
@@ -76,33 +89,56 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                     )
                     successes = [result for result in results if result["status"] == "success"]
                     if form["output_mode"] == "download":
-                        archive = _build_archive(output_dir, results)
                         record_current_activity(
                             "Network tools",
                             f"Fetched files with Multi-Transfer ({str(form['protocol']).upper()})",
                             f"{len(successes)} of {len(results)} transfer(s)",
                             counters={str(form["protocol"]): {"files": len(successes), "bytes": sum(int(item["size"]) for item in successes)}},
                         )
-                        return send_file(
-                            archive,
-                            mimetype="application/zip",
-                            as_attachment=True,
-                            download_name=f"multi-transfer-{form['protocol']}-download.zip",
-                        )
-                    for result in successes:
-                        filename = str(result["filename"])
-                        with (output_dir / filename).open("rb") as source:
-                            saved, _size = store.save_upload(
-                                str(form["destination"]), filename, source
+                        if successes:
+                            archive = _build_archive(output_dir, results)
+                            response = send_file(
+                                archive,
+                                mimetype="application/zip",
+                                as_attachment=True,
+                                download_name=f"multi-transfer-{form['protocol']}-download.zip",
                             )
-                        result["stored_path"] = store.relative(saved)
-                record_current_activity(
-                    "Network tools",
-                    f"Stored Multi-Transfer files ({str(form['protocol']).upper()})",
-                    f"{len(successes)} of {len(results)} transfer(s)",
-                    counters={str(form["protocol"]): {"files": len(successes), "bytes": sum(int(item["size"]) for item in successes)}},
-                )
-            except (ToolInputError, DatastoreError, ValueError) as exc:
+                            download_token = request.form.get("download_token", "")
+                            if re.fullmatch(r"[A-Za-z0-9-]{1,80}", download_token):
+                                _store_download_results(
+                                    current_app.instance_path,
+                                    download_token,
+                                    str(g.current_user.get("id", "")),
+                                    form,
+                                    results,
+                                )
+                                response.set_cookie(
+                                    f"twn_download_ready_{download_token}",
+                                    "1",
+                                    max_age=120,
+                                    secure=request.is_secure,
+                                    httponly=False,
+                                    samesite="Lax",
+                                    path="/",
+                                )
+                            return response
+                        error = "No files were fetched. Review the per-transfer errors below."
+                    if form["output_mode"] == "datastore":
+                        for result in successes:
+                            filename = str(result["filename"])
+                            with (output_dir / filename).open("rb") as source:
+                                saved, _size = store.save_upload(
+                                    str(form["destination"]), filename, source
+                                )
+                            result["stored_path"] = store.relative(saved)
+                if form["output_mode"] == "datastore":
+                    record_current_activity(
+                        "Network tools",
+                        f"Stored Multi-Transfer files ({str(form['protocol']).upper()})",
+                        f"{len(successes)} of {len(results)} transfer(s)",
+                        counters={str(form["protocol"]): {"files": len(successes), "bytes": sum(int(item["size"]) for item in successes)}},
+                    )
+            except (ToolInputError, DatastoreError, OSError, ValueError) as exc:
                 error = str(exc) or "Enter a valid SFTP port."
                 record_current_activity("Network tools", "Ran Multi-Transfer", "Request failed")
         for result in results or []:
@@ -139,3 +175,55 @@ def _build_archive(output_dir: Path, results: list[dict[str, object]]) -> io.Byt
         bundle.writestr("multi-transfer-report.txt", "\n".join(report) + "\n")
     archive.seek(0)
     return archive
+
+
+def _download_result_directory(instance_path: str) -> Path:
+    directory = Path(instance_path) / "multi_transfer_results"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(directory, 0o700)
+    cutoff = time.time() - 900
+    for path in directory.glob("*.json"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+        except OSError:
+            pass
+    return directory
+
+
+def _store_download_results(
+    instance_path: str,
+    token: str,
+    user_id: str,
+    form: dict[str, object],
+    results: list[dict[str, object]],
+) -> None:
+    directory = _download_result_directory(instance_path)
+    path = directory / f"{token}.json"
+    temporary = directory / f".{token}.{os.getpid()}.tmp"
+    payload = {"user_id": user_id, "form": form, "results": results}
+    temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+
+
+def _take_download_results(
+    instance_path: str, token: str, user_id: str
+) -> dict[str, object] | None:
+    if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", token):
+        return None
+    path = _download_result_directory(instance_path) / f"{token}.json"
+    try:
+        snapshot = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    finally:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    if not isinstance(snapshot, dict) or snapshot.get("user_id") != user_id:
+        return None
+    if not isinstance(snapshot.get("form"), dict) or not isinstance(snapshot.get("results"), list):
+        return None
+    return snapshot

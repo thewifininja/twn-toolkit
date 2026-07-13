@@ -42,6 +42,7 @@ from .server_settings import ServerSettingsStore
 from .tool_catalog import (
     TOOL_BY_ID,
     TOOL_CATEGORIES,
+    NAVIGATION_SUBGROUPS,
     favorite_tools,
     grouped_visible_tools,
     tool_id_for_endpoint,
@@ -160,7 +161,7 @@ def create_app(instance_path: str | None = None) -> Flask:
     @app.after_request
     def audit_administrative_mutations(response: Response):
         user = getattr(g, "current_user", None)
-        audited_reads = {"download_automation_run", "download_datastore_file", "download_automation_artifact"}
+        audited_reads = {"download_automation_run", "download_datastore_file", "bulk_download_datastore_files", "download_automation_artifact"}
         should_audit = request.method in {"POST", "PUT", "PATCH", "DELETE"} or (request.endpoint or "") in audited_reads
         if should_audit and user and user.get("is_admin"):
             try:
@@ -186,6 +187,10 @@ def create_app(instance_path: str | None = None) -> Flask:
         current_tool_id = None
         if current_user:
             is_admin = bool(current_user.get("is_admin"))
+            category_icons = {
+                category["id"]: category.get("icon", "•")
+                for category in TOOL_CATEGORIES
+            }
             visible = visible_tools(is_admin=is_admin, allowed_tool_ids=allowed_tool_ids)
             nav_category_ids = {
                 tool.category
@@ -268,6 +273,7 @@ def create_app(instance_path: str | None = None) -> Flask:
                 sidebar_tool_groups.append(
                     {
                         "label": "Fortinet Tools",
+                        "icon": category_icons["fortigate"],
                         "children": fortinet_children,
                         "active": any(child["active"] for child in fortinet_children),
                     }
@@ -280,23 +286,35 @@ def create_app(instance_path: str | None = None) -> Flask:
                 sidebar_tool_groups.append(
                     {
                         "label": "Automation",
+                        "icon": category_icons["automation"],
                         "tools": automation_tools,
                         "active": active_in_tools(automation_tools),
                     }
                 )
             if network_tools:
-                multi_host_ids = {"tools.ping", "tools.multi_ssh", "tools.multi_sftp"}
-                multi_host_tools = [tool for tool in network_tools if tool.id in multi_host_ids]
-                regular_network_tools = [tool for tool in network_tools if tool.id not in multi_host_ids]
+                network_subgroups = []
+                grouped_ids = set()
+                for subgroup in NAVIGATION_SUBGROUPS.get("network", ()):
+                    subgroup_tools = [
+                        tool for tool in network_tools if tool.nav_group == subgroup["id"]
+                    ]
+                    if not subgroup_tools:
+                        continue
+                    grouped_ids.update(tool.id for tool in subgroup_tools)
+                    network_subgroups.append({
+                        **subgroup,
+                        "tools": subgroup_tools,
+                        "active": active_in_tools(subgroup_tools),
+                    })
+                ungrouped_network_tools = [
+                    tool for tool in network_tools if tool.id not in grouped_ids
+                ]
                 sidebar_tool_groups.append(
                     {
                         "label": "Network Tools",
-                        "tools": regular_network_tools,
-                        "children": [{
-                            "label": "Multi-Host Tools",
-                            "tools": multi_host_tools,
-                            "active": active_in_tools(multi_host_tools),
-                        }] if multi_host_tools else [],
+                        "icon": category_icons["network"],
+                        "tools": ungrouped_network_tools,
+                        "children": network_subgroups,
                         "count": len(network_tools),
                         "active": active_in_tools(network_tools),
                     }
@@ -305,6 +323,7 @@ def create_app(instance_path: str | None = None) -> Flask:
                 sidebar_tool_groups.append(
                     {
                         "label": "Local Tools",
+                        "icon": category_icons["local"],
                         "tools": local_tools,
                         "active": active_in_tools(local_tools),
                     }
@@ -315,6 +334,7 @@ def create_app(instance_path: str | None = None) -> Flask:
                 sidebar_tool_groups.append(
                     {
                         "label": "Administration",
+                        "icon": category_icons["administration"],
                         "tools": admin_tools,
                         "active": active_in_tools(admin_tools),
                     }

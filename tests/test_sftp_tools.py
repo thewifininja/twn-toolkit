@@ -229,11 +229,45 @@ class SftpRouteTests(unittest.TestCase):
                         "hosts": "192.0.2.10", "username": "admin",
                         "password": "secret", "port": "22",
                         "remote_paths": "/download.txt", "output_mode": "download",
+                        "download_token": "test-download-token",
                     },
                 )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.mimetype, "application/zip")
             self.assertIn(b"PK", response.data[:4])
+            results_page = client.get(
+                "/tools/multi-transfer?download_result=test-download-token"
+            )
+            self.assertIn(b"SFTP Results", results_page.data)
+            self.assertIn(b"1 of 1 transfer(s) downloaded", results_page.data)
+            self.assertIn(b"included in downloaded ZIP", results_page.data)
+            self.assertNotIn(b"Open destination", results_page.data)
+
+    def test_download_mode_renders_errors_when_every_transfer_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            failures = [{
+                "host": "192.0.2.99", "host_label": "Offline",
+                "remote_path": "/missing.cfg", "status": "error",
+                "filename": "", "size": 0, "error": "Connection failed: offline",
+            }]
+            with patch(
+                "twn_toolkit.sftp_routes.fetch_ssh_files", return_value=failures
+            ):
+                response = client.post(
+                    "/tools/multi-transfer",
+                    data={
+                        "protocol": "ftp", "hosts": "Offline = 192.0.2.99",
+                        "username": "admin", "password": "secret", "port": "21",
+                        "remote_paths": "/missing.cfg", "output_mode": "download",
+                    },
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.mimetype, "text/html")
+            self.assertIn(b"No files were fetched", response.data)
+            self.assertIn(b"Connection failed: offline", response.data)
 
 
 if __name__ == "__main__":

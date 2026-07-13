@@ -28,6 +28,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "fortigate_home",
                 "fortigate",
                 "Fortinet Profiles",
+                nav_icon="FG",
             ),
             ToolLink(
                 "fortigate.wireless_client_history",
@@ -37,6 +38,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "fortigate",
                 "FortiAP Tasks",
                 show_on_home=False,
+                nav_icon="⌁",
             ),
             ToolLink(
                 "fortigate.rename_aps",
@@ -48,6 +50,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 endpoint_values={"task_id": "rename-aps"},
                 risk="advanced",
                 show_on_home=False,
+                nav_icon="✎",
             ),
             ToolLink(
                 "fortigate.export_aps",
@@ -58,6 +61,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "FortiAP Tasks",
                 endpoint_values={"task_id": "export-aps"},
                 show_on_home=False,
+                nav_icon="⇩",
             ),
             ToolLink(
                 "fortigate.export_wireless_clients",
@@ -68,6 +72,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "FortiAP Tasks",
                 endpoint_values={"task_id": "export-wireless-clients"},
                 show_on_home=False,
+                nav_icon="⇩",
             ),
             ToolLink(
                 "fortigate.switch_order",
@@ -77,6 +82,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "fortigate",
                 "FortiSwitch Tasks",
                 show_on_home=False,
+                nav_icon="↕",
             ),
             ToolLink(
                 "fortigate.rename_switches",
@@ -88,6 +94,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 endpoint_values={"task_id": "rename-switches"},
                 risk="advanced",
                 show_on_home=False,
+                nav_icon="✎",
             ),
             ToolLink(
                 "fortigate.export_switches",
@@ -98,6 +105,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "FortiSwitch Tasks",
                 endpoint_values={"task_id": "export-switches"},
                 show_on_home=False,
+                nav_icon="⇩",
             ),
             ToolLink(
                 "fortigate.export_fortiswitch_clients",
@@ -108,6 +116,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "FortiSwitch Tasks",
                 endpoint_values={"task_id": "export-fortiswitch-clients"},
                 show_on_home=False,
+                nav_icon="⇩",
             ),
         ]
     )

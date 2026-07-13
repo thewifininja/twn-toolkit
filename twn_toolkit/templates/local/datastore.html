@@ -21,6 +21,7 @@
       {% endfor %}
     </nav>
     <div class="datastore-toolbar-actions">
+      {% if listing.entries %}<button type="button" class="secondary" data-datastore-select-all aria-pressed="false">Select all</button>{% endif %}
       <details class="datastore-create-control">
         <summary class="button-link secondary">New folder</summary>
         <form method="post" action="{{ url_for('create_datastore_folder') }}" class="form">
@@ -48,7 +49,6 @@
   </form>
 
   <div class="datastore-bulk-toolbar" data-datastore-bulk-toolbar hidden>
-    <label class="check datastore-selection-control"><input type="checkbox" data-datastore-select-all> <span>Select all items</span></label>
     <strong><span data-datastore-selected-count>0</span> selected</strong>
     <label>Move to
       <select data-datastore-destination>
@@ -57,6 +57,7 @@
         {% endfor %}
       </select>
     </label>
+    <button type="button" class="secondary" data-datastore-download>Download selected</button>
     <button type="button" class="secondary" data-datastore-move>Move selected</button>
     <button type="button" class="danger" data-datastore-delete>Delete selected</button>
   </div>
@@ -67,6 +68,10 @@
     <input type="hidden" name="destination">
   </form>
   <form method="post" action="{{ url_for('bulk_delete_datastore_files') }}" data-datastore-delete-form hidden>
+    <input type="hidden" name="path" value="{{ listing.path }}">
+    <input type="hidden" name="paths_json">
+  </form>
+  <form method="post" action="{{ url_for('bulk_download_datastore_files') }}" data-datastore-download-form hidden>
     <input type="hidden" name="path" value="{{ listing.path }}">
     <input type="hidden" name="paths_json">
   </form>
@@ -84,7 +89,7 @@
                 <path class="datastore-folder-lip" d="M3.75 9h16.5"/>
               </svg>
             {% else %}
-              ▤
+              <span class="datastore-file-icon"></span>
             {% endif %}
           </div>
           <div class="datastore-entry-name">
@@ -98,7 +103,11 @@
           <time datetime="{{ entry.modified_at }}">{{ entry.modified_display }}</time>
           <details class="datastore-entry-actions">
             <summary class="datastore-overflow-button" aria-label="Manage {{ entry.name }}" title="Manage {{ entry.name }}">
-              <span aria-hidden="true">⋯</span>
+              <svg class="datastore-overflow-icon" viewBox="0 0 18 6" aria-hidden="true" focusable="false">
+                <circle cx="3" cy="3" r="2"></circle>
+                <circle cx="9" cy="3" r="2"></circle>
+                <circle cx="15" cy="3" r="2"></circle>
+              </svg>
             </summary>
             <div>
               {% if not entry.is_dir %}

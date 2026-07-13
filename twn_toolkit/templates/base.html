@@ -67,8 +67,8 @@
       {% if current_user %}
         {% macro sidebar_tool_row(tool, label=none, parent=false, favorite_enabled=true) -%}
           <div class="side-nav-item {{ 'parent' if parent else '' }}">
-            <a class="{{ 'side-nav-parent-link' if parent else '' }} {{ 'active' if tool.id == current_tool_id else '' }}" href="{{ url_for(tool.endpoint, **tool.endpoint_values) }}">
-              <span class="side-nav-dot" aria-hidden="true"></span>
+            <a class="{{ 'side-nav-parent-link' if parent else '' }} {{ 'active' if tool.id == current_tool_id else '' }}" href="{{ url_for(tool.endpoint, **tool.endpoint_values) }}" title="{{ label or tool.label }}">
+              <span class="side-nav-icon" aria-hidden="true">{{ tool.nav_icon }}</span>
               <span class="side-nav-label">{{ label or tool.label }}</span>
             </a>
             {% if favorite_enabled and tool.grantable %}
@@ -87,14 +87,14 @@
         <aside class="app-sidebar" id="app-sidebar" aria-label="Primary navigation">
           <nav class="side-nav">
             <div class="side-nav-scroll">
-              <a class="side-nav-home {{ 'active' if request.endpoint == 'index' else '' }}" href="{{ url_for('index') }}">
+              <a class="side-nav-home {{ 'active' if request.endpoint == 'index' else '' }}" href="{{ url_for('index') }}" title="Dashboard">
                 <span class="side-nav-icon" aria-hidden="true">⌂</span>
                 <span class="side-nav-label">Dashboard</span>
               </a>
 
               <details class="side-nav-section" {{ 'open' if sidebar_favorites or sidebar_favorites_active else '' }}>
-                <summary>
-                  <span>Favorites</span>
+                <summary title="Favorites">
+                  <span class="side-nav-section-title"><span class="side-nav-icon" aria-hidden="true">★</span><span class="side-nav-label">Favorites</span></span>
                   <small>{{ sidebar_favorites|length }}</small>
                 </summary>
                 {% if sidebar_favorites %}
@@ -112,8 +112,8 @@
 
               {% for group in sidebar_tool_groups %}
                 <details class="side-nav-section" {{ 'open' if group.active else '' }}>
-                  <summary>
-                    <span>{{ group.label }}</span>
+                  <summary title="{{ group.label }}">
+                    <span class="side-nav-section-title"><span class="side-nav-icon" aria-hidden="true">{{ group.icon|default('•') }}</span><span class="side-nav-label">{{ group.label }}</span></span>
                     <small>{{ group.count|default((group.tools|default([])|length) + (group.children|default([])|length)) }}</small>
                   </summary>
                   {% if group.tools %}
@@ -134,7 +134,7 @@
                               {{ sidebar_tool_row(child.tool, child.label, true, child.favorite_enabled|default(true)) }}
                             {% elif not child.tools %}
                               <span class="side-nav-parent-label">
-                                <span class="side-nav-dot" aria-hidden="true"></span>
+                                <span class="side-nav-icon" aria-hidden="true">{{ child.icon|default('•') }}</span>
                                 <span class="side-nav-label">{{ child.label }}</span>
                               </span>
                             {% endif %}
@@ -167,7 +167,7 @@
                               </ul>
                             {% else %}
                               <details class="side-nav-subsection" {{ 'open' if child.active else '' }}>
-                                <summary><span>{{ child.label }}</span><small>{{ child.tools|length }}</small></summary>
+                                <summary><span class="side-nav-subsection-title"><span class="side-nav-icon" aria-hidden="true">{{ child.icon|default('•') }}</span><span>{{ child.label }}</span></span><small>{{ child.tools|length }}</small></summary>
                                 <ul>{% for tool in child.tools %}<li>{{ sidebar_tool_row(tool) }}</li>{% endfor %}</ul>
                               </details>
                             {% endif %}
@@ -179,8 +179,8 @@
                 </details>
               {% endfor %}
             </div>
-            <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}">
-              <span class="side-nav-label">Help{% if instance_name %}<small class="side-nav-instance">{{ instance_name }}</small>{% endif %}</span>
+            <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}" title="Help">
+              <span class="side-nav-help-title"><span class="side-nav-icon" aria-hidden="true">?</span><span class="side-nav-label">Help{% if instance_name %}<small class="side-nav-instance">{{ instance_name }}</small>{% endif %}</span></span>
               <span class="side-nav-version">v{{ app_version }}</span>
             </a>
           </nav>
@@ -202,47 +202,46 @@
     <div class="app-loading" id="app-loading" role="status" aria-live="polite" aria-atomic="true" hidden>
       <div class="app-loading-card">
         <div class="packet-loader" aria-hidden="true">
-          <svg class="packet-map" viewBox="0 0 260 104" role="img">
+          <svg class="packet-map" viewBox="0 0 320 156">
             <defs>
-              <filter id="packet-glow" x="-30%" y="-30%" width="160%" height="160%">
+              <filter id="packet-glow" x="-80%" y="-80%" width="260%" height="260%">
                 <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
                 <feMerge>
                   <feMergeNode in="blur"></feMergeNode>
                   <feMergeNode in="SourceGraphic"></feMergeNode>
                 </feMerge>
               </filter>
+              <path id="loading-route-https" d="M160 78 L160 20 L160 78"></path>
+              <path id="loading-route-dns" d="M160 78 L266 42 L160 78"></path>
+              <path id="loading-route-api" d="M160 78 L266 114 L160 78"></path>
+              <path id="loading-route-speed" d="M160 78 L160 136 L160 78"></path>
+              <path id="loading-route-icmp" d="M160 78 L54 114 L160 78"></path>
+              <path id="loading-route-snmp" d="M160 78 L54 42 L160 78"></path>
             </defs>
             <g class="packet-links">
-              <path d="M34 68 L96 35 L151 70 L216 42"></path>
-              <path d="M34 68 L82 78 L151 70"></path>
-              <path d="M96 35 L216 42"></path>
-              <path d="M96 35 L126 56 L151 70"></path>
-            </g>
-            <g class="packet-dashes">
-              <path d="M34 68 L96 35 L151 70 L216 42"></path>
+              <path d="M160 78 L160 20"></path>
+              <path d="M160 78 L266 42"></path>
+              <path d="M160 78 L266 114"></path>
+              <path d="M160 78 L160 136"></path>
+              <path d="M160 78 L54 114"></path>
+              <path d="M160 78 L54 42"></path>
             </g>
             <g class="packet-nodes">
-              <circle class="packet-node packet-node-one" cx="34" cy="68" r="12"></circle>
-              <circle class="packet-node packet-node-two" cx="96" cy="35" r="12"></circle>
-              <circle class="packet-node packet-node-three" cx="82" cy="78" r="10"></circle>
-              <circle class="packet-node packet-node-four" cx="151" cy="70" r="12"></circle>
-              <circle class="packet-node packet-node-five" cx="216" cy="42" r="12"></circle>
-            </g>
-            <g class="packet-pulses">
-              <circle cx="34" cy="68" r="17"></circle>
-              <circle cx="151" cy="70" r="17"></circle>
-              <circle cx="216" cy="42" r="17"></circle>
+              <g class="packet-node packet-toolkit" transform="translate(160 78)"><circle r="23"></circle><path d="M-9-6h18v12h-18zm4 3h10m-10 4h7"></path></g>
+              <g class="packet-node" transform="translate(160 20)"><circle r="17"></circle><path d="M-6 0h12v8h-12zm2 0v-4a4 4 0 0 1 8 0v4M0 3v3"></path></g>
+              <g class="packet-node" transform="translate(266 42)"><circle r="17"></circle><path d="M0-8a8 8 0 1 0 0 16a8 8 0 1 0 0-16M-8 0h16M0-8c3 3 3 13 0 16M0-8c-3 3-3 13 0 16"></path></g>
+              <g class="packet-node" transform="translate(266 114)"><circle r="17"></circle><path d="M-3-8c-4 0-4 2-4 5v1c0 2-1 2-3 2c2 0 3 1 3 3v1c0 3 0 5 4 5M3-8c4 0 4 2 4 5v1c0 2 1 2 3 2c-2 0-3 1-3 3v1c0 3 0 5-4 5"></path></g>
+              <g class="packet-node" transform="translate(160 136)"><circle r="17"></circle><path d="M-9 5a10 10 0 0 1 18 0M0 4l5-6M-7 5h14"></path></g>
+              <g class="packet-node" transform="translate(54 114)"><circle r="17"></circle><path d="M-9-4h14M2-7l4 3l-4 3M9 5h-14M-2 2l-4 3l4 3"></path></g>
+              <g class="packet-node" transform="translate(54 42)"><circle r="17"></circle><path d="M-7 6V1M0 6V-5M7 6V-2M-10 8h20"></path></g>
             </g>
             <g class="packet-movers">
-              <circle r="4">
-                <animateMotion dur="2.8s" repeatCount="indefinite" path="M34 68 L96 35 L151 70 L216 42"></animateMotion>
-              </circle>
-              <circle r="3.5">
-                <animateMotion dur="2.8s" begin="0.7s" repeatCount="indefinite" path="M34 68 L82 78 L151 70 L216 42"></animateMotion>
-              </circle>
-              <circle r="3">
-                <animateMotion dur="2.8s" begin="1.4s" repeatCount="indefinite" path="M96 35 L126 56 L151 70"></animateMotion>
-              </circle>
+              <circle r="4"><set attributeName="opacity" to="1" begin="0s" fill="freeze"></set><animateMotion dur="5.8s" begin="0s" repeatCount="indefinite"><mpath href="#loading-route-https"></mpath></animateMotion></circle>
+              <circle r="4"><set attributeName="opacity" to="1" begin="1.4s" fill="freeze"></set><animateMotion dur="7.1s" begin="1.4s" repeatCount="indefinite"><mpath href="#loading-route-dns"></mpath></animateMotion></circle>
+              <circle r="4"><set attributeName="opacity" to="1" begin="3.1s" fill="freeze"></set><animateMotion dur="6.4s" begin="3.1s" repeatCount="indefinite"><mpath href="#loading-route-api"></mpath></animateMotion></circle>
+              <circle r="4"><set attributeName="opacity" to="1" begin="1.8s" fill="freeze"></set><animateMotion dur="8.2s" begin="1.8s" repeatCount="indefinite"><mpath href="#loading-route-speed"></mpath></animateMotion></circle>
+              <circle r="4"><set attributeName="opacity" to="1" begin="2.2s" fill="freeze"></set><animateMotion dur="7.7s" begin="2.2s" repeatCount="indefinite"><mpath href="#loading-route-icmp"></mpath></animateMotion></circle>
+              <circle r="4"><set attributeName="opacity" to="1" begin="4.4s" fill="freeze"></set><animateMotion dur="6.9s" begin="4.4s" repeatCount="indefinite"><mpath href="#loading-route-snmp"></mpath></animateMotion></circle>
             </g>
           </svg>
         </div>

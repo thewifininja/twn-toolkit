@@ -197,6 +197,45 @@ class LocalDatastore:
             raise DatastoreError(f"The selected items could not be moved: {exc}") from exc
         return len(moves)
 
+    def archive_members(
+        self, relative_paths: list[str], base_path: str = ""
+    ) -> list[tuple[Path, str, bool]]:
+        """Return contained files/directories and their ZIP-relative names."""
+        base = self._resolve(base_path, must_exist=True)
+        if not base.is_dir():
+            raise DatastoreError("The current datastore path is not a folder.")
+        sources = sorted(self._unique_entries(relative_paths), key=lambda item: len(item.parts))
+        roots: list[Path] = []
+        for source in sources:
+            try:
+                source.relative_to(base)
+            except ValueError as exc:
+                raise DatastoreError("Selected items must be inside the current folder.") from exc
+            if any(parent.is_dir() and source.is_relative_to(parent) for parent in roots):
+                continue
+            roots.append(source)
+
+        members: list[tuple[Path, str, bool]] = []
+        for source in roots:
+            relative = source.relative_to(base).as_posix()
+            if source.is_file():
+                members.append((source, relative, False))
+                continue
+            members.append((source, relative, True))
+            for folder, directory_names, file_names in os.walk(source, followlinks=False):
+                folder_path = Path(folder)
+                directory_names[:] = sorted(
+                    name for name in directory_names
+                    if not (folder_path / name).is_symlink()
+                )
+                if folder_path != source:
+                    members.append((folder_path, folder_path.relative_to(base).as_posix(), True))
+                for name in sorted(file_names, key=str.casefold):
+                    file_path = folder_path / name
+                    if file_path.is_file() and not file_path.is_symlink():
+                        members.append((file_path, file_path.relative_to(base).as_posix(), False))
+        return members
+
     def usage(self) -> dict[str, int]:
         files = 0
         folders = 0

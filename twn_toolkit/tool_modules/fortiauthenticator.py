@@ -28,6 +28,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "fortiauthenticator_home",
                 "fortiauthenticator",
                 "Fortinet Profiles",
+                nav_icon="FA",
             ),
             ToolLink(
                 "fortiauthenticator.mac_devices",
@@ -37,6 +38,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "fortiauthenticator",
                 "FortiAuthenticator Workflows",
                 show_on_home=False,
+                nav_icon="⇩",
             ),
             ToolLink(
                 "fortiauthenticator.group_memberships",
@@ -46,6 +48,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "fortiauthenticator",
                 "FortiAuthenticator Workflows",
                 show_on_home=False,
+                nav_icon="⇩",
             ),
             ToolLink(
                 "fortiauthenticator.mac_cleanup",
@@ -56,6 +59,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "FortiAuthenticator Workflows",
                 risk="high",
                 show_on_home=False,
+                nav_icon="✂",
             ),
         ]
     )

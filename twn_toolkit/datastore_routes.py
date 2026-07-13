@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import subprocess
 import json
+import tempfile
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -330,6 +332,36 @@ def register_datastore_routes(
             abort(404, str(exc))
         record_current_activity("Local storage", "Downloaded datastore file", file_path.name)
         return send_file(file_path, as_attachment=True, download_name=file_path.name)
+
+    @app.post("/local/datastore/bulk-download")
+    def bulk_download_datastore_files():
+        try:
+            selected = json.loads(request.form.get("paths_json", "[]"))
+            if not isinstance(selected, list):
+                raise ValueError
+            members = store.archive_members(
+                [str(value) for value in selected], request.form.get("path", "")
+            )
+            archive = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024, mode="w+b")
+            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as bundle:
+                for source, archive_name, is_directory in members:
+                    if is_directory:
+                        bundle.writestr(f"{archive_name.rstrip('/')}/", b"")
+                    else:
+                        bundle.write(source, archive_name)
+            archive.seek(0)
+        except (DatastoreError, json.JSONDecodeError, OSError, ValueError, zipfile.BadZipFile) as exc:
+            if 'archive' in locals():
+                archive.close()
+            abort(400, str(exc) or "Select valid datastore files or folders to download.")
+        record_current_activity("Local storage", "Downloaded datastore items", f"{len(selected)} item(s)")
+        stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+        return send_file(
+            archive,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"datastore-selection-{stamp}.zip",
+        )
 
     @app.post("/local/datastore/rename")
     def rename_datastore_entry():

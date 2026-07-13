@@ -21,7 +21,7 @@
 <section class="home-section help-section" id="release-notes">
   <div class="section-head"><div><span class="eyebrow">What changed</span><h2>Release notes</h2></div><a href="#help-contents">Back to contents</a></div>
   {% for release in release_notes %}
-    <details class="help-topic release-note" {% if loop.first %}open{% endif %}>
+    <details class="help-topic release-note">
       <summary><span><strong>v{{ release.version }}</strong><small>{{ release.date }} · {{ release.title }}</small></span></summary>
       <div class="help-topic-body"><p>{{ release.summary }}</p><div class="release-note-groups">
         {% for group in release.groups %}<section><h3>{{ group.title }}</h3><ul>{% for item in group['items'] %}<li>{{ item }}</li>{% endfor %}</ul></section>{% endfor %}
@@ -33,8 +33,8 @@
 <section class="home-section help-section" id="getting-started">
   <div class="section-head"><div><span class="eyebrow">Basics</span><h2>Getting started</h2></div><a href="#help-contents">Back to contents</a></div>
   <details class="help-topic" open><summary>Navigation, Favorites, and finding tools</summary><div class="help-topic-body">
-    <p>The persistent left pane is the primary navigation. Sections collapse independently, the current section opens automatically, and the pane scrolls separately from the page. Help and the installed version remain at the bottom.</p>
-    <ul><li><strong>Favorites</strong> contains personal shortcuts. Hover or focus a tool and use its star to add/remove it.</li><li><strong>Fortinet Tools</strong> links to FortiGate and FortiAuthenticator profiles/workflows.</li><li><strong>Network Tools</strong> contains vendor-neutral diagnostics.</li><li><strong>Automation</strong> contains conditions, actions, and automations.</li><li><strong>Administration</strong> contains Settings and areas allowed by your access profiles.</li></ul>
+    <p>The persistent left pane is the primary navigation. Sections collapse independently, the current section opens automatically, and the pane scrolls separately from the page. Help and the installed version remain at the bottom. The hamburger button hides the pane completely when you want the full page width.</p>
+    <ul><li><strong>Favorites</strong> contains personal shortcuts. Hover or focus a tool and use its star to add/remove it.</li><li><strong>Fortinet Tools</strong> links to FortiGate and FortiAuthenticator profiles/workflows.</li><li><strong>Network Tools</strong> groups vendor-neutral diagnostics under Addressing &amp; Reachability, Multi-Host Tools, Services &amp; Protocols, and Traffic &amp; Interfaces.</li><li><strong>Automation</strong> contains conditions, actions, and automations.</li><li><strong>Administration</strong> contains Settings and areas allowed by your access profiles.</li></ul>
     <p>On narrow screens, use the hamburger button to open or close navigation.</p>
   </div></details>
   <details class="help-topic"><summary>First launch and service startup</summary><div class="help-topic-body">
@@ -121,7 +121,7 @@
   <details class="help-topic" open><summary>Contained file management</summary><div class="help-topic-body">
     <p>The Datastore manages persistent files beneath <code>instance/datastore/</code>. Access is assigned like any other tool through custom profiles. Users can create and browse folders, upload multiple files, download files, rename entries, and delete files or empty folders.</p>
     <p>Uploads are atomic and limited to 1 GiB per request. Existing names are never overwritten. The manager rejects traversal outside its root, does not follow symbolic links, and does not recursively delete populated folders.</p>
-    <p>Switch between list and grid layouts; the browser remembers the preference. Select files or folders to reveal bulk move/delete controls, or drag selected items directly onto a folder. Non-empty folders cannot be deleted accidentally, and folders cannot be moved into themselves. The upload target accepts one or more files through the picker or desktop drag-and-drop. Bulk operations validate every source and destination before changing files.</p>
+    <p>Switch between list and grid layouts; the browser remembers the preference. Use the always-visible Select all control or select individual files and folders to reveal bulk download, move, and delete actions. Bulk downloads produce a ZIP with relative folder structure and empty folders preserved. Drag selected items directly onto a folder to move them. Non-empty folders cannot be deleted accidentally, and folders cannot be moved into themselves. The upload target accepts one or more files through the picker or desktop drag-and-drop. Bulk operations validate every source and destination before changing files.</p>
   </div></details>
   <details class="help-topic"><summary>Managed TFTP service</summary><div class="help-topic-body">
     <p><strong>Local Tools → File Transfers</strong> contains managed TFTP, FTP, and authenticated SFTP/SCP listeners; outbound retrieval is available separately under <strong>Network Tools → Multi-Host Tools → Multi-Transfer</strong>. All listeners are disabled by default and remain contained beneath a selected datastore folder or one runtime-only file.</p>

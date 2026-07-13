@@ -1,4 +1,14 @@
 (() => {
+  const revealHashTarget = () => {
+    if (!window.location.hash) return;
+    const target = document.querySelector(window.location.hash);
+    const details = target?.querySelector(".tftp-service-details");
+    if (details) details.open = true;
+  };
+
+  revealHashTarget();
+  window.addEventListener("hashchange", revealHashTarget);
+
   const form = document.querySelector(".tftp-settings-form");
   if (!form) return;
   const modes = [...form.querySelectorAll("input[name='root_mode']")];

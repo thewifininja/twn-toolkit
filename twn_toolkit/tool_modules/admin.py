@@ -31,6 +31,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "Administration",
             admin_only=True,
             grantable=False,
+            nav_icon="⚙",
         )
     )
     registry.add_tool(
@@ -38,7 +39,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "admin.diagnostics", "System Diagnostics",
             "Review process health, storage, databases, dependencies, migrations, and audit history.",
             "diagnostics", "administration", "Administration",
-            admin_only=True, grantable=False,
+            admin_only=True, grantable=False, nav_icon="♥",
         )
     )
     registry.map_endpoints(

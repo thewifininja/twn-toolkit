@@ -15,7 +15,7 @@
 </section>
 
 <section class="panel tftp-panel" id="tftp-service">
-  <details class="tftp-service-details" {{ 'open' if tftp_settings.enabled or current_user.is_admin else '' }}>
+  <details class="tftp-service-details">
     <summary>
       <span>
         <strong>TFTP service</strong>
@@ -87,7 +87,7 @@
         </div>
         {% if temporary_file %}
           <article class="datastore-row">
-            <div class="datastore-entry-icon" aria-hidden="true">▤</div>
+            <div class="datastore-entry-icon" aria-hidden="true"><span class="datastore-file-icon"></span></div>
             <div class="datastore-entry-name"><strong>{{ temporary_file.name }}</strong><small>{{ temporary_file.size_display }}</small></div>
             <form method="post" action="{{ url_for('delete_tftp_temporary_file') }}" onsubmit="return confirm('Remove the staged temporary TFTP file?')"><button class="danger" type="submit">Remove</button></form>
           </article>
@@ -112,7 +112,7 @@
 </section>
 
 <section class="panel tftp-panel" id="ssh-transfer-service">
-  <details class="tftp-service-details" {{ 'open' if ssh_transfer_settings.enabled else '' }}>
+  <details class="tftp-service-details">
     <summary>
       <span><strong>SFTP / SCP service</strong><small>{{ ssh_transfer_settings.bind_host }}:{{ ssh_transfer_settings.port }} · {% if ssh_transfer_settings.allow_sftp %}SFTP{% endif %}{% if ssh_transfer_settings.allow_sftp and ssh_transfer_settings.allow_scp %} + {% endif %}{% if ssh_transfer_settings.allow_scp %}SCP{% endif %}</small></span>
       <span class="pill {{ 'success' if ssh_transfer_status.running else 'planned' if not ssh_transfer_settings.enabled else 'error' }}">{{ 'running' if ssh_transfer_status.running else 'disabled' if not ssh_transfer_settings.enabled else 'stopped' }}</span>
@@ -154,7 +154,7 @@
       <section class="tftp-temporary-file">
         <div><h3>Runtime-only SSH transfer file</h3><p class="field-note">Available for SFTP/SCP download only while this listener remains running.</p></div>
         {% if ssh_temporary_file %}
-          <article class="datastore-row"><div class="datastore-entry-icon">▤</div><div class="datastore-entry-name"><strong>{{ ssh_temporary_file.name }}</strong><small>{{ ssh_temporary_file.size_display }}</small></div><form method="post" action="{{ url_for('delete_ssh_transfer_temporary_file') }}"><button class="danger">Remove</button></form></article>
+          <article class="datastore-row"><div class="datastore-entry-icon" aria-hidden="true"><span class="datastore-file-icon"></span></div><div class="datastore-entry-name"><strong>{{ ssh_temporary_file.name }}</strong><small>{{ ssh_temporary_file.size_display }}</small></div><form method="post" action="{{ url_for('delete_ssh_transfer_temporary_file') }}"><button class="danger">Remove</button></form></article>
         {% elif ssh_transfer_status.running %}
           <form method="post" action="{{ url_for('upload_ssh_transfer_temporary_file') }}" enctype="multipart/form-data" class="form"><label>Temporary file<input type="file" name="file" required></label><button>Stage temporary file</button></form>
         {% else %}<div class="message warning">Start the listener in temporary-file mode before staging a file.</div>{% endif %}
@@ -167,7 +167,7 @@
   </details>
 </section>
 <section class="panel tftp-panel" id="ftp-service">
-  <details class="tftp-service-details" {{ 'open' if ftp_settings.enabled else '' }}>
+  <details class="tftp-service-details">
     <summary>
       <span><strong>FTP service</strong><small>{{ ftp_settings.bind_host }}:{{ ftp_settings.port }} · passive {{ ftp_settings.passive_start }}–{{ ftp_settings.passive_end }}</small></span>
       <span class="pill {{ 'success' if ftp_status.running else 'planned' if not ftp_settings.enabled else 'error' }}">{{ 'running' if ftp_status.running else 'disabled' if not ftp_settings.enabled else 'stopped' }}</span>
@@ -212,7 +212,7 @@
       <section class="tftp-temporary-file">
         <div><h3>Runtime-only FTP file</h3><p class="field-note">Available for download only while this listener remains running.</p></div>
         {% if ftp_temporary_file %}
-          <article class="datastore-row"><div class="datastore-entry-icon">▤</div><div class="datastore-entry-name"><strong>{{ ftp_temporary_file.name }}</strong><small>{{ ftp_temporary_file.size_display }}</small></div><form method="post" action="{{ url_for('delete_ftp_temporary_file') }}"><button class="danger">Remove</button></form></article>
+          <article class="datastore-row"><div class="datastore-entry-icon" aria-hidden="true"><span class="datastore-file-icon"></span></div><div class="datastore-entry-name"><strong>{{ ftp_temporary_file.name }}</strong><small>{{ ftp_temporary_file.size_display }}</small></div><form method="post" action="{{ url_for('delete_ftp_temporary_file') }}"><button class="danger">Remove</button></form></article>
         {% elif ftp_status.running %}
           <form method="post" action="{{ url_for('upload_ftp_temporary_file') }}" enctype="multipart/form-data" class="form"><label>Temporary file<input type="file" name="file" required></label><button>Stage temporary file</button></form>
         {% else %}<div class="message warning">Start FTP in temporary-file mode before staging a file.</div>{% endif %}
