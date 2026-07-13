@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from twn_toolkit import create_app
-from twn_toolkit.audit import AuditStore
+from twn_toolkit.audit import AuditStore, audit_changes
 from twn_toolkit.datastore import DatastoreError, LocalDatastore
 from twn_toolkit.migrations import MigrationManager
 from twn_toolkit.operational import OperationalSettingsStore
@@ -50,10 +50,71 @@ class OperationalHardeningTests(unittest.TestCase):
     def test_audit_store_is_bounded_structured_and_secret_free(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             store = AuditStore(instance)
-            store.record(user_id="1", username="admin", remote_ip="127.0.0.1", method="POST", endpoint="save", path="/settings/server", status_code=302)
+            store.record(
+                user_id="1", username="admin", remote_ip="127.0.0.1",
+                method="POST", endpoint="save", path="/settings/server",
+                status_code=302, category="Administration", action="settings.updated",
+                summary="Updated settings.", resource_type="settings",
+                resource_id="server", resource_name="Server settings",
+                details={
+                    "visible": "retained",
+                    "password": "never store me",
+                    "nested": {"api-token": "also secret", "host": "192.0.2.1"},
+                    "changes": [{"field": "port", "before": 5050, "after": 8443}],
+                },
+            )
             event = store.recent(1)[0]
             self.assertEqual(event["username"], "admin")
-            self.assertNotIn("password", event)
+            self.assertEqual(event["summary"], "Updated settings.")
+            self.assertEqual(event["details"]["visible"], "retained")
+            self.assertEqual(event["details"]["password"], "[redacted]")
+            self.assertEqual(event["details"]["nested"]["api-token"], "[redacted]")
+            self.assertEqual(event["details"]["nested"]["host"], "192.0.2.1")
+            self.assertNotIn(b"never store me", Path(store.path).read_bytes())
+            self.assertNotIn(b"also secret", Path(store.path).read_bytes())
+
+    def test_audit_changes_flattens_nested_fields_and_redacts_secrets(self) -> None:
+        changes = audit_changes(
+            {"configuration": {"timeout": 5, "password": "old"}},
+            {"configuration": {"timeout": 10, "password": "new"}},
+        )
+        self.assertEqual(
+            changes,
+            [{"field": "configuration.timeout", "before": 5, "after": 10}],
+        )
+
+    def test_oversized_audit_detail_remains_valid_json(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = AuditStore(instance)
+            store.record(details={f"field_{index}": "x" * 1000 for index in range(100)})
+            details = store.recent(1)[0]["details"]
+            self.assertTrue(details["truncated"])
+            self.assertIn("storage limit", details["notice"])
+
+    def test_legacy_audit_database_gains_detail_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            path = Path(instance) / "audit.sqlite3"
+            connection = sqlite3.connect(path)
+            try:
+                connection.execute(
+                    """
+                    CREATE TABLE audit_events (
+                        id TEXT PRIMARY KEY, recorded_at REAL NOT NULL, user_id TEXT NOT NULL,
+                        username TEXT NOT NULL, remote_ip TEXT NOT NULL, method TEXT NOT NULL,
+                        endpoint TEXT NOT NULL, path TEXT NOT NULL, status_code INTEGER NOT NULL
+                    )
+                    """
+                )
+                connection.execute(
+                    "INSERT INTO audit_events VALUES ('old', 1, '1', 'admin', '127.0.0.1', 'POST', 'legacy', '/legacy', 302)"
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            event = AuditStore(instance).recent(1)[0]
+            self.assertEqual(event["id"], "old")
+            self.assertEqual(event["details"], {})
 
     def test_migration_manager_snapshots_existing_databases(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -79,6 +140,10 @@ class OperationalHardeningTests(unittest.TestCase):
             })
             self.assertEqual(response.status_code, 302)
             self.assertEqual(OperationalSettingsStore(instance).get()["max_queued_automations"], 7)
+            diagnostics = client.get("/settings/diagnostics")
+            self.assertIn(b"Updated operational limits", diagnostics.data)
+            self.assertIn(b"Changed settings", diagnostics.data)
+            self.assertIn(b"max concurrent automations", diagnostics.data)
 
     def test_heartbeat_freshness(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

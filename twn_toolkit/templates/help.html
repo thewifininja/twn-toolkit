@@ -135,7 +135,8 @@
   <details class="help-topic"><summary>Operational limits, diagnostics, and audit history</summary><div class="help-topic-body">
     <p><strong>Administration → Settings</strong> groups system controls before account controls. Operational limits bound concurrent and queued automation runs, skip overlapping checks, cap datastore and automation-artifact usage, and preserve a configured amount of free disk.</p>
     <p><strong>Administration → System Diagnostics</strong> reports web, supervisor, scheduler, and transfer-listener health; scheduler heartbeat age; disk and quota use; SQLite quick-check results; optional command dependencies; numbered migrations; reclaimable orphan artifacts; and the newest administrative audit events.</p>
-    <p>The audit ledger records the administrator, source address, endpoint, HTTP method, path, result code, and time. Request bodies, passwords, tokens, and other secret values are deliberately excluded.</p>
+    <p>The audit ledger records the user, source address, endpoint, HTTP method, path, result code, and time. Expand a row to see the affected resource, selected event metadata, and before/after values for supported automation, account, access-profile, and server-policy changes.</p>
+    <p>Audit context is explicitly selected by each workflow and sanitized again before storage. Raw request bodies are never copied into the ledger; passwords, tokens, API keys, authorization headers, communities, and other secret-bearing fields are redacted recursively.</p>
     <p>The supervisor restarts a failed scheduler or enabled transfer worker. Numbered toolkit migrations take a consistent SQLite snapshot before applying a new version.</p>
   </div></details>
   <details class="help-topic"><summary>Backups and future services</summary><div class="help-topic-body">

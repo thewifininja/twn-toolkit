@@ -22,6 +22,7 @@ from twn_toolkit.automation_registry import (
     ConditionType,
 )
 from twn_toolkit.auth import AuthStore, load_or_create_secret_key
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.profiles import (
     SNMPCredentialProfileStore,
@@ -970,6 +971,14 @@ class AutomationRouteTests(unittest.TestCase):
             runs = store.recent_runs(automation_id)
             self.assertEqual(len(runs), 1)
             self.assertEqual(runs[0]["status"], "success")
+            audit_event = next(
+                event
+                for event in AuditStore(instance_path).recent(20)
+                if event["action"] == "automation.ran_manually"
+            )
+            self.assertEqual(audit_event["resource_name"], "Manual collection")
+            self.assertEqual(audit_event["details"]["run id"], runs[0]["id"])
+            self.assertNotIn("clock output", json.dumps(audit_event["details"]))
             page = client.get(f"/automations?focus={automation_id}")
             self.assertIn(b"Run now", page.data)
             self.assertIn(b"Clear collected data", page.data)

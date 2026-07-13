@@ -4410,6 +4410,121 @@ button.danger {
   grid-column: 2 / -1;
 }
 
+.audit-event-list {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.9rem;
+}
+
+.audit-event {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.audit-event > summary {
+  align-items: center;
+  cursor: pointer;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  list-style: none;
+  padding: 0.85rem 1rem;
+}
+
+.audit-event > summary::-webkit-details-marker {
+  display: none;
+}
+
+.audit-event > summary:hover {
+  background: color-mix(in srgb, var(--brand-green), transparent 94%);
+}
+
+.audit-event-title {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.audit-event-title small,
+.audit-event > summary time {
+  color: var(--muted);
+}
+
+.audit-event > summary time {
+  white-space: nowrap;
+}
+
+.audit-event-body {
+  border-top: 1px solid var(--line);
+  padding: 1rem;
+}
+
+.audit-event-body h3 {
+  font-size: 0.9rem;
+  margin: 1.1rem 0 0.65rem;
+}
+
+.audit-request-grid,
+.audit-detail-list {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.audit-request-grid > div,
+.audit-detail-list > div {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+}
+
+.audit-request-grid dt,
+.audit-detail-list dt,
+.audit-change-list span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.audit-request-grid dd,
+.audit-detail-list dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.audit-change-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.audit-change-list > article {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: minmax(120px, 0.55fr) repeat(2, minmax(0, 1fr));
+  padding: 0.75rem;
+}
+
+.audit-change-list > article > div {
+  min-width: 0;
+}
+
+.audit-event pre {
+  font: inherit;
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 760px) {
   .automation-storage-stats,
   .automation-retention-form,
@@ -4476,6 +4591,20 @@ button.danger {
 
   .tftp-history-list article > .pill {
     justify-self: start;
+  }
+
+  .audit-event > summary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .audit-event > summary time {
+    grid-column: 2;
+  }
+
+  .audit-request-grid,
+  .audit-detail-list,
+  .audit-change-list > article {
+    grid-template-columns: 1fr;
   }
 
   .tftp-transfer-message {

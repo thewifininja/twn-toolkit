@@ -10,5 +10,55 @@
 
 <section class="panel"><div class="auth-users-head"><h2>Command dependencies</h2><p class="field-note">Some platform-specific tools remain optional until their corresponding workflow is used.</p></div><div class="automation-storage-stats">{% for dependency in dependencies %}<div><span>{{ dependency.name }}</span><strong>{{ 'Available' if dependency.available else 'Missing' }}</strong></div>{% endfor %}</div></section>
 
-<section class="panel"><div class="auth-users-head"><h2>Administrative audit history</h2><p class="field-note">Records who changed state and whether the request succeeded. Form bodies and secret values are never retained.</p></div>{% if audit_events %}<div class="tftp-history-list">{% for event in audit_events %}<article><span class="pill {{ 'success' if event.status_code < 400 else 'error' }}">{{ event.status_code }}</span><div><strong>{{ event.username }} · {{ event.endpoint }}</strong><small>{{ event.method }} {{ event.path }} · {{ event.remote_ip }}</small></div><time>{{ event.recorded_display }}</time></article>{% endfor %}</div>{% else %}<p class="side-nav-empty">No administrative changes have been recorded yet.</p>{% endif %}</section>
+<section class="panel">
+  <div class="auth-users-head">
+    <h2>Administrative audit history</h2>
+    <p class="field-note">Expand an event for its resource, request, and changed-setting details. Only explicitly curated metadata is retained; form bodies and secret values are never stored.</p>
+  </div>
+  {% if audit_events %}
+    <div class="audit-event-list">
+      {% for event in audit_events %}
+        <details class="audit-event">
+          <summary>
+            <span class="pill {{ 'success' if event.status_code < 400 else 'error' }}">{{ event.status_code }}</span>
+            <span class="audit-event-title">
+              <strong>{{ event.summary }}</strong>
+              <small>{{ event.username }} · {{ event.category }}{% if event.resource_name %} · {{ event.resource_name }}{% endif %}</small>
+            </span>
+            <time>{{ event.recorded_display }}</time>
+          </summary>
+          <div class="audit-event-body">
+            <dl class="audit-request-grid">
+              <div><dt>User</dt><dd>{{ event.username }}</dd></div>
+              <div><dt>Source</dt><dd>{{ event.remote_ip }}</dd></div>
+              <div><dt>Request</dt><dd><code>{{ event.method }} {{ event.path }}</code></dd></div>
+              <div><dt>Endpoint</dt><dd><code>{{ event.endpoint }}</code></dd></div>
+              {% if event.resource_type %}<div><dt>Resource type</dt><dd>{{ event.resource_type }}</dd></div>{% endif %}
+              {% if event.resource_id %}<div><dt>Resource ID</dt><dd><code>{{ event.resource_id }}</code></dd></div>{% endif %}
+            </dl>
+            {% if event.changes %}
+              <h3>Changed settings</h3>
+              <div class="audit-change-list">
+                {% for change in event.changes %}
+                  <article>
+                    <strong>{{ change.field | replace('_', ' ') | replace('.', ' › ') }}</strong>
+                    <div><span>Before</span><pre>{{ change.before_display }}</pre></div>
+                    <div><span>After</span><pre>{{ change.after_display }}</pre></div>
+                  </article>
+                {% endfor %}
+              </div>
+            {% endif %}
+            {% if event.detail_items %}
+              <h3>Event details</h3>
+              <dl class="audit-detail-list">
+                {% for item in event.detail_items %}<div><dt>{{ item.label }}</dt><dd><pre>{{ item.value }}</pre></dd></div>{% endfor %}
+              </dl>
+            {% endif %}
+            {% if not event.changes and not event.detail_items %}<p class="field-note">No additional structured detail was recorded for this event.</p>{% endif %}
+          </div>
+        </details>
+      {% endfor %}
+    </div>
+  {% else %}<p class="side-nav-empty">No administrative changes have been recorded yet.</p>{% endif %}
+</section>
 {% endblock %}

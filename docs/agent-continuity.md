@@ -316,8 +316,11 @@ accepted replay frames.
 - `MigrationManager` maintains the toolkit-wide migration ledger and creates
   consistent SQLite snapshots before new numbered migrations. Automation retains
   its existing internal migration ledger, both shown in System Diagnostics.
-- `AuditStore` records sanitized administrative requests only; never add request
-  bodies, credentials, tokens, or secret headers to audit events.
+- `AuditStore` records sanitized administrative requests and explicitly annotated
+  user actions. Routes use `annotate_audit_event` for resource context and curated
+  before/after values. Never pass request bodies wholesale; recursive storage-time
+  sanitization is defense in depth for passwords, credentials, tokens, communities,
+  API keys, authorization fields, and secret headers.
 
 ## Verification
 
