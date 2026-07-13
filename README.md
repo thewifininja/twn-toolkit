@@ -19,6 +19,23 @@ Current release: **v0.9.0**
 > it only on infrastructure you are authorized to operate. It is not designed
 > for direct exposure to the public internet.
 
+## Navigation at a glance
+
+- **Dashboard** — metrics, activity, scoreboard, Favorites, and widget layout
+- **Fortinet Tools**
+  - FortiGate, FortiAP, and FortiSwitch workflows
+  - FortiAuthenticator workflows
+- **Network Tools**
+  - Addressing & Reachability
+  - Multi-Host Tools
+  - Services & Protocols
+  - Traffic & Interfaces
+- **Local Tools** — Datastore and managed File Transfers
+- **Automation** — reusable Conditions, Actions, and Automations
+- **Administration** — Settings, access, backups, operational limits, and
+  System Diagnostics
+- **Help** — searchable operator guidance and release notes
+
 ## What it includes
 
 ### Dashboard

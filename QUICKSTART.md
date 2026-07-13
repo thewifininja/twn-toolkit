@@ -1,31 +1,39 @@
-# The WiFi Ninja's Toolkit Quick Start
+# The WiFi Ninja’s Toolkit Quick Start
+
+This guide takes a new installation from first launch through a useful network
+test, saved device profiles, a working automation, local file services, and
+basic administration. The searchable **Help** page inside the toolkit contains
+the full field guide and release notes.
 
 ## Requirements
 
 - Python 3.10 or newer
 - macOS, Linux, or Raspberry Pi OS
-- Network access to the appliances you want to manage
-- For FortiGate workflows: a REST API administrator and token
-- For FortiAuthenticator workflows: an administrator with Web service access
-  and its emailed API access key
+- Network access from the toolkit host to the systems being tested
+- A modern browser
 
-A read-only API profile is sufficient for exports. Rename tasks require
-read-write permission for the wireless-controller or switch-controller resource.
-FortiAuthenticator cleanup requires permission to change Users and Devices
-resources.
+Optional workflows need their own remote permissions:
 
-## Install
+- FortiGate workflows use a REST API administrator and token.
+- FortiAuthenticator workflows use an administrator with **Web service
+  access** and its Web Service API Access Key.
+- PEAP/MSCHAPv2 and EAP-TLS tests require `eapol_test`.
+- DHCP Discover and Packet Replay may require elevated network permissions.
 
-From the project folder:
+## Install or upgrade
+
+From the project directory:
 
 ```bash
 ./install.sh
 ```
 
-The installer creates the virtual environment, installs requirements, and starts
-the toolkit. It is safe to run again when dependencies need refreshing.
+The installer checks system commands, creates `.venv`, installs Python
+dependencies, generates a self-signed certificate for a fresh installation,
+and starts the toolkit. Running it again refreshes dependencies while
+preserving `instance/` data and an existing HTTP/HTTPS choice.
 
-For manual setup:
+For a manual Python setup:
 
 ```bash
 python3 -m venv .venv
@@ -33,251 +41,300 @@ python3 -m venv .venv
 ./twn start
 ```
 
-Open the HTTPS URL printed by the launcher (normally
-<https://127.0.0.1:5050> on a fresh installation) and continue through the
-self-signed certificate warning. Existing installations retain their selected
-HTTP/HTTPS mode during upgrades.
+Open one of the HTTPS URLs printed by the launcher—normally
+<https://127.0.0.1:5050> is available locally. A fresh installation uses a
+self-signed certificate, so the browser will display a certificate warning.
 
-The service runs in the background. Manage it with:
+## First launch
 
-```bash
-./twn status
-./twn logs
-./twn restart
-./twn stop
-./twn fix-permissions
+There is no default account.
+
+1. Create the first administrator.
+2. Sign in and open **Administration → Settings**.
+3. Review the short instance name, preferred FQDN, client allowlist, password
+   policy, idle timeout, operational limits, and retention settings.
+4. Open **Administration → System Diagnostics** and confirm that the web,
+   scheduler, supervisor, databases, and required dependencies are healthy.
+
+The persistent sidebar is the primary navigation:
+
+- **Fortinet Tools** contains FortiGate and FortiAuthenticator profiles and
+  workflows.
+- **Network Tools** is divided into Addressing & Reachability, Multi-Host
+  Tools, Services & Protocols, and Traffic & Interfaces.
+- **Local Tools** contains the Datastore and managed File Transfers.
+- **Automation** contains reusable Conditions, Actions, and Automations.
+- **Administration** contains server-wide configuration and diagnostics.
+
+Hover or focus a tool in the sidebar and select its star to add or remove a
+personal Favorite.
+
+## Run a first network test
+
+**Multi-Host Ping** is a useful first test because it needs no saved
+credentials:
+
+1. Open **Network Tools → Multi-Host Tools → Multi-Host Ping**.
+2. Enter one target per line. Optional friendly names use
+   `Friendly Name = hostname-or-IP`.
+3. Select **Start**.
+4. Review live reachability, current/minimum/average/maximum latency, loss, and
+   response-time history.
+5. Edit the target box and select **Update targets** when the active run should
+   change. Unchanged targets keep their history; removed targets remain visible
+   as removed.
+
+Invalid entries are reported without preventing valid targets from running.
+The active run uses a validated snapshot, so typing does not create partial
+hosts in the charts. Ping chart history exists in the browser session unless
+exported.
+
+The other Network Tools follow the same category layout shown in the sidebar:
+
+- **Addressing & Reachability:** IP information, subnet exclusion, DNS, NTP,
+  Path MTU, and Traceroute
+- **Multi-Host Tools:** Ping, Multi-SSH, Multi-Transfer, and TCP Port Scanner
+- **Services & Protocols:** RADIUS, certificate inspection, SNMP, Webhook/API,
+  and Syslog
+- **Traffic & Interfaces:** Wi-Fi/LAN Speed Test, DHCP Discover, and Packet
+  Replay
+
+## Add Fortinet profiles
+
+### FortiGate
+
+1. Open **Fortinet Tools → FortiGate**.
+2. Create a profile with a descriptive name and the complete appliance URL,
+   including a custom port when needed, such as
+   `https://192.0.2.10:8443`.
+3. Enter the REST API token and default VDOM (usually `root`).
+4. Leave TLS verification enabled when the FortiGate uses a trusted
+   certificate.
+5. Save the profile and select **Test**.
+
+A read-only FortiGate administrator is sufficient for inventory exports.
+Rename and reorder workflows require write permission for the corresponding
+wireless-controller or switch-controller resources. A successful profile test
+proves connectivity and authentication; a later HTTP 403 usually means the
+remote administrator profile does not permit that specific operation.
+
+FortiGate workflow pages provide in-browser preview and selection. CSV import
+or export is available where useful, but it is not required for normal rename
+or inventory workflows.
+
+### FortiAuthenticator
+
+1. Open **Fortinet Tools → FortiAuthenticator**.
+2. Create a profile with the appliance URL and administrator username.
+3. Enter the Web Service API Access Key—not the interactive login password.
+4. Save the profile and select **Test**.
+
+Cleanup workflows require remote permission to modify Users and Devices.
+Always build and review the cleanup preview before removing memberships or
+deleting a MAC device globally.
+
+## Build a first automation
+
+Automation uses reusable definitions. A condition or action can be shared by
+multiple automations without being rebuilt.
+
+### 1. Create and test a condition
+
+Open **Automation**, expand **New condition**, and choose a type.
+
+For a simple outage condition:
+
+1. Choose **Multi-host ICMP reachability**.
+2. Give it a descriptive name.
+3. Enter one or more named targets.
+4. Choose whether all targets or a selected number must fail.
+5. Save it, expand the saved condition, and select **Test**.
+
+Testing a condition is read-only. It reports current evidence without running
+an action or arming an automation.
+
+Other reusable conditions include DNS lookup health, per-host TCP services,
+SNMP value rules and calculations, certificate health, calendar schedules, and
+a Manual trigger.
+
+### 2. Create an action
+
+Expand **New action**. A practical first action is **SSH command collection**:
+
+1. Add friendly-named SSH targets.
+2. Enter the username and password.
+3. Add the command sequence.
+4. Save the action.
+
+Commands normally use prompt-aware completion with a default ceiling. Override
+one long-running command by prefixing it, for example:
+
+```text
+[timeout=600] diag debug report
 ```
 
-## Add a FortiGate
+Other actions can collect files over SFTP/SCP/FTP, send RFC 5424 Syslog, or
+send templated Webhook/API notifications. Saved action credentials are
+write-only in the UI and encrypted at rest.
 
-1. Enter a profile name.
-2. Enter the complete FortiGate URL, including a custom port when needed:
-   `https://192.0.2.10:8443`
-3. Paste the REST API token.
-4. Enter the default VDOM, usually `root`.
-5. Leave TLS verification enabled when the FortiGate has a trusted certificate.
-6. Optionally select **Use as default profile**.
-7. Save the profile and use **Test** to verify connectivity.
+### 3. Connect them
 
-Profiles and API tokens are stored only on the local machine in
-`instance/profiles.json`. Treat that machine and file as sensitive.
+Expand **New automation**:
 
-## Add a FortiAuthenticator
+1. Name the automation.
+2. Select the reusable condition.
+3. Select one or more actions in Stage 1.
+4. For a monitored condition, set **Check every**, **Trigger after**,
+   **Recover after**, and **Cooldown**.
+5. Add stages when later actions should wait for earlier ones. Actions in one
+   stage run in parallel; stages run sequentially.
+6. Save the automation.
 
-1. On FortiAuthenticator, use an administrator account with **Web service
-   access** enabled and note the emailed Web Service API Access Key.
-2. Enter a profile name and the appliance root URL, such as
-   `https://192.0.2.20`.
-3. Enter the administrator username and Web Service API Access Key. Do not use
-   the account's interactive login password.
-4. Leave TLS verification enabled when the appliance has a trusted certificate.
-5. Optionally adjust the timeout and select **Use as default profile**.
-6. Save the profile and use **Test** to verify access.
+New monitored or calendar automations remain paused until you select **Arm**.
+Use **Test condition** before arming. Editing a referenced condition or action
+pauses dependent automations so changes can be reviewed safely.
 
-FortiAuthenticator credentials are stored locally in
-`instance/fortiauthenticator_profiles.json`.
+### Manual and calendar automations
 
-## Run Tasks
+- A **Manual trigger** produces an on-demand automation with a **Run now**
+  button and no polling interval.
+- A **Calendar schedule** can contain multiple one-time, daily, weekday,
+  alternating-week, monthly-date, or ordinal-weekday rules in one reusable
+  condition. Set an IANA timezone and missed-occurrence policy, then use
+  **Refresh next run times** to preview without arming or executing anything.
 
-### Exports
+### Review output
 
-1. Open an export task and select a profile.
-2. Use the default CSV fields, or expand **Select columns from FortiGate**.
-3. Select **Load Available Fields**, choose and reorder columns, then select
-   **Apply Selected Fields**.
-4. Use **Fetch Data** to preview results or **Export CSV** to download them.
+Expand an automation to see recent condition checks and collected action runs.
+Each run shows stage/action identity and per-target success, partial, or error
+details. Download the ZIP for complete SSH output, collected files, and run
+metadata. Retained output can be deleted per run or cleared without removing
+condition-check history.
 
-### Renames
+The scheduler continues when the browser is closed. If the page reports that
+the scheduler is stopped, run `./twn restart` and confirm with `./twn status`.
 
-Use either workflow:
+## Use the Datastore and File Transfers
 
-- Select **Load Current Devices** to edit selected names in the browser.
-- Upload a CSV using the inline example or **Download CSV Template**.
+### Datastore
 
-Dry run is enabled by default. Review the results and select
-**Apply These Changes** to perform the live updates. The WiFi Ninja's Toolkit reads each object
-back after an update and reports whether the requested name was verified.
+Open **Local Tools → Datastore** to upload, download, rename, move, or delete
+contained files and folders. List/grid views, drag-and-drop uploads, selection,
+folder drop targets, and bulk ZIP downloads are supported.
 
-## FortiAuthenticator Tasks
+Files live beneath `instance/datastore/`. They are excluded from Git and from
+profile backup/restore, so back up that directory separately when its contents
+matter.
 
-### MAC Devices
+### Managed transfer services
 
-Use **Fetch Data** for an in-page preview or **Export CSV** for the complete
-paginated inventory.
+Open **Local Tools → File Transfers** to configure TFTP, SFTP/SCP, or FTP.
+Every listener is disabled by default.
 
-### MAC Group Memberships
+For each service:
 
-Preview or export all device-to-group associations, including explicit device,
-group, and membership IDs.
+1. Choose the bind address and non-privileged or standard port.
+2. Restrict trusted IPv4/IPv6 client networks.
+3. Select a Datastore folder, or upload one runtime-only file.
+4. Configure read/write and incoming filename behavior.
+5. Save and enable the service.
+6. Confirm its worker in `./twn status` and review transfer history in the UI.
 
-### MAC Device Cleanup
+Runtime-only files disappear when their service stops. SFTP/SCP provides no
+interactive shell and stores its service password as a one-way hash. TFTP has
+no authentication or encryption; FTP authentication and content are plaintext.
+Prefer SFTP/SCP whenever the client supports it.
 
-1. Load groups and select the group to clean.
-2. Choose either **Remove devices from this group only** or **Delete MAC devices
-   globally**.
-3. Build and review the preview. Global deletion highlights devices that also
-   belong to other groups.
-4. All targets are selected by default; deselect anything that should remain.
-5. Type the exact confirmation phrase calculated for the selected count.
+## Add users and access profiles
 
-The app re-fetches and validates selected IDs immediately before execution.
-Global deletion removes the MAC device object, not just its membership.
+Open **Administration → Settings**:
 
-## Network Tools
+1. Create one or more custom access profiles.
+2. Select exactly which individual tools each profile may use.
+3. Create or edit users and assign one or more profiles.
 
-The **Network Tools** workspace contains vendor-neutral diagnostics. Some tools
-have their own reusable profiles, but none require a FortiGate profile.
+Effective access is the union of assigned profiles. The built-in Administrator
+profile is protected and grants server-wide administration. Unauthorized links
+are removed from navigation, and direct requests remain blocked by the server.
 
-- **Subnet Excluder** subtracts comma-, space-, or line-separated CIDRs from
-  parent networks. Enter `rfc1918` to use all private IPv4 ranges.
-- **Multi-Host Ping** troubleshoots reachability, latency, and loss from the
-  toolkit host. Save reusable host profiles with optional `Name = host` labels.
-  Charts provide 1-, 2-, and 5-minute views, precise historical navigation,
-  hover details, and CSV export. History belongs to the current browser session;
-  reloading or closing the page discards it. Select **Stop** to end polling.
-- **Multi-SSH** sends the same command sequence to multiple devices using an
-  interactive SSH shell. Passwords are used only for the current request and
-  are not saved. Unknown host keys are rejected unless explicitly allowed.
-- **Multi-Transfer** fetches the same remote file paths from multiple named hosts
-  using SFTP, SCP, or legacy plaintext FTP.
-  Store timestamped, host-qualified files in a chosen datastore folder or use
-  the one-shot ZIP mode, which discards temporary server files after download.
-  Customize output names with timestamp, host, friendly-label/identity, filename,
-  stem, and suffix tokens; duplicate names receive a numeric suffix.
-  Each file is limited to 256 MiB; a run is limited to 1 GiB and 200 transfers.
-- **DNS Lookup Tester** runs each hostname lookup through each resolver, showing
-  returned records and response time. Host lists and resolver lists are saved
-  independently, so either can be reused in different test combinations.
-- **RADIUS Authentication Test** compares PAP or CHAP authentication across
-  saved servers and reports response time, result codes, and returned
-  attributes. Server, credential, and request-attribute profiles are reusable.
-  With the optional `eapol_test` executable installed, it also supports
-  CA-validated PEAP/MSCHAPv2 and EAP-TLS. EAP certificate and private-key
-  uploads are request-scoped and immediately removed; they are never saved.
-  Shared secrets and saved test credentials are stored locally without encryption.
-- **Wi-Fi / LAN Speed Test** measures latency, jitter, download, and upload
-  throughput between the browser and the toolkit server. Open it from another
-  device for a meaningful result; it does not measure internet service speed.
-- **Certificate Chain Inspector** retrieves the exact certificates supplied by
-  an HTTPS server and reports hostname matching, validity dates, chain order,
-  TLS details, and validation against the toolkit host's trust store. Trusted
-  roots are not silently added to the displayed server-supplied chain.
-- **SNMP Tester** stores separate SNMPv2c/SNMPv3 credential profiles, host
-  mappings, and reusable numeric OID collections. Collections support scalar
-  GET operations and bounded subtree walks using a `walk:` label prefix.
-- **TCP Port Scanner** checks selected TCP ports across reusable authorized-host
-  and port profiles, with connection timing and service-name hints. Selecting a
-  profile immediately updates the scan inputs. It is limited to 50 hosts, 200
-  unique ports, and 5,000 host/port combinations per scan.
-- **NTP Tester** tests up to 20 servers concurrently from reusable server
-  profiles. It reports average clock offset, round-trip delay, jitter, stratum,
-  reference identity, leap status, root delay, and root dispersion.
-- **DHCP Discover** sends exactly one broadcast Discover on a selected
-  interface, using a configurable client MAC, host/vendor identity, and
-  parameter request list. It listens for all matching Offers until timeout and
-  does not send a Request or configure the offered address. Binding UDP port 68
-  and selecting an interface require root or equivalent network capabilities.
-- **Packet Replay** previews and transmits raw Ethernet frames from the
-  toolkit host. Use a wired test interface on a network where you are authorized
-  to send crafted traffic. Linux uses a native raw Ethernet socket and requires
-  root or `CAP_NET_RAW`; macOS/BSD-like systems use Scapy/libpcap and may
-  require starting the toolkit with `sudo` so the Python process can open packet
-  devices. Upload a full-packet classic Ethernet PCAP, or paste one raw Ethernet
-  frame as hex, preview the decoded plan, then transmit from the preview card.
-  If the page reports a permission error, restart the toolkit with the required
-  raw-packet privileges on a dedicated diagnostic host. See
-  [Packet Replay setup](docs/packet-replay.md) for platform-specific steps.
-- **Path MTU Tester** uses bounded ICMP probes to find the largest packet that
-  reaches an IPv4 or IPv6 destination without fragmentation. Firewalls that
-  silently discard ICMP can make the result inconclusive.
-- **Webhook / API Tester** sends one HTTP request from the toolkit host. It
-  does not follow redirects, limits response bodies to 1 MiB, redacts common
-  credential headers in results, and does not save request contents.
-- **Syslog Tools** generates configurable RFC 5424 messages over UDP or TCP to
-  test another syslog product. It can also open a listener for up to 30 seconds
-  and 500 messages, then closes it automatically. Port 5514 is the receiver
-  default so ordinary installations do not need permission for port 514.
-- **Traceroute** follows IPv4 or IPv6 destinations using UDP or ICMP probes,
-  streaming each result into a latency-colored hop path and live text output.
-  Up to 10 destinations can be queued per run, two traces execute concurrently,
-  reusable destination profiles are supported, and long-running traces can be
-  cancelled from the page.
+## Back up and restore profiles
 
-Multi-SSH commands execute on real devices. Review the host list and commands
-carefully before selecting the required execution confirmation.
+The **Profile backup and restore** card exports selected configuration groups.
 
-## Local Datastore
+- Selecting any credentials or secrets makes backup encryption mandatory.
+- Non-secret selections may be encrypted optionally.
+- **Combine** keeps existing entries and adds imported definitions.
+- **Replace** replaces the selected stored groups.
+- Imported automations remain paused until reviewed.
 
-Open **Local Tools → Datastore** to manage persistent files contained beneath
-`instance/datastore/`. Access can be assigned through custom user profiles.
-Uploads are limited to 1 GiB per request, existing files are never overwritten,
-and populated folders must be emptied before deletion. Datastore content is not
-included in profile backup/restore; back up the directory separately if needed.
-Choose list or grid view, select files or folders for bulk move/delete, drag selected items
-onto a folder, or drop desktop files onto the upload area.
+The backup does not contain activity metrics, runtime automation history,
+collected output, transfer history, or Datastore files.
 
-Administrators can open **Local Tools → File Transfers** to configure a contained
-RRQ/WRQ server. It is disabled by default on `127.0.0.1:1069`. Choose the
-listener, trusted client CIDRs, read/write access, overwrite policy, and any
-datastore folder as its root. Temporary mode serves one staged file and erases
-it when TFTP stops. Incoming uploads may be renamed with patterns such as
-`{timestamp}-{client_ip}-{filename}`. Saving applies changes without restarting
-the web service. TFTP is unencrypted and unauthenticated; keep client networks
-narrow. UDP 69 may require root or `CAP_NET_BIND_SERVICE`.
+## Service operations
 
-The same page includes a managed inbound **SFTP / SCP service**, disabled by
-default on TCP 2022. Choose either or both protocols, set a service username and
-password, and select a datastore folder or runtime-only download file. The
-password is stored only as a one-way hash; untrusted CIDRs are rejected before
-authentication and no interactive shell is provided. `./twn status` and
-`./twn logs` include this worker.
+```text
+./twn start             Start the toolkit
+./twn stop              Stop the toolkit
+./twn restart           Restart the toolkit
+./twn status            Show process state and access URLs
+./twn logs              Show recent errors
+./twn enable-https ...  Generate or regenerate managed HTTPS
+./twn disable-https     Return an existing installation to HTTP
+./twn fix-permissions   Repair instance ownership after sudo mode
+```
 
-It also includes a separate managed **FTP service** with configurable control and
-passive ports, hashed local credentials, trusted client CIDRs, contained roots,
-the same upload filename rewrites, and total/per-client connection limits. FTP
-and SFTP/SCP inbound files share the datastore's 1 GiB per-file ceiling. FTP authentication and content are not
-encrypted in transit, so prefer SFTP/SCP whenever the client supports them.
+Use another port for one launch:
 
-Use **Administration → Settings → Operational limits** to size automation
-concurrency and local storage quotas for the host. **Administration → System
-Diagnostics** shows worker heartbeats, disk use, database integrity, optional
-command dependencies, applied migrations, reclaimable artifacts, and recent
-administrative changes.
+```bash
+TWN_TOOLKIT_PORT=8443 ./twn start
+```
 
-## Reset Before Sharing
+If a privileged run leaves root-owned instance files, stop the toolkit and run
+`./twn fix-permissions` before returning to a normal user account.
 
-The WiFi Ninja's Toolkit persists Fortinet connection profiles and reusable
-ping, DNS, RADIUS, SNMP, and TCP scanner profiles. To remove them:
+## Privileged tools
+
+- **DHCP Discover** binds UDP client port 68 and may require root or equivalent
+  Linux capabilities.
+- **Packet Replay** requires raw Ethernet/BPF access. Linux normally needs root
+  or `CAP_NET_RAW`; macOS may require BPF permission.
+- Standard TFTP/FTP listener ports may need privileged bind permission. The
+  default high ports avoid that requirement.
+
+See [Packet Replay setup](docs/packet-replay.md) for detailed platform steps.
+
+## Recovery and reset
+
+If every administrator is locked out:
+
+```bash
+./twn stop
+./twn adminreset
+./twn start
+```
+
+This resets users without deleting saved device profiles or API keys.
+
+To remove saved profiles and credentials before sharing a clean source copy:
 
 ```bash
 ./twn stop
 ./twn reset-data
 ```
 
-Confirm the prompt. For scripts or packaging:
+Review the prompt carefully. Datastore files and other operational instance
+data are managed separately.
 
-```bash
-./twn stop
-./twn reset-data --yes
-```
+## Security reminder
 
-This removes FortiGate, FortiAuthenticator, ping, DNS, RADIUS, SNMP, TCP
-port-scanner, NTP, and Traceroute profile files from `instance/`. It does not
-modify application code.
-The `instance/` and `.venv/` directories are excluded by `.gitignore`.
+The default private-network allowlist, authentication, and HTTPS are defense in
+depth for a trusted internal deployment; they do not make the toolkit safe for
+unrestricted internet exposure. Protect the host and `instance/`, restrict
+listeners to necessary clients, prefer encrypted protocols, and use least-
+privileged remote accounts.
 
-After resetting, share the project without `.venv/`, `.git/`, or `instance/`.
-The recipient can follow this guide to create their own environment and profile.
+For complete feature guidance, open **Help** in the toolkit or continue with:
 
-## Local Network Access
-
-The default listener uses all IPv4 interfaces and permits loopback plus the RFC
-1918 private ranges (`10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16`).
-An administrator can narrow or expand this from **Settings → Server access**.
-**Save and Restart** applies changes without requiring terminal access. The
-toolkit always permits local loopback and prevents a remote administrator from
-saving an allowlist that excludes their current address.
-
-Authentication and an IP allowlist do not make the service suitable
-for direct internet exposure. Keep access to trusted internal networks and use a
-TLS reverse proxy for any deployment that crosses an untrusted network.
+- [README](README.md)
+- [Automation architecture and operations](docs/automations.md)
+- [Packet Replay setup](docs/packet-replay.md)
