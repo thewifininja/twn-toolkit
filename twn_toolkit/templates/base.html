@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% if page_title %}{{ page_title }} · {% endif %}{% if instance_name %}{{ instance_name }} · {% endif %}The WiFi Ninja’s Toolkit</title>
     <meta name="theme-color" content="#151b1a">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png') }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='brand/apple-touch-icon.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png', v=app_version) }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='brand/apple-touch-icon.png', v=app_version) }}">
     <script>
       (() => {
         const root = document.documentElement;
@@ -34,7 +34,7 @@
         </button>
       {% endif %}
       <a class="brand" href="{{ url_for('index') }}">
-        <img src="{{ url_for('static', filename='brand/dragon-mark-128.png') }}" alt="">
+        <img src="{{ url_for('static', filename='brand/dragon-mark-128.png', v=app_version) }}" alt="">
         <span>The WiFi Ninja’s Toolkit</span>
       </a>
       <span class="subtitle">Fortinet workflows and network diagnostics</span>
