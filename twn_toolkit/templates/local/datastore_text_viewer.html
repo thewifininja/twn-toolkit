@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="workspace-intro datastore-text-intro">
+  <span class="eyebrow">Datastore · text viewer</span>
+  <h1>{{ filename }}</h1>
+  <p>{{ size_display }} · Read-only plain-text preview. File contents are displayed as text and are never rendered as HTML.</p>
+</section>
+
+<section class="panel datastore-text-viewer">
+  <div class="section-head datastore-text-viewer-head">
+    <div>
+      <h2>Plain-text preview</h2>
+      <p><code>{{ relative_path }}</code></p>
+    </div>
+    <div class="button-row">
+      <a class="button-link secondary" href="{{ url_for('local_datastore', path=parent_path) }}">Back to folder</a>
+      <a class="button-link secondary" href="{{ url_for('download_datastore_file', path=relative_path) }}">Download</a>
+    </div>
+  </div>
+
+  {% if truncated %}
+    <div class="message warning">This file exceeds {{ preview_limit_display }}. Only the beginning is shown; download it for the complete contents.</div>
+  {% endif %}
+  {% if replacement_count %}
+    <div class="message warning">This file contains {{ replacement_count }} byte sequence{{ '' if replacement_count == 1 else 's' }} that are not valid UTF-8. Replacement characters are shown where decoding was not possible.</div>
+  {% endif %}
+
+  <pre class="datastore-text-content" tabindex="0">{{ text }}</pre>
+</section>
+{% endblock %}

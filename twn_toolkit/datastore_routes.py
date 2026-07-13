@@ -18,6 +18,9 @@ from .ssh_transfer_server import (
 from .ftp_server import FTPSettingsStore, ftp_process_status
 
 
+MAX_TEXT_PREVIEW_BYTES = 1024 * 1024
+
+
 def register_datastore_routes(
     app: Flask,
     store: LocalDatastore,
@@ -332,6 +335,33 @@ def register_datastore_routes(
             abort(404, str(exc))
         record_current_activity("Local storage", "Downloaded datastore file", file_path.name)
         return send_file(file_path, as_attachment=True, download_name=file_path.name)
+
+    @app.get("/local/datastore/view-text")
+    def view_datastore_file_as_text():
+        relative_path = request.args.get("path", "")
+        try:
+            file_path = store.file(relative_path)
+            with file_path.open("rb") as source:
+                raw = source.read(MAX_TEXT_PREVIEW_BYTES + 1)
+        except (DatastoreError, OSError) as exc:
+            abort(404, str(exc))
+        truncated = len(raw) > MAX_TEXT_PREVIEW_BYTES
+        preview_bytes = raw[:MAX_TEXT_PREVIEW_BYTES]
+        text = preview_bytes.decode("utf-8-sig", errors="replace")
+        replacement_count = text.count("\ufffd")
+        parent_path = relative_path.rsplit("/", 1)[0] if "/" in relative_path else ""
+        record_current_activity("Local storage", "Viewed datastore file as text", file_path.name)
+        return render_template(
+            "local/datastore_text_viewer.html",
+            filename=file_path.name,
+            relative_path=relative_path,
+            parent_path=parent_path,
+            text=text,
+            truncated=truncated,
+            replacement_count=replacement_count,
+            size_display=format_bytes(file_path.stat().st_size),
+            preview_limit_display=format_bytes(MAX_TEXT_PREVIEW_BYTES),
+        )
 
     @app.post("/local/datastore/bulk-download")
     def bulk_download_datastore_files():

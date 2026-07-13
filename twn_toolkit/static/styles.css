@@ -4209,6 +4209,38 @@ button.danger {
   font-size: 1rem;
 }
 
+.datastore-text-viewer {
+  display: grid;
+  gap: 1rem;
+}
+
+.datastore-text-viewer-head {
+  align-items: center;
+}
+
+.datastore-text-viewer-head p {
+  margin-top: 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+.datastore-text-content {
+  background: color-mix(in srgb, var(--bg), var(--panel) 38%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  margin: 0;
+  max-height: 70vh;
+  min-height: 16rem;
+  overflow: auto;
+  padding: 1rem;
+  tab-size: 4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .sftp-output-options .check {
   align-items: start;
 }

@@ -161,7 +161,7 @@ def create_app(instance_path: str | None = None) -> Flask:
     @app.after_request
     def audit_administrative_mutations(response: Response):
         user = getattr(g, "current_user", None)
-        audited_reads = {"download_automation_run", "download_datastore_file", "bulk_download_datastore_files", "download_automation_artifact"}
+        audited_reads = {"download_automation_run", "download_datastore_file", "view_datastore_file_as_text", "bulk_download_datastore_files", "download_automation_artifact"}
         should_audit = request.method in {"POST", "PUT", "PATCH", "DELETE"} or (request.endpoint or "") in audited_reads
         if should_audit and user and user.get("is_admin"):
             try:

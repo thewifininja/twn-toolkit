@@ -220,7 +220,8 @@ the scheduler is stopped, run `./twn restart` and confirm with `./twn status`.
 
 Open **Local Tools → Datastore** to upload, download, rename, move, or delete
 contained files and folders. List/grid views, drag-and-drop uploads, selection,
-folder drop targets, and bulk ZIP downloads are supported.
+folder drop targets, bulk ZIP downloads, and a read-only plain-text file preview
+from each file's three-dot menu are supported.
 
 Files live beneath `instance/datastore/`. They are excluded from Git and from
 profile backup/restore, so back up that directory separately when its contents

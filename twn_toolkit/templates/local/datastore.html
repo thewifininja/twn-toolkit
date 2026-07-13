@@ -111,6 +111,7 @@
             </summary>
             <div>
               {% if not entry.is_dir %}
+                <a class="button-link secondary" href="{{ url_for('view_datastore_file_as_text', path=entry.path) }}">View as text</a>
                 <a class="button-link secondary" href="{{ url_for('download_datastore_file', path=entry.path) }}">Download</a>
               {% endif %}
               <form method="post" action="{{ url_for('rename_datastore_entry') }}" class="datastore-rename-form">

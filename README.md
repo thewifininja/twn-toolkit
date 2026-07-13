@@ -135,6 +135,7 @@ supports:
 - multi-file drag-and-drop upload;
 - file and folder selection, move, delete, and bulk ZIP download;
 - folder drop targets, renaming, and collision-safe writes; and
+- a safe, size-bounded plain-text viewer for any stored file; and
 - access through custom toolkit profiles.
 
 Paths cannot escape the Datastore root, symbolic links are ignored, partial

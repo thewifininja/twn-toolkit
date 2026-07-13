@@ -142,6 +142,29 @@ class LocalDatastoreRouteTests(unittest.TestCase):
             self.assertIn("attachment", download.headers["Content-Disposition"])
             download.close()
 
+            viewer = client.get("/local/datastore/view-text?path=Images/hello.txt")
+            self.assertEqual(viewer.status_code, 200)
+            self.assertIn(b"Plain-text preview", viewer.data)
+            self.assertIn(b"hello", viewer.data)
+            self.assertIn(b"View as text", client.get("/local/datastore?path=Images").data)
+
+    def test_text_viewer_escapes_content_and_reports_binary_and_truncation(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            store = LocalDatastore(instance)
+            payload = b"<script>alert('nope')</script>\xff" + b"x" * (1024 * 1024)
+            store.save_upload("", "sample.bin", io.BytesIO(payload), max_bytes=len(payload))
+
+            response = client.get("/local/datastore/view-text?path=sample.bin")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertNotIn(b"<script>alert", response.data)
+            self.assertIn(b"&lt;script&gt;", response.data)
+            self.assertIn(b"not valid UTF-8", response.data)
+            self.assertIn(b"Only the beginning is shown", response.data)
+
     def test_bulk_move_and_delete_routes(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)
