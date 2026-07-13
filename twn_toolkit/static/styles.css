@@ -5623,6 +5623,18 @@ th {
     padding-right: 0;
   }
 
+  .automation-page-nav {
+    flex-wrap: nowrap;
+    gap: 0.45rem;
+  }
+
+  .automation-page-nav .button-link {
+    flex: 1 1 0;
+    font-size: 0.82rem;
+    min-width: 0;
+    padding-inline: 0.3rem;
+  }
+
   .automation-status-grid {
     grid-template-columns: 1fr;
   }
