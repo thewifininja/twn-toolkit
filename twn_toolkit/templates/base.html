@@ -47,10 +47,10 @@
             data-update-url="{{ url_for('update_theme') }}"
             data-theme="{{ user_theme }}"
             aria-pressed="{{ 'true' if user_theme == 'dark' else 'false' }}"
-            title="Toggle color theme"
+            aria-label="{{ 'Switch to light mode' if user_theme == 'dark' else 'Switch to dark mode' }}"
+            title="{{ 'Switch to light mode' if user_theme == 'dark' else 'Switch to dark mode' }}"
           >
             <span class="theme-toggle-icon" aria-hidden="true">{{ '☾' if user_theme == 'dark' else '☀' }}</span>
-            <span class="theme-toggle-label">{{ 'Dark' if user_theme == 'dark' else 'Light' }}</span>
           </button>
           <form method="post" action="{{ url_for('logout') }}" class="nav-logout">
             <button type="submit" class="link-button" aria-label="Sign out {{ current_user.username }}">

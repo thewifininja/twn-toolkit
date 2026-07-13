@@ -45,6 +45,8 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b'href="/help"', response.data)
         topnav = response.data.split(b'<nav class="topnav">', 1)[1].split(b"</nav>", 1)[0]
         self.assertNotIn(b"Settings", topnav)
+        self.assertIn(b'aria-label="Switch to dark mode"', topnav)
+        self.assertNotIn(b"theme-toggle-label", topnav)
         self.assertIn(b"Packet Replay", response.data)
         self.assertIn(b"FortiGate", response.data)
         self.assertNotIn(b"Find Wireless Client History", response.data)

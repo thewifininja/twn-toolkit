@@ -8,7 +8,9 @@
     toggle.dataset.theme = theme;
     toggle.setAttribute("aria-pressed", String(dark));
     toggle.querySelector(".theme-toggle-icon").textContent = dark ? "☾" : "☀";
-    toggle.querySelector(".theme-toggle-label").textContent = dark ? "Dark" : "Light";
+    const actionLabel = dark ? "Switch to light mode" : "Switch to dark mode";
+    toggle.setAttribute("aria-label", actionLabel);
+    toggle.title = actionLabel;
     window.dispatchEvent(new CustomEvent("themechange", {detail: {theme}}));
   };
 

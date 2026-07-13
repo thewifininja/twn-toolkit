@@ -78,6 +78,8 @@ def test_theme_preference_is_saved_per_user(tmp_path):
     page = client.get("/")
     assert b'data-theme="dark"' in page.data
     assert b'id="theme-toggle"' in page.data
+    assert b'aria-label="Switch to light mode"' in page.data
+    assert b"theme-toggle-label" not in page.data
 
     assert client.post("/settings/theme", json={"theme": "sepia"}).status_code == 400
     client.post("/logout")

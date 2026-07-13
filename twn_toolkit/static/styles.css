@@ -479,9 +479,11 @@ body {
   border: 1px solid #496457;
   border-radius: 999px;
   color: #fff;
-  gap: 6px;
-  min-height: 34px;
-  padding: 5px 10px;
+  height: 38px;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0;
+  width: 38px;
 }
 
 .theme-toggle:hover,
@@ -490,12 +492,8 @@ body {
 }
 
 .theme-toggle-icon {
-  font-size: 1rem;
+  font-size: 1.15rem;
   line-height: 1;
-}
-
-.theme-toggle-label {
-  font-size: 0.8rem;
 }
 
 .nav-menu {
@@ -5902,7 +5900,7 @@ th {
   .theme-toggle {
     height: 38px;
     min-height: 38px;
-    padding: 5px 10px;
+    width: 38px;
   }
 
   .nav-logout-username {
@@ -5916,10 +5914,6 @@ th {
 
   .sftp-result > div:last-child {
     grid-column: 1 / -1;
-  }
-
-  .theme-toggle-label {
-    display: none;
   }
 
   .section-head {
