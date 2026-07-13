@@ -140,7 +140,7 @@ multiple automations without being rebuilt.
 
 ### 1. Create and test a condition
 
-Open **Automation**, expand **New condition**, and choose a type.
+Open **Automation → Conditions**, expand **New condition**, and choose a type.
 
 For a simple outage condition:
 
@@ -159,7 +159,7 @@ a Manual trigger.
 
 ### 2. Create an action
 
-Expand **New action**. A practical first action is **SSH command collection**:
+Open **Automation → Actions** and expand **New action**. A practical first action is **SSH command collection**:
 
 1. Add friendly-named SSH targets.
 2. Enter the username and password.
@@ -179,7 +179,7 @@ write-only in the UI and encrypted at rest.
 
 ### 3. Connect them
 
-Expand **New automation**:
+Open **Automation → Automations** and expand **New automation**:
 
 1. Name the automation.
 2. Select the reusable condition.

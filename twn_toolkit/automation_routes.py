@@ -39,6 +39,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
 
     def render_page(
         *,
+        page_section: str = "automations",
         test_result: dict[str, Any] | None = None,
         form_error: str = "",
         form: dict[str, Any] | None = None,
@@ -105,12 +106,23 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             scheduler=_scheduler_status(store.instance_path),
             schedule_default_timezone=local_timezone_name(),
             datastore_folders=LocalDatastore(store.instance_path).folders(),
+            page_section=page_section,
         )
 
     @app.get("/automations")
     def automations():
         require_admin()
         return render_page()
+
+    @app.get("/automations/conditions")
+    def automation_conditions():
+        require_admin()
+        return render_page(page_section="conditions")
+
+    @app.get("/automations/actions")
+    def automation_actions():
+        require_admin()
+        return render_page(page_section="actions")
 
     @app.post("/automations/save")
     def save_automation():
@@ -165,13 +177,14 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             )
         except (ToolInputError, ValueError) as exc:
             return render_page(
+                page_section="conditions",
                 form_error=str(exc), form=form, form_section="condition"
             ), 400
         flash(
             "Condition saved. Any automation using an edited condition was paused.",
             "success",
         )
-        return redirect(url_for("automations", focus_condition=definition_id))
+        return redirect(url_for("automation_conditions", focus_condition=definition_id))
 
     @app.post("/automations/actions/save")
     def save_automation_action():
@@ -196,13 +209,14 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             )
         except (ToolInputError, ValueError) as exc:
             return render_page(
+                page_section="actions",
                 form_error=str(exc), form=form, form_section="action"
             ), 400
         flash(
             "Action saved. Any automation using an edited action was paused.",
             "success",
         )
-        return redirect(url_for("automations", focus_action=definition_id))
+        return redirect(url_for("automation_actions", focus_action=definition_id))
 
     @app.post("/automations/conditions/<definition_id>/test")
     def test_condition_definition(definition_id: str):
@@ -226,7 +240,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 "summary": f"{type(exc).__name__}: {exc}",
                 "evidence": {},
             }
-        return render_page(test_result=test_result)
+        return render_page(page_section="conditions", test_result=test_result)
 
     @app.post("/automations/conditions/<definition_id>/delete")
     def delete_automation_condition(definition_id: str):
@@ -237,7 +251,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             flash(str(exc), "error")
         else:
             flash("Condition deleted.", "success")
-        return redirect(url_for("automations"))
+        return redirect(url_for("automation_conditions"))
 
     @app.post("/automations/actions/<definition_id>/delete")
     def delete_automation_action(definition_id: str):
@@ -248,7 +262,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             flash(str(exc), "error")
         else:
             flash("Action deleted.", "success")
-        return redirect(url_for("automations"))
+        return redirect(url_for("automation_actions"))
 
     @app.post("/automations/<automation_id>/toggle")
     def toggle_automation(automation_id: str):

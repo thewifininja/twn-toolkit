@@ -161,6 +161,11 @@ corresponding service stops. Transfer history remains visible in the web UI.
 
 Automation is built from three reusable layers:
 
+- **Automation → Conditions** is the reusable observation and trigger library.
+- **Automation → Actions** is the reusable response library.
+- **Automation → Automations** connects those definitions to schedules, state
+  policy, staged pipelines, and retained run history.
+
 1. **Conditions** describe observations or schedules.
 2. **Actions** describe trusted responses.
 3. **Automations** connect one condition to one or more ordered action stages.

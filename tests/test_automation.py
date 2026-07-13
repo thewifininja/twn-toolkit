@@ -566,7 +566,7 @@ class AutomationRouteTests(unittest.TestCase):
             )
             store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
             definition = store.action_definitions(include_secrets=True)[0]
-            page = client.get("/automations")
+            page = client.get("/automations/actions")
             update = client.post(
                 "/automations/actions/save",
                 data={
@@ -629,7 +629,7 @@ class AutomationRouteTests(unittest.TestCase):
             )
             store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
             definition = store.action_definitions()[0]
-            page = client.get("/automations")
+            page = client.get("/automations/actions")
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(definition["type"], "syslog.send")
@@ -733,7 +733,7 @@ class AutomationRouteTests(unittest.TestCase):
             )
             store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
             definition = store.condition_definitions()[0]
-            page = client.get("/automations")
+            page = client.get("/automations/conditions")
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(definition["type"], "dns.lookup")
@@ -766,7 +766,7 @@ class AutomationRouteTests(unittest.TestCase):
             )
             store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
             definition = store.condition_definitions()[0]
-            page = client.get("/automations")
+            page = client.get("/automations/conditions")
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(definition["type"], "schedule.calendar")
@@ -896,6 +896,28 @@ class AutomationRouteTests(unittest.TestCase):
                 },
             )
             self.assertEqual(client.get("/automations").status_code, 403)
+            self.assertEqual(client.get("/automations/conditions").status_code, 403)
+            self.assertEqual(client.get("/automations/actions").status_code, 403)
+
+    def test_automation_libraries_have_independent_pages(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            automations_page = client.get("/automations")
+            conditions_page = client.get("/automations/conditions")
+            actions_page = client.get("/automations/actions")
+
+        self.assertEqual(automations_page.status_code, 200)
+        self.assertIn(b"New automation", automations_page.data)
+        self.assertNotIn(b"New condition", automations_page.data)
+        self.assertNotIn(b"New action", automations_page.data)
+        self.assertIn(b"New condition", conditions_page.data)
+        self.assertNotIn(b"New automation", conditions_page.data)
+        self.assertIn(b"New action", actions_page.data)
+        self.assertNotIn(b"New automation", actions_page.data)
+        self.assertIn(b'aria-current="page">Conditions', conditions_page.data)
+        self.assertIn(b'aria-current="page">Actions', actions_page.data)
 
     def test_manual_trigger_runs_actions_and_collected_data_can_be_deleted(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:

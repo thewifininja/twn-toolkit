@@ -34,15 +34,45 @@ def register_tools(registry: ToolRegistry) -> None:
             nav_icon="⚙",
         )
     )
+    registry.add_tool(
+        ToolLink(
+            "automation.conditions",
+            "Conditions",
+            "Create and test reusable observations for automations.",
+            "automation_conditions",
+            "automation",
+            "Automation",
+            admin_only=True,
+            risk="advanced",
+            grantable=False,
+            nav_icon="IF",
+        )
+    )
+    registry.add_tool(
+        ToolLink(
+            "automation.actions",
+            "Actions",
+            "Create reusable responses for automation pipelines.",
+            "automation_actions",
+            "automation",
+            "Automation",
+            admin_only=True,
+            risk="advanced",
+            grantable=False,
+            nav_icon="▶",
+        )
+    )
     registry.map_endpoints(
         {
             "automations": "automation.home",
             "save_automation": "automation.home",
-            "save_automation_condition": "automation.home",
-            "save_automation_action": "automation.home",
-            "test_condition_definition": "automation.home",
-            "delete_automation_condition": "automation.home",
-            "delete_automation_action": "automation.home",
+            "automation_conditions": "automation.conditions",
+            "save_automation_condition": "automation.conditions",
+            "test_condition_definition": "automation.conditions",
+            "delete_automation_condition": "automation.conditions",
+            "automation_actions": "automation.actions",
+            "save_automation_action": "automation.actions",
+            "delete_automation_action": "automation.actions",
             "toggle_automation": "automation.home",
             "run_automation_now": "automation.home",
             "test_automation_condition": "automation.home",

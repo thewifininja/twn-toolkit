@@ -4738,6 +4738,18 @@ button.danger {
   position: relative;
 }
 
+.automation-page-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: -0.35rem auto 1.25rem;
+}
+
+.automation-page-nav .button-link {
+  min-width: 8.5rem;
+  text-align: center;
+}
+
 .automation-manager > .section-head {
   min-height: 48px;
   padding-right: 180px;

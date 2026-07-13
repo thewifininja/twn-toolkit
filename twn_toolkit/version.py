@@ -40,6 +40,7 @@ RELEASE_NOTES = (
                 "title": "Navigation, Help, and interface",
                 "items": (
                     "Reorganized the sidebar into functional Network Tool groups, added meaningful icons, and made collapsed navigation hide completely instead of leaving an unusable icon rail.",
+                    "Separated Automations, reusable Conditions, and reusable Actions into focused pages under one persistent Automation navigation group.",
                     "Expanded the built-in Help guide for automation, local services, transfers, operations, and release history, with improved search behavior and consistent topic cards.",
                     "Added a custom protocol-themed loading visualization with immediate motion, calmer rotating messages, stable text layout, and reduced-motion support.",
                     "Reorganized Administration settings into coherent system, operations, authentication, access-profile, user, backup, and recovery sections.",

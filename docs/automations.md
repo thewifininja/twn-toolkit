@@ -7,6 +7,12 @@ continue running without an open browser because
 `./twn start` launches a single scheduler process beside the Gunicorn web
 service.
 
+The web interface keeps the three responsibilities on separate pages under the
+**Automation** sidebar group: **Conditions** for observation definitions and
+tests, **Actions** for response definitions, and **Automations** for policy,
+pipelines, scheduler state, checks, and retained runs. This is a presentation
+split only; definitions remain reusable across any number of automations.
+
 ## Calendar schedules
 
 A reusable Calendar schedule condition can contain up to 50 independent rules,

@@ -54,10 +54,17 @@
 {% block content %}
 <section class="workspace-intro">
   <span class="eyebrow">Automation</span>
-  <h1>Conditions and actions</h1>
-  <p>Build reusable observations and responses, then connect them with scheduling, trigger, recovery, and cooldown policies.</p>
+  <h1>{{ 'Conditions' if page_section == 'conditions' else 'Actions' if page_section == 'actions' else 'Automations' }}</h1>
+  <p>{% if page_section == 'conditions' %}Create and test reusable observations that can be shared by multiple automations.{% elif page_section == 'actions' %}Create reusable responses, then arrange them into parallel and sequential automation stages.{% else %}Connect reusable conditions and actions with scheduling, trigger, recovery, and cooldown policies.{% endif %}</p>
 </section>
 
+<nav class="automation-page-nav" aria-label="Automation workspace">
+  <a class="button-link {{ 'secondary' if page_section != 'automations' }}" href="{{ url_for('automations') }}" {% if page_section == 'automations' %}aria-current="page"{% endif %}>Automations</a>
+  <a class="button-link {{ 'secondary' if page_section != 'conditions' }}" href="{{ url_for('automation_conditions') }}" {% if page_section == 'conditions' %}aria-current="page"{% endif %}>Conditions</a>
+  <a class="button-link {{ 'secondary' if page_section != 'actions' }}" href="{{ url_for('automation_actions') }}" {% if page_section == 'actions' %}aria-current="page"{% endif %}>Actions</a>
+</nav>
+
+{% if page_section == 'conditions' %}
 <section class="panel automation-manager automation-library-panel">
   <div class="section-head"><div><h2>Conditions</h2><p>{{ condition_definitions|length }} reusable observation{{ '' if condition_definitions|length == 1 else 's' }}</p></div></div>
   <details class="card-action-details profile-create-details" data-automation-create {% if form_error and form_section == 'condition' %}open{% endif %}>
@@ -88,7 +95,9 @@
     {% endfor %}
   </div>{% else %}<div class="empty-state"><strong>No reusable conditions yet.</strong><span>Create one once, then select it from any number of automations.</span></div>{% endif %}
 </section>
+{% endif %}
 
+{% if page_section == 'actions' %}
 <section class="panel automation-manager automation-library-panel">
   <div class="section-head"><div><h2>Actions</h2><p>{{ action_definitions|length }} reusable response{{ '' if action_definitions|length == 1 else 's' }}</p></div></div>
   <details class="card-action-details profile-create-details" data-automation-create {% if form_error and form_section == 'action' %}open{% endif %}>
@@ -108,7 +117,9 @@
     {% endfor %}
   </div>{% else %}<div class="empty-state"><strong>No reusable actions yet.</strong><span>Create one once, then attach it to any number of automations.</span></div>{% endif %}
 </section>
+{% endif %}
 
+{% if page_section == 'automations' %}
 <section class="panel automation-manager">
   <div class="section-head"><div><h2>Automations</h2><p>{{ automations|length }} configured · checks continue without an open browser</p></div></div>
   {% if not scheduler.running %}<div class="message warning automation-scheduler-warning"><strong>Automation scheduler is not running.</strong> Armed automations will not run until the toolkit is restarted with <code>./twn restart</code>.</div>{% endif %}
@@ -205,8 +216,9 @@
         </div>
       </details>
     {% endfor %}
-  </div>{% else %}<div class="empty-state"><strong>No automations yet.</strong><span>Create reusable conditions and actions above, then connect them here.</span></div>{% endif %}
+  </div>{% else %}<div class="empty-state"><strong>No automations yet.</strong><span>Create reusable conditions and actions from their library pages, then connect them here.</span></div>{% endif %}
 </section>
+{% endif %}
 <script src="{{ url_for('static', filename='automation.js') }}"></script>
-<script src="{{ url_for('static', filename='automation-snmp.js') }}"></script>
+{% if page_section == 'conditions' %}<script src="{{ url_for('static', filename='automation-snmp.js') }}"></script>{% endif %}
 {% endblock %}
