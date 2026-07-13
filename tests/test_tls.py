@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from cryptography import x509
+from cryptography.x509.oid import NameOID
 
 from twn_toolkit import create_app
 from twn_toolkit.server_settings import (
@@ -76,6 +77,23 @@ class TlsToolsTests(unittest.TestCase):
             os.chmod(key_path, 0o644)
             with self.assertRaisesRegex(ValueError, "permissions"):
                 validate_certificate_pair(cert_path, key_path)
+
+    def test_long_hostnames_remain_in_san_without_overflowing_common_name(self) -> None:
+        long_hostname = f"{'runner-' * 9}host.example.test"
+        self.assertGreater(len(long_hostname), 64)
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "twn_toolkit.tls_tools.default_certificate_names",
+            return_value=([long_hostname], []),
+        ):
+            cert_path, key_path = generate_self_signed_certificate(directory)
+            certificate = validate_certificate_pair(cert_path, key_path)
+            common_name = certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+            san = certificate.extensions.get_extension_for_class(
+                x509.SubjectAlternativeName
+            ).value
+
+            self.assertLessEqual(len(common_name), 64)
+            self.assertIn(long_hostname, san.get_values_for_type(x509.DNSName))
 
     def test_certificate_status_reports_preferred_fqdn_coverage(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

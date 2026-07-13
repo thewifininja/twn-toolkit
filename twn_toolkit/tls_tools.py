@@ -60,7 +60,15 @@ def generate_self_signed_certificate(
     addresses = sorted(set(addresses), key=str)
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     now = datetime.now(timezone.utc)
-    subject_name = names[0] if names else "localhost"
+    # X.509 Common Name attributes are limited to 64 characters. Hostnames can
+    # legally be longer and still belong in Subject Alternative Name, which is
+    # what modern TLS clients validate. Prefer the stable local name for the
+    # legacy subject and retain every discovered/requested name in SAN below.
+    subject_name = (
+        "localhost"
+        if "localhost" in names
+        else next((name for name in names if len(name) <= 64), "localhost")
+    )
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subject_name)])
     certificate = (
         x509.CertificateBuilder()
