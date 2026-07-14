@@ -43,6 +43,12 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Syslog", response.data)
         self.assertIn(b"v0.9.1", response.data)
         self.assertIn(b'href="/help"', response.data)
+        self.assertIn(b'<header class="topbar with-sidebar">', response.data)
+        self.assertIn(b'id="side-nav-search-input"', response.data)
+        self.assertLess(
+            response.data.index(b'id="side-nav-search-input"'),
+            response.data.index(b'side-nav-home'),
+        )
         topnav = response.data.split(b'<nav class="topnav">', 1)[1].split(b"</nav>", 1)[0]
         self.assertNotIn(b"Settings", topnav)
         self.assertIn(b'aria-label="Switch to dark mode"', topnav)
@@ -51,6 +57,12 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"FortiGate", response.data)
         self.assertNotIn(b"Find Wireless Client History", response.data)
         self.assertNotIn(b"Re-order Managed FortiSwitches", response.data)
+
+        sidebar_script = client.get("/static/sidebar.js")
+        self.assertEqual(sidebar_script.status_code, 200)
+        self.assertIn(b'category === "Favorites"', sidebar_script.data)
+        self.assertIn(b'scroll.classList.toggle("searching"', sidebar_script.data)
+        sidebar_script.close()
 
     def test_help_page_renders_user_guidance(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

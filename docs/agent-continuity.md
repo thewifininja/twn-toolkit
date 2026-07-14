@@ -146,7 +146,9 @@ accepted replay frames.
   username and currently selected ranking metric; expanding reveals activity
   score, all non-zero metric bubbles, and the admin clear-score action.
 - The sidebar scrolls independently, keeps Help/version at the actual bottom,
-  and automatically opens the section containing the current page.
+  automatically opens the section containing the current page, and provides a
+  client-side permitted-tool search above Dashboard. Search results de-duplicate
+  Favorites, show the canonical category path, and must not mutate section state.
 
 ## Architecture standards
 

@@ -49,7 +49,7 @@ It provides:
   tests, Syslog, and other toolkit activity;
 - recent activity and a per-user scoreboard;
 - administrator-managed widget visibility and drag-and-drop ordering; and
-- personal Favorites managed from the persistent sidebar.
+- personal Favorites and compact tool search in the persistent sidebar.
 
 Dashboard layout can be included in profile backups. Activity history and
 counters are intentionally excluded.
