@@ -4544,7 +4544,7 @@ button.danger {
 }
 
 .audit-browser {
-  background: var(--panel-soft);
+  background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 14px;
   margin-top: 1rem;
@@ -4584,6 +4584,7 @@ button.danger {
 }
 
 .audit-event-scroll {
+  background: var(--bg);
   max-height: min(62vh, 48rem);
   overscroll-behavior: contain;
   overflow-y: auto;
@@ -4616,7 +4617,7 @@ button.danger {
 }
 
 .audit-event {
-  background: var(--panel-soft);
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
