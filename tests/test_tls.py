@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ipaddress
 import os
+import socket
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -16,6 +18,7 @@ from twn_toolkit.server_settings import (
 )
 from twn_toolkit.tls_tools import (
     certificate_status,
+    default_certificate_names,
     generate_self_signed_certificate,
     regenerate_self_signed_certificate,
     tls_paths,
@@ -24,6 +27,40 @@ from twn_toolkit.tls_tools import (
 
 
 class TlsToolsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # Certificate lifecycle tests should exercise real key generation and
+        # signing without depending on the CI runner's hostname resolver.
+        # GitHub's macOS runners can spend more than a minute resolving their
+        # transient hostnames, making otherwise local tests unnecessarily slow.
+        default_names = (
+            ["localhost"],
+            [ipaddress.ip_address("127.0.0.1"), ipaddress.ip_address("::1")],
+        )
+        resolver_patch = patch(
+            "twn_toolkit.tls_tools.default_certificate_names",
+            return_value=default_names,
+        )
+        resolver_patch.start()
+        self.addCleanup(resolver_patch.stop)
+
+    def test_default_certificate_names_collects_resolved_local_addresses(self) -> None:
+        answers = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.10", 0)),
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2001:db8::10", 0, 0, 0)),
+        ]
+        with (
+            patch("twn_toolkit.tls_tools.socket.gethostname", return_value="toolkit"),
+            patch("twn_toolkit.tls_tools.socket.getfqdn", return_value="toolkit.example.test"),
+            patch("twn_toolkit.tls_tools.socket.getaddrinfo", return_value=answers),
+        ):
+            names, addresses = default_certificate_names()
+
+        self.assertEqual(names, ["localhost", "toolkit", "toolkit.example.test"])
+        self.assertEqual(
+            {str(address) for address in addresses},
+            {"127.0.0.1", "192.0.2.10", "2001:db8::10", "::1"},
+        )
+
     def test_server_identity_is_syntax_validated_without_dns(self) -> None:
         self.assertEqual(normalize_instance_name(" WiFi-Tools "), "wifi-tools")
         self.assertEqual(
