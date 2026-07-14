@@ -4875,15 +4875,20 @@ button.danger {
 }
 
 .user-list {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
   display: grid;
   gap: 12px;
+  padding: 12px;
 }
 
 .user-card {
-  background: var(--card-tint);
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 14px;
+  overflow: hidden;
+  padding: 0;
 }
 
 .user-edit-card summary {
@@ -4893,6 +4898,7 @@ button.danger {
   gap: 14px;
   justify-content: space-between;
   list-style: none;
+  padding: 14px;
 }
 
 .user-edit-card summary::-webkit-details-marker {
@@ -4921,11 +4927,12 @@ button.danger {
 }
 
 .user-edit-panel {
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
   border-top: 1px solid var(--line);
   display: grid;
   gap: 14px;
-  margin-top: 14px;
-  padding-top: 14px;
+  margin-top: 0;
+  padding: 14px;
 }
 
 .password-form {
@@ -4955,11 +4962,20 @@ button.danger {
   gap: 12px;
 }
 
+.access-profile-list:not(.nested-profile-list),
+.automation-list {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+}
+
 .access-profile-card {
-  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 14px;
+  overflow: hidden;
+  padding: 0;
 }
 
 .profile-section {
@@ -4968,15 +4984,15 @@ button.danger {
 
 .access-profile-card > summary {
   align-items: center;
-  background: var(--panel);
-  border: 1px solid color-mix(in srgb, var(--line), transparent 12%);
-  border-radius: 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   cursor: pointer;
   display: flex;
   gap: 12px;
   justify-content: space-between;
-  margin: -4px;
-  padding: 12px 14px;
+  margin: 0;
+  padding: 14px 16px;
   transition: border-color 150ms ease, transform 150ms ease, background 150ms ease;
 }
 
@@ -5005,6 +5021,11 @@ button.danger {
   content: "–";
 }
 
+.access-profile-card[open] > summary {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  border-bottom: 1px solid var(--line);
+}
+
 .access-profile-card > summary:hover {
   border-color: var(--accent);
   transform: translateY(-1px);
@@ -5028,6 +5049,7 @@ button.danger {
 .builtin-profile-card {
   display: grid;
   gap: 2px;
+  padding: 14px 16px;
 }
 
 .create-access-profile-card {
@@ -5110,8 +5132,11 @@ button.danger {
   border-left: 4px solid color-mix(in srgb, var(--accent), transparent 45%);
 }
 
-.access-profile-card form {
-  margin-top: 14px;
+.access-profile-card > form.form {
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+  border-top: 0;
+  margin-top: 0;
+  padding: 16px;
 }
 
 .fortinet-profile-panel {
@@ -5159,9 +5184,10 @@ button.danger {
 }
 
 .automation-card-body {
-  border-top: 1px solid var(--line);
-  margin-top: 16px;
-  padding-top: 16px;
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+  border-top: 0;
+  margin-top: 0;
+  padding: 16px;
 }
 
 .automation-status-grid {
