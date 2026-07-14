@@ -1,6 +1,25 @@
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.9.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.9.1",
+        "date": "2026-07-13",
+        "title": "Managed service reliability hotfix",
+        "summary": (
+            "A focused reliability update that prevents overlapping service restarts "
+            "from orphaning transfer workers or losing their PID ownership state."
+        ),
+        "groups": (
+            {
+                "title": "Managed service lifecycle",
+                "items": (
+                    "Serialized start, stop, and restart operations for managed TFTP, SFTP/SCP, FTP, automation, and supervisor workers.",
+                    "Made worker PID-file cleanup ownership-aware so a failed duplicate process cannot remove the active worker's PID file.",
+                    "Added supervisor retry backoff and clearer current startup-error reporting when a managed service cannot start.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.9.0",
         "date": "2026-07-13",

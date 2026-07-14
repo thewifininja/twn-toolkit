@@ -41,7 +41,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
-        self.assertIn(b"v0.9.0", response.data)
+        self.assertIn(b"v0.9.1", response.data)
         self.assertIn(b'href="/help"', response.data)
         topnav = response.data.split(b'<nav class="topnav">', 1)[1].split(b"</nav>", 1)[0]
         self.assertNotIn(b"Settings", topnav)
@@ -77,7 +77,8 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"./twn fix-permissions", response.data)
         self.assertIn(b"Dashboard and metrics", response.data)
         self.assertIn(b"Release notes", response.data)
-        self.assertIn(b"v0.9.0", response.data)
+        self.assertIn(b"v0.9.1", response.data)
+        self.assertIn(b"Managed service reliability hotfix", response.data)
         self.assertIn(b"Local services, transfer workflows, and operational hardening", response.data)
         self.assertIn(b"v0.8.0", response.data)
         self.assertIn(b"data-help-search-status", response.data)
