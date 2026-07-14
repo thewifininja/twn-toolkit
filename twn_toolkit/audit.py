@@ -26,6 +26,21 @@ _SECRET_FRAGMENTS = (
 _REDACTED = "[redacted]"
 
 
+def audit_reference(
+    resource_type: str, resource_id: str, resource_name: str = ""
+) -> dict[str, str]:
+    """Describe a referenced resource with a human label and stable identifier.
+
+    Audit enrichment should use this shape instead of recording opaque IDs alone.
+    The diagnostics formatter recognizes it and presents the name before the ID.
+    """
+    return {
+        "type": str(resource_type).strip()[:160],
+        "name": str(resource_name).strip()[:240],
+        "id": str(resource_id).strip()[:240],
+    }
+
+
 def annotate_audit_event(
     *,
     category: str,
@@ -213,6 +228,86 @@ class AuditStore:
             except (TypeError, json.JSONDecodeError):
                 event["details"] = {}
         return events
+
+    def search(
+        self, query: str = "", *, page: int = 1, per_page: int = 40
+    ) -> dict[str, Any]:
+        """Return one bounded page of audit events matching safe text fields."""
+        normalized_query = str(query).strip()[:160]
+        normalized_page = max(1, int(page))
+        normalized_per_page = min(100, max(10, int(per_page)))
+        where = ""
+        parameters: list[Any] = []
+        if normalized_query:
+            escaped = (
+                normalized_query.casefold()
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            where = """
+                WHERE LOWER(
+                    events.username || ' ' || events.remote_ip || ' ' ||
+                    events.method || ' ' || events.endpoint || ' ' || events.path || ' ' ||
+                    COALESCE(details.category, '') || ' ' ||
+                    COALESCE(details.action, '') || ' ' ||
+                    COALESCE(details.summary, '') || ' ' ||
+                    COALESCE(details.resource_type, '') || ' ' ||
+                    COALESCE(details.resource_id, '') || ' ' ||
+                    COALESCE(details.resource_name, '') || ' ' ||
+                    COALESCE(details.detail_json, '')
+                ) LIKE ? ESCAPE '\\'
+            """
+            parameters.append(f"%{escaped}%")
+        joined_tables = """
+            FROM audit_events AS events
+            LEFT JOIN audit_event_details AS details
+              ON details.audit_event_id = events.id
+        """
+        with self._connect() as connection:
+            total = int(
+                connection.execute(
+                    f"SELECT COUNT(*) {joined_tables} {where}", parameters
+                ).fetchone()[0]
+            )
+            total_pages = max(1, (total + normalized_per_page - 1) // normalized_per_page)
+            normalized_page = min(normalized_page, total_pages)
+            offset = (normalized_page - 1) * normalized_per_page
+            events = [
+                dict(row)
+                for row in connection.execute(
+                    f"""
+                    SELECT events.*,
+                           COALESCE(details.category, '') AS category,
+                           COALESCE(details.action, '') AS action,
+                           COALESCE(details.summary, '') AS summary,
+                           COALESCE(details.resource_type, '') AS resource_type,
+                           COALESCE(details.resource_id, '') AS resource_id,
+                           COALESCE(details.resource_name, '') AS resource_name,
+                           COALESCE(details.detail_json, '{{}}') AS detail_json
+                    {joined_tables}
+                    {where}
+                    ORDER BY events.recorded_at DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    [*parameters, normalized_per_page, offset],
+                )
+            ]
+        for event in events:
+            try:
+                event["details"] = json.loads(event.pop("detail_json", "{}"))
+            except (TypeError, json.JSONDecodeError):
+                event["details"] = {}
+        return {
+            "events": events,
+            "query": normalized_query,
+            "page": normalized_page,
+            "per_page": normalized_per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "first_item": offset + 1 if total else 0,
+            "last_item": min(offset + len(events), total),
+        }
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:

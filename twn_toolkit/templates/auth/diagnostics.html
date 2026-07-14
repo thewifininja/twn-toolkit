@@ -10,13 +10,26 @@
 
 <section class="panel"><div class="auth-users-head"><h2>Command dependencies</h2><p class="field-note">Some platform-specific tools remain optional until their corresponding workflow is used.</p></div><div class="automation-storage-stats">{% for dependency in dependencies %}<div><span>{{ dependency.name }}</span><strong>{{ 'Available' if dependency.available else 'Missing' }}</strong></div>{% endfor %}</div></section>
 
-<section class="panel">
+<section class="panel" id="audit-history">
   <div class="auth-users-head">
     <h2>Toolkit audit history</h2>
     <p class="field-note">Meaningful actions by operators and system administrators appear here. Expand an event for its resource, request, and changed-setting details. Only explicitly curated metadata is retained; form bodies and secret values are never stored.</p>
   </div>
-  {% if audit_events %}
-    <div class="audit-event-list">
+  <div class="audit-browser">
+    <form class="audit-browser-toolbar" method="get" action="{{ url_for('diagnostics') }}#audit-history">
+      <label for="audit-search">Search audit history</label>
+      <div class="audit-search-controls">
+        <input id="audit-search" name="audit_q" type="search" value="{{ audit_page.query }}" placeholder="Actor, action, resource, address…" autocomplete="off">
+        <button type="submit" class="secondary">Search</button>
+        {% if audit_page.query %}<a class="button-link secondary" href="{{ url_for('diagnostics') }}#audit-history">Clear</a>{% endif %}
+      </div>
+      <p class="audit-result-count" aria-live="polite">
+        {% if audit_page.total %}Showing {{ audit_page.first_item }}–{{ audit_page.last_item }} of {{ audit_page.total }} event{{ '' if audit_page.total == 1 else 's' }}{% elif audit_page.query %}No matching events{% else %}No recorded events{% endif %}
+      </p>
+    </form>
+    {% if audit_events %}
+    <div class="audit-event-scroll" tabindex="0" aria-label="Audit history results">
+      <div class="audit-event-list">
       {% for event in audit_events %}
         <details class="audit-event">
           <summary>
@@ -58,7 +71,16 @@
           </div>
         </details>
       {% endfor %}
+      </div>
     </div>
-  {% else %}<p class="side-nav-empty">No audited toolkit actions have been recorded yet.</p>{% endif %}
+    {% else %}<p class="side-nav-empty audit-no-results">{% if audit_page.query %}No audit events matched “{{ audit_page.query }}”.{% else %}No audited toolkit actions have been recorded yet.{% endif %}</p>{% endif %}
+    {% if audit_page.total_pages > 1 %}
+      <nav class="audit-pagination" aria-label="Audit history pages">
+        {% if audit_page.page > 1 %}<a class="button-link secondary" href="{{ url_for('diagnostics', audit_q=audit_page.query, audit_page=audit_page.page - 1) }}#audit-history">Previous</a>{% endif %}
+        <span>Page {{ audit_page.page }} of {{ audit_page.total_pages }}</span>
+        {% if audit_page.page < audit_page.total_pages %}<a class="button-link secondary" href="{{ url_for('diagnostics', audit_q=audit_page.query, audit_page=audit_page.page + 1) }}#audit-history">Next</a>{% endif %}
+      </nav>
+    {% endif %}
+  </div>
 </section>
 {% endblock %}
