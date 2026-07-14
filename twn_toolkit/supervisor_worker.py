@@ -9,6 +9,8 @@ import sys
 import time
 from pathlib import Path
 
+from .pidfiles import remove_own_pid_file, write_pid_file
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--root", required=True); parser.add_argument("--pid-file", required=True); parser.add_argument("--log-file", required=True); parser.add_argument("--daemon", action="store_true")
@@ -16,6 +18,7 @@ def main() -> None:
     if args.daemon: _daemonize(args.pid_file, args.log_file)
     instance, root = Path(args.instance), Path(args.root)
     running = True
+    retry_after: dict[str, float] = {}
     signal.signal(signal.SIGTERM, lambda *_: _stop()); signal.signal(signal.SIGINT, lambda *_: _stop())
     def supervise() -> None:
         services = [
@@ -29,9 +32,14 @@ def main() -> None:
             healthy = _pid_running(instance / pid_name)
             if healthy and heartbeat_name:
                 healthy = _heartbeat_fresh(instance / heartbeat_name, 20)
-            if not healthy:
-                print(f"Supervisor restarting {label}.", flush=True)
-                subprocess.run([str(root / "twn"), command], cwd=root, timeout=30, check=False)
+            if healthy:
+                retry_after.pop(pid_name, None)
+                continue
+            if time.time() < retry_after.get(pid_name, 0):
+                continue
+            print(f"Supervisor restarting {label}.", flush=True)
+            subprocess.run([str(root / "twn"), command], cwd=root, timeout=30, check=False)
+            retry_after[pid_name] = time.time() + 30
     def _stop() -> None:
         nonlocal running; running = False
     heartbeat = instance / "supervisor-heartbeat.json"
@@ -44,7 +52,7 @@ def main() -> None:
                 if not running: break
                 time.sleep(0.5)
     finally:
-        Path(args.pid_file).unlink(missing_ok=True); heartbeat.unlink(missing_ok=True)
+        remove_own_pid_file(args.pid_file); heartbeat.unlink(missing_ok=True)
 
 
 def _enabled(path: Path) -> bool:
@@ -71,7 +79,7 @@ def _daemonize(pid_file: str, log_file: str) -> None:
     stdin_fd = os.open(os.devnull, os.O_RDONLY); path = Path(log_file); path.parent.mkdir(parents=True, exist_ok=True)
     log_fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     os.dup2(stdin_fd, 0); os.dup2(log_fd, 1); os.dup2(log_fd, 2); os.close(stdin_fd); os.close(log_fd)
-    Path(pid_file).write_text(str(os.getpid()) + "\n", encoding="utf-8"); os.chmod(pid_file, 0o600)
+    write_pid_file(pid_file)
 
 
 if __name__ == "__main__": main()

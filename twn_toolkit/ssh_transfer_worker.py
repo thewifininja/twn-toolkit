@@ -20,6 +20,7 @@ from .ssh_transfer_server import (
     SSHTransferHistoryStore, SSHTransferSettingsStore, ensure_ssh_host_key,
 )
 from .tftp import format_incoming_filename
+from .pidfiles import remove_own_pid_file, write_pid_file
 
 
 class TransferContext:
@@ -238,9 +239,9 @@ def main() -> int:
     if args.daemon: _daemonize(args.pid_file, args.log_file)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set()); signal.signal(signal.SIGINT, lambda *_: stop.set())
-    Path(args.pid_file).write_text(str(os.getpid()) + "\n"); os.chmod(args.pid_file, 0o600)
+    write_pid_file(args.pid_file)
     try: serve(args.instance, stop)
-    finally: Path(args.pid_file).unlink(missing_ok=True)
+    finally: remove_own_pid_file(args.pid_file)
     return 0
 
 

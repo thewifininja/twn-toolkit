@@ -13,6 +13,7 @@ from pathlib import Path
 from .automation import AutomationEngine, AutomationStore
 from .auth import load_or_create_secret_key
 from .operational import OperationalSettingsStore
+from .pidfiles import remove_own_pid_file, write_pid_file
 
 
 def main() -> None:
@@ -74,11 +75,7 @@ def main() -> None:
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
         heartbeat_path.unlink(missing_ok=True)
-        if args.pid_file:
-            try:
-                Path(args.pid_file).unlink()
-            except FileNotFoundError:
-                pass
+        remove_own_pid_file(args.pid_file)
 
 
 def _daemonize(pid_file: str, log_file: str) -> None:
@@ -101,11 +98,7 @@ def _daemonize(pid_file: str, log_file: str) -> None:
     os.dup2(log_fd, sys.stderr.fileno())
     os.close(stdin_fd)
     os.close(log_fd)
-    if pid_file:
-        path = Path(pid_file)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"{os.getpid()}\n", encoding="utf-8")
-        os.chmod(path, 0o600)
+    write_pid_file(pid_file)
 
 
 def _write_heartbeat(path: Path, max_workers: int, futures: dict[object, str]) -> None:

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .datastore import LocalDatastore
 from .tftp import TFTPHistoryStore, TFTPServer, TFTPSettingsStore, clear_tftp_runtime
+from .pidfiles import remove_own_pid_file, write_pid_file
 
 
 def main() -> None:
@@ -47,11 +48,7 @@ def main() -> None:
     finally:
         if settings["root_mode"] == "temporary":
             clear_tftp_runtime(instance)
-        if args.pid_file:
-            try:
-                Path(args.pid_file).unlink()
-            except FileNotFoundError:
-                pass
+        remove_own_pid_file(args.pid_file)
 
 
 def _daemonize(pid_file: str, log_file: str) -> None:
@@ -73,11 +70,7 @@ def _daemonize(pid_file: str, log_file: str) -> None:
     os.dup2(log_fd, sys.stderr.fileno())
     os.close(stdin_fd)
     os.close(log_fd)
-    if pid_file:
-        path = Path(pid_file)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"{os.getpid()}\n", encoding="utf-8")
-        os.chmod(path, 0o600)
+    write_pid_file(pid_file)
 
 
 if __name__ == "__main__":
