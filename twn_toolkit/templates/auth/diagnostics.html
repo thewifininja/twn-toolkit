@@ -54,7 +54,7 @@
                 {% for item in event.detail_items %}<div><dt>{{ item.label }}</dt><dd><pre>{{ item.value }}</pre></dd></div>{% endfor %}
               </dl>
             {% endif %}
-            {% if not event.changes and not event.detail_items %}<p class="field-note">No additional structured detail was recorded for this event.</p>{% endif %}
+            {% if not event.changes and not event.detail_items %}<p class="field-note audit-empty-detail">No additional structured detail was recorded for this event.</p>{% endif %}
           </div>
         </details>
       {% endfor %}

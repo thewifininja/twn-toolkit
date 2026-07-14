@@ -130,9 +130,15 @@ class OperationalHardeningTests(unittest.TestCase):
     def test_diagnostics_and_operational_settings_routes(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance); app.testing = True; client = app.test_client()
+            AuditStore(instance).record(
+                username="admin", method="POST", endpoint="save",
+                path="/settings/example", status_code=302,
+                summary="Saved example settings.",
+            )
             page = client.get("/settings/diagnostics")
             self.assertEqual(page.status_code, 200)
             self.assertIn(b"System diagnostics", page.data)
+            self.assertIn(b'class="field-note audit-empty-detail"', page.data)
             response = client.post("/settings/operations", data={
                 "max_concurrent_automations": "3", "max_queued_automations": "7",
                 "skip_overlapping_automations": "on", "datastore_quota_gib": "12",

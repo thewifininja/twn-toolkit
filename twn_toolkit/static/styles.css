@@ -4466,6 +4466,10 @@ button.danger {
   margin: 1.1rem 0 0.65rem;
 }
 
+.audit-event-body > .audit-empty-detail {
+  margin: 0.85rem 0 0;
+}
+
 .audit-request-grid,
 .audit-detail-list {
   display: grid;
