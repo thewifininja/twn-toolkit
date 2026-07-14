@@ -5605,8 +5605,8 @@ button.danger {
   margin: 0;
 }
 
-.automation-manual-note {
-  margin-bottom: 14px;
+.automation-context-note {
+  margin: 10px 0 14px;
 }
 
 .automation-history-list article {
