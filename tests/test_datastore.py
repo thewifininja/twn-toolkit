@@ -328,8 +328,22 @@ class LocalDatastoreRouteTests(unittest.TestCase):
             client.post("/logout")
             client.post("/login", data={"username": "fileuser", "password": "a different long password"})
             self.assertEqual(client.get("/local/datastore").status_code, 200)
+            self.assertEqual(
+                client.post(
+                    "/local/datastore/folders",
+                    data={"path": "", "name": "operator-folder"},
+                ).status_code,
+                302,
+            )
             self.assertEqual(client.get("/local/file-transfers").status_code, 403)
             self.assertEqual(client.get("/tools/ping").status_code, 403)
+            event = AuditStore(instance).recent(1)[0]
+            self.assertEqual(event["username"], "fileuser")
+            self.assertEqual(event["action"], "datastore.folder_created")
+            self.assertEqual(event["details"]["actor role"], "Operator")
+            self.assertEqual(
+                event["details"]["actor access profiles"], ["Datastore users"]
+            )
 
     def test_registry_contains_local_datastore(self) -> None:
         tool = TOOL_BY_ID["local.datastore"]
@@ -362,6 +376,13 @@ class LocalDatastoreRouteTests(unittest.TestCase):
             self.assertEqual(response.status_code, 302)
             run.assert_called_once()
             self.assertIn("tftp-restart", run.call_args.args[0])
+            event = AuditStore(instance).recent(1)[0]
+            self.assertEqual(event["action"], "transfer_service.settings_updated")
+            self.assertEqual(event["resource_name"], "TFTP")
+            self.assertEqual(event["details"]["settings applied"], True)
+            changed_fields = {change["field"] for change in event["details"]["changes"]}
+            self.assertIn("enabled", changed_fields)
+            self.assertIn("incoming_filename_pattern", changed_fields)
 
             app.testing = False
             auth = AuthStore(instance)
@@ -374,6 +395,51 @@ class LocalDatastoreRouteTests(unittest.TestCase):
                 data={"bind_host": "127.0.0.1", "port": "1069"},
             )
             self.assertEqual(denied.status_code, 403)
+
+    def test_authenticated_transfer_settings_are_audited_without_secrets(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance); app.testing = True; client = app.test_client()
+            with patch("twn_toolkit.datastore_routes.subprocess.run") as run:
+                run.return_value.returncode = 0
+                run.return_value.stdout = ""
+                run.return_value.stderr = ""
+                ssh_response = client.post(
+                    "/local/file-transfers/ssh/settings",
+                    data={
+                        "bind_host": "127.0.0.1", "port": "2022",
+                        "username": "toolkit", "password": "ssh secret value",
+                        "allow_sftp": "on", "allow_scp": "on", "allow_read": "on",
+                        "root_mode": "datastore", "datastore_root": "",
+                        "incoming_filename_pattern": "{filename}",
+                        "allowed_networks": "127.0.0.0/8",
+                    },
+                )
+                ftp_response = client.post(
+                    "/local/file-transfers/ftp/settings",
+                    data={
+                        "bind_host": "127.0.0.1", "port": "2121",
+                        "passive_start": "30000", "passive_end": "30049",
+                        "max_connections": "50", "max_connections_per_ip": "5",
+                        "username": "toolkit", "password": "ftp secret value",
+                        "allow_read": "on", "root_mode": "datastore",
+                        "datastore_root": "", "incoming_filename_pattern": "{filename}",
+                        "allowed_networks": "127.0.0.0/8",
+                    },
+                )
+
+            self.assertEqual(ssh_response.status_code, 302)
+            self.assertEqual(ftp_response.status_code, 302)
+            events = AuditStore(instance).recent(2)
+            self.assertEqual(
+                [event["resource_name"] for event in events], ["FTP", "SFTP/SCP"]
+            )
+            for event in events:
+                self.assertEqual(event["action"], "transfer_service.settings_updated")
+                self.assertEqual(event["details"]["authentication updated"], True)
+                self.assertEqual(event["details"]["actor role"], "System administrator")
+            database = Path(instance, "audit.sqlite3").read_bytes()
+            self.assertNotIn(b"ssh secret value", database)
+            self.assertNotIn(b"ftp secret value", database)
 
 
 if __name__ == "__main__":

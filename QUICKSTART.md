@@ -256,9 +256,11 @@ Open **Administration → Settings**:
 2. Select exactly which individual tools each profile may use.
 3. Create or edit users and assign one or more profiles.
 
-Effective access is the union of assigned profiles. The built-in Administrator
-profile is protected and grants server-wide administration. Unauthorized links
-are removed from navigation, and direct requests remain blocked by the server.
+Effective access is the union of assigned profiles. These accounts are operators:
+they can fully use the tools granted to them without receiving unrestricted system
+control. The built-in System administrator profile is protected and grants full
+toolkit, account, service, and audit access. Unauthorized links are removed from
+navigation, and direct requests remain blocked by the server.
 
 ## Back up and restore profiles
 

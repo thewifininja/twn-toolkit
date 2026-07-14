@@ -147,7 +147,7 @@ profile backups.
 
 #### File Transfers
 
-Administrators can run contained local transfer services backed by a selected
+System administrators can run contained local transfer services backed by a selected
 Datastore folder or a runtime-only single file:
 
 - **TFTP** with configurable bind address/port, trusted client networks,
@@ -204,7 +204,7 @@ model, pipeline contract, security boundaries, and extension points.
 
 ### Administration
 
-The built-in administrator can manage:
+The built-in system administrator can manage:
 
 - users, password policy, idle timeout, and password changes;
 - reusable custom access profiles with individual-tool permissions;
@@ -214,10 +214,11 @@ The built-in administrator can manage:
 - automation retention, worker/queue limits, quotas, and free-disk reserve; and
 - System Diagnostics, migrations, worker health, storage, dependencies, and an
   expandable, sanitized audit trail with resource context and curated
-  before/after changes.
+  before/after changes. Meaningful annotated actions are attributed to both
+  operators and system administrators; routine polling and UI noise are omitted.
 
-Unauthorized tools are removed from navigation and remain blocked by the
-server if requested directly.
+Operators receive the union of their assigned custom profiles. Unauthorized tools
+are removed from navigation and remain blocked by the server if requested directly.
 
 ## Installation
 
