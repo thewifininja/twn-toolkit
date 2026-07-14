@@ -40,7 +40,7 @@ from .server_settings import (
 )
 from .tls_tools import certificate_status, regenerate_self_signed_certificate
 from .tool_catalog import TOOL_BY_ID, grouped_access_tools
-from .audit import AuditStore, annotate_audit_event
+from .audit import AuditStore, annotate_audit_event, audit_reference
 from .operational import OperationalSettingsStore
 from .migrations import MigrationManager
 from .tftp import tftp_process_status
@@ -62,19 +62,60 @@ def _format_audit_value(value: Any) -> str:
         return "—"
     if isinstance(value, bool):
         return "Yes" if value else "No"
+    if _is_audit_reference(value):
+        return _format_audit_reference(value)
+    if isinstance(value, list) and value and all(
+        _is_audit_reference(item) for item in value
+    ):
+        return "\n".join(
+            f"• {_format_audit_reference(item).replace(chr(10), ' · ')}"
+            for item in value
+        )
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
     return str(value)
 
 
-def _user_audit_snapshot(user: dict[str, Any] | None) -> dict[str, Any]:
+def _is_audit_reference(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == {"type", "name", "id"}
+        and all(isinstance(value.get(key), str) for key in ("type", "name", "id"))
+        and bool(value.get("name") or value.get("id"))
+    )
+
+
+def _format_audit_reference(reference: dict[str, str]) -> str:
+    name = reference.get("name", "").strip()
+    resource_id = reference.get("id", "").strip()
+    resource_type = reference.get("type", "").strip()
+    if name and resource_id:
+        return f"{name}\nID: {resource_id}"
+    if name:
+        return name
+    return f"{resource_type.capitalize()} ID: {resource_id}" if resource_type else resource_id
+
+
+def _user_audit_snapshot(
+    user: dict[str, Any] | None,
+    access_profiles: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     if not user:
         return {}
+    profile_names = {
+        str(profile.get("id", "")): str(profile.get("name", ""))
+        for profile in access_profiles or []
+        if isinstance(profile, dict)
+    }
     return {
         "username": user.get("username", ""),
         "system administrator": bool(user.get("is_admin")),
         "enabled": bool(user.get("enabled", True)),
-        "access profiles": list(user.get("access_profile_ids", [])),
+        "access profiles": [
+            audit_reference("access profile", profile_id, profile_names.get(profile_id, ""))
+            for profile_id in user.get("access_profile_ids", [])
+            if isinstance(profile_id, str)
+        ],
     }
 
 
@@ -86,6 +127,30 @@ def _profile_audit_snapshot(profile: dict[str, Any] | None) -> dict[str, Any]:
         "description": profile.get("description", ""),
         "tool access": list(profile.get("tool_ids", [])),
     }
+
+
+def _resolve_legacy_audit_value(
+    field: str,
+    value: Any,
+    access_profiles: list[dict[str, Any]],
+) -> Any:
+    """Add readable labels to older audit values that stored bare references."""
+    if field != "access profiles" or not isinstance(value, list):
+        return value
+    profile_names = {
+        str(profile.get("id", "")): str(profile.get("name", ""))
+        for profile in access_profiles
+        if isinstance(profile, dict)
+    }
+    resolved = []
+    for item in value:
+        if _is_audit_reference(item):
+            resolved.append(item)
+        elif isinstance(item, str):
+            resolved.append(
+                audit_reference("access profile", item, profile_names.get(item, ""))
+            )
+    return resolved
 
 
 def _format_storage_summary(summary: dict[str, Any]) -> dict[str, Any]:
@@ -228,20 +293,30 @@ def register_admin_routes(
             audit_query, page=audit_page_number, per_page=40
         )
         audit = audit_page["events"]
+        access_profiles = auth_store.access_profiles()
         for event in audit:
             event["recorded_display"] = datetime.fromtimestamp(float(event["recorded_at"])).astimezone().strftime("%b %-d, %Y %-I:%M:%S %p")
             event["category"] = event.get("category") or "Administration"
             event["summary"] = event.get("summary") or str(event["endpoint"]).replace("_", " ").capitalize()
             details = event.get("details") if isinstance(event.get("details"), dict) else {}
-            event["changes"] = [
-                {
-                    **change,
-                    "before_display": _format_audit_value(change.get("before")),
-                    "after_display": _format_audit_value(change.get("after")),
-                }
-                for change in details.get("changes", [])
-                if isinstance(change, dict)
-            ]
+            event["changes"] = []
+            for change in details.get("changes", []):
+                if not isinstance(change, dict):
+                    continue
+                field = str(change.get("field", ""))
+                previous = _resolve_legacy_audit_value(
+                    field, change.get("before"), access_profiles
+                )
+                current = _resolve_legacy_audit_value(
+                    field, change.get("after"), access_profiles
+                )
+                event["changes"].append(
+                    {
+                        **change,
+                        "before_display": _format_audit_value(previous),
+                        "after_display": _format_audit_value(current),
+                    }
+                )
             event["detail_items"] = [
                 {
                     "label": key.replace("_", " ").replace(".", " › "),
@@ -361,7 +436,7 @@ def register_admin_routes(
                     category="Administration", action="user.created",
                     summary=f"Created user {created['username']}.", resource_type="user",
                     resource_id=created["id"], resource_name=created["username"],
-                    after=_user_audit_snapshot(created),
+                    after=_user_audit_snapshot(created, auth_store.access_profiles()),
                 )
                 flash("User created.", "success")
         return redirect(url_for("settings"))
@@ -386,7 +461,8 @@ def register_admin_routes(
                 summary=f"Updated access for {(after or before or {}).get('username', user_id)}.",
                 resource_type="user", resource_id=user_id,
                 resource_name=str((after or before or {}).get("username", "")),
-                before=_user_audit_snapshot(before), after=_user_audit_snapshot(after),
+                before=_user_audit_snapshot(before, auth_store.access_profiles()),
+                after=_user_audit_snapshot(after, auth_store.access_profiles()),
             )
             flash("User access updated.", "success")
         return redirect(url_for("settings"))
@@ -490,7 +566,11 @@ def register_admin_routes(
                     summary=f"Deleted user {(target_user or {}).get('username', user_id)}.",
                     resource_type="user", resource_id=user_id,
                     resource_name=str((target_user or {}).get("username", "")),
-                    details={"deleted user": _user_audit_snapshot(target_user)},
+                    details={
+                        "deleted user": _user_audit_snapshot(
+                            target_user, auth_store.access_profiles()
+                        )
+                    },
                 )
                 flash("User deleted.", "success")
         return redirect(url_for("settings"))

@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.audit import AuditStore, audit_changes
+from twn_toolkit.auth import AuthStore
 from twn_toolkit.datastore import DatastoreError, LocalDatastore
 from twn_toolkit.migrations import MigrationManager
 from twn_toolkit.operational import OperationalSettingsStore
@@ -82,6 +83,62 @@ class OperationalHardeningTests(unittest.TestCase):
             changes,
             [{"field": "configuration.timeout", "before": 5, "after": 10}],
         )
+
+    def test_user_audit_uses_profile_names_and_retains_stable_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            auth = AuthStore(instance)
+            profile = auth.save_access_profile(
+                name="Wireless operators",
+                description="Wireless troubleshooting access",
+                tool_ids=["tools.ping"],
+            )
+            app = create_app(instance); app.testing = True; client = app.test_client()
+            response = client.post(
+                "/settings/users",
+                data={
+                    "username": "profile-user",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                    "access_profile_id": profile["id"],
+                },
+            )
+            event = next(
+                item
+                for item in AuditStore(instance).recent(10)
+                if item["action"] == "user.created"
+            )
+            diagnostics = client.get("/settings/diagnostics")
+
+            AuditStore(instance).record(
+                username="legacy-admin", method="POST", endpoint="create_user",
+                path="/settings/users", status_code=302,
+                category="Administration", action="user.created",
+                summary="Created a legacy audit user.",
+                details={
+                    "changes": [{
+                        "field": "access profiles", "before": None,
+                        "after": [profile["id"]],
+                    }]
+                },
+            )
+            legacy_diagnostics = client.get(
+                "/settings/diagnostics?audit_q=legacy-admin"
+            )
+
+        self.assertEqual(response.status_code, 302)
+        profile_change = next(
+            change
+            for change in event["details"]["changes"]
+            if change["field"] == "access profiles"
+        )
+        self.assertEqual(
+            profile_change["after"],
+            [{"type": "access profile", "name": "Wireless operators", "id": profile["id"]}],
+        )
+        self.assertIn(b"Wireless operators", diagnostics.data)
+        self.assertIn(profile["id"].encode(), diagnostics.data)
+        self.assertIn(b"Created a legacy audit user.", legacy_diagnostics.data)
+        self.assertIn(b"Wireless operators", legacy_diagnostics.data)
 
     def test_ping_audit_records_session_lifecycle_without_round_noise(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

@@ -26,6 +26,21 @@ _SECRET_FRAGMENTS = (
 _REDACTED = "[redacted]"
 
 
+def audit_reference(
+    resource_type: str, resource_id: str, resource_name: str = ""
+) -> dict[str, str]:
+    """Describe a referenced resource with a human label and stable identifier.
+
+    Audit enrichment should use this shape instead of recording opaque IDs alone.
+    The diagnostics formatter recognizes it and presents the name before the ID.
+    """
+    return {
+        "type": str(resource_type).strip()[:160],
+        "name": str(resource_name).strip()[:240],
+        "id": str(resource_id).strip()[:240],
+    }
+
+
 def annotate_audit_event(
     *,
     category: str,
