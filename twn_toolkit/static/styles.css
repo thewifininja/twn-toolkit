@@ -5275,6 +5275,139 @@ button.danger {
   margin-top: 12px;
 }
 
+.automation-form [data-action-fields]:not([hidden]) {
+  display: grid;
+  gap: 18px;
+}
+
+.automation-form [data-action-fields] > .field-note,
+.automation-form label > .field-note {
+  line-height: 1.45;
+  margin: 0;
+}
+
+.automation-form-section {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+}
+
+.automation-form-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.automation-form-section-head {
+  display: grid;
+  gap: 3px;
+}
+
+.automation-form-section-head h4,
+.automation-form-section-head p {
+  margin: 0;
+}
+
+.automation-form-section-head h4 {
+  font-size: 0.96rem;
+}
+
+.automation-form-section-head p {
+  font-size: 0.84rem;
+}
+
+.automation-request-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+}
+
+.automation-field-label {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.automation-option-row {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.automation-option-row > span,
+.automation-option-row small {
+  display: block;
+}
+
+.automation-option-row small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.automation-helper-details {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.automation-helper-details > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.86rem;
+  font-weight: 850;
+  justify-content: space-between;
+  list-style: none;
+  padding: 11px 13px;
+}
+
+.automation-helper-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.automation-helper-details > summary::after {
+  color: var(--muted);
+  content: "+";
+  font-size: 1rem;
+}
+
+.automation-helper-details[open] > summary::after {
+  content: "–";
+}
+
+.automation-helper-body {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+}
+
+.automation-helper-body > p {
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.automation-variable-list {
+  display: grid;
+  gap: 8px 14px;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.automation-variable-list code {
+  align-self: start;
+  overflow-wrap: anywhere;
+}
+
+.automation-variable-list span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.automation-security-note {
+  margin: 0;
+}
+
 .automation-policy-grid {
   display: grid;
   gap: 12px;
@@ -6257,6 +6390,14 @@ th {
 @media (max-width: 640px) {
   :root {
     --topbar-height: 67px;
+  }
+
+  .automation-variable-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .automation-variable-list code:not(:first-child) {
+    margin-top: 5px;
   }
 
   .schedule-rule-editor-head {

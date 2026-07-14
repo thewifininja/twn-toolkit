@@ -112,38 +112,87 @@
       </label>
     </div>
     <div data-action-fields="webhook.send" hidden>
-      <label>Webhook endpoints
-        <textarea name="webhook_endpoints" rows="4" placeholder="Primary webhook = https://hooks.example.com/notify&#10;Backup API = https://api.example.net/v1/events" required>{{ config.get('endpoints', config.get('webhook_endpoints', '')) }}</textarea>
-        <small class="field-note">One HTTP/HTTPS URL per line. Optional friendly names use <code>Name = URL</code>. Embedded URL credentials are rejected.</small>
-      </label>
-      <div class="form-grid">
-        <label>Method
-          {% set webhook_method = config.get('method', config.get('webhook_method', 'POST')) %}
-          <select name="webhook_method" required>{% for method in ['POST','PUT','PATCH'] %}<option value="{{ method }}" {% if webhook_method == method %}selected{% endif %}>{{ method }}</option>{% endfor %}</select>
+      <section class="automation-form-section">
+        <div class="automation-form-section-head">
+          <h4>Destinations</h4>
+          <p>Send the same notification to one or more HTTP endpoints.</p>
+        </div>
+        <label>Webhook endpoints
+          <textarea name="webhook_endpoints" rows="4" placeholder="Primary webhook = https://hooks.example.com/notify&#10;Backup API = https://api.example.net/v1/events" required>{{ config.get('endpoints', config.get('webhook_endpoints', '')) }}</textarea>
+          <small class="field-note">One HTTP/HTTPS URL per line. Optional friendly names use <code>Name = URL</code>. Embedded URL credentials are rejected.</small>
         </label>
-        <label>Body format
-          {% set webhook_body_format = config.get('body_format', config.get('webhook_body_format', 'json')) %}
-          <select name="webhook_body_format" required><option value="json" {% if webhook_body_format == 'json' %}selected{% endif %}>JSON</option><option value="text" {% if webhook_body_format == 'text' %}selected{% endif %}>Plain text</option></select>
+      </section>
+
+      <section class="automation-form-section">
+        <div class="automation-form-section-head">
+          <h4>Request settings</h4>
+          <p>Control how the toolkit sends the request and recognizes success.</p>
+        </div>
+        <div class="form-grid automation-request-grid">
+          <label>Method
+            {% set webhook_method = config.get('method', config.get('webhook_method', 'POST')) %}
+            <select name="webhook_method" required>{% for method in ['POST','PUT','PATCH'] %}<option value="{{ method }}" {% if webhook_method == method %}selected{% endif %}>{{ method }}</option>{% endfor %}</select>
+          </label>
+          <label>Body format
+            {% set webhook_body_format = config.get('body_format', config.get('webhook_body_format', 'json')) %}
+            <select name="webhook_body_format" required><option value="json" {% if webhook_body_format == 'json' %}selected{% endif %}>JSON</option><option value="text" {% if webhook_body_format == 'text' %}selected{% endif %}>Plain text</option></select>
+          </label>
+          <label>Accepted HTTP statuses
+            <input name="webhook_expected_statuses" value="{{ config.get('expected_statuses', config.get('webhook_expected_statuses', '200-299')) }}" placeholder="200-299" required>
+            <small class="field-note">Use comma-separated values or ranges.</small>
+          </label>
+          <label>Request timeout
+            <div class="input-suffix"><input name="webhook_timeout" type="number" min="0.2" max="30" step="0.1" value="{{ config.get('timeout', config.get('webhook_timeout', '10')) }}" required><span>seconds</span></div>
+          </label>
+        </div>
+      </section>
+
+      <section class="automation-form-section">
+        <div class="automation-form-section-head">
+          <h4>Authentication and headers</h4>
+          <p>Saved values are encrypted, write-only, and excluded from retained results.</p>
+        </div>
+        <label><span class="automation-field-label">Request headers <span class="inline-label-note">(write-only)</span></span>
+          <textarea name="webhook_headers" rows="5" placeholder="Authorization: Bearer …&#10;X-API-Key: …&#10;Content-Type: application/json"></textarea>
+          <small class="field-note">Enter one <code>Name: Value</code> per line.{% if definition and definition.has_headers %} Leave this blank to keep the saved headers.{% endif %}</small>
         </label>
-        <label>Accepted HTTP statuses
-          <input name="webhook_expected_statuses" value="{{ config.get('expected_statuses', config.get('webhook_expected_statuses', '200-299')) }}" placeholder="200-299" required>
-          <small class="field-note">Comma/space-separated values or ranges.</small>
+        {% if definition and definition.has_headers %}<label class="check automation-option-row"><input name="webhook_clear_headers" type="checkbox"><span>Remove all saved headers when updating</span></label>{% endif %}
+      </section>
+
+      <section class="automation-form-section">
+        <div class="automation-form-section-head">
+          <h4>Payload</h4>
+          <p>Build the JSON or plain-text body sent to every destination.</p>
+        </div>
+        <label>Request body
+          <textarea class="command-input" name="webhook_body" rows="8" maxlength="65536" required>{% if config.get('body') %}{{ config.get('body') }}{% elif config.get('webhook_body') %}{{ config.get('webhook_body') }}{% else %}{"event":"toolkit_automation","status":"{{ '{{trigger.status}}' }}","summary":"{{ '{{trigger.summary}}' }}","timestamp":"{{ '{{timestamp}}' }}"}{% endif %}</textarea>
         </label>
-        <label>Request timeout
-          <div class="input-suffix"><input name="webhook_timeout" type="number" min="0.2" max="30" step="0.1" value="{{ config.get('timeout', config.get('webhook_timeout', '10')) }}" required><span>seconds</span></div>
-        </label>
-      </div>
-      <label>Request headers <small>(write-only)</small>
-        <textarea name="webhook_headers" rows="5" placeholder="Authorization: Bearer …&#10;X-API-Key: …&#10;Content-Type: application/json"></textarea>
-        <small class="field-note">One <code>Name: Value</code> per line. {% if definition and definition.has_headers %}Leave blank to keep the saved headers. {% endif %}Headers are encrypted and never rendered back into this page or retained results.</small>
-      </label>
-      {% if definition and definition.has_headers %}<label class="check"><input name="webhook_clear_headers" type="checkbox">Remove all saved headers when updating</label>{% endif %}
-      <label>Request body
-        <textarea name="webhook_body" rows="8" maxlength="65536" required>{% if config.get('body') %}{{ config.get('body') }}{% elif config.get('webhook_body') %}{{ config.get('webhook_body') }}{% else %}{"event":"toolkit_automation","status":"{{ '{{trigger.status}}' }}","summary":"{{ '{{trigger.summary}}' }}","timestamp":"{{ '{{timestamp}}' }}"}{% endif %}</textarea>
-        <small class="field-note">Variables: <code>{{ '{{trigger.status}}' }}</code>, <code>{{ '{{trigger.summary}}' }}</code>, <code>{{ '{{trigger.met}}' }}</code>, <code>{{ '{{trigger.evidence}}' }}</code>, <code>{{ '{{actions.results}}' }}</code>, <code>{{ '{{actions.successful}}' }}</code>, <code>{{ '{{actions.partial}}' }}</code>, <code>{{ '{{actions.failed}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>. Action variables contain bounded, non-secret results from earlier stages only. Exact JSON-value tokens retain boolean/object types.</small>
-      </label>
-      <label class="check"><input name="webhook_verify_tls" type="checkbox" {% if config.get('verify_tls', config.get('webhook_verify_tls', true)) %}checked{% endif %}>Verify TLS certificates</label>
-      <p class="field-note">Redirects are reported but not followed. Only a 4 KiB response preview is retained per endpoint. Disable TLS verification only for a controlled internal endpoint.</p>
+        <details class="automation-helper-details">
+          <summary>Available template variables</summary>
+          <div class="automation-helper-body">
+            <div class="automation-variable-list">
+              <code>{{ '{{trigger.status}}' }}</code><span>Trigger status.</span>
+              <code>{{ '{{trigger.summary}}' }}</code><span>Human-readable trigger summary.</span>
+              <code>{{ '{{trigger.met}}' }}</code><span>Whether the condition was met.</span>
+              <code>{{ '{{trigger.evidence}}' }}</code><span>Bounded evidence captured by the condition.</span>
+              <code>{{ '{{actions.results}}' }}</code><span>Bounded, non-secret results from completed earlier stages.</span>
+              <code>{{ '{{actions.successful}}' }}</code><span>Successful earlier-stage actions.</span>
+              <code>{{ '{{actions.partial}}' }}</code><span>Partially successful earlier-stage actions.</span>
+              <code>{{ '{{actions.failed}}' }}</code><span>Failed earlier-stage actions.</span>
+              <code>{{ '{{timestamp}}' }}</code><span>Current automation timestamp.</span>
+            </div>
+            <p>When a JSON value consists only of a variable token, boolean, object, and array values keep their native JSON type.</p>
+          </div>
+        </details>
+      </section>
+
+      <section class="automation-form-section">
+        <div class="automation-form-section-head">
+          <h4>Transport and response handling</h4>
+        </div>
+        <label class="check automation-option-row"><input name="webhook_verify_tls" type="checkbox" {% if config.get('verify_tls', config.get('webhook_verify_tls', true)) %}checked{% endif %}><span><strong>Verify TLS certificates</strong><small>Disable only for a controlled internal endpoint.</small></span></label>
+        <p class="field-note automation-security-note">Redirects are reported but not followed. The toolkit retains only a 4 KiB response preview per endpoint.</p>
+      </section>
     </div>
     <div class="button-row"><button type="submit">{{ 'Update action' if definition_id else 'Save action' }}</button></div>
   </form>
