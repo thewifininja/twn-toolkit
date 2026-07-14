@@ -1353,7 +1353,7 @@ button.danger {
 .nested-profile-list {
   background: color-mix(in srgb, var(--bg), var(--brand-green) 5%);
   border: 0;
-  border-radius: 12px;
+  border-radius: 0;
   box-shadow: none;
   margin: 0;
   padding: 12px;
