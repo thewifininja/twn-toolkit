@@ -200,6 +200,12 @@ body {
   opacity: 0.85;
 }
 
+.side-nav-search input:focus {
+  border-color: transparent;
+  box-shadow: none;
+  outline: 0;
+}
+
 .side-nav-search-results {
   display: grid;
   gap: 4px;
