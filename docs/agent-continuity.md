@@ -320,7 +320,10 @@ accepted replay frames.
   user actions. Routes use `annotate_audit_event` for resource context and curated
   before/after values. Never pass request bodies wholesale; recursive storage-time
   sanitization is defense in depth for passwords, credentials, tokens, communities,
-  API keys, authorization fields, and secret headers.
+  API keys, authorization fields, and secret headers. Use `suppress_audit_event`
+  for high-frequency telemetry requests; audit user-visible lifecycle boundaries
+  instead. Datastore routes use `LocalDatastore.describe()` and bounded item lists
+  for consistent path, kind, and size metadata without retaining file contents.
 
 ## Verification
 
