@@ -1368,19 +1368,17 @@ button.danger {
 
 .nested-profile-card > summary {
   background: transparent;
-  border-color: transparent;
   margin: 0;
 }
 
 .nested-profile-card[open] {
   background: var(--panel);
   border-color: transparent;
-  box-shadow: 0 2px 10px rgb(25 33 31 / 6%);
+  box-shadow: none;
 }
 
 .nested-profile-card[open] > summary {
   background: color-mix(in srgb, var(--panel), var(--brand-green) 4%);
-  border-color: color-mix(in srgb, var(--brand-green), transparent 72%);
 }
 
 .radius-error {
@@ -4993,7 +4991,7 @@ button.danger {
   justify-content: space-between;
   margin: 0;
   padding: 14px 16px;
-  transition: border-color 150ms ease, transform 150ms ease, background 150ms ease;
+  transition: background 150ms ease;
 }
 
 .access-profile-card > summary::-webkit-details-marker,
@@ -5026,9 +5024,14 @@ button.danger {
   border-bottom: 1px solid var(--line);
 }
 
-.access-profile-card > summary:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
+.access-profile-card > summary:hover,
+.access-profile-card > summary:focus-visible {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 6%);
+}
+
+.access-profile-card > summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand-green), transparent 45%);
+  outline-offset: -2px;
 }
 
 .access-profile-card > summary span,
@@ -6492,12 +6495,16 @@ th {
 
 [data-theme="dark"] .access-profile-card > summary {
   background: #202c27;
-  border-color: #3a4b43;
+}
+
+[data-theme="dark"] .access-profile-card > summary:hover,
+[data-theme="dark"] .access-profile-card > summary:focus-visible {
+  background: #26372f;
 }
 
 [data-theme="dark"] .nested-profile-list {
   background: #121b18;
-  box-shadow: inset 0 0 0 1px #2f3d37;
+  box-shadow: none;
 }
 
 [data-theme="dark"] .nested-profile-card {
@@ -6506,12 +6513,11 @@ th {
 
 [data-theme="dark"] .nested-profile-card[open] {
   background: #202b27;
-  box-shadow: 0 2px 12px rgb(0 0 0 / 18%);
+  box-shadow: none;
 }
 
 [data-theme="dark"] .nested-profile-card[open] > summary {
   background: #24332d;
-  border-color: #3f5d4c;
 }
 
 [data-theme="dark"] .message.success,
