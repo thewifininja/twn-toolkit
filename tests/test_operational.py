@@ -91,7 +91,7 @@ class OperationalHardeningTests(unittest.TestCase):
             self.assertTrue(details["truncated"])
             self.assertIn("storage limit", details["notice"])
 
-    def test_legacy_audit_database_gains_detail_columns(self) -> None:
+    def test_legacy_audit_database_uses_rollback_safe_detail_table(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             path = Path(instance) / "audit.sqlite3"
             connection = sqlite3.connect(path)
@@ -115,6 +115,65 @@ class OperationalHardeningTests(unittest.TestCase):
             event = AuditStore(instance).recent(1)[0]
             self.assertEqual(event["id"], "old")
             self.assertEqual(event["details"], {})
+            connection = sqlite3.connect(path)
+            try:
+                columns = {
+                    row[1]
+                    for row in connection.execute("PRAGMA table_info(audit_events)")
+                }
+                self.assertEqual(len(columns), 9)
+                connection.execute(
+                    "INSERT INTO audit_events VALUES ('rollback', 2, '1', 'admin', '127.0.0.1', 'POST', 'legacy', '/rollback', 302)"
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+    def test_preview_expanded_audit_schema_is_normalized_without_data_loss(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            path = Path(instance) / "audit.sqlite3"
+            connection = sqlite3.connect(path)
+            try:
+                connection.execute(
+                    """
+                    CREATE TABLE audit_events (
+                        id TEXT PRIMARY KEY, recorded_at REAL NOT NULL, user_id TEXT NOT NULL,
+                        username TEXT NOT NULL, remote_ip TEXT NOT NULL, method TEXT NOT NULL,
+                        endpoint TEXT NOT NULL, path TEXT NOT NULL, status_code INTEGER NOT NULL,
+                        category TEXT NOT NULL DEFAULT '', action TEXT NOT NULL DEFAULT '',
+                        summary TEXT NOT NULL DEFAULT '', resource_type TEXT NOT NULL DEFAULT '',
+                        resource_id TEXT NOT NULL DEFAULT '', resource_name TEXT NOT NULL DEFAULT '',
+                        detail_json TEXT NOT NULL DEFAULT '{}'
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO audit_events VALUES (
+                        'preview', 1, '1', 'admin', '127.0.0.1', 'POST',
+                        'save', '/settings', 302, 'Administration',
+                        'settings.updated', 'Updated settings.', 'settings',
+                        'server', 'Server settings', '{"visible":"retained"}'
+                    )
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            event = AuditStore(instance).recent(1)[0]
+            self.assertEqual(event["summary"], "Updated settings.")
+            self.assertEqual(event["details"], {"visible": "retained"})
+            connection = sqlite3.connect(path)
+            try:
+                columns = list(connection.execute("PRAGMA table_info(audit_events)"))
+                self.assertEqual(len(columns), 9)
+                connection.execute(
+                    "INSERT INTO audit_events VALUES ('rollback', 2, '1', 'admin', '127.0.0.1', 'POST', 'legacy', '/rollback', 302)"
+                )
+                connection.commit()
+            finally:
+                connection.close()
 
     def test_migration_manager_snapshots_existing_databases(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

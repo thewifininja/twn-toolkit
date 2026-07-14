@@ -78,32 +78,58 @@ class AuditStore:
                 CREATE TABLE IF NOT EXISTS audit_events (
                     id TEXT PRIMARY KEY, recorded_at REAL NOT NULL, user_id TEXT NOT NULL,
                     username TEXT NOT NULL, remote_ip TEXT NOT NULL, method TEXT NOT NULL,
-                    endpoint TEXT NOT NULL, path TEXT NOT NULL, status_code INTEGER NOT NULL,
+                    endpoint TEXT NOT NULL, path TEXT NOT NULL, status_code INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS audit_events_recent ON audit_events(recorded_at DESC);
+                CREATE TABLE IF NOT EXISTS audit_event_details (
+                    audit_event_id TEXT PRIMARY KEY,
                     category TEXT NOT NULL DEFAULT '', action TEXT NOT NULL DEFAULT '',
                     summary TEXT NOT NULL DEFAULT '', resource_type TEXT NOT NULL DEFAULT '',
                     resource_id TEXT NOT NULL DEFAULT '', resource_name TEXT NOT NULL DEFAULT '',
                     detail_json TEXT NOT NULL DEFAULT '{}'
                 );
-                CREATE INDEX IF NOT EXISTS audit_events_recent ON audit_events(recorded_at DESC);
             """)
             columns = {
                 str(row["name"])
                 for row in connection.execute("PRAGMA table_info(audit_events)")
             }
-            additions = {
-                "category": "TEXT NOT NULL DEFAULT ''",
-                "action": "TEXT NOT NULL DEFAULT ''",
-                "summary": "TEXT NOT NULL DEFAULT ''",
-                "resource_type": "TEXT NOT NULL DEFAULT ''",
-                "resource_id": "TEXT NOT NULL DEFAULT ''",
-                "resource_name": "TEXT NOT NULL DEFAULT ''",
-                "detail_json": "TEXT NOT NULL DEFAULT '{}'",
+            rich_columns = {
+                "category", "action", "summary", "resource_type",
+                "resource_id", "resource_name", "detail_json",
             }
-            for column, declaration in additions.items():
-                if column not in columns:
-                    connection.execute(
-                        f"ALTER TABLE audit_events ADD COLUMN {column} {declaration}"
-                    )
+            if rich_columns.issubset(columns):
+                self._normalize_expanded_schema(connection)
+
+    @staticmethod
+    def _normalize_expanded_schema(connection: sqlite3.Connection) -> None:
+        """Move preview-era inline detail columns into the rollback-safe side table."""
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO audit_event_details (
+                audit_event_id, category, action, summary, resource_type,
+                resource_id, resource_name, detail_json
+            )
+            SELECT id, category, action, summary, resource_type,
+                   resource_id, resource_name, detail_json
+            FROM audit_events
+            """
+        )
+        connection.executescript(
+            """
+            CREATE TABLE audit_events_rollback_safe (
+                id TEXT PRIMARY KEY, recorded_at REAL NOT NULL, user_id TEXT NOT NULL,
+                username TEXT NOT NULL, remote_ip TEXT NOT NULL, method TEXT NOT NULL,
+                endpoint TEXT NOT NULL, path TEXT NOT NULL, status_code INTEGER NOT NULL
+            );
+            INSERT INTO audit_events_rollback_safe
+                SELECT id, recorded_at, user_id, username, remote_ip, method,
+                       endpoint, path, status_code
+                FROM audit_events;
+            DROP TABLE audit_events;
+            ALTER TABLE audit_events_rollback_safe RENAME TO audit_events;
+            CREATE INDEX audit_events_recent ON audit_events(recorded_at DESC);
+            """
+        )
 
     def record(self, **values: Any) -> None:
         detail_json = json.dumps(
@@ -119,20 +145,31 @@ class AuditStore:
                 },
                 separators=(",", ":"),
             )
+        event_id = secrets.token_hex(12)
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO audit_events (
                     id, recorded_at, user_id, username, remote_ip, method,
-                    endpoint, path, status_code, category, action, summary,
-                    resource_type, resource_id, resource_name, detail_json
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    endpoint, path, status_code
+                ) VALUES (?,?,?,?,?,?,?,?,?)
                 """,
                 (
-                    secrets.token_hex(12), time.time(), str(values.get("user_id", "")),
+                    event_id, time.time(), str(values.get("user_id", "")),
                     str(values.get("username", ""))[:128], str(values.get("remote_ip", ""))[:128],
                     str(values.get("method", ""))[:12], str(values.get("endpoint", ""))[:160],
                     str(values.get("path", ""))[:500], int(values.get("status_code", 0)),
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO audit_event_details (
+                    audit_event_id, category, action, summary, resource_type,
+                    resource_id, resource_name, detail_json
+                ) VALUES (?,?,?,?,?,?,?,?)
+                """,
+                (
+                    event_id,
                     str(values.get("category", ""))[:80], str(values.get("action", ""))[:120],
                     str(values.get("summary", ""))[:500], str(values.get("resource_type", ""))[:80],
                     str(values.get("resource_id", ""))[:160], str(values.get("resource_name", ""))[:240],
@@ -140,10 +177,31 @@ class AuditStore:
                 ),
             )
             connection.execute("DELETE FROM audit_events WHERE id NOT IN (SELECT id FROM audit_events ORDER BY recorded_at DESC LIMIT 10000)")
+            connection.execute("DELETE FROM audit_event_details WHERE audit_event_id NOT IN (SELECT id FROM audit_events)")
 
     def recent(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._connect() as connection:
-            events = [dict(row) for row in connection.execute("SELECT * FROM audit_events ORDER BY recorded_at DESC LIMIT ?", (limit,))]
+            events = [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT events.*,
+                           COALESCE(details.category, '') AS category,
+                           COALESCE(details.action, '') AS action,
+                           COALESCE(details.summary, '') AS summary,
+                           COALESCE(details.resource_type, '') AS resource_type,
+                           COALESCE(details.resource_id, '') AS resource_id,
+                           COALESCE(details.resource_name, '') AS resource_name,
+                           COALESCE(details.detail_json, '{}') AS detail_json
+                    FROM audit_events AS events
+                    LEFT JOIN audit_event_details AS details
+                      ON details.audit_event_id = events.id
+                    ORDER BY events.recorded_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                )
+            ]
         for event in events:
             try:
                 event["details"] = json.loads(event.pop("detail_json", "{}"))
