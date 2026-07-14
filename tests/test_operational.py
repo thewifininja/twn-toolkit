@@ -176,6 +176,37 @@ class OperationalHardeningTests(unittest.TestCase):
             self.assertTrue(details["truncated"])
             self.assertIn("storage limit", details["notice"])
 
+    def test_audit_search_is_paginated_and_matches_structured_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = AuditStore(instance)
+            for index in range(45):
+                store.record(
+                    username=f"operator-{index}", method="POST",
+                    endpoint="save_item", path="/items", status_code=302,
+                    category="Local storage", action="item.saved",
+                    summary=f"Saved item {index}.",
+                    resource_name=f"Switch {index}",
+                    details={"destination": f"closet-{index}"},
+                )
+            store.record(
+                username="percent-user", method="POST", endpoint="save_item",
+                path="/items", status_code=302, summary="Reached 100% completion.",
+            )
+
+            first = store.search(page=1, per_page=40)
+            second = store.search(page=2, per_page=40)
+            resource_match = store.search("closet-17")
+            literal_wildcard = store.search("100%")
+
+        self.assertEqual(first["total"], 46)
+        self.assertEqual(len(first["events"]), 40)
+        self.assertEqual(first["total_pages"], 2)
+        self.assertEqual((second["first_item"], second["last_item"]), (41, 46))
+        self.assertEqual(len(second["events"]), 6)
+        self.assertEqual(resource_match["total"], 1)
+        self.assertEqual(resource_match["events"][0]["username"], "operator-17")
+        self.assertEqual(literal_wildcard["total"], 1)
+
     def test_legacy_audit_database_uses_rollback_safe_detail_table(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             path = Path(instance) / "audit.sqlite3"
@@ -279,10 +310,23 @@ class OperationalHardeningTests(unittest.TestCase):
                 path="/settings/example", status_code=302,
                 summary="Saved example settings.",
             )
+            AuditStore(instance).record(
+                username="searchable-operator", method="POST", endpoint="rename",
+                path="/local/datastore/rename", status_code=302,
+                category="Local storage", action="datastore.item_renamed",
+                summary="Renamed a very distinctive folder.",
+            )
             page = client.get("/settings/diagnostics")
             self.assertEqual(page.status_code, 200)
             self.assertIn(b"System diagnostics", page.data)
             self.assertIn(b'class="field-note audit-empty-detail"', page.data)
+            self.assertIn(b"Search audit history", page.data)
+            filtered = client.get(
+                "/settings/diagnostics?audit_q=distinctive+folder"
+            )
+            self.assertIn(b"Renamed a very distinctive folder.", filtered.data)
+            self.assertNotIn(b"Saved example settings.", filtered.data)
+            self.assertIn(b"Showing 1", filtered.data)
             response = client.post("/settings/operations", data={
                 "max_concurrent_automations": "3", "max_queued_automations": "7",
                 "skip_overlapping_automations": "on", "datastore_quota_gib": "12",

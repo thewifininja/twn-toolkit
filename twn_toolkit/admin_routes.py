@@ -219,7 +219,15 @@ def register_admin_routes(
             except sqlite3.Error as exc: status = str(exc)
             databases.append({"name": path.name, "size": _format_bytes(path.stat().st_size), "status": status})
         dependencies = [{"name": name, "available": bool(shutil.which(name))} for name in ("ping", "traceroute", "tcpdump", "openssl")]
-        audit = audit_store.recent(100)
+        audit_query = request.args.get("audit_q", "").strip()[:160]
+        try:
+            audit_page_number = max(1, int(request.args.get("audit_page", "1")))
+        except ValueError:
+            audit_page_number = 1
+        audit_page = audit_store.search(
+            audit_query, page=audit_page_number, per_page=40
+        )
+        audit = audit_page["events"]
         for event in audit:
             event["recorded_display"] = datetime.fromtimestamp(float(event["recorded_at"])).astimezone().strftime("%b %-d, %Y %-I:%M:%S %p")
             event["category"] = event.get("category") or "Administration"
@@ -249,6 +257,7 @@ def register_admin_routes(
             migrations=[*MigrationManager(app.instance_path).applied(), *automation_store.migration_status()],
             automation_storage=automation_store.storage_stats(),
             orphan_artifacts=automation_store.orphan_artifact_stats(),
+            audit_page=audit_page,
         )
 
     @app.post("/settings/diagnostics/cleanup-artifacts")
