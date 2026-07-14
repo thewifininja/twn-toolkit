@@ -1354,7 +1354,7 @@ button.danger {
   background: color-mix(in srgb, var(--bg), var(--brand-green) 5%);
   border: 0;
   border-radius: 12px;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line), transparent 35%);
+  box-shadow: none;
   margin: 0;
   padding: 12px;
 }
