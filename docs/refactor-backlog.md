@@ -128,7 +128,7 @@ copy an unmapped route pattern.
 Recommended direction:
 
 1. Add a registry/audit test that lists intentionally unmapped endpoints.
-2. Map admin-only settings actions to `admin.settings` where appropriate.
+2. Map system-administrator-only settings actions to `admin.settings` where appropriate.
 3. Leave self-service endpoints intentionally unmapped, but document them in
    the test.
 4. Continue using category checks for Fortinet landing pages.
@@ -201,7 +201,7 @@ Recommended direction:
 
 - Add a route registry audit test with an explicit allowlist for unmapped
   self-service/category endpoints.
-- Map missing admin-only settings endpoints to `admin.settings`.
+- Map missing system-administrator-only settings endpoints to `admin.settings`.
 - Standardize FortiGate HTTP timeout/error behavior.
 - Confirm all slow forms have loading messages.
 

@@ -50,7 +50,7 @@ from .tool_catalog import (
 )
 from .tools import tools_bp
 from .version import APP_VERSION, RELEASE_NOTES
-from .audit import AuditStore
+from .audit import AuditStore, annotate_audit_event
 from .migrations import run_toolkit_migrations
 from .operational import OperationalSettingsStore
 
@@ -168,11 +168,30 @@ def create_app(instance_path: str | None = None) -> Flask:
             should_audit
             and not getattr(g, "audit_suppressed", False)
             and user
-            and (user.get("is_admin") or context)
+            and context
         ):
             try:
                 endpoint = request.endpoint or ""
                 summary = str(context.get("summary", "")).strip() or endpoint.replace("_", " ").capitalize()
+                profile_ids = {
+                    str(item)
+                    for item in user.get("access_profile_ids", [])
+                    if isinstance(item, str)
+                }
+                profile_names = [
+                    profile["name"]
+                    for profile in auth_store.access_profiles()
+                    if profile["id"] in profile_ids
+                ]
+                details = {
+                    **context.get("details", {}),
+                    "actor role": (
+                        "System administrator"
+                        if user.get("is_admin")
+                        else "Operator"
+                    ),
+                    "actor access profiles": profile_names,
+                }
                 audit_store.record(
                     user_id=user.get("id", ""), username=user.get("username", ""),
                     remote_ip=request.remote_addr or "", method=request.method,
@@ -183,10 +202,10 @@ def create_app(instance_path: str | None = None) -> Flask:
                     resource_type=context.get("resource_type", ""),
                     resource_id=context.get("resource_id", ""),
                     resource_name=context.get("resource_name", ""),
-                    details=context.get("details", {}),
+                    details=details,
                 )
             except Exception:
-                app.logger.exception("Administrative audit event could not be recorded")
+                app.logger.exception("Toolkit audit event could not be recorded")
         return response
 
     @app.context_processor
@@ -559,7 +578,14 @@ def create_app(instance_path: str | None = None) -> Flask:
         available_ids = [str(card["metric"]) for card in cards]
         order = [item for item in request.form.get("order", "").split(",") if item]
         hidden = [item for item in request.form.get("hidden", "").split(",") if item]
-        dashboard_layout_store.save(order, hidden, available_ids)
+        before = dashboard_layout_store.get(available_ids)
+        after = dashboard_layout_store.save(order, hidden, available_ids)
+        annotate_audit_event(
+            category="Administration", action="dashboard.layout_updated",
+            summary="Updated the shared dashboard layout.",
+            resource_type="dashboard", resource_id="layout",
+            resource_name="Dashboard layout", before=before, after=after,
+        )
         flash("Dashboard layout saved.", "success")
         return redirect(url_for("index"))
 
@@ -568,6 +594,12 @@ def create_app(instance_path: str | None = None) -> Flask:
         if not g.current_user.get("is_admin"):
             abort(403)
         dashboard_layout_store.reset()
+        annotate_audit_event(
+            category="Administration", action="dashboard.layout_reset",
+            summary="Reset the shared dashboard layout.",
+            resource_type="dashboard", resource_id="layout",
+            resource_name="Dashboard layout",
+        )
         flash("Dashboard layout restored to its defaults.", "success")
         return redirect(url_for("index"))
 
@@ -579,6 +611,11 @@ def create_app(instance_path: str | None = None) -> Flask:
             activity_store.reset_metric(metric)
         except ValueError:
             abort(404)
+        annotate_audit_event(
+            category="Administration", action="dashboard.metric_reset",
+            summary="Reset a dashboard metric.", resource_type="dashboard_metric",
+            resource_id=metric, resource_name=metric,
+        )
         flash("Dashboard counter reset.", "success")
         return redirect(_validated_next_url(request.form.get("next", "")))
 
@@ -587,6 +624,12 @@ def create_app(instance_path: str | None = None) -> Flask:
         if not g.current_user.get("is_admin"):
             abort(403)
         activity_store.reset_all_user_actions()
+        annotate_audit_event(
+            category="Administration", action="scoreboard.all_scores_reset",
+            summary="Reset every operator action score.",
+            resource_type="scoreboard", resource_id="all-users",
+            resource_name="All operator scores",
+        )
         flash("All user action scores reset.", "success")
         return redirect(_validated_next_url(request.form.get("next", "")))
 
@@ -598,6 +641,15 @@ def create_app(instance_path: str | None = None) -> Flask:
             activity_store.reset_user_actions(user_id)
         except ValueError:
             abort(404)
+        target = next(
+            (user for user in auth_store.users() if user["id"] == user_id), None
+        )
+        annotate_audit_event(
+            category="Administration", action="scoreboard.user_score_reset",
+            summary="Reset an operator action score.", resource_type="user",
+            resource_id=user_id,
+            resource_name=(target or {}).get("username", user_id),
+        )
         flash("User action score reset.", "success")
         return redirect(_validated_next_url(request.form.get("next", "")))
 

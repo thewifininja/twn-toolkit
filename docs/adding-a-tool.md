@@ -112,7 +112,7 @@ New tools should inherit the current visual language:
 ## Access expectations
 
 - Admin users always have implicit full access.
-- Standard users receive the union of assigned access profiles.
+- Operators receive the union of assigned access profiles.
 - UI hiding is not security. Route endpoints must also be registered so
   `before_request` can enforce access.
 - If a standard user should be able to visit a category landing page because

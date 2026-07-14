@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="home-hero"><div><p class="eyebrow">Administration</p><h1>System diagnostics</h1><p>Runtime health, storage capacity, database integrity, dependencies, migrations, and administrative audit history.</p></div><div class="home-hero-card"><span>Free disk</span><strong>{{ storage.disk_free_display }}</strong><small>of {{ storage.disk_total_display }}</small></div></section>
+<section class="home-hero"><div><p class="eyebrow">Administration</p><h1>System diagnostics</h1><p>Runtime health, storage capacity, database integrity, dependencies, migrations, and toolkit audit history.</p></div><div class="home-hero-card"><span>Free disk</span><strong>{{ storage.disk_free_display }}</strong><small>of {{ storage.disk_total_display }}</small></div></section>
 
 <section class="panel"><div class="auth-users-head"><h2>Processes and heartbeats</h2><p class="field-note">A running PID confirms the process exists. Scheduler heartbeat age confirms it is still making progress.</p></div><div class="automation-storage-stats">{% for process in processes %}<div><span>{{ process.name }}</span><strong class="{{ 'success-text' if process.running else 'error-text' }}">{{ 'Running' if process.running else 'Stopped' }}</strong><small>{% if process.pid %}PID {{ process.pid }}{% endif %}{% if process.heartbeat_age is not none %} · heartbeat {{ process.heartbeat_age }}s ago{% endif %}</small></div>{% endfor %}</div></section>
 
@@ -12,8 +12,8 @@
 
 <section class="panel">
   <div class="auth-users-head">
-    <h2>Administrative audit history</h2>
-    <p class="field-note">Expand an event for its resource, request, and changed-setting details. Only explicitly curated metadata is retained; form bodies and secret values are never stored.</p>
+    <h2>Toolkit audit history</h2>
+    <p class="field-note">Meaningful actions by operators and system administrators appear here. Expand an event for its resource, request, and changed-setting details. Only explicitly curated metadata is retained; form bodies and secret values are never stored.</p>
   </div>
   {% if audit_events %}
     <div class="audit-event-list">
@@ -59,6 +59,6 @@
         </details>
       {% endfor %}
     </div>
-  {% else %}<p class="side-nav-empty">No administrative changes have been recorded yet.</p>{% endif %}
+  {% else %}<p class="side-nav-empty">No audited toolkit actions have been recorded yet.</p>{% endif %}
 </section>
 {% endblock %}

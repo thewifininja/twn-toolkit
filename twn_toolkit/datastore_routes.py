@@ -67,6 +67,62 @@ def register_datastore_routes(
             item["size_display"] = format_bytes(item["size"])
         return item
 
+    def transfer_service_snapshot(settings: dict) -> dict[str, object]:
+        retained = {
+            key: value
+            for key, value in settings.items()
+            if key != "password_hash"
+        }
+        if "password_hash" in settings:
+            retained["authentication configured"] = bool(
+                settings.get("password_hash")
+            )
+        return retained
+
+    def annotate_service_settings(
+        service: str,
+        before: dict,
+        after: dict,
+        *,
+        password_updated: bool = False,
+        apply_error: str = "",
+    ) -> None:
+        state = "started" if after.get("enabled") else "stopped"
+        details: dict[str, object] = {
+            "service": service,
+            "service state": state,
+            "settings applied": not apply_error,
+            "authentication updated": password_updated,
+        }
+        if apply_error:
+            details["apply error"] = apply_error[:1000]
+        annotate_audit_event(
+            category="File transfers",
+            action="transfer_service.settings_updated",
+            summary=(
+                f"Updated {service} settings; service {state}."
+                if not apply_error
+                else f"Updated {service} settings, but service apply failed."
+            ),
+            resource_type="transfer_service",
+            resource_id=service.casefold().replace("/", "-"),
+            resource_name=service,
+            details=details,
+            before=transfer_service_snapshot(before),
+            after=transfer_service_snapshot(after),
+        )
+
+    def annotate_history_clear(service: str, count: int) -> None:
+        annotate_audit_event(
+            category="File transfers",
+            action="transfer_service.history_cleared",
+            summary=f"Cleared {count} {service} transfer record(s).",
+            resource_type="transfer_history",
+            resource_id=service.casefold().replace("/", "-"),
+            resource_name=f"{service} history",
+            details={"service": service, "deleted record count": count},
+        )
+
     def apply_service(command: str, failure_message: str) -> None:
         project_root = Path(__file__).resolve().parent.parent
         completed = subprocess.run(
@@ -76,11 +132,13 @@ def register_datastore_routes(
         if completed.returncode:
             raise RuntimeError((completed.stderr or completed.stdout).strip() or failure_message)
 
-    def stage_runtime_file(runtime_store: LocalDatastore, success_message: str) -> None:
+    def stage_runtime_file(
+        runtime_store: LocalDatastore, success_message: str
+    ) -> dict[str, object] | None:
         upload = request.files.get("file")
         if not upload or not upload.filename:
             flash("Choose one temporary file.", "error")
-            return
+            return None
         try:
             saved_path, _size = runtime_store.save_upload("", upload.filename, upload.stream, overwrite=True)
             for entry in runtime_store.list()["entries"]:
@@ -88,8 +146,27 @@ def register_datastore_routes(
                     runtime_store.delete(entry["path"])
         except DatastoreError as exc:
             flash(str(exc), "error")
+            return None
         else:
             flash(success_message, "success")
+            return runtime_store.describe(saved_path.name)
+
+    def annotate_temporary_file(
+        service: str, action: str, item: dict[str, object] | None
+    ) -> None:
+        if not item:
+            return
+        annotate_audit_event(
+            category="File transfers",
+            action=f"transfer_service.temporary_file_{action}",
+            summary=f"{action.title()} temporary {service} file {item['name']}.",
+            resource_type="temporary_transfer_file",
+            resource_id=(
+                f"{service.casefold().replace('/', '-')}:{item['path']}"
+            ),
+            resource_name=str(item["name"]),
+            details={"service": service, **item},
+        )
 
     @app.get("/local/datastore")
     def local_datastore():
@@ -141,6 +218,8 @@ def register_datastore_routes(
     def save_tftp_settings():
         if not g.current_user.get("is_admin"):
             abort(403)
+        before = tftp_settings_store.get()
+        settings = before
         settings_saved = False
         try:
             candidate = {
@@ -163,6 +242,10 @@ def register_datastore_routes(
             settings_saved = True
             apply_service("tftp-restart", "The managed TFTP service did not start.")
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:
+            if settings_saved:
+                annotate_service_settings(
+                    "TFTP", before, settings, apply_error=str(exc)
+                )
             prefix = (
                 "TFTP settings were saved, but the service could not be applied"
                 if settings_saved
@@ -170,6 +253,7 @@ def register_datastore_routes(
             )
             flash(f"{prefix}: {exc}", "error")
         else:
+            annotate_service_settings("TFTP", before, settings)
             state = "started" if settings["enabled"] else "stopped"
             flash(f"TFTP settings saved and service {state}.", "success")
         return redirect(url_for("file_transfers", _anchor="tftp-service"))
@@ -179,6 +263,7 @@ def register_datastore_routes(
         if not g.current_user.get("is_admin"):
             abort(403)
         count = tftp_history_store.clear()
+        annotate_history_clear("TFTP", count)
         flash(f"Cleared {count} TFTP transfer record(s).", "success")
         return redirect(url_for("file_transfers", _anchor="tftp-service"))
 
@@ -199,7 +284,11 @@ def register_datastore_routes(
             flash("Choose one temporary file.", "error")
             return redirect(url_for("file_transfers", _anchor="tftp-service"))
         try:
-            stage_runtime_file(tftp_runtime_store, "Temporary TFTP file staged until the service stops.")
+            item = stage_runtime_file(
+                tftp_runtime_store,
+                "Temporary TFTP file staged until the service stops.",
+            )
+            annotate_temporary_file("TFTP", "staged", item)
         except DatastoreError as exc:
             flash(str(exc), "error")
         return redirect(url_for("file_transfers", _anchor="tftp-service"))
@@ -208,13 +297,18 @@ def register_datastore_routes(
     def delete_tftp_temporary_file():
         if not g.current_user.get("is_admin"):
             abort(403)
+        item = temporary_file(tftp_runtime_store)
         tftp_runtime_store.clear()
+        annotate_temporary_file("TFTP", "removed", item)
         flash("Temporary TFTP file removed.", "success")
         return redirect(url_for("file_transfers", _anchor="tftp-service"))
 
     @app.post("/local/file-transfers/ssh/settings")
     def save_ssh_transfer_settings():
         if not g.current_user.get("is_admin"): abort(403)
+        before = ssh_transfer_settings_store.get()
+        settings = before
+        password_updated = bool(request.form.get("password", ""))
         saved = False
         try:
             candidate = {
@@ -233,8 +327,17 @@ def register_datastore_routes(
             saved = True
             apply_service("ssh-transfer-restart", "SSH transfer service did not start.")
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:
+            if saved:
+                annotate_service_settings(
+                    "SFTP/SCP", before, settings,
+                    password_updated=password_updated, apply_error=str(exc),
+                )
             flash(f"SSH transfer settings were {'saved but could not be applied' if saved else 'not saved'}: {exc}", "error")
         else:
+            annotate_service_settings(
+                "SFTP/SCP", before, settings,
+                password_updated=password_updated,
+            )
             flash(f"SSH transfer settings saved and service {'started' if settings['enabled'] else 'stopped'}.", "success")
         return redirect(url_for("file_transfers", _anchor="ssh-transfer-service"))
 
@@ -242,6 +345,7 @@ def register_datastore_routes(
     def clear_ssh_transfer_history():
         if not g.current_user.get("is_admin"): abort(403)
         count = ssh_transfer_history_store.clear({"SFTP", "SCP"}); flash(f"Cleared {count} SSH transfer record(s).", "success")
+        annotate_history_clear("SFTP/SCP", count)
         return redirect(url_for("file_transfers", _anchor="ssh-transfer-service"))
 
     @app.post("/local/file-transfers/ssh/temporary-file")
@@ -251,18 +355,28 @@ def register_datastore_routes(
         if settings["root_mode"] != "temporary" or not status["running"]:
             flash("Enable the running SSH transfer service in temporary-file mode first.", "error")
         else:
-            stage_runtime_file(ssh_transfer_runtime_store, "Temporary SSH transfer file staged until the service stops.")
+            item = stage_runtime_file(
+                ssh_transfer_runtime_store,
+                "Temporary SSH transfer file staged until the service stops.",
+            )
+            annotate_temporary_file("SFTP/SCP", "staged", item)
         return redirect(url_for("file_transfers", _anchor="ssh-transfer-service"))
 
     @app.post("/local/file-transfers/ssh/temporary-file/delete")
     def delete_ssh_transfer_temporary_file():
         if not g.current_user.get("is_admin"): abort(403)
-        ssh_transfer_runtime_store.clear(); flash("Temporary SSH transfer file removed.", "success")
+        item = temporary_file(ssh_transfer_runtime_store)
+        ssh_transfer_runtime_store.clear()
+        annotate_temporary_file("SFTP/SCP", "removed", item)
+        flash("Temporary SSH transfer file removed.", "success")
         return redirect(url_for("file_transfers", _anchor="ssh-transfer-service"))
 
     @app.post("/local/file-transfers/ftp/settings")
     def save_ftp_settings():
         if not g.current_user.get("is_admin"): abort(403)
+        before = ftp_settings_store.get()
+        settings = before
+        password_updated = bool(request.form.get("password", ""))
         saved = False
         try:
             candidate = {
@@ -281,8 +395,16 @@ def register_datastore_routes(
             settings = ftp_settings_store.save(candidate, request.form.get("password", "")); saved = True
             apply_service("ftp-restart", "FTP service did not start.")
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as exc:
+            if saved:
+                annotate_service_settings(
+                    "FTP", before, settings,
+                    password_updated=password_updated, apply_error=str(exc),
+                )
             flash(f"FTP settings were {'saved but could not be applied' if saved else 'not saved'}: {exc}", "error")
         else:
+            annotate_service_settings(
+                "FTP", before, settings, password_updated=password_updated,
+            )
             flash(f"FTP settings saved and service {'started' if settings['enabled'] else 'stopped'}.", "success")
         return redirect(url_for("file_transfers", _anchor="ftp-service"))
 
@@ -290,6 +412,7 @@ def register_datastore_routes(
     def clear_ftp_history():
         if not g.current_user.get("is_admin"): abort(403)
         count = ssh_transfer_history_store.clear({"FTP"}); flash(f"Cleared {count} FTP transfer record(s).", "success")
+        annotate_history_clear("FTP", count)
         return redirect(url_for("file_transfers", _anchor="ftp-service"))
 
     @app.post("/local/file-transfers/ftp/temporary-file")
@@ -299,13 +422,20 @@ def register_datastore_routes(
         if settings["root_mode"] != "temporary" or not status["running"]:
             flash("Enable the running FTP service in temporary-file mode first.", "error")
         else:
-            stage_runtime_file(ftp_runtime_store, "Temporary FTP file staged until the service stops.")
+            item = stage_runtime_file(
+                ftp_runtime_store,
+                "Temporary FTP file staged until the service stops.",
+            )
+            annotate_temporary_file("FTP", "staged", item)
         return redirect(url_for("file_transfers", _anchor="ftp-service"))
 
     @app.post("/local/file-transfers/ftp/temporary-file/delete")
     def delete_ftp_temporary_file():
         if not g.current_user.get("is_admin"): abort(403)
-        ftp_runtime_store.clear(); flash("Temporary FTP file removed.", "success")
+        item = temporary_file(ftp_runtime_store)
+        ftp_runtime_store.clear()
+        annotate_temporary_file("FTP", "removed", item)
+        flash("Temporary FTP file removed.", "success")
         return redirect(url_for("file_transfers", _anchor="ftp-service"))
 
     @app.post("/local/datastore/folders")

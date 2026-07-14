@@ -13,7 +13,7 @@
   <div class="home-hero-card">
     <span>Signed in as</span>
     <strong>{{ current_user.username }}</strong>
-    <small>{{ 'Administrator' if current_user.is_admin else 'Standard user' }}</small>
+    <small>{{ 'System administrator' if current_user.is_admin else 'Operator' }}</small>
   </div>
 </section>
 

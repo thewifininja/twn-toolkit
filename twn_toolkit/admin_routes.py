@@ -72,7 +72,7 @@ def _user_audit_snapshot(user: dict[str, Any] | None) -> dict[str, Any]:
         return {}
     return {
         "username": user.get("username", ""),
-        "administrator": bool(user.get("is_admin")),
+        "system administrator": bool(user.get("is_admin")),
         "enabled": bool(user.get("enabled", True)),
         "access profiles": list(user.get("access_profile_ids", [])),
     }
@@ -255,6 +255,15 @@ def register_admin_routes(
     def cleanup_orphan_artifacts():
         if not g.current_user.get("is_admin"): return Response("Administrator access is required.", status=403)
         cleaned = automation_store.cleanup_orphan_artifacts()
+        annotate_audit_event(
+            category="Administration", action="automation.artifacts_cleaned",
+            summary="Cleaned orphaned automation artifacts.",
+            resource_type="automation_storage", resource_id="orphan-artifacts",
+            resource_name="Orphaned automation artifacts", details={
+                "folders removed": cleaned["count"],
+                "bytes reclaimed": cleaned["bytes"],
+            },
+        )
         flash(f"Removed {cleaned['count']} orphaned artifact folder(s), reclaiming {_format_bytes(cleaned['bytes'])}.", "success")
         return redirect(url_for("diagnostics", _anchor="storage-health"))
 
@@ -262,6 +271,7 @@ def register_admin_routes(
     def update_automation_retention():
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
+        before = automation_store.retention_settings()
         try:
             check_days = int(request.form.get("check_retention_days", ""))
             run_days = int(request.form.get("run_retention_days", ""))
@@ -272,6 +282,13 @@ def register_admin_routes(
         except (TypeError, ValueError) as exc:
             flash(str(exc) or "Enter whole numbers for retention days.", "error")
         else:
+            after = automation_store.retention_settings()
+            annotate_audit_event(
+                category="Administration", action="automation.retention_updated",
+                summary="Updated automation retention settings.",
+                resource_type="settings", resource_id="automation-retention",
+                resource_name="Automation retention", before=before, after=after,
+            )
             flash("Automation retention settings updated.", "success")
         return redirect(url_for("settings", _anchor="automation-retention"))
 
@@ -280,6 +297,15 @@ def register_admin_routes(
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
         deleted = automation_store.prune_history()
+        annotate_audit_event(
+            category="Administration", action="automation.history_pruned",
+            summary="Pruned retained automation history.",
+            resource_type="automation_storage", resource_id="history",
+            resource_name="Automation history", details={
+                "checks removed": deleted["checks"],
+                "runs removed": deleted["runs"],
+            },
+        )
         flash(
             f"Pruned {deleted['checks']} check record(s) and {deleted['runs']} collected action run(s).",
             "success",
@@ -295,6 +321,12 @@ def register_admin_routes(
         except Exception as exc:
             flash(f"Automation database optimization failed: {exc}", "error")
         else:
+            annotate_audit_event(
+                category="Administration", action="automation.database_optimized",
+                summary="Optimized the automation database.",
+                resource_type="database", resource_id="automation",
+                resource_name="Automation database",
+            )
             flash("Automation database optimized.", "success")
         return redirect(url_for("settings", _anchor="automation-retention"))
 

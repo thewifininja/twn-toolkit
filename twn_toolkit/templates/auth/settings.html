@@ -146,7 +146,7 @@
     <div class="access-profile-list">
       <article class="access-profile-card builtin-profile-card">
         <div>
-          <strong>Administrator</strong>
+          <strong>System administrator</strong>
           <small>Built-in profile · Full toolkit access · Not editable</small>
         </div>
       </article>
@@ -297,11 +297,11 @@
           {% endif %}
           <label class="check">
             <input type="radio" name="builtin_profile" value="administrator">
-            Administrator <small class="profile-helper">Full toolkit access</small>
+            System administrator <small class="profile-helper">Full toolkit access</small>
           </label>
           <label class="check">
             <input type="radio" name="builtin_profile" value="" checked>
-            Standard user
+            Operator
           </label>
           {% for profile in access_profiles %}
             <label class="check">
@@ -322,7 +322,7 @@
             <strong>{{ user.username }}</strong>
             <span>
               <span class="pill {{ 'success' if user.is_admin else 'planned' }}">
-                {{ 'Administrator' if user.is_admin else 'User' }}
+                {{ 'System administrator' if user.is_admin else 'Operator' }}
               </span>
               {% if user.id == current_user.id %}<span class="muted">Current account</span>{% endif %}
             </span>
@@ -350,11 +350,11 @@
                 {% endif %}
                 <label class="check">
                   <input type="radio" name="builtin_profile" value="administrator" {% if user.is_admin %}checked{% endif %}>
-                  Administrator
+                  System administrator
                 </label>
                 <label class="check">
                   <input type="radio" name="builtin_profile" value="" {% if not user.is_admin %}checked{% endif %}>
-                  Standard user
+                  Operator
                 </label>
                 {% for profile in access_profiles %}
                   <label class="check">

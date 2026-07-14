@@ -141,6 +141,32 @@ class OperationalHardeningTests(unittest.TestCase):
             events[1]["details"]["targets"],
             [{"host": "127.0.0.1", "label": "Loopback"}],
         )
+        self.assertEqual(
+            events[1]["details"]["actor role"], "System administrator"
+        )
+        self.assertEqual(events[1]["details"]["actor access profiles"], [])
+
+    def test_unannotated_admin_post_is_not_audited(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance); app.testing = True; client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+            # Use the persisted signed-in account instead of Flask's synthetic
+            # testing administrator for this user-preference route.
+            app.testing = False
+            self.assertEqual(
+                client.post("/settings/theme", json={"theme": "dark"}).status_code,
+                200,
+            )
+            events = AuditStore(instance).recent(10)
+
+        self.assertEqual(events, [])
 
     def test_oversized_audit_detail_remains_valid_json(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

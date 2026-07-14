@@ -318,13 +318,16 @@ accepted replay frames.
 - `MigrationManager` maintains the toolkit-wide migration ledger and creates
   consistent SQLite snapshots before new numbered migrations. Automation retains
   its existing internal migration ledger, both shown in System Diagnostics.
-- `AuditStore` records sanitized administrative requests and explicitly annotated
-  user actions. Routes use `annotate_audit_event` for resource context and curated
+- `AuditStore` records sanitized, explicitly annotated actions for every authenticated
+  operator and system administrator. Audit inclusion is role-neutral and context-only;
+  being a system administrator must not make an otherwise noisy request auditable.
+  Routes use `annotate_audit_event` for resource context and curated
   before/after values. Never pass request bodies wholesale; recursive storage-time
   sanitization is defense in depth for passwords, credentials, tokens, communities,
   API keys, authorization fields, and secret headers. Use `suppress_audit_event`
   for high-frequency telemetry requests; audit user-visible lifecycle boundaries
-  instead. Datastore routes use `LocalDatastore.describe()` and bounded item lists
+  instead. Every event adds the actor role and assigned access-profile names.
+  Datastore routes use `LocalDatastore.describe()` and bounded item lists
   for consistent path, kind, and size metadata without retaining file contents.
 
 ## Verification

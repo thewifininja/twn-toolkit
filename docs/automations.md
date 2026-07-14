@@ -165,7 +165,7 @@ stored as a normal downloadable action run.
 
 ## Security and backups
 
-Automation administration is initially administrator-only. SSH action configuration
+Automation administration is initially system-administrator-only. SSH action configuration
 is encrypted at rest with a key derived from the installation's private
 `instance/session_secret`. Passwords are never rendered back into the page.
 
