@@ -15,6 +15,7 @@ from werkzeug.security import check_password_hash
 
 from .datastore import LocalDatastore, MAX_UPLOAD_BYTES
 from .ftp_server import FTPSettingsStore, clear_ftp_runtime
+from .pidfiles import remove_own_pid_file, write_pid_file
 from .ssh_transfer_server import SSHTransferHistoryStore
 from .tftp import format_incoming_filename
 
@@ -118,14 +119,14 @@ def main():
     if args.daemon: _daemonize(args.pid_file, args.log_file)
     settings = FTPSettingsStore(args.instance).get()
     if not settings["enabled"]: raise SystemExit("FTP is disabled.")
-    Path(args.pid_file).write_text(str(os.getpid()) + "\n"); os.chmod(args.pid_file, 0o600)
+    write_pid_file(args.pid_file)
     server = FTPServer((settings["bind_host"], settings["port"]), build_handler(args.instance, settings))
     server.max_cons = settings["max_connections"]
     server.max_cons_per_ip = settings["max_connections_per_ip"]
     signal.signal(signal.SIGTERM, lambda *_: server.close_all()); signal.signal(signal.SIGINT, lambda *_: server.close_all())
     try: server.serve_forever(timeout=1, blocking=True, handle_exit=False)
     finally:
-        Path(args.pid_file).unlink(missing_ok=True)
+        remove_own_pid_file(args.pid_file)
         if settings["root_mode"] == "temporary": clear_ftp_runtime(args.instance)
 
 

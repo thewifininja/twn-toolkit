@@ -309,6 +309,9 @@ accepted replay frames.
   datastore/artifact/free-space limits. Preserve quota enforcement at write time.
 - `supervisor_worker.py` watches scheduler heartbeats and enabled transfer-worker
   PIDs. The launcher must stop the supervisor before intentionally stopping workers.
+  Managed transfer start/stop operations are serialized with per-service lock
+  directories so a settings-triggered restart cannot race the supervisor. Workers
+  only remove PID files that still contain their own PID; preserve both safeguards.
 - `MigrationManager` maintains the toolkit-wide migration ledger and creates
   consistent SQLite snapshots before new numbered migrations. Automation retains
   its existing internal migration ledger, both shown in System Diagnostics.

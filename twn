@@ -177,13 +177,44 @@ managed_worker_enabled() {
   "$PYTHON" -c 'import json, sys; raise SystemExit(0 if json.load(open(sys.argv[1], encoding="utf-8")).get("enabled") else 1)' "$1" >/dev/null 2>&1
 }
 
+acquire_managed_worker_lock() {
+  worker_lock="$1.lock"
+  attempts=0
+  while ! mkdir "$worker_lock" 2>/dev/null; do
+    lock_owner=""
+    if [ -f "$worker_lock/owner" ]; then lock_owner=$(cat "$worker_lock/owner" 2>/dev/null || true); fi
+    if [ -n "$lock_owner" ] && ! kill -0 "$lock_owner" 2>/dev/null; then
+      rm -f "$worker_lock/owner"
+      rmdir "$worker_lock" 2>/dev/null || true
+      continue
+    fi
+    attempts=$((attempts + 1))
+    if [ -z "$lock_owner" ] && [ "$attempts" -ge 10 ]; then
+      rmdir "$worker_lock" 2>/dev/null || true
+      continue
+    fi
+    if [ "$attempts" -ge 100 ]; then
+      echo "Another managed-service operation is still in progress." >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+  echo "$$" > "$worker_lock/owner"
+}
+
+release_managed_worker_lock() {
+  worker_lock="$1.lock"
+  rm -f "$worker_lock/owner"
+  rmdir "$worker_lock" 2>/dev/null || true
+}
+
 clear_managed_runtime() {
   if [ -x "$PYTHON" ]; then
     "$PYTHON" -c 'import importlib, sys; module, function = sys.argv[1].split(":", 1); getattr(importlib.import_module(module), function)(sys.argv[2])' "$1" "$INSTANCE"
   fi
 }
 
-stop_managed_worker() {
+stop_managed_worker_unlocked() {
   worker_pidfile=$1
   cleanup=$2
   if ! managed_worker_is_running "$worker_pidfile"; then
@@ -200,7 +231,17 @@ stop_managed_worker() {
   clear_managed_runtime "$cleanup"
 }
 
-start_managed_worker() {
+stop_managed_worker() {
+  worker_pidfile=$1
+  cleanup=$2
+  acquire_managed_worker_lock "$worker_pidfile"
+  status=0
+  stop_managed_worker_unlocked "$worker_pidfile" "$cleanup" || status=$?
+  release_managed_worker_lock "$worker_pidfile"
+  return "$status"
+}
+
+start_managed_worker_unlocked() {
   settings_file=$1
   worker_pidfile=$2
   worker_log=$3
@@ -208,12 +249,14 @@ start_managed_worker() {
   worker_label=$5
   cleanup=$6
   if ! managed_worker_enabled "$settings_file"; then
-    stop_managed_worker "$worker_pidfile" "$cleanup"
+    stop_managed_worker_unlocked "$worker_pidfile" "$cleanup"
     return 0
   fi
   if managed_worker_is_running "$worker_pidfile"; then return 0; fi
   rm -f "$worker_pidfile"
   cd "$ROOT"
+  worker_log_start=0
+  if [ -f "$worker_log" ]; then worker_log_start=$(wc -l < "$worker_log" | tr -d ' '); fi
   "$PYTHON" -m "$worker_module" --instance "$INSTANCE" --daemon --pid-file "$worker_pidfile" --log-file "$worker_log"
   attempts=0
   while [ "$attempts" -lt 30 ]; do
@@ -221,7 +264,23 @@ start_managed_worker() {
     attempts=$((attempts + 1)); sleep 0.1
   done
   echo "The $worker_label service did not start. Check: $worker_log" >&2
+  worker_error=$(tail -n "+$((worker_log_start + 1))" "$worker_log" 2>/dev/null | awk '/^(OSError|RuntimeError|ValueError):/{message=$0} END{print message}')
+  if [ -n "$worker_error" ]; then echo "$worker_error" >&2; fi
   return 1
+}
+
+start_managed_worker() {
+  settings_file=$1
+  worker_pidfile=$2
+  worker_log=$3
+  worker_module=$4
+  worker_label=$5
+  cleanup=$6
+  acquire_managed_worker_lock "$worker_pidfile"
+  status=0
+  start_managed_worker_unlocked "$settings_file" "$worker_pidfile" "$worker_log" "$worker_module" "$worker_label" "$cleanup" || status=$?
+  release_managed_worker_lock "$worker_pidfile"
+  return "$status"
 }
 
 tftp_is_running() { managed_worker_is_running "$TFTP_PIDFILE"; }

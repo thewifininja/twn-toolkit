@@ -13,10 +13,23 @@ from twn_toolkit.audit import AuditStore
 from twn_toolkit.datastore import DatastoreError, LocalDatastore
 from twn_toolkit.migrations import MigrationManager
 from twn_toolkit.operational import OperationalSettingsStore
+from twn_toolkit.pidfiles import remove_own_pid_file, write_pid_file
 from twn_toolkit.supervisor_worker import _heartbeat_fresh
 
 
 class OperationalHardeningTests(unittest.TestCase):
+    def test_pid_file_cleanup_does_not_remove_another_worker_owner(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            path = Path(instance) / "worker.pid"
+            write_pid_file(str(path))
+            self.assertTrue(path.exists())
+            path.write_text("999999\n", encoding="utf-8")
+            remove_own_pid_file(str(path))
+            self.assertTrue(path.exists())
+            write_pid_file(str(path))
+            remove_own_pid_file(str(path))
+            self.assertFalse(path.exists())
+
     def test_operational_settings_validate_and_persist(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             store = OperationalSettingsStore(instance)
