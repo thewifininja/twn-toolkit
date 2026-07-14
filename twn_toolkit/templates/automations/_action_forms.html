@@ -154,7 +154,7 @@
         </div>
         <label><span class="automation-field-label">Request headers <span class="inline-label-note">(write-only)</span></span>
           <textarea name="webhook_headers" rows="5" placeholder="Authorization: Bearer …&#10;X-API-Key: …&#10;Content-Type: application/json"></textarea>
-          <small class="field-note">Enter one <code>Name: Value</code> per line.{% if definition and definition.has_headers %} Leave this blank to keep the saved headers.{% endif %}</small>
+          <small class="field-note">Enter each header on a separate line using <code>Name: Value</code>.{% if definition and definition.has_headers %} Leave this field blank to keep the saved headers.{% endif %}</small>
         </label>
         {% if definition and definition.has_headers %}<label class="check automation-option-row"><input name="webhook_clear_headers" type="checkbox"><span>Remove all saved headers when updating</span></label>{% endif %}
       </section>
