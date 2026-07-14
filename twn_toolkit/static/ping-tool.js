@@ -210,7 +210,13 @@
     updateTargetsButton.disabled = false;
     resultsPanel.hidden = false;
     resetActivityRun();
-    reportPingActivity("start", {targets: targets.length});
+    reportPingActivity("start", {
+      targets: targets.length,
+      target_hosts: targets.map((target) => ({
+        host: target.host,
+        label: target.label || "",
+      })),
+    });
     runRound();
   });
 

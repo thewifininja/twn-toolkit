@@ -40,7 +40,7 @@ from .server_settings import (
 )
 from .tls_tools import certificate_status, regenerate_self_signed_certificate
 from .tool_catalog import TOOL_BY_ID, grouped_access_tools
-from .audit import AuditStore
+from .audit import AuditStore, annotate_audit_event
 from .operational import OperationalSettingsStore
 from .migrations import MigrationManager
 from .tftp import tftp_process_status
@@ -55,6 +55,37 @@ def _format_bytes(value: int) -> str:
             return f"{amount:.1f} {unit}" if unit != "bytes" else f"{int(amount)} bytes"
         amount /= 1024
     return f"{amount:.1f} GiB"
+
+
+def _format_audit_value(value: Any) -> str:
+    if value is None or value == "":
+        return "—"
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+    return str(value)
+
+
+def _user_audit_snapshot(user: dict[str, Any] | None) -> dict[str, Any]:
+    if not user:
+        return {}
+    return {
+        "username": user.get("username", ""),
+        "administrator": bool(user.get("is_admin")),
+        "enabled": bool(user.get("enabled", True)),
+        "access profiles": list(user.get("access_profile_ids", [])),
+    }
+
+
+def _profile_audit_snapshot(profile: dict[str, Any] | None) -> dict[str, Any]:
+    if not profile:
+        return {}
+    return {
+        "name": profile.get("name", ""),
+        "description": profile.get("description", ""),
+        "tool access": list(profile.get("tool_ids", [])),
+    }
 
 
 def _format_storage_summary(summary: dict[str, Any]) -> dict[str, Any]:
@@ -145,8 +176,9 @@ def register_admin_routes(
     @app.post("/settings/operations")
     def update_operational_settings():
         if not g.current_user.get("is_admin"): return Response("Administrator access is required.", status=403)
+        before = operational_store.get()
         try:
-            operational_store.save({
+            after = operational_store.save({
                 "max_concurrent_automations": request.form.get("max_concurrent_automations", ""),
                 "max_queued_automations": request.form.get("max_queued_automations", ""),
                 "skip_overlapping_automations": request.form.get("skip_overlapping_automations") == "on",
@@ -155,7 +187,14 @@ def register_admin_routes(
                 "minimum_free_gib": request.form.get("minimum_free_gib", ""),
             })
         except ValueError as exc: flash(str(exc), "error")
-        else: flash("Operational limits saved. Scheduler concurrency changes apply after toolkit restart.", "success")
+        else:
+            annotate_audit_event(
+                category="Administration", action="settings.operations_updated",
+                summary="Updated operational limits.", resource_type="settings",
+                resource_id="operational-limits", resource_name="Operational limits",
+                before=before, after=after,
+            )
+            flash("Operational limits saved. Scheduler concurrency changes apply after toolkit restart.", "success")
         return redirect(url_for("settings", _anchor="operational-limits"))
 
     @app.get("/settings/diagnostics")
@@ -183,6 +222,26 @@ def register_admin_routes(
         audit = audit_store.recent(100)
         for event in audit:
             event["recorded_display"] = datetime.fromtimestamp(float(event["recorded_at"])).astimezone().strftime("%b %-d, %Y %-I:%M:%S %p")
+            event["category"] = event.get("category") or "Administration"
+            event["summary"] = event.get("summary") or str(event["endpoint"]).replace("_", " ").capitalize()
+            details = event.get("details") if isinstance(event.get("details"), dict) else {}
+            event["changes"] = [
+                {
+                    **change,
+                    "before_display": _format_audit_value(change.get("before")),
+                    "after_display": _format_audit_value(change.get("after")),
+                }
+                for change in details.get("changes", [])
+                if isinstance(change, dict)
+            ]
+            event["detail_items"] = [
+                {
+                    "label": key.replace("_", " ").replace(".", " › "),
+                    "value": _format_audit_value(value),
+                }
+                for key, value in details.items()
+                if key != "changes"
+            ]
         return render_template(
             "auth/diagnostics.html", processes=processes, databases=databases,
             dependencies=dependencies, audit_events=audit,
@@ -248,7 +307,7 @@ def register_admin_routes(
             flash("Passwords do not match.", "error")
         else:
             try:
-                auth_store.create_user(
+                created = auth_store.create_user(
                     request.form.get("username", ""),
                     password,
                     is_admin=request.form.get("builtin_profile") == "administrator",
@@ -257,6 +316,12 @@ def register_admin_routes(
             except ValueError as exc:
                 flash(str(exc), "error")
             else:
+                annotate_audit_event(
+                    category="Administration", action="user.created",
+                    summary=f"Created user {created['username']}.", resource_type="user",
+                    resource_id=created["id"], resource_name=created["username"],
+                    after=_user_audit_snapshot(created),
+                )
                 flash("User created.", "success")
         return redirect(url_for("settings"))
 
@@ -264,6 +329,7 @@ def register_admin_routes(
     def update_user_access(user_id: str):
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
+        before = next((user for user in auth_store.users() if user["id"] == user_id), None)
         try:
             auth_store.update_user_access(
                 user_id,
@@ -273,6 +339,14 @@ def register_admin_routes(
         except ValueError as exc:
             flash(str(exc), "error")
         else:
+            after = next((user for user in auth_store.users() if user["id"] == user_id), None)
+            annotate_audit_event(
+                category="Administration", action="user.access_updated",
+                summary=f"Updated access for {(after or before or {}).get('username', user_id)}.",
+                resource_type="user", resource_id=user_id,
+                resource_name=str((after or before or {}).get("username", "")),
+                before=_user_audit_snapshot(before), after=_user_audit_snapshot(after),
+            )
             flash("User access updated.", "success")
         return redirect(url_for("settings"))
 
@@ -280,9 +354,11 @@ def register_admin_routes(
     def save_access_profile():
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
+        profile_id = request.form.get("profile_id", "")
+        before = auth_store.get_access_profile(profile_id) if profile_id else None
         try:
-            auth_store.save_access_profile(
-                profile_id=request.form.get("profile_id", ""),
+            saved = auth_store.save_access_profile(
+                profile_id=profile_id,
                 name=request.form.get("name", ""),
                 description=request.form.get("description", ""),
                 tool_ids=[
@@ -294,6 +370,14 @@ def register_admin_routes(
         except ValueError as exc:
             flash(str(exc), "error")
         else:
+            annotate_audit_event(
+                category="Administration",
+                action="access_profile.updated" if before else "access_profile.created",
+                summary=f"{'Updated' if before else 'Created'} access profile {saved['name']}.",
+                resource_type="access profile", resource_id=saved["id"],
+                resource_name=saved["name"], before=_profile_audit_snapshot(before),
+                after=_profile_audit_snapshot(saved),
+            )
             flash("Access profile saved.", "success")
         return redirect(url_for("settings"))
 
@@ -301,11 +385,19 @@ def register_admin_routes(
     def delete_access_profile(profile_id: str):
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
+        profile = auth_store.get_access_profile(profile_id)
         try:
             auth_store.delete_access_profile(profile_id)
         except ValueError as exc:
             flash(str(exc), "error")
         else:
+            annotate_audit_event(
+                category="Administration", action="access_profile.deleted",
+                summary=f"Deleted access profile {(profile or {}).get('name', profile_id)}.",
+                resource_type="access profile", resource_id=profile_id,
+                resource_name=str((profile or {}).get("name", "")),
+                details={"deleted profile": _profile_audit_snapshot(profile)},
+            )
             flash("Access profile deleted.", "success")
         return redirect(url_for("settings"))
 
@@ -315,6 +407,7 @@ def register_admin_routes(
         if not (g.current_user.get("is_admin") or is_self):
             return Response("Permission denied.", status=403)
         password = request.form.get("password", "")
+        target_user = next((user for user in auth_store.users() if user["id"] == user_id), None)
         if password != request.form.get("confirm_password", ""):
             flash("Passwords do not match.", "error")
         else:
@@ -328,6 +421,13 @@ def register_admin_routes(
                         user for user in auth_store.users() if user["id"] == user_id
                     )
                     start_session(updated)
+                annotate_audit_event(
+                    category="Administration", action="user.password_changed",
+                    summary=f"Changed the password for {(target_user or {}).get('username', user_id)}.",
+                    resource_type="user", resource_id=user_id,
+                    resource_name=str((target_user or {}).get("username", "")),
+                    details={"existing sessions invalidated": True},
+                )
                 flash("Password updated. Existing sessions for that user were signed out.", "success")
         return redirect(url_for("settings"))
 
@@ -335,6 +435,7 @@ def register_admin_routes(
     def delete_user(user_id: str):
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
+        target_user = next((user for user in auth_store.users() if user["id"] == user_id), None)
         if user_id == g.current_user["id"]:
             flash("You cannot delete your own signed-in account.", "error")
         else:
@@ -343,6 +444,13 @@ def register_admin_routes(
             except ValueError as exc:
                 flash(str(exc), "error")
             else:
+                annotate_audit_event(
+                    category="Administration", action="user.deleted",
+                    summary=f"Deleted user {(target_user or {}).get('username', user_id)}.",
+                    resource_type="user", resource_id=user_id,
+                    resource_name=str((target_user or {}).get("username", "")),
+                    details={"deleted user": _user_audit_snapshot(target_user)},
+                )
                 flash("User deleted.", "success")
         return redirect(url_for("settings"))
 
@@ -350,6 +458,10 @@ def register_admin_routes(
     def update_session_settings():
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
+        before = {
+            "idle timeout minutes": auth_store.idle_timeout_minutes(),
+            **auth_store.password_policy(),
+        }
         try:
             minutes = int(request.form.get("idle_timeout_minutes", ""))
             min_password_length = int(request.form.get("min_password_length", ""))
@@ -368,6 +480,16 @@ def register_admin_routes(
             except ValueError as exc:
                 flash(str(exc), "error")
             else:
+                after = {
+                    "idle timeout minutes": auth_store.idle_timeout_minutes(),
+                    **auth_store.password_policy(),
+                }
+                annotate_audit_event(
+                    category="Administration", action="settings.authentication_updated",
+                    summary="Updated authentication and session policy.",
+                    resource_type="settings", resource_id="authentication-policy",
+                    resource_name="Authentication policy", before=before, after=after,
+                )
                 flash("Session settings updated.", "success")
         return redirect(url_for("settings"))
 
@@ -375,6 +497,7 @@ def register_admin_routes(
     def update_server_settings():
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
+        before = server_settings_store.get()
         listen_host = request.form.get("listen_host", "")
         allowed_networks = request.form.get("allowed_networks", "")
         instance_name = request.form.get("instance_name", "")
@@ -440,6 +563,14 @@ def register_admin_routes(
             server_settings_store.restore_previous()
             flash(f"Settings were saved, but automatic restart failed: {exc}", "error")
             return redirect(url_for("settings"))
+        annotate_audit_event(
+            category="Administration", action="settings.server_updated",
+            summary="Updated server identity and network access settings.",
+            resource_type="settings", resource_id="server-settings",
+            resource_name="Server settings", before=before,
+            after=server_settings_store.get(),
+            details={"TLS certificate regenerated": request.form.get("regenerate_tls") == "on"},
+        )
         return render_template(
             "auth/restarting.html",
             previous_boot_id=app.config["BOOT_ID"],

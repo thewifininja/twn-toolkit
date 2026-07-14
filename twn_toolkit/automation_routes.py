@@ -24,12 +24,45 @@ from flask import (
 
 from .automation import AutomationEngine, AutomationStore
 from .automation_registry import AUTOMATION_REGISTRY
+from .audit import annotate_audit_event
 from .activity_context import record_current_activity
 from .datastore import LocalDatastore
 from .network_tools import ToolInputError
 from .schedule_tools import describe_schedule_rule, local_timezone_name, schedule_preview
 from .profiles import SNMPHostProfileStore, SNMPOidProfileStore
 from .snmp_tools import parse_oid_profile
+
+
+def _automation_audit_snapshot(automation: dict[str, Any] | None) -> dict[str, Any]:
+    if not automation:
+        return {}
+    return {
+        "name": automation.get("name", ""),
+        "enabled": bool(automation.get("enabled")),
+        "check interval seconds": automation.get("interval_seconds"),
+        "trigger after": automation.get("trigger_after"),
+        "recover after": automation.get("recover_after"),
+        "cooldown seconds": automation.get("cooldown_seconds"),
+        "condition": (automation.get("condition") or {}).get("name", ""),
+        "action stages": [
+            {
+                "name": stage.get("name", ""),
+                "continue policy": stage.get("continue_policy", ""),
+                "actions": [action.get("name", "") for action in stage.get("actions", [])],
+            }
+            for stage in automation.get("action_stages", [])
+        ],
+    }
+
+
+def _definition_audit_snapshot(definition: dict[str, Any] | None) -> dict[str, Any]:
+    if not definition:
+        return {}
+    return {
+        "name": definition.get("name", ""),
+        "type": definition.get("type", ""),
+        "configuration": definition.get("config", {}),
+    }
 
 
 def register_automation_routes(app: Flask, store: AutomationStore) -> None:
@@ -137,6 +170,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         except json.JSONDecodeError:
             form["action_stages"] = []
         automation_id = request.form.get("automation_id", "").strip()
+        before = store.get(automation_id) if automation_id else None
         try:
             saved_id = store.save(
                 automation_id=automation_id,
@@ -154,6 +188,17 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             return render_page(
                 form_error=str(exc), form=form, form_section="automation"
             ), 400
+        after = store.get(saved_id)
+        annotate_audit_event(
+            category="Automation",
+            action="automation.updated" if before else "automation.created",
+            summary=f"{'Updated' if before else 'Created'} automation {after['name'] if after else saved_id}.",
+            resource_type="automation",
+            resource_id=saved_id,
+            resource_name=str((after or {}).get("name", "")),
+            before=_automation_audit_snapshot(before),
+            after=_automation_audit_snapshot(after),
+        )
         flash("Automation saved. It remains paused until you arm it.", "success")
         return redirect(url_for("automations", focus=saved_id))
 
@@ -166,6 +211,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             form["rules"] = json.loads(request.form.get("schedule_rules_json", "[]"))
         except json.JSONDecodeError:
             form["rules"] = []
+        requested_definition_id = request.form.get("condition_definition_id", "")
+        before = store.get_condition_definition(requested_definition_id) if requested_definition_id else None
         try:
             type_id = request.form.get("condition_type", "ping.multi")
             config = AUTOMATION_REGISTRY.condition_config_from_form(type_id, request.form)
@@ -180,6 +227,17 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 page_section="conditions",
                 form_error=str(exc), form=form, form_section="condition"
             ), 400
+        after = store.get_condition_definition(definition_id)
+        annotate_audit_event(
+            category="Automation",
+            action="condition.updated" if before else "condition.created",
+            summary=f"{'Updated' if before else 'Created'} condition {after['name'] if after else definition_id}.",
+            resource_type="condition",
+            resource_id=definition_id,
+            resource_name=str((after or {}).get("name", "")),
+            before=_definition_audit_snapshot(before),
+            after=_definition_audit_snapshot(after),
+        )
         flash(
             "Condition saved. Any automation using an edited condition was paused.",
             "success",
@@ -196,6 +254,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             existing = store.get_action_definition(definition_id, include_secrets=True)
             if existing:
                 existing_config = dict(existing["config"])
+        before = store.get_action_definition(definition_id) if definition_id else None
         try:
             type_id = request.form.get("action_type", "ssh.collect")
             config = AUTOMATION_REGISTRY.action_config_from_form(
@@ -212,6 +271,17 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 page_section="actions",
                 form_error=str(exc), form=form, form_section="action"
             ), 400
+        after = store.get_action_definition(definition_id)
+        annotate_audit_event(
+            category="Automation",
+            action="action.updated" if before else "action.created",
+            summary=f"{'Updated' if before else 'Created'} action {after['name'] if after else definition_id}.",
+            resource_type="action",
+            resource_id=definition_id,
+            resource_name=str((after or {}).get("name", "")),
+            before=_definition_audit_snapshot(before),
+            after=_definition_audit_snapshot(after),
+        )
         flash(
             "Action saved. Any automation using an edited action was paused.",
             "success",
@@ -224,6 +294,12 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         definition = store.get_condition_definition(definition_id)
         if not definition:
             abort(404)
+        annotate_audit_event(
+            category="Automation", action="condition.tested",
+            summary=f"Tested condition {definition['name']}.",
+            resource_type="condition", resource_id=definition_id,
+            resource_name=definition["name"],
+        )
         try:
             condition = AUTOMATION_REGISTRY.conditions[definition["type"]]
             result = condition.evaluate(definition["config"])
@@ -245,22 +321,38 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     @app.post("/automations/conditions/<definition_id>/delete")
     def delete_automation_condition(definition_id: str):
         require_admin()
+        definition = store.get_condition_definition(definition_id)
         try:
             store.delete_condition_definition(definition_id)
         except ValueError as exc:
             flash(str(exc), "error")
         else:
+            annotate_audit_event(
+                category="Automation", action="condition.deleted",
+                summary=f"Deleted condition {(definition or {}).get('name', definition_id)}.",
+                resource_type="condition", resource_id=definition_id,
+                resource_name=str((definition or {}).get("name", "")),
+                details={"deleted definition": _definition_audit_snapshot(definition)},
+            )
             flash("Condition deleted.", "success")
         return redirect(url_for("automation_conditions"))
 
     @app.post("/automations/actions/<definition_id>/delete")
     def delete_automation_action(definition_id: str):
         require_admin()
+        definition = store.get_action_definition(definition_id)
         try:
             store.delete_action_definition(definition_id)
         except ValueError as exc:
             flash(str(exc), "error")
         else:
+            annotate_audit_event(
+                category="Automation", action="action.deleted",
+                summary=f"Deleted action {(definition or {}).get('name', definition_id)}.",
+                resource_type="action", resource_id=definition_id,
+                resource_name=str((definition or {}).get("name", "")),
+                details={"deleted definition": _definition_audit_snapshot(definition)},
+            )
             flash("Action deleted.", "success")
         return redirect(url_for("automation_actions"))
 
@@ -275,6 +367,14 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             return redirect(url_for("automations", focus=automation_id))
         store.set_enabled(automation_id, not automation["enabled"])
         updated = store.get(automation_id)
+        annotate_audit_event(
+            category="Automation", action="automation.paused" if automation["enabled"] else "automation.armed",
+            summary=f"{'Paused' if automation['enabled'] else 'Armed'} automation {automation['name']}.",
+            resource_type="automation", resource_id=automation_id,
+            resource_name=automation["name"],
+            before={"enabled": bool(automation["enabled"])},
+            after={"enabled": bool((updated or {}).get("enabled"))},
+        )
         if automation["enabled"]:
             message = "Automation paused."
         elif updated and updated["condition"]["type"] == "schedule.calendar":
@@ -301,6 +401,19 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         trigger = condition.evaluate(automation["condition"]["config"])
         trigger.evidence["started_by"] = str(g.current_user["username"])
         run_id = AutomationEngine(store).execute_actions(automation, trigger)
+        run = store.get_run(run_id)
+        annotate_audit_event(
+            category="Automation", action="automation.ran_manually",
+            summary=f"Ran automation {automation['name']} manually.",
+            resource_type="automation", resource_id=automation_id,
+            resource_name=automation["name"],
+            details={
+                "run id": run_id,
+                "run status": (run or {}).get("status", ""),
+                "action stages": len(automation.get("action_stages", [])),
+                "actions": len(automation.get("actions", [])),
+            },
+        )
         record_current_activity(
             "Automation",
             "Ran automation manually",
@@ -315,6 +428,12 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         automation = store.get(automation_id, include_secrets=True)
         if not automation:
             abort(404)
+        annotate_audit_event(
+            category="Automation", action="automation.condition_tested",
+            summary=f"Tested the condition for automation {automation['name']}.",
+            resource_type="automation", resource_id=automation_id,
+            resource_name=automation["name"],
+        )
         try:
             result = AutomationEngine(store).test_condition(automation)
             test_result = {
@@ -335,20 +454,36 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     @app.post("/automations/<automation_id>/delete")
     def delete_automation(automation_id: str):
         require_admin()
+        automation = store.get(automation_id)
         try:
             store.delete(automation_id)
         except ValueError:
             abort(404)
+        annotate_audit_event(
+            category="Automation", action="automation.deleted",
+            summary=f"Deleted automation {(automation or {}).get('name', automation_id)}.",
+            resource_type="automation", resource_id=automation_id,
+            resource_name=str((automation or {}).get("name", "")),
+            details={"deleted automation": _automation_audit_snapshot(automation)},
+        )
         flash("Automation and its retained history deleted.", "success")
         return redirect(url_for("automations"))
 
     @app.post("/automations/<automation_id>/runs/clear")
     def clear_automation_runs(automation_id: str):
         require_admin()
+        automation = store.get(automation_id)
         try:
             deleted = store.clear_runs(automation_id)
         except ValueError:
             abort(404)
+        annotate_audit_event(
+            category="Automation", action="automation.runs_cleared",
+            summary=f"Cleared {deleted} collected run{'s' if deleted != 1 else ''} from {(automation or {}).get('name', automation_id)}.",
+            resource_type="automation", resource_id=automation_id,
+            resource_name=str((automation or {}).get("name", "")),
+            details={"deleted runs": deleted},
+        )
         flash(
             f"Deleted {deleted} collected action run{'s' if deleted != 1 else ''}.",
             "success",
@@ -362,6 +497,13 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         if not run:
             abort(404)
         store.delete_run(run_id)
+        annotate_audit_event(
+            category="Automation", action="automation.run_deleted",
+            summary=f"Deleted a collected run from {run['automation_name']}.",
+            resource_type="automation run", resource_id=run_id,
+            resource_name=run["automation_name"],
+            details={"automation id": run["automation_id"], "started at": run["started_at"]},
+        )
         flash("Collected action run deleted.", "success")
         return redirect(url_for("automations", focus=run["automation_id"]))
 
@@ -371,6 +513,13 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         run = store.get_run(run_id)
         if not run:
             abort(404)
+        annotate_audit_event(
+            category="Automation", action="automation.run_downloaded",
+            summary=f"Downloaded a collected run from {run['automation_name']}.",
+            resource_type="automation run", resource_id=run_id,
+            resource_name=run["automation_name"],
+            details={"automation id": run["automation_id"], "started at": run["started_at"]},
+        )
         output = io.BytesIO()
         file_timestamp = _filename_timestamp(run["started_at"])
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:

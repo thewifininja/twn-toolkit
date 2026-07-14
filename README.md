@@ -212,8 +212,9 @@ The built-in administrator can manage:
 - selectable profile backup/restore with combine or replace behavior;
 - mandatory encryption whenever an export contains credentials or secrets;
 - automation retention, worker/queue limits, quotas, and free-disk reserve; and
-- System Diagnostics, migrations, worker health, storage, dependencies, and a
-  sanitized administrative audit trail.
+- System Diagnostics, migrations, worker health, storage, dependencies, and an
+  expandable, sanitized audit trail with resource context and curated
+  before/after changes.
 
 Unauthorized tools are removed from navigation and remain blocked by the
 server if requested directly.

@@ -163,13 +163,27 @@ def create_app(instance_path: str | None = None) -> Flask:
         user = getattr(g, "current_user", None)
         audited_reads = {"download_automation_run", "download_datastore_file", "view_datastore_file_as_text", "bulk_download_datastore_files", "download_automation_artifact"}
         should_audit = request.method in {"POST", "PUT", "PATCH", "DELETE"} or (request.endpoint or "") in audited_reads
-        if should_audit and user and user.get("is_admin"):
+        context = getattr(g, "audit_event", {})
+        if (
+            should_audit
+            and not getattr(g, "audit_suppressed", False)
+            and user
+            and (user.get("is_admin") or context)
+        ):
             try:
+                endpoint = request.endpoint or ""
+                summary = str(context.get("summary", "")).strip() or endpoint.replace("_", " ").capitalize()
                 audit_store.record(
                     user_id=user.get("id", ""), username=user.get("username", ""),
                     remote_ip=request.remote_addr or "", method=request.method,
-                    endpoint=request.endpoint or "", path=request.path,
+                    endpoint=endpoint, path=request.path,
                     status_code=response.status_code,
+                    category=context.get("category", "Administration"),
+                    action=context.get("action", endpoint), summary=summary,
+                    resource_type=context.get("resource_type", ""),
+                    resource_id=context.get("resource_id", ""),
+                    resource_name=context.get("resource_name", ""),
+                    details=context.get("details", {}),
                 )
             except Exception:
                 app.logger.exception("Administrative audit event could not be recorded")
