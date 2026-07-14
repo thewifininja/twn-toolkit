@@ -1353,10 +1353,9 @@ button.danger {
 .nested-profile-list {
   background: color-mix(in srgb, var(--bg), var(--brand-green) 5%);
   border: 0;
-  border-left: 4px solid color-mix(in srgb, var(--brand-green), transparent 62%);
   border-radius: 12px;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line), transparent 35%);
-  margin: 16px 0 0;
+  margin: 0;
   padding: 12px;
 }
 
@@ -5122,6 +5121,10 @@ button.danger {
 .profile-create-details.card-action-details > summary {
   right: 62px;
   top: 25px;
+}
+
+.profile-section > .profile-create-details.card-action-details > summary {
+  top: 15px;
 }
 
 .profile-create-details.card-action-details > summary span {
