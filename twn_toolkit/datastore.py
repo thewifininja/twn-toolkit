@@ -55,6 +55,19 @@ class LocalDatastore:
             raise DatastoreError("The requested datastore path is not a folder.")
         return folder
 
+    def describe(self, relative_path: str) -> dict[str, object]:
+        """Return bounded metadata for one contained file or folder."""
+        path = self._resolve(relative_path, must_exist=True, allow_root=False)
+        if path.is_symlink():
+            raise DatastoreError("Symbolic links are not supported in the datastore.")
+        is_dir = path.is_dir()
+        return {
+            "name": path.name,
+            "path": self.relative(path),
+            "kind": "folder" if is_dir else "file",
+            "bytes": 0 if is_dir else path.stat().st_size,
+        }
+
     def create_folder(self, relative_path: str, name: str) -> Path:
         parent = self._resolve(relative_path, must_exist=True)
         if not parent.is_dir():

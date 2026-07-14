@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.datastore import DatastoreError, LocalDatastore
 from twn_toolkit.tool_catalog import TOOL_BY_ID
@@ -233,6 +234,88 @@ class LocalDatastoreRouteTests(unittest.TestCase):
                 self.assertEqual(archive.read("configs/one.txt"), b"one")
                 self.assertEqual(archive.read("readme.txt"), b"readme")
             response.close()
+
+    def test_datastore_routes_record_structured_resource_details(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/local/datastore/folders", data={"path": "", "name": "working"})
+            client.post("/local/datastore/folders", data={"path": "", "name": "archive"})
+            client.post(
+                "/local/datastore/uploads",
+                data={"path": "working", "files": (io.BytesIO(b"hello"), "original.txt")},
+                content_type="multipart/form-data",
+            )
+            client.post(
+                "/local/datastore/rename",
+                data={"path": "working/original.txt", "name": "renamed.txt"},
+            )
+            client.post(
+                "/local/datastore/bulk-move",
+                data={
+                    "path": "working",
+                    "destination": "archive",
+                    "paths_json": json.dumps(["working/renamed.txt"]),
+                },
+            )
+            download = client.get("/local/datastore/download?path=archive/renamed.txt")
+            download.close()
+            client.get("/local/datastore/view-text?path=archive/renamed.txt")
+            archive = client.post(
+                "/local/datastore/bulk-download",
+                data={"path": "archive", "paths_json": json.dumps(["archive/renamed.txt"])},
+            )
+            archive.close()
+            client.post(
+                "/local/datastore/bulk-delete",
+                data={"path": "archive", "paths_json": json.dumps(["archive/renamed.txt"])},
+            )
+            client.post("/local/datastore/delete", data={"path": "working"})
+
+            events = AuditStore(instance).recent(20)
+            by_action = {event["action"]: event for event in events}
+            diagnostics = client.get("/settings/diagnostics")
+
+        self.assertEqual(by_action["datastore.folder_created"]["category"], "Local storage")
+        self.assertEqual(by_action["datastore.files_uploaded"]["details"]["items"][0], {
+            "name": "original.txt",
+            "path": "working/original.txt",
+            "kind": "file",
+            "bytes": 5,
+        })
+        rename_changes = {
+            change["field"]: (change["before"], change["after"])
+            for change in by_action["datastore.item_renamed"]["details"]["changes"]
+        }
+        self.assertEqual(
+            rename_changes["path"],
+            ("working/original.txt", "working/renamed.txt"),
+        )
+        self.assertEqual(
+            by_action["datastore.items_moved"]["details"]["destination"],
+            "archive",
+        )
+        self.assertEqual(
+            by_action["datastore.file_downloaded"]["details"]["path"],
+            "archive/renamed.txt",
+        )
+        self.assertEqual(
+            by_action["datastore.items_downloaded"]["details"]["archive_member_count"],
+            1,
+        )
+        self.assertEqual(
+            by_action["datastore.items_deleted"]["details"]["items"][0]["path"],
+            "archive/renamed.txt",
+        )
+        self.assertEqual(
+            by_action["datastore.item_deleted"]["details"]["deleted_item"]["path"],
+            "working",
+        )
+        self.assertEqual(diagnostics.status_code, 200)
+        self.assertIn(b"Renamed datastore file original.txt to renamed.txt.", diagnostics.data)
+        self.assertIn(b"working/original.txt", diagnostics.data)
+        self.assertIn(b"archive/renamed.txt", diagnostics.data)
 
     def test_datastore_is_grantable_through_access_profiles(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

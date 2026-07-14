@@ -10,6 +10,7 @@ from pathlib import Path
 from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, url_for
 
 from .activity_context import record_current_activity
+from .audit import annotate_audit_event
 from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES, format_bytes
 from .tftp import TFTPHistoryStore, TFTPSettingsStore, tftp_process_status
 from .ssh_transfer_server import (
@@ -35,6 +36,21 @@ def register_datastore_routes(
 ) -> None:
     def return_to(path: str):
         return redirect(url_for("local_datastore", path=path))
+
+    def audit_items(items: list[dict[str, object]], *, limit: int = 25) -> dict[str, object]:
+        retained = [
+            {
+                **item,
+                "name": str(item.get("name", ""))[:160],
+                "path": str(item.get("path", ""))[:500],
+            }
+            for item in items[:limit]
+        ]
+        return {
+            "item_count": len(items),
+            "items": retained,
+            "omitted_item_count": max(0, len(items) - len(retained)),
+        }
 
     def decorate_history(items: list[dict]) -> list[dict]:
         for item in items:
@@ -296,10 +312,17 @@ def register_datastore_routes(
     def create_datastore_folder():
         path = request.form.get("path", "")
         try:
-            store.create_folder(path, request.form.get("name", ""))
+            created = store.create_folder(path, request.form.get("name", ""))
+            item = store.describe(store.relative(created))
         except DatastoreError as exc:
             flash(str(exc), "error")
         else:
+            annotate_audit_event(
+                category="Local storage", action="datastore.folder_created",
+                summary=f"Created datastore folder {item['name']}.",
+                resource_type="datastore_folder", resource_id=str(item["path"]),
+                resource_name=str(item["name"]), details=item,
+            )
             record_current_activity("Local storage", "Created datastore folder", request.form.get("name", ""))
             flash("Folder created.", "success")
         return return_to(path)
@@ -315,24 +338,45 @@ def register_datastore_routes(
         if not uploads:
             flash("Choose at least one file to upload.", "error")
             return return_to(path)
-        saved = 0
+        saved_items: list[dict[str, object]] = []
         try:
             for upload in uploads:
-                store.save_upload(path, upload.filename or "", upload.stream)
-                saved += 1
+                saved_path, size = store.save_upload(path, upload.filename or "", upload.stream)
+                saved_items.append({
+                    "name": saved_path.name,
+                    "path": store.relative(saved_path),
+                    "kind": "file",
+                    "bytes": size,
+                })
         except DatastoreError as exc:
-            flash(f"Uploaded {saved} file(s). {exc}", "error")
+            flash(f"Uploaded {len(saved_items)} file(s). {exc}", "error")
         else:
-            record_current_activity("Local storage", "Uploaded datastore files", f"{saved} file(s)")
-            flash(f"Uploaded {saved} file(s).", "success")
+            record_current_activity("Local storage", "Uploaded datastore files", f"{len(saved_items)} file(s)")
+            flash(f"Uploaded {len(saved_items)} file(s).", "success")
+        if saved_items:
+            details = {"destination": path, **audit_items(saved_items)}
+            annotate_audit_event(
+                category="Local storage", action="datastore.files_uploaded",
+                summary=f"Uploaded {len(saved_items)} file{'s' if len(saved_items) != 1 else ''} to the datastore.",
+                resource_type="datastore_folder", resource_id=path,
+                resource_name=path or "Datastore root", details=details,
+            )
         return return_to(path)
 
     @app.get("/local/datastore/download")
     def download_datastore_file():
+        relative_path = request.args.get("path", "")
         try:
-            file_path = store.file(request.args.get("path", ""))
+            file_path = store.file(relative_path)
+            item = store.describe(relative_path)
         except DatastoreError as exc:
             abort(404, str(exc))
+        annotate_audit_event(
+            category="Local storage", action="datastore.file_downloaded",
+            summary=f"Downloaded datastore file {item['name']}.",
+            resource_type="datastore_file", resource_id=str(item["path"]),
+            resource_name=str(item["name"]), details=item,
+        )
         record_current_activity("Local storage", "Downloaded datastore file", file_path.name)
         return send_file(file_path, as_attachment=True, download_name=file_path.name)
 
@@ -350,6 +394,14 @@ def register_datastore_routes(
         text = preview_bytes.decode("utf-8-sig", errors="replace")
         replacement_count = text.count("\ufffd")
         parent_path = relative_path.rsplit("/", 1)[0] if "/" in relative_path else ""
+        item = store.describe(relative_path)
+        annotate_audit_event(
+            category="Local storage", action="datastore.file_viewed",
+            summary=f"Viewed datastore file {item['name']} as text.",
+            resource_type="datastore_file", resource_id=str(item["path"]),
+            resource_name=str(item["name"]),
+            details={**item, "preview_truncated": truncated},
+        )
         record_current_activity("Local storage", "Viewed datastore file as text", file_path.name)
         return render_template(
             "local/datastore_text_viewer.html",
@@ -369,6 +421,7 @@ def register_datastore_routes(
             selected = json.loads(request.form.get("paths_json", "[]"))
             if not isinstance(selected, list):
                 raise ValueError
+            selected_items = [store.describe(str(value)) for value in selected]
             members = store.archive_members(
                 [str(value) for value in selected], request.form.get("path", "")
             )
@@ -385,6 +438,17 @@ def register_datastore_routes(
                 archive.close()
             abort(400, str(exc) or "Select valid datastore files or folders to download.")
         record_current_activity("Local storage", "Downloaded datastore items", f"{len(selected)} item(s)")
+        annotate_audit_event(
+            category="Local storage", action="datastore.items_downloaded",
+            summary=f"Downloaded {len(selected_items)} datastore item{'s' if len(selected_items) != 1 else ''} as a ZIP archive.",
+            resource_type="datastore_selection", resource_id=request.form.get("path", ""),
+            resource_name="Datastore selection",
+            details={
+                "base_path": request.form.get("path", ""),
+                "archive_member_count": len(members),
+                **audit_items(selected_items),
+            },
+        )
         stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
         return send_file(
             archive,
@@ -398,10 +462,18 @@ def register_datastore_routes(
         path = request.form.get("path", "")
         parent = str(path.rsplit("/", 1)[0]) if "/" in path else ""
         try:
-            store.rename(path, request.form.get("name", ""))
+            before = store.describe(path)
+            renamed = store.rename(path, request.form.get("name", ""))
+            after = store.describe(store.relative(renamed))
         except DatastoreError as exc:
             flash(str(exc), "error")
         else:
+            annotate_audit_event(
+                category="Local storage", action="datastore.item_renamed",
+                summary=f"Renamed datastore {before['kind']} {before['name']} to {after['name']}.",
+                resource_type=f"datastore_{after['kind']}", resource_id=str(after["path"]),
+                resource_name=str(after["name"]), before=before, after=after,
+            )
             flash("Datastore item renamed.", "success")
         return return_to(parent)
 
@@ -410,10 +482,17 @@ def register_datastore_routes(
         path = request.form.get("path", "")
         parent = str(path.rsplit("/", 1)[0]) if "/" in path else ""
         try:
+            item = store.describe(path)
             store.delete(path)
         except DatastoreError as exc:
             flash(str(exc), "error")
         else:
+            annotate_audit_event(
+                category="Local storage", action="datastore.item_deleted",
+                summary=f"Deleted datastore {item['kind']} {item['name']}.",
+                resource_type=f"datastore_{item['kind']}", resource_id=str(item["path"]),
+                resource_name=str(item["name"]), details={"deleted_item": item},
+            )
             flash("Datastore item deleted.", "success")
         return return_to(parent)
 
@@ -424,10 +503,18 @@ def register_datastore_routes(
             selected = json.loads(request.form.get("paths_json", "[]"))
             if not isinstance(selected, list):
                 raise ValueError
+            selected_items = [store.describe(str(value)) for value in selected]
             count = store.delete_files([str(value) for value in selected])
         except (DatastoreError, json.JSONDecodeError, ValueError):
             flash("Select valid datastore files or folders to delete.", "error")
         else:
+            annotate_audit_event(
+                category="Local storage", action="datastore.items_deleted",
+                summary=f"Deleted {count} datastore item{'s' if count != 1 else ''}.",
+                resource_type="datastore_selection", resource_id=path,
+                resource_name="Datastore selection",
+                details={"base_path": path, **audit_items(selected_items)},
+            )
             record_current_activity("Local storage", "Deleted datastore items", f"{count} item(s)")
             flash(f"Deleted {count} item(s).", "success")
         return return_to(path)
@@ -439,13 +526,30 @@ def register_datastore_routes(
             selected = json.loads(request.form.get("paths_json", "[]"))
             if not isinstance(selected, list):
                 raise ValueError
+            selected_items = [store.describe(str(value)) for value in selected]
+            destination = request.form.get("destination", "")
             count = store.move_files(
                 [str(value) for value in selected],
-                request.form.get("destination", ""),
+                destination,
             )
         except (DatastoreError, json.JSONDecodeError, ValueError) as exc:
             flash(str(exc) or "Select valid datastore files or folders to move.", "error")
         else:
+            moved_items = [
+                {**item, "path": f"{destination.rstrip('/')}/{item['name']}".lstrip("/")}
+                for item in selected_items
+            ]
+            annotate_audit_event(
+                category="Local storage", action="datastore.items_moved",
+                summary=f"Moved {count} datastore item{'s' if count != 1 else ''} to {destination or 'Datastore root'}.",
+                resource_type="datastore_folder", resource_id=destination,
+                resource_name=destination or "Datastore root",
+                details={
+                    "destination": destination,
+                    "source_items": audit_items(selected_items),
+                    "moved_items": audit_items(moved_items),
+                },
+            )
             record_current_activity("Local storage", "Moved datastore items", f"{count} item(s)")
             flash(f"Moved {count} item(s).", "success")
         return return_to(path)
