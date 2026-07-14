@@ -48,6 +48,10 @@ body {
   z-index: 70;
 }
 
+.topbar.with-sidebar {
+  padding-left: 14px;
+}
+
 .sidebar-toggle {
   align-items: center;
   background: transparent;
@@ -137,6 +141,120 @@ body {
   min-height: 0;
   overflow-y: auto;
   padding: 18px 14px 16px;
+}
+
+.side-nav-search {
+  min-width: 0;
+}
+
+.side-nav-search label {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.side-nav-search label:focus-within {
+  border-color: var(--brand-green-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-green), transparent 80%);
+}
+
+.side-nav-search-icon {
+  align-items: center;
+  color: var(--brand-green-dark);
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+.side-nav-search-icon svg {
+  fill: none;
+  height: 18px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 2;
+  width: 18px;
+}
+
+.side-nav-search input {
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  min-height: 36px;
+  min-width: 0;
+  outline: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.side-nav-search input::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.side-nav-search-results {
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.side-nav-search-result {
+  align-items: center;
+  border-radius: 10px;
+  color: var(--ink);
+  display: grid;
+  gap: 1px 9px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  min-height: 46px;
+  padding: 7px 10px;
+  text-decoration: none;
+}
+
+.side-nav-search-result:hover,
+.side-nav-search-result:focus,
+.side-nav-search-result.active {
+  background: color-mix(in srgb, var(--brand-green), transparent 82%);
+}
+
+.side-nav-search-result .side-nav-icon {
+  grid-row: 1 / 3;
+}
+
+.side-nav-search-result strong,
+.side-nav-search-result small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-nav-search-result strong {
+  font-size: 0.88rem;
+}
+
+.side-nav-search-result small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.side-nav-search-empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 0;
+  padding: 10px;
+}
+
+.side-nav-scroll.searching > .side-nav-home,
+.side-nav-scroll.searching > .side-nav-section {
+  display: none;
 }
 
 .side-nav-home,

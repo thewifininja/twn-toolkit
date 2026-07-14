@@ -58,6 +58,8 @@ There is no default account.
 
 The persistent sidebar is the primary navigation:
 
+- Use **Find a tool** above Dashboard to filter permitted destinations by tool
+  name or category path without changing which menu sections are expanded.
 - **Fortinet Tools** contains FortiGate and FortiAuthenticator profiles and
   workflows.
 - **Network Tools** is divided into Addressing & Reachability, Multi-Host

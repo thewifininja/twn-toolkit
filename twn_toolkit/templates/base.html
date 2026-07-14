@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   </head>
   <body>
-    <header class="topbar">
+    <header class="topbar {{ 'with-sidebar' if current_user else '' }}">
       {% if current_user %}
         <button
           type="button"
@@ -84,6 +84,24 @@
         <aside class="app-sidebar" id="app-sidebar" aria-label="Primary navigation">
           <nav class="side-nav">
             <div class="side-nav-scroll">
+              <div class="side-nav-search" role="search">
+                <label for="side-nav-search-input">
+                  <span class="side-nav-search-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20" focusable="false"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="m12.5 12.5 4 4"></path></svg>
+                  </span>
+                  <input
+                    id="side-nav-search-input"
+                    type="search"
+                    placeholder="Find a tool…"
+                    autocomplete="off"
+                    spellcheck="false"
+                    aria-label="Find a tool"
+                    aria-controls="side-nav-search-results"
+                  >
+                </label>
+                <div class="side-nav-search-results" id="side-nav-search-results" hidden></div>
+                <p class="side-nav-search-empty" id="side-nav-search-empty" hidden>No matching tools.</p>
+              </div>
               <a class="side-nav-home {{ 'active' if request.endpoint == 'index' else '' }}" href="{{ url_for('index') }}" title="Dashboard">
                 <span class="side-nav-icon" aria-hidden="true">⌂</span>
                 <span class="side-nav-label">Dashboard</span>
