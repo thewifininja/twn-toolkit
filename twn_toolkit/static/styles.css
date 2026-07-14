@@ -910,6 +910,7 @@ button.danger {
 }
 
 .button-row {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -1352,10 +1353,9 @@ button.danger {
 .nested-profile-list {
   background: color-mix(in srgb, var(--bg), var(--brand-green) 5%);
   border: 0;
-  border-left: 4px solid color-mix(in srgb, var(--brand-green), transparent 62%);
-  border-radius: 12px;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line), transparent 35%);
-  margin: 16px 0 0;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
   padding: 12px;
 }
 
@@ -1368,19 +1368,17 @@ button.danger {
 
 .nested-profile-card > summary {
   background: transparent;
-  border-color: transparent;
   margin: 0;
 }
 
 .nested-profile-card[open] {
   background: var(--panel);
   border-color: transparent;
-  box-shadow: 0 2px 10px rgb(25 33 31 / 6%);
+  box-shadow: none;
 }
 
 .nested-profile-card[open] > summary {
   background: color-mix(in srgb, var(--panel), var(--brand-green) 4%);
-  border-color: color-mix(in srgb, var(--brand-green), transparent 72%);
 }
 
 .radius-error {
@@ -4875,15 +4873,20 @@ button.danger {
 }
 
 .user-list {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
   display: grid;
   gap: 12px;
+  padding: 12px;
 }
 
 .user-card {
-  background: var(--card-tint);
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 14px;
+  overflow: hidden;
+  padding: 0;
 }
 
 .user-edit-card summary {
@@ -4893,6 +4896,7 @@ button.danger {
   gap: 14px;
   justify-content: space-between;
   list-style: none;
+  padding: 14px;
 }
 
 .user-edit-card summary::-webkit-details-marker {
@@ -4921,11 +4925,12 @@ button.danger {
 }
 
 .user-edit-panel {
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
   border-top: 1px solid var(--line);
   display: grid;
   gap: 14px;
-  margin-top: 14px;
-  padding-top: 14px;
+  margin-top: 0;
+  padding: 14px;
 }
 
 .password-form {
@@ -4955,11 +4960,20 @@ button.danger {
   gap: 12px;
 }
 
+.access-profile-list:not(.nested-profile-list),
+.automation-list {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+}
+
 .access-profile-card {
-  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 14px;
+  overflow: hidden;
+  padding: 0;
 }
 
 .profile-section {
@@ -4968,16 +4982,16 @@ button.danger {
 
 .access-profile-card > summary {
   align-items: center;
-  background: var(--panel);
-  border: 1px solid color-mix(in srgb, var(--line), transparent 12%);
-  border-radius: 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   cursor: pointer;
   display: flex;
   gap: 12px;
   justify-content: space-between;
-  margin: -4px;
-  padding: 12px 14px;
-  transition: border-color 150ms ease, transform 150ms ease, background 150ms ease;
+  margin: 0;
+  padding: 14px 16px;
+  transition: background 150ms ease;
 }
 
 .access-profile-card > summary::-webkit-details-marker,
@@ -5005,9 +5019,19 @@ button.danger {
   content: "–";
 }
 
-.access-profile-card > summary:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
+.access-profile-card[open] > summary {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  border-bottom: 1px solid var(--line);
+}
+
+.access-profile-card > summary:hover,
+.access-profile-card > summary:focus-visible {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 6%);
+}
+
+.access-profile-card > summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand-green), transparent 45%);
+  outline-offset: -2px;
 }
 
 .access-profile-card > summary span,
@@ -5028,6 +5052,7 @@ button.danger {
 .builtin-profile-card {
   display: grid;
   gap: 2px;
+  padding: 14px 16px;
 }
 
 .create-access-profile-card {
@@ -5101,6 +5126,10 @@ button.danger {
   top: 25px;
 }
 
+.profile-section > .profile-create-details.card-action-details > summary {
+  top: 15px;
+}
+
 .profile-create-details.card-action-details > summary span {
   min-height: 34px;
   padding: 7px 12px;
@@ -5110,8 +5139,11 @@ button.danger {
   border-left: 4px solid color-mix(in srgb, var(--accent), transparent 45%);
 }
 
-.access-profile-card form {
-  margin-top: 14px;
+.access-profile-card > form.form {
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+  border-top: 0;
+  margin-top: 0;
+  padding: 16px;
 }
 
 .fortinet-profile-panel {
@@ -5159,9 +5191,10 @@ button.danger {
 }
 
 .automation-card-body {
-  border-top: 1px solid var(--line);
-  margin-top: 16px;
-  padding-top: 16px;
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+  border-top: 0;
+  margin-top: 0;
+  padding: 16px;
 }
 
 .automation-status-grid {
@@ -5240,6 +5273,139 @@ button.danger {
   display: grid;
   gap: 16px;
   margin-top: 12px;
+}
+
+.automation-form [data-action-fields]:not([hidden]) {
+  display: grid;
+  gap: 18px;
+}
+
+.automation-form [data-action-fields] > .field-note,
+.automation-form label > .field-note {
+  line-height: 1.45;
+  margin: 0;
+}
+
+.automation-form-section {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+}
+
+.automation-form-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.automation-form-section-head {
+  display: grid;
+  gap: 3px;
+}
+
+.automation-form-section-head h4,
+.automation-form-section-head p {
+  margin: 0;
+}
+
+.automation-form-section-head h4 {
+  font-size: 0.96rem;
+}
+
+.automation-form-section-head p {
+  font-size: 0.84rem;
+}
+
+.automation-request-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+}
+
+.automation-field-label {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.automation-option-row {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.automation-option-row > span,
+.automation-option-row small {
+  display: block;
+}
+
+.automation-option-row small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.automation-helper-details {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.automation-helper-details > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.86rem;
+  font-weight: 850;
+  justify-content: space-between;
+  list-style: none;
+  padding: 11px 13px;
+}
+
+.automation-helper-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.automation-helper-details > summary::after {
+  color: var(--muted);
+  content: "+";
+  font-size: 1rem;
+}
+
+.automation-helper-details[open] > summary::after {
+  content: "–";
+}
+
+.automation-helper-body {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+}
+
+.automation-helper-body > p {
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.automation-variable-list {
+  display: grid;
+  gap: 8px 14px;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.automation-variable-list code {
+  align-self: start;
+  overflow-wrap: anywhere;
+}
+
+.automation-variable-list span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.automation-security-note {
+  margin: 0;
 }
 
 .automation-policy-grid {
@@ -5572,8 +5738,8 @@ button.danger {
   margin: 0;
 }
 
-.automation-manual-note {
-  margin-bottom: 14px;
+.automation-context-note {
+  margin: 10px 0 14px;
 }
 
 .automation-history-list article {
@@ -5698,9 +5864,9 @@ button.text-danger:hover {
 }
 
 .automation-result-group {
-  background: var(--panel);
-  border-radius: 8px;
-  box-shadow: 0 1px 0 var(--line);
+  background: color-mix(in srgb, var(--panel), var(--bg) 18%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -5711,6 +5877,7 @@ button.text-danger:hover {
 .automation-result-head {
   align-items: baseline;
   background: color-mix(in srgb, var(--panel), var(--brand-green) 7%);
+  border-bottom: 1px solid var(--line);
   display: flex;
   gap: 10px;
   padding: 10px 12px;
@@ -5725,7 +5892,9 @@ button.text-danger:hover {
 }
 
 .automation-host-list {
-  padding: 0 12px;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
 }
 
 .automation-destination-result {
@@ -5799,13 +5968,10 @@ button.text-danger:hover {
 }
 
 .automation-host-result {
-  border: 0;
-  border-radius: 0;
-  padding: 11px 2px;
-}
-
-.automation-host-result + .automation-host-result {
-  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
 }
 
 .fortinet-profile-list {
@@ -6226,6 +6392,14 @@ th {
     --topbar-height: 67px;
   }
 
+  .automation-variable-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .automation-variable-list code:not(:first-child) {
+    margin-top: 5px;
+  }
+
   .schedule-rule-editor-head {
     align-items: stretch;
     flex-direction: column;
@@ -6462,12 +6636,16 @@ th {
 
 [data-theme="dark"] .access-profile-card > summary {
   background: #202c27;
-  border-color: #3a4b43;
+}
+
+[data-theme="dark"] .access-profile-card > summary:hover,
+[data-theme="dark"] .access-profile-card > summary:focus-visible {
+  background: #26372f;
 }
 
 [data-theme="dark"] .nested-profile-list {
   background: #121b18;
-  box-shadow: inset 0 0 0 1px #2f3d37;
+  box-shadow: none;
 }
 
 [data-theme="dark"] .nested-profile-card {
@@ -6476,12 +6654,11 @@ th {
 
 [data-theme="dark"] .nested-profile-card[open] {
   background: #202b27;
-  box-shadow: 0 2px 12px rgb(0 0 0 / 18%);
+  box-shadow: none;
 }
 
 [data-theme="dark"] .nested-profile-card[open] > summary {
   background: #24332d;
-  border-color: #3f5d4c;
 }
 
 [data-theme="dark"] .message.success,
