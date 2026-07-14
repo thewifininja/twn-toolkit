@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import increment_current_activity, record_current_activity
+from .audit import annotate_audit_event, suppress_audit_event
 from .network_tools import (
     ToolInputError,
     parse_ping_targets,
@@ -19,6 +20,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.post("/ping/run")
     def ping_run():
+        suppress_audit_event()
         payload = request.get_json(silent=True) or {}
         try:
             targets = parse_ping_targets(str(payload.get("hosts", "")), limit=100)
@@ -31,6 +33,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.post("/ping/validate")
     def ping_validate_targets():
+        suppress_audit_event()
         payload = request.get_json(silent=True) or {}
         try:
             targets, invalid = parse_ping_targets_with_errors(
@@ -54,6 +57,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
         if replies_received:
             counters["ping"]["replies_received"] = replies_received
         if event == "start":
+            target_hosts = _audit_ping_targets(payload.get("target_hosts"))
             counters["ping"]["sessions_started"] = 1
             if targets:
                 counters["ping"]["targets_started"] = targets
@@ -63,6 +67,18 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                 f"{targets} target{'s' if targets != 1 else ''}",
                 counters=counters,
                 count_action=True,
+            )
+            annotate_audit_event(
+                category="Network tools",
+                action="ping.session_started",
+                summary="Started Multi-Host Ping.",
+                resource_type="ping_session",
+                resource_id=run_id,
+                resource_name="Multi-Host Ping",
+                details={
+                    "target_count": targets,
+                    "targets": target_hosts,
+                },
             )
         elif event == "final":
             if probes_sent or replies_received:
@@ -80,9 +96,18 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                     "No new probes since the last checkpoint.",
                     count_action=False,
                 )
+            annotate_audit_event(
+                category="Network tools",
+                action="ping.session_stopped",
+                summary="Stopped Multi-Host Ping.",
+                resource_type="ping_session",
+                resource_id=run_id,
+                resource_name="Multi-Host Ping",
+            )
         else:
             for counter, amount in counters["ping"].items():
                 increment_current_activity("ping", counter, amount)
+            suppress_audit_event()
         return jsonify({"ok": True})
 
     @tools_bp.post("/ping/profiles")
@@ -127,6 +152,20 @@ def _bounded_int(value: object, minimum: int, maximum: int) -> int:
     except (TypeError, ValueError):
         parsed = minimum
     return max(minimum, min(maximum, parsed))
+
+
+def _audit_ping_targets(value: object) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    targets = []
+    for item in value[:100]:
+        if not isinstance(item, dict):
+            continue
+        host = str(item.get("host", "")).strip()[:255]
+        label = str(item.get("label", "")).strip()[:100]
+        if host:
+            targets.append({"host": host, "label": label})
+    return targets
 
 
 def _ping_activity_detail(probes_sent: int, replies_received: int, run_id: str) -> str:

@@ -164,7 +164,12 @@ def create_app(instance_path: str | None = None) -> Flask:
         audited_reads = {"download_automation_run", "download_datastore_file", "view_datastore_file_as_text", "bulk_download_datastore_files", "download_automation_artifact"}
         should_audit = request.method in {"POST", "PUT", "PATCH", "DELETE"} or (request.endpoint or "") in audited_reads
         context = getattr(g, "audit_event", {})
-        if should_audit and user and (user.get("is_admin") or context):
+        if (
+            should_audit
+            and not getattr(g, "audit_suppressed", False)
+            and user
+            and (user.get("is_admin") or context)
+        ):
             try:
                 endpoint = request.endpoint or ""
                 summary = str(context.get("summary", "")).strip() or endpoint.replace("_", " ").capitalize()

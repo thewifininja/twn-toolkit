@@ -56,6 +56,11 @@ def annotate_audit_event(
     g.audit_event = context
 
 
+def suppress_audit_event() -> None:
+    """Exclude high-frequency or otherwise non-administrative request traffic."""
+    g.audit_suppressed = True
+
+
 def audit_changes(
     before: dict[str, Any], after: dict[str, Any]
 ) -> list[dict[str, Any]]:

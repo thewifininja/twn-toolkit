@@ -83,6 +83,65 @@ class OperationalHardeningTests(unittest.TestCase):
             [{"field": "configuration.timeout", "before": 5, "after": 10}],
         )
 
+    def test_ping_audit_records_session_lifecycle_without_round_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance); app.testing = True; client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+            with patch(
+                "twn_toolkit.ping_routes.ping_hosts",
+                return_value=[{"host": "127.0.0.1", "reachable": True, "latency_ms": 1.0}],
+            ):
+                self.assertEqual(
+                    client.post("/tools/ping/run", json={"hosts": "Loopback = 127.0.0.1"}).status_code,
+                    200,
+                )
+            self.assertEqual(
+                client.post("/tools/ping/validate", json={"hosts": "Loopback = 127.0.0.1"}).status_code,
+                200,
+            )
+            client.post(
+                "/tools/ping/activity",
+                json={
+                    "event": "start",
+                    "run_id": "run-1",
+                    "targets": 1,
+                    "target_hosts": [{"label": "Loopback", "host": "127.0.0.1"}],
+                },
+            )
+            client.post(
+                "/tools/ping/activity",
+                json={
+                    "event": "checkpoint",
+                    "run_id": "run-1",
+                    "probes_sent": 30,
+                    "replies_received": 30,
+                },
+            )
+            client.post("/tools/ping/activity", json={"event": "final", "run_id": "run-1"})
+
+            events = [
+                event
+                for event in AuditStore(instance).recent(10)
+                if event["action"].startswith("ping.")
+            ]
+
+        self.assertEqual([event["action"] for event in events], [
+            "ping.session_stopped",
+            "ping.session_started",
+        ])
+        self.assertEqual(events[1]["details"]["target_count"], 1)
+        self.assertEqual(
+            events[1]["details"]["targets"],
+            [{"host": "127.0.0.1", "label": "Loopback"}],
+        )
+
     def test_oversized_audit_detail_remains_valid_json(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             store = AuditStore(instance)
