@@ -370,6 +370,10 @@ accepted replay frames.
 - `AuditStore` records sanitized, explicitly annotated actions for every authenticated
   operator and system administrator. Audit inclusion is role-neutral and context-only;
   being a system administrator must not make an otherwise noisy request auditable.
+  `audit_policy.py` is the route-level coverage contract for every endpoint that
+  accepts a mutating HTTP method. New routes must be classified as annotated,
+  conditional, suppressed, excluded with a reason, or pending enrichment. Treat
+  the pending set as a burn-down list, never as a permanent allowlist.
   Routes use `annotate_audit_event` for resource context and curated
   before/after values. Never pass request bodies wholesale; recursive storage-time
   sanitization is defense in depth for passwords, credentials, tokens, communities,
