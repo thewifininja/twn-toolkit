@@ -3,6 +3,30 @@
 This file preserves the product and architecture decisions that should survive
 conversation compaction and future development sessions.
 
+## Current development handoff (2026-07-14)
+
+- The current feature branch is `codex/snmp-interface-monitor`, based on main
+  commit `b44916b` (`Unify saved record collection styling (#10)`). Its open
+  pull request is [PR #11](https://github.com/thewifininja/twn-toolkit/pull/11).
+- The branch contains three focused commits:
+  `5d0c46f` adds multi-host/multi-interface SNMP bandwidth monitoring,
+  `1d81f1b` adds compact adaptive graphs and navigable retained history, and
+  `f522fcb` adds timestamp hover details and corrects attached-endpoint traffic
+  direction labels.
+- PR #11 is pushed and ready for owner testing. Before merging, verify interface
+  discovery, two or more simultaneously monitored ports, live interval changes,
+  history-window navigation, graph hover/tap details, and direction with a known
+  transfer or speed test. Expected presentation is download/interface TX above
+  zero and upload/interface RX below zero. If satisfactory, squash-merge PR #11,
+  delete the branch, switch local work back to `main`, and pull with
+  `git pull --ff-only`.
+- The latest verification on this branch is 274 unit tests passing with 5
+  expected skips. JavaScript syntax validation also passes with the bundled
+  Node runtime. No database migration or new persisted configuration was added
+  by this feature.
+- This handoff section is intentionally branch-specific. Replace or remove it
+  after PR #11 is merged so it never silently describes stale work.
+
 ## Product direction
 
 - The home page is an operational dashboard, not a launch grid.
@@ -132,6 +156,10 @@ accepted replay frames.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.
+- Use short-lived `codex/<feature>` branches and GitHub pull requests for feature
+  work. Run the full test suite before pushing the final revision. The project
+  owner normally reviews, then squash-merges and deletes the remote branch;
+  return the local checkout to an updated `main` before creating the next branch.
 
 ## UI standards
 
@@ -149,6 +177,12 @@ accepted replay frames.
   automatically opens the section containing the current page, and provides a
   client-side permitted-tool search above Dashboard. Search results de-duplicate
   Favorites, show the canonical category path, and must not mutate section state.
+- Repeated saved-record collections use the shared flat collection treatment:
+  one softly shaded list surface with individually clickable rows. Avoid nested
+  wrapper outlines, colored side rails, doubled rounded corners, and hover-only
+  geometry changes. Hover/focus may change background or border color but must
+  remain visually consistent in light and dark themes. Apply fixes through the
+  shared component selectors rather than per-tool overrides.
 
 ## Architecture standards
 
@@ -167,6 +201,45 @@ accepted replay frames.
   Saving never performs DNS resolution. Browser titles retain the product name
   and add page/instance identity. Toolkit-managed certificate regeneration is
   explicit because it changes the certificate fingerprint.
+
+## SNMP interface bandwidth monitor
+
+- The SNMP Tester includes a browser-lived multi-interface monitor built from
+  existing saved SNMP credential and host profiles. It is part of the existing
+  `network.snmp` tool and does not create another permission or persistence
+  surface.
+- `snmp_tools.discover_snmp_interfaces()` walks standard IF-MIB name,
+  description, alias, status, type, and speed columns. Interface sampling prefers
+  64-bit `ifHCInOctets`/`ifHCOutOctets`, falls back to 32-bit counters, preserves
+  Counter64 values as decimal strings for JavaScript `BigInt`, and returns
+  uptime/discontinuity/error/discard data for safe re-baselining and diagnostics.
+- The browser can monitor up to 20 interfaces across multiple saved hosts.
+  `/tools/snmp-test/interface-samples` polls the bounded set concurrently and
+  isolates per-interface failures. Discovery and sampling increment raw SNMP
+  poll metrics but suppress high-frequency audit events. Only explicit monitor
+  start/stop lifecycle boundaries are recorded in activity/audit history, with
+  the selected targets and interval.
+- Graph samples and counter baselines stay in the open browser page and are not
+  written to SQLite or backup data. The browser retains at most 10,000 calculated
+  points per interface. Polling intervals are 1, 5, 10, 15, 30, or 60 seconds and
+  may be changed while running without clearing history.
+- Visible windows are 1, 2, 5, 15, 30, or 60 minutes. A shared history slider and
+  Older/Live/Newer controls move every interface graph together while collection
+  continues. The zero line shifts within a bounded 20–80% vertical range according
+  to the visible download/upload peaks, and both directions are filled back to it.
+- IF-MIB counters are interface-relative. For the endpoint attached to a switch
+  port, `ifHCOutOctets`/interface transmit is **download**, and
+  `ifHCInOctets`/interface receive is **upload**. Keep that mapping; the original
+  UI inversion was corrected after a real speed-test comparison. Labels always
+  include interface TX/RX so uplinks and trunks are not misleading.
+- Hovering (or tapping) a graph selects the nearest retained sample, draws a
+  vertical guide with colored points, and shows the local timestamp plus both
+  formatted rates. Green is download/interface TX above zero; red is
+  upload/interface RX below zero. Tooltip positioning accounts for the canvas's
+  internal minimum width on narrow displays.
+- Relevant implementation files are `snmp_tools.py`, `snmp_routes.py`,
+  `templates/tools/snmp_test.html`, `static/snmp-interface-monitor.js`, the shared
+  SNMP monitor styles in `static/styles.css`, and `tests/test_snmp_tools.py`.
 
 ## Automation architecture
 
@@ -340,3 +413,10 @@ Run the full suite before handoff:
 
 For dashboard work, also check light/dark themes, a normal desktop width, a
 narrow pre-mobile width, and a phone-sized viewport.
+
+For JavaScript-heavy work, validate syntax with the bundled runtime when Node is
+not installed globally:
+
+```bash
+/Users/nkarrick/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --check path/to/file.js
+```
