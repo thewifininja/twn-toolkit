@@ -91,6 +91,8 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Dashboard and metrics", response.data)
         self.assertIn(b"Operators can use every tool granted", response.data)
         self.assertIn(b"audit trail is role-neutral", response.data)
+        self.assertIn(b"saved-profile and credential lifecycle", response.data)
+        self.assertIn(b"rather than submitted targets, commands, payloads", response.data)
         self.assertIn(b"Release notes", response.data)
         self.assertIn(b"v0.9.1", response.data)
         self.assertIn(b"Managed service reliability hotfix", response.data)
