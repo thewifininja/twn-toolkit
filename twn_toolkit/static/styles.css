@@ -871,6 +871,16 @@ textarea {
   width: auto;
 }
 
+.check > span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.check > span small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
 .risk-confirmation {
   background: var(--card-tint);
   border: 1px solid var(--line);

@@ -15,7 +15,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=app_version) }}">
   </head>
   <body>
     <header class="topbar {{ 'with-sidebar' if current_user else '' }}">
