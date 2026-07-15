@@ -57,6 +57,15 @@ def _format_bytes(value: int) -> str:
     return f"{amount:.1f} GiB"
 
 
+def _backup_audit_references(
+    selected_items: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    return [
+        audit_reference("backup item", item["id"], item["label"])
+        for item in selected_items
+    ]
+
+
 def _format_audit_value(value: Any) -> str:
     if value is None or value == "":
         return "—"
@@ -731,6 +740,21 @@ def register_admin_routes(
         if encrypt_requested:
             payload = json.dumps(encrypt_backup(payload, password), indent=2).encode("utf-8")
             filename_prefix = "twn-toolkit-encrypted-backup"
+        annotate_audit_event(
+            category="Backup and restore",
+            action="backup.exported",
+            summary=f"Exported {len(selected_items)} backup group(s).",
+            resource_type="profile_backup",
+            resource_id="export",
+            resource_name="Profile backup export",
+            details={
+                "selected groups": _backup_audit_references(selected_items),
+                "group count": len(selected_items),
+                "encrypted": encrypt_requested,
+                "contains sensitive groups": has_sensitive_items,
+                "export size bytes": len(payload),
+            },
+        )
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         return Response(
             payload,
@@ -760,9 +784,11 @@ def register_admin_routes(
             flash("Choose combine or replace for the import mode.", "error")
             return redirect(url_for("backup_settings"))
 
+        encrypted_input = False
         try:
             backup = json.loads(upload.read().decode("utf-8"))
             if backup.get("format") == "twn-toolkit-encrypted-profile-backup":
+                encrypted_input = True
                 backup_password = request.form.get("backup_password", "")
                 if not backup_password:
                     raise ValueError("Enter the password for this encrypted backup.")
@@ -770,8 +796,45 @@ def register_admin_routes(
             validate_profile_backup(backup)
             imported = import_backup_items(backup["items"], selected_items, import_mode)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            annotate_audit_event(
+                category="Backup and restore",
+                action="backup.import_failed",
+                summary="Profile backup import failed.",
+                resource_type="profile_backup",
+                resource_id="import",
+                resource_name="Profile backup import",
+                details={
+                    "selected groups": _backup_audit_references(selected_items),
+                    "group count": len(selected_items),
+                    "import mode": import_mode,
+                    "encrypted": encrypted_input,
+                    "outcome": "failed",
+                    "error": str(exc)[:500],
+                },
+            )
             flash(f"Backup import failed: {exc}", "error")
         else:
+            imported_counts = [
+                {"group": label, "record count": count}
+                for label, count in imported
+            ]
+            annotate_audit_event(
+                category="Backup and restore",
+                action="backup.imported",
+                summary=f"Imported {len(imported)} backup group(s) in {import_mode} mode.",
+                resource_type="profile_backup",
+                resource_id="import",
+                resource_name="Profile backup import",
+                details={
+                    "selected groups": _backup_audit_references(selected_items),
+                    "group count": len(selected_items),
+                    "import mode": import_mode,
+                    "encrypted": encrypted_input,
+                    "outcome": "success",
+                    "imported groups": imported_counts,
+                    "imported record count": sum(count for _label, count in imported),
+                },
+            )
             action = "Combined" if import_mode == "merge" else "Imported"
             flash(
                 action
