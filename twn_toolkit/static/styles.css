@@ -1470,8 +1470,9 @@ button.danger {
 }
 
 .snmp-monitor-actions {
+  gap: 12px;
   grid-column: 1 / -1;
-  margin-top: 0;
+  margin-top: 14px;
 }
 
 .snmp-monitor-status {
