@@ -13,7 +13,7 @@ from string import Formatter
 from typing import Any
 
 from .network_tools import ToolInputError
-from .ssh_security import disabled_ssh_algorithms
+from .ssh_security import disabled_ssh_algorithms, format_ssh_connection_error
 
 
 SFTP_MAX_HOSTS = 50
@@ -129,6 +129,7 @@ def fetch_ssh_files(
     timestamp: str | None = None,
     filename_pattern: str = SFTP_DEFAULT_FILENAME_PATTERN,
     protocol: str = "sftp",
+    allow_legacy_algorithms: bool = False,
 ) -> list[dict[str, Any]]:
     protocol = str(protocol).lower()
     if protocol not in {"sftp", "scp", "ftp"}:
@@ -154,7 +155,7 @@ def fetch_ssh_files(
 
     def run_host(host: dict[str, str]) -> list[dict[str, Any]]:
         fetcher = {"sftp": _fetch_sftp_host, "scp": _fetch_scp_host, "ftp": _fetch_ftp_host}[protocol]
-        return fetcher(
+        arguments = dict(
             host=host,
             remote_paths=remote_paths,
             username=username,
@@ -168,6 +169,9 @@ def fetch_ssh_files(
             used_names=used_names,
             name_lock=name_lock,
         )
+        if protocol != "ftp":
+            arguments["allow_legacy_algorithms"] = allow_legacy_algorithms
+        return fetcher(**arguments)
 
     results: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=min(SFTP_WORKERS, len(hosts))) as executor:
@@ -199,6 +203,7 @@ def _fetch_sftp_host(
     budget: _TransferBudget,
     used_names: set[str],
     name_lock: threading.Lock,
+    allow_legacy_algorithms: bool = False,
 ) -> list[dict[str, Any]]:
     import paramiko
 
@@ -220,13 +225,15 @@ def _fetch_sftp_host(
             timeout=10,
             auth_timeout=10,
             banner_timeout=10,
-            disabled_algorithms=disabled_ssh_algorithms(),
+            disabled_algorithms=disabled_ssh_algorithms(
+                allow_legacy_algorithms=allow_legacy_algorithms
+            ),
         )
         sftp = client.open_sftp()
     except Exception as exc:
         client.close()
         return [
-            _result(address, label, path, "error", error=f"Connection failed: {type(exc).__name__}: {exc}")
+            _result(address, label, path, "error", error=f"Connection failed: {format_ssh_connection_error(exc)}")
             for path in remote_paths
         ]
 
@@ -294,7 +301,7 @@ def _fetch_scp_host(
     *, host: dict[str, str], remote_paths: list[str], username: str, password: str,
     port: int, allow_unknown_hosts: bool, output_dir: Path, timestamp: str,
     filename_pattern: str, budget: _TransferBudget, used_names: set[str],
-    name_lock: threading.Lock,
+    name_lock: threading.Lock, allow_legacy_algorithms: bool = False,
 ) -> list[dict[str, Any]]:
     import paramiko
 
@@ -309,11 +316,13 @@ def _fetch_scp_host(
             hostname=address, port=port, username=username, password=password,
             allow_agent=False, look_for_keys=False, timeout=10, auth_timeout=10,
             banner_timeout=10,
-            disabled_algorithms=disabled_ssh_algorithms(),
+            disabled_algorithms=disabled_ssh_algorithms(
+                allow_legacy_algorithms=allow_legacy_algorithms
+            ),
         )
     except Exception as exc:
         client.close()
-        return [_result(address, label, path, "error", error=f"Connection failed: {type(exc).__name__}: {exc}") for path in remote_paths]
+        return [_result(address, label, path, "error", error=f"Connection failed: {format_ssh_connection_error(exc)}") for path in remote_paths]
 
     results: list[dict[str, Any]] = []
     try:

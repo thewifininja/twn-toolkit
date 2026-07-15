@@ -37,6 +37,7 @@
       </label>
       <div class="check-grid">
       <label class="check"><input name="action_allow_unknown_hosts" type="checkbox" {% if config.get('allow_unknown_hosts') or config.get('action_allow_unknown_hosts') %}checked{% endif %}>Allow unknown SSH host keys</label>
+      <label class="check"><input name="action_allow_legacy_algorithms" type="checkbox" {% if config.get('allow_legacy_algorithms') or config.get('action_allow_legacy_algorithms') %}checked{% endif %}><span><strong>Allow legacy SSH algorithms</strong><small>Persistent exception for trusted legacy targets; enables weaker algorithms still supported by the toolkit.</small></span></label>
       <label class="check"><input name="action_send_ctrl_y" type="checkbox" {% if config.get('send_ctrl_y') or config.get('action_send_ctrl_y') %}checked{% endif %}>Send Ctrl+Y before commands</label>
       </div>
     </div>
@@ -74,6 +75,7 @@
         <label class="check"><input name="sftp_action_per_host_folders" type="checkbox" {% if config.get('per_host_folders') or config.get('sftp_action_per_host_folders') %}checked{% endif %}>Create a friendly-name/host subfolder for each target</label>
       </div>
       <label class="check" data-action-ssh-host-key-option><input name="sftp_action_allow_unknown_hosts" type="checkbox" {% if config.get('allow_unknown_hosts') or config.get('sftp_action_allow_unknown_hosts') %}checked{% endif %}>Allow unknown SSH host keys</label>
+      <label class="check" data-action-ssh-host-key-option><input name="sftp_action_allow_legacy_algorithms" type="checkbox" {% if config.get('allow_legacy_algorithms') or config.get('sftp_action_allow_legacy_algorithms') %}checked{% endif %}><span><strong>Allow legacy SSH algorithms</strong><small>Persistent exception for trusted legacy SFTP/SCP targets; enables weaker algorithms still supported by the toolkit.</small></span></label>
       <p class="field-note">Limits: 256 MiB per file and 1 GiB per action run.</p>
     </div>
     <div data-action-fields="syslog.send" hidden>

@@ -228,7 +228,9 @@ def serve(instance: str, stop: threading.Event) -> None:
             try:
                 context = TransferContext(instance, settings, ip)
                 transport = paramiko.Transport(
-                    sock, disabled_algorithms=disabled_ssh_algorithms()
+                    sock, disabled_algorithms=disabled_ssh_algorithms(
+                        allow_legacy_algorithms=bool(settings["allow_legacy_algorithms"])
+                    )
                 )
                 transport.add_server_key(key)
                 transport.set_subsystem_handler("sftp", paramiko.SFTPServer, ContainedSFTP, context=context)

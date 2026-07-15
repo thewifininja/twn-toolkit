@@ -93,6 +93,9 @@ class SSHTransferServerTests(unittest.TestCase):
             }, "a long transfer password")
             self.assertNotIn("a long transfer password", Path(store.path).read_text())
             self.assertTrue(settings["password_hash"])
+            self.assertFalse(settings["allow_legacy_algorithms"])
+            settings = store.save({**settings, "allow_legacy_algorithms": True})
+            self.assertTrue(settings["allow_legacy_algorithms"])
             with self.assertRaisesRegex(ValueError, "Temporary-file mode"):
                 store.save({**settings, "root_mode": "temporary", "allow_write": True})
 

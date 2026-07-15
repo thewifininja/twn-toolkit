@@ -22,6 +22,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             "commands": "",
             "command_timeout": str(SSH_DEFAULT_COMMAND_TIMEOUT),
             "allow_unknown_hosts": False,
+            "allow_legacy_algorithms": False,
             "send_ctrl_y": False,
         }
         results: list[dict[str, object]] | None = None
@@ -38,6 +39,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     "command_timeout", str(SSH_DEFAULT_COMMAND_TIMEOUT)
                 ).strip(),
                 "allow_unknown_hosts": request.form.get("allow_unknown_hosts") == "on",
+                "allow_legacy_algorithms": request.form.get("allow_legacy_algorithms") == "on",
                 "send_ctrl_y": request.form.get("send_ctrl_y") == "on",
             }
             try:
@@ -55,6 +57,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     commands=commands,
                     port=port,
                     allow_unknown_hosts=bool(form["allow_unknown_hosts"]),
+                    allow_legacy_algorithms=bool(form["allow_legacy_algorithms"]),
                     send_ctrl_y=bool(form["send_ctrl_y"]),
                     default_command_timeout=int(str(form["command_timeout"])),
                 )
@@ -85,6 +88,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                         1 for result in results or [] if result.get("status") == "success"
                     ),
                     "unknown hosts allowed": bool(form["allow_unknown_hosts"]),
+                    "legacy SSH compatibility": bool(form["allow_legacy_algorithms"]),
                 },
             )
         return render_template("tools/multi_ssh.html", error=error, form=form, results=results)

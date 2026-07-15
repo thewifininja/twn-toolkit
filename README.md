@@ -13,7 +13,7 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.10.1**
+Current release: **v0.10.2**
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -100,9 +100,11 @@ The sidebar and Network Tools page use the same functional organization.
 - **Multi-Host Ping** — graph reachability, latency, and loss for a validated
   target snapshot; update targets without discarding unchanged history.
 - **Multi-SSH** — run prompt-aware command sequences concurrently, with friendly
-  host names, per-command timeouts, and downloadable results.
+  host names, per-command timeouts, downloadable results, and a scoped legacy
+  algorithm exception for trusted older devices.
 - **Multi-Transfer** — fetch files concurrently over SFTP, SCP, or FTP into the
-  Datastore or a one-shot ZIP, using collision-safe filename templates.
+  Datastore or a one-shot ZIP, using collision-safe filename templates and the
+  same explicit legacy SSH exception for SFTP/SCP.
 - **TCP Port Scanner** — check individual ports or ranges across authorized
   hosts.
 

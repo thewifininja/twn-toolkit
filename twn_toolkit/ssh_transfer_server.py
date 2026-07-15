@@ -25,6 +25,7 @@ DEFAULT_SSH_TRANSFER_SETTINGS = {
     "username": "toolkit", "password_hash": "", "allow_sftp": True,
     "allow_scp": True, "allow_read": True, "allow_write": False,
     "allow_overwrite": False, "root_mode": "datastore", "datastore_root": "",
+    "allow_legacy_algorithms": False,
     "incoming_filename_pattern": "{filename}",
     "allowed_networks": ["127.0.0.0/8", "::1/128"],
 }
@@ -92,6 +93,7 @@ class SSHTransferSettingsStore:
             "username": username, "password_hash": str(value.get("password_hash", "")),
             "allow_sftp": allow_sftp, "allow_scp": allow_scp,
             "allow_read": allow_read, "allow_write": allow_write,
+            "allow_legacy_algorithms": bool(value.get("allow_legacy_algorithms", False)),
             "allow_overwrite": bool(value.get("allow_overwrite")) and allow_write,
             "root_mode": root_mode, "datastore_root": datastore_root,
             "incoming_filename_pattern": validate_incoming_filename_pattern(str(value.get("incoming_filename_pattern", "{filename}"))),

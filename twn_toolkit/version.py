@@ -1,6 +1,32 @@
-APP_VERSION = "0.10.1"
+APP_VERSION = "0.10.2"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.10.2",
+        "date": "2026-07-15",
+        "title": "Legacy SSH compatibility controls",
+        "summary": (
+            "Restores deliberate access to trusted legacy SSH devices without "
+            "weakening the toolkit's secure defaults for modern equipment."
+        ),
+        "groups": (
+            {
+                "title": "SSH and file-transfer compatibility",
+                "items": (
+                    "Added explicit legacy SSH compatibility controls to Multi-SSH, Multi-Transfer, SSH/SFTP/SCP automation actions, and the managed SFTP/SCP service.",
+                    "Kept legacy algorithms disabled by default and scoped interactive exceptions to a single run; saved automations and service settings remain visibly enabled until an operator disables them.",
+                    "Added actionable guidance when a peer rejects all offered host-key algorithms and recorded legacy compatibility use in the audit trail without retaining credentials or remote paths.",
+                ),
+            },
+            {
+                "title": "Engineering policy",
+                "items": (
+                    "Centralized SSH algorithm policy so every Paramiko client and server path follows the same secure-default and explicit-exception behavior.",
+                    "Added regression coverage for scoped client exceptions, automation forwarding, managed-service persistence, UI routing, and audit annotations.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.10.1",
         "date": "2026-07-15",

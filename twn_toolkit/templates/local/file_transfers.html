@@ -130,6 +130,7 @@
           <label class="check"><input type="checkbox" name="allow_sftp" {% if ssh_transfer_settings.allow_sftp %}checked{% endif %}>SFTP subsystem</label>
           <label class="check"><input type="checkbox" name="allow_scp" {% if ssh_transfer_settings.allow_scp %}checked{% endif %}>SCP protocol</label>
         </fieldset>
+        <label class="check"><input type="checkbox" name="allow_legacy_algorithms" {% if ssh_transfer_settings.allow_legacy_algorithms %}checked{% endif %}><span><strong>Allow legacy SSH algorithms</strong><small>Persistent service-wide exception for trusted legacy clients. Enables weaker algorithms still supported by the toolkit, including SHA-1 RSA.</small></span></label>
         <div class="form-grid">
           <label>Service username<input name="username" value="{{ ssh_transfer_settings.username }}" maxlength="64" required></label>
           <label><span>Service password <small class="inline-label-note">(write-only)</small></span><input name="password" type="password" minlength="12" {% if ssh_transfer_settings.password_hash %}placeholder="Leave blank to keep saved password"{% else %}required{% endif %}><small class="field-note">Stored as a one-way password hash and never rendered back.</small></label>

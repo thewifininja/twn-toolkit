@@ -34,6 +34,7 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
             "port": "21" if requested_protocol == "ftp" else "22",
             "remote_paths": "",
             "allow_unknown_hosts": False,
+            "allow_legacy_algorithms": False,
             "destination": "",
             "output_mode": "download",
             "filename_pattern": SFTP_DEFAULT_FILENAME_PATTERN,
@@ -59,6 +60,7 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                 "port": request.form.get("port", "22").strip(),
                 "remote_paths": request.form.get("remote_paths", "").strip(),
                 "allow_unknown_hosts": request.form.get("allow_unknown_hosts") == "on",
+                "allow_legacy_algorithms": request.form.get("allow_legacy_algorithms") == "on",
                 "destination": request.form.get("destination", "").strip(),
                 "output_mode": request.form.get("output_mode", "download").strip(),
                 "filename_pattern": request.form.get(
@@ -88,6 +90,7 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                         password=request.form.get("password", ""),
                         port=port,
                         allow_unknown_hosts=bool(form["allow_unknown_hosts"]),
+                        allow_legacy_algorithms=bool(form["allow_legacy_algorithms"]),
                         output_dir=output_dir,
                         filename_pattern=filename_pattern,
                         protocol=str(form["protocol"]),
@@ -228,6 +231,11 @@ def _transfer_audit_details(
         "transfer count": len(results),
         "successful transfer count": len(successes),
         "transferred byte count": sum(int(item["size"]) for item in successes),
+        "legacy SSH compatibility": (
+            bool(form.get("allow_legacy_algorithms"))
+            if str(form["protocol"]) in {"sftp", "scp"}
+            else False
+        ),
     }
 
 

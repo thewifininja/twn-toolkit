@@ -13,11 +13,16 @@ PyPI release when the 0.10.x line was prepared. The toolkit disables `ssh-rsa` f
 host-key and public-key negotiation in every Paramiko client and server path.
 
 An operator who must connect to a legacy appliance that supports no RSA-SHA2,
-ECDSA, or Ed25519 option can temporarily set
-`TWN_ALLOW_LEGACY_SSH_RSA=true` before starting the toolkit. This weakens SSH
-authentication and should be limited to a controlled network while the device
-is upgraded. Remove this exception and the CI allow-list entry when Paramiko
-publishes a release containing upstream commit `a448945` or a superseding fix.
+ECDSA, or Ed25519 option can explicitly enable legacy SSH compatibility for one
+Multi-SSH or Multi-Transfer run, or in the saved settings for an SSH/SFTP/SCP
+automation or the managed SFTP/SCP service. These controls pass the exception
+through the shared policy to that operation only and are audited without secrets.
+Saved exceptions remain enabled until disabled. The
+`TWN_ALLOW_LEGACY_SSH_RSA=true` environment variable remains an emergency global
+override affecting every SSH path. Either form weakens SSH authentication and
+must be limited to trusted legacy devices on controlled networks. Remove this
+exception and the CI allow-list entry when Paramiko publishes a release containing
+upstream commit `a448945` or a superseding fix.
 
 ### Scapy — GHSA-cq46-m9x9-j8w2
 

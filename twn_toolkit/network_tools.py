@@ -11,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
-from .ssh_security import disabled_ssh_algorithms
+from .ssh_security import disabled_ssh_algorithms, format_ssh_connection_error
 
 
 RFC1918_NETWORKS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
@@ -545,6 +545,7 @@ def run_ssh_hosts(
     send_ctrl_y: bool = False,
     command_delay: float = 1.0,
     default_command_timeout: int = SSH_DEFAULT_COMMAND_TIMEOUT,
+    allow_legacy_algorithms: bool = False,
 ) -> list[dict[str, Any]]:
     if not username:
         raise ToolInputError("Enter an SSH username.")
@@ -583,6 +584,7 @@ def run_ssh_hosts(
                 send_ctrl_y,
                 command_delay,
                 target["label"],
+                allow_legacy_algorithms,
             ): index
             for index, target in enumerate(targets)
         }
@@ -728,6 +730,7 @@ def _ssh_host(
     send_ctrl_y: bool,
     command_delay: float,
     host_label: str = "",
+    allow_legacy_algorithms: bool = False,
 ) -> dict[str, Any]:
     import paramiko
 
@@ -748,7 +751,9 @@ def _ssh_host(
             timeout=8,
             auth_timeout=8,
             banner_timeout=8,
-            disabled_algorithms=disabled_ssh_algorithms(),
+            disabled_algorithms=disabled_ssh_algorithms(
+                allow_legacy_algorithms=allow_legacy_algorithms
+            ),
         )
         channel = client.invoke_shell(width=200, height=1000)
         channel.settimeout(0.2)
@@ -794,7 +799,7 @@ def _ssh_host(
             "host_label": host_label,
             "status": "error",
             "output": _bounded_output("".join(output)),
-            "error": f"{type(exc).__name__}: {exc}",
+            "error": format_ssh_connection_error(exc),
         }
     finally:
         client.close()

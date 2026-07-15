@@ -67,6 +67,7 @@ def _validate_ssh(config: dict[str, Any]) -> dict[str, Any]:
         "port": port,
         "command_timeout": command_timeout,
         "allow_unknown_hosts": bool(config.get("allow_unknown_hosts", False)),
+        "allow_legacy_algorithms": bool(config.get("allow_legacy_algorithms", False)),
         "send_ctrl_y": bool(config.get("send_ctrl_y", False)),
     }
 
@@ -82,6 +83,7 @@ def _execute_ssh(config: dict[str, Any], trigger: ConditionResult) -> ActionResu
         commands=commands,
         port=normalized["port"],
         allow_unknown_hosts=normalized["allow_unknown_hosts"],
+        allow_legacy_algorithms=normalized["allow_legacy_algorithms"],
         send_ctrl_y=normalized["send_ctrl_y"],
         default_command_timeout=normalized["command_timeout"],
     )
@@ -126,6 +128,7 @@ def _validate_sftp(config: dict[str, Any]) -> dict[str, Any]:
         "hosts": "\n".join(f"{item['label']} = {item['host']}" if item["label"] else item["host"] for item in targets),
         "remote_paths": "\n".join(paths), "username": username, "password": password,
         "port": port, "allow_unknown_hosts": bool(config.get("allow_unknown_hosts", False)),
+        "allow_legacy_algorithms": bool(config.get("allow_legacy_algorithms", False)),
         "destination_mode": destination_mode, "datastore_folder": datastore_folder,
         "per_host_folders": bool(config.get("per_host_folders", False)),
         "protocol": protocol,
@@ -144,6 +147,11 @@ def _execute_sftp(config: dict[str, Any], trigger: ConditionResult) -> ActionRes
             remote_paths=normalized["remote_paths"].splitlines(),
             username=normalized["username"], password=normalized["password"],
             port=normalized["port"], allow_unknown_hosts=normalized["allow_unknown_hosts"],
+            allow_legacy_algorithms=(
+                normalized["allow_legacy_algorithms"]
+                if normalized["protocol"] in {"sftp", "scp"}
+                else False
+            ),
             output_dir=staging, filename_pattern=normalized["filename_pattern"],
             protocol=normalized["protocol"],
         )
@@ -501,7 +509,7 @@ def _execute_webhook(config: dict[str, Any], trigger: ConditionResult) -> Action
 
 def _parse_ssh_form(form: Mapping[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
     password = str(form.get("action_password", "")) or str(existing.get("password", ""))
-    return {"hosts": form.get("action_hosts", ""), "username": form.get("action_username", ""), "password": password, "commands": form.get("action_commands", ""), "command_timeout": form.get("action_command_timeout", "300"), "port": form.get("action_port", "22"), "allow_unknown_hosts": "action_allow_unknown_hosts" in form, "send_ctrl_y": "action_send_ctrl_y" in form}
+    return {"hosts": form.get("action_hosts", ""), "username": form.get("action_username", ""), "password": password, "commands": form.get("action_commands", ""), "command_timeout": form.get("action_command_timeout", "300"), "port": form.get("action_port", "22"), "allow_unknown_hosts": "action_allow_unknown_hosts" in form, "allow_legacy_algorithms": "action_allow_legacy_algorithms" in form, "send_ctrl_y": "action_send_ctrl_y" in form}
 
 
 def _parse_sftp_form(form: Mapping[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
@@ -515,6 +523,7 @@ def _parse_sftp_form(form: Mapping[str, Any], existing: dict[str, Any]) -> dict[
         "datastore_folder": form.get("sftp_action_datastore_folder", ""),
         "per_host_folders": "sftp_action_per_host_folders" in form,
         "allow_unknown_hosts": "sftp_action_allow_unknown_hosts" in form,
+        "allow_legacy_algorithms": "sftp_action_allow_legacy_algorithms" in form,
         "protocol": form.get("sftp_action_protocol", "sftp"),
     }
 

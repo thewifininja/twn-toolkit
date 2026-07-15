@@ -144,6 +144,18 @@ class NetworkToolTests(unittest.TestCase):
         self.assertEqual(result["timed_out_command"], "diag debug report")
         channel.send.assert_called_once_with("diag debug report\n")
 
+    def test_ssh_host_can_enable_scoped_legacy_compatibility(self) -> None:
+        client = MagicMock()
+        client.connect.side_effect = OSError("offline")
+        with patch("paramiko.SSHClient", return_value=client):
+            _ssh_host(
+                "switch-1", "admin", "secret",
+                [{"command": "show clock", "timeout": 30}],
+                22, False, False, 0,
+                allow_legacy_algorithms=True,
+            )
+        self.assertIsNone(client.connect.call_args.kwargs["disabled_algorithms"])
+
     def test_switch_order_keeps_name_primary_and_description_separate(self) -> None:
         switches = managed_switch_order(
             [
@@ -814,6 +826,7 @@ class NetworkToolTests(unittest.TestCase):
                         "port": "22",
                         "commands": "show version",
                         "confirm_execution": "on",
+                        "allow_legacy_algorithms": "on",
                     },
                 )
             self.assertIn(b"ok", response.data)
@@ -827,12 +840,16 @@ class NetworkToolTests(unittest.TestCase):
                 ssh_run.call_args.kwargs["hosts"],
                 [{"label": "Closet Switch", "host": "switch-1"}],
             )
+            self.assertTrue(ssh_run.call_args.kwargs["allow_legacy_algorithms"])
             ssh_event = AuditStore(instance).recent(1)[0]
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
             self.assertEqual(
                 ssh_event["action"], "ssh.multi_host_execution.run_succeeded"
             )
             self.assertEqual(ssh_event["details"]["host count"], 1)
+            self.assertTrue(
+                ssh_event["details"]["legacy SSH compatibility"]
+            )
             self.assertEqual(ssh_event["details"]["command count"], 1)
             self.assertNotIn(b"not-rendered", audit_database)
             self.assertNotIn(b"show version", audit_database)

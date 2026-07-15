@@ -65,6 +65,10 @@
       <input name="allow_unknown_hosts" type="checkbox" {% if form.allow_unknown_hosts %}checked{% endif %}>
       Allow unknown SSH host keys for this run
     </label>
+    <label class="check" data-ssh-host-key-option>
+      <input name="allow_legacy_algorithms" type="checkbox" {% if form.allow_legacy_algorithms %}checked{% endif %}>
+      <span><strong>Allow legacy SSH algorithms for this run</strong><small>For trusted legacy SFTP/SCP devices only. Enables weaker algorithms still supported by the toolkit, including SHA-1 RSA.</small></span>
+    </label>
     <div class="message info compact-message">
       Files are capped at 256 MiB each and 1 GiB per run. Credentials exist only for this request and are never stored.
     </div>
