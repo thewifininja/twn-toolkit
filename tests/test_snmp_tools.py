@@ -9,6 +9,8 @@ from twn_toolkit.activity import ActivityStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.snmp_tools import (
     _append_calculated_rows,
+    _interface_speed,
+    _interface_status,
     parse_oid_profile,
     parse_snmp_numeric,
     resolve_oid_selection,
@@ -17,6 +19,14 @@ from twn_toolkit.snmp_tools import (
 
 
 class SNMPToolTests(unittest.TestCase):
+    def test_interface_helpers_prefer_high_capacity_speed_and_decode_status(self) -> None:
+        self.assertEqual(_interface_speed("1000", "100000000"), 1_000_000_000)
+        self.assertEqual(_interface_speed(None, "100000000"), 100_000_000)
+        self.assertIsNone(_interface_speed("0", "0"))
+        self.assertEqual(_interface_status("1"), "up")
+        self.assertEqual(_interface_status("7"), "lower layer down")
+        self.assertEqual(_interface_status(None), "unknown")
+
     def test_shared_snmp_numeric_decoder_handles_common_scalar_renderings(self) -> None:
         self.assertEqual(parse_snmp_numeric("42"), 42)
         self.assertEqual(parse_snmp_numeric("(12345) 0:02:03.45"), 12345)
@@ -208,6 +218,123 @@ class SNMPToolTests(unittest.TestCase):
             self.assertEqual(summary["scoreboard"][0]["metrics"][0]["key"], "snmp.polls")
             self.assertEqual(summary["recent"][0]["title"], "Ran SNMP test")
             self.assertIn("1 value", summary["recent"][0]["detail"])
+
+    def test_interface_discovery_sampling_and_monitor_lifecycle(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            client.post(
+                "/tools/snmp-test/profiles/credentials",
+                data={"name": "Lab", "version": "v2c", "community": "private"},
+            )
+            client.post(
+                "/tools/snmp-test/profiles/hosts",
+                data={
+                    "name": "Core",
+                    "host": "192.0.2.10",
+                    "port": "161",
+                    "timeout": "2",
+                    "retries": "1",
+                    "credential_name": "Lab",
+                },
+            )
+            discovered = {
+                "host_name": "Core",
+                "host": "192.0.2.10",
+                "interfaces": [{
+                    "index": 2,
+                    "name": "port2",
+                    "description": "port2",
+                    "alias": "Uplink",
+                    "type": 6,
+                    "admin_status": "up",
+                    "oper_status": "up",
+                    "speed_bps": 1_000_000_000,
+                }],
+                "poll_count": 8,
+                "elapsed_ms": 22.4,
+            }
+            with patch("twn_toolkit.snmp_routes.discover_snmp_interfaces", return_value=discovered):
+                response = client.post(
+                    "/tools/snmp-test/interfaces", json={"host_name": "Core"}
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json()["interfaces"][0]["alias"], "Uplink")
+
+            sampled = {
+                "host_name": "Core",
+                "host": "192.0.2.10",
+                "interface_index": 2,
+                "sampled_at_ms": 1_000,
+                "elapsed_ms": 4.2,
+                "counter_bits": 64,
+                "input_octets": "9007199254740993",
+                "output_octets": "9007199254741993",
+                "speed_bps": 1_000_000_000,
+                "admin_status": "up",
+                "oper_status": "up",
+                "sys_uptime": 100,
+                "counter_discontinuity": 0,
+                "input_errors": 0,
+                "output_errors": 0,
+                "input_discards": 0,
+                "output_discards": 0,
+                "poll_count": 1,
+            }
+            with patch("twn_toolkit.snmp_routes.poll_snmp_interface", return_value=sampled):
+                response = client.post(
+                    "/tools/snmp-test/interface-sample",
+                    json={"host_name": "Core", "interface_index": 2},
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json()["input_octets"], "9007199254740993")
+
+            batch_result = [{"status": "success", "sample": sampled}]
+            with patch(
+                "twn_toolkit.snmp_routes.poll_snmp_interfaces",
+                return_value=batch_result,
+            ):
+                response = client.post(
+                    "/tools/snmp-test/interface-samples",
+                    json={"targets": [{"host_name": "Core", "interface_index": 2}]},
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json()["results"], batch_result)
+
+            payload = {
+                "targets": [{
+                    "host_name": "Core",
+                    "interface_index": 2,
+                    "interface_label": "port2 — Uplink",
+                }],
+                "interval": 5,
+            }
+            self.assertEqual(client.post("/tools/snmp-test/interface-monitor/start", json=payload).status_code, 200)
+            self.assertEqual(client.post("/tools/snmp-test/interface-monitor/stop", json=payload).status_code, 200)
+            self.assertEqual(
+                client.post(
+                    "/tools/snmp-test/interface-monitor/start",
+                    json={**payload, "interval": 2},
+                ).status_code,
+                400,
+            )
+            self.assertEqual(
+                client.post(
+                    "/tools/snmp-test/interface-monitor/start",
+                    json={**payload, "targets": payload["targets"] * 2},
+                ).status_code,
+                400,
+            )
+            summary = ActivityStore(instance).summary()
+            self.assertEqual(summary["counters"]["snmp"]["polls"], 10)
+            self.assertEqual(summary["counters"]["actions"]["total"], 1)
+            self.assertEqual(summary["recent"][0]["title"], "Stopped SNMP bandwidth monitor")
+            page = client.get("/tools/snmp-test")
+            self.assertIn(b"Multi-interface bandwidth monitor", page.data)
+            self.assertIn(b"Visible time range", page.data)
+            self.assertIn(b"History navigation", page.data)
+            self.assertIn(b"snmp-interface-monitor.js", page.data)
 
 
 if __name__ == "__main__":

@@ -1450,6 +1450,282 @@ button.danger {
   gap: 10px;
 }
 
+.snmp-interface-monitor {
+  overflow: hidden;
+}
+
+.snmp-monitor-controls,
+.snmp-monitor-selection {
+  align-items: end;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(240px, 1fr) auto;
+}
+
+.snmp-monitor-selection {
+  border-top: 1px solid var(--line);
+  grid-template-columns: minmax(280px, 1fr) auto;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.snmp-monitor-actions {
+  gap: 12px;
+  grid-column: 1 / -1;
+  margin-top: 14px;
+}
+
+.snmp-monitor-status {
+  display: block;
+  margin: 16px 0 0;
+  min-height: 1.4em;
+}
+
+.snmp-monitor-status.error {
+  color: var(--bad);
+}
+
+.snmp-monitor-status.success {
+  color: var(--good);
+}
+
+.snmp-monitor-set {
+  background: color-mix(in srgb, var(--bg), var(--brand-green) 4%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-top: 18px;
+  padding: 14px;
+}
+
+.snmp-monitor-set-head {
+  align-items: end;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.75fr);
+  margin-bottom: 10px;
+}
+
+.snmp-monitor-set-head h3,
+.snmp-monitor-set-head p {
+  margin: 0;
+}
+
+.snmp-monitor-set-head p {
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.snmp-monitor-targets {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+}
+
+.snmp-monitor-target {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+  padding: 12px;
+}
+
+.snmp-monitor-target-head {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.snmp-monitor-target-head h4,
+.snmp-monitor-target-head p {
+  margin: 0;
+}
+
+.snmp-monitor-target-head p {
+  color: var(--muted);
+  font-size: 0.86rem;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.snmp-monitor-remove {
+  flex: 0 0 auto;
+}
+
+.snmp-monitor-summary {
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 8px;
+}
+
+.snmp-monitor-summary > div {
+  border-left: 1px solid var(--line);
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 5px 9px;
+}
+
+.snmp-monitor-summary > div:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.snmp-monitor-summary span {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.snmp-monitor-summary strong,
+.snmp-monitor-summary small {
+  overflow-wrap: anywhere;
+}
+
+.snmp-monitor-summary small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.snmp-monitor-chart-wrap {
+  background: color-mix(in srgb, var(--panel), var(--bg) 32%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-height: 190px;
+  padding: 8px 9px 5px;
+  position: relative;
+}
+
+.snmp-monitor-chart {
+  cursor: crosshair;
+  display: block;
+  height: 160px;
+  width: 100%;
+}
+
+.snmp-monitor-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  left: 50%;
+  max-width: 420px;
+  position: absolute;
+  text-align: center;
+  top: 52%;
+  transform: translate(-50%, -50%);
+}
+
+.snmp-monitor-legend {
+  display: flex;
+  gap: 18px;
+  justify-content: flex-end;
+  font-size: 0.72rem;
+  min-height: 16px;
+}
+
+.snmp-monitor-tooltip {
+  background: var(--nav-raised);
+  border: 1px solid #496457;
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
+  color: #fff;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  max-width: 220px;
+  min-width: 190px;
+  padding: 7px 9px;
+  pointer-events: none;
+  position: absolute;
+  top: 10px;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.snmp-monitor-tooltip strong,
+.snmp-monitor-tooltip span {
+  display: block;
+}
+
+.snmp-monitor-tooltip strong {
+  margin-bottom: 3px;
+}
+
+.snmp-monitor-tooltip .download {
+  color: #8be594;
+}
+
+.snmp-monitor-tooltip .upload {
+  color: #ff9ba1;
+}
+
+.snmp-monitor-view-options {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.snmp-monitor-history-navigation {
+  border-top: 1px solid var(--line);
+  margin-bottom: 12px;
+  padding-top: 8px;
+}
+
+.snmp-monitor-history-navigation > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-weight: 800;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.snmp-monitor-history-navigation > summary small,
+.snmp-monitor-history-scale {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.snmp-monitor-history-content {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  margin-top: 10px;
+}
+
+.snmp-monitor-history-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.snmp-monitor-history-actions {
+  align-items: end;
+  display: flex;
+  gap: 8px;
+}
+
+.snmp-monitor-legend span::before {
+  border-radius: 999px;
+  content: "";
+  display: inline-block;
+  height: 4px;
+  margin: 0 7px 3px 0;
+  width: 22px;
+}
+
+.snmp-monitor-legend .download::before {
+  background: var(--brand-green);
+}
+
+.snmp-monitor-legend .upload::before {
+  background: var(--brand-red);
+}
+
 .snmp-rule-builder {
   border-left: 5px solid color-mix(in srgb, var(--brand-red), transparent 35%);
   display: grid;
@@ -6132,6 +6408,48 @@ th {
 }
 
 @media (max-width: 760px) {
+  .snmp-monitor-controls,
+  .snmp-monitor-selection,
+  .snmp-monitor-set-head {
+    grid-template-columns: 1fr;
+  }
+
+  .snmp-monitor-controls button,
+  .snmp-monitor-selection button {
+    width: 100%;
+  }
+
+  .snmp-monitor-set {
+    padding: 12px;
+  }
+
+  .snmp-monitor-targets,
+  .snmp-monitor-history-content,
+  .snmp-monitor-view-options {
+    grid-template-columns: 1fr;
+  }
+
+  .snmp-monitor-target {
+    padding: 10px;
+  }
+
+  .snmp-monitor-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .snmp-monitor-target-head {
+    align-items: flex-start;
+  }
+
+  .snmp-monitor-chart-wrap {
+    padding-inline: 8px;
+  }
+
+  .snmp-monitor-history-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .grid.two,
   .task-grid,
   .workspace-grid,

@@ -60,6 +60,42 @@ PRIV_PROTOCOLS = {
     "aes256": USM_PRIV_CFB256_AES,
 }
 
+INTERFACE_DISCOVERY_OIDS = {
+    "description": "1.3.6.1.2.1.2.2.1.2",
+    "type": "1.3.6.1.2.1.2.2.1.3",
+    "speed": "1.3.6.1.2.1.2.2.1.5",
+    "admin_status": "1.3.6.1.2.1.2.2.1.7",
+    "oper_status": "1.3.6.1.2.1.2.2.1.8",
+    "name": "1.3.6.1.2.1.31.1.1.1.1",
+    "high_speed": "1.3.6.1.2.1.31.1.1.1.15",
+    "alias": "1.3.6.1.2.1.31.1.1.1.18",
+}
+INTERFACE_SAMPLE_OIDS = {
+    "in_octets_32": "1.3.6.1.2.1.2.2.1.10",
+    "in_discards": "1.3.6.1.2.1.2.2.1.13",
+    "in_errors": "1.3.6.1.2.1.2.2.1.14",
+    "out_octets_32": "1.3.6.1.2.1.2.2.1.16",
+    "out_discards": "1.3.6.1.2.1.2.2.1.19",
+    "out_errors": "1.3.6.1.2.1.2.2.1.20",
+    "admin_status": "1.3.6.1.2.1.2.2.1.7",
+    "oper_status": "1.3.6.1.2.1.2.2.1.8",
+    "speed": "1.3.6.1.2.1.2.2.1.5",
+    "in_octets_64": "1.3.6.1.2.1.31.1.1.1.6",
+    "out_octets_64": "1.3.6.1.2.1.31.1.1.1.10",
+    "high_speed": "1.3.6.1.2.1.31.1.1.1.15",
+    "counter_discontinuity": "1.3.6.1.2.1.31.1.1.1.19",
+}
+SYS_UPTIME_OID = "1.3.6.1.2.1.1.3.0"
+INTERFACE_STATUS = {
+    1: "up",
+    2: "down",
+    3: "testing",
+    4: "unknown",
+    5: "dormant",
+    6: "not present",
+    7: "lower layer down",
+}
+
 
 def parse_oid_profile(source: str, limit: int = 50) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
@@ -246,6 +282,240 @@ def run_snmp_tests(
     return asyncio.run(_run_snmp_tests(hosts, credentials_by_name, oid_profiles))
 
 
+def discover_snmp_interfaces(
+    host: dict[str, Any], credential: dict[str, Any]
+) -> dict[str, Any]:
+    """Discover standard IF-MIB interfaces without exposing stored credentials."""
+    return asyncio.run(_discover_snmp_interfaces(host, credential))
+
+
+async def _discover_snmp_interfaces(
+    host: dict[str, Any], credential: dict[str, Any]
+) -> dict[str, Any]:
+    engine = SnmpEngine()
+    started = time.monotonic()
+    columns: dict[str, dict[int, str]] = {}
+    poll_count = 0
+    try:
+        auth = _authentication(credential)
+        target = await _transport_target(host)
+        context = ContextData(contextName=credential.get("context_name", ""))
+        for name, oid in INTERFACE_DISCOVERY_OIDS.items():
+            values, error = await _walk_interface_column(
+                engine, auth, target, context, oid
+            )
+            poll_count += 1
+            if error and name == "description":
+                raise ToolInputError(f"Interface discovery failed: {error}")
+            columns[name] = values if not error else {}
+        indexes = sorted(set(columns["description"]) | set(columns["name"]))
+        if not indexes:
+            raise ToolInputError("The device did not return any standard IF-MIB interfaces.")
+        interfaces = []
+        for index in indexes:
+            description = columns["description"].get(index, "").strip()
+            name = columns["name"].get(index, "").strip()
+            alias = columns["alias"].get(index, "").strip()
+            speed_bps = _interface_speed(
+                columns["high_speed"].get(index), columns["speed"].get(index)
+            )
+            interfaces.append({
+                "index": index,
+                "name": name or description or f"Interface {index}",
+                "description": description,
+                "alias": alias,
+                "type": _integer_value(columns["type"].get(index)),
+                "admin_status": _interface_status(columns["admin_status"].get(index)),
+                "oper_status": _interface_status(columns["oper_status"].get(index)),
+                "speed_bps": speed_bps,
+            })
+        return {
+            "host_name": host["name"],
+            "host": host["host"],
+            "interfaces": interfaces,
+            "poll_count": poll_count,
+            "elapsed_ms": round((time.monotonic() - started) * 1000, 1),
+        }
+    finally:
+        engine.close_dispatcher()
+
+
+def poll_snmp_interface(
+    host: dict[str, Any], credential: dict[str, Any], interface_index: int
+) -> dict[str, Any]:
+    """Read one absolute IF-MIB counter sample for browser-side rate calculation."""
+    return asyncio.run(_poll_snmp_interface(host, credential, interface_index))
+
+
+def poll_snmp_interfaces(
+    targets: list[tuple[dict[str, Any], dict[str, Any], int]],
+) -> list[dict[str, Any]]:
+    """Poll a bounded interface set concurrently while isolating target failures."""
+    return asyncio.run(_poll_snmp_interfaces(targets))
+
+
+async def _poll_snmp_interfaces(
+    targets: list[tuple[dict[str, Any], dict[str, Any], int]],
+) -> list[dict[str, Any]]:
+    outcomes = await asyncio.gather(
+        *(
+            _poll_snmp_interface(host, credential, interface_index)
+            for host, credential, interface_index in targets
+        ),
+        return_exceptions=True,
+    )
+    results = []
+    for (host, _credential, interface_index), outcome in zip(targets, outcomes):
+        if isinstance(outcome, Exception):
+            message = (
+                str(outcome)
+                if isinstance(outcome, (ToolInputError, ValueError))
+                else "The interface poll failed. Verify that the device is still reachable."
+            )
+            results.append(
+                {
+                    "host_name": host["name"],
+                    "interface_index": interface_index,
+                    "status": "error",
+                    "error": message,
+                }
+            )
+        else:
+            results.append({"status": "success", "sample": outcome})
+    return results
+
+
+async def _poll_snmp_interface(
+    host: dict[str, Any], credential: dict[str, Any], interface_index: int
+) -> dict[str, Any]:
+    engine = SnmpEngine()
+    started = time.monotonic()
+    try:
+        auth = _authentication(credential)
+        target = await _transport_target(host)
+        context = ContextData(contextName=credential.get("context_name", ""))
+        requested = [
+            (name, f"{oid}.{interface_index}")
+            for name, oid in INTERFACE_SAMPLE_OIDS.items()
+        ]
+        requested.append(("sys_uptime", SYS_UPTIME_OID))
+        error_indication, error_status, error_index, var_binds = await get_cmd(
+            engine,
+            auth,
+            target,
+            context,
+            *(ObjectType(ObjectIdentity(oid)) for _name, oid in requested),
+            lookupMib=False,
+        )
+        error = _response_error(error_indication, error_status, error_index, var_binds)
+        if error:
+            raise ToolInputError(f"Interface poll failed: {error}")
+        values = {
+            name: _integer_value(var_bind[1])
+            for (name, _oid), var_bind in zip(requested, var_binds)
+        }
+        high_capacity = (
+            values.get("in_octets_64") is not None
+            and values.get("out_octets_64") is not None
+        )
+        counter_bits = 64 if high_capacity else 32
+        input_octets = values.get(f"in_octets_{counter_bits}")
+        output_octets = values.get(f"out_octets_{counter_bits}")
+        if input_octets is None or output_octets is None:
+            raise ToolInputError(
+                "The selected interface did not return usable traffic counters."
+            )
+        return {
+            "host_name": host["name"],
+            "host": host["host"],
+            "interface_index": interface_index,
+            "sampled_at_ms": round(time.time() * 1000),
+            "elapsed_ms": round((time.monotonic() - started) * 1000, 1),
+            "counter_bits": counter_bits,
+            # Decimal strings preserve full Counter64 precision in JavaScript.
+            "input_octets": str(input_octets),
+            "output_octets": str(output_octets),
+            "speed_bps": _interface_speed(
+                values.get("high_speed"), values.get("speed")
+            ),
+            "admin_status": _interface_status(values.get("admin_status")),
+            "oper_status": _interface_status(values.get("oper_status")),
+            "sys_uptime": values.get("sys_uptime"),
+            "counter_discontinuity": values.get("counter_discontinuity"),
+            "input_errors": values.get("in_errors"),
+            "output_errors": values.get("out_errors"),
+            "input_discards": values.get("in_discards"),
+            "output_discards": values.get("out_discards"),
+            "poll_count": 1,
+        }
+    finally:
+        engine.close_dispatcher()
+
+
+async def _transport_target(host: dict[str, Any]):
+    return await UdpTransportTarget.create(
+        (host["host"], int(host["port"])),
+        timeout=float(host["timeout"]),
+        retries=int(host["retries"]),
+    )
+
+
+async def _walk_interface_column(engine, auth, target, context, oid: str):
+    values: dict[int, str] = {}
+    prefix = f"{oid}."
+    async for error_indication, error_status, error_index, var_binds in walk_cmd(
+        engine,
+        auth,
+        target,
+        context,
+        ObjectType(ObjectIdentity(oid)),
+        lookupMib=False,
+        lexicographicMode=False,
+        maxRows=1000,
+    ):
+        error = _response_error(error_indication, error_status, error_index, var_binds)
+        if error:
+            return values, error
+        for result_oid, value in var_binds:
+            rendered_oid = result_oid.prettyPrint().lstrip(".")
+            if not rendered_oid.startswith(prefix):
+                continue
+            suffix = rendered_oid[len(prefix):]
+            if suffix.isdigit() and not _missing_snmp_value(value):
+                values[int(suffix)] = value.prettyPrint()
+    return values, ""
+
+
+def _missing_snmp_value(value: Any) -> bool:
+    rendered = str(value.prettyPrint() if hasattr(value, "prettyPrint") else value)
+    return rendered.casefold().startswith(("no such", "end of mib"))
+
+
+def _integer_value(value: Any) -> int | None:
+    if value is None or _missing_snmp_value(value):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        numeric = parse_snmp_numeric(
+            value.prettyPrint() if hasattr(value, "prettyPrint") else value
+        )
+        return int(numeric) if numeric is not None else None
+
+
+def _interface_speed(high_speed: Any, speed: Any) -> int | None:
+    high_speed_mbps = _integer_value(high_speed)
+    if high_speed_mbps and high_speed_mbps > 0:
+        return high_speed_mbps * 1_000_000
+    speed_bps = _integer_value(speed)
+    return speed_bps if speed_bps and speed_bps > 0 else None
+
+
+def _interface_status(value: Any) -> str:
+    numeric = _integer_value(value)
+    return INTERFACE_STATUS.get(numeric, "unknown")
+
+
 async def _run_snmp_tests(
     hosts: list[dict[str, Any]],
     credentials_by_name: dict[str, dict[str, Any]],
@@ -270,11 +540,7 @@ async def _poll_host_profile(
     error = ""
     try:
         auth = _authentication(credential)
-        target = await UdpTransportTarget.create(
-            (host["host"], int(host["port"])),
-            timeout=float(host["timeout"]),
-            retries=int(host["retries"]),
-        )
+        target = await _transport_target(host)
         context = ContextData(contextName=credential.get("context_name", ""))
         for entry in oid_profile["entries"]:
             if entry["operation"] == "calculate":

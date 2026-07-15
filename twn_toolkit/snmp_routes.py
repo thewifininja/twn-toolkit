@@ -4,14 +4,25 @@ from typing import Any
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
-from .activity_context import record_current_activity
+from .activity_context import increment_current_activity, record_current_activity
+from .audit import annotate_audit_event, suppress_audit_event
 from .network_tools import ToolInputError, validate_hosts
 from .profiles import (
     SNMPCredentialProfileStore,
     SNMPHostProfileStore,
     SNMPOidProfileStore,
 )
-from .snmp_tools import parse_oid_profile, run_snmp_tests, validate_snmp_credential
+from .snmp_tools import (
+    discover_snmp_interfaces,
+    parse_oid_profile,
+    poll_snmp_interface,
+    poll_snmp_interfaces,
+    run_snmp_tests,
+    validate_snmp_credential,
+)
+
+
+INTERFACE_MONITOR_INTERVALS = {1, 5, 10, 15, 30, 60}
 
 
 def _record_snmp_activity(
@@ -204,6 +215,111 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": "Profile not found."}), 404
         return jsonify({"deleted": name})
 
+    @tools_bp.post("/snmp-test/interfaces")
+    def snmp_interfaces():
+        suppress_audit_event()
+        try:
+            host, credential = _saved_snmp_target(_request_value("host_name"))
+            result = discover_snmp_interfaces(host, credential)
+        except (ToolInputError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:  # pysnmp transport and protocol failures
+            current_app.logger.warning("SNMP interface discovery failed: %s", exc)
+            return jsonify({"error": "Interface discovery failed. Verify the host, credentials, and SNMP access."}), 502
+        increment_current_activity("snmp", "polls", int(result.get("poll_count", 0)))
+        return jsonify(result)
+
+    @tools_bp.post("/snmp-test/interface-sample")
+    def snmp_interface_sample():
+        suppress_audit_event()
+        try:
+            host, credential = _saved_snmp_target(_request_value("host_name"))
+            interface_index = int(_request_value("interface_index"))
+            if not 1 <= interface_index <= 2_147_483_647:
+                raise ToolInputError("Select a valid interface.")
+            result = poll_snmp_interface(host, credential, interface_index)
+        except (ToolInputError, ValueError) as exc:
+            return jsonify({"error": str(exc) or "Select a valid interface."}), 400
+        except Exception as exc:  # pysnmp transport and protocol failures
+            current_app.logger.warning("SNMP interface poll failed: %s", exc)
+            return jsonify({"error": "The interface poll failed. Verify that the device is still reachable."}), 502
+        increment_current_activity("snmp", "polls", int(result.get("poll_count", 1)))
+        return jsonify(result)
+
+    @tools_bp.post("/snmp-test/interface-samples")
+    def snmp_interface_samples():
+        suppress_audit_event()
+        payload = request.get_json(silent=True) or {}
+        raw_targets = payload.get("targets")
+        if not isinstance(raw_targets, list) or not 1 <= len(raw_targets) <= 20:
+            return jsonify({"error": "Select between 1 and 20 interfaces to poll."}), 400
+        prepared = []
+        try:
+            for raw_target in raw_targets:
+                if not isinstance(raw_target, dict):
+                    raise ToolInputError("The monitor set contains an invalid interface.")
+                host, credential = _saved_snmp_target(
+                    str(raw_target.get("host_name", "")).strip()
+                )
+                interface_index = int(raw_target.get("interface_index", 0))
+                if not 1 <= interface_index <= 2_147_483_647:
+                    raise ToolInputError("Select a valid interface.")
+                prepared.append((host, credential, interface_index))
+            results = poll_snmp_interfaces(prepared)
+        except (ToolInputError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            current_app.logger.warning("SNMP interface batch poll failed: %s", exc)
+            return jsonify({"error": "The interface polling round could not be completed."}), 502
+        increment_current_activity(
+            "snmp",
+            "polls",
+            sum(
+                int(result.get("sample", {}).get("poll_count", 1))
+                for result in results
+                if result.get("status") == "success"
+            ),
+        )
+        return jsonify({"results": results})
+
+    @tools_bp.post("/snmp-test/interface-monitor/start")
+    def start_snmp_interface_monitor():
+        try:
+            targets, interval = _monitor_request_values()
+        except (ToolInputError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        detail = f"{len(targets)} interface(s) · every {interval} second(s)"
+        annotate_audit_event(
+            category="Infrastructure",
+            action="start_snmp_interface_monitor",
+            summary=f"Started SNMP bandwidth monitor for {len(targets)} interface(s).",
+            resource_type="snmp_interface_monitor",
+            resource_id="monitor-set",
+            resource_name=f"{len(targets)} interface monitor set",
+            details={"targets": targets, "interval_seconds": interval},
+        )
+        _record_snmp_activity("Started SNMP bandwidth monitor", detail, count_action=True)
+        return jsonify({"ok": True})
+
+    @tools_bp.post("/snmp-test/interface-monitor/stop")
+    def stop_snmp_interface_monitor():
+        try:
+            targets, interval = _monitor_request_values()
+        except (ToolInputError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        detail = f"{len(targets)} interface(s) · every {interval} second(s)"
+        annotate_audit_event(
+            category="Infrastructure",
+            action="stop_snmp_interface_monitor",
+            summary=f"Stopped SNMP bandwidth monitor for {len(targets)} interface(s).",
+            resource_type="snmp_interface_monitor",
+            resource_id="monitor-set",
+            resource_name=f"{len(targets)} interface monitor set",
+            details={"targets": targets, "interval_seconds": interval},
+        )
+        _record_snmp_activity("Stopped SNMP bandwidth monitor", detail, count_action=False)
+        return jsonify({"ok": True})
+
 
 def _snmp_credential_store() -> SNMPCredentialProfileStore:
     return SNMPCredentialProfileStore(current_app.instance_path)
@@ -227,3 +343,52 @@ def _public_snmp_credential(profile: dict[str, Any]) -> dict[str, Any]:
         "has_auth_key": bool(profile.get("auth_key")),
         "has_priv_key": bool(profile.get("priv_key")),
     }
+
+
+def _request_value(name: str) -> str:
+    payload = request.get_json(silent=True) if request.is_json else None
+    return str((payload or {}).get(name, request.form.get(name, ""))).strip()
+
+
+def _saved_snmp_target(host_name: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    host = _snmp_host_store().get(host_name)
+    if not host:
+        raise ToolInputError("Select a saved SNMP host.")
+    credential = _snmp_credential_store().get(host.get("credential_name", ""))
+    if not credential:
+        raise ToolInputError("The selected host references a missing SNMP credential profile.")
+    return host, credential
+
+
+def _monitor_request_values() -> tuple[list[dict[str, Any]], int]:
+    payload = request.get_json(silent=True) if request.is_json else None
+    raw_targets = (payload or {}).get("targets")
+    if not isinstance(raw_targets, list) or not 1 <= len(raw_targets) <= 20:
+        raise ToolInputError("Select between 1 and 20 interfaces to monitor.")
+    targets: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for raw_target in raw_targets:
+        if not isinstance(raw_target, dict):
+            raise ToolInputError("The monitor set contains an invalid interface.")
+        host_name = str(raw_target.get("host_name", "")).strip()
+        host, _credential = _saved_snmp_target(host_name)
+        interface_index = int(raw_target.get("interface_index", 0))
+        if not 1 <= interface_index <= 2_147_483_647:
+            raise ToolInputError("Select a valid interface.")
+        key = (host["name"], interface_index)
+        if key in seen:
+            raise ToolInputError("The monitor set contains the same interface more than once.")
+        seen.add(key)
+        interface_label = str(raw_target.get("interface_label", "")).strip()[:160]
+        targets.append(
+            {
+                "host_name": host["name"],
+                "host_address": host["host"],
+                "interface_index": interface_index,
+                "interface_label": interface_label or f"Interface {interface_index}",
+            }
+        )
+    interval = int(_request_value("interval"))
+    if interval not in INTERFACE_MONITOR_INTERVALS:
+        raise ToolInputError("Select a supported polling interval.")
+    return targets, interval
