@@ -160,14 +160,19 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.10.0: live multi-host SNMP interface monitoring,
+- Current milestone is 0.10.1: live multi-host SNMP interface monitoring,
   route-level audit enrichment, high-impact preview/confirmation flows,
   representative v0.9.1 upgrade fixtures, operator rollback guidance, managed
   installer restarts, bounded external operations, cross-origin mutation
   protection, and dependency-audit release gates are implemented. The audit
   policy has no pending mutating endpoints. This remains a pre-1.0 release;
   broader real-world upgrade history, packaging, and an explicit supported 1.0
-  compatibility contract still need deliberate hardening.
+  compatibility contract still need deliberate hardening. The 0.10.1 hotfix
+  makes browser-verified same-origin mutation metadata authoritative before the
+  backend Host fallback, preserving logins through aliases and proxies while
+  continuing to reject cross-site mutations. The complete test command is
+  pytest; do not replace it with unittest discovery because fixture-based tests
+  would be silently skipped.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.
@@ -495,7 +500,7 @@ irrelevant machinery into a feature.
 Run the full suite before handoff:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests
+.venv/bin/python -m pytest -q
 ```
 
 For dashboard work, also check light/dark themes, a normal desktop width, a

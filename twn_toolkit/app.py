@@ -783,8 +783,11 @@ def create_app(instance_path: str | None = None) -> Flask:
 def _is_cross_origin_mutation() -> bool:
     if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
         return False
-    if request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+    fetch_site = request.headers.get("Sec-Fetch-Site", "").lower()
+    if fetch_site == "cross-site":
         return True
+    if fetch_site == "same-origin":
+        return False
     source = request.headers.get("Origin") or request.headers.get("Referer")
     if not source:
         return False

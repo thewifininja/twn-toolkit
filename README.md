@@ -13,7 +13,7 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.10.0**
+Current release: **v0.10.1**
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -352,10 +352,11 @@ unrestricted internet exposure.
 
 ## Development
 
-Run the complete test suite:
+Install the pinned development dependencies and run the complete test suite:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -q
 ```
 
 Changes are developed on focused branches and merged into `main` through pull

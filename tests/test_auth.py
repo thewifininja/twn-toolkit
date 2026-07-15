@@ -266,6 +266,47 @@ def test_cross_origin_mutations_are_blocked_before_route_execution(tmp_path):
     assert not (tmp_path / "profiles.json").exists()
 
 
+def test_cross_site_fetch_metadata_blocks_even_a_matching_origin(tmp_path):
+    app = create_app(str(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    blocked = client.post(
+        "/profiles",
+        data={"name": "Injected"},
+        headers={
+            "Origin": "http://localhost",
+            "Sec-Fetch-Site": "cross-site",
+        },
+    )
+
+    assert blocked.status_code == 403
+    assert not (tmp_path / "profiles.json").exists()
+
+
+def test_same_origin_fetch_metadata_allows_login_through_a_host_alias(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+    client.post("/logout")
+
+    response = client.post(
+        "/login",
+        data={
+            "username": "admin",
+            "password": "correct horse battery staple",
+        },
+        headers={
+            "Host": "127.0.0.1:5050",
+            "Origin": "https://toolkit.example:5050",
+            "Sec-Fetch-Site": "same-origin",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+
 def test_same_origin_mutations_and_security_headers_are_preserved(tmp_path):
     app = create_app(str(tmp_path))
     app.config["TESTING"] = True
@@ -382,7 +423,7 @@ def test_admin_can_export_and_import_selected_profile_backups(tmp_path):
     page = client.get("/settings/backup")
     assert page.status_code == 200
     assert b"FortiGate profiles" in page.data
-    assert b"Includes stored secrets/API keys." in page.data
+    assert b"May restore stored secrets/API keys." in page.data
 
     export = client.post(
         "/settings/backup/export",

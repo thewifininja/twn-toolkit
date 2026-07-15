@@ -161,7 +161,7 @@ For every new tool:
 Run:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests
+.venv/bin/python -m pytest -q
 ```
 
 ## Compacted-context reminder
@@ -175,4 +175,5 @@ When continuing work after context compaction:
 5. Keep route authorization server-side.
 6. Preserve admin implicit all-access.
 7. Keep standard-user access profile behavior as union-of-profiles.
-8. Run the full unittest suite before handoff.
+8. Run the full pytest suite before handoff; it collects both unittest classes
+   and fixture-based test functions.
