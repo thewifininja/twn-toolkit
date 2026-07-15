@@ -243,7 +243,10 @@ class OperationalHardeningTests(unittest.TestCase):
             )
             events = AuditStore(instance).recent(10)
 
-        self.assertEqual(events, [])
+        self.assertEqual(
+            [event["action"] for event in events],
+            ["authentication.setup_succeeded"],
+        )
 
     def test_oversized_audit_detail_remains_valid_json(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

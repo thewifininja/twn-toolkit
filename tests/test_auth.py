@@ -5,6 +5,7 @@ import json
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.tls_tools import certificate_status, generate_self_signed_certificate
 
@@ -42,6 +43,10 @@ def test_first_launch_requires_setup_and_creates_no_default_user(tmp_path):
     assert users[0]["username"] == "admin"
     assert users[0]["is_admin"] is True
     assert users[0]["password_hash"] != "correct horse battery staple"
+    event = AuditStore(str(tmp_path)).recent(1)[0]
+    assert event["action"] == "authentication.setup_succeeded"
+    assert event["resource_name"] == "admin"
+    assert b"correct horse battery staple" not in (tmp_path / "audit.sqlite3").read_bytes()
 
 
 def test_login_logout_and_safe_next_redirect(tmp_path):
@@ -64,6 +69,24 @@ def test_login_logout_and_safe_next_redirect(tmp_path):
     )
     assert response.headers["Location"] == "/"
     assert client.get("/").status_code == 200
+    events = AuditStore(str(tmp_path)).recent(3)
+    assert [event["action"] for event in events] == [
+        "authentication.login_succeeded",
+        "authentication.logout_succeeded",
+        "authentication.setup_succeeded",
+    ]
+    assert b"correct horse battery staple" not in (tmp_path / "audit.sqlite3").read_bytes()
+
+    client.post("/logout")
+    failed = client.post(
+        "/login",
+        data={"username": "admin", "password": "definitely wrong"},
+    )
+    assert failed.status_code == 200
+    failed_event = AuditStore(str(tmp_path)).recent(1)[0]
+    assert failed_event["action"] == "authentication.login_failed"
+    assert failed_event["details"]["outcome"] == "failed"
+    assert b"definitely wrong" not in (tmp_path / "audit.sqlite3").read_bytes()
 
 
 def test_theme_preference_is_saved_per_user(tmp_path):

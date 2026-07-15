@@ -244,6 +244,7 @@ def register_fortigate_routes(
         result: dict[str, Any] | None = None
 
         if request.method == "POST":
+            suppress_audit_event()
             profile = profile_store.get(selected_name)
             if not profile:
                 flash("Select a valid FortiGate profile.", "error")
@@ -279,6 +280,7 @@ def register_fortigate_routes(
 
     @app.post("/fortigate/switch-order/objects")
     def switch_order_objects():
+        suppress_audit_event()
         profile = profile_store.get(request.form.get("profile", ""))
         if not profile:
             return jsonify({"error": "Select a valid FortiGate profile."}), 400
@@ -654,6 +656,7 @@ def register_fortigate_routes(
 
     @app.post("/tasks/<task_id>/objects")
     def task_objects(task_id: str):
+        suppress_audit_event()
         task = get_task(task_id)
         profile = profile_store.get(request.form.get("profile", ""))
         endpoint_template = request.form.get("endpoint_template", "").strip()
@@ -751,6 +754,7 @@ def register_fortigate_routes(
 
     @app.post("/tasks/<task_id>/fields")
     def task_fields(task_id: str):
+        suppress_audit_event()
         task = get_task(task_id)
         profile = profile_store.get(request.form.get("profile", ""))
         endpoint_template = request.form.get("endpoint_template", "").strip()
@@ -786,6 +790,7 @@ def register_fortigate_routes(
 
     @app.post("/tasks/<task_id>/preview")
     def task_preview(task_id: str):
+        suppress_audit_event()
         task = get_task(task_id)
         profile = profile_store.get(request.form.get("profile", ""))
         endpoint_template = request.form.get("endpoint_template", "").strip()

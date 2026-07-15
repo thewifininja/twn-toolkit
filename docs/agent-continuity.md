@@ -373,13 +373,18 @@ accepted replay frames.
   `audit_policy.py` is the route-level coverage contract for every endpoint that
   accepts a mutating HTTP method. New routes must be classified as annotated,
   conditional, suppressed, excluded with a reason, or pending enrichment. Treat
-  the pending set as a burn-down list, never as a permanent allowlist.
+  the pending set as a burn-down list, never as a permanent allowlist; it is empty
+  after the initial audit-enrichment pass and should stay empty in ordinary changes.
   Routes use `annotate_audit_event` for resource context and curated
   before/after values. Never pass request bodies wholesale; recursive storage-time
   sanitization is defense in depth for passwords, credentials, tokens, communities,
   API keys, authorization fields, and secret headers. Use `suppress_audit_event`
   for high-frequency telemetry requests; audit user-visible lifecycle boundaries
   instead. Every event adds the actor role and assigned access-profile names.
+  Profile routes share the secret-safe lifecycle helpers in `audit.py`; operator
+  tools share `annotate_tool_run` and retain only bounded counts, modes, and outcomes.
+  Public setup/login/logout routes record directly because they execute without an
+  authenticated `g.current_user`; never add submitted passwords to those events.
   Datastore routes use `LocalDatastore.describe()` and bounded item lists
   for consistent path, kind, and size metadata without retaining file contents.
 

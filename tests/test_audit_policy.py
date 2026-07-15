@@ -5,12 +5,16 @@ import unittest
 from twn_toolkit import create_app
 from twn_toolkit.audit_policy import (
     AUDIT_EXCLUDED_ENDPOINTS,
+    AUDIT_PENDING_ENDPOINTS,
     MUTATING_HTTP_METHODS,
     mutation_audit_policies,
 )
 
 
 class AuditPolicyContractTests(unittest.TestCase):
+    def test_audit_enrichment_burn_down_has_no_pending_routes(self) -> None:
+        self.assertEqual(AUDIT_PENDING_ENDPOINTS, frozenset())
+
     def test_every_mutating_route_has_one_explicit_audit_policy(self) -> None:
         app = create_app()
         route_endpoints = {
