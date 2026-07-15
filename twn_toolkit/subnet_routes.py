@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, render_template, request
 
 from .activity_context import record_current_activity
+from .audit import annotate_tool_run
 from .network_tools import ToolInputError, subtract_subnets
 
 
@@ -28,6 +29,13 @@ def register_subnet_routes(tools_bp: Blueprint) -> None:
                     f"Produced {len(results)} network(s)",
                     counters={"subnet": {"calculations": 1, "networks": len(results)}},
                 )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="subnet.exclusion",
+                tool_name="subnet exclusion calculation",
+                outcome="failed" if error else "succeeded",
+                details={"result network count": len(results or [])},
+            )
         return render_template(
             "tools/subnet_excluder.html",
             error=error,

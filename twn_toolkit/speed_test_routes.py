@@ -5,6 +5,7 @@ import os
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
 
 from .activity_context import record_current_activity
+from .audit import annotate_tool_run, suppress_audit_event
 from .route_utils import disable_client_caching
 
 SPEED_TEST_CHUNK_SIZE = 256 * 1024
@@ -50,6 +51,7 @@ def register_speed_test_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.post("/speed-test/upload")
     def speed_test_upload():
+        suppress_audit_event()
         content_length = request.content_length
         if content_length is None:
             return jsonify({"error": "Upload requests require a Content-Length header."}), 411
@@ -77,9 +79,21 @@ def register_speed_test_routes(tools_bp: Blueprint) -> None:
             download_bytes = int(payload.get("download_bytes", 0))
             upload_bytes = int(payload.get("upload_bytes", 0))
         except (TypeError, ValueError):
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="speed_test",
+                tool_name="speed test",
+                outcome="failed",
+            )
             return jsonify({"error": "Speed test byte counts must be whole numbers."}), 400
         max_reported_bytes = 100 * 1024 * 1024 * 1024
         if not 0 <= download_bytes <= max_reported_bytes or not 0 <= upload_bytes <= max_reported_bytes:
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="speed_test",
+                tool_name="speed test",
+                outcome="failed",
+            )
             return jsonify({"error": "Speed test byte counts are outside the allowed range."}), 400
         total_bytes = download_bytes + upload_bytes
         record_current_activity(
@@ -87,5 +101,15 @@ def register_speed_test_routes(tools_bp: Blueprint) -> None:
             "Completed speed test",
             f"{download_bytes} download bytes · {upload_bytes} upload bytes",
             counters={"speedtest": {"runs": 1, "bytes_transferred": total_bytes}},
+        )
+        annotate_tool_run(
+            category="Network tools",
+            action_namespace="speed_test",
+            tool_name="speed test",
+            outcome="succeeded",
+            details={
+                "download byte count": download_bytes,
+                "upload byte count": upload_bytes,
+            },
         )
         return jsonify({"ok": True})

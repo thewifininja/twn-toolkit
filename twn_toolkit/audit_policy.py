@@ -90,6 +90,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.path_mtu",
         "tools.port_scanner",
         "tools.radius_test",
+        "tools.speed_test_activity",
         "tools.save_dns_profile",
         "tools.save_ntp_profile",
         "tools.save_ping_profile",
@@ -98,7 +99,10 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.save_snmp_profile",
         "tools.save_traceroute_profile",
         "tools.snmp_test",
+        "tools.subnet_excluder",
+        "tools.syslog_receiver",
         "tools.traceroute",
+        "tools.traceroute_run",
         "update_automation_retention",
         "update_operational_settings",
         "update_server_settings",
@@ -118,6 +122,7 @@ AUDIT_CONDITIONAL_ENDPOINTS = frozenset(
     {
         "rename_objects",
         "run_task",
+        "tools.packet_replay",
         "tools.ping_activity",
     }
 )
@@ -128,6 +133,7 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
         "tools.ping_run",
         "tools.ping_validate_targets",
         "tools.multi_sftp",
+        "tools.speed_test_upload",
         "tools.snmp_interface_sample",
         "tools.snmp_interface_samples",
         "tools.snmp_interfaces",
@@ -161,12 +167,6 @@ AUDIT_PENDING_ENDPOINTS = frozenset(
         "task_fields",
         "task_objects",
         "task_preview",
-        "tools.packet_replay",
-        "tools.speed_test_activity",
-        "tools.speed_test_upload",
-        "tools.subnet_excluder",
-        "tools.syslog_receiver",
-        "tools.traceroute_run",
     }
 )
 

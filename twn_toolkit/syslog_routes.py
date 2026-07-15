@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, render_template, request
 
 from .activity_context import record_current_activity
+from .audit import annotate_tool_run
 from .diagnostic_tools import receive_syslog, send_syslog
 from .network_tools import ToolInputError
 
@@ -83,6 +84,18 @@ def register_syslog_routes(tools_bp: Blueprint) -> None:
                         f"Received {len(messages)} message(s)",
                         counters={"syslog": {"messages": len(messages)}},
                     )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace=f"syslog.{action}",
+                tool_name=f"syslog {action}",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "protocol": (
+                        send_form["protocol"] if action == "send" else receive_form["protocol"]
+                    ),
+                    "message count": 1 if send_result else len(messages or []),
+                },
+            )
         return render_template(
             "tools/syslog_receiver.html",
             receive_form=receive_form,

@@ -4,10 +4,12 @@ import struct
 import tempfile
 import unittest
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.packet_replay_tools import (
     parse_hex_packet,
@@ -306,6 +308,7 @@ class PacketReplayToolTests(unittest.TestCase):
                     },
                 )
             preview_summary = ActivityStore(instance).summary()
+            preview_events = AuditStore(instance).recent(10)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Replay preview", response.data)
         self.assertIn(b"IPv4 / UDP", response.data)
@@ -313,6 +316,7 @@ class PacketReplayToolTests(unittest.TestCase):
         self.assertIn(b"First replay header bytes", response.data)
         self.assertEqual(preview_summary["counters"]["actions"]["total"], 0)
         self.assertEqual(preview_summary["counters"]["packet_replay"]["frames"], 0)
+        self.assertEqual(preview_events, [])
 
     def test_route_sends_without_typed_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -346,11 +350,16 @@ class PacketReplayToolTests(unittest.TestCase):
                     },
                 )
             summary = ActivityStore(instance).summary()
+            event = AuditStore(instance).recent(1)[0]
+            audit_database = Path(instance, "audit.sqlite3").read_bytes()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(sender.call_count, 1)
         self.assertIn(b"Send request completed", response.data)
         self.assertEqual(summary["counters"]["packet_replay"]["frames"], 1)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
+        self.assertEqual(event["action"], "packet_replay.run_succeeded")
+        self.assertEqual(event["details"]["frame count"], 1)
+        self.assertNotIn(IPV4_UDP_FRAME.hex().encode(), audit_database)
 
     def test_route_sends_confirmed_plan(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
