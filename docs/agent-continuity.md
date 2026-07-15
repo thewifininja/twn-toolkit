@@ -3,30 +3,6 @@
 This file preserves the product and architecture decisions that should survive
 conversation compaction and future development sessions.
 
-## Current development handoff (2026-07-14)
-
-- The current feature branch is `codex/snmp-interface-monitor`, based on main
-  commit `b44916b` (`Unify saved record collection styling (#10)`). Its open
-  pull request is [PR #11](https://github.com/thewifininja/twn-toolkit/pull/11).
-- The branch contains three focused commits:
-  `5d0c46f` adds multi-host/multi-interface SNMP bandwidth monitoring,
-  `1d81f1b` adds compact adaptive graphs and navigable retained history, and
-  `f522fcb` adds timestamp hover details and corrects attached-endpoint traffic
-  direction labels.
-- PR #11 is pushed and ready for owner testing. Before merging, verify interface
-  discovery, two or more simultaneously monitored ports, live interval changes,
-  history-window navigation, graph hover/tap details, and direction with a known
-  transfer or speed test. Expected presentation is download/interface TX above
-  zero and upload/interface RX below zero. If satisfactory, squash-merge PR #11,
-  delete the branch, switch local work back to `main`, and pull with
-  `git pull --ff-only`.
-- The latest verification on this branch is 274 unit tests passing with 5
-  expected skips. JavaScript syntax validation also passes with the bundled
-  Node runtime. No database migration or new persisted configuration was added
-  by this feature.
-- This handoff section is intentionally branch-specific. Replace or remove it
-  after PR #11 is merged so it never silently describes stale work.
-
 ## Product direction
 
 - The home page is an operational dashboard, not a launch grid.
