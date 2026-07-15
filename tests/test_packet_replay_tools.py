@@ -140,10 +140,27 @@ class PacketReplayToolTests(unittest.TestCase):
             vlan_action="replace",
             vlan_ids="1-25",
             repeat_count=25,
-            interval_seconds=1.0,
+            interval_seconds=0.1,
         )
         self.assertEqual(plan.summary["frame_count"], 625)
         self.assertEqual(len(plan.frames), 625)
+
+    def test_rejects_replay_plan_over_scheduled_duration_budget(self) -> None:
+        with self.assertRaisesRegex(ToolInputError, "at most 5 minutes"):
+            prepare_replay_plan(
+                IPV4_UDP_FRAME,
+                repeat_count=7,
+                interval_seconds=60,
+            )
+
+    def test_rejects_replay_plan_over_frame_budget(self) -> None:
+        packets = [IPV4_UDP_FRAME] * 101
+        with self.assertRaisesRegex(ToolInputError, "10,000 total frames"):
+            prepare_replay_plan(
+                packets,
+                repeat_count=100,
+                interval_seconds=0.1,
+            )
 
     def test_linux_sender_uses_raw_socket(self) -> None:
         sent_frames: list[bytes] = []

@@ -13,6 +13,8 @@ from .network_tools import ToolInputError
 
 MAX_PACKET_BYTES = 9216
 MAX_UPLOAD_BYTES = 256 * 1024
+MAX_REPLAY_FRAMES = 10_000
+MAX_REPLAY_DURATION_SECONDS = 300.0
 MIN_INTERVAL_SECONDS = 0.1
 MAX_INTERVAL_SECONDS = 60.0
 VLAN_ETHERTYPES = {0x8100, 0x88A8, 0x9100}
@@ -139,6 +141,17 @@ def prepare_replay_plan(
         for base in base_frames
         for vlan_id in vlan_targets
     ]
+    frame_count = len(one_pass_frames) * repeat_count
+    if frame_count > MAX_REPLAY_FRAMES:
+        raise ToolInputError(
+            f"Replay plans may contain at most {MAX_REPLAY_FRAMES:,} total frames."
+        )
+    scheduled_duration = max(0, frame_count - 1) * interval_seconds
+    if scheduled_duration > MAX_REPLAY_DURATION_SECONDS:
+        raise ToolInputError(
+            "Replay timing may span at most 5 minutes. Reduce the repeat count, "
+            "VLAN fanout, source packet count, or interval."
+        )
     frames = []
     for _ in range(repeat_count):
         frames.extend(one_pass_frames)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import platform
 import re
+import selectors
 import shutil
 import socket
 import subprocess
@@ -133,30 +135,25 @@ def stream_traceroute(prepared: dict[str, Any]):
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
+            bufsize=0,
         )
     except OSError as exc:
         raise ToolInputError(f"Traceroute could not be started: {exc}") from exc
-    yield {
-        "type": "start",
-        "host": prepared["host"],
-        "family": "IPv6" if prepared["resolved_family"] == socket.AF_INET6 else "IPv4",
-        "method": prepared["method"].upper(),
-        "command": " ".join(command),
-    }
     hops: list[dict[str, Any]] = []
     safety_timeout = min(
         110,
         prepared["max_hops"] * prepared["probes"] * prepared["timeout"] + 10,
     )
+    deadline = started + safety_timeout
     try:
-        assert process.stdout is not None
-        for raw_line in process.stdout:
-            if time.monotonic() - started > safety_timeout:
-                process.terminate()
-                yield {"type": "error", "error": "Traceroute exceeded its safety timeout."}
-                return
+        yield {
+            "type": "start",
+            "host": prepared["host"],
+            "family": "IPv6" if prepared["resolved_family"] == socket.AF_INET6 else "IPv4",
+            "method": prepared["method"].upper(),
+            "command": " ".join(command),
+        }
+        for raw_line in _iter_process_lines(process, deadline):
             line = raw_line.rstrip("\r\n")
             yield {"type": "output", "line": line}
             parsed = parse_traceroute_output(line, probes=prepared["probes"])
@@ -164,7 +161,7 @@ def stream_traceroute(prepared: dict[str, Any]):
                 hop = parsed[0]
                 hops.append(hop)
                 yield {"type": "hop", "hop": hop}
-        process.wait()
+        process.wait(timeout=max(0.05, deadline - time.monotonic()))
         if not hops:
             yield {"type": "error", "error": "Traceroute returned no hop results."}
             return
@@ -179,6 +176,8 @@ def stream_traceroute(prepared: dict[str, Any]):
             "hop_count": hops[-1]["number"],
             "responding_hops": sum(hop["responded"] for hop in hops),
         }
+    except subprocess.TimeoutExpired:
+        yield {"type": "error", "error": "Traceroute exceeded its safety timeout."}
     finally:
         if process.poll() is None:
             process.terminate()
@@ -186,6 +185,49 @@ def stream_traceroute(prepared: dict[str, Any]):
                 process.wait(timeout=1)
             except subprocess.TimeoutExpired:
                 process.kill()
+                try:
+                    process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    pass
+
+
+def _iter_process_lines(process: subprocess.Popen[bytes], deadline: float):
+    """Yield decoded lines without letting a silent child bypass its deadline."""
+    assert process.stdout is not None
+    try:
+        descriptor = process.stdout.fileno()
+    except (AttributeError, OSError):
+        # Lightweight file-like test doubles do not expose a selectable pipe.
+        for raw_line in process.stdout:
+            yield raw_line.decode(errors="replace") if isinstance(raw_line, bytes) else raw_line
+        return
+
+    selector = selectors.DefaultSelector()
+    pending = b""
+    try:
+        selector.register(descriptor, selectors.EVENT_READ)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(
+                    getattr(process, "args", "traceroute"), 0
+                )
+            events = selector.select(timeout=min(0.25, remaining))
+            if not events:
+                if process.poll() is not None:
+                    break
+                continue
+            chunk = os.read(descriptor, 4096)
+            if not chunk:
+                break
+            pending += chunk
+            while b"\n" in pending:
+                raw_line, pending = pending.split(b"\n", 1)
+                yield raw_line.decode(errors="replace") + "\n"
+        if pending:
+            yield pending.decode(errors="replace")
+    finally:
+        selector.close()
 
 
 def parse_traceroute_output(output: str, probes: int = 3) -> list[dict[str, Any]]:

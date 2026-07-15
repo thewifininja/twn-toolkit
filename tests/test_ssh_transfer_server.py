@@ -7,10 +7,18 @@ import socket
 import io
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from twn_toolkit.datastore import LocalDatastore
 from twn_toolkit.ssh_transfer_server import SSHTransferSettingsStore
-from twn_toolkit.ssh_transfer_worker import TransferContext, _scp_receive, _scp_send, serve
+from twn_toolkit.ssh_transfer_worker import (
+    CLIENT_IDLE_TIMEOUT_SECONDS,
+    TransferContext,
+    TransferServer,
+    _scp_receive,
+    _scp_send,
+    serve,
+)
 
 
 class Channel:
@@ -23,6 +31,21 @@ class Channel:
 
 
 class SSHTransferServerTests(unittest.TestCase):
+    def test_scp_channel_has_idle_timeout_before_handler_starts(self) -> None:
+        context = MagicMock()
+        context.settings = {"allow_scp": True}
+        channel = MagicMock()
+        server = TransferServer(context)
+
+        with patch("twn_toolkit.ssh_transfer_worker.threading.Thread") as thread:
+            accepted = server.check_channel_exec_request(
+                channel, b"scp -f configuration.cfg"
+            )
+
+        self.assertTrue(accepted)
+        channel.settimeout.assert_called_once_with(CLIENT_IDLE_TIMEOUT_SECONDS)
+        thread.return_value.start.assert_called_once_with()
+
     def test_live_sftp_listener_uploads_and_downloads(self) -> None:
         import paramiko
         with tempfile.TemporaryDirectory() as instance:
