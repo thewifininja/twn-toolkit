@@ -218,6 +218,7 @@ class NetworkToolTests(unittest.TestCase):
                         "profile": "ReadOnly",
                         "vdom": "root",
                         "switch_id": ["switch-b", "switch-a"],
+                        "confirmed": "on",
                     },
                 )
             summary = ActivityStore(instance).summary()
@@ -238,6 +239,75 @@ class NetworkToolTests(unittest.TestCase):
         self.assertEqual(audit_event["details"]["outcome"], "failed")
         self.assertEqual(audit_event["details"]["completed move count"], 0)
         self.assertNotIn(b"secret", audit_database)
+
+    def test_switch_order_apply_requires_preview_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            client.post(
+                "/profiles",
+                data={
+                    "name": "Lab",
+                    "host": "https://fortigate.example",
+                    "api_key": "secret",
+                    "default_vdom": "root",
+                },
+            )
+            with patch(
+                "twn_toolkit.fortigate_routes.FortiGateClient.get_managed_switches"
+            ) as load_switches:
+                response = client.post(
+                    "/fortigate/switch-order/apply",
+                    data={
+                        "profile": "Lab",
+                        "vdom": "root",
+                        "switch_id": ["switch-b", "switch-a"],
+                    },
+                )
+            audit_event = AuditStore(instance).recent(1)[0]
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Review the move preview", response.get_json()["error"])
+        load_switches.assert_not_called()
+        self.assertEqual(
+            audit_event["action"], "fortigate.switch_order_aborted_confirmation"
+        )
+
+    def test_fortigate_live_rename_requires_dry_run_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            client.post(
+                "/profiles",
+                data={
+                    "name": "Lab",
+                    "host": "https://fortigate.example",
+                    "api_key": "secret",
+                    "default_vdom": "root",
+                },
+            )
+            with patch(
+                "twn_toolkit.fortigate_routes.RenameTask.run_entries"
+            ) as run_entries:
+                response = client.post(
+                    "/tasks/rename-aps/rename",
+                    data={
+                        "profile": "Lab",
+                        "identifier": ["AP-1"],
+                        "current_name": ["Lobby AP"],
+                        "new_name": ["Lobby AP New"],
+                        "vdom": ["root"],
+                    },
+                )
+            audit_event = AuditStore(instance).recent(1)[0]
+
+        self.assertEqual(response.status_code, 302)
+        run_entries.assert_not_called()
+        self.assertEqual(
+            audit_event["action"], "fortigate.rename_aborted_confirmation"
+        )
 
     def test_fortigate_exports_and_renames_have_bounded_audit_events(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -276,6 +346,7 @@ class NetworkToolTests(unittest.TestCase):
                         "current_name": ["Lobby AP"],
                         "new_name": ["Lobby AP New"],
                         "vdom": ["root"],
+                        "confirmed_live": "on",
                     },
                 )
             events = AuditStore(instance).recent(2)

@@ -318,7 +318,7 @@ class PacketReplayToolTests(unittest.TestCase):
         self.assertEqual(preview_summary["counters"]["packet_replay"]["frames"], 0)
         self.assertEqual(preview_events, [])
 
-    def test_route_sends_without_typed_confirmation(self) -> None:
+    def test_route_rejects_send_without_preview_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
@@ -353,12 +353,12 @@ class PacketReplayToolTests(unittest.TestCase):
             event = AuditStore(instance).recent(1)[0]
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(sender.call_count, 1)
-        self.assertIn(b"Send request completed", response.data)
-        self.assertEqual(summary["counters"]["packet_replay"]["frames"], 1)
+        self.assertEqual(sender.call_count, 0)
+        self.assertIn(b"Review the replay preview and confirm", response.data)
+        self.assertEqual(summary["counters"]["packet_replay"]["frames"], 0)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
-        self.assertEqual(event["action"], "packet_replay.run_succeeded")
-        self.assertEqual(event["details"]["frame count"], 1)
+        self.assertEqual(event["action"], "packet_replay.run_failed")
+        self.assertEqual(event["details"]["frame count"], 0)
         self.assertNotIn(IPV4_UDP_FRAME.hex().encode(), audit_database)
 
     def test_route_sends_confirmed_plan(self) -> None:
@@ -391,6 +391,7 @@ class PacketReplayToolTests(unittest.TestCase):
                         "repeat_count": "1",
                         "interval_seconds": "1",
                         "action": "send",
+                        "confirm_send": "on",
                     },
                 )
         self.assertEqual(response.status_code, 200)
@@ -448,6 +449,7 @@ class PacketReplayToolTests(unittest.TestCase):
                         "repeat_count": "1",
                         "interval_seconds": "1",
                         "action": "send",
+                        "confirm_send": "on",
                     },
                 )
         self.assertEqual(response.status_code, 200)
@@ -509,6 +511,7 @@ class PacketReplayToolTests(unittest.TestCase):
                         "repeat_count": "1",
                         "interval_seconds": "1",
                         "action": "send",
+                        "confirm_send": "on",
                     },
                 )
         self.assertEqual(response.status_code, 200)

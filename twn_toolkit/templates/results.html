@@ -6,6 +6,18 @@
     <h1>{{ task.label }} Results</h1>
     <p>{{ profile.name }} · {{ "Dry run" if dry_run else "Live run" }}</p>
   </div>
+  {% set success_count = results | selectattr('status', 'equalto', 'success') | list | length %}
+  {% set error_count = results | selectattr('status', 'equalto', 'error') | list | length %}
+  {% set planned_count = results | selectattr('status', 'equalto', 'planned') | list | length %}
+  {% if dry_run %}
+    <div class="message warning">
+      Preview complete: {{ planned_count }} change{{ '' if planned_count == 1 else 's' }} planned. Review every row before applying.
+    </div>
+  {% else %}
+    <div class="message {{ 'error' if error_count and not success_count else 'warning' if error_count else 'success' }}">
+      Live run complete: {{ success_count }} succeeded · {{ error_count }} failed · {{ results | length }} total.
+    </div>
+  {% endif %}
   <div class="table-wrap">
     <table>
       <thead>
@@ -37,6 +49,7 @@
       <form method="post" action="{{ url_for('rename_objects', task_id=task.id) }}">
         <input name="profile" type="hidden" value="{{ profile.name }}">
         <input name="endpoint_template" type="hidden" value="{{ endpoint_template }}">
+        <input name="confirmed_live" type="hidden" value="on">
         {% for entry in entries %}
           <input name="identifier" type="hidden" value="{{ entry.identifier }}">
           <input name="current_name" type="hidden" value="{{ entry.current_name }}">

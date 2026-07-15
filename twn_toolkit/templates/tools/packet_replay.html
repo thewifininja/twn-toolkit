@@ -140,6 +140,10 @@
     <input name="vlan_ids" type="hidden" value="{{ form.vlan_ids }}">
     <input name="repeat_count" type="hidden" value="{{ form.repeat_count }}">
     <input name="interval_seconds" type="hidden" value="{{ form.interval_seconds }}">
+    <label class="check risk-confirmation">
+      <input name="confirm_send" type="checkbox" required>
+      I reviewed this preview and am authorized to send these frames on the selected interface.
+    </label>
     <div class="button-row">
       <button class="danger" type="submit" name="action" value="send">Send Packet Replay</button>
     </div>
