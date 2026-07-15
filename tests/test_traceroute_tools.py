@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.traceroute_tools import (
     parse_traceroute_output,
@@ -168,6 +169,7 @@ class TracerouteToolTests(unittest.TestCase):
                 )
                 payload = response.get_data(as_text=True)
             summary = ActivityStore(instance).summary()
+            event = AuditStore(instance).recent(1)[0]
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('"type":"complete"', payload)
@@ -175,6 +177,8 @@ class TracerouteToolTests(unittest.TestCase):
         self.assertEqual(summary["counters"]["traceroute"]["hops"], 1)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
         self.assertEqual(summary["scoreboard"][0]["metrics"][0]["key"], "traceroute.completed")
+        self.assertEqual(event["action"], "traceroute.stream.run_started")
+        self.assertEqual(event["details"]["maximum hops"], 30)
 
     def test_traceroute_host_profile_crud(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

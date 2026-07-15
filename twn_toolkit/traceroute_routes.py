@@ -155,7 +155,26 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
                 timeout=float(payload.get("timeout", 2)),
             )
         except (ToolInputError, TypeError, ValueError) as exc:
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="traceroute.stream",
+                tool_name="streamed traceroute",
+                outcome="failed",
+            )
             return jsonify({"error": str(exc) or "Enter valid traceroute settings."}), 400
+
+        annotate_tool_run(
+            category="Network tools",
+            action_namespace="traceroute.stream",
+            tool_name="streamed traceroute",
+            outcome="started",
+            details={
+                "address family": str(payload.get("family", "auto")),
+                "method": prepared["method"],
+                "maximum hops": prepared["max_hops"],
+                "probe count per hop": prepared["probes"],
+            },
+        )
 
         @stream_with_context
         def generate():
