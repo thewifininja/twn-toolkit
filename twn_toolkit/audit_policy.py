@@ -21,6 +21,7 @@ class AuditRoutePolicy(str, Enum):
 # a conscious audit-policy decision in the route's pull request.
 AUDIT_ANNOTATED_ENDPOINTS = frozenset(
     {
+        "apply_switch_order",
         "bulk_delete_datastore_files",
         "bulk_download_datastore_files",
         "bulk_move_datastore_files",
@@ -42,6 +43,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "delete_ssh_transfer_temporary_file",
         "delete_tftp_temporary_file",
         "delete_user",
+        "execute_fortiauthenticator_mac_cleanup",
         "export_profile_backup",
         "import_profile_backup",
         "optimize_automation_database",
@@ -80,7 +82,13 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
 
 # A conditional endpoint deliberately annotates lifecycle boundaries while
 # suppressing its high-frequency intermediate messages.
-AUDIT_CONDITIONAL_ENDPOINTS = frozenset({"tools.ping_activity"})
+AUDIT_CONDITIONAL_ENDPOINTS = frozenset(
+    {
+        "rename_objects",
+        "run_task",
+        "tools.ping_activity",
+    }
+)
 
 
 AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
@@ -107,10 +115,8 @@ AUDIT_EXCLUDED_ENDPOINTS = {
 # enrichment changes move endpoints from here into one of the resolved policies.
 AUDIT_PENDING_ENDPOINTS = frozenset(
     {
-        "apply_switch_order",
         "delete_fortiauthenticator_profile",
         "delete_profile",
-        "execute_fortiauthenticator_mac_cleanup",
         "export_fortiauthenticator_mac_devices",
         "export_fortiauthenticator_mac_group_memberships",
         "fortiap_client_history",
@@ -119,8 +125,6 @@ AUDIT_PENDING_ENDPOINTS = frozenset(
         "fortiauthenticator_mac_group_memberships",
         "login",
         "logout",
-        "rename_objects",
-        "run_task",
         "save_fortiauthenticator_profile",
         "save_profile",
         "setup",

@@ -17,6 +17,7 @@ from flask import (
 )
 
 from .activity_context import record_current_activity
+from .audit import annotate_audit_event, audit_reference, suppress_audit_event
 from .fortigate import FortiGateClient, FortiGateError, normalize_api_key, normalize_host
 from .fortiap_history import (
     LocalFortiGateWirelessHistorySource,
@@ -42,6 +43,158 @@ def _record_fortinet_api_activity(
         detail,
         counters={"fortinet": {"api_calls": api_calls, "failures": failures}},
         count_action=count_action,
+    )
+
+
+def _switch_audit_references(
+    switches: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    return [
+        audit_reference("FortiSwitch", switch["id"], switch["name"])
+        for switch in switches[:100]
+    ]
+
+
+def _annotate_switch_order(
+    profile: dict[str, Any],
+    vdom: str,
+    *,
+    outcome: str,
+    current: list[dict[str, str]] | None = None,
+    desired_ids: list[str] | None = None,
+    planned_moves: int = 0,
+    completed_moves: int = 0,
+    status_code: int | None = None,
+) -> None:
+    current = current or []
+    desired_ids = desired_ids or []
+    by_id = {switch["id"]: switch for switch in current}
+    desired = [by_id[identifier] for identifier in desired_ids if identifier in by_id]
+    details: dict[str, Any] = {
+        "profile": audit_reference("FortiGate profile", profile["name"], profile["name"]),
+        "VDOM": vdom,
+        "outcome": outcome,
+        "switch count": len(desired_ids),
+        "planned move count": planned_moves,
+        "completed move count": completed_moves,
+    }
+    if status_code is not None:
+        details["remote status code"] = status_code
+    before_snapshot = (
+        {"switch order": _switch_audit_references(current)}
+        if outcome == "succeeded" and current
+        else None
+    )
+    after_snapshot = (
+        {"switch order": _switch_audit_references(desired)}
+        if outcome == "succeeded" and desired
+        else None
+    )
+    annotate_audit_event(
+        category="FortiGate",
+        action=f"fortigate.switch_order_{outcome}",
+        summary=(
+            f"Applied and verified {completed_moves} FortiSwitch order move(s)."
+            if outcome == "succeeded"
+            else f"FortiSwitch order update {outcome.replace('_', ' ')} after {completed_moves} completed move(s)."
+        ),
+        resource_type="fortigate_switch_order",
+        resource_id=f"{profile['name']}:{vdom}",
+        resource_name=f"{profile['name']} · {vdom}",
+        details=details,
+        before=before_snapshot,
+        after=after_snapshot,
+    )
+
+
+def _annotate_rename_task(
+    profile: dict[str, Any],
+    task: RenameTask,
+    entries: list[dict[str, str]],
+    results: list[Any],
+    *,
+    dry_run: bool,
+) -> None:
+    if dry_run:
+        suppress_audit_event()
+        return
+    success_count = sum(1 for result in results if result.status == "success")
+    failure_count = sum(1 for result in results if result.status == "error")
+    outcome = (
+        "success"
+        if success_count == len(entries) and not failure_count
+        else "partial"
+        if success_count
+        else "failed"
+    )
+    successful_entries = [
+        entry
+        for entry, result in zip(entries, results)
+        if result.status == "success"
+    ]
+    retained_entries = successful_entries[:100]
+    before = {
+        "objects": [
+            audit_reference(
+                "FortiGate object",
+                entry["identifier"],
+                entry["current_name"] or entry["identifier"],
+            )
+            for entry in retained_entries
+        ]
+    }
+    after = {
+        "objects": [
+            audit_reference("FortiGate object", entry["identifier"], entry["new_name"])
+            for entry in retained_entries
+        ]
+    }
+    annotate_audit_event(
+        category="FortiGate",
+        action="fortigate.objects_renamed",
+        summary=f"Ran {task.label}: {success_count} of {len(entries)} object rename(s) succeeded.",
+        resource_type="fortigate_task",
+        resource_id=task.id,
+        resource_name=task.label,
+        details={
+            "profile": audit_reference("FortiGate profile", profile["name"], profile["name"]),
+            "outcome": outcome,
+            "requested object count": len(entries),
+            "successful object count": success_count,
+            "failed object count": failure_count,
+            "omitted successful object count": max(
+                0, len(successful_entries) - len(retained_entries)
+            ),
+            "VDOMs": sorted({entry["vdom"] for entry in entries})[:100],
+        },
+        before=before,
+        after=after,
+    )
+
+
+def _annotate_fortigate_export(
+    profile: dict[str, Any],
+    task: ExportTask,
+    *,
+    outcome: str,
+    export_size_bytes: int = 0,
+    status_code: int | None = None,
+) -> None:
+    details: dict[str, Any] = {
+        "profile": audit_reference("FortiGate profile", profile["name"], profile["name"]),
+        "outcome": outcome,
+        "export size bytes": export_size_bytes,
+    }
+    if status_code is not None:
+        details["remote status code"] = status_code
+    annotate_audit_event(
+        category="FortiGate",
+        action=f"fortigate.export_{outcome}",
+        summary=f"FortiGate export {task.label} {outcome}.",
+        resource_type="fortigate_task",
+        resource_id=task.id,
+        resource_name=task.label,
+        details=details,
     )
 
 
@@ -161,10 +314,24 @@ def register_fortigate_routes(
                 f"{profile['name']}: initial load failed",
                 failures=1,
             )
+            _annotate_switch_order(
+                profile,
+                vdom,
+                outcome="failed",
+                desired_ids=desired_ids,
+                status_code=exc.status_code,
+            )
             return jsonify({"error": str(exc)}), 502
 
         current_ids = [item["id"] for item in current]
         if len(desired_ids) != len(current_ids) or set(desired_ids) != set(current_ids):
+            _annotate_switch_order(
+                profile,
+                vdom,
+                outcome="aborted_stale_inventory",
+                current=current,
+                desired_ids=desired_ids,
+            )
             return jsonify(
                 {
                     "error": (
@@ -187,6 +354,16 @@ def register_fortigate_routes(
                 f"{profile['name']}: {len(completed)} of {len(moves)} moves completed",
                 api_calls=2 + len(completed),
                 failures=1,
+            )
+            _annotate_switch_order(
+                profile,
+                vdom,
+                outcome="partial" if completed else "failed",
+                current=current,
+                desired_ids=desired_ids,
+                planned_moves=len(moves),
+                completed_moves=len(completed),
+                status_code=exc.status_code,
             )
             progress = (
                 "No switch moves were applied."
@@ -214,6 +391,15 @@ def register_fortigate_routes(
                 api_calls=2 + len(completed),
                 failures=1,
             )
+            _annotate_switch_order(
+                profile,
+                vdom,
+                outcome="verification_failed",
+                current=current,
+                desired_ids=desired_ids,
+                planned_moves=len(moves),
+                completed_moves=len(completed),
+            )
             return jsonify(
                 {
                     "error": "FortiGate accepted the moves but the verified order does not match.",
@@ -225,6 +411,15 @@ def register_fortigate_routes(
             "Applied FortiSwitch order",
             f"{profile['name']}: {len(completed)} moves verified",
             api_calls=2 + len(completed),
+        )
+        _annotate_switch_order(
+            profile,
+            vdom,
+            outcome="succeeded",
+            current=current,
+            desired_ids=desired_ids,
+            planned_moves=len(moves),
+            completed_moves=len(completed),
         )
         return jsonify(
             {
@@ -354,12 +549,24 @@ def register_fortigate_routes(
                     f"{profile['name']}: {task.label} failed",
                     failures=1,
                 )
+                _annotate_fortigate_export(
+                    profile,
+                    task,
+                    outcome="failed",
+                    status_code=exc.status_code,
+                )
                 flash(f"Export failed: {exc}", "error")
                 return redirect(url_for("task_form", task_id=task_id))
 
             _record_fortinet_api_activity(
                 "Ran FortiGate export",
                 f"{profile['name']}: {task.label}",
+            )
+            _annotate_fortigate_export(
+                profile,
+                task,
+                outcome="succeeded",
+                export_size_bytes=len(csv_data.encode("utf-8")),
             )
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             filename = f"{task.id}-{profile['name']}-{stamp}.csv".replace(" ", "_")
@@ -389,6 +596,13 @@ def register_fortigate_routes(
             f"{profile['name']}: {task.label} ({len(entries)} row{'s' if len(entries) != 1 else ''})",
             api_calls=max(1, len(entries)),
             failures=sum(1 for result in results if result.status == "error"),
+        )
+        _annotate_rename_task(
+            profile,
+            task,
+            entries,
+            results,
+            dry_run=dry_run,
         )
 
         return render_template(
@@ -480,6 +694,13 @@ def register_fortigate_routes(
             f"{profile['name']}: {task.label} ({len(entries)} row{'s' if len(entries) != 1 else ''})",
             api_calls=max(1, len(entries)),
             failures=sum(1 for result in results if result.status == "error"),
+        )
+        _annotate_rename_task(
+            profile,
+            task,
+            entries,
+            results,
+            dry_run=dry_run,
         )
         return render_template(
             "results.html",
