@@ -6,6 +6,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 VENV="$ROOT/.venv"
 INSTANCE="$ROOT/instance"
 FRESH_INSTALL=0
+WAS_RUNNING=0
 
 if [ ! -d "$INSTANCE" ] || [ -z "$(ls -A "$INSTANCE" 2>/dev/null)" ]; then
   FRESH_INSTALL=1
@@ -19,6 +20,10 @@ fi
 if ! python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))'; then
   echo "Python 3.10 or newer is required." >&2
   exit 1
+fi
+
+if [ -x "$VENV/bin/python" ] && "$ROOT/twn" status >/dev/null 2>&1; then
+  WAS_RUNNING=1
 fi
 
 if [ ! -x "$VENV/bin/python" ]; then
@@ -41,7 +46,11 @@ if [ "$FRESH_INSTALL" -eq 1 ]; then
 fi
 
 echo "Starting The WiFi Ninja's Toolkit..."
-"$ROOT/twn" start
+if [ "$WAS_RUNNING" -eq 1 ]; then
+  "$ROOT/twn" restart
+else
+  "$ROOT/twn" start
+fi
 touch "$INSTANCE/installation.initialized"
 TOOLKIT_URL=$("$ROOT/twn" status | tail -n 1)
 

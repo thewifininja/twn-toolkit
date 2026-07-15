@@ -248,7 +248,12 @@ web and automation services. Open one of the printed HTTPS URLs and create the
 first administrator; there is no default login.
 
 Running `./install.sh` again refreshes dependencies without replacing saved
-instance data or changing an existing installation’s HTTP/HTTPS choice.
+instance data or changing an existing installation’s HTTP/HTTPS choice. If the
+toolkit is already running, the installer restarts its managed processes so the
+updated application code is active before installation completes.
+
+Before upgrading an important installation, follow the backup, verification,
+and rollback procedure in [Upgrade and Recovery](docs/upgrade-recovery.md).
 
 For more detailed first-run and profile instructions, see
 [QUICKSTART.md](QUICKSTART.md) or the searchable **Help** page inside the app.
@@ -332,6 +337,8 @@ unrestricted internet exposure.
   state, retention, and pipeline behavior
 - [Packet Replay](docs/packet-replay.md) — raw-packet permissions and platform
   setup
+- [Upgrade and Recovery](docs/upgrade-recovery.md) — pre-upgrade backup,
+  verification, and rollback procedure
 - [Adding a Tool](docs/adding-a-tool.md) — internal module registration and
   shared UI/access conventions
 - Built-in **Help** — searchable user guidance and release notes matching the
