@@ -107,6 +107,24 @@ class FortiAuthenticatorClientTests(unittest.TestCase):
             "https://fac.example.com/api/v1/macdevices/?limit=2&offset=2",
         )
 
+    @patch("twn_toolkit.fortiauthenticator.requests.request")
+    def test_pagination_cannot_send_credentials_to_another_origin(
+        self, request: Mock
+    ) -> None:
+        first = Mock(status_code=200, content=b"page-one")
+        first.json.return_value = {
+            "meta": {"next": "https://attacker.example/collect"},
+            "objects": [{"id": 1}],
+        }
+        request.return_value = first
+
+        with self.assertRaisesRegex(FortiAuthenticatorError, "cross-origin API link"):
+            FortiAuthenticatorClient(
+                "https://fac.example.com", "api-user", "secret"
+            ).get_all_mac_devices()
+
+        self.assertEqual(request.call_count, 1)
+
     @patch("twn_toolkit.fortiauthenticator.FortiAuthenticatorClient.get_all")
     def test_group_memberships_use_paginated_collection(self, get_all: Mock) -> None:
         get_all.return_value = [{"id": 7}]

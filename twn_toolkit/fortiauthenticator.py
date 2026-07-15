@@ -10,6 +10,8 @@ from requests.auth import HTTPBasicAuth
 
 from .http_client import DEFAULT_HTTP_TIMEOUT_SECONDS, format_seconds, split_request_timeout
 
+MAX_PAGINATION_PAGES = 1_000
+
 
 class FortiAuthenticatorError(RuntimeError):
     def __init__(self, message: str, status_code: int | None = None, response_body: str = "") -> None:
@@ -72,6 +74,10 @@ class FortiAuthenticatorClient:
         visited: set[str] = set()
 
         while next_endpoint:
+            if len(visited) >= MAX_PAGINATION_PAGES:
+                raise FortiAuthenticatorError(
+                    f"FortiAuthenticator pagination exceeded {MAX_PAGINATION_PAGES:,} pages."
+                )
             if next_endpoint in visited:
                 raise FortiAuthenticatorError("FortiAuthenticator returned a repeating pagination link.")
             visited.add(next_endpoint)
@@ -99,6 +105,30 @@ class FortiAuthenticatorClient:
         json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         url = urljoin(f"{self.host}/", endpoint.lstrip("/"))
+        configured = urlparse(self.host)
+        destination = urlparse(url)
+        try:
+            configured_origin = (
+                configured.scheme.lower(),
+                (configured.hostname or "").lower(),
+                configured.port
+                or (443 if configured.scheme.lower() == "https" else 80),
+            )
+            destination_origin = (
+                destination.scheme.lower(),
+                (destination.hostname or "").lower(),
+                destination.port
+                or (443 if destination.scheme.lower() == "https" else 80),
+            )
+        except ValueError as exc:
+            raise FortiAuthenticatorError(
+                "FortiAuthenticator returned an invalid request URL."
+            ) from exc
+        if destination_origin != configured_origin:
+            raise FortiAuthenticatorError(
+                "FortiAuthenticator returned a cross-origin API link; the request was blocked "
+                "to protect the saved credentials."
+            )
         request_timeout = split_request_timeout(self.timeout)
         try:
             response = requests.request(

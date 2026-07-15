@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
 import tempfile
+import time
 import unittest
 from io import StringIO
 from unittest.mock import patch
@@ -12,6 +14,7 @@ from twn_toolkit.activity import ActivityStore
 from twn_toolkit.audit import AuditStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.traceroute_tools import (
+    _iter_process_lines,
     parse_traceroute_output,
     run_traceroute,
     stream_traceroute,
@@ -101,6 +104,65 @@ class TracerouteToolTests(unittest.TestCase):
         self.assertEqual(event_types.count("hop"), 4)
         self.assertEqual(event_types[-1], "complete")
         self.assertTrue(events[-1]["reached"])
+
+    def test_silent_stream_pipe_honors_deadline(self) -> None:
+        read_descriptor, write_descriptor = os.pipe()
+
+        class SilentProcess:
+            args = ["traceroute", "example.com"]
+
+            def __init__(self) -> None:
+                self.stdout = os.fdopen(read_descriptor, "rb", buffering=0)
+
+            def poll(self):
+                return None
+
+        process = SilentProcess()
+        try:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                list(_iter_process_lines(process, time.monotonic() + 0.02))
+        finally:
+            process.stdout.close()
+            os.close(write_descriptor)
+
+    def test_closing_stream_after_start_terminates_child(self) -> None:
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = StringIO(TRACE_OUTPUT)
+                self.returncode = None
+                self.terminated = False
+
+            def wait(self, timeout=None):
+                self.returncode = 0
+                return 0
+
+            def poll(self):
+                return self.returncode
+
+            def terminate(self):
+                self.terminated = True
+                self.returncode = -15
+
+            def kill(self):
+                self.returncode = -9
+
+        prepared = {
+            "host": "example.com",
+            "resolved_family": socket.AF_INET,
+            "destination_addresses": {"93.184.216.34"},
+            "method": "udp",
+            "max_hops": 30,
+            "probes": 3,
+            "timeout": 2,
+            "command": ["/usr/sbin/traceroute", "example.com"],
+        }
+        process = FakeProcess()
+        with patch("twn_toolkit.traceroute_tools.subprocess.Popen", return_value=process):
+            events = stream_traceroute(prepared)
+            self.assertEqual(next(events)["type"], "start")
+            events.close()
+
+        self.assertTrue(process.terminated)
 
     def test_route_renders_visual_and_text_results(self) -> None:
         result = {

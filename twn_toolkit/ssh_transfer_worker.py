@@ -22,6 +22,8 @@ from .ssh_transfer_server import (
 from .tftp import format_incoming_filename
 from .pidfiles import remove_own_pid_file, write_pid_file
 
+CLIENT_IDLE_TIMEOUT_SECONDS = 30
+
 
 class TransferContext:
     def __init__(self, instance: str, settings: dict[str, Any], client_ip: str) -> None:
@@ -138,6 +140,7 @@ class TransferServer(paramiko.ServerInterface):
         try: parts = shlex.split(command.decode() if isinstance(command, bytes) else command)
         except ValueError: return False
         if len(parts) != 3 or parts[0] != "scp" or parts[1] not in {"-f", "-t"}: return False
+        channel.settimeout(CLIENT_IDLE_TIMEOUT_SECONDS)
         handler = _scp_send if parts[1] == "-f" else _scp_receive
         threading.Thread(target=handler, args=(channel, self.context, parts[2]), daemon=True).start(); return True
 
