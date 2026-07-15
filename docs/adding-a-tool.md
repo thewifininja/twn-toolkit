@@ -105,9 +105,33 @@ New tools should inherit the current visual language:
 - Use homepage/category launch cards via the registry where possible.
 - Use `.panel`, `.panel-head`, `.home-hero`, `.home-section`, or existing tool
   page patterns rather than inventing a new card system.
+- Use shared form grids and `.button-row` action clusters; add a named modifier
+  only when the tool has a documented layout need that the base pattern should
+  not impose everywhere.
 - Use `data-loading-message` for actions that may take noticeable server time.
 - For dangerous actions, use preview-first flows, explicit confirmation, and
   `risk="high"` in the registry.
+
+## Activity and audit expectations
+
+Every new endpoint that accepts a mutating HTTP method must be classified in
+`twn_toolkit/audit_policy.py`. The route-registry audit test is the enforcement
+boundary: the pending set is a temporary burn-down list and should remain empty
+in ordinary feature work.
+
+- Annotate meaningful operator actions with a bounded resource identity,
+  outcome, counts/modes, and curated before/after values.
+- Suppress high-frequency polling, previews, helper calls, and interface noise;
+  record the user-visible lifecycle boundary instead.
+- Explicitly exclude only endpoints whose omission is intentional and document
+  the reason in the policy.
+- Never copy request bodies, commands, targets, payloads, returned records, or
+  secret fields into audit context. Use the shared secret-safe profile and tool
+  helpers, with storage-time sanitization as defense in depth.
+- Design non-route work separately: background jobs, scheduled work, CLI
+  commands, and sensitive reads/exports are not inferred by the route policy.
+- Add a deliberate activity metric only for user-initiated executions; raw
+  protocol counters and activity score are different signals.
 
 ## Access expectations
 
@@ -130,6 +154,9 @@ For every new tool:
   `403` for action routes.
 - If the tool has extra profile/save/delete endpoints, confirm those endpoints
   map to the same tool ID.
+- Audit-policy coverage for every mutating endpoint, plus assertions that the
+  intended action is recorded or suppressed and that secrets/raw content are
+  absent from stored event details.
 
 Run:
 

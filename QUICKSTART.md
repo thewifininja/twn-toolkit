@@ -31,7 +31,14 @@ From the project directory:
 The installer checks system commands, creates `.venv`, installs Python
 dependencies, generates a self-signed certificate for a fresh installation,
 and starts the toolkit. Running it again refreshes dependencies while
-preserving `instance/` data and an existing HTTP/HTTPS choice.
+preserving `instance/` data and an existing HTTP/HTTPS choice. If an existing
+toolkit is active, the installer restarts its managed processes after refreshing
+dependencies so the service cannot continue on stale code or libraries.
+
+Before upgrading an important installation, stop the toolkit and make a
+protected copy of the complete `instance/` directory. Keep the previous release
+tag available as the matching code rollback. See
+[Upgrade and Recovery](docs/upgrade-recovery.md) for verification and rollback.
 
 For a manual Python setup:
 

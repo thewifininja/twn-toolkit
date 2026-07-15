@@ -13,7 +13,7 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.9.1**
+Current release: **v0.10.0**
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -62,8 +62,10 @@ counters are intentionally excluded.
   TLS policy, and bounded timeouts.
 - Export managed AP, FortiSwitch, wireless-client, and switch-client inventory.
 - Rename managed APs and FortiSwitches interactively or from CSV, with dry-run
-  previews and read-back verification.
-- Reorder managed FortiSwitches by drag-and-drop or alphabetically.
+  previews, explicit apply confirmation, partial-result summaries, and read-back
+  verification.
+- Reorder managed FortiSwitches by drag-and-drop or alphabetically, with an
+  in-page preview and explicit confirmation.
 - Find a normalized client MAC in local wireless association logs, combine log
   and live state, and collapse repeated visits into a clean AP history.
 
@@ -130,7 +132,9 @@ The sidebar and Network Tools page use the same functional organization.
 - **DHCP Discover** — send a customizable Discover and inspect Offers without
   requesting or accepting a lease.
 - **Packet Replay** — preview, rewrite, VLAN-tag/fan-out, and transmit raw
-  Ethernet frames from hex or classic Ethernet PCAP files.
+  Ethernet frames from hex or classic Ethernet PCAP files after explicit
+  authorization confirmation; each replay is bounded by frame count and
+  scheduled duration.
 
 ### Local Tools
 
