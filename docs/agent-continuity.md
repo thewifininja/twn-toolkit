@@ -175,6 +175,8 @@ accepted replay frames.
   would be silently skipped.
   The 0.10.2 patch adds explicit, audit-visible legacy SSH compatibility to every
   SSH/SFTP/SCP surface while retaining modern negotiation by default.
+- The next release includes the user-facing upgrade/recovery workflow. Routine
+  upgrades must not require Git, the GitHub CLI, or manual tag manipulation.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.
@@ -250,6 +252,41 @@ make state, risk, and the next action obvious.
   Saving never performs DNS resolution. Browser titles retain the product name
   and add page/instance identity. Toolkit-managed certificate regeneration is
   explicit because it changes the certificate fingerprint.
+
+## Upgrade and recovery architecture
+
+- `upgrade_manager.py` is the request-independent source of truth used by the
+  admin UI, `upgrade_cli.py`, and detached `upgrade_worker.py`. The dependency-free
+  `release_bundle.py` owns the shared archive format so normal runtime code, CI,
+  and release publishing use identical validation without booting the web app.
+  Routes authorize, select an official release or bounded upload, invoke the
+  manager, and translate status into HTTP/UI responses.
+- Published stable releases gain `twn-toolkit-vX.Y.Z.zip` and its `.sha256`
+  through the release-bundle workflow. The external digest and internal per-file
+  manifest are mandatory. Reject drafts, prereleases, same/older versions,
+  unsupported minimum versions, traversal, symlinks, duplicates, undeclared
+  files, integrity mismatches, and over-limit bundles.
+- `.twn-upgrades/` is owner-only ignored runtime state outside `instance/`.
+  Before an upgrade, stop every managed process and copy managed code plus the
+  complete stopped instance into one recovery point. Write an integrity manifest
+  and verify it before every restore. Retain the five newest recovery points;
+  never put them inside the instance or profile backups.
+- Success requires the target version, web/scheduler/supervisor and every enabled
+  transfer worker to be healthy, and all SQLite quick checks to pass. Any failure
+  after backup restores code and instance data together and validates the old
+  version again. A recovered failed upgrade remains a failed operation in UI,
+  CLI exit status, and audit history; successful restoration does not relabel it
+  as a successful upgrade. Never implement an in-place database downgrade or
+  allow older code to open post-upgrade instance data.
+- Serialize operations with the external lock. Bound downloads, expanded bytes,
+  file count, network and subprocess timeouts, disk preflight, and retained
+  history. Keep status and logs outside the instance so they survive replacement.
+  Audit both the initiating administrator and background terminal result without
+  secrets or bundle contents.
+- The progress page tolerates the expected unavailable interval and resumes after
+  restart. CLI recovery remains available when the UI is down. A manually
+  supplied official bundle bypasses the release API, but dependency-changing
+  releases may still need configured Python package access.
 
 ## SNMP interface bandwidth monitor
 

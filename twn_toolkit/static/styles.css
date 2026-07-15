@@ -5151,6 +5151,64 @@ button.danger {
   text-align: center;
 }
 
+.upgrade-release-card {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.upgrade-release-card h3,
+.upgrade-release-card p {
+  margin: 0;
+}
+
+.upgrade-release-notes {
+  max-height: 22rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.upgrade-recovery-list article > form {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: end;
+}
+
+.loading-progress {
+  background: var(--line);
+  border-radius: 999px;
+  height: 6px;
+  margin: 1.25rem auto 0;
+  max-width: 28rem;
+  overflow: hidden;
+}
+
+.loading-progress span {
+  animation: upgrade-progress 1.5s ease-in-out infinite;
+  background: var(--brand-green);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  width: 35%;
+}
+
+@keyframes upgrade-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(400%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-progress span {
+    animation: none;
+    margin-inline: auto;
+  }
+}
+
 .auth-users-head {
   margin-bottom: 18px;
   padding-right: 170px;

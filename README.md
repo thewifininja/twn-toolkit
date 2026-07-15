@@ -258,8 +258,17 @@ instance data or changing an existing installation’s HTTP/HTTPS choice. If the
 toolkit is already running, the installer restarts its managed processes so the
 updated application code is active before installation completes.
 
-Before upgrading an important installation, follow the backup, verification,
-and rollback procedure in [Upgrade and Recovery](docs/upgrade-recovery.md).
+After installation, normal upgrades no longer require Git, the GitHub CLI, or
+manual tag selection. System administrators can use **Administration → Updates
+& Recovery**, or run `./twn upgrade` when the web interface is unavailable. Both
+paths verify the release bundle, stop services, create a complete matched code
+and instance recovery point, install and validate the release, and automatically
+restore the previous state after failure. See [Upgrade and
+Recovery](docs/upgrade-recovery.md).
+
+Installations from before the updater was introduced require one final
+conventional upgrade to the first updater-enabled release. Future releases can
+then be installed entirely through the built-in UI or CLI workflow.
 
 For more detailed first-run and profile instructions, see
 [QUICKSTART.md](QUICKSTART.md) or the searchable **Help** page inside the app.
@@ -274,6 +283,9 @@ For more detailed first-run and profile instructions, see
 ./twn logs              Show recent web and scheduler errors
 ./twn enable-https ...  Generate or regenerate toolkit-managed HTTPS
 ./twn disable-https     Return an existing installation to HTTP
+./twn upgrade           Find and install the latest verified stable release
+./twn backup            Create a matched code and instance recovery point
+./twn rollback ID       Restore a matched recovery point
 ./twn fix-permissions   Repair instance ownership after running with sudo
 ./twn adminreset        Remove users and return to first-launch setup
 ./twn reset-data        Remove saved profiles and API keys

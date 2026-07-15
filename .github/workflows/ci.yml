@@ -36,6 +36,9 @@ jobs:
           bash -n install.sh
           bash -n twn
 
+      - name: Validate upgrade release bundle
+        run: python scripts/build_release_bundle.py --output-dir /tmp/twn-release-dist
+
       - name: Validate release tag version
         if: startsWith(github.ref, 'refs/tags/v')
         env:

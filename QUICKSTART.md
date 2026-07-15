@@ -35,10 +35,16 @@ preserving `instance/` data and an existing HTTP/HTTPS choice. If an existing
 toolkit is active, the installer restarts its managed processes after refreshing
 dependencies so the service cannot continue on stale code or libraries.
 
-Before upgrading an important installation, stop the toolkit and make a
-protected copy of the complete `instance/` directory. Keep the previous release
-tag available as the matching code rollback. See
-[Upgrade and Recovery](docs/upgrade-recovery.md) for verification and rollback.
+After the initial installation, use **Administration → Updates & Recovery** or
+`./twn upgrade`. Routine upgrades do not require Git, the GitHub CLI, or manual
+tags. The toolkit stops its services, creates a matched code and complete
+instance recovery point, verifies the release, restarts, checks processes and
+databases, and restores the previous pair automatically on failure. See
+[Upgrade and Recovery](docs/upgrade-recovery.md).
+
+An installation from before this updater was introduced needs one final
+conventional upgrade to the first updater-enabled release. All later upgrades
+can use the built-in workflow.
 
 For a manual Python setup:
 
@@ -303,6 +309,9 @@ collected output, transfer history, or Datastore files.
 ./twn logs              Show recent errors
 ./twn enable-https ...  Generate or regenerate managed HTTPS
 ./twn disable-https     Return an existing installation to HTTP
+./twn upgrade           Install the latest verified stable release
+./twn backup            Create a matched recovery point
+./twn rollback ID       Restore a matched recovery point
 ./twn fix-permissions   Repair instance ownership after sudo mode
 ```
 

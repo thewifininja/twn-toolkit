@@ -869,6 +869,25 @@ case "${1:-}" in
     shift
     reset_data "$@"
     ;;
+  upgrade)
+    shift
+    ensure_requirements
+    "$PYTHON" -m twn_toolkit.upgrade_cli --root "$ROOT" --instance "$INSTANCE" upgrade "$@"
+    ;;
+  backup)
+    shift
+    ensure_requirements
+    "$PYTHON" -m twn_toolkit.upgrade_cli --root "$ROOT" --instance "$INSTANCE" backup "$@"
+    ;;
+  rollback)
+    shift
+    ensure_requirements
+    "$PYTHON" -m twn_toolkit.upgrade_cli --root "$ROOT" --instance "$INSTANCE" rollback "$@"
+    ;;
+  upgrade-status)
+    ensure_requirements
+    "$PYTHON" -m twn_toolkit.upgrade_cli --root "$ROOT" --instance "$INSTANCE" status
+    ;;
   web-restart)
     web_restart
     ;;
@@ -892,7 +911,7 @@ case "${1:-}" in
     disable_https
     ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|status|logs|enable-https|disable-https|fix-permissions|adminreset|reset-data|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
+    echo "Usage: ./twn {start|stop|restart|status|logs|upgrade|backup|rollback|upgrade-status|enable-https|disable-https|fix-permissions|adminreset|reset-data|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
     exit 2
     ;;
 esac
