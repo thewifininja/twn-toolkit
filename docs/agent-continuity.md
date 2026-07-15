@@ -256,9 +256,11 @@ make state, risk, and the next action obvious.
 ## Upgrade and recovery architecture
 
 - `upgrade_manager.py` is the request-independent source of truth used by the
-  admin UI, `upgrade_cli.py`, and detached `upgrade_worker.py`. Routes authorize,
-  select an official release or bounded upload, invoke the manager, and translate
-  status into HTTP/UI responses.
+  admin UI, `upgrade_cli.py`, and detached `upgrade_worker.py`. The dependency-free
+  `release_bundle.py` owns the shared archive format so normal runtime code, CI,
+  and release publishing use identical validation without booting the web app.
+  Routes authorize, select an official release or bounded upload, invoke the
+  manager, and translate status into HTTP/UI responses.
 - Published stable releases gain `twn-toolkit-vX.Y.Z.zip` and its `.sha256`
   through the release-bundle workflow. The external digest and internal per-file
   manifest are mandatory. Reject drafts, prereleases, same/older versions,
