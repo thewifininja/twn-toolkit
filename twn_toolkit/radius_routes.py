@@ -5,7 +5,7 @@ import platform
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved
+from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
 from .network_tools import (
     ToolInputError,
     parse_radius_attributes,
@@ -125,6 +125,24 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
                         attempts=len(results),
                         count_action=True,
                     )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="radius.authentication_test",
+                tool_name="RADIUS authentication test",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "server count": len(form["server_names"]),
+                    "protocol": form["protocol"],
+                    "attempt count": len(results or []),
+                    "successful attempt count": sum(
+                        1
+                        for result in results or []
+                        if not result.get("error")
+                        and str(result.get("status", "")).lower()
+                        not in {"error", "failed"}
+                    ),
+                },
+            )
         return render_template(
             "tools/radius_test.html",
             error=error,

@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, render_template, request
 
 from .activity_context import record_current_activity
+from .audit import annotate_tool_run
 from .certificate_tools import (
     CertificateInspectionError,
     inspect_certificate_chain,
@@ -33,6 +34,17 @@ def register_certificate_routes(tools_bp: Blueprint) -> None:
                     f"{host}:{port} · {result.get('presented_count', 0)} certificate(s)",
                     counters={"certificates": {"inspections": 1}},
                 )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="tls.certificate_inspection",
+                tool_name="certificate inspection",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "presented certificate count": (
+                        int(result.get("presented_count", 0)) if result else 0
+                    ),
+                },
+            )
         return render_template(
             "tools/certificate_inspector.html",
             error=error,

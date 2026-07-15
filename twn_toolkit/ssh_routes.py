@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, render_template, request
 
 from .activity_context import record_current_activity
+from .audit import annotate_tool_run
 from .network_tools import (
     SSH_DEFAULT_COMMAND_TIMEOUT,
     ToolInputError,
@@ -25,6 +26,8 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
         }
         results: list[dict[str, object]] | None = None
         error = ""
+        host_count = 0
+        command_count = 0
         if request.method == "POST":
             form = {
                 "hosts": request.form.get("hosts", "").strip(),
@@ -42,6 +45,8 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     raise ToolInputError("Confirm that you intend to execute these commands.")
                 hosts = parse_ssh_targets(str(form["hosts"]), limit=50)
                 commands = [command for command in str(form["commands"]).splitlines() if command.strip()]
+                host_count = len(hosts)
+                command_count = len(commands)
                 port = int(str(form["port"]))
                 results = run_ssh_hosts(
                     hosts=hosts,
@@ -68,4 +73,18 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                         }
                     },
                 )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="ssh.multi_host_execution",
+                tool_name="Multi-SSH",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "host count": host_count,
+                    "command count": command_count,
+                    "successful host count": sum(
+                        1 for result in results or [] if result.get("status") == "success"
+                    ),
+                    "unknown hosts allowed": bool(form["allow_unknown_hosts"]),
+                },
+            )
         return render_template("tools/multi_ssh.html", error=error, form=form, results=results)

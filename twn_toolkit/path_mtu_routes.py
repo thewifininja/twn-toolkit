@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, render_template, request
 
 from .activity_context import record_current_activity
+from .audit import annotate_tool_run
 from .diagnostic_tools import test_path_mtu
 from .network_tools import ToolInputError
 
@@ -38,4 +39,15 @@ def register_path_mtu_routes(tools_bp: Blueprint) -> None:
                         }
                     },
                 )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="path_mtu",
+                tool_name="Path MTU test",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "address family": form["family"],
+                    "probe count": len(result.get("probes", [])) if result else 0,
+                    "discovered MTU": result.get("mtu") if result else None,
+                },
+            )
         return render_template("tools/path_mtu.html", form=form, result=result, error=error)

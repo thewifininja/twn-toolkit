@@ -3,12 +3,14 @@ from __future__ import annotations
 import socket
 import selectors
 import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.diagnostic_tools import (
     parse_http_headers,
     receive_syslog,
@@ -148,10 +150,19 @@ class DiagnosticToolTests(unittest.TestCase):
                 },
             ):
                 page = client.post("/tools/api-request", data={
-                    "method": "GET", "url": "https://example.test", "headers": "",
-                    "body": "", "timeout": "10", "verify_tls": "on",
+                    "method": "POST", "url": "https://example.test/private-path",
+                    "headers": "Authorization: Bearer super-secret",
+                    "body": "hidden-payload", "timeout": "10", "verify_tls": "on",
                 })
             self.assertIn(b"200 OK", page.data)
+            api_event = AuditStore(instance).recent(1)[0]
+            audit_database = Path(instance, "audit.sqlite3").read_bytes()
+            self.assertEqual(api_event["action"], "http.api_request.run_succeeded")
+            self.assertEqual(api_event["details"]["HTTP method"], "POST")
+            self.assertEqual(api_event["details"]["remote status code"], 200)
+            self.assertNotIn(b"super-secret", audit_database)
+            self.assertNotIn(b"hidden-payload", audit_database)
+            self.assertNotIn(b"private-path", audit_database)
 
             with patch(
                 "twn_toolkit.syslog_routes.receive_syslog",

@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved
+from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
 from .network_tools import (
     ToolInputError,
     parse_ping_targets,
@@ -65,6 +65,18 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
                     f"{len(targets)} host(s), {len(ports)} port(s), {stats['open']} open",
                     counters={"tcp": {"ports_scanned": len(all_results)}},
                 )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="tcp_scanner",
+                tool_name="TCP port scan",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "host count": len(targets) if not error else 0,
+                    "port count": len(ports) if not error else 0,
+                    "combination count": len(all_results) if not error else 0,
+                    "open port count": int(stats["open"]) if stats else 0,
+                },
+            )
         return render_template(
             "tools/port_scanner.html",
             error=error,
