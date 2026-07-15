@@ -11,6 +11,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+from .ssh_security import disabled_ssh_algorithms
+
 
 RFC1918_NETWORKS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 HOSTNAME_PATTERN = re.compile(
@@ -746,6 +748,7 @@ def _ssh_host(
             timeout=8,
             auth_timeout=8,
             banner_timeout=8,
+            disabled_algorithms=disabled_ssh_algorithms(),
         )
         channel = client.invoke_shell(width=200, height=1000)
         channel.settimeout(0.2)

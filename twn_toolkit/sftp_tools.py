@@ -13,6 +13,7 @@ from string import Formatter
 from typing import Any
 
 from .network_tools import ToolInputError
+from .ssh_security import disabled_ssh_algorithms
 
 
 SFTP_MAX_HOSTS = 50
@@ -219,6 +220,7 @@ def _fetch_sftp_host(
             timeout=10,
             auth_timeout=10,
             banner_timeout=10,
+            disabled_algorithms=disabled_ssh_algorithms(),
         )
         sftp = client.open_sftp()
     except Exception as exc:
@@ -307,6 +309,7 @@ def _fetch_scp_host(
             hostname=address, port=port, username=username, password=password,
             allow_agent=False, look_for_keys=False, timeout=10, auth_timeout=10,
             banner_timeout=10,
+            disabled_algorithms=disabled_ssh_algorithms(),
         )
     except Exception as exc:
         client.close()

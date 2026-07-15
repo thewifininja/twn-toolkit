@@ -250,6 +250,46 @@ def test_access_profile_can_grant_high_risk_tool_without_admin_status(tmp_path):
     assert client.get("/settings/backup").status_code == 403
 
 
+def test_cross_origin_mutations_are_blocked_before_route_execution(tmp_path):
+    app = create_app(str(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    blocked = client.post(
+        "/profiles",
+        data={"name": "Injected"},
+        headers={"Origin": "https://attacker.example"},
+    )
+
+    assert blocked.status_code == 403
+    assert b"Cross-origin state-changing requests" in blocked.data
+    assert not (tmp_path / "profiles.json").exists()
+
+
+def test_same_origin_mutations_and_security_headers_are_preserved(tmp_path):
+    app = create_app(str(tmp_path))
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    response = client.post(
+        "/profiles",
+        data={
+            "name": "Lab",
+            "host": "https://fortigate.example",
+            "api_key": "secret",
+        },
+        headers={"Origin": "http://localhost"},
+    )
+    page = client.get("/")
+
+    assert response.status_code == 302
+    assert page.headers["X-Content-Type-Options"] == "nosniff"
+    assert page.headers["X-Frame-Options"] == "DENY"
+    assert page.headers["Referrer-Policy"] == "no-referrer"
+    assert page.headers["Cross-Origin-Opener-Policy"] == "same-origin"
+    assert page.headers["Cache-Control"] == "no-store"
+
+
 def test_deleting_auth_file_returns_to_setup_without_touching_profiles(tmp_path):
     app = create_app(str(tmp_path))
     client = app.test_client()

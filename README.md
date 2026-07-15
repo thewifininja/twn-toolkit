@@ -339,6 +339,8 @@ unrestricted internet exposure.
   setup
 - [Upgrade and Recovery](docs/upgrade-recovery.md) — pre-upgrade backup,
   verification, and rollback procedure
+- [Security Advisories](docs/security-advisories.md) — dependency-audit policy,
+  active mitigations, and reviewed exceptions
 - [Adding a Tool](docs/adding-a-tool.md) — internal module registration and
   shared UI/access conventions
 - Built-in **Help** — searchable user guidance and release notes matching the
