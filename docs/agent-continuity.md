@@ -3,6 +3,42 @@
 This file preserves the product and architecture decisions that should survive
 conversation compaction and future development sessions.
 
+## Decision doctrine
+
+Apply this priority order when requirements conflict:
+
+1. Safety and data integrity.
+2. Operator clarity.
+3. Product consistency.
+4. Flexibility and reuse.
+5. Implementation speed.
+
+These are strong defaults, not absolute rules. An exception is acceptable when
+the concrete benefit outweighs the tradeoff. State the exception and rationale
+in the pull request; update this file when the exception establishes a reusable
+precedent.
+
+- Extend an existing component, registry, service, schema, or lifecycle before
+  creating a parallel implementation. Generalize only around a demonstrated
+  current or near-term consumer; do not add speculative abstraction.
+- Keep domain behavior request-independent and reusable. Routes authenticate,
+  authorize, validate, invoke services, and translate results into HTTP/UI
+  responses; background workers and CLI commands should reuse the same services.
+- Prefer stable identifiers, additive formats, explicit capability metadata, and
+  bounded configuration over hard-coded branches. Flexibility must not permit
+  arbitrary filesystem access, unbounded work, unsafe evaluation, or secret
+  retention.
+- Design for multiple workers, concurrent requests, restart recovery, partial
+  completion, timeouts, resource ceilings, and 10x current data volume. Define
+  ownership, persistence, retention, cleanup, idempotency, and rollback before
+  adding durable or asynchronous state.
+- Preserve compatibility unless a deliberate migration says otherwise. Material
+  persistence changes require numbered transactional migrations, pre-change
+  snapshots, rollback thinking, and representative upgrade tests.
+- Treat permissions, secrets, activity metrics, audit events, diagnostics, Help,
+  release notes, accessibility, responsive behavior, and tests as parts of the
+  feature—not follow-up polish.
+
 ## Product direction
 
 - The home page is an operational dashboard, not a launch grid.
@@ -138,7 +174,34 @@ accepted replay frames.
   owner normally reviews, then squash-merges and deletes the remote branch;
   return the local checkout to an updated `main` before creating the next branch.
 
-## UI standards
+## UI design doctrine
+
+The interface uses an adaptive balance: concise operational summaries by default,
+with complexity available through progressive disclosure. Dense information is
+appropriate when it helps an operator compare or act, but the first view must
+make state, risk, and the next action obvious.
+
+- Preserve a clear hierarchy: page purpose, current state, primary action,
+  supporting controls, results, then advanced detail. Prefer plain operational
+  language over implementation terminology.
+- Make interactions predictable across tools. Reuse shared layout, form, action,
+  collection, result, loading, and feedback patterns. A local override is an
+  exception; prefer improving the shared component when the need is reusable.
+- Show one clear primary action per task context. Separate destructive actions,
+  require confirmation proportional to impact, and never rely on color alone to
+  communicate risk or status.
+- Design loading, empty, disabled, validation, failure, partial-success, success,
+  stale, and permission-denied states with the main flow. Preserve operator input
+  after recoverable errors and explain the next corrective action.
+- Mobile, narrow desktop, and wide desktop are one responsive system. Avoid
+  clipped actions and accidental page-level horizontal scrolling; allow bounded
+  data regions to scroll when comparison requires it.
+- Support keyboard operation, visible focus, semantic labels, readable contrast,
+  reduced motion, and light/dark themes. Hover-only disclosure is supplemental,
+  never the only way to discover or operate a control.
+- Keep secrets write-only and sensitive values out of rendered pages, URLs,
+  browser storage, exports, logs, and error detail unless explicitly required and
+  protected.
 
 - Primary/secondary actions belong consistently in a section header's
   `.section-actions` area, normally at the top right on wide screens.
@@ -388,6 +451,42 @@ accepted replay frames.
   authenticated `g.current_user`; never add submitted passwords to those events.
   Datastore routes use `LocalDatastore.describe()` and bounded item lists
   for consistent path, kind, and size metadata without retaining file contents.
+
+## Feature proposal and pre-merge checklist
+
+Use this checklist while shaping a proposal, not only after implementation.
+Record non-applicable items and justified exceptions briefly rather than forcing
+irrelevant machinery into a feature.
+
+1. **Fit and reuse:** What existing tool, component, service, registry, store, or
+   lifecycle should own this? What likely next consumer should the design support?
+2. **Boundaries:** Are route/UI code and domain behavior separated? Are inputs,
+   outputs, concurrency, duration, retries, storage, and retention explicitly bounded?
+3. **Failure and scale:** What happens with multiple workers, at 10x volume, after
+   restart, on timeout, and after partial completion? Is retry safe; can cleanup or
+   rollback recover without data loss?
+4. **Compatibility:** Are stable IDs and saved formats preserved? If not, is there
+   a migration, snapshot, upgrade test, rollback plan, and release-note warning?
+5. **Access and privacy:** Who may see and execute it? Are navigation and direct
+   endpoints permission-checked? Are secrets write-only and raw payloads/results
+   excluded from persistence, logs, errors, and audit details?
+6. **Activity and audit:** Is the intentional operator action distinguished from
+   polling, preview, and helper traffic? Add meaningful metrics. Classify every
+   mutating endpoint in `audit_policy.py`; keep the pending set empty. Explicitly
+   design audit behavior for background jobs, CLI commands, scheduled work, and
+   sensitive read/export workflows because the route contract cannot infer them.
+7. **UI completeness:** Does the adaptive summary/detail hierarchy reuse shared
+   patterns and cover loading, empty, validation, failure, partial-success,
+   success, stale, disabled, and denied states? Verify keyboard/focus, reduced
+   motion, light/dark themes, phone, narrow desktop, and wide desktop.
+8. **Operations:** Are health, diagnostics, ownership, quotas, cleanup, backup/
+   restore scope, and administrator recovery defined where relevant?
+9. **Verification:** Add service/store tests, route and permission tests, secret-
+   absence assertions, migration/upgrade tests when needed, and regression tests
+   for the user-visible behavior. Run the complete suite.
+10. **Continuity and release:** Update built-in Help and this file for durable
+    behavior or precedent. At release time, add dated structured release notes
+    beside the intentional version bump so the notes appear inside Help.
 
 ## Verification
 
