@@ -220,6 +220,54 @@
   </div>
 </section>
 
+<section
+  class="panel snmp-interface-monitor"
+  data-discover-url="{{ url_for('tools.snmp_interfaces') }}"
+  data-sample-url="{{ url_for('tools.snmp_interface_sample') }}"
+  data-samples-url="{{ url_for('tools.snmp_interface_samples') }}"
+  data-start-url="{{ url_for('tools.start_snmp_interface_monitor') }}"
+  data-stop-url="{{ url_for('tools.stop_snmp_interface_monitor') }}"
+>
+  <div class="panel-head">
+    <h2>Multi-interface bandwidth monitor</h2>
+    <p>Build a live monitor set from interfaces across one or more saved SNMP hosts.</p>
+  </div>
+  <div class="snmp-monitor-controls">
+    <label>Saved host
+      <select class="snmp-monitor-host" {% if not hosts %}disabled{% endif %}>
+        <option value="">Select a host</option>
+        {% for host in hosts %}<option value="{{ host.name }}">{{ host.name }} · {{ host.host }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="secondary snmp-monitor-discover" type="button" {% if not hosts %}disabled{% endif %}>Discover interfaces</button>
+  </div>
+  <div class="snmp-monitor-selection" hidden>
+    <label>Interface
+      <select class="snmp-monitor-interface"></select>
+    </label>
+    <button class="secondary snmp-monitor-add" type="button">Add interface</button>
+  </div>
+  <p class="tool-status snmp-monitor-status" role="status" aria-live="polite">
+    {% if hosts %}Choose a saved host to discover its interfaces.{% else %}Create an SNMP credential and host profile first.{% endif %}
+  </p>
+  <div class="snmp-monitor-set" hidden>
+    <div class="snmp-monitor-set-head">
+      <div><h3>Monitor set</h3><p><span class="snmp-monitor-count">0</span> of 20 interfaces selected</p></div>
+      <label>Polling interval
+        <select class="snmp-monitor-interval">
+          {% for seconds in [1, 5, 10, 15, 30, 60] %}<option value="{{ seconds }}" {% if seconds == 5 %}selected{% endif %}>Every {{ seconds }} second{{ '' if seconds == 1 else 's' }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="snmp-monitor-targets"></div>
+    <div class="button-row snmp-monitor-actions">
+      <button class="snmp-monitor-start" type="button">Start monitoring</button>
+      <button class="secondary snmp-monitor-stop" type="button" disabled>Stop</button>
+      <button class="secondary snmp-monitor-clear" type="button" disabled>Clear graphs</button>
+    </div>
+  </div>
+</section>
+
 <section class="panel">
   <div class="panel-head">
     <h2>Run Tests</h2>
@@ -300,4 +348,5 @@
 {% endif %}
 
 <script src="{{ url_for('static', filename='snmp-test.js') }}"></script>
+<script src="{{ url_for('static', filename='snmp-interface-monitor.js') }}"></script>
 {% endblock %}

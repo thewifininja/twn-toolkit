@@ -1450,6 +1450,191 @@ button.danger {
   gap: 10px;
 }
 
+.snmp-interface-monitor {
+  overflow: hidden;
+}
+
+.snmp-monitor-controls,
+.snmp-monitor-selection {
+  align-items: end;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(240px, 1fr) auto;
+}
+
+.snmp-monitor-selection {
+  border-top: 1px solid var(--line);
+  grid-template-columns: minmax(280px, 1fr) auto;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.snmp-monitor-actions {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+.snmp-monitor-status {
+  display: block;
+  margin: 16px 0 0;
+  min-height: 1.4em;
+}
+
+.snmp-monitor-status.error {
+  color: var(--bad);
+}
+
+.snmp-monitor-status.success {
+  color: var(--good);
+}
+
+.snmp-monitor-set {
+  background: color-mix(in srgb, var(--bg), var(--brand-green) 4%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-top: 18px;
+  padding: 18px;
+}
+
+.snmp-monitor-set-head {
+  align-items: end;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.35fr);
+  margin-bottom: 16px;
+}
+
+.snmp-monitor-set-head h3,
+.snmp-monitor-set-head p {
+  margin: 0;
+}
+
+.snmp-monitor-set-head p {
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.snmp-monitor-targets {
+  display: grid;
+  gap: 16px;
+}
+
+.snmp-monitor-target {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.snmp-monitor-target-head {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.snmp-monitor-target-head h4,
+.snmp-monitor-target-head p {
+  margin: 0;
+}
+
+.snmp-monitor-target-head p {
+  color: var(--muted);
+  font-size: 0.86rem;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.snmp-monitor-remove {
+  flex: 0 0 auto;
+}
+
+.snmp-monitor-summary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.snmp-monitor-summary > div {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.snmp-monitor-summary span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.snmp-monitor-summary strong,
+.snmp-monitor-summary small {
+  overflow-wrap: anywhere;
+}
+
+.snmp-monitor-summary small {
+  color: var(--muted);
+}
+
+.snmp-monitor-chart-wrap {
+  background: color-mix(in srgb, var(--panel), var(--bg) 32%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-height: 280px;
+  padding: 14px;
+  position: relative;
+}
+
+.snmp-monitor-chart {
+  display: block;
+  height: 250px;
+  width: 100%;
+}
+
+.snmp-monitor-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  left: 50%;
+  max-width: 420px;
+  position: absolute;
+  text-align: center;
+  top: 52%;
+  transform: translate(-50%, -50%);
+}
+
+.snmp-monitor-legend {
+  display: flex;
+  gap: 18px;
+  justify-content: flex-end;
+  min-height: 20px;
+}
+
+.snmp-monitor-legend span::before {
+  border-radius: 999px;
+  content: "";
+  display: inline-block;
+  height: 4px;
+  margin: 0 7px 3px 0;
+  width: 22px;
+}
+
+.snmp-monitor-legend .inbound::before {
+  background: var(--brand-green);
+}
+
+.snmp-monitor-legend .outbound::before {
+  background: var(--brand-red);
+}
+
 .snmp-rule-builder {
   border-left: 5px solid color-mix(in srgb, var(--brand-red), transparent 35%);
   display: grid;
@@ -6132,6 +6317,37 @@ th {
 }
 
 @media (max-width: 760px) {
+  .snmp-monitor-controls,
+  .snmp-monitor-selection,
+  .snmp-monitor-set-head {
+    grid-template-columns: 1fr;
+  }
+
+  .snmp-monitor-controls button,
+  .snmp-monitor-selection button {
+    width: 100%;
+  }
+
+  .snmp-monitor-set {
+    padding: 12px;
+  }
+
+  .snmp-monitor-target {
+    padding: 12px;
+  }
+
+  .snmp-monitor-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .snmp-monitor-target-head {
+    align-items: flex-start;
+  }
+
+  .snmp-monitor-chart-wrap {
+    padding-inline: 8px;
+  }
+
   .grid.two,
   .task-grid,
   .workspace-grid,

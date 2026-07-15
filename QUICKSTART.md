@@ -101,6 +101,13 @@ The other Network Tools follow the same category layout shown in the sidebar:
 - **Traffic & Interfaces:** Wi-Fi/LAN Speed Test, DHCP Discover, and Packet
   Replay
 
+SNMP Tester can also discover the standard IF-MIB interfaces across saved SNMP
+hosts and build a monitor set of up to 20 interfaces. Each interface gets an
+adaptive mirrored graph with inbound/download above zero and outbound/upload
+below zero. The monitor prefers 64-bit high-capacity counters and supports 1,
+5, 10, 15, 30, or 60-second polling intervals. Graphs are temporary browser-
+session data and stop when you leave the page.
+
 ## Add Fortinet profiles
 
 ### FortiGate
