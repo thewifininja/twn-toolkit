@@ -332,6 +332,8 @@ class SNMPToolTests(unittest.TestCase):
             self.assertEqual(summary["recent"][0]["title"], "Stopped SNMP bandwidth monitor")
             page = client.get("/tools/snmp-test")
             self.assertIn(b"Multi-interface bandwidth monitor", page.data)
+            self.assertIn(b"Visible time range", page.data)
+            self.assertIn(b"History navigation", page.data)
             self.assertIn(b"snmp-interface-monitor.js", page.data)
 
 

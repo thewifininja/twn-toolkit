@@ -1493,15 +1493,15 @@ button.danger {
   border: 1px solid var(--line);
   border-radius: 14px;
   margin-top: 18px;
-  padding: 18px;
+  padding: 14px;
 }
 
 .snmp-monitor-set-head {
   align-items: end;
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.35fr);
-  margin-bottom: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.75fr);
+  margin-bottom: 10px;
 }
 
 .snmp-monitor-set-head h3,
@@ -1516,7 +1516,8 @@ button.danger {
 
 .snmp-monitor-targets {
   display: grid;
-  gap: 16px;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
 }
 
 .snmp-monitor-target {
@@ -1524,7 +1525,7 @@ button.danger {
   border: 1px solid var(--line);
   border-radius: 13px;
   overflow: hidden;
-  padding: 16px;
+  padding: 12px;
 }
 
 .snmp-monitor-target-head {
@@ -1532,7 +1533,7 @@ button.danger {
   display: flex;
   gap: 16px;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 .snmp-monitor-target-head h4,
@@ -1553,24 +1554,27 @@ button.danger {
 
 .snmp-monitor-summary {
   display: grid;
-  gap: 10px;
+  gap: 0;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 .snmp-monitor-summary > div {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 11px;
+  border-left: 1px solid var(--line);
   display: grid;
-  gap: 3px;
+  gap: 1px;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 5px 9px;
+}
+
+.snmp-monitor-summary > div:first-child {
+  border-left: 0;
+  padding-left: 0;
 }
 
 .snmp-monitor-summary span {
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: 0.66rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1583,20 +1587,21 @@ button.danger {
 
 .snmp-monitor-summary small {
   color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .snmp-monitor-chart-wrap {
   background: color-mix(in srgb, var(--panel), var(--bg) 32%);
   border: 1px solid var(--line);
   border-radius: 12px;
-  min-height: 280px;
-  padding: 14px;
+  min-height: 190px;
+  padding: 8px 9px 5px;
   position: relative;
 }
 
 .snmp-monitor-chart {
   display: block;
-  height: 250px;
+  height: 160px;
   width: 100%;
 }
 
@@ -1615,7 +1620,56 @@ button.danger {
   display: flex;
   gap: 18px;
   justify-content: flex-end;
-  min-height: 20px;
+  font-size: 0.72rem;
+  min-height: 16px;
+}
+
+.snmp-monitor-view-options {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.snmp-monitor-history-navigation {
+  border-top: 1px solid var(--line);
+  margin-bottom: 12px;
+  padding-top: 8px;
+}
+
+.snmp-monitor-history-navigation > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-weight: 800;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.snmp-monitor-history-navigation > summary small,
+.snmp-monitor-history-scale {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.snmp-monitor-history-content {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  margin-top: 10px;
+}
+
+.snmp-monitor-history-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.snmp-monitor-history-actions {
+  align-items: end;
+  display: flex;
+  gap: 8px;
 }
 
 .snmp-monitor-legend span::before {
@@ -6332,8 +6386,14 @@ th {
     padding: 12px;
   }
 
+  .snmp-monitor-targets,
+  .snmp-monitor-history-content,
+  .snmp-monitor-view-options {
+    grid-template-columns: 1fr;
+  }
+
   .snmp-monitor-target {
-    padding: 12px;
+    padding: 10px;
   }
 
   .snmp-monitor-summary {
@@ -6346,6 +6406,11 @@ th {
 
   .snmp-monitor-chart-wrap {
     padding-inline: 8px;
+  }
+
+  .snmp-monitor-history-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .grid.two,

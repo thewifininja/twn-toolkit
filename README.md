@@ -112,8 +112,10 @@ The sidebar and Network Tools page use the same functional organization.
   server and validate dates, hostname, order, intermediates, and local trust.
 - **SNMP Tester** — manage reusable SNMPv2c/SNMPv3 credentials, hosts, and OID
   collections for GET and subtree-walk tests; build a live monitor set of up
-  to 20 IF-MIB interfaces across saved hosts, each with an adaptive mirrored
-  inbound/download and outbound/upload graph.
+  to 20 IF-MIB interfaces across saved hosts. Compact filled graphs place
+  inbound/download above a traffic-weighted zero line and outbound/upload
+  below it; polling intervals and a shared scrollable history window can be
+  changed without discarding collected samples.
 - **Webhook / API Tester** — send bounded HTTP requests and inspect status,
   timing, headers, and response content without following redirects.
 - **Syslog Tools** — generate RFC 5424 messages or briefly collect bounded UDP

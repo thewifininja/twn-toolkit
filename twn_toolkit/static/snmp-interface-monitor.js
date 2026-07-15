@@ -8,6 +8,12 @@
   const interfaceSelect = root.querySelector(".snmp-monitor-interface");
   const addButton = root.querySelector(".snmp-monitor-add");
   const intervalSelect = root.querySelector(".snmp-monitor-interval");
+  const windowSelect = root.querySelector(".snmp-monitor-window");
+  const historyPosition = root.querySelector(".snmp-monitor-history-position");
+  const historySummary = root.querySelector(".snmp-monitor-history-summary");
+  const historyOlder = root.querySelector(".snmp-monitor-history-older");
+  const historyLive = root.querySelector(".snmp-monitor-history-live");
+  const historyNewer = root.querySelector(".snmp-monitor-history-newer");
   const startButton = root.querySelector(".snmp-monitor-start");
   const stopButton = root.querySelector(".snmp-monitor-stop");
   const clearButton = root.querySelector(".snmp-monitor-clear");
@@ -21,8 +27,10 @@
   let discoveredHost = null;
   let running = false;
   let timer = null;
-  let nextPollAt = 0;
   let pollController = null;
+  let pollInFlight = false;
+  let historyEndAt = null;
+  const MAX_POINTS = 10000;
 
   const postJson = async (url, payload, signal) => {
     const response = await fetch(url, {
@@ -54,6 +62,13 @@
   };
 
   const formatSpeed = (value) => value ? formatRate(value) : "Speed unavailable";
+  const formatDuration = (milliseconds) => {
+    const minutes = milliseconds / 60000;
+    if (minutes < 1) return `${Math.round(milliseconds / 1000)} seconds`;
+    if (minutes === 1) return "1 minute";
+    if (minutes < 60) return `${minutes} minutes`;
+    return minutes === 60 ? "1 hour" : `${minutes / 60} hours`;
+  };
   const formatPercent = (rate, speed) => speed ? `${Math.min(999, rate / speed * 100).toFixed(2)}% of link speed` : "Link speed unavailable";
   const targetKey = (hostName, interfaceIndex) => `${hostName}::${interfaceIndex}`;
   const interfaceName = (item) => item.name || item.description || `Interface ${item.index}`;
@@ -173,6 +188,7 @@
     targets.set(key, target);
     targetList.append(createTargetCard(target));
     updateSetControls();
+    updateHistoryControls();
     setStatus(`Added ${target.hostName} / ${target.label}. Select another host or interface, or start monitoring.`, "success");
     drawChart(target);
   };
@@ -184,6 +200,8 @@
     target.ui.card.remove();
     targets.delete(key);
     updateSetControls();
+    updateHistoryControls();
+    drawAllCharts();
     setStatus(targets.size ? `${targets.size} interface(s) remain in the monitor set.` : "The monitor set is empty.");
   };
 
@@ -242,7 +260,7 @@
     const outboundRate = Number(outputDelta) * 8 / elapsed;
     const speed = sample.speed_bps || target.interface.speed_bps || null;
     target.points.push({at: sample.sampled_at_ms, inbound: inboundRate, outbound: outboundRate});
-    if (target.points.length > 3600) target.points.shift();
+    if (target.points.length > MAX_POINTS) target.points.splice(0, target.points.length - MAX_POINTS);
     ui.inbound.value.textContent = formatRate(inboundRate);
     ui.inbound.secondary.textContent = formatPercent(inboundRate, speed);
     ui.outbound.value.textContent = formatRate(outboundRate);
@@ -271,8 +289,58 @@
 
   const clearGraphs = () => {
     targets.forEach(resetTarget);
+    historyEndAt = null;
     updateSetControls();
+    updateHistoryControls();
     setStatus("Graphs and counter baselines cleared. Monitoring will establish fresh baselines on the next poll.");
+  };
+
+  const historyBounds = () => {
+    const populated = [...targets.values()].filter((target) => target.points.length);
+    if (!populated.length) return null;
+    return {
+      earliest: Math.min(...populated.map((target) => target.points[0].at)),
+      latest: Math.max(...populated.map((target) => target.points.at(-1).at)),
+    };
+  };
+
+  const visiblePoints = (target) => {
+    const bounds = historyBounds();
+    if (!bounds) return [];
+    const windowMs = Number(windowSelect.value);
+    const end = historyEndAt ?? bounds.latest;
+    const start = end - windowMs;
+    return target.points.filter((point) => point.at >= start && point.at <= end);
+  };
+
+  const updateHistoryControls = () => {
+    const bounds = historyBounds();
+    const windowMs = Number(windowSelect.value);
+    const canNavigate = Boolean(bounds && bounds.latest - bounds.earliest > windowMs);
+    const live = historyEndAt == null;
+    historyPosition.disabled = !canNavigate;
+    historyOlder.disabled = !canNavigate;
+    historyNewer.disabled = !canNavigate || live;
+    historyLive.disabled = live || !bounds;
+    if (!bounds) {
+      historyPosition.value = "1000";
+      historySummary.textContent = `Live · last ${formatDuration(windowMs)}`;
+      return;
+    }
+    const end = historyEndAt ?? bounds.latest;
+    const span = Math.max(1, bounds.latest - bounds.earliest);
+    historyPosition.value = String(Math.round((end - bounds.earliest) / span * 1000));
+    historySummary.textContent = live
+      ? `Live · last ${formatDuration(windowMs)}`
+      : `Ending ${new Date(end).toLocaleString()} · ${formatDuration(windowMs)}`;
+  };
+
+  const setHistoryEnd = (value) => {
+    const bounds = historyBounds();
+    if (!bounds) return;
+    historyEndAt = value >= bounds.latest ? null : Math.max(bounds.earliest, value);
+    updateHistoryControls();
+    drawAllCharts();
   };
 
   const niceScale = (maximum) => {
@@ -287,7 +355,7 @@
     const canvas = target.ui.canvas;
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(300, rect.width);
-    const height = Math.max(250, rect.height);
+    const height = Math.max(160, rect.height);
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
@@ -298,18 +366,24 @@
     const muted = styles.getPropertyValue("--muted").trim() || "#617069";
     const inboundColor = styles.getPropertyValue("--brand-green").trim() || "#2da747";
     const outboundColor = styles.getPropertyValue("--brand-red").trim() || "#db3c46";
-    const padding = {left: 72, right: 18, top: 20, bottom: 34};
+    const padding = {left: 66, right: 12, top: 18, bottom: 28};
     const plotWidth = width - padding.left - padding.right;
     const plotHeight = height - padding.top - padding.bottom;
-    const centerY = padding.top + plotHeight / 2;
-    const maximum = Math.max(1, ...target.points.flatMap((point) => [point.inbound, point.outbound]));
-    const scale = niceScale(maximum);
+    const points = visiblePoints(target);
+    const maxInbound = Math.max(0, ...points.map((point) => point.inbound));
+    const maxOutbound = Math.max(0, ...points.map((point) => point.outbound));
+    const totalMaximum = maxInbound + maxOutbound;
+    const inboundShare = totalMaximum > 0 ? maxInbound / totalMaximum : 0.5;
+    const inboundHeightShare = Math.max(0.2, Math.min(0.8, inboundShare));
+    const centerY = padding.top + plotHeight * inboundHeightShare;
+    const inboundScale = niceScale(maxInbound);
+    const outboundScale = niceScale(maxOutbound);
 
     context.font = "12px system-ui, sans-serif";
     context.fillStyle = muted;
     context.strokeStyle = line;
     context.lineWidth = 1;
-    [0, 0.5, 1].forEach((position) => {
+    [0, inboundHeightShare, 1].forEach((position) => {
       const y = padding.top + plotHeight * position;
       context.beginPath();
       context.moveTo(padding.left, y);
@@ -321,30 +395,45 @@
     context.moveTo(padding.left, centerY);
     context.lineTo(width - padding.right, centerY);
     context.stroke();
-    context.fillText(formatRate(scale), 4, padding.top + 4);
+    context.fillText(formatRate(inboundScale), 4, padding.top + 4);
     context.fillText("0 bps", 4, centerY + 4);
-    context.fillText(formatRate(scale), 4, padding.top + plotHeight + 4);
+    context.fillText(formatRate(outboundScale), 4, padding.top + plotHeight + 4);
     context.fillText("IN", padding.left + 8, padding.top + 15);
     context.fillText("OUT", padding.left + 8, centerY + 18);
 
-    if (!target.points.length) return;
-    const drawLine = (key, direction, color) => {
+    if (!points.length) return;
+    const windowMs = Number(windowSelect.value);
+    const latest = historyEndAt ?? historyBounds()?.latest ?? points.at(-1).at;
+    const earliest = latest - windowMs;
+    const xFor = (point) => padding.left + Math.max(0, Math.min(1, (point.at - earliest) / windowMs)) * plotWidth;
+    const drawArea = (key, direction, color, scale, availableHeight) => {
+      const coordinates = points.map((point) => ({
+        x: xFor(point),
+        y: centerY + direction * Math.min(point[key], scale) / scale * availableHeight,
+      }));
+      context.save();
+      context.fillStyle = color;
+      context.globalAlpha = 0.22;
+      context.beginPath();
+      context.moveTo(coordinates[0].x, centerY);
+      coordinates.forEach(({x, y}) => context.lineTo(x, y));
+      context.lineTo(coordinates.at(-1).x, centerY);
+      context.closePath();
+      context.fill();
+      context.restore();
       context.strokeStyle = color;
-      context.lineWidth = 2.5;
+      context.lineWidth = 2;
       context.lineJoin = "round";
       context.beginPath();
-      target.points.forEach((point, index) => {
-        const x = padding.left + (target.points.length === 1 ? plotWidth : plotWidth * index / (target.points.length - 1));
-        const magnitude = Math.min(point[key], scale) / scale * plotHeight / 2;
-        const y = centerY + direction * magnitude;
+      coordinates.forEach(({x, y}, index) => {
         if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
       });
       context.stroke();
     };
-    drawLine("inbound", -1, inboundColor);
-    drawLine("outbound", 1, outboundColor);
-    const first = new Date(target.points[0].at).toLocaleTimeString();
-    const last = new Date(target.points.at(-1).at).toLocaleTimeString();
+    drawArea("inbound", -1, inboundColor, inboundScale, centerY - padding.top);
+    drawArea("outbound", 1, outboundColor, outboundScale, padding.top + plotHeight - centerY);
+    const first = new Date(earliest).toLocaleTimeString();
+    const last = new Date(latest).toLocaleTimeString();
     context.fillStyle = muted;
     context.fillText(first, padding.left, height - 8);
     const measured = context.measureText(last).width;
@@ -356,13 +445,13 @@
   const schedulePoll = () => {
     if (!running) return;
     const intervalMs = Number(intervalSelect.value) * 1000;
-    if (!nextPollAt) nextPollAt = Date.now();
-    nextPollAt += intervalMs;
-    timer = window.setTimeout(poll, Math.max(0, nextPollAt - Date.now()));
+    window.clearTimeout(timer);
+    timer = window.setTimeout(poll, intervalMs);
   };
 
   const poll = async () => {
-    if (!running) return;
+    if (!running || pollInFlight) return;
+    pollInFlight = true;
     const entries = [...targets.values()];
     pollController = new AbortController();
     let successes = 0;
@@ -397,11 +486,14 @@
       }
     } finally {
       pollController = null;
+      pollInFlight = false;
     }
     if (running) {
       const detail = failures ? ` ${failures} interface(s) could not be polled.` : "";
       setStatus(`Monitoring ${targets.size} interface(s). ${successes} responded on the latest round.${detail}`, failures ? "error" : "success");
       updateSetControls();
+      updateHistoryControls();
+      drawAllCharts();
       schedulePoll();
     }
   };
@@ -409,7 +501,6 @@
   const setRunningControls = (isRunning) => {
     hostSelect.disabled = isRunning;
     interfaceSelect.disabled = isRunning;
-    intervalSelect.disabled = isRunning;
     discoverButton.disabled = isRunning;
     selection.querySelectorAll("button").forEach((button) => { button.disabled = isRunning; });
     updateSetControls();
@@ -463,13 +554,45 @@
 
   interfaceSelect.addEventListener("change", updateSetControls);
   addButton.addEventListener("click", addTarget);
+  intervalSelect.addEventListener("change", () => {
+    if (!running) return;
+    if (!pollInFlight) schedulePoll();
+    const seconds = Number(intervalSelect.value);
+    setStatus(`Polling interval changed to every ${seconds} second${seconds === 1 ? "" : "s"}. Existing history was retained.`, "success");
+  });
+  windowSelect.addEventListener("change", () => {
+    updateHistoryControls();
+    drawAllCharts();
+  });
+  historyPosition.addEventListener("input", () => {
+    const bounds = historyBounds();
+    if (!bounds) return;
+    const fraction = Number(historyPosition.value) / 1000;
+    setHistoryEnd(bounds.earliest + (bounds.latest - bounds.earliest) * fraction);
+  });
+  historyOlder.addEventListener("click", () => {
+    const bounds = historyBounds();
+    if (!bounds) return;
+    const windowMs = Number(windowSelect.value);
+    setHistoryEnd((historyEndAt ?? bounds.latest) - windowMs);
+  });
+  historyNewer.addEventListener("click", () => {
+    const bounds = historyBounds();
+    if (!bounds) return;
+    setHistoryEnd((historyEndAt ?? bounds.latest) + Number(windowSelect.value));
+  });
+  historyLive.addEventListener("click", () => {
+    historyEndAt = null;
+    updateHistoryControls();
+    drawAllCharts();
+  });
   startButton.addEventListener("click", async () => {
     if (!targets.size || running) return;
     try {
       await postJson(root.dataset.startUrl, monitorPayload());
       targets.forEach(resetTarget);
       running = true;
-      nextPollAt = 0;
+      historyEndAt = null;
       setRunningControls(true);
       setStatus(`Starting monitor set for ${targets.size} interface(s)…`);
       await poll();
@@ -489,5 +612,6 @@
     window.clearTimeout(timer);
     pollController?.abort();
   });
+  updateHistoryControls();
   updateSetControls();
 })();

@@ -253,12 +253,38 @@
   <div class="snmp-monitor-set" hidden>
     <div class="snmp-monitor-set-head">
       <div><h3>Monitor set</h3><p><span class="snmp-monitor-count">0</span> of 20 interfaces selected</p></div>
-      <label>Polling interval
-        <select class="snmp-monitor-interval">
-          {% for seconds in [1, 5, 10, 15, 30, 60] %}<option value="{{ seconds }}" {% if seconds == 5 %}selected{% endif %}>Every {{ seconds }} second{{ '' if seconds == 1 else 's' }}</option>{% endfor %}
-        </select>
-      </label>
+      <div class="snmp-monitor-view-options">
+        <label>Polling interval
+          <select class="snmp-monitor-interval">
+            {% for seconds in [1, 5, 10, 15, 30, 60] %}<option value="{{ seconds }}" {% if seconds == 5 %}selected{% endif %}>Every {{ seconds }} second{{ '' if seconds == 1 else 's' }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Visible time range
+          <select class="snmp-monitor-window">
+            <option value="60000">1 minute</option>
+            <option value="120000">2 minutes</option>
+            <option value="300000" selected>5 minutes</option>
+            <option value="900000">15 minutes</option>
+            <option value="1800000">30 minutes</option>
+            <option value="3600000">1 hour</option>
+          </select>
+        </label>
+      </div>
     </div>
+    <details class="snmp-monitor-history-navigation">
+      <summary><span>History navigation</span><small class="snmp-monitor-history-summary">Live · last 5 minutes</small></summary>
+      <div class="snmp-monitor-history-content">
+        <label>History position
+          <input class="snmp-monitor-history-position" type="range" min="0" max="1000" value="1000" disabled>
+          <span class="snmp-monitor-history-scale"><span>Oldest</span><span>Newest</span></span>
+        </label>
+        <div class="snmp-monitor-history-actions">
+          <button class="secondary snmp-monitor-history-older" type="button" disabled>← Older window</button>
+          <button class="secondary snmp-monitor-history-live" type="button" disabled>Return to live</button>
+          <button class="secondary snmp-monitor-history-newer" type="button" disabled>Newer window →</button>
+        </div>
+      </div>
+    </details>
     <div class="snmp-monitor-targets"></div>
     <div class="button-row snmp-monitor-actions">
       <button class="snmp-monitor-start" type="button">Start monitoring</button>
