@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved
+from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
 from .network_tools import ToolInputError, parse_ping_targets
 from .ntp_tools import test_ntp_servers
 from .profiles import NTPHostProfileStore
@@ -42,6 +42,16 @@ def register_ntp_routes(tools_bp: Blueprint) -> None:
                     f"{len(targets)} server(s), {query_count} sample(s)",
                     counters={"ntp": {"queries": query_count}},
                 )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="ntp.test",
+                tool_name="NTP test",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "server count": len(targets) if not error else 0,
+                    "sample count": query_count if not error else 0,
+                },
+            )
         return render_template(
             "tools/ntp_test.html",
             error=error,

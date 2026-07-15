@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from twn_toolkit import create_app
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.datastore import LocalDatastore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.sftp_tools import (
@@ -206,6 +207,13 @@ class SftpRouteTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             store = LocalDatastore(instance)
             self.assertEqual(store.file("20260712153000-switch-config.cfg").read_bytes(), b"config")
+            event = AuditStore(instance).recent(1)[0]
+            audit_database = Path(instance, "audit.sqlite3").read_bytes()
+            self.assertEqual(event["action"], "transfer.multi_host_fetch.run_succeeded")
+            self.assertEqual(event["details"]["protocol"], "sftp")
+            self.assertEqual(event["details"]["successful transfer count"], 1)
+            self.assertNotIn(b"secret", audit_database)
+            self.assertNotIn(b"/config.cfg", audit_database)
 
     def test_download_mode_returns_ephemeral_zip(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

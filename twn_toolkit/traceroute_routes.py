@@ -13,7 +13,7 @@ from flask import (
 )
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved
+from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
 from .network_tools import ToolInputError, parse_ping_targets
 from .profiles import TracerouteHostProfileStore
 from .traceroute_tools import prepare_traceroute, run_traceroute, stream_traceroute
@@ -83,6 +83,18 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
                     hops=int(result.get("hop_count", 0)),
                     count_action=True,
                 )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="traceroute",
+                tool_name="traceroute",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "address family": form["family"],
+                    "method": form["method"],
+                    "hop count": int(result.get("hop_count", 0)) if result else 0,
+                    "destination reached": bool(result and result.get("reached")),
+                },
+            )
         return render_template(
             "tools/traceroute.html",
             error=error,

@@ -756,6 +756,15 @@ class NetworkToolTests(unittest.TestCase):
                 ssh_run.call_args.kwargs["hosts"],
                 [{"label": "Closet Switch", "host": "switch-1"}],
             )
+            ssh_event = AuditStore(instance).recent(1)[0]
+            audit_database = Path(instance, "audit.sqlite3").read_bytes()
+            self.assertEqual(
+                ssh_event["action"], "ssh.multi_host_execution.run_succeeded"
+            )
+            self.assertEqual(ssh_event["details"]["host count"], 1)
+            self.assertEqual(ssh_event["details"]["command count"], 1)
+            self.assertNotIn(b"not-rendered", audit_database)
+            self.assertNotIn(b"show version", audit_database)
             summary = ActivityStore(instance).summary()
             self.assertEqual(summary["counters"]["ip"]["lookups"], 1)
             self.assertEqual(summary["counters"]["speedtest"]["runs"], 1)

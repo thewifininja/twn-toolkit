@@ -12,6 +12,7 @@ from pathlib import Path
 from flask import Blueprint, current_app, g, redirect, render_template, request, send_file, url_for
 
 from .activity_context import record_current_activity
+from .audit import annotate_tool_run, suppress_audit_event
 from .datastore import DatastoreError, LocalDatastore, format_bytes
 from .network_tools import ToolInputError, parse_ssh_targets
 from .transfer_tools import (
@@ -40,6 +41,8 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
         }
         results: list[dict[str, object]] | None = None
         error = ""
+        host_count = 0
+        path_count = 0
         if request.method == "GET":
             snapshot = _take_download_results(
                 current_app.instance_path,
@@ -66,6 +69,8 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
             try:
                 hosts = parse_ssh_targets(str(form["hosts"]), limit=50)
                 paths = parse_sftp_paths(str(form["remote_paths"]))
+                host_count = len(hosts)
+                path_count = len(paths)
                 port = int(str(form["port"]))
                 filename_pattern = validate_sftp_filename_pattern(str(form["filename_pattern"]))
                 if form["protocol"] not in {"sftp", "scp", "ftp"}:
@@ -94,6 +99,15 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                             f"Fetched files with Multi-Transfer ({str(form['protocol']).upper()})",
                             f"{len(successes)} of {len(results)} transfer(s)",
                             counters={str(form["protocol"]): {"files": len(successes), "bytes": sum(int(item["size"]) for item in successes)}},
+                        )
+                        annotate_tool_run(
+                            category="Network tools",
+                            action_namespace="transfer.multi_host_fetch",
+                            tool_name="Multi-Transfer",
+                            outcome="succeeded" if successes else "failed",
+                            details=_transfer_audit_details(
+                                form, results, successes, host_count, path_count
+                            ),
                         )
                         if successes:
                             archive = _build_archive(output_dir, results)
@@ -138,9 +152,30 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                         f"{len(successes)} of {len(results)} transfer(s)",
                         counters={str(form["protocol"]): {"files": len(successes), "bytes": sum(int(item["size"]) for item in successes)}},
                     )
+                    annotate_tool_run(
+                        category="Network tools",
+                        action_namespace="transfer.multi_host_fetch",
+                        tool_name="Multi-Transfer",
+                        outcome="succeeded" if successes else "failed",
+                        details=_transfer_audit_details(
+                            form, results, successes, host_count, path_count
+                        ),
+                    )
             except (ToolInputError, DatastoreError, OSError, ValueError) as exc:
                 error = str(exc) or "Enter a valid SFTP port."
                 record_current_activity("Network tools", "Ran Multi-Transfer", "Request failed")
+                annotate_tool_run(
+                    category="Network tools",
+                    action_namespace="transfer.multi_host_fetch",
+                    tool_name="Multi-Transfer",
+                    outcome="failed",
+                    details={
+                        "protocol": str(form["protocol"]),
+                        "output mode": str(form["output_mode"]),
+                        "host count": host_count,
+                        "remote path count": path_count,
+                    },
+                )
         for result in results or []:
             result["size_display"] = format_bytes(int(result.get("size", 0)))
         return render_template(
@@ -153,6 +188,7 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.route("/multi-sftp", methods=["GET", "POST"])
     def multi_sftp():
+        suppress_audit_event()
         return redirect(
             url_for("tools.multi_transfer", protocol="sftp"),
             code=307 if request.method == "POST" else 302,
@@ -175,6 +211,24 @@ def _build_archive(output_dir: Path, results: list[dict[str, object]]) -> io.Byt
         bundle.writestr("multi-transfer-report.txt", "\n".join(report) + "\n")
     archive.seek(0)
     return archive
+
+
+def _transfer_audit_details(
+    form: dict[str, object],
+    results: list[dict[str, object]],
+    successes: list[dict[str, object]],
+    host_count: int,
+    path_count: int,
+) -> dict[str, object]:
+    return {
+        "protocol": str(form["protocol"]),
+        "output mode": str(form["output_mode"]),
+        "host count": host_count,
+        "remote path count": path_count,
+        "transfer count": len(results),
+        "successful transfer count": len(successes),
+        "transferred byte count": sum(int(item["size"]) for item in successes),
+    }
 
 
 def _download_result_directory(instance_path: str) -> Path:

@@ -9,6 +9,7 @@ from .audit import (
     annotate_audit_event,
     annotate_profile_deleted,
     annotate_profile_saved,
+    annotate_tool_run,
     suppress_audit_event,
 )
 from .network_tools import ToolInputError, validate_hosts
@@ -106,6 +107,23 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
                             polls=len(results),
                             count_action=True,
                         )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="snmp.test",
+                tool_name="SNMP test",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "host count": len(selected_hosts),
+                    "OID profile count": len(selected_oid_profiles),
+                    "poll count": len(results or []),
+                    "failed poll count": sum(
+                        1 for result in results or [] if result.get("status") == "error"
+                    ),
+                    "returned value count": sum(
+                        len(result.get("rows", [])) for result in results or []
+                    ),
+                },
+            )
         credentials = credential_store.all()
         return render_template(
             "tools/snmp_test.html",

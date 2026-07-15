@@ -182,6 +182,26 @@ def annotate_profile_tested(
     )
 
 
+def annotate_tool_run(
+    *,
+    category: str,
+    action_namespace: str,
+    tool_name: str,
+    outcome: str,
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Record a bounded operator-initiated tool run without inputs or output bodies."""
+    annotate_audit_event(
+        category=category,
+        action=f"{action_namespace}.run_{outcome}",
+        summary=f"Ran {tool_name}: {outcome}.",
+        resource_type="operator_tool",
+        resource_id=action_namespace,
+        resource_name=tool_name,
+        details={"outcome": outcome, **(details or {})},
+    )
+
+
 class AuditStore:
     def __init__(self, instance_path: str) -> None:
         self.path = Path(instance_path) / "audit.sqlite3"

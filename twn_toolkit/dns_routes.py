@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved
+from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
 from .network_tools import (
     ToolInputError,
     dns_lookup_matrix,
@@ -44,6 +44,18 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
                     f"{len(hosts)} host(s) across {len(servers)} resolver(s)",
                     counters={"dns": {"queries": len(results)}},
                 )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="dns.lookup",
+                tool_name="DNS lookup",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "host count": len(hosts) if not error else 0,
+                    "resolver count": len(servers) if not error else 0,
+                    "query count": len(results or []),
+                    "record type": form["record_type"],
+                },
+            )
         return render_template(
             "tools/dns_response.html",
             error=error,

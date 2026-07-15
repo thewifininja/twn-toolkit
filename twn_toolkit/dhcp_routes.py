@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, render_template, request
 
 from .activity_context import record_current_activity
+from .audit import annotate_tool_run
 from .dhcp_tools import (
     DEFAULT_PARAMETER_REQUEST_LIST,
     DHCP_OPTIONS,
@@ -59,6 +60,16 @@ def register_dhcp_routes(tools_bp: Blueprint) -> None:
                     f"{form['interface']}: {len(offers)} offer(s)",
                     counters={"dhcp": {"discovers": 1, "offers": len(offers)}},
                 )
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="dhcp.discover",
+                tool_name="DHCP discovery",
+                outcome="failed" if error else "succeeded",
+                details={
+                    "requested option count": len(requested_codes),
+                    "offer count": len(offers or []),
+                },
+            )
         return render_template(
             "tools/dhcp_discover.html",
             error=error,
