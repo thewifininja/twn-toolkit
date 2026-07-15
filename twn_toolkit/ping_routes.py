@@ -3,7 +3,12 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import increment_current_activity, record_current_activity
-from .audit import annotate_audit_event, suppress_audit_event
+from .audit import (
+    annotate_audit_event,
+    annotate_profile_deleted,
+    annotate_profile_saved,
+    suppress_audit_event,
+)
 from .network_tools import (
     ToolInputError,
     parse_ping_targets,
@@ -128,7 +133,16 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": str(exc) or "Enter a valid interval."}), 400
 
         profile = {"name": name, "targets": targets, "interval": interval}
-        _ping_profile_store().upsert(profile, original_name=original_name)
+        store = _ping_profile_store()
+        before = store.get(original_name or name)
+        store.upsert(profile, original_name=original_name)
+        annotate_profile_saved(
+            category="Network tools",
+            action_namespace="ping",
+            profile_type="Ping profile",
+            before=before,
+            after=profile,
+        )
         return jsonify({"profile": profile})
 
     @tools_bp.post("/ping/profiles/delete")
@@ -137,8 +151,16 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
         name = str(payload.get("name", "")).strip()
         if not name:
             return jsonify({"error": "Select a profile to delete."}), 400
-        if not _ping_profile_store().delete(name):
+        store = _ping_profile_store()
+        profile = store.get(name)
+        if not profile or not store.delete(name):
             return jsonify({"error": "Profile not found."}), 404
+        annotate_profile_deleted(
+            category="Network tools",
+            action_namespace="ping",
+            profile_type="Ping profile",
+            profile=profile,
+        )
         return jsonify({"deleted": name})
 
 

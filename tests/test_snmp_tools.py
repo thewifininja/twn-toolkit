@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.snmp_tools import (
     _append_calculated_rows,
@@ -168,6 +170,29 @@ class SNMPToolTests(unittest.TestCase):
                 },
             )
             self.assertEqual(response.status_code, 200)
+            events = AuditStore(instance).recent(3)
+            self.assertEqual(
+                [event["action"] for event in events],
+                [
+                    "snmp.oids.profile_created",
+                    "snmp.hosts.profile_created",
+                    "snmp.credentials.profile_created",
+                ],
+            )
+            credential_event = events[2]
+            self.assertTrue(credential_event["details"]["credential updated"])
+            self.assertIn(
+                {
+                    "field": "configured sensitive fields",
+                    "before": None,
+                    "after": ["community"],
+                },
+                credential_event["details"]["changes"],
+            )
+            self.assertNotIn(
+                b"private-community",
+                Path(instance, "audit.sqlite3").read_bytes(),
+            )
             page = client.get("/tools/snmp-test")
             self.assertIn(b"Core Switch", page.data)
             self.assertIn(b"Names", page.data)
@@ -178,6 +203,21 @@ class SNMPToolTests(unittest.TestCase):
                 data={"name": "Lab v2"},
             )
             self.assertEqual(blocked.status_code, 409)
+            self.assertEqual(len(AuditStore(instance).recent(10)), 3)
+
+            response = client.post(
+                "/tools/snmp-test/profiles/credentials",
+                data={
+                    "original_name": "Lab v2",
+                    "name": "Lab v2",
+                    "version": "v2c",
+                    "community": "",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            update_event = AuditStore(instance).recent(1)[0]
+            self.assertEqual(update_event["action"], "snmp.credentials.profile_updated")
+            self.assertFalse(update_event["details"]["credential updated"])
 
             fake_results = [
                 {

@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
+from .audit import annotate_profile_deleted, annotate_profile_saved
 from .network_tools import ToolInputError, parse_ping_targets
 from .ntp_tools import test_ntp_servers
 from .profiles import NTPHostProfileStore
@@ -61,12 +62,29 @@ def register_ntp_routes(tools_bp: Blueprint) -> None:
         except ToolInputError as exc:
             return jsonify({"error": str(exc)}), 400
         profile = {"name": name, "values": values, "targets": targets, "count": len(targets)}
-        NTPHostProfileStore(current_app.instance_path).upsert(profile, original_name=original_name)
+        store = NTPHostProfileStore(current_app.instance_path)
+        before = store.get(original_name or name)
+        store.upsert(profile, original_name=original_name)
+        annotate_profile_saved(
+            category="Network tools",
+            action_namespace="ntp",
+            profile_type="NTP host profile",
+            before=before,
+            after=profile,
+        )
         return jsonify({"profile": profile})
 
     @tools_bp.post("/ntp-test/profiles/delete")
     def delete_ntp_profile():
         name = request.form.get("name", "").strip()
-        if not NTPHostProfileStore(current_app.instance_path).delete(name):
+        store = NTPHostProfileStore(current_app.instance_path)
+        profile = store.get(name)
+        if not profile or not store.delete(name):
             return jsonify({"error": "Profile not found."}), 404
+        annotate_profile_deleted(
+            category="Network tools",
+            action_namespace="ntp",
+            profile_type="NTP host profile",
+            profile=profile,
+        )
         return jsonify({"deleted": name})

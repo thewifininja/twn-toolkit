@@ -19,7 +19,13 @@ from flask import (
 )
 
 from .activity_context import record_current_activity
-from .audit import annotate_audit_event, audit_reference
+from .audit import (
+    annotate_audit_event,
+    annotate_profile_deleted,
+    annotate_profile_saved,
+    annotate_profile_tested,
+    audit_reference,
+)
 from .fortiauthenticator import (
     FortiAuthenticatorClient,
     FortiAuthenticatorError,
@@ -149,23 +155,38 @@ def register_fortiauthenticator_routes(
         if existing_profile and original_name != name:
             profile_store.delete(original_name)
 
-        profile_store.upsert(
-            {
-                "name": name,
-                "host": host,
-                "username": username,
-                "password": password if password else existing_profile["password"],
-                "verify_tls": verify_tls,
-                "timeout": timeout,
-                "is_default": is_default,
-            }
+        saved_profile = {
+            "name": name,
+            "host": host,
+            "username": username,
+            "password": password if password else existing_profile["password"],
+            "verify_tls": verify_tls,
+            "timeout": timeout,
+            "is_default": is_default,
+        }
+        profile_store.upsert(saved_profile)
+        annotate_profile_saved(
+            category="FortiAuthenticator",
+            action_namespace="fortiauthenticator",
+            profile_type="FortiAuthenticator profile",
+            before=existing_profile,
+            after=saved_profile,
+            credential_updated=bool(password),
         )
         flash(f"Saved FortiAuthenticator profile '{name}'.", "success")
         return redirect(url_for("fortiauthenticator_home"))
 
     @app.post("/fortiauthenticator/profiles/<name>/delete")
     def delete_fortiauthenticator_profile(name: str):
-        profile_store.delete(name)
+        profile = profile_store.get(name)
+        if profile:
+            profile_store.delete(name)
+            annotate_profile_deleted(
+                category="FortiAuthenticator",
+                action_namespace="fortiauthenticator",
+                profile_type="FortiAuthenticator profile",
+                profile=profile,
+            )
         flash(f"Deleted FortiAuthenticator profile '{name}'.", "success")
         return redirect(url_for("fortiauthenticator_home"))
 
@@ -184,6 +205,14 @@ def register_fortiauthenticator_routes(
                 f"{name}: connection failed",
                 failures=1,
             )
+            annotate_profile_tested(
+                category="FortiAuthenticator",
+                action_namespace="fortiauthenticator",
+                profile_type="FortiAuthenticator profile",
+                profile=profile,
+                outcome="failed",
+                status_code=exc.status_code,
+            )
             flash(f"Connection failed: {exc}", "error")
         else:
             total = result.get("meta", {}).get("total_count")
@@ -192,6 +221,13 @@ def register_fortiauthenticator_routes(
             if total is not None:
                 detail = f"{name}: {total} MAC devices available"
             _record_fortinet_api_activity("Tested FortiAuthenticator profile", detail)
+            annotate_profile_tested(
+                category="FortiAuthenticator",
+                action_namespace="fortiauthenticator",
+                profile_type="FortiAuthenticator profile",
+                profile=profile,
+                outcome="succeeded",
+            )
             flash(f"Connection to '{name}' succeeded{suffix}", "success")
         return redirect(url_for("fortiauthenticator_home"))
 

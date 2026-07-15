@@ -17,7 +17,14 @@ from flask import (
 )
 
 from .activity_context import record_current_activity
-from .audit import annotate_audit_event, audit_reference, suppress_audit_event
+from .audit import (
+    annotate_audit_event,
+    annotate_profile_deleted,
+    annotate_profile_saved,
+    annotate_profile_tested,
+    audit_reference,
+    suppress_audit_event,
+)
 from .fortigate import FortiGateClient, FortiGateError, normalize_api_key, normalize_host
 from .fortiap_history import (
     LocalFortiGateWirelessHistorySource,
@@ -456,22 +463,37 @@ def register_fortigate_routes(
         if existing_profile and original_name != name:
             profile_store.delete(original_name)
 
-        profile_store.upsert(
-            {
-                "name": name,
-                "host": host,
-                "api_key": normalize_api_key(api_key) if api_key else existing_profile["api_key"],
-                "verify_tls": verify_tls,
-                "is_default": is_default,
-                "default_vdom": default_vdom,
-            }
+        saved_profile = {
+            "name": name,
+            "host": host,
+            "api_key": normalize_api_key(api_key) if api_key else existing_profile["api_key"],
+            "verify_tls": verify_tls,
+            "is_default": is_default,
+            "default_vdom": default_vdom,
+        }
+        profile_store.upsert(saved_profile)
+        annotate_profile_saved(
+            category="FortiGate",
+            action_namespace="fortigate",
+            profile_type="FortiGate profile",
+            before=existing_profile,
+            after=saved_profile,
+            credential_updated=bool(api_key),
         )
         flash(f"Saved profile '{name}'.", "success")
         return redirect(url_for("fortigate_home"))
 
     @app.post("/profiles/<name>/delete")
     def delete_profile(name: str):
-        profile_store.delete(name)
+        profile = profile_store.get(name)
+        if profile:
+            profile_store.delete(name)
+            annotate_profile_deleted(
+                category="FortiGate",
+                action_namespace="fortigate",
+                profile_type="FortiGate profile",
+                profile=profile,
+            )
         flash(f"Deleted profile '{name}'.", "success")
         return redirect(url_for("fortigate_home"))
 
@@ -491,12 +513,27 @@ def register_fortigate_routes(
                 f"{name}: connection failed",
                 failures=1,
             )
+            annotate_profile_tested(
+                category="FortiGate",
+                action_namespace="fortigate",
+                profile_type="FortiGate profile",
+                profile=profile,
+                outcome="failed",
+                status_code=exc.status_code,
+            )
             flash(f"Connection failed: {connection_error_message(exc)}", "error")
         else:
             version = result.get("version") or result.get("build") or "reachable"
             _record_fortinet_api_activity(
                 "Tested FortiGate profile",
                 f"{name}: {version}",
+            )
+            annotate_profile_tested(
+                category="FortiGate",
+                action_namespace="fortigate",
+                profile_type="FortiGate profile",
+                profile=profile,
+                outcome="succeeded",
             )
             flash(f"Connection OK: {version}", "success")
 

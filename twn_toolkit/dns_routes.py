@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
+from .audit import annotate_profile_deleted, annotate_profile_saved
 from .network_tools import (
     ToolInputError,
     dns_lookup_matrix,
@@ -67,7 +68,16 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
         except ToolInputError as exc:
             return jsonify({"error": str(exc)}), 400
         profile = {"name": name, "values": parsed}
-        _dns_profile_store(kind).upsert(profile)
+        store = _dns_profile_store(kind)
+        before = store.get(name)
+        store.upsert(profile)
+        annotate_profile_saved(
+            category="Network tools",
+            action_namespace=f"dns.{kind}",
+            profile_type=f"DNS {'host' if kind == 'hosts' else 'server'} profile",
+            before=before,
+            after=profile,
+        )
         return jsonify({"profile": profile})
 
     @tools_bp.post("/dns-response/profiles/<kind>/delete")
@@ -75,8 +85,16 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
         if kind not in {"hosts", "servers"}:
             return jsonify({"error": "Unknown DNS profile type."}), 404
         name = request.form.get("name", "").strip()
-        if not _dns_profile_store(kind).delete(name):
+        store = _dns_profile_store(kind)
+        profile = store.get(name)
+        if not profile or not store.delete(name):
             return jsonify({"error": "Profile not found."}), 404
+        annotate_profile_deleted(
+            category="Network tools",
+            action_namespace=f"dns.{kind}",
+            profile_type=f"DNS {'host' if kind == 'hosts' else 'server'} profile",
+            profile=profile,
+        )
         return jsonify({"deleted": name})
 
 

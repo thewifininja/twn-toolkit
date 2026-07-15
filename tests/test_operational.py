@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from twn_toolkit import create_app
-from twn_toolkit.audit import AuditStore, audit_changes
+from twn_toolkit.audit import AuditStore, audit_changes, audit_safe_snapshot
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.datastore import DatastoreError, LocalDatastore
 from twn_toolkit.migrations import MigrationManager
@@ -83,6 +83,26 @@ class OperationalHardeningTests(unittest.TestCase):
             changes,
             [{"field": "configuration.timeout", "before": 5, "after": 10}],
         )
+
+    def test_profile_audit_snapshot_retains_only_secret_configuration_state(self) -> None:
+        snapshot = audit_safe_snapshot(
+            {
+                "name": "Lab",
+                "host": "192.0.2.1",
+                "api_key": "never store this",
+                "password": "also secret",
+                "community": "",
+            }
+        )
+        self.assertEqual(
+            snapshot,
+            {
+                "name": "Lab",
+                "host": "192.0.2.1",
+                "configured sensitive fields": ["api_key", "password"],
+            },
+        )
+        self.assertNotIn("never store this", json.dumps(snapshot))
 
     def test_user_audit_uses_profile_names_and_retains_stable_ids(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
