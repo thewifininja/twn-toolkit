@@ -3,10 +3,12 @@ from __future__ import annotations
 import tempfile
 import subprocess
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.fortigate import FortiGateError
 from twn_toolkit.fortigate_routes import managed_switch_order, switch_order_moves
 from twn_toolkit.network_tools import (
@@ -23,6 +25,7 @@ from twn_toolkit.network_tools import (
     subtract_subnets,
     validate_hosts,
 )
+from twn_toolkit.tasks import TaskResult
 
 
 class NetworkToolTests(unittest.TestCase):
@@ -218,6 +221,8 @@ class NetworkToolTests(unittest.TestCase):
                     },
                 )
             summary = ActivityStore(instance).summary()
+            audit_event = AuditStore(instance).recent(1)[0]
+            audit_database = (Path(instance) / "audit.sqlite3").read_bytes()
 
         self.assertEqual(response.status_code, 502)
         payload = response.get_json()
@@ -229,6 +234,85 @@ class NetworkToolTests(unittest.TestCase):
         self.assertEqual(summary["counters"]["fortinet"]["failures"], 1)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
         self.assertEqual(summary["recent"][0]["title"], "Applied FortiSwitch order")
+        self.assertEqual(audit_event["action"], "fortigate.switch_order_failed")
+        self.assertEqual(audit_event["details"]["outcome"], "failed")
+        self.assertEqual(audit_event["details"]["completed move count"], 0)
+        self.assertNotIn(b"secret", audit_database)
+
+    def test_fortigate_exports_and_renames_have_bounded_audit_events(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            client.post(
+                "/profiles",
+                data={
+                    "name": "Lab",
+                    "host": "https://fortigate.example",
+                    "api_key": "profile-secret",
+                    "default_vdom": "root",
+                },
+            )
+
+            with patch(
+                "twn_toolkit.fortigate_routes.ExportTask.run",
+                return_value="serial,name\nraw-export-value,Private Switch\n",
+            ):
+                export = client.post(
+                    "/tasks/export-switches/run",
+                    data={"profile": "Lab"},
+                )
+            with patch(
+                "twn_toolkit.fortigate_routes.RenameTask.run_entries",
+                return_value=[
+                    TaskResult(1, "Lobby AP", "Lobby AP New", "root", "success", "Updated.")
+                ],
+            ):
+                rename = client.post(
+                    "/tasks/rename-aps/rename",
+                    data={
+                        "profile": "Lab",
+                        "identifier": ["AP-1"],
+                        "current_name": ["Lobby AP"],
+                        "new_name": ["Lobby AP New"],
+                        "vdom": ["root"],
+                    },
+                )
+            events = AuditStore(instance).recent(2)
+            audit_database = (Path(instance) / "audit.sqlite3").read_bytes()
+
+            with patch(
+                "twn_toolkit.fortigate_routes.RenameTask.run_entries",
+                return_value=[
+                    TaskResult(1, "Lobby AP", "Lobby AP New", "root", "planned", "Would update.")
+                ],
+            ):
+                dry_run = client.post(
+                    "/tasks/rename-aps/rename",
+                    data={
+                        "profile": "Lab",
+                        "identifier": ["AP-1"],
+                        "current_name": ["Lobby AP"],
+                        "new_name": ["Lobby AP New"],
+                        "vdom": ["root"],
+                        "dry_run": "on",
+                    },
+                )
+            event_count_after_dry_run = len(AuditStore(instance).recent(10))
+
+        self.assertEqual(export.status_code, 200)
+        self.assertEqual(rename.status_code, 200)
+        self.assertEqual(dry_run.status_code, 200)
+        self.assertEqual(
+            [event["action"] for event in events],
+            ["fortigate.objects_renamed", "fortigate.export_succeeded"],
+        )
+        rename_event = events[0]
+        self.assertEqual(rename_event["details"]["outcome"], "success")
+        self.assertEqual(rename_event["details"]["successful object count"], 1)
+        self.assertEqual(event_count_after_dry_run, 2)
+        self.assertNotIn(b"profile-secret", audit_database)
+        self.assertNotIn(b"raw-export-value", audit_database)
 
     def test_subtracts_ipv4_and_ipv6_networks(self) -> None:
         self.assertEqual(

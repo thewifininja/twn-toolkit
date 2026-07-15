@@ -4,12 +4,14 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import requests
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.fortiauthenticator import FortiAuthenticatorClient, FortiAuthenticatorError
 
 
@@ -396,6 +398,12 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
 
         self.assertIn(b"Confirmation did not match", response.data)
         delete_device.assert_not_called()
+        event = AuditStore(self.temporary_directory.name).recent(1)[0]
+        self.assertEqual(
+            event["action"],
+            "fortiauthenticator.mac_cleanup_aborted_confirmation",
+        )
+        self.assertEqual(event["details"]["requested target count"], 2)
 
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.delete_mac_group_membership")
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
@@ -431,6 +439,18 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 3)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
         self.assertEqual(summary["recent"][0]["title"], "Ran FortiAuthenticator MAC cleanup")
+        event = AuditStore(self.temporary_directory.name).recent(1)[0]
+        audit_database = Path(
+            self.temporary_directory.name, "audit.sqlite3"
+        ).read_bytes()
+        self.assertEqual(
+            event["action"],
+            "fortiauthenticator.mac_cleanup_succeeded",
+        )
+        self.assertEqual(event["details"]["successful target count"], 1)
+        self.assertEqual(event["details"]["failed target count"], 0)
+        self.assertNotIn(b"secret", audit_database)
+        self.assertNotIn(b"aa:bb:cc", audit_database.lower())
 
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.delete_mac_device")
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")

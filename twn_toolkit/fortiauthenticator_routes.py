@@ -19,6 +19,7 @@ from flask import (
 )
 
 from .activity_context import record_current_activity
+from .audit import annotate_audit_event, audit_reference
 from .fortiauthenticator import (
     FortiAuthenticatorClient,
     FortiAuthenticatorError,
@@ -42,6 +43,52 @@ def _record_fortinet_api_activity(
         detail,
         counters={"fortinet": {"api_calls": api_calls, "failures": failures}},
         count_action=count_action,
+    )
+
+
+def _annotate_mac_cleanup(
+    profile: dict[str, Any],
+    group_uri: str,
+    operation: str,
+    *,
+    outcome: str,
+    requested_count: int,
+    target_count: int = 0,
+    success_count: int = 0,
+    failure_count: int = 0,
+    group_name: str = "",
+    status_code: int | None = None,
+) -> None:
+    operation_name = (
+        "Remove group memberships"
+        if operation == "remove_memberships"
+        else "Delete MAC devices globally"
+    )
+    details: dict[str, Any] = {
+        "profile": audit_reference(
+            "FortiAuthenticator profile", profile["name"], profile["name"]
+        ),
+        "operation": operation_name,
+        "outcome": outcome,
+        "requested target count": requested_count,
+        "validated target count": target_count,
+        "successful target count": success_count,
+        "failed target count": failure_count,
+    }
+    if status_code is not None:
+        details["remote status code"] = status_code
+    annotate_audit_event(
+        category="FortiAuthenticator",
+        action=f"fortiauthenticator.mac_cleanup_{outcome}",
+        summary=(
+            f"{operation_name}: {success_count} of {target_count} target(s) succeeded."
+            if outcome in {"succeeded", "partial", "failed"} and target_count
+            else f"{operation_name} {outcome.replace('_', ' ')}."
+        ),
+        resource_type="fortiauthenticator_mac_group",
+        resource_id=group_uri,
+        resource_name=group_name or group_uri or "MAC group",
+        details=details,
     )
 
 
@@ -406,13 +453,37 @@ def register_fortiauthenticator_routes(
                 api_calls=2,
                 failures=1,
             )
+            _annotate_mac_cleanup(
+                profile,
+                group_uri,
+                action,
+                outcome="validation_failed",
+                requested_count=len(requested_ids),
+                status_code=exc.status_code,
+            )
             flash(f"Cleanup validation failed: {exc}", "error")
             return redirect(url_for("fortiauthenticator_mac_cleanup"))
 
         if not preview["targets"]:
+            _annotate_mac_cleanup(
+                profile,
+                group_uri,
+                action,
+                outcome="aborted_no_targets",
+                requested_count=len(requested_ids),
+                group_name=preview["group_name"],
+            )
             flash("No matching records remain. Nothing was changed.", "error")
             return redirect(url_for("fortiauthenticator_mac_cleanup"))
         if not requested_ids:
+            _annotate_mac_cleanup(
+                profile,
+                group_uri,
+                action,
+                outcome="aborted_no_selection",
+                requested_count=0,
+                group_name=preview["group_name"],
+            )
             flash("Select at least one device. Nothing was changed.", "error")
             return redirect(url_for("fortiauthenticator_mac_cleanup"))
 
@@ -420,6 +491,15 @@ def register_fortiauthenticator_routes(
         targets_by_id = {target[id_key]: target for target in preview["targets"]}
         stale_ids = [identifier for identifier in requested_ids if identifier not in targets_by_id]
         if stale_ids:
+            _annotate_mac_cleanup(
+                profile,
+                group_uri,
+                action,
+                outcome="aborted_stale_preview",
+                requested_count=len(requested_ids),
+                target_count=len(targets_by_id),
+                group_name=preview["group_name"],
+            )
             flash(
                 "The selected targets changed after the preview. Nothing was changed; build a new preview.",
                 "error",
@@ -429,6 +509,15 @@ def register_fortiauthenticator_routes(
         targets = [targets_by_id[identifier] for identifier in requested_ids]
         expected_confirmation = _cleanup_confirmation(action, len(targets))
         if confirmation != expected_confirmation:
+            _annotate_mac_cleanup(
+                profile,
+                group_uri,
+                action,
+                outcome="aborted_confirmation",
+                requested_count=len(requested_ids),
+                target_count=len(targets),
+                group_name=preview["group_name"],
+            )
             flash(
                 f"Confirmation did not match. Nothing was changed. Expected: {expected_confirmation}",
                 "error",
@@ -458,6 +547,25 @@ def register_fortiauthenticator_routes(
             f"{profile['name']}: {len(targets) - failures} of {len(targets)} succeeded",
             api_calls=2 + len(targets),
             failures=failures,
+        )
+        success_count = len(targets) - failures
+        outcome = (
+            "succeeded"
+            if not failures
+            else "partial"
+            if success_count
+            else "failed"
+        )
+        _annotate_mac_cleanup(
+            profile,
+            group_uri,
+            action,
+            outcome=outcome,
+            requested_count=len(requested_ids),
+            target_count=len(targets),
+            success_count=success_count,
+            failure_count=failures,
+            group_name=preview["group_name"],
         )
         return render_template(
             "fortiauthenticator/mac_cleanup_results.html",
