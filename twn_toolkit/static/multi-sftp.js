@@ -4,7 +4,7 @@
   const destination = form.querySelector("[data-sftp-destination]");
   const protocol = form.querySelector("[data-transfer-protocol]");
   const port = form.querySelector("[data-transfer-port]");
-  const hostKeyOption = form.querySelector("[data-ssh-host-key-option]");
+  const sshOptions = form.querySelectorAll("[data-ssh-host-key-option]");
   const downloadToken = form.querySelector("[data-download-token]");
   let previousProtocol = protocol?.value;
   let downloadPoll = 0;
@@ -22,7 +22,9 @@
       if (!port.value || port.value === previousDefault) port.value = protocol.value === "ftp" ? "21" : "22";
       previousProtocol = protocol.value;
     }
-    if (hostKeyOption && protocol) hostKeyOption.hidden = protocol.value === "ftp";
+    if (protocol) {
+      for (const option of sshOptions) option.hidden = protocol.value === "ftp";
+    }
   };
   protocol?.addEventListener("change", updateProtocol);
   updateProtocol();

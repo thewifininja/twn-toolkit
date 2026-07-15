@@ -108,6 +108,20 @@ class SftpToolTests(unittest.TestCase):
         self.assertTrue(all(item["status"] == "error" for item in results))
         self.assertTrue(all("Connection failed" in item["error"] for item in results))
 
+    def test_legacy_compatibility_is_scoped_to_ssh_transfers(self) -> None:
+        client = MagicMock()
+        client.connect.side_effect = OSError("offline")
+        with tempfile.TemporaryDirectory() as temporary, patch(
+            "paramiko.SSHClient", return_value=client
+        ):
+            fetch_sftp_files(
+                hosts=[{"label": "", "host": "192.0.2.10"}],
+                remote_paths=["/one"], username="admin", password="secret",
+                port=22, allow_unknown_hosts=False,
+                allow_legacy_algorithms=True, output_dir=Path(temporary),
+            )
+        self.assertIsNone(client.connect.call_args.kwargs["disabled_algorithms"])
+
     def test_scp_adapter_receives_regular_file_protocol(self) -> None:
         class Channel:
             def __init__(self) -> None:
@@ -206,6 +220,7 @@ class SftpRouteTests(unittest.TestCase):
                         "remote_paths": "/config.cfg",
                         "output_mode": "datastore",
                         "destination": "",
+                        "allow_legacy_algorithms": "on",
                     },
                 )
             self.assertEqual(response.status_code, 200)
@@ -216,6 +231,7 @@ class SftpRouteTests(unittest.TestCase):
             self.assertEqual(event["action"], "transfer.multi_host_fetch.run_succeeded")
             self.assertEqual(event["details"]["protocol"], "sftp")
             self.assertEqual(event["details"]["successful transfer count"], 1)
+            self.assertTrue(event["details"]["legacy SSH compatibility"])
             self.assertNotIn(b"secret", audit_database)
             self.assertNotIn(b"/config.cfg", audit_database)
 

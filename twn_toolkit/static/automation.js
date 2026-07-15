@@ -209,7 +209,7 @@
 
       const transferProtocol = form.querySelector("[data-action-transfer-protocol]");
       const transferPort = form.querySelector("[data-action-transfer-port]");
-      const hostKeyOption = form.querySelector("[data-action-ssh-host-key-option]");
+      const sshOptions = form.querySelectorAll("[data-action-ssh-host-key-option]");
       let previousTransferProtocol = transferProtocol?.value;
       const syncTransferProtocol = () => {
         if (transferProtocol && transferPort) {
@@ -217,7 +217,9 @@
           if (!transferPort.value || transferPort.value === previousDefault) transferPort.value = transferProtocol.value === "ftp" ? "21" : "22";
           previousTransferProtocol = transferProtocol.value;
         }
-        if (hostKeyOption && transferProtocol) hostKeyOption.hidden = transferProtocol.value === "ftp";
+        if (transferProtocol) {
+          for (const option of sshOptions) option.hidden = transferProtocol.value === "ftp";
+        }
       };
       transferProtocol?.addEventListener("change", syncTransferProtocol);
       syncTransferProtocol();

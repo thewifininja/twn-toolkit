@@ -19,6 +19,12 @@ class SSHSecurityTests(unittest.TestCase):
         with patch.dict(os.environ, {"TWN_ALLOW_LEGACY_SSH_RSA": "true"}):
             self.assertIsNone(disabled_ssh_algorithms())
 
+    def test_scoped_override_allows_legacy_appliances(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(
+                disabled_ssh_algorithms(allow_legacy_algorithms=True)
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -318,6 +318,7 @@ def register_datastore_routes(
                 "allow_sftp": request.form.get("allow_sftp") == "on", "allow_scp": request.form.get("allow_scp") == "on",
                 "allow_read": request.form.get("allow_read") == "on", "allow_write": request.form.get("allow_write") == "on",
                 "allow_overwrite": request.form.get("allow_overwrite") == "on",
+                "allow_legacy_algorithms": request.form.get("allow_legacy_algorithms") == "on",
                 "root_mode": request.form.get("root_mode", "datastore"), "datastore_root": request.form.get("datastore_root", ""),
                 "incoming_filename_pattern": request.form.get("incoming_filename_pattern", "{filename}"),
                 "allowed_networks": request.form.get("allowed_networks", ""),

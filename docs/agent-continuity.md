@@ -160,7 +160,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.10.1: live multi-host SNMP interface monitoring,
+- Current milestone is 0.10.2: live multi-host SNMP interface monitoring,
   route-level audit enrichment, high-impact preview/confirmation flows,
   representative v0.9.1 upgrade fixtures, operator rollback guidance, managed
   installer restarts, bounded external operations, cross-origin mutation
@@ -173,6 +173,8 @@ accepted replay frames.
   continuing to reject cross-site mutations. The complete test command is
   pytest; do not replace it with unittest discovery because fixture-based tests
   would be silently skipped.
+  The 0.10.2 patch adds explicit, audit-visible legacy SSH compatibility to every
+  SSH/SFTP/SCP surface while retaining modern negotiation by default.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.
@@ -385,6 +387,16 @@ make state, risk, and the next action obvious.
   return of the device prompt, not a short quiet period. Timeouts retain partial
   output and stop later commands for that host. Gunicorn's worker timeout is
   3700 seconds so synchronous Multi-SSH can honor that bounded SSH budget.
+- All Paramiko client and server paths must obtain algorithm restrictions from
+  `ssh_security.disabled_ssh_algorithms()`; do not add route-local cipher or key
+  overrides. The default rejects SHA-1 `ssh-rsa`. A user-visible
+  `allow_legacy_algorithms` boolean may explicitly relax negotiation for trusted
+  old equipment. Multi-SSH and Multi-Transfer scope it to one run; automation
+  actions and the managed SFTP/SCP service persist it visibly until disabled.
+  Keep this separate from unknown-host-key acceptance, forward it through the
+  shared executor/service boundary, and audit the boolean without credentials,
+  commands, remote paths, or returned content. Any new SSH/SFTP/SCP feature must
+  expose the same strong-default/explicit-exception model and add tests for both.
 - Multi-Transfer uses the request-independent `sftp_tools.fetch_ssh_files` service,
   which writes into a caller-provided output directory and returns structured
   per-host/per-path results with SFTP, SCP, and FTP protocol adapters. Routes either persist through

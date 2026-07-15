@@ -1003,10 +1003,13 @@ class AutomationRegistryTests(unittest.TestCase):
             "hosts": "Core Switch = 192.0.2.10", "remote_paths": "/config.cfg",
             "username": "admin", "password": "secret", "port": 22,
             "allow_unknown_hosts": False,
+            "allow_legacy_algorithms": True,
             "filename_pattern": "{identity}-{filename}",
         }
 
+        fetch_calls = []
         def fake_fetch(**kwargs):
+            fetch_calls.append(kwargs)
             filename = "Core-Switch-config.cfg"
             (kwargs["output_dir"] / filename).write_bytes(b"config")
             return [{
@@ -1025,6 +1028,7 @@ class AutomationRegistryTests(unittest.TestCase):
                 ConditionResult(True, "met", "manual", {}),
             )
             self.assertEqual(retained.status, "success")
+            self.assertTrue(fetch_calls[-1]["allow_legacy_algorithms"])
             source = Path(retained.output["_artifact_sources"][0]["source_path"])
             self.assertEqual(source.read_bytes(), b"config")
             source.unlink()

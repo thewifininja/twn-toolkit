@@ -40,6 +40,10 @@
       Allow unknown SSH host keys for this run
     </label>
     <label class="check">
+      <input name="allow_legacy_algorithms" type="checkbox" {% if form.allow_legacy_algorithms %}checked{% endif %}>
+      <span><strong>Allow legacy SSH algorithms for this run</strong><small>Enables weaker algorithms still supported by the toolkit, including SHA-1 RSA. Use only for trusted legacy devices.</small></span>
+    </label>
+    <label class="check">
       <input name="send_ctrl_y" type="checkbox" {% if form.send_ctrl_y %}checked{% endif %}>
       Send Ctrl+Y before commands
     </label>
