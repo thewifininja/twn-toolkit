@@ -160,12 +160,14 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.9.1: local file services, multi-protocol transfer
-  workflows, formal migrations, operational limits, diagnostics, and worker
-  supervision are implemented, with serialized service restarts and
-  ownership-safe PID cleanup. Route-level audit enrichment is complete with no
-  pending mutating endpoints; upgrade-path breadth, packaging, and the supported
-  1.0 compatibility contract still need deliberate hardening.
+- Current milestone is 0.10.0: live multi-host SNMP interface monitoring,
+  route-level audit enrichment, high-impact preview/confirmation flows,
+  representative v0.9.1 upgrade fixtures, operator rollback guidance, managed
+  installer restarts, bounded external operations, cross-origin mutation
+  protection, and dependency-audit release gates are implemented. The audit
+  policy has no pending mutating endpoints. This remains a pre-1.0 release;
+  broader real-world upgrade history, packaging, and an explicit supported 1.0
+  compatibility contract still need deliberate hardening.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.

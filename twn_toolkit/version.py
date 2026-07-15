@@ -1,6 +1,54 @@
-APP_VERSION = "0.9.1"
+APP_VERSION = "0.10.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.10.0",
+        "date": "2026-07-15",
+        "title": "SNMP interface monitoring, audit completeness, and release hardening",
+        "summary": (
+            "A pre-1.0 feature release centered on practical live SNMP interface "
+            "monitoring, complete secret-safe audit coverage, and safer upgrades and "
+            "high-impact operations."
+        ),
+        "groups": (
+            {
+                "title": "SNMP interface monitoring",
+                "items": (
+                    "Added a browser-lived monitor set for up to 20 standard IF-MIB interfaces across saved SNMP hosts, with adjustable 1–60 second polling and retained-window navigation.",
+                    "Added compact mirrored download/upload graphs, nearest-sample inspection, observed peaks, link state, speed, errors, and discards.",
+                    "Preferred 64-bit high-capacity counters, re-baselined safely after counter or device resets, and isolated sampling failures to the affected interface.",
+                    "Improved responsive monitor controls with shared wrapping action rows, consistent spacing, and phone-width layouts without horizontal overflow.",
+                ),
+            },
+            {
+                "title": "Audit trail and safer workflows",
+                "items": (
+                    "Completed route-level audit classification so every mutating endpoint is intentionally annotated, conditionally recorded, suppressed as noise, or explicitly excluded with a reason.",
+                    "Added bounded resource context and curated before/after values while recursively redacting credentials, tokens, keys, communities, authorization data, request payloads, and returned content.",
+                    "Required explicit preview and confirmation before packet replay, FortiGate bulk rename, and managed-switch reorder changes, with clearer partial-success summaries.",
+                    "Recorded deliberate SNMP monitor start and stop boundaries while suppressing high-frequency discovery and polling noise.",
+                ),
+            },
+            {
+                "title": "Reliability, upgrade, and recovery",
+                "items": (
+                    "Added representative v0.9.1 upgrade fixtures, migration compatibility coverage, and a documented backup, verification, and rollback procedure.",
+                    "Changed installer upgrades to restart an active toolkit after dependency refresh so the running service cannot remain on stale code or libraries.",
+                    "Bounded silent traceroutes, packet replay volume and duration, SCP idle time, and FortiAuthenticator pagination, with prompt cancellation and operator-facing failures.",
+                    "Verified managed web, scheduler, supervisor, and transfer-service restart behavior against an existing installation.",
+                ),
+            },
+            {
+                "title": "Security and compatibility",
+                "items": (
+                    "Updated Flask, Requests, and Paramiko and added an audited dependency gate to release CI.",
+                    "Rejected cross-origin state-changing requests and added defensive response headers and no-store behavior for authenticated pages.",
+                    "Disabled legacy SHA-1 ssh-rsa keys by default across SSH and SFTP/SCP connections; a temporary environment-only compatibility override is available for controlled legacy devices.",
+                    "Added documented, reviewed exceptions for dependency advisories whose affected features are disabled or unused by the toolkit.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.9.1",
         "date": "2026-07-13",

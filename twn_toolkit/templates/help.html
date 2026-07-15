@@ -96,7 +96,7 @@
     <p>Unreachable appliances return after bounded timeouts rather than hanging indefinitely.</p>
   </div></details>
   <details class="help-topic"><summary>Exports, rename, reorder, and cleanup</summary><div class="help-topic-body">
-    <ul><li>Export workflows fetch managed AP, switch, wireless-client, switch-client, and related data into previews/CSV.</li><li>Rename workflows support CSV and interactive device loading. Review dry runs before applying.</li><li>Re-order Managed FortiSwitches previews moves and verifies final order.</li><li>FortiAuthenticator cleanup previews overlap before removing memberships or deleting MAC devices.</li></ul>
+    <ul><li>Export workflows fetch managed AP, switch, wireless-client, switch-client, and related data into previews/CSV.</li><li>Rename workflows support CSV and interactive device loading. Every apply begins with a dry-run preview and requires explicit confirmation; completed, failed, and skipped changes remain distinguishable.</li><li>Re-order Managed FortiSwitches previews moves, requires in-page confirmation, and verifies final order.</li><li>FortiAuthenticator cleanup previews overlap before removing memberships or deleting MAC devices.</li></ul>
   </div></details>
   <details class="help-topic"><summary>Wireless client history</summary><div class="help-topic-body">
     <p>The lookup normalizes MAC addresses, combines live state with local wireless event logs, and focuses on association-request events. Consecutive entries on one AP collapse; a roam creates the next visit. “No logs found” can mean memory logs are unavailable or old events rolled out. FortiAnalyzer is reserved for a future source.</p>
@@ -226,7 +226,7 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
 <section class="home-section help-section" id="packet-replay">
   <div class="section-head"><div><span class="eyebrow">High impact</span><h2>Packet Replay</h2></div><a href="#help-contents">Back to contents</a></div>
   <details class="help-topic" open><summary>Inputs, rewrites, VLANs, and sending</summary><div class="help-topic-body">
-    <p>Transmit raw Ethernet frames from hex or classic Ethernet PCAP. Select the wired interface, review decoded fields/rewrite plan, then send from Preview. Multiple source packets, repeat, interval, and MAC/IP/port rewrites are supported.</p>
+    <p>Transmit raw Ethernet frames from hex or classic Ethernet PCAP. Select the wired interface, review decoded fields and the rewrite plan, then explicitly confirm authorization before sending from Preview. A replay is limited to 10,000 emitted frames and five minutes of scheduled duration. Multiple source packets, repeat, interval, and MAC/IP/port rewrites are supported.</p>
     <p>VLAN fanout accepts IDs, ranges, and <code>untagged</code>: <code>untagged,10-12,20</code>. VLAN 0 is priority-tagged, not untagged.</p>
   </div></details>
   <details class="help-topic"><summary>Permissions and capture verification</summary><div class="help-topic-body">
@@ -257,6 +257,11 @@ sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
     <p>The owner-only private key lives at <code>instance/tls/key.pem</code> and is not included in profile backups. Run <code>./twn disable-https</code> to restart over HTTP without deleting the certificate. Externally managed PEM files may be supplied with both <code>TWN_TOOLKIT_CERTFILE</code> and <code>TWN_TOOLKIT_KEYFILE</code>.</p>
     <p>Administration → Settings can define a short instance name and preferred FQDN. Validation checks DNS-name structure but never performs a lookup. The short name appears in browser titles and the sidebar; the FQDN is used in launcher URLs. Explicitly select certificate regeneration while saving when the toolkit-managed certificate should include the new identity.</p>
   </div></details>
+  <details class="help-topic"><summary>Upgrade, verify, and roll back</summary><div class="help-topic-body">
+    <p>Before an upgrade, record the installed version, stop the toolkit, and make an owner-readable copy of the complete <code>instance/</code> directory. Keep the prior release tag available. Do not treat a live SQLite file copy as a release backup.</p>
+    <p>Run <code>./install.sh</code> from the intended release checkout. If the toolkit was active, the installer refreshes dependencies and restarts the managed service so it cannot continue on stale code or libraries. Confirm the new version in Help, run <code>./twn status</code>, and review System Diagnostics, saved profiles, automations, transfer listeners, and recent audit events.</p>
+    <p>To roll back, stop the toolkit, preserve the failed-upgrade instance for diagnosis, restore the complete pre-upgrade instance copy, switch the checkout to the recorded prior release tag, rerun <code>./install.sh</code>, and verify the same operational checks. A code-only rollback after a migration is not sufficient.</p>
+  </div></details>
   <details class="help-topic"><summary>Port conflicts and sudo ownership</summary><div class="help-topic-body">
     <p>Find a Linux listener with <code>sudo ss -lptn 'sport = :5050'</code> or <code>sudo lsof -nP -iTCP:5050 -sTCP:LISTEN</code>. On macOS use <code>lsof -nP -iTCP:5050 -sTCP:LISTEN</code>.</p>
     <p>A sudo launch can create root-owned <code>instance/</code> files. Run <code>./twn fix-permissions</code> before returning to normal-user operation.</p>
@@ -271,6 +276,10 @@ sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
   <details class="help-topic" open><summary>Deployment boundary and retained data</summary><div class="help-topic-body">
     <p>This is local-first software for a trusted workstation/internal network, not direct internet exposure. Use TLS and an appropriate access layer across untrusted networks. Server access settings can allow explicit addresses/CIDRs; loopback remains allowed.</p>
     <p>User passwords are scrypt hashes; sessions use a separate secret. Profile stores and automation databases live under owner-only ignored <code>instance/</code> paths. Protect the host, filesystem backups, exported backups, downloads, and browser session.</p>
+  </div></details>
+  <details class="help-topic"><summary>SSH compatibility and dependency advisories</summary><div class="help-topic-body">
+    <p>SSH and SFTP/SCP connections reject legacy SHA-1 <code>ssh-rsa</code> host and user keys by default. Prefer upgrading the remote device or adding a modern key. For a controlled, temporary legacy-device exception, launch the toolkit with <code>TWN_ALLOW_LEGACY_SSH_RSA=true</code>; remove the override as soon as compatibility work is complete.</p>
+    <p>Release CI audits every pinned runtime dependency. Any advisory that cannot yet be fixed upstream must have a narrow documented mitigation showing why the affected feature is disabled or unused; new or expanded exposure blocks release.</p>
   </div></details>
   <details class="help-topic" open><summary>Use at your own risk</summary><div class="help-topic-body">
     <p>The WiFi Ninja’s Toolkit is provided as-is, without warranty. Some tools change configuration, authenticate, scan, query logs, transmit crafted packets, or execute commands with saved credentials.</p>
