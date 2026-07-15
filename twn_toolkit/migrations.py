@@ -23,16 +23,25 @@ class MigrationManager:
         records = self.applied(); applied = {int(item["version"]) for item in records}; completed = []
         for version, description, callback in sorted(migrations):
             if version in applied: continue
-            self._snapshot(version); callback(self.instance)
-            records.append({"version": version, "description": description, "applied_at": time.time()}); completed.append(version)
-            self.instance.mkdir(parents=True, exist_ok=True)
-            temporary = self.path.with_suffix(".tmp"); temporary.write_text(json.dumps(records, indent=2) + "\n", encoding="utf-8")
-            os.chmod(temporary, 0o600); os.replace(temporary, self.path)
+            snapshot = self._snapshot(version)
+            try:
+                callback(self.instance)
+                records.append({"version": version, "description": description, "applied_at": time.time()})
+                self.instance.mkdir(parents=True, exist_ok=True)
+                temporary = self.path.with_suffix(".tmp")
+                temporary.write_text(json.dumps(records, indent=2) + "\n", encoding="utf-8")
+                os.chmod(temporary, 0o600)
+                os.replace(temporary, self.path)
+            except Exception:
+                self._restore_snapshot(snapshot)
+                raise
+            completed.append(version)
         return completed
 
-    def _snapshot(self, version: int) -> None:
+    def _snapshot(self, version: int) -> Path | None:
         databases = list(self.instance.glob("*.sqlite3"))
-        if not databases: return
+        if not databases:
+            return None
         target = self.instance / "migration_backups" / f"v{version}-{int(time.time())}"
         target.mkdir(parents=True, exist_ok=True, mode=0o700)
         for database in databases:
@@ -43,6 +52,24 @@ class MigrationManager:
                 finally: source.close(); backup.close()
             except sqlite3.Error:
                 shutil.copy2(database, destination)
+            os.chmod(destination, 0o600)
+        return target
+
+    def _restore_snapshot(self, snapshot: Path | None) -> None:
+        """Restore databases that existed before a failed migration callback."""
+        if snapshot is None:
+            return
+        for source in snapshot.glob("*.sqlite3"):
+            destination = self.instance / source.name
+            for sidecar in (
+                destination.with_name(f"{destination.name}-wal"),
+                destination.with_name(f"{destination.name}-shm"),
+            ):
+                try:
+                    sidecar.unlink()
+                except FileNotFoundError:
+                    pass
+            shutil.copy2(source, destination)
             os.chmod(destination, 0o600)
 
 

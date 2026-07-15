@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Legacy Gate",
+    "host": "https://legacy-gate.example",
+    "api_key": "fixture-api-key",
+    "verify_tls": true,
+    "is_default": true,
+    "default_vdom": "root"
+  }
+]

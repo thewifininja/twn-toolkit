@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Legacy WAN",
+    "targets": [
+      {
+        "label": "Gateway",
+        "host": "192.0.2.1"
+      }
+    ],
+    "interval": 5
+  }
+]
