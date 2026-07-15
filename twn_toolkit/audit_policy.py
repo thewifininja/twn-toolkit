@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import Enum
 
 
 MUTATING_HTTP_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
-class AuditRoutePolicy(StrEnum):
+class AuditRoutePolicy(str, Enum):
     """Required audit disposition for an endpoint that accepts mutations."""
 
     ANNOTATED = "annotated"
