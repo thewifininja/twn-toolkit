@@ -45,9 +45,9 @@ in `CONTRIBUTING.md`.
   Start behavior, continuity notes, upgrade guidance, and security guidance
   agree on v0.10.0 behavior.
 - [x] Complete local test suite passes on the release commit (294 tests).
-- [ ] Pull-request CI passes on Ubuntu and macOS, including dependency audit and
-  release metadata validation.
-- [ ] Release branch is squash-merged into `main` and the local checkout is
-  updated.
-- [ ] Annotated `v0.10.0` tag is pushed and tag CI passes.
-- [ ] GitHub release is published from the v0.10.0 structured notes and verified.
+- [x] Pull-request CI passes on Ubuntu Python 3.10/3.13 and macOS Python 3.13,
+  including repository checks and dependency audit.
+
+After these versioned gates are green, squash-merge the release branch, update
+the local `main`, create and push the annotated `v0.10.0` tag, wait for tag CI,
+then publish and verify the GitHub release from the structured notes.
