@@ -65,6 +65,11 @@ def register_packet_replay_routes(tools_bp: Blueprint) -> None:
                 )
                 form["prepared_packet_hex"] = encode_prepared_packets(plan.originals)
                 if action == "send":
+                    if request.form.get("confirm_send") != "on":
+                        raise ToolInputError(
+                            "Review the replay preview and confirm that you are authorized "
+                            "to send these frames."
+                        )
                     send_result = send_replay_frames(
                         plan.frames,
                         interface=form["interface"],

@@ -9,10 +9,11 @@
   const preview = document.querySelector("#switch-move-preview");
   const alphabetizeButton = document.querySelector("#alphabetize-switches");
   const applyButton = document.querySelector("#apply-switch-order");
+  const confirmation = document.querySelector("#confirm-switch-order");
   const profile = document.querySelector("#switch-order-profile");
   const vdom = document.querySelector("#switch-order-vdom");
   if (!root || !source || !loadButton || !editor || !list || !status || !detail || !preview ||
-      !alphabetizeButton || !applyButton || !profile || !vdom) return;
+      !alphabetizeButton || !applyButton || !confirmation || !profile || !vdom) return;
 
   let originalIds = [];
   let draggedItem = null;
@@ -27,6 +28,7 @@
     setStatus("Loading managed switches…");
     list.innerHTML = "";
     preview.innerHTML = "";
+    confirmation.checked = false;
     applyButton.disabled = true;
     window.toolkitLoading?.show("Loading managed FortiSwitches…");
     try {
@@ -58,6 +60,8 @@
     setStatus("Alphabetized by displayed switch name. Review, then apply.");
     updatePreview();
   });
+
+  confirmation.addEventListener("change", updateApplyState);
 
   list.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-direction]");
@@ -96,10 +100,10 @@
   applyButton.addEventListener("click", async () => {
     const moves = calculateMoves(originalIds, currentIds());
     if (!moves.length) return;
-    if (!window.confirm(`Apply ${moves.length} move operation(s) to the FortiGate?`)) return;
     const body = new FormData();
     body.set("profile", profile.value);
     body.set("vdom", vdom.value);
+    body.set("confirmed", "on");
     currentIds().forEach((id) => body.append("switch_id", id));
     applyButton.disabled = true;
     alphabetizeButton.disabled = true;
@@ -117,6 +121,7 @@
       }
       renderSwitches(data.switches || []);
       originalIds = currentIds();
+      confirmation.checked = false;
       updatePreview();
       setStatus(data.message, "success");
     } catch (error) {
@@ -191,6 +196,7 @@
   }
 
   function updatePreview() {
+    confirmation.checked = false;
     preview.innerHTML = "";
     const moves = calculateMoves(originalIds, currentIds());
     moves.forEach((move) => {
@@ -203,7 +209,12 @@
       item.textContent = "No changes.";
       preview.appendChild(item);
     }
-    applyButton.disabled = moves.length === 0;
+    updateApplyState();
+  }
+
+  function updateApplyState() {
+    applyButton.disabled = calculateMoves(originalIds, currentIds()).length === 0 ||
+      !confirmation.checked;
   }
 
   function calculateMoves(current, desired) {

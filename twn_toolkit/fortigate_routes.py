@@ -314,6 +314,22 @@ def register_fortigate_routes(
             return jsonify({"error": "Load and order at least two switches."}), 400
 
         vdom = request.form.get("vdom", "").strip() or profile.get("default_vdom", "root")
+        if request.form.get("confirmed") != "on":
+            _annotate_switch_order(
+                profile,
+                vdom,
+                outcome="aborted_confirmation",
+                desired_ids=desired_ids,
+            )
+            return jsonify(
+                {
+                    "error": (
+                        "Review the move preview and confirm that the displayed order "
+                        "should be applied."
+                    )
+                }
+            ), 400
+
         client = FortiGateClient.from_profile(profile)
         try:
             current = managed_switch_order(client.get_managed_switches(vdom))
@@ -708,6 +724,28 @@ def register_fortigate_routes(
             len(identifiers) == len(current_names) == len(new_names) == len(vdoms)
         ):
             flash("Select at least one device and enter its new name.", "error")
+            return redirect(url_for("task_form", task_id=task_id))
+
+        if not dry_run and request.form.get("confirmed_live") != "on":
+            annotate_audit_event(
+                category="FortiGate",
+                action="fortigate.rename_aborted_confirmation",
+                summary=f"Blocked an unconfirmed live {task.label} request.",
+                resource_type="fortigate_task",
+                resource_id=task.id,
+                resource_name=task.label,
+                details={
+                    "profile": audit_reference(
+                        "FortiGate profile", profile["name"], profile["name"]
+                    ),
+                    "outcome": "aborted confirmation",
+                    "requested object count": len(identifiers),
+                },
+            )
+            flash(
+                "Run and review the dry-run preview before applying live changes.",
+                "error",
+            )
             return redirect(url_for("task_form", task_id=task_id))
 
         entries = [

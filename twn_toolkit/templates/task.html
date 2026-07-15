@@ -65,10 +65,8 @@
         Endpoint template
         <input id="endpoint-template" name="endpoint_template" value="{{ task.endpoint_template }}" required>
       </label>
-      <label class="check">
-        <input name="dry_run" type="checkbox" checked>
-        Dry run
-      </label>
+      <input name="dry_run" type="hidden" value="on">
+      <p class="field-note">A dry-run preview is required before live changes can be applied.</p>
     {% endif %}
     <div class="button-row">
       {% if task.kind == "export" %}
@@ -81,7 +79,7 @@
           data-objects-url="{{ url_for('task_objects', task_id=task.id) }}"
         >Load Current Devices</button>
       {% endif %}
-      <button type="submit">{{ "Export CSV" if task.kind == "export" else "Run Task" }}</button>
+      <button type="submit">{{ "Export CSV" if task.kind == "export" else "Preview Changes" }}</button>
       <a class="button-link secondary" href="{{ url_for('fortigate_home') }}">FortiGate Home</a>
     </div>
   </form>
@@ -128,12 +126,10 @@
           <tbody></tbody>
         </table>
       </div>
-      <label class="check">
-        <input name="dry_run" type="checkbox" checked>
-        Dry run
-      </label>
+      <input name="dry_run" type="hidden" value="on">
+      <p class="field-note">A dry-run preview is required before live changes can be applied.</p>
       <div class="button-row">
-        <button type="submit">Rename Selected</button>
+        <button type="submit">Preview Selected Changes</button>
       </div>
     </form>
   </section>

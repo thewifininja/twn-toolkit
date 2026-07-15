@@ -871,6 +871,14 @@ textarea {
   width: auto;
 }
 
+.risk-confirmation {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 12px 0;
+  padding: 12px 14px;
+}
+
 button,
 .button-link {
   background: var(--accent);
