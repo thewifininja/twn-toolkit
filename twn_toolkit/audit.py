@@ -90,6 +90,98 @@ def audit_changes(
     return changes[:100]
 
 
+def audit_safe_snapshot(values: dict[str, Any] | None) -> dict[str, Any]:
+    """Return useful profile state without retaining secret-bearing values."""
+    snapshot: dict[str, Any] = {}
+    configured_sensitive_fields: list[str] = []
+    saw_sensitive_field = False
+    for key, value in (values or {}).items():
+        label = str(key).strip()[:160]
+        normalized_key = label.casefold().replace("-", "_").replace(" ", "_")
+        if any(fragment in normalized_key for fragment in _SECRET_FRAGMENTS):
+            saw_sensitive_field = True
+            if value:
+                configured_sensitive_fields.append(label)
+        else:
+            snapshot[label] = _sanitize(value, key=label)
+    if saw_sensitive_field:
+        snapshot["configured sensitive fields"] = sorted(configured_sensitive_fields)
+    return snapshot
+
+
+def annotate_profile_saved(
+    *,
+    category: str,
+    action_namespace: str,
+    profile_type: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any],
+    credential_updated: bool = False,
+) -> None:
+    created = before is None
+    name = str(after.get("name", "")).strip()
+    operation = "created" if created else "updated"
+    annotate_audit_event(
+        category=category,
+        action=f"{action_namespace}.profile_{operation}",
+        summary=f"{operation.title()} {profile_type} {name}.",
+        resource_type=f"{action_namespace.replace('.', '_')}_profile",
+        resource_id=name,
+        resource_name=name,
+        details={"profile type": profile_type, "credential updated": credential_updated},
+        before=audit_safe_snapshot(before),
+        after=audit_safe_snapshot(after),
+    )
+
+
+def annotate_profile_deleted(
+    *,
+    category: str,
+    action_namespace: str,
+    profile_type: str,
+    profile: dict[str, Any],
+) -> None:
+    name = str(profile.get("name", "")).strip()
+    annotate_audit_event(
+        category=category,
+        action=f"{action_namespace}.profile_deleted",
+        summary=f"Deleted {profile_type} {name}.",
+        resource_type=f"{action_namespace.replace('.', '_')}_profile",
+        resource_id=name,
+        resource_name=name,
+        details={"profile type": profile_type},
+        before=audit_safe_snapshot(profile),
+        after={},
+    )
+
+
+def annotate_profile_tested(
+    *,
+    category: str,
+    action_namespace: str,
+    profile_type: str,
+    profile: dict[str, Any],
+    outcome: str,
+    status_code: int | None = None,
+) -> None:
+    name = str(profile.get("name", "")).strip()
+    details: dict[str, Any] = {
+        "profile type": profile_type,
+        "outcome": outcome,
+    }
+    if status_code is not None:
+        details["remote status code"] = status_code
+    annotate_audit_event(
+        category=category,
+        action=f"{action_namespace}.profile_test_{outcome}",
+        summary=f"Tested {profile_type} {name}: {outcome}.",
+        resource_type=f"{action_namespace.replace('.', '_')}_profile",
+        resource_id=name,
+        resource_name=name,
+        details=details,
+    )
+
+
 class AuditStore:
     def __init__(self, instance_path: str) -> None:
         self.path = Path(instance_path) / "audit.sqlite3"

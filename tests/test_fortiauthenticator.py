@@ -228,6 +228,15 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         self.assertEqual(summary["scoreboard"][0]["username"], "test-user")
         self.assertEqual(summary["recent"][0]["title"], "Tested FortiAuthenticator profile")
         self.assertEqual(summary["recent"][0]["detail"], "Lab: 42 MAC devices available")
+        event = AuditStore(self.temporary_directory.name).recent(1)[0]
+        audit_database = Path(
+            self.temporary_directory.name, "audit.sqlite3"
+        ).read_bytes()
+        self.assertEqual(
+            event["action"], "fortiauthenticator.profile_test_succeeded"
+        )
+        self.assertEqual(event["details"]["outcome"], "succeeded")
+        self.assertNotIn(b"secret", audit_database)
 
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
     def test_mac_device_preview_and_csv_export(self, get_all_mac_devices: Mock) -> None:

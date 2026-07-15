@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
+from twn_toolkit.audit import AuditStore
 from twn_toolkit.network_tools import ToolInputError, parse_tcp_ports, scan_tcp_ports
 
 
@@ -118,6 +119,10 @@ class PortScannerTests(unittest.TestCase):
                 data={"name": "Web"},
             )
             self.assertEqual(response.status_code, 200)
+            event = AuditStore(instance).recent(1)[0]
+            self.assertEqual(event["action"], "tcp_scanner.ports.profile_deleted")
+            self.assertEqual(event["resource_name"], "Web")
+            self.assertEqual(event["details"]["profile type"], "TCP scanner port profile")
 
 
 if __name__ == "__main__":

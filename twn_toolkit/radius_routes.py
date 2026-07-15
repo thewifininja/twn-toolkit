@@ -5,6 +5,7 @@ import platform
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
+from .audit import annotate_profile_deleted, annotate_profile_saved
 from .network_tools import (
     ToolInputError,
     parse_radius_attributes,
@@ -184,6 +185,26 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
                 return jsonify({"error": "Enter at least one RADIUS attribute."}), 400
             profile = {"name": name, "count": len(attributes), "source": values.strip()}
         store.upsert(profile, original_name=original_name)
+        profile_type = {
+            "servers": "RADIUS server profile",
+            "credentials": "RADIUS credential profile",
+            "attributes": "RADIUS request-attribute profile",
+        }[kind]
+        credential_updated = (
+            bool(request.form.get("secret", ""))
+            if kind == "servers"
+            else bool(request.form.get("password", ""))
+            if kind == "credentials"
+            else False
+        )
+        annotate_profile_saved(
+            category="Network tools",
+            action_namespace=f"radius.{kind}",
+            profile_type=profile_type,
+            before=existing,
+            after=profile,
+            credential_updated=credential_updated,
+        )
         return jsonify({"profile": {"name": name}})
 
     @tools_bp.post("/radius-test/profiles/<kind>/delete")
@@ -191,8 +212,21 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
         if kind not in {"servers", "credentials", "attributes"}:
             return jsonify({"error": "Unknown RADIUS profile type."}), 404
         name = request.form.get("name", "").strip()
-        if not _radius_profile_store(kind).delete(name):
+        store = _radius_profile_store(kind)
+        profile = store.get(name)
+        if not profile or not store.delete(name):
             return jsonify({"error": "Profile not found."}), 404
+        profile_type = {
+            "servers": "RADIUS server profile",
+            "credentials": "RADIUS credential profile",
+            "attributes": "RADIUS request-attribute profile",
+        }[kind]
+        annotate_profile_deleted(
+            category="Network tools",
+            action_namespace=f"radius.{kind}",
+            profile_type=profile_type,
+            profile=profile,
+        )
         return jsonify({"deleted": name})
 
 

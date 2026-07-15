@@ -5,7 +5,12 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import increment_current_activity, record_current_activity
-from .audit import annotate_audit_event, suppress_audit_event
+from .audit import (
+    annotate_audit_event,
+    annotate_profile_deleted,
+    annotate_profile_saved,
+    suppress_audit_event,
+)
 from .network_tools import ToolInputError, validate_hosts
 from .profiles import (
     SNMPCredentialProfileStore,
@@ -151,6 +156,17 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
                         host_store.upsert(
                             {**host, "credential_name": name}, original_name=host["name"]
                         )
+            annotate_profile_saved(
+                category="Network tools",
+                action_namespace="snmp.credentials",
+                profile_type="SNMP credential profile",
+                before=existing,
+                after=profile,
+                credential_updated=any(
+                    request.form.get(field, "")
+                    for field in ("community", "auth_key", "priv_key")
+                ),
+            )
             return jsonify({"profile": _public_snmp_credential(profile)})
 
         if kind == "hosts":
@@ -179,7 +195,16 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
                 "timeout": timeout,
                 "retries": retries,
             }
-            _snmp_host_store().upsert(profile, original_name=original_name)
+            store = _snmp_host_store()
+            before = store.get(original_name or name)
+            store.upsert(profile, original_name=original_name)
+            annotate_profile_saved(
+                category="Network tools",
+                action_namespace="snmp.hosts",
+                profile_type="SNMP host profile",
+                before=before,
+                after=profile,
+            )
             return jsonify({"profile": profile})
 
         source = request.form.get("source", "")
@@ -188,7 +213,16 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
         except ToolInputError as exc:
             return jsonify({"error": str(exc)}), 400
         profile = {"name": name, "source": source.strip(), "count": len(entries)}
-        _snmp_oid_store().upsert(profile, original_name=original_name)
+        store = _snmp_oid_store()
+        before = store.get(original_name or name)
+        store.upsert(profile, original_name=original_name)
+        annotate_profile_saved(
+            category="Network tools",
+            action_namespace="snmp.oids",
+            profile_type="SNMP OID profile",
+            before=before,
+            after=profile,
+        )
         return jsonify({"profile": profile})
 
     @tools_bp.post("/snmp-test/profiles/<kind>/delete")
@@ -211,8 +245,20 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
             store = _snmp_host_store()
         else:
             store = _snmp_oid_store()
-        if not store.delete(name):
+        profile = store.get(name)
+        if not profile or not store.delete(name):
             return jsonify({"error": "Profile not found."}), 404
+        profile_type = {
+            "credentials": "SNMP credential profile",
+            "hosts": "SNMP host profile",
+            "oids": "SNMP OID profile",
+        }[kind]
+        annotate_profile_deleted(
+            category="Network tools",
+            action_namespace=f"snmp.{kind}",
+            profile_type=profile_type,
+            profile=profile,
+        )
         return jsonify({"deleted": name})
 
     @tools_bp.post("/snmp-test/interfaces")

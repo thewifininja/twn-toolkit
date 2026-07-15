@@ -310,7 +310,7 @@ class NetworkToolTests(unittest.TestCase):
         rename_event = events[0]
         self.assertEqual(rename_event["details"]["outcome"], "success")
         self.assertEqual(rename_event["details"]["successful object count"], 1)
-        self.assertEqual(event_count_after_dry_run, 2)
+        self.assertEqual(event_count_after_dry_run, 3)
         self.assertNotIn(b"profile-secret", audit_database)
         self.assertNotIn(b"raw-export-value", audit_database)
 
@@ -425,6 +425,8 @@ class NetworkToolTests(unittest.TestCase):
 
             response = client.post("/profiles/Lab/test", follow_redirects=True)
             summary = ActivityStore(instance).summary()
+            audit_event = AuditStore(instance).recent(1)[0]
+            audit_database = Path(instance, "audit.sqlite3").read_bytes()
 
         self.assertIn(b"Connection OK: v7.6", response.data)
         self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 1)
@@ -434,6 +436,9 @@ class NetworkToolTests(unittest.TestCase):
         self.assertEqual(summary["scoreboard"][0]["actions"], 1)
         self.assertEqual(summary["recent"][0]["title"], "Tested FortiGate profile")
         self.assertEqual(summary["recent"][0]["detail"], "Lab: v7.6")
+        self.assertEqual(audit_event["action"], "fortigate.profile_test_succeeded")
+        self.assertEqual(audit_event["details"]["outcome"], "succeeded")
+        self.assertNotIn(b"secret", audit_database)
 
     def test_tool_routes(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
