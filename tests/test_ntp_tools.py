@@ -8,7 +8,7 @@ from unittest.mock import patch
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
 from twn_toolkit.network_tools import ToolInputError
-from twn_toolkit.ntp_tools import NTP_PACKET, _unix_to_ntp, test_ntp_server
+from twn_toolkit.ntp_tools import NTP_PACKET, _unix_to_ntp, test_ntp_server as run_ntp_test
 
 
 class FakeSocket:
@@ -61,7 +61,7 @@ class NTPToolTests(unittest.TestCase):
             patch("twn_toolkit.ntp_tools.socket.socket", return_value=fake),
             patch("twn_toolkit.ntp_tools.time.time", side_effect=[1_700_000_000.0, 1_700_000_000.040]),
         ):
-            result = test_ntp_server("ntp.example", samples=1)
+            result = run_ntp_test("ntp.example", samples=1)
 
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["stratum"], 2)
@@ -72,11 +72,11 @@ class NTPToolTests(unittest.TestCase):
 
     def test_validates_settings(self) -> None:
         with self.assertRaises(ToolInputError):
-            test_ntp_server("", samples=1)
+            run_ntp_test("", samples=1)
         with self.assertRaises(ToolInputError):
-            test_ntp_server("ntp.example", port=0)
+            run_ntp_test("ntp.example", port=0)
         with self.assertRaises(ToolInputError):
-            test_ntp_server("ntp.example", samples=11)
+            run_ntp_test("ntp.example", samples=11)
 
     def test_route_renders_result(self) -> None:
         result = {

@@ -72,7 +72,7 @@ jobs:
       - name: Audit pinned dependencies
         run: |
           python -m pip install pip-audit==2.10.1
-          python -m pip_audit -r requirements.txt \
+          python -m pip_audit -r requirements-dev.txt \
             --ignore-vuln PYSEC-2026-2858 \
             --ignore-vuln GHSA-cq46-m9x9-j8w2
 
@@ -103,10 +103,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-dev.txt
 
       - name: Compile Python sources
         run: python -m compileall -q twn_toolkit tests
 
       - name: Run test suite
-        run: python -m unittest discover -s tests -v
+        run: python -m pytest -q

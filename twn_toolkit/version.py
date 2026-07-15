@@ -1,6 +1,33 @@
-APP_VERSION = "0.10.0"
+APP_VERSION = "0.10.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.10.1",
+        "date": "2026-07-15",
+        "title": "Login origin compatibility hotfix",
+        "summary": (
+            "A focused authentication fix for legitimate same-origin logins made "
+            "through hostname aliases, alternate access URLs, or reverse proxies."
+        ),
+        "groups": (
+            {
+                "title": "Authentication and request security",
+                "items": (
+                    "Accepted browser-verified same-origin form submissions even when Flask's backend Host differs from the browser-visible origin.",
+                    "Continued to reject browser-classified cross-site mutations and retained strict Origin/Referer comparison as the fallback for clients without same-origin fetch metadata.",
+                    "Added a regression test for login through a host alias alongside an explicit cross-site rejection test.",
+                ),
+            },
+            {
+                "title": "Test coverage",
+                "items": (
+                    "Changed local and CI test execution to pytest so unittest classes and fixture-based authentication/server tests run together.",
+                    "Activated 27 previously uncollected tests and pinned the development test runner separately from runtime dependencies.",
+                    "Corrected an imported NTP helper's test-like alias and one obsolete backup-help assertion exposed by the complete suite.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.10.0",
         "date": "2026-07-15",

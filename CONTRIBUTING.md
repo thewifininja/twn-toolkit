@@ -12,7 +12,8 @@ merged through a pull request.
 3. Run the complete local test suite:
 
    ```bash
-   .venv/bin/python -m unittest discover -s tests
+   .venv/bin/python -m pip install -r requirements-dev.txt
+   .venv/bin/python -m pytest -q
    ```
 
 4. Push the branch and open a pull request against `main`.

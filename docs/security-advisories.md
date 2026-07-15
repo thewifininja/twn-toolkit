@@ -1,15 +1,15 @@
 # Security Advisories
 
-The release CI audits every pinned runtime dependency with `pip-audit`. A
+The release CI audits every pinned runtime and test dependency with `pip-audit`. A
 release must either use a fixed dependency or document a narrowly applicable
 exception with an active mitigation and a removal condition.
 
-## Reviewed exceptions for 0.10.0
+## Reviewed exceptions for 0.10.x
 
 ### Paramiko — CVE-2026-44405 / PYSEC-2026-2858
 
 Paramiko through 4.0.0 permits SHA-1 RSA signatures and did not have a fixed
-PyPI release when 0.10.0 was prepared. The toolkit disables `ssh-rsa` for both
+PyPI release when the 0.10.x line was prepared. The toolkit disables `ssh-rsa` for both
 host-key and public-key negotiation in every Paramiko client and server path.
 
 An operator who must connect to a legacy appliance that supports no RSA-SHA2,
