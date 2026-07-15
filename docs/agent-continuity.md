@@ -127,8 +127,9 @@ accepted replay frames.
 - Current milestone is 0.9.1: local file services, multi-protocol transfer
   workflows, formal migrations, operational limits, diagnostics, and worker
   supervision are implemented, with serialized service restarts and
-  ownership-safe PID cleanup. Audit detail, upgrade-path breadth, packaging,
-  and the supported 1.0 compatibility contract still need deliberate hardening.
+  ownership-safe PID cleanup. Route-level audit enrichment is complete with no
+  pending mutating endpoints; upgrade-path breadth, packaging, and the supported
+  1.0 compatibility contract still need deliberate hardening.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.
