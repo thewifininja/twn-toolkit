@@ -274,6 +274,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         self.assertIn(b"2 devices fetched", response.data)
         self.assertIn(b"11:22:33:44:55:66", response.data)
         self.assertIn(b"Front office", response.data)
+        self.assertEqual(len(AuditStore(self.temporary_directory.name).recent(10)), 1)
 
         response = self.client.post(
             "/fortiauthenticator/mac-devices.csv",
@@ -292,6 +293,16 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 2)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
         self.assertEqual(summary["recent"][0]["title"], "Exported FortiAuthenticator MAC devices")
+        event = AuditStore(self.temporary_directory.name).recent(1)[0]
+        audit_database = Path(
+            self.temporary_directory.name, "audit.sqlite3"
+        ).read_bytes()
+        self.assertEqual(
+            event["action"], "fortiauthenticator.mac_devices_export_succeeded"
+        )
+        self.assertEqual(event["details"]["record count"], 2)
+        self.assertNotIn(b"11:22:33:44:55:66", audit_database)
+        self.assertNotIn(b"Front office", audit_database)
 
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_group_memberships")
     def test_group_membership_preview_and_csv_export(self, get_memberships: Mock) -> None:
@@ -326,6 +337,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         self.assertIn(b"1 membership fetched", response.data)
         self.assertIn(b"Office Devices", response.data)
         self.assertIn(b">42<", response.data)
+        self.assertEqual(len(AuditStore(self.temporary_directory.name).recent(10)), 1)
 
         response = self.client.post(
             "/fortiauthenticator/mac-group-memberships.csv",
@@ -343,6 +355,16 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         )
         summary = ActivityStore(self.temporary_directory.name).summary()
         self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 2)
+        event = AuditStore(self.temporary_directory.name).recent(1)[0]
+        audit_database = Path(
+            self.temporary_directory.name, "audit.sqlite3"
+        ).read_bytes()
+        self.assertEqual(
+            event["action"], "fortiauthenticator.mac_memberships_export_succeeded"
+        )
+        self.assertEqual(event["details"]["record count"], 1)
+        self.assertNotIn(b"Office Devices", audit_database)
+        self.assertNotIn(b"/api/v1/macdevices/42/", audit_database)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
         self.assertEqual(
             summary["recent"][0]["title"],

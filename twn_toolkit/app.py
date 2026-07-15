@@ -440,22 +440,80 @@ def create_app(instance_path: str | None = None) -> Flask:
         ftp_settings_store,
     )
 
+    def _record_authentication_event(
+        *,
+        action: str,
+        summary: str,
+        outcome: str,
+        username: str,
+        user: dict[str, Any] | None = None,
+        status_code: int,
+    ) -> None:
+        """Record public authentication routes that run without ``g.current_user``."""
+        try:
+            audit_store.record(
+                user_id=(user or {}).get("id", ""),
+                username=username,
+                remote_ip=request.remote_addr or "",
+                method=request.method,
+                endpoint=request.endpoint or "",
+                path=request.path,
+                status_code=status_code,
+                category="Authentication",
+                action=action,
+                summary=summary,
+                resource_type="user",
+                resource_id=(user or {}).get("id", ""),
+                resource_name=username,
+                details={
+                    "outcome": outcome,
+                    "actor role": (
+                        "System administrator"
+                        if (user or {}).get("is_admin")
+                        else "Unauthenticated"
+                    ),
+                },
+            )
+        except Exception:
+            app.logger.exception("Toolkit authentication audit event could not be recorded")
+
     @app.route("/setup", methods=["GET", "POST"])
     def setup():
         if auth_store.is_configured():
             return redirect(url_for("login"))
         if request.method == "POST":
+            username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             if password != request.form.get("confirm_password", ""):
+                _record_authentication_event(
+                    action="authentication.setup_failed",
+                    summary="Initial administrator setup failed.",
+                    outcome="failed",
+                    username=username,
+                    status_code=200,
+                )
                 flash("Passwords do not match.", "error")
             else:
                 try:
-                    user = auth_store.create_user(
-                        request.form.get("username", ""), password, is_admin=True
-                    )
+                    user = auth_store.create_user(username, password, is_admin=True)
                 except ValueError as exc:
+                    _record_authentication_event(
+                        action="authentication.setup_failed",
+                        summary="Initial administrator setup failed.",
+                        outcome="failed",
+                        username=username,
+                        status_code=200,
+                    )
                     flash(str(exc), "error")
                 else:
+                    _record_authentication_event(
+                        action="authentication.setup_succeeded",
+                        summary="Created the initial administrator account.",
+                        outcome="succeeded",
+                        username=user["username"],
+                        user=user,
+                        status_code=302,
+                    )
                     _start_session(user)
                     flash("Administrator account created.", "success")
                     return redirect(url_for("index"))
@@ -466,18 +524,47 @@ def create_app(instance_path: str | None = None) -> Flask:
         if not auth_store.is_configured():
             return redirect(url_for("setup"))
         if request.method == "POST":
+            username = request.form.get("username", "").strip()
             user = auth_store.authenticate(
-                request.form.get("username", ""),
+                username,
                 request.form.get("password", ""),
             )
             if user:
+                _record_authentication_event(
+                    action="authentication.login_succeeded",
+                    summary="User signed in.",
+                    outcome="succeeded",
+                    username=user["username"],
+                    user=user,
+                    status_code=302,
+                )
                 _start_session(user)
                 return redirect(_validated_next_url(request.form.get("next", "")))
+            _record_authentication_event(
+                action="authentication.login_failed",
+                summary="Sign-in attempt failed.",
+                outcome="failed",
+                username=username,
+                status_code=200,
+            )
             flash("Invalid username or password.", "error")
         return render_template("auth/login.html", next_url=_safe_next_url())
 
     @app.post("/logout")
     def logout():
+        user_id = session.get("user_id")
+        user = next(
+            (item for item in auth_store.users() if item["id"] == user_id),
+            None,
+        )
+        _record_authentication_event(
+            action="authentication.logout_succeeded",
+            summary="User signed out.",
+            outcome="succeeded",
+            username=(user or {}).get("username", ""),
+            user=user,
+            status_code=302,
+        )
         session.clear()
         flash("You have been signed out.", "success")
         return redirect(url_for("login"))

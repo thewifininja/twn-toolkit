@@ -46,8 +46,12 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "delete_tftp_temporary_file",
         "delete_user",
         "execute_fortiauthenticator_mac_cleanup",
+        "export_fortiauthenticator_mac_devices",
+        "export_fortiauthenticator_mac_group_memberships",
         "export_profile_backup",
         "import_profile_backup",
+        "login",
+        "logout",
         "optimize_automation_database",
         "prune_automation_history",
         "rename_datastore_entry",
@@ -66,6 +70,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "save_profile",
         "save_ssh_transfer_settings",
         "save_tftp_settings",
+        "setup",
         "test_automation_condition",
         "test_condition_definition",
         "test_fortiauthenticator_profile",
@@ -134,6 +139,14 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
         "tools.ping_validate_targets",
         "tools.multi_sftp",
         "tools.speed_test_upload",
+        "fortiap_client_history",
+        "fortiauthenticator_mac_cleanup",
+        "fortiauthenticator_mac_devices",
+        "fortiauthenticator_mac_group_memberships",
+        "switch_order_objects",
+        "task_fields",
+        "task_objects",
+        "task_preview",
         "tools.snmp_interface_sample",
         "tools.snmp_interface_samples",
         "tools.snmp_interfaces",
@@ -152,23 +165,7 @@ AUDIT_EXCLUDED_ENDPOINTS = {
 
 # This is an explicit burn-down list, not a permanent allowlist. Later audit
 # enrichment changes move endpoints from here into one of the resolved policies.
-AUDIT_PENDING_ENDPOINTS = frozenset(
-    {
-        "export_fortiauthenticator_mac_devices",
-        "export_fortiauthenticator_mac_group_memberships",
-        "fortiap_client_history",
-        "fortiauthenticator_mac_cleanup",
-        "fortiauthenticator_mac_devices",
-        "fortiauthenticator_mac_group_memberships",
-        "login",
-        "logout",
-        "setup",
-        "switch_order_objects",
-        "task_fields",
-        "task_objects",
-        "task_preview",
-    }
-)
+AUDIT_PENDING_ENDPOINTS = frozenset()
 
 
 def mutation_audit_policies() -> dict[str, AuditRoutePolicy]:
