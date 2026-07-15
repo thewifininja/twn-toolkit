@@ -21,6 +21,7 @@ from .ssh_transfer_server import (
 )
 from .tftp import format_incoming_filename
 from .pidfiles import remove_own_pid_file, write_pid_file
+from .ssh_security import disabled_ssh_algorithms
 
 CLIENT_IDLE_TIMEOUT_SECONDS = 30
 
@@ -225,7 +226,11 @@ def serve(instance: str, stop: threading.Event) -> None:
         def handle(sock=client, ip=client_ip):
             transport = None
             try:
-                context = TransferContext(instance, settings, ip); transport = paramiko.Transport(sock); transport.add_server_key(key)
+                context = TransferContext(instance, settings, ip)
+                transport = paramiko.Transport(
+                    sock, disabled_algorithms=disabled_ssh_algorithms()
+                )
+                transport.add_server_key(key)
                 transport.set_subsystem_handler("sftp", paramiko.SFTPServer, ContainedSFTP, context=context)
                 transport.start_server(server=TransferServer(context))
                 while transport.is_active() and not stop.wait(0.5): pass

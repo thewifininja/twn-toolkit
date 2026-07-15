@@ -83,6 +83,10 @@ class SftpToolTests(unittest.TestCase):
             timeout=10,
             auth_timeout=10,
             banner_timeout=10,
+            disabled_algorithms={
+                "keys": ["ssh-rsa"],
+                "pubkeys": ["ssh-rsa"],
+            },
         )
 
     def test_connection_failure_is_reported_for_each_requested_file(self) -> None:

@@ -4,6 +4,7 @@ import os
 import secrets
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import click
 from flask import (
@@ -93,6 +94,12 @@ def create_app(instance_path: str | None = None) -> Flask:
 
     @app.before_request
     def require_authentication():
+        if _is_cross_origin_mutation():
+            return Response(
+                "Cross-origin state-changing requests are not allowed.",
+                status=403,
+                mimetype="text/plain",
+            )
         if app.testing:
             g.current_user = {
                 "id": "test-user",
@@ -206,6 +213,19 @@ def create_app(instance_path: str | None = None) -> Flask:
                 )
             except Exception:
                 app.logger.exception("Toolkit audit event could not be recorded")
+        return response
+
+    @app.after_request
+    def apply_security_headers(response: Response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+        )
+        if (request.endpoint or "") not in {"static", "favicon"}:
+            response.headers.setdefault("Cache-Control", "no-store")
         return response
 
     @app.context_processor
@@ -758,3 +778,27 @@ def create_app(instance_path: str | None = None) -> Flask:
         return app.send_static_file("brand/favicon-32.png")
 
     return app
+
+
+def _is_cross_origin_mutation() -> bool:
+    if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return False
+    if request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+        return True
+    source = request.headers.get("Origin") or request.headers.get("Referer")
+    if not source:
+        return False
+    try:
+        return _origin(source) != _origin(request.host_url)
+    except ValueError:
+        return True
+
+
+def _origin(value: str) -> tuple[str, str, int]:
+    parsed = urlsplit(value)
+    scheme = parsed.scheme.lower()
+    hostname = (parsed.hostname or "").lower()
+    if scheme not in {"http", "https"} or not hostname:
+        raise ValueError("Invalid web origin")
+    port = parsed.port or (443 if scheme == "https" else 80)
+    return scheme, hostname, port
