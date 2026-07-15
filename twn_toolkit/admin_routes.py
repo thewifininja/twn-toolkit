@@ -46,6 +46,8 @@ from .migrations import MigrationManager
 from .tftp import tftp_process_status
 from .ssh_transfer_server import ssh_transfer_process_status
 from .ftp_server import ftp_process_status
+from .upgrade_manager import ReleaseClient, UpgradeError, UpgradeManager
+from .version import APP_VERSION
 
 
 def _format_bytes(value: int) -> str:
@@ -196,6 +198,9 @@ def register_admin_routes(
     audit_store: AuditStore,
     operational_store: OperationalSettingsStore,
 ) -> None:
+    project_root = Path(__file__).resolve().parent.parent
+    upgrade_manager = UpgradeManager(project_root, Path(app.instance_path), APP_VERSION)
+
     @app.post("/settings/theme")
     def update_theme():
         payload = request.get_json(silent=True) or {}
@@ -342,6 +347,125 @@ def register_admin_routes(
             automation_storage=automation_store.storage_stats(),
             orphan_artifacts=automation_store.orphan_artifact_stats(),
             audit_page=audit_page,
+        )
+
+    @app.get("/settings/updates")
+    def updates():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        release = None
+        check_error = ""
+        if request.args.get("check") == "1":
+            try:
+                release = ReleaseClient().release(APP_VERSION)
+            except UpgradeError as exc:
+                check_error = str(exc)
+        backups = upgrade_manager.backups()
+        for backup in backups:
+            backup["created_display"] = datetime.fromtimestamp(
+                float(backup.get("created_at", 0))
+            ).astimezone().strftime("%b %-d, %Y %-I:%M %p")
+        return render_template(
+            "auth/updates.html",
+            installed_version=APP_VERSION,
+            release=release,
+            check_error=check_error,
+            upgrade_status=upgrade_manager.status(),
+            recovery_points=backups,
+        )
+
+    @app.get("/settings/updates/status")
+    def update_status():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        return jsonify(upgrade_manager.status())
+
+    def upgrade_actor() -> dict[str, str]:
+        return {
+            "id": str(g.current_user.get("id", "")),
+            "username": str(g.current_user.get("username", "")),
+            "remote_ip": request.remote_addr or "",
+        }
+
+    def render_upgrade_started(request_data: dict[str, Any], message: str):
+        annotate_audit_event(
+            category="Administration", action=f"upgrade.{request_data['operation']}_requested",
+            summary=message, resource_type="toolkit_release",
+            resource_id=str(request_data.get("target_version", "")),
+            resource_name=f"Toolkit v{request_data.get('target_version', '')}",
+            details={"operation id": request_data["id"]},
+        )
+        return render_template(
+            "auth/updating.html",
+            operation_id=request_data["id"],
+            operation=request_data["operation"],
+        )
+
+    @app.post("/settings/updates/install")
+    def install_update():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            if request.form.get("confirm_upgrade") != "on":
+                raise UpgradeError("Confirm that services will restart and an automatic recovery point will be created.")
+            client = ReleaseClient()
+            release = client.release(APP_VERSION, request.form.get("version", ""))
+            bundle = upgrade_manager.download_release(release, client)
+            operation = upgrade_manager.launch_upgrade(bundle, upgrade_actor())
+        except UpgradeError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("updates", check=1))
+        return render_upgrade_started(
+            operation, f"Requested toolkit upgrade to v{operation['target_version']}.",
+        )
+
+    @app.post("/settings/updates/upload")
+    def upload_update_bundle():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            if request.form.get("confirm_upgrade") != "on":
+                raise UpgradeError("Confirm that services will restart and an automatic recovery point will be created.")
+            upload = request.files.get("bundle")
+            if not upload or not upload.filename:
+                raise UpgradeError("Choose a toolkit release bundle.")
+            bundle = upgrade_manager.save_upload(upload.stream)
+            operation = upgrade_manager.launch_upgrade(bundle, upgrade_actor())
+        except UpgradeError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("updates"))
+        return render_upgrade_started(
+            operation, f"Requested manual toolkit upgrade to v{operation['target_version']}.",
+        )
+
+    @app.post("/settings/updates/backup")
+    def create_recovery_point():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            if request.form.get("confirm_backup") != "on":
+                raise UpgradeError("Confirm the brief service restart required for a consistent recovery point.")
+            operation = upgrade_manager.launch_backup(upgrade_actor())
+        except UpgradeError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("updates"))
+        return render_upgrade_started(operation, "Requested a complete toolkit recovery point.")
+
+    @app.post("/settings/updates/rollback")
+    def rollback_update():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            if request.form.get("confirm_rollback") != "on":
+                raise UpgradeError("Confirm that current code and instance data will be replaced by the selected recovery point.")
+            operation = upgrade_manager.launch_rollback(
+                request.form.get("backup_id", ""), upgrade_actor()
+            )
+        except UpgradeError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("updates"))
+        return render_upgrade_started(
+            operation, f"Requested rollback to recovery point {operation['backup_id']}.",
         )
 
     @app.post("/settings/diagnostics/cleanup-artifacts")

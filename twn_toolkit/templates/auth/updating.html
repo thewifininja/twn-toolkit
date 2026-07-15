@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel auth-panel restart-panel" id="upgrade-progress" data-status-url="{{ url_for('update_status') }}" data-updates-url="{{ url_for('updates') }}" data-operation-id="{{ operation_id }}">
+  <p class="eyebrow">Updates &amp; recovery</p>
+  <h1>{{ 'Restoring the toolkit…' if operation == 'rollback' else 'Creating a recovery point…' if operation == 'backup' else 'Upgrading the toolkit…' }}</h1>
+  <p id="upgrade-message" aria-live="polite">Preparing the requested operation. This page may be temporarily unreachable while services restart.</p>
+  <div class="loading-progress" aria-hidden="true"><span></span></div>
+  <noscript><p>Wait for the toolkit to restart, then open Updates &amp; Recovery to review the result.</p></noscript>
+</section>
+<script src="{{ url_for('static', filename='upgrade-status.js', v=app_version) }}" defer></script>
+{% endblock %}

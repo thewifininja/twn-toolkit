@@ -23,6 +23,14 @@ def backup_items(instance_path: str):
 def register_tools(registry: ToolRegistry) -> None:
     registry.add_tool(
         ToolLink(
+            "admin.updates", "Updates & Recovery",
+            "Check for verified releases, create recovery points, upgrade, and restore safely.",
+            "updates", "administration", "Administration",
+            admin_only=True, grantable=False, nav_icon="↻",
+        )
+    )
+    registry.add_tool(
+        ToolLink(
             "admin.settings",
             "Settings",
             "Manage users, password policy, server access, and profile backup/restore.",
@@ -60,5 +68,11 @@ def register_tools(registry: ToolRegistry) -> None:
             "update_operational_settings": "admin.settings",
             "diagnostics": "admin.diagnostics",
             "cleanup_orphan_artifacts": "admin.diagnostics",
+            "updates": "admin.updates",
+            "update_status": "admin.updates",
+            "install_update": "admin.updates",
+            "upload_update_bundle": "admin.updates",
+            "create_recovery_point": "admin.updates",
+            "rollback_update": "admin.updates",
         }
     )

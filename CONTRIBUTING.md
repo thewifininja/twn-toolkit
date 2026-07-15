@@ -47,6 +47,10 @@ artifacts, or local packet/log files.
    environment.
 5. Create an annotated `vX.Y.Z` tag that exactly matches `APP_VERSION`.
 6. Push the tag, wait for tag CI to pass, and publish the GitHub release.
+7. Wait for the **Release upgrade bundle** workflow and verify that the release
+   contains both `twn-toolkit-vX.Y.Z.zip` and its `.sha256` asset. Until both
+   exist, in-app and CLI release discovery intentionally withhold that version.
 
 The tag CI job rejects a release tag whose version does not match the
-application version.
+application version. Main CI also builds and validates the bundle format before
+merge; the published-release workflow rebuilds it from the tag itself.

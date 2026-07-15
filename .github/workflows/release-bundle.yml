@@ -1,0 +1,41 @@
+name: Release upgrade bundle
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    name: Build and attach verified upgrade bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the published tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Validate tag and build bundle
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import os
+          from twn_toolkit.version import APP_VERSION
+          expected = os.environ["RELEASE_TAG"].removeprefix("v")
+          if APP_VERSION != expected:
+              raise SystemExit(f"Release tag {expected} does not match APP_VERSION {APP_VERSION}")
+          PY
+          python scripts/build_release_bundle.py
+
+      - name: Upload verified bundle to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/* --clobber
