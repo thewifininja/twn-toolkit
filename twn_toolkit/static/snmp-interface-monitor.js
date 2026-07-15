@@ -126,13 +126,13 @@
     const metrics = document.createElement("div");
     metrics.className = "snmp-monitor-summary";
     const link = metric("Link", "snmp-target-link", "snmp-target-speed");
-    const inbound = metric("Inbound / download", "snmp-target-in", "snmp-target-in-percent");
-    const outbound = metric("Outbound / upload", "snmp-target-out", "snmp-target-out-percent");
+    const download = metric("Download / interface TX", "snmp-target-download", "snmp-target-download-percent");
+    const upload = metric("Upload / interface RX", "snmp-target-upload", "snmp-target-upload-percent");
     const peaks = metric("Observed peaks", "snmp-target-peaks", "snmp-target-health");
     link.value.textContent = target.interface.oper_status || "unknown";
     link.secondary.textContent = formatSpeed(target.interface.speed_bps);
     peaks.secondary.textContent = "Errors and discards: —";
-    metrics.append(link.node, inbound.node, outbound.node, peaks.node);
+    metrics.append(link.node, download.node, upload.node, peaks.node);
 
     const chartWrap = document.createElement("div");
     chartWrap.className = "snmp-monitor-chart-wrap";
@@ -144,11 +144,20 @@
     empty.textContent = "The first poll establishes a counter baseline. Rates appear after the next sample.";
     const legend = document.createElement("div");
     legend.className = "snmp-monitor-legend";
-    legend.innerHTML = '<span class="inbound">Inbound / download</span><span class="outbound">Outbound / upload</span>';
-    chartWrap.append(canvas, empty, legend);
+    legend.innerHTML = '<span class="download">Download / interface TX</span><span class="upload">Upload / interface RX</span>';
+    const tooltip = document.createElement("div");
+    tooltip.className = "snmp-monitor-tooltip";
+    tooltip.hidden = true;
+    tooltip.setAttribute("role", "status");
+    tooltip.innerHTML = '<strong class="snmp-monitor-tooltip-time"></strong><span class="download"></span><span class="upload"></span>';
+    canvas.addEventListener("pointermove", (event) => updateChartHover(target, event));
+    canvas.addEventListener("pointerdown", (event) => updateChartHover(target, event));
+    canvas.addEventListener("pointerleave", () => clearChartHover(target));
+    canvas.addEventListener("pointercancel", () => clearChartHover(target));
+    chartWrap.append(canvas, empty, tooltip, legend);
     card.append(header, metrics, chartWrap);
 
-    target.ui = {card, remove, link, inbound, outbound, peaks, canvas, empty};
+    target.ui = {card, remove, link, download, upload, peaks, canvas, empty, tooltip};
     return card;
   };
 
@@ -182,6 +191,8 @@
       label: interfaceName(selected),
       baseline: null,
       points: [],
+      hoverAt: null,
+      chartState: null,
       lastError: "",
       ui: null,
     };
@@ -237,7 +248,7 @@
     const ui = target.ui;
     ui.link.value.textContent = sample.oper_status || "unknown";
     ui.link.secondary.textContent = formatSpeed(sample.speed_bps || target.interface.speed_bps);
-    ui.peaks.secondary.textContent = `Errors ${sample.input_errors ?? "—"} in / ${sample.output_errors ?? "—"} out · Discards ${sample.input_discards ?? "—"} in / ${sample.output_discards ?? "—"} out`;
+    ui.peaks.secondary.textContent = `Interface RX/TX errors ${sample.input_errors ?? "—"}/${sample.output_errors ?? "—"} · discards ${sample.input_discards ?? "—"}/${sample.output_discards ?? "—"}`;
     target.lastError = "";
 
     if (sampleReset(target, sample)) {
@@ -256,18 +267,20 @@
       ui.empty.textContent = "The device counters reset. A new baseline was established.";
       return;
     }
-    const inboundRate = Number(inputDelta) * 8 / elapsed;
-    const outboundRate = Number(outputDelta) * 8 / elapsed;
+    // IF-MIB counters are interface-relative: transmitted octets travel toward the
+    // attached endpoint (download), while received octets arrive from it (upload).
+    const downloadRate = Number(outputDelta) * 8 / elapsed;
+    const uploadRate = Number(inputDelta) * 8 / elapsed;
     const speed = sample.speed_bps || target.interface.speed_bps || null;
-    target.points.push({at: sample.sampled_at_ms, inbound: inboundRate, outbound: outboundRate});
+    target.points.push({at: sample.sampled_at_ms, download: downloadRate, upload: uploadRate});
     if (target.points.length > MAX_POINTS) target.points.splice(0, target.points.length - MAX_POINTS);
-    ui.inbound.value.textContent = formatRate(inboundRate);
-    ui.inbound.secondary.textContent = formatPercent(inboundRate, speed);
-    ui.outbound.value.textContent = formatRate(outboundRate);
-    ui.outbound.secondary.textContent = formatPercent(outboundRate, speed);
-    const peakIn = Math.max(...target.points.map((point) => point.inbound));
-    const peakOut = Math.max(...target.points.map((point) => point.outbound));
-    ui.peaks.value.textContent = `${formatRate(peakIn)} in / ${formatRate(peakOut)} out`;
+    ui.download.value.textContent = formatRate(downloadRate);
+    ui.download.secondary.textContent = formatPercent(downloadRate, speed);
+    ui.upload.value.textContent = formatRate(uploadRate);
+    ui.upload.secondary.textContent = formatPercent(uploadRate, speed);
+    const peakDownload = Math.max(...target.points.map((point) => point.download));
+    const peakUpload = Math.max(...target.points.map((point) => point.upload));
+    ui.peaks.value.textContent = `${formatRate(peakDownload)} down / ${formatRate(peakUpload)} up`;
     ui.empty.hidden = true;
     drawChart(target);
   };
@@ -275,11 +288,14 @@
   const resetTarget = (target) => {
     target.baseline = null;
     target.points = [];
+    target.hoverAt = null;
+    target.chartState = null;
     target.lastError = "";
-    target.ui.inbound.value.textContent = "—";
-    target.ui.inbound.secondary.textContent = "";
-    target.ui.outbound.value.textContent = "—";
-    target.ui.outbound.secondary.textContent = "";
+    target.ui.download.value.textContent = "—";
+    target.ui.download.secondary.textContent = "";
+    target.ui.upload.value.textContent = "—";
+    target.ui.upload.secondary.textContent = "";
+    target.ui.tooltip.hidden = true;
     target.ui.peaks.value.textContent = "—";
     target.ui.peaks.secondary.textContent = "Errors and discards: —";
     target.ui.empty.hidden = false;
@@ -364,26 +380,26 @@
     const styles = getComputedStyle(document.documentElement);
     const line = styles.getPropertyValue("--line").trim() || "#d3dfd8";
     const muted = styles.getPropertyValue("--muted").trim() || "#617069";
-    const inboundColor = styles.getPropertyValue("--brand-green").trim() || "#2da747";
-    const outboundColor = styles.getPropertyValue("--brand-red").trim() || "#db3c46";
+    const downloadColor = styles.getPropertyValue("--brand-green").trim() || "#2da747";
+    const uploadColor = styles.getPropertyValue("--brand-red").trim() || "#db3c46";
     const padding = {left: 66, right: 12, top: 18, bottom: 28};
     const plotWidth = width - padding.left - padding.right;
     const plotHeight = height - padding.top - padding.bottom;
     const points = visiblePoints(target);
-    const maxInbound = Math.max(0, ...points.map((point) => point.inbound));
-    const maxOutbound = Math.max(0, ...points.map((point) => point.outbound));
-    const totalMaximum = maxInbound + maxOutbound;
-    const inboundShare = totalMaximum > 0 ? maxInbound / totalMaximum : 0.5;
-    const inboundHeightShare = Math.max(0.2, Math.min(0.8, inboundShare));
-    const centerY = padding.top + plotHeight * inboundHeightShare;
-    const inboundScale = niceScale(maxInbound);
-    const outboundScale = niceScale(maxOutbound);
+    const maxDownload = Math.max(0, ...points.map((point) => point.download));
+    const maxUpload = Math.max(0, ...points.map((point) => point.upload));
+    const totalMaximum = maxDownload + maxUpload;
+    const downloadShare = totalMaximum > 0 ? maxDownload / totalMaximum : 0.5;
+    const downloadHeightShare = Math.max(0.2, Math.min(0.8, downloadShare));
+    const centerY = padding.top + plotHeight * downloadHeightShare;
+    const downloadScale = niceScale(maxDownload);
+    const uploadScale = niceScale(maxUpload);
 
     context.font = "12px system-ui, sans-serif";
     context.fillStyle = muted;
     context.strokeStyle = line;
     context.lineWidth = 1;
-    [0, inboundHeightShare, 1].forEach((position) => {
+    [0, downloadHeightShare, 1].forEach((position) => {
       const y = padding.top + plotHeight * position;
       context.beginPath();
       context.moveTo(padding.left, y);
@@ -395,13 +411,18 @@
     context.moveTo(padding.left, centerY);
     context.lineTo(width - padding.right, centerY);
     context.stroke();
-    context.fillText(formatRate(inboundScale), 4, padding.top + 4);
+    context.fillText(formatRate(downloadScale), 4, padding.top + 4);
     context.fillText("0 bps", 4, centerY + 4);
-    context.fillText(formatRate(outboundScale), 4, padding.top + plotHeight + 4);
-    context.fillText("IN", padding.left + 8, padding.top + 15);
-    context.fillText("OUT", padding.left + 8, centerY + 18);
+    context.fillText(formatRate(uploadScale), 4, padding.top + plotHeight + 4);
+    context.fillText("DOWN", padding.left + 8, padding.top + 15);
+    context.fillText("UP", padding.left + 8, centerY + 18);
 
-    if (!points.length) return;
+    if (!points.length) {
+      target.chartState = null;
+      target.hoverAt = null;
+      target.ui.tooltip.hidden = true;
+      return;
+    }
     const windowMs = Number(windowSelect.value);
     const latest = historyEndAt ?? historyBounds()?.latest ?? points.at(-1).at;
     const earliest = latest - windowMs;
@@ -430,14 +451,70 @@
       });
       context.stroke();
     };
-    drawArea("inbound", -1, inboundColor, inboundScale, centerY - padding.top);
-    drawArea("outbound", 1, outboundColor, outboundScale, padding.top + plotHeight - centerY);
+    drawArea("download", -1, downloadColor, downloadScale, centerY - padding.top);
+    drawArea("upload", 1, uploadColor, uploadScale, padding.top + plotHeight - centerY);
+    target.chartState = {points, width, padding, plotWidth, earliest, windowMs};
+    const hovered = points.find((point) => point.at === target.hoverAt);
+    if (hovered) {
+      const x = xFor(hovered);
+      target.ui.tooltip.style.left = `${Math.max(100, Math.min(rect.width - 100, x / width * rect.width))}px`;
+      const downloadY = centerY - Math.min(hovered.download, downloadScale) / downloadScale * (centerY - padding.top);
+      const uploadY = centerY + Math.min(hovered.upload, uploadScale) / uploadScale * (padding.top + plotHeight - centerY);
+      context.save();
+      context.strokeStyle = muted;
+      context.setLineDash([4, 4]);
+      context.beginPath();
+      context.moveTo(x, padding.top);
+      context.lineTo(x, padding.top + plotHeight);
+      context.stroke();
+      context.setLineDash([]);
+      [[downloadY, downloadColor], [uploadY, uploadColor]].forEach(([y, color]) => {
+        context.fillStyle = color;
+        context.beginPath();
+        context.arc(x, y, 4, 0, Math.PI * 2);
+        context.fill();
+      });
+      context.restore();
+    } else if (target.hoverAt != null) {
+      target.hoverAt = null;
+      target.ui.tooltip.hidden = true;
+    }
     const first = new Date(earliest).toLocaleTimeString();
     const last = new Date(latest).toLocaleTimeString();
     context.fillStyle = muted;
     context.fillText(first, padding.left, height - 8);
     const measured = context.measureText(last).width;
     context.fillText(last, width - padding.right - measured, height - 8);
+  };
+
+  const updateChartHover = (target, event) => {
+    const state = target.chartState;
+    if (!state?.points.length) return;
+    const rect = target.ui.canvas.getBoundingClientRect();
+    const displayedX = event.clientX - rect.left;
+    const chartX = displayedX * state.width / Math.max(1, rect.width);
+    const localX = Math.max(
+      state.padding.left,
+      Math.min(state.width - state.padding.right, chartX),
+    );
+    const hoveredAt = state.earliest + (localX - state.padding.left) / state.plotWidth * state.windowMs;
+    const point = state.points.reduce((nearest, candidate) => (
+      Math.abs(candidate.at - hoveredAt) < Math.abs(nearest.at - hoveredAt) ? candidate : nearest
+    ));
+    target.hoverAt = point.at;
+    const tooltip = target.ui.tooltip;
+    tooltip.querySelector(".snmp-monitor-tooltip-time").textContent = new Date(point.at).toLocaleString();
+    tooltip.querySelector(".download").textContent = `Download / interface TX: ${formatRate(point.download)}`;
+    tooltip.querySelector(".upload").textContent = `Upload / interface RX: ${formatRate(point.upload)}`;
+    tooltip.hidden = false;
+    drawChart(target);
+  };
+
+  const clearChartHover = (target) => {
+    if (target.hoverAt == null && target.ui.tooltip.hidden) return;
+    target.hoverAt = null;
+    target.ui.tooltip.hidden = true;
+    drawChart(target);
   };
 
   const drawAllCharts = () => targets.forEach(drawChart);
