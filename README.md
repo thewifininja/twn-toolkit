@@ -13,7 +13,7 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.10.2**
+Current release: **v0.11.0**
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -266,9 +266,9 @@ and instance recovery point, install and validate the release, and automatically
 restore the previous state after failure. See [Upgrade and
 Recovery](docs/upgrade-recovery.md).
 
-Installations from before the updater was introduced require one final
-conventional upgrade to the first updater-enabled release. Future releases can
-then be installed entirely through the built-in UI or CLI workflow.
+Installations running v0.10.2 or older require one final conventional upgrade
+to v0.11.0, the first updater-enabled release. Future releases can then be
+installed entirely through the built-in UI or CLI workflow.
 
 For more detailed first-run and profile instructions, see
 [QUICKSTART.md](QUICKSTART.md) or the searchable **Help** page inside the app.

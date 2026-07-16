@@ -1,6 +1,50 @@
-APP_VERSION = "0.10.2"
+APP_VERSION = "0.11.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.11.0",
+        "date": "2026-07-15",
+        "title": "In-app upgrades, recovery points, and service lifecycle hardening",
+        "summary": (
+            "Adds a verified, user-facing upgrade and rollback path that does not "
+            "depend on locally installed GitHub tools, while making background "
+            "service ownership and restart behavior more reliable."
+        ),
+        "groups": (
+            {
+                "title": "Updates and recovery",
+                "items": (
+                    "Added Administration → Updates & Recovery and matching CLI commands to discover stable official releases, review notes, install verified bundles, inspect progress after a restart, and upload an official bundle manually for disconnected hosts.",
+                    "Created matched code-and-instance recovery points before an upgrade, with bundle and per-file integrity checks, process/version/database validation, automatic rollback after failed validation, and explicit operator rollback.",
+                    "Added release automation that builds the toolkit ZIP, internal file manifest, and external SHA-256 asset required by the updater.",
+                    "Documented the bootstrap transition: v0.10.2 and older installations need one final conventional upgrade to v0.11.0; later releases can use the built-in workflow.",
+                ),
+            },
+            {
+                "title": "Service lifecycle reliability",
+                "items": (
+                    "Hardened singleton ownership for the automation scheduler, worker supervisor, and managed transfer services so concurrent starts cannot create duplicate workers or steal active ports.",
+                    "Added ownership-aware PID and heartbeat handling plus exact-instance orphan cleanup for safer restarts and recovery validation.",
+                    "Stopped installer subprocesses from retaining sensitive or inherited output channels and deferred FTP process resources until after daemonization to avoid macOS resource-tracker and kqueue failures.",
+                ),
+            },
+            {
+                "title": "Administration, audit, and interface",
+                "items": (
+                    "Recorded initiating administrators and terminal outcomes for upgrade, backup, and rollback operations without exposing secrets or bundle contents.",
+                    "Exposed upgrade status, recovery points, and failure details consistently in the web interface and CLI so recovery remains available when the web service is restarting or unavailable.",
+                    "Separated checkbox labels from supporting help text for readable spacing and accessible interaction across forms.",
+                ),
+            },
+            {
+                "title": "Compatibility",
+                "items": (
+                    "Introduced no database-schema or configuration incompatibility; existing instance data remains in place through a successful upgrade and is restored as a matched pair during rollback.",
+                    "Kept secure defaults, legacy SSH exceptions, tool behavior, and existing user workflows unchanged outside the new update and recovery surfaces.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.10.2",
         "date": "2026-07-15",

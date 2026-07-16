@@ -42,9 +42,9 @@ instance recovery point, verifies the release, restarts, checks processes and
 databases, and restores the previous pair automatically on failure. See
 [Upgrade and Recovery](docs/upgrade-recovery.md).
 
-An installation from before this updater was introduced needs one final
-conventional upgrade to the first updater-enabled release. All later upgrades
-can use the built-in workflow.
+An installation running v0.10.2 or older needs one final conventional upgrade
+to v0.11.0, the first updater-enabled release. All later upgrades can use the
+built-in workflow.
 
 For a manual Python setup:
 
