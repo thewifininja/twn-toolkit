@@ -25,11 +25,11 @@
 - [x] Pass pull-request CI on every required platform and security gate.
 - [x] From a disposable copy of a real v0.10.2 instance with FTP enabled,
   perform the final conventional bootstrap to the exact v0.11.0 candidate.
-- [ ] In a separate disposable copy of the candidate, identify it as the
+- [x] In a separate disposable copy of the candidate, identify it as the
   test-only lower version v0.10.999, then install the exact v0.11.0 candidate
   bundle through the manual bundle path. Verify web, scheduler, supervisor,
   FTP, audit history, and recovery-point visibility.
-- [ ] Exercise rollback from the final candidate recovery point and confirm the
+- [x] Exercise rollback from the final candidate recovery point and confirm the
   matched prior code and instance data return healthy.
 - [ ] After approval and merge, pass merged-main CI before creating the tag.
 - [ ] Create and push the exact annotated v0.11.0 tag only after every preceding
