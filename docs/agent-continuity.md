@@ -290,6 +290,10 @@ make state, risk, and the next action obvious.
   supervisor cleanup is also scoped to the exact installation root. Never rely
   only on replaceable instance PID files for ownership: an orphan daemon can run
   duplicate automation or relaunch a transfer service during upgrade or rollback.
+- Do not capture installer output in an updater pipe. Send it directly to the
+  null device: package-manager output can contain repository credentials, and a
+  daemon helper inheriting a captured pipe can keep an otherwise successful
+  upgrade waiting indefinitely.
 - The progress page tolerates the expected unavailable interval and resumes after
   restart. CLI recovery remains available when the UI is down. A manually
   supplied official bundle bypasses the release API, but dependency-changing

@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -15,6 +16,7 @@ from twn_toolkit.upgrade_manager import (
     ReleaseClient,
     UpgradeError,
     UpgradeManager,
+    _run,
     _create_backup,
     _restore_backup,
     _verify_backup,
@@ -41,6 +43,22 @@ def release_root(path: Path, version: str, marker: str) -> None:
 
 
 class UpgradeBundleTests(unittest.TestCase):
+    def test_installer_execution_does_not_create_captured_output_pipes(self) -> None:
+        completed = subprocess.CompletedProcess(["installer"], 0)
+        with patch(
+            "twn_toolkit.upgrade_manager.subprocess.run", return_value=completed,
+        ) as run:
+            result = _run(
+                ["installer"], cwd=Path("/srv/twn"), timeout=1200,
+                retain_output=False,
+            )
+
+        self.assertIs(result, completed)
+        run.assert_called_once_with(
+            ["installer"], cwd=Path("/srv/twn"), text=True, timeout=1200,
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+
     def test_build_and_validate_verified_release_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "release"

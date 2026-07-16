@@ -76,6 +76,11 @@ duplicates during start and stop. This prevents duplicate automation execution
 and prevents an orphaned supervisor or transfer daemon from relaunching a stopped
 installation's service and occupying the clone or replacement service's port.
 
+Installer output is sent directly to the null device instead of retained in an
+updater pipe. Besides avoiding exposure of package-repository credentials, this
+prevents daemon helper processes from inheriting a captured pipe and holding the
+upgrade operation open after startup has completed.
+
 ## Rollback rule
 
 Rollback is a **matched restore**, not a database downgrade. The toolkit never
