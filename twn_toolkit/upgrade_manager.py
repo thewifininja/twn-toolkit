@@ -472,15 +472,23 @@ def _restore_backup(root: Path, instance: Path, backup: Path) -> None:
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def _run(command: list[str], *, cwd: Path, timeout: int = 900) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, text=True, capture_output=True, timeout=timeout, check=False)
+def _run(
+    command: list[str], *, cwd: Path, timeout: int = 900, retain_output: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    options: dict[str, Any] = {"capture_output": True} if retain_output else {
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    return subprocess.run(
+        command, cwd=cwd, text=True, timeout=timeout, check=False, **options,
+    )
 
 
 def _install_and_validate(
     root: Path, instance: Path, expected_version: str, *, install_dependencies: bool = True
 ) -> None:
     command = [str(root / "install.sh")] if install_dependencies else [str(root / "twn"), "start"]
-    install = _run(command, cwd=root, timeout=1200)
+    install = _run(command, cwd=root, timeout=1200, retain_output=False)
     if install.returncode:
         raise UpgradeError(
             f"Installer exited with status {install.returncode}; output was not retained because package-manager logs may contain repository credentials."
