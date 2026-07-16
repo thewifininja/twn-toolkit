@@ -4,10 +4,10 @@ The supported upgrade path is **Administration → Updates & Recovery** or the
 matching `./twn upgrade` command. Neither path requires Git, the GitHub CLI, or
 manual tag selection. Both use the same request-independent upgrade engine.
 
-Installations running a release from before this updater was introduced need
-one final conventional upgrade to the first updater-enabled release. After that
-transition, use the app or CLI workflow below. The updater cannot retroactively
-create the pre-upgrade instance backup that an older installation did not make.
+Installations running v0.10.2 or older need one final conventional upgrade to
+v0.11.0, the first updater-enabled release. After that transition, use the app
+or CLI workflow below. The updater cannot retroactively create the pre-upgrade
+instance backup that an older installation did not make.
 
 ## What a supported release contains
 

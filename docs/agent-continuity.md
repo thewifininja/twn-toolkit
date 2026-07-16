@@ -160,7 +160,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.10.2: live multi-host SNMP interface monitoring,
+- Current milestone is 0.11.0: live multi-host SNMP interface monitoring,
   route-level audit enrichment, high-impact preview/confirmation flows,
   representative v0.9.1 upgrade fixtures, operator rollback guidance, managed
   installer restarts, bounded external operations, cross-origin mutation
@@ -174,9 +174,13 @@ accepted replay frames.
   pytest; do not replace it with unittest discovery because fixture-based tests
   would be silently skipped.
   The 0.10.2 patch adds explicit, audit-visible legacy SSH compatibility to every
-  SSH/SFTP/SCP surface while retaining modern negotiation by default.
-- The next release includes the user-facing upgrade/recovery workflow. Routine
-  upgrades must not require Git, the GitHub CLI, or manual tag manipulation.
+  SSH/SFTP/SCP surface while retaining modern negotiation by default. The 0.11.0
+  feature release adds verified user-facing upgrades, matched code-and-instance
+  recovery points, automatic rollback, and hardened singleton ownership for
+  background services. It introduces no database-schema or configuration
+  incompatibility. Installations on v0.10.2 or older need one final conventional
+  upgrade to v0.11.0; routine later upgrades must not require Git, the GitHub CLI,
+  or manual tag manipulation.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.
