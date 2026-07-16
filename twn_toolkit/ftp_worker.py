@@ -10,14 +10,12 @@ from pathlib import Path
 from pyftpdlib.authorizers import DummyAuthorizer, AuthenticationFailed
 from pyftpdlib.handlers import DTPHandler, FTPHandler
 from pyftpdlib.log import logger
-from pyftpdlib.servers import FTPServer
 from werkzeug.security import check_password_hash
 
 from .datastore import LocalDatastore, MAX_UPLOAD_BYTES
 from .ftp_server import FTPSettingsStore, clear_ftp_runtime
 from .pidfiles import (
     acquire_singleton_lock,
-    close_inherited_file_descriptors,
     record_lock_owner,
     remove_own_pid_file,
     write_pid_file,
@@ -108,7 +106,7 @@ def build_handler(instance: str, settings: dict):
     return ContainedFTP
 
 
-def _daemonize(pid_file: str, log_file: str, lock_fd: int):
+def _daemonize(pid_file: str, log_file: str):
     first = os.fork()
     if first > 0: os._exit(0)
     os.setsid(); second = os.fork()
@@ -117,7 +115,6 @@ def _daemonize(pid_file: str, log_file: str, lock_fd: int):
     stdin_fd = os.open(os.devnull, os.O_RDONLY); path = Path(log_file); path.parent.mkdir(parents=True, exist_ok=True)
     log_fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     os.dup2(stdin_fd, sys.stdin.fileno()); os.dup2(log_fd, sys.stdout.fileno()); os.dup2(log_fd, sys.stderr.fileno()); os.close(stdin_fd); os.close(log_fd)
-    close_inherited_file_descriptors(preserve={lock_fd})
 
 
 def main():
@@ -126,8 +123,12 @@ def main():
     singleton = acquire_singleton_lock(Path(args.instance).resolve().parent, "ftp")
     if singleton is None:
         return
-    if args.daemon: _daemonize(args.pid_file, args.log_file, singleton.fileno())
+    if args.daemon: _daemonize(args.pid_file, args.log_file)
     record_lock_owner(singleton)
+    # pyftpdlib.servers creates multiprocessing synchronization primitives at
+    # import time. Import it only after detaching so its resource tracker and
+    # macOS kqueue belong to the final daemon, not the launcher or updater.
+    from pyftpdlib.servers import FTPServer
     settings = FTPSettingsStore(args.instance).get()
     if not settings["enabled"]: raise SystemExit("FTP is disabled.")
     write_pid_file(args.pid_file)

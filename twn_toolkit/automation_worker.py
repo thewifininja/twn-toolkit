@@ -15,7 +15,6 @@ from .auth import load_or_create_secret_key
 from .operational import OperationalSettingsStore
 from .pidfiles import (
     acquire_singleton_lock,
-    close_inherited_file_descriptors,
     record_lock_owner,
     remove_own_pid_file,
     write_pid_file,
@@ -35,7 +34,7 @@ def main() -> None:
     if singleton is None:
         return
     if args.daemon:
-        _daemonize(args.pid_file, args.log_file, singleton.fileno())
+        _daemonize(args.pid_file, args.log_file)
     record_lock_owner(singleton)
     instance_path = str(Path(args.instance).resolve())
     os.environ["TWN_TOOLKIT_INSTANCE_PATH"] = instance_path
@@ -89,7 +88,7 @@ def main() -> None:
         remove_own_pid_file(args.pid_file)
 
 
-def _daemonize(pid_file: str, log_file: str, lock_fd: int) -> None:
+def _daemonize(pid_file: str, log_file: str) -> None:
     """Detach once for the POSIX platforms supported by the toolkit."""
     first_child = os.fork()
     if first_child > 0:
@@ -109,7 +108,6 @@ def _daemonize(pid_file: str, log_file: str, lock_fd: int) -> None:
     os.dup2(log_fd, sys.stderr.fileno())
     os.close(stdin_fd)
     os.close(log_fd)
-    close_inherited_file_descriptors(preserve={lock_fd})
     write_pid_file(pid_file)
 
 

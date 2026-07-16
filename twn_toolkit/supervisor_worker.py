@@ -11,7 +11,6 @@ from pathlib import Path
 
 from .pidfiles import (
     acquire_singleton_lock,
-    close_inherited_file_descriptors,
     matching_daemon_pids,
     record_lock_owner,
     remove_own_pid_file,
@@ -27,7 +26,7 @@ def main() -> None:
     singleton = acquire_singleton_lock(root, "supervisor")
     if singleton is None:
         return
-    if args.daemon: _daemonize(args.pid_file, args.log_file, singleton.fileno())
+    if args.daemon: _daemonize(args.pid_file, args.log_file)
     record_lock_owner(singleton)
     instance = Path(args.instance).resolve()
     running = True
@@ -127,7 +126,7 @@ def _heartbeat_fresh(path: Path, maximum_age: int) -> bool:
     except (OSError, ValueError, KeyError): return False
 
 
-def _daemonize(pid_file: str, log_file: str, lock_fd: int) -> None:
+def _daemonize(pid_file: str, log_file: str) -> None:
     first = os.fork()
     if first > 0: os._exit(0)
     os.setsid(); second = os.fork()
@@ -136,7 +135,6 @@ def _daemonize(pid_file: str, log_file: str, lock_fd: int) -> None:
     stdin_fd = os.open(os.devnull, os.O_RDONLY); path = Path(log_file); path.parent.mkdir(parents=True, exist_ok=True)
     log_fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     os.dup2(stdin_fd, 0); os.dup2(log_fd, 1); os.dup2(log_fd, 2); os.close(stdin_fd); os.close(log_fd)
-    close_inherited_file_descriptors(preserve={lock_fd})
     write_pid_file(pid_file)
 
 
