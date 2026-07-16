@@ -26,6 +26,12 @@
         topic.open = query ? match && !isReleaseNotes : initialOpenTopics.has(topic);
         if (match) sectionMatches += 1;
       });
+      const releaseArchive = section.querySelector("[data-release-archive]");
+      if (releaseArchive) {
+        const matchingArchivedRelease = [...releaseArchive.querySelectorAll(".release-note")]
+          .some((topic) => !topic.hidden);
+        releaseArchive.open = Boolean(query) && matchingArchivedRelease;
+      }
       section.hidden = Boolean(query) && sectionMatches === 0;
       matches += sectionMatches;
     });

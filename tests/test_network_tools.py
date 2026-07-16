@@ -544,8 +544,9 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"Path MTU Tester", client.get("/").data)
             self.assertIn(b"Webhook / API Tester", client.get("/").data)
             self.assertIn(b"Syslog Tools", client.get("/").data)
-            self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/tools/").data)
-            self.assertIn(b"Certificate Chain Inspector", client.get("/tools/").data)
+            legacy_index = client.get("/tools/")
+            self.assertEqual(legacy_index.status_code, 302)
+            self.assertEqual(legacy_index.headers["Location"], "/")
             self.assertEqual(client.get("/tools/certificate-inspector").status_code, 200)
             ip_page = client.get(
                 "/tools/whats-my-ip",
@@ -578,6 +579,7 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b'id="speed-upload-meter"', speed_page.data)
             self.assertIn(b"Dashboard", speed_page.data)
             self.assertIn(b"Network Tools", speed_page.data)
+            self.assertNotIn(b'href="/tools/"', speed_page.data)
             self.assertIn(b'href="/fortigate"', speed_page.data)
             self.assertIn(b'href="/fortiauthenticator"', speed_page.data)
             self.assertIn(b'href="/tools/packet-replay"', speed_page.data)

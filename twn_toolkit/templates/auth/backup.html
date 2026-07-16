@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="page-head auth-settings-head">
-  <p class="eyebrow">Administration</p>
+  <p class="eyebrow">Updates &amp; Recovery</p>
   <h1>Profile backup and restore</h1>
   <p class="field-note backup-intro-note">
     Export or import saved toolkit profile lists. Backups that include stored API keys, passwords,
@@ -95,7 +95,9 @@
   </div>
 </section>
 
-<p><a href="{{ url_for('settings') }}">Back to settings</a></p>
+<div class="button-row backup-return-actions">
+  <a class="button-link secondary" href="{{ url_for('updates') }}">Back to Updates &amp; Recovery</a>
+</div>
 <script>
   (() => {
     const form = document.getElementById("backup-export-form");

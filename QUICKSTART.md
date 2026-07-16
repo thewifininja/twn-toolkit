@@ -288,7 +288,8 @@ navigation, and direct requests remain blocked by the server.
 
 ## Back up and restore profiles
 
-The **Profile backup and restore** card exports selected configuration groups.
+Open **Administration → Updates & Recovery → Profile backups**. The
+**Profile backup and restore** page exports selected configuration groups.
 
 - Selecting any credentials or secrets makes backup encryption mandatory.
 - Non-secret selections may be encrypted optionally.
