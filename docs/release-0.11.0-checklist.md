@@ -22,7 +22,7 @@
 - [x] Build the v0.11.0 bundle and verify its internal manifest and external
   SHA-256 checksum from a clean release-prep checkout.
 - [x] Pass the complete local pytest suite and release-specific validation.
-- [ ] Pass pull-request CI on every required platform and security gate.
+- [x] Pass pull-request CI on every required platform and security gate.
 - [ ] From a disposable copy of a real v0.10.2 instance with FTP enabled,
   perform the final conventional bootstrap to the exact v0.11.0 candidate.
 - [ ] In a separate disposable copy of the candidate, identify it as the
