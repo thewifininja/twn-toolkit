@@ -285,23 +285,45 @@ start_managed_worker() {
 
 tftp_is_running() { managed_worker_is_running "$TFTP_PIDFILE"; }
 tftp_enabled() { managed_worker_enabled "$TFTP_SETTINGS"; }
-start_tftp() { start_managed_worker "$TFTP_SETTINGS" "$TFTP_PIDFILE" "$TFTP_LOG" "twn_toolkit.tftp_worker" "TFTP" "twn_toolkit.tftp:clear_tftp_runtime"; }
-stop_tftp() { stop_managed_worker "$TFTP_PIDFILE" "twn_toolkit.tftp:clear_tftp_runtime"; }
+start_tftp() { cleanup_managed_daemon "twn_toolkit.tftp_worker" "$TFTP_PIDFILE"; start_managed_worker "$TFTP_SETTINGS" "$TFTP_PIDFILE" "$TFTP_LOG" "twn_toolkit.tftp_worker" "TFTP" "twn_toolkit.tftp:clear_tftp_runtime"; }
+stop_tftp() { status=0; stop_managed_worker "$TFTP_PIDFILE" "twn_toolkit.tftp:clear_tftp_runtime" || status=$?; cleanup_daemon_processes "twn_toolkit.tftp_worker" 0; return "$status"; }
 
 ssh_transfer_is_running() { managed_worker_is_running "$SSH_TRANSFER_PIDFILE"; }
 ssh_transfer_enabled() { managed_worker_enabled "$SSH_TRANSFER_SETTINGS"; }
-start_ssh_transfer() { start_managed_worker "$SSH_TRANSFER_SETTINGS" "$SSH_TRANSFER_PIDFILE" "$SSH_TRANSFER_LOG" "twn_toolkit.ssh_transfer_worker" "SSH transfer" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime"; }
-stop_ssh_transfer() { stop_managed_worker "$SSH_TRANSFER_PIDFILE" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime"; }
+start_ssh_transfer() { cleanup_managed_daemon "twn_toolkit.ssh_transfer_worker" "$SSH_TRANSFER_PIDFILE"; start_managed_worker "$SSH_TRANSFER_SETTINGS" "$SSH_TRANSFER_PIDFILE" "$SSH_TRANSFER_LOG" "twn_toolkit.ssh_transfer_worker" "SSH transfer" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime"; }
+stop_ssh_transfer() { status=0; stop_managed_worker "$SSH_TRANSFER_PIDFILE" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime" || status=$?; cleanup_daemon_processes "twn_toolkit.ssh_transfer_worker" 0; return "$status"; }
 
 ftp_is_running() { managed_worker_is_running "$FTP_PIDFILE"; }
 ftp_enabled() { managed_worker_enabled "$FTP_SETTINGS"; }
-start_ftp() { start_managed_worker "$FTP_SETTINGS" "$FTP_PIDFILE" "$FTP_LOG" "twn_toolkit.ftp_worker" "FTP" "twn_toolkit.ftp_server:clear_ftp_runtime"; }
-stop_ftp() { stop_managed_worker "$FTP_PIDFILE" "twn_toolkit.ftp_server:clear_ftp_runtime"; }
+start_ftp() { cleanup_managed_daemon "twn_toolkit.ftp_worker" "$FTP_PIDFILE"; start_managed_worker "$FTP_SETTINGS" "$FTP_PIDFILE" "$FTP_LOG" "twn_toolkit.ftp_worker" "FTP" "twn_toolkit.ftp_server:clear_ftp_runtime"; }
+stop_ftp() { status=0; stop_managed_worker "$FTP_PIDFILE" "twn_toolkit.ftp_server:clear_ftp_runtime" || status=$?; cleanup_daemon_processes "twn_toolkit.ftp_worker" 0; return "$status"; }
+
+cleanup_daemon_processes() {
+  daemon_module=$1
+  daemon_keep_pid=$2
+  if [ ! -x "$PYTHON" ]; then return; fi
+  "$PYTHON" -c '
+from pathlib import Path
+import sys
+from twn_toolkit.pidfiles import stop_matching_daemons
+stop_matching_daemons(sys.argv[1], Path(sys.argv[2]), keep_pid=int(sys.argv[3]))
+' "$daemon_module" "$INSTANCE" "$daemon_keep_pid"
+}
+
+cleanup_managed_daemon() {
+  daemon_module=$1
+  daemon_pidfile=$2
+  daemon_keep_pid=0
+  if managed_worker_is_running "$daemon_pidfile"; then daemon_keep_pid=$(cat "$daemon_pidfile"); fi
+  cleanup_daemon_processes "$daemon_module" "$daemon_keep_pid"
+}
 
 start_automation() {
   if automation_is_running; then
+    cleanup_daemon_processes "twn_toolkit.automation_worker" "$(cat "$AUTOMATION_PIDFILE")"
     return
   fi
+  cleanup_daemon_processes "twn_toolkit.automation_worker" 0
   rm -f "$AUTOMATION_PIDFILE"
   cd "$ROOT"
   "$PYTHON" -m twn_toolkit.automation_worker \
@@ -324,10 +346,11 @@ start_automation() {
 stop_automation() {
   if ! automation_is_running; then
     rm -f "$AUTOMATION_PIDFILE"
+    cleanup_daemon_processes "twn_toolkit.automation_worker" 0
     return
   fi
   automation_pid=$(cat "$AUTOMATION_PIDFILE")
-  kill "$automation_pid"
+  kill "$automation_pid" 2>/dev/null || true
   attempts=0
   while kill -0 "$automation_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
     attempts=$((attempts + 1))
@@ -337,10 +360,16 @@ stop_automation() {
     kill -KILL "$automation_pid" 2>/dev/null || true
   fi
   rm -f "$AUTOMATION_PIDFILE"
+  cleanup_daemon_processes "twn_toolkit.automation_worker" 0
 }
 
 start_supervisor() {
-  if supervisor_is_running; then return; fi
+  if supervisor_is_running; then
+    supervisor_pid=$(cat "$SUPERVISOR_PIDFILE")
+    cleanup_duplicate_supervisors "$supervisor_pid"
+    return
+  fi
+  cleanup_duplicate_supervisors 0
   rm -f "$SUPERVISOR_PIDFILE"
   cd "$ROOT"
   "$PYTHON" -m twn_toolkit.supervisor_worker --instance "$INSTANCE" --root "$ROOT" --daemon --pid-file "$SUPERVISOR_PIDFILE" --log-file "$SUPERVISOR_LOG"
@@ -354,11 +383,33 @@ start_supervisor() {
 }
 
 stop_supervisor() {
-  if ! supervisor_is_running; then rm -f "$SUPERVISOR_PIDFILE"; return; fi
-  supervisor_pid=$(cat "$SUPERVISOR_PIDFILE"); kill "$supervisor_pid"; attempts=0
-  while kill -0 "$supervisor_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do attempts=$((attempts + 1)); sleep 0.1; done
-  if kill -0 "$supervisor_pid" 2>/dev/null; then kill -KILL "$supervisor_pid" 2>/dev/null || true; fi
+  if supervisor_is_running; then
+    supervisor_pid=$(cat "$SUPERVISOR_PIDFILE")
+    kill "$supervisor_pid" 2>/dev/null || true
+    attempts=0
+    while kill -0 "$supervisor_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
+      attempts=$((attempts + 1))
+      sleep 0.1
+    done
+    if kill -0 "$supervisor_pid" 2>/dev/null; then kill -KILL "$supervisor_pid" 2>/dev/null || true; fi
+  fi
+  cleanup_duplicate_supervisors 0
   rm -f "$SUPERVISOR_PIDFILE"
+  rm -f "$INSTANCE/supervisor-heartbeat.json"
+}
+
+cleanup_duplicate_supervisors() {
+  keep_pid=$1
+  if [ ! -x "$PYTHON" ]; then
+    if supervisor_is_running; then kill "$(cat "$SUPERVISOR_PIDFILE")" 2>/dev/null || true; fi
+    return
+  fi
+  "$PYTHON" -c '
+from pathlib import Path
+import sys
+from twn_toolkit.supervisor_worker import stop_matching_supervisors
+stop_matching_supervisors(Path(sys.argv[1]), Path(sys.argv[2]), keep_pid=int(sys.argv[3]))
+' "$ROOT" "$INSTANCE" "$keep_pid"
 }
 
 requirements_hash() {

@@ -70,6 +70,12 @@ stops the partial installation, verifies the recovery point, restores both code
 and instance data, restarts, and validates the restored version. The terminal
 result is written to the administrative audit trail.
 
+The launcher enforces one automation scheduler, worker supervisor, and transfer
+daemon of each type per installation root. It also cleans exact-instance legacy
+duplicates during start and stop. This prevents duplicate automation execution
+and prevents an orphaned supervisor or transfer daemon from relaunching a stopped
+installation's service and occupying the clone or replacement service's port.
+
 ## Rollback rule
 
 Rollback is a **matched restore**, not a database downgrade. The toolkit never

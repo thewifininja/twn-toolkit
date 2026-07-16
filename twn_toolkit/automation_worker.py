@@ -13,7 +13,12 @@ from pathlib import Path
 from .automation import AutomationEngine, AutomationStore
 from .auth import load_or_create_secret_key
 from .operational import OperationalSettingsStore
-from .pidfiles import remove_own_pid_file, write_pid_file
+from .pidfiles import (
+    acquire_singleton_lock,
+    record_lock_owner,
+    remove_own_pid_file,
+    write_pid_file,
+)
 
 
 def main() -> None:
@@ -24,8 +29,13 @@ def main() -> None:
     parser.add_argument("--pid-file", default="")
     parser.add_argument("--log-file", default="")
     args = parser.parse_args()
+    instance_root = Path(args.instance).resolve().parent
+    singleton = acquire_singleton_lock(instance_root, "automation")
+    if singleton is None:
+        return
     if args.daemon:
         _daemonize(args.pid_file, args.log_file)
+    record_lock_owner(singleton)
     instance_path = str(Path(args.instance).resolve())
     os.environ["TWN_TOOLKIT_INSTANCE_PATH"] = instance_path
     store = AutomationStore(

@@ -9,14 +9,26 @@ import sys
 import time
 from pathlib import Path
 
-from .pidfiles import remove_own_pid_file, write_pid_file
+from .pidfiles import (
+    acquire_singleton_lock,
+    matching_daemon_pids,
+    record_lock_owner,
+    remove_own_pid_file,
+    stop_matching_daemons,
+    write_pid_file,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--root", required=True); parser.add_argument("--pid-file", required=True); parser.add_argument("--log-file", required=True); parser.add_argument("--daemon", action="store_true")
     args = parser.parse_args()
+    root = Path(args.root).resolve()
+    singleton = acquire_singleton_lock(root, "supervisor")
+    if singleton is None:
+        return
     if args.daemon: _daemonize(args.pid_file, args.log_file)
-    instance, root = Path(args.instance), Path(args.root)
+    record_lock_owner(singleton)
+    instance = Path(args.instance).resolve()
     running = True
     retry_after: dict[str, float] = {}
     signal.signal(signal.SIGTERM, lambda *_: _stop()); signal.signal(signal.SIGINT, lambda *_: _stop())
@@ -45,6 +57,8 @@ def main() -> None:
     heartbeat = instance / "supervisor-heartbeat.json"
     try:
         while running:
+            if args.daemon and not _owns_pid_file(Path(args.pid_file)):
+                break
             supervise()
             heartbeat.write_text(json.dumps({"updated_at": time.time(), "pid": os.getpid()}), encoding="utf-8")
             os.chmod(heartbeat, 0o600)
@@ -52,7 +66,49 @@ def main() -> None:
                 if not running: break
                 time.sleep(0.5)
     finally:
-        remove_own_pid_file(args.pid_file); heartbeat.unlink(missing_ok=True)
+        remove_own_pid_file(args.pid_file)
+        _remove_own_heartbeat(heartbeat)
+
+
+def _owns_pid_file(path: Path) -> bool:
+    try:
+        return int(path.read_text(encoding="utf-8").strip()) == os.getpid()
+    except (OSError, ValueError):
+        return False
+
+
+def _remove_own_heartbeat(path: Path) -> None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if int(payload.get("pid", 0)) == os.getpid():
+            path.unlink(missing_ok=True)
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def matching_supervisor_pids(output: str, root: Path, instance: Path) -> list[int]:
+    return matching_daemon_pids(
+        output,
+        "twn_toolkit.supervisor_worker",
+        instance,
+        required_text=f"--root {root.resolve()} --daemon",
+    )
+
+
+def stop_matching_supervisors(
+    root: Path,
+    instance: Path,
+    *,
+    keep_pid: int = 0,
+    timeout: float = 5.0,
+) -> list[int]:
+    return stop_matching_daemons(
+        "twn_toolkit.supervisor_worker",
+        instance,
+        keep_pid=keep_pid,
+        required_text=f"--root {root.resolve()} --daemon",
+        timeout=timeout,
+    )
 
 
 def _enabled(path: Path) -> bool:

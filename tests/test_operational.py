@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import signal
 import sqlite3
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 from unittest.mock import patch
 
 from twn_toolkit import create_app
@@ -14,11 +16,78 @@ from twn_toolkit.auth import AuthStore
 from twn_toolkit.datastore import DatastoreError, LocalDatastore
 from twn_toolkit.migrations import MigrationManager
 from twn_toolkit.operational import OperationalSettingsStore
-from twn_toolkit.pidfiles import remove_own_pid_file, write_pid_file
-from twn_toolkit.supervisor_worker import _heartbeat_fresh
+from twn_toolkit.pidfiles import (
+    acquire_singleton_lock,
+    matching_daemon_pids,
+    remove_own_pid_file,
+    stop_matching_daemons,
+    write_pid_file,
+)
+from twn_toolkit.supervisor_worker import (
+    _heartbeat_fresh,
+    matching_supervisor_pids,
+)
 
 
 class OperationalHardeningTests(unittest.TestCase):
+    def test_supervisor_lock_allows_only_one_owner_per_root(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            first = acquire_singleton_lock(Path(root), "supervisor")
+            self.assertIsNotNone(first)
+            try:
+                self.assertIsNone(acquire_singleton_lock(Path(root), "supervisor"))
+            finally:
+                first.close()
+            replacement = acquire_singleton_lock(Path(root), "supervisor")
+            self.assertIsNotNone(replacement)
+            replacement.close()
+
+    def test_legacy_supervisor_matching_is_scoped_to_exact_installation(self) -> None:
+        root = Path("/srv/twn")
+        instance = root / "instance"
+        output = "\n".join([
+            "101 python -m twn_toolkit.supervisor_worker --instance /srv/twn/instance --root /srv/twn --daemon --pid-file /srv/twn/instance/twn-supervisor.pid",
+            "102 python -m twn_toolkit.supervisor_worker --instance /srv/twn-test/instance --root /srv/twn-test --daemon --pid-file /srv/twn-test/instance/twn-supervisor.pid",
+            "103 python -m twn_toolkit.ftp_worker --instance /srv/twn/instance --daemon",
+        ])
+        self.assertEqual(matching_supervisor_pids(output, root, instance), [101])
+
+    def test_daemon_matching_is_scoped_by_module_and_instance(self) -> None:
+        instance = Path("/srv/twn/instance")
+        output = "\n".join([
+            "201 python -m twn_toolkit.automation_worker --instance /srv/twn/instance --daemon --pid-file automation.pid",
+            "202 python -m twn_toolkit.automation_worker --instance /srv/twn-test/instance --daemon --pid-file automation.pid",
+            "203 python -m twn_toolkit.ftp_worker --instance /srv/twn/instance --daemon --pid-file ftp.pid",
+        ])
+        self.assertEqual(
+            matching_daemon_pids(
+                output, "twn_toolkit.automation_worker", instance,
+            ),
+            [201],
+        )
+
+    @mock.patch("twn_toolkit.pidfiles.time.sleep")
+    @mock.patch("twn_toolkit.pidfiles.os.kill")
+    @mock.patch("twn_toolkit.pidfiles.subprocess.run")
+    def test_daemon_cleanup_keeps_canonical_process(
+        self, run: mock.Mock, kill: mock.Mock, _sleep: mock.Mock,
+    ) -> None:
+        run.return_value.stdout = "\n".join([
+            "301 python -m twn_toolkit.ftp_worker --instance /srv/twn/instance --daemon --pid-file ftp.pid",
+            "302 python -m twn_toolkit.ftp_worker --instance /srv/twn/instance --daemon --pid-file ftp-old.pid",
+        ])
+        kill.side_effect = [None, ProcessLookupError]
+
+        stopped = stop_matching_daemons(
+            "twn_toolkit.ftp_worker", Path("/srv/twn/instance"), keep_pid=301,
+        )
+
+        self.assertEqual(stopped, [302])
+        self.assertEqual(
+            kill.call_args_list,
+            [mock.call(302, signal.SIGTERM), mock.call(302, 0)],
+        )
+
     def test_pid_file_cleanup_does_not_remove_another_worker_owner(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             path = Path(instance) / "worker.pid"

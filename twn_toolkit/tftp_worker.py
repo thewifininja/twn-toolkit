@@ -8,7 +8,12 @@ from pathlib import Path
 
 from .datastore import LocalDatastore
 from .tftp import TFTPHistoryStore, TFTPServer, TFTPSettingsStore, clear_tftp_runtime
-from .pidfiles import remove_own_pid_file, write_pid_file
+from .pidfiles import (
+    acquire_singleton_lock,
+    record_lock_owner,
+    remove_own_pid_file,
+    write_pid_file,
+)
 
 
 def main() -> None:
@@ -18,8 +23,12 @@ def main() -> None:
     parser.add_argument("--pid-file", default="")
     parser.add_argument("--log-file", default="")
     args = parser.parse_args()
+    singleton = acquire_singleton_lock(Path(args.instance).resolve().parent, "tftp")
+    if singleton is None:
+        return
     if args.daemon:
         _daemonize(args.pid_file, args.log_file)
+    record_lock_owner(singleton)
     instance = str(Path(args.instance).resolve())
     settings = TFTPSettingsStore(instance).get()
     if not settings["enabled"]:
