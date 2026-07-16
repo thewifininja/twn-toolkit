@@ -294,6 +294,10 @@ make state, risk, and the next action obvious.
   null device: package-manager output can contain repository credentials, and a
   daemon helper inheriting a captured pipe can keep an otherwise successful
   upgrade waiting indefinitely.
+- Custom daemonization must close all inherited file descriptors after redirecting
+  standard input/output/error, preserving only the daemon's singleton-lock
+  descriptor. This is the bootstrap protection for upgrades launched by an older
+  updater that still captures installer output.
 - The progress page tolerates the expected unavailable interval and resumes after
   restart. CLI recovery remains available when the UI is down. A manually
   supplied official bundle bypasses the release API, but dependency-changing

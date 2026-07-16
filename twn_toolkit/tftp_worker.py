@@ -10,6 +10,7 @@ from .datastore import LocalDatastore
 from .tftp import TFTPHistoryStore, TFTPServer, TFTPSettingsStore, clear_tftp_runtime
 from .pidfiles import (
     acquire_singleton_lock,
+    close_inherited_file_descriptors,
     record_lock_owner,
     remove_own_pid_file,
     write_pid_file,
@@ -27,7 +28,7 @@ def main() -> None:
     if singleton is None:
         return
     if args.daemon:
-        _daemonize(args.pid_file, args.log_file)
+        _daemonize(args.pid_file, args.log_file, singleton.fileno())
     record_lock_owner(singleton)
     instance = str(Path(args.instance).resolve())
     settings = TFTPSettingsStore(instance).get()
@@ -60,7 +61,7 @@ def main() -> None:
         remove_own_pid_file(args.pid_file)
 
 
-def _daemonize(pid_file: str, log_file: str) -> None:
+def _daemonize(pid_file: str, log_file: str, lock_fd: int) -> None:
     first_child = os.fork()
     if first_child > 0:
         os._exit(0)
@@ -79,6 +80,7 @@ def _daemonize(pid_file: str, log_file: str) -> None:
     os.dup2(log_fd, sys.stderr.fileno())
     os.close(stdin_fd)
     os.close(log_fd)
+    close_inherited_file_descriptors(preserve={lock_fd})
     write_pid_file(pid_file)
 
 

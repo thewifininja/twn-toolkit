@@ -5,6 +5,7 @@ import fcntl
 import signal
 import subprocess
 import time
+import resource
 from pathlib import Path
 from typing import IO
 
@@ -49,6 +50,31 @@ def record_lock_owner(handle: IO[str]) -> None:
     handle.truncate()
     handle.write(f"{os.getpid()}\n")
     handle.flush()
+
+
+def close_inherited_file_descriptors(*, preserve: set[int]) -> None:
+    """Close non-standard descriptors after daemonization, except owned locks."""
+    descriptors: set[int] = set()
+    for directory in (Path("/dev/fd"), Path("/proc/self/fd")):
+        try:
+            descriptors = {
+                int(entry.name) for entry in directory.iterdir()
+                if entry.name.isdigit()
+            }
+            break
+        except OSError:
+            continue
+    if not descriptors:
+        soft_limit = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        maximum = 65_536 if soft_limit == resource.RLIM_INFINITY else min(
+            int(soft_limit), 65_536,
+        )
+        descriptors = set(range(3, maximum))
+    for descriptor in descriptors - {0, 1, 2} - preserve:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
 
 
 def matching_daemon_pids(
