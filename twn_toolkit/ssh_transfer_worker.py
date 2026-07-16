@@ -22,6 +22,7 @@ from .ssh_transfer_server import (
 from .tftp import format_incoming_filename
 from .pidfiles import (
     acquire_singleton_lock,
+    close_inherited_file_descriptors,
     record_lock_owner,
     remove_own_pid_file,
     write_pid_file,
@@ -256,7 +257,7 @@ def main() -> int:
     )
     if singleton is None:
         return 0
-    if args.daemon: _daemonize(args.pid_file, args.log_file)
+    if args.daemon: _daemonize(args.pid_file, args.log_file, singleton.fileno())
     record_lock_owner(singleton)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set()); signal.signal(signal.SIGINT, lambda *_: stop.set())
@@ -266,7 +267,7 @@ def main() -> int:
     return 0
 
 
-def _daemonize(pid_file: str, log_file: str) -> None:
+def _daemonize(pid_file: str, log_file: str, lock_fd: int) -> None:
     first = os.fork()
     if first > 0: os._exit(0)
     os.setsid(); second = os.fork()
@@ -277,6 +278,7 @@ def _daemonize(pid_file: str, log_file: str) -> None:
     log_fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     os.dup2(stdin_fd, sys.stdin.fileno()); os.dup2(log_fd, sys.stdout.fileno()); os.dup2(log_fd, sys.stderr.fileno())
     os.close(stdin_fd); os.close(log_fd)
+    close_inherited_file_descriptors(preserve={lock_fd})
 
 
 if __name__ == "__main__": raise SystemExit(main())

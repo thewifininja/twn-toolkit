@@ -81,6 +81,11 @@ updater pipe. Besides avoiding exposure of package-repository credentials, this
 prevents daemon helper processes from inheriting a captured pipe and holding the
 upgrade operation open after startup has completed.
 
+Managed daemons also close inherited non-standard file descriptors during
+daemonization, preserving only their singleton ownership lock. This makes the
+protection effective while upgrading from an older toolkit whose updater still
+uses captured installer pipes.
+
 ## Rollback rule
 
 Rollback is a **matched restore**, not a database downgrade. The toolkit never

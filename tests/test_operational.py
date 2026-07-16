@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 import sqlite3
 import tempfile
@@ -18,6 +19,7 @@ from twn_toolkit.migrations import MigrationManager
 from twn_toolkit.operational import OperationalSettingsStore
 from twn_toolkit.pidfiles import (
     acquire_singleton_lock,
+    close_inherited_file_descriptors,
     matching_daemon_pids,
     remove_own_pid_file,
     stop_matching_daemons,
@@ -30,6 +32,30 @@ from twn_toolkit.supervisor_worker import (
 
 
 class OperationalHardeningTests(unittest.TestCase):
+    def test_daemon_fd_cleanup_preserves_only_the_owned_descriptor(self) -> None:
+        report_read, report_write = os.pipe()
+        extra_read, extra_write = os.pipe()
+        child = os.fork()
+        if child == 0:
+            try:
+                close_inherited_file_descriptors(preserve={report_write})
+                try:
+                    os.fstat(extra_write)
+                    result = b"open"
+                except OSError:
+                    result = b"closed"
+                os.write(report_write, result)
+            finally:
+                os._exit(0)
+        os.close(report_write)
+        os.close(extra_read)
+        os.close(extra_write)
+        try:
+            self.assertEqual(os.read(report_read, 16), b"closed")
+            self.assertEqual(os.waitpid(child, 0)[1], 0)
+        finally:
+            os.close(report_read)
+
     def test_supervisor_lock_allows_only_one_owner_per_root(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             first = acquire_singleton_lock(Path(root), "supervisor")
