@@ -3148,6 +3148,57 @@ button.danger {
   font-weight: 700;
 }
 
+.release-note-archive {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.release-note-archive > summary {
+  align-items: center;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  list-style: none;
+  padding: 13px 16px;
+}
+
+.release-note-archive > summary::-webkit-details-marker {
+  display: none;
+}
+
+.release-note-archive > summary > span {
+  display: grid;
+  gap: 2px;
+}
+
+.release-note-archive > summary small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.release-note-archive > summary::after {
+  color: var(--muted);
+  content: "Show more";
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.release-note-archive[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.release-note-archive[open] > summary::after {
+  content: "Show less";
+}
+
+.release-note-archive-list {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
 .release-note-groups {
   display: grid;
   gap: 16px;
@@ -5151,6 +5202,71 @@ button.danger {
   text-align: center;
 }
 
+.updates-page {
+  display: grid;
+  gap: 20px;
+}
+
+.updates-page > .home-hero,
+.updates-page > .panel {
+  margin-bottom: 0;
+}
+
+.updates-page > .home-hero {
+  margin-bottom: 4px;
+}
+
+.updates-section-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding-right: 0;
+}
+
+.updates-section-head > div {
+  min-width: 0;
+}
+
+.updates-section-head > .button-link,
+.updates-section-head > .pill {
+  flex: 0 0 auto;
+}
+
+.upgrade-operation-details {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.upgrade-operation-details > * {
+  margin: 0;
+}
+
+.upgrade-operation-details > .field-note {
+  line-height: 1.45;
+}
+
+.updates-panel > .form > button,
+.upgrade-release-card > .form > button {
+  justify-self: start;
+}
+
+.updates-panel > .compact-message {
+  margin-top: 1rem;
+}
+
+.updates-empty-state {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.86rem;
+  margin: 1.25rem 0 0;
+  padding-top: 1rem;
+}
+
+.backup-return-actions {
+  margin-top: 1rem;
+}
+
 .upgrade-release-card {
   background: var(--card-tint);
   border: 1px solid var(--line);
@@ -5158,6 +5274,17 @@ button.danger {
   display: grid;
   gap: 1rem;
   padding: 1rem;
+}
+
+.upgrade-release-card details {
+  border-top: 1px solid var(--line);
+  padding-top: 0.85rem;
+}
+
+.upgrade-release-card details > summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 800;
 }
 
 .upgrade-release-card h3,
@@ -6484,6 +6611,20 @@ th {
 }
 
 @media (max-width: 760px) {
+  .updates-section-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .updates-section-head > .button-link {
+    align-self: flex-start;
+  }
+
+  .upgrade-recovery-list article > form {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
   .snmp-monitor-controls,
   .snmp-monitor-selection,
   .snmp-monitor-set-head {
@@ -7140,7 +7281,6 @@ th {
 .settings-automation-group { order: 20; }
 .settings-operations-group { order: 30; }
 .settings-operations-group > .button-row { margin-top: 1rem; }
-.settings-backup-group { order: 40; }
 .settings-auth-group { order: 50; }
 .settings-profiles-group { order: 60; }
 .settings-users-group { order: 70; }

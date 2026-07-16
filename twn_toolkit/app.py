@@ -335,15 +335,6 @@ def create_app(instance_path: str | None = None) -> Flask:
             network_tools = [tool for tool in visible if tool.category == "network"]
             automation_tools = [tool for tool in visible if tool.category == "automation"]
             local_tools = [tool for tool in visible if tool.category == "local"]
-            if automation_tools:
-                sidebar_tool_groups.append(
-                    {
-                        "label": "Automation",
-                        "icon": category_icons["automation"],
-                        "tools": automation_tools,
-                        "active": active_in_tools(automation_tools),
-                    }
-                )
             if network_tools:
                 network_subgroups = []
                 grouped_ids = set()
@@ -379,6 +370,15 @@ def create_app(instance_path: str | None = None) -> Flask:
                         "icon": category_icons["local"],
                         "tools": local_tools,
                         "active": active_in_tools(local_tools),
+                    }
+                )
+            if automation_tools:
+                sidebar_tool_groups.append(
+                    {
+                        "label": "Automation",
+                        "icon": category_icons["automation"],
+                        "tools": automation_tools,
+                        "active": active_in_tools(automation_tools),
                     }
                 )
 

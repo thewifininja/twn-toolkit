@@ -52,7 +52,7 @@
     <label>Message
       <textarea name="send_message" rows="5" maxlength="8192" placeholder="Test message from The WiFi Ninja's Toolkit" required>{{ send_form.message }}</textarea>
     </label>
-    <div class="button-row"><button type="submit">Send Syslog Message</button><a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a></div>
+    <div class="button-row"><button type="submit">Send Syslog Message</button></div>
     <span class="field-note">TCP uses newline framing. Sending confirms local transmission or connection—not ingestion by the remote product.</span>
   </form>
   {% if send_result %}
@@ -86,7 +86,7 @@
         <input name="max_messages" type="number" min="1" max="500" value="{{ receive_form.max_messages }}" required>
       </label>
     </div>
-    <div class="button-row"><button type="submit">Start Listening</button><a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a></div>
+    <div class="button-row"><button type="submit">Start Listening</button></div>
     <span class="field-note">The page waits while listening. Port 5514 avoids the privileges normally required by standard syslog port 514.</span>
   </form>
 </section>

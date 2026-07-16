@@ -20,7 +20,7 @@
 
 <section class="home-section help-section" id="release-notes">
   <div class="section-head"><div><span class="eyebrow">What changed</span><h2>Release notes</h2></div><a href="#help-contents">Back to contents</a></div>
-  {% for release in release_notes %}
+  {% for release in release_notes[:2] %}
     <details class="help-topic release-note">
       <summary><span><strong>v{{ release.version }}</strong><small>{{ release.date }} · {{ release.title }}</small></span></summary>
       <div class="help-topic-body"><p>{{ release.summary }}</p><div class="release-note-groups">
@@ -28,6 +28,21 @@
       </div></div>
     </details>
   {% endfor %}
+  {% if release_notes|length > 2 %}
+    <details class="release-note-archive" data-release-archive>
+      <summary><span><strong>Older releases</strong><small>{{ release_notes|length - 2 }} more version{{ '' if release_notes|length == 3 else 's' }}</small></span></summary>
+      <div class="release-note-archive-list">
+        {% for release in release_notes[2:] %}
+          <details class="help-topic release-note">
+            <summary><span><strong>v{{ release.version }}</strong><small>{{ release.date }} · {{ release.title }}</small></span></summary>
+            <div class="help-topic-body"><p>{{ release.summary }}</p><div class="release-note-groups">
+              {% for group in release.groups %}<section><h3>{{ group.title }}</h3><ul>{% for item in group['items'] %}<li>{{ item }}</li>{% endfor %}</ul></section>{% endfor %}
+            </div></div>
+          </details>
+        {% endfor %}
+      </div>
+    </details>
+  {% endif %}
 </section>
 
 <section class="home-section help-section" id="getting-started">
@@ -83,7 +98,7 @@
     <p>Most profile stores are owner-readable local files, not a remote secrets vault. Automation action configuration is encrypted at rest using the installation session secret. Treat the host and <code>instance/</code> as trusted and sensitive.</p>
   </div></details>
   <details class="help-topic"><summary>Encrypted exports and import behavior</summary><div class="help-topic-body">
-    <p>Select the groups to export in Settings → Profile backup and restore. If any selection contains secrets, a backup password is mandatory; otherwise encryption is optional. Anyone with both file and password can restore the secrets.</p>
+    <p>Select the groups to export in Administration → Updates &amp; Recovery → Profile backups. If any selection contains secrets, a backup password is mandatory; otherwise encryption is optional. Anyone with both file and password can restore the secrets.</p>
     <ul><li><strong>Combine</strong> keeps existing entries and adds imported data.</li><li><strong>Replace</strong> replaces selected stored groups.</li><li>Wrong passwords or damaged encrypted files fail without importing partial plaintext.</li><li>Imported automations remain paused until reviewed.</li></ul>
     <p>Automation history/output, dashboard counters, and recent activity are not included.</p>
   </div></details>

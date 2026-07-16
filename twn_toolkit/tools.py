@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-from flask import (
-    Blueprint,
-    g,
-    render_template,
-)
+from flask import Blueprint, redirect, url_for
 
 from .api_request_routes import register_api_request_routes
 from .certificate_routes import register_certificate_routes
@@ -23,7 +19,6 @@ from .sftp_routes import register_sftp_routes
 from .ssh_routes import register_ssh_routes
 from .subnet_routes import register_subnet_routes
 from .syslog_routes import register_syslog_routes
-from .tool_catalog import grouped_visible_tools_for_category
 from .traceroute_routes import register_traceroute_routes
 
 
@@ -50,12 +45,4 @@ register_traceroute_routes(tools_bp)
 
 @tools_bp.get("/")
 def index():
-    allowed_tool_ids = getattr(g, "allowed_tool_ids", None)
-    return render_template(
-        "tools/index.html",
-        tool_groups=grouped_visible_tools_for_category(
-            "network",
-            is_admin=bool(g.current_user.get("is_admin")),
-            allowed_tool_ids=allowed_tool_ids,
-        ),
-    )
+    return redirect(url_for("index"))

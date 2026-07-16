@@ -23,17 +23,9 @@ def backup_items(instance_path: str):
 def register_tools(registry: ToolRegistry) -> None:
     registry.add_tool(
         ToolLink(
-            "admin.updates", "Updates & Recovery",
-            "Check for verified releases, create recovery points, upgrade, and restore safely.",
-            "updates", "administration", "Administration",
-            admin_only=True, grantable=False, nav_icon="↻",
-        )
-    )
-    registry.add_tool(
-        ToolLink(
             "admin.settings",
             "Settings",
-            "Manage users, password policy, server access, and profile backup/restore.",
+            "Manage users, password policy, server access, and operational limits.",
             "settings",
             "administration",
             "Administration",
@@ -50,9 +42,17 @@ def register_tools(registry: ToolRegistry) -> None:
             admin_only=True, grantable=False, nav_icon="♥",
         )
     )
+    registry.add_tool(
+        ToolLink(
+            "admin.updates", "Updates & Recovery",
+            "Manage profile backups, verified releases, recovery points, upgrades, and restores.",
+            "updates", "administration", "Administration",
+            admin_only=True, grantable=False, nav_icon="↻",
+        )
+    )
     registry.map_endpoints(
         {
-            "backup_settings": "admin.settings",
+            "backup_settings": "admin.updates",
             "create_user": "admin.settings",
             "update_user_access": "admin.settings",
             "save_access_profile": "admin.settings",
@@ -63,8 +63,8 @@ def register_tools(registry: ToolRegistry) -> None:
             "update_automation_retention": "admin.settings",
             "prune_automation_history": "admin.settings",
             "optimize_automation_database": "admin.settings",
-            "export_profile_backup": "admin.settings",
-            "import_profile_backup": "admin.settings",
+            "export_profile_backup": "admin.updates",
+            "import_profile_backup": "admin.updates",
             "update_operational_settings": "admin.settings",
             "diagnostics": "admin.diagnostics",
             "cleanup_orphan_artifacts": "admin.diagnostics",

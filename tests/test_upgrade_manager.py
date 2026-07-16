@@ -278,11 +278,23 @@ class UpgradeRouteTests(unittest.TestCase):
             app = create_app(instance)
             app.testing = True
             client = app.test_client()
-            page = client.get("/settings/updates")
+            with patch(
+                "twn_toolkit.upgrade_manager.UpgradeManager.backups",
+                return_value=[],
+            ), patch(
+                "twn_toolkit.upgrade_manager.UpgradeManager.status",
+                return_value=None,
+            ):
+                page = client.get("/settings/updates")
             self.assertEqual(page.status_code, 200)
             self.assertIn(b"Updates &amp; recovery", page.data)
             self.assertIn(b"Manual release bundle", page.data)
+            self.assertIn(b"Profile backups", page.data)
+            self.assertIn(b"Export or restore toolkit configuration", page.data)
+            self.assertIn(b"Open backup &amp; restore", page.data)
             self.assertIn(b"Create a recovery point now", page.data)
+            self.assertIn(b'class="form recovery-point-form"', page.data)
+            self.assertIn(b'class="updates-empty-state"', page.data)
 
             rejected = client.post("/settings/updates/backup", data={})
             self.assertEqual(rejected.status_code, 302)

@@ -26,7 +26,7 @@
       <textarea name="body" rows="8" placeholder='{"example": true}'>{{ form.body }}</textarea>
     </label>
     <label class="check"><input name="verify_tls" type="checkbox" {{ 'checked' if form.verify_tls else '' }}>Verify TLS certificate</label>
-    <div class="button-row"><button type="submit">Send Request</button><a class="button-link secondary" href="{{ url_for('tools.index') }}">Network Tools</a></div>
+    <div class="button-row"><button type="submit">Send Request</button></div>
     <span class="field-note">Redirects are reported but not followed. Response bodies are limited to 1 MiB and are never saved.</span>
   </form>
 </section>

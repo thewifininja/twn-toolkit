@@ -7,6 +7,7 @@ from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.dashboard_layout import DashboardLayoutStore
+from twn_toolkit.version import RELEASE_NOTES
 
 
 class HomePageTests(unittest.TestCase):
@@ -104,9 +105,67 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Managed service reliability hotfix", response.data)
         self.assertIn(b"Local services, transfer workflows, and operational hardening", response.data)
         self.assertIn(b"v0.8.0", response.data)
+        self.assertEqual(
+            response.data.count(b'class="help-topic release-note"'),
+            len(RELEASE_NOTES),
+        )
+        self.assertIn(b'data-release-archive', response.data)
+        self.assertIn(b"Older releases", response.data)
+        self.assertIn(f"{len(RELEASE_NOTES) - 2} more versions".encode(), response.data)
         self.assertIn(b"data-help-search-status", response.data)
         self.assertNotIn(b'class="help-topic release-note" open', response.data)
         self.assertIn(b"Use at your own risk", response.data)
+
+    def test_sidebar_orders_local_tools_before_automation_and_updates_last(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+
+            response = client.get("/")
+
+        self.assertLess(
+            response.data.index(b">Local Tools</span>"),
+            response.data.index(b">Automation</span>"),
+        )
+        administration = response.data.split(b">Administration</span>", 1)[1]
+        self.assertLess(
+            administration.index(b">Settings</span>"),
+            administration.index(b">System Diagnostics</span>"),
+        )
+        self.assertLess(
+            administration.index(b">System Diagnostics</span>"),
+            administration.index(b">Updates &amp; Recovery</span>"),
+        )
+
+    def test_profile_backup_moves_from_settings_to_updates_and_recovery(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+
+            settings = client.get("/settings")
+            updates = client.get("/settings/updates")
+            backup = client.get("/settings/backup")
+
+        self.assertNotIn(b">Profile backup</h2>", settings.data)
+        self.assertIn(b">Profile backups</h2>", updates.data)
+        self.assertIn(b"Back to Updates &amp; Recovery", backup.data)
+        self.assert_sidebar_section_open(backup.data.decode(), "Administration")
 
     def test_fortinet_pages_show_workflows_without_self_profile_card(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
