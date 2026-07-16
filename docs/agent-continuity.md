@@ -283,6 +283,13 @@ make state, risk, and the next action obvious.
   history. Keep status and logs outside the instance so they survive replacement.
   Audit both the initiating administrator and background terminal result without
   secrets or bundle contents.
+- Every managed background daemon is a root-scoped singleton guarded by a
+  `.twn-*.lock` file outside the replaceable instance. This includes automation,
+  the worker supervisor, TFTP, FTP, and SSH transfer. Launcher start/stop paths
+  remove legacy duplicates for the exact module and instance before proceeding;
+  supervisor cleanup is also scoped to the exact installation root. Never rely
+  only on replaceable instance PID files for ownership: an orphan daemon can run
+  duplicate automation or relaunch a transfer service during upgrade or rollback.
 - The progress page tolerates the expected unavailable interval and resumes after
   restart. CLI recovery remains available when the UI is down. A manually
   supplied official bundle bypasses the release API, but dependency-changing

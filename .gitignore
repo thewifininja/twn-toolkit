@@ -3,5 +3,6 @@ __pycache__/
 *.py[cod]
 instance/
 .twn-upgrades/
+.twn-*.lock
 dist/
 .DS_Store

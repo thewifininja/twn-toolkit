@@ -20,7 +20,12 @@ from .ssh_transfer_server import (
     SSHTransferHistoryStore, SSHTransferSettingsStore, ensure_ssh_host_key,
 )
 from .tftp import format_incoming_filename
-from .pidfiles import remove_own_pid_file, write_pid_file
+from .pidfiles import (
+    acquire_singleton_lock,
+    record_lock_owner,
+    remove_own_pid_file,
+    write_pid_file,
+)
 from .ssh_security import disabled_ssh_algorithms
 
 CLIENT_IDLE_TIMEOUT_SECONDS = 30
@@ -246,7 +251,13 @@ def serve(instance: str, stop: threading.Event) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--pid-file", required=True); parser.add_argument("--log-file", required=True); parser.add_argument("--daemon", action="store_true")
     args = parser.parse_args()
+    singleton = acquire_singleton_lock(
+        Path(args.instance).resolve().parent, "ssh-transfer",
+    )
+    if singleton is None:
+        return 0
     if args.daemon: _daemonize(args.pid_file, args.log_file)
+    record_lock_owner(singleton)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set()); signal.signal(signal.SIGINT, lambda *_: stop.set())
     write_pid_file(args.pid_file)

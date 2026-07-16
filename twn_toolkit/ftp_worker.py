@@ -15,7 +15,12 @@ from werkzeug.security import check_password_hash
 
 from .datastore import LocalDatastore, MAX_UPLOAD_BYTES
 from .ftp_server import FTPSettingsStore, clear_ftp_runtime
-from .pidfiles import remove_own_pid_file, write_pid_file
+from .pidfiles import (
+    acquire_singleton_lock,
+    record_lock_owner,
+    remove_own_pid_file,
+    write_pid_file,
+)
 from .ssh_transfer_server import SSHTransferHistoryStore
 from .tftp import format_incoming_filename
 
@@ -116,7 +121,11 @@ def _daemonize(pid_file: str, log_file: str):
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--daemon", action="store_true"); parser.add_argument("--pid-file", required=True); parser.add_argument("--log-file", required=True)
     args = parser.parse_args()
+    singleton = acquire_singleton_lock(Path(args.instance).resolve().parent, "ftp")
+    if singleton is None:
+        return
     if args.daemon: _daemonize(args.pid_file, args.log_file)
+    record_lock_owner(singleton)
     settings = FTPSettingsStore(args.instance).get()
     if not settings["enabled"]: raise SystemExit("FTP is disabled.")
     write_pid_file(args.pid_file)
