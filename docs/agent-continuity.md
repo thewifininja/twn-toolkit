@@ -209,6 +209,12 @@ make state, risk, and the next action obvious.
 - Show one clear primary action per task context. Separate destructive actions,
   require confirmation proportional to impact, and never rely on color alone to
   communicate risk or status.
+- Primary actions use the shared calm-green `--action-primary` tokens. Red is
+  reserved for destructive `.danger` actions and error/risk communication; do
+  not add page-specific button colors.
+- Action labels use sentence case while preserving acronyms and product names.
+  Keep field guidance in one place instead of repeating it in both placeholders
+  and helper text.
 - Design loading, empty, disabled, validation, failure, partial-success, success,
   stale, and permission-denied states with the main flow. Preserve operator input
   after recoverable errors and explain the next corrective action.

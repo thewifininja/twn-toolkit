@@ -156,7 +156,7 @@
             <label>Profile name<input name="name" maxlength="100" required value="{{ server.name }}"></label>
             <label>Server address<input name="host" required value="{{ server.host }}"></label>
             <label>Authentication port<input name="port" type="number" min="1" max="65535" value="{{ server.port }}"></label>
-            <label>Shared secret<input name="secret" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved secret"></label>
+            <label>Shared secret<input name="secret" type="password" autocomplete="new-password"></label>
             <span class="field-note secret-note">Leave blank to keep the saved secret.</span>
             {% call action_row() %}
               <button type="submit">Update server</button>
@@ -186,7 +186,7 @@
             <input name="original_name" type="hidden" value="{{ profile.name }}">
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
             <label>Username<input name="username" required autocomplete="off" value="{{ profile.username }}"></label>
-            <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved password"></label>
+            <label>Password<input name="password" type="password" autocomplete="new-password"></label>
             <span class="field-note secret-note">Leave blank to keep the saved password.</span>
             {% call action_row() %}
               <button type="submit">Update credentials</button>

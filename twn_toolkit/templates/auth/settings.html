@@ -96,7 +96,7 @@
       <div class="form-grid"><label>Datastore quota<input type="number" name="datastore_quota_gib" min="1" max="1024" value="{{ operational_settings.datastore_quota_gib }}" required><small class="field-note">GiB</small></label><label>Automation artifact quota<input type="number" name="automation_artifact_quota_gib" min="1" max="1024" value="{{ operational_settings.automation_artifact_quota_gib }}" required><small class="field-note">GiB</small></label><label>Minimum free disk reserve<input type="number" name="minimum_free_gib" min="0" max="100" value="{{ operational_settings.minimum_free_gib }}" required><small class="field-note">GiB</small></label></div>
       <button type="submit">Save operational limits</button>
     </form>
-    <div class="button-row"><a class="button-link secondary" href="{{ url_for('diagnostics') }}">Open System Diagnostics</a></div>
+    <div class="button-row"><a class="button-link secondary" href="{{ url_for('diagnostics') }}">Open system diagnostics</a></div>
   </section>
 
   <section class="panel access-profile-panel settings-profiles-group" id="access-profiles">
@@ -248,7 +248,7 @@
         One IPv4/IPv6 address or CIDR network per line. Your current client address is
         <code>{{ current_client_ip }}</code>. Changes require a service restart.
       </p>
-      <button type="submit">Save and Restart</button>
+      <button type="submit">Save and restart</button>
     </form>
   </section>
 {% endif %}

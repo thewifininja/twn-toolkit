@@ -13,6 +13,8 @@
   --ok: #1f7a3d;
   --warn: #8f5b00;
   --bad: #a72c2c;
+  --action-primary: #2f7656;
+  --action-primary-hover: #245b43;
   --action-secondary: #344c40;
   --action-secondary-hover: #263a30;
   --action-danger: #7f1f1f;
@@ -899,7 +901,7 @@ textarea {
 
 button,
 .button-link {
-  background: var(--accent);
+  background: var(--action-primary);
   border: 0;
   border-radius: 6px;
   color: #fff;
@@ -915,7 +917,7 @@ button,
 
 button:hover,
 .button-link:hover {
-  background: var(--accent-dark);
+  background: var(--action-primary-hover);
 }
 
 button.secondary,
@@ -7547,6 +7549,8 @@ th {
   --ok: #67d487;
   --warn: #f0bd5c;
   --bad: #ff7b7f;
+  --action-primary: #357f5d;
+  --action-primary-hover: #2a654a;
   --shadow: 0 14px 34px rgb(0 0 0 / 18%);
   --card-tint: #1d2924;
   --profile-collection-surface: #121b18;

@@ -69,6 +69,17 @@ class UIComponentTests(unittest.TestCase):
         )
         self.assertIn("background: var(--profile-collection-surface);", stylesheet)
 
+    def test_shared_action_palette_separates_primary_and_destructive_actions(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("--action-primary: #2f7656;", stylesheet)
+        self.assertIn("--action-primary: #357f5d;", stylesheet)
+        self.assertIn("background: var(--action-primary);", stylesheet)
+        self.assertIn("background: var(--action-primary-hover);", stylesheet)
+        self.assertIn("background: var(--action-danger);", stylesheet)
+
 
 if __name__ == "__main__":
     unittest.main()

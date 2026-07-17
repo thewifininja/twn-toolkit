@@ -207,7 +207,7 @@
     const payload = Object.fromEntries(data.entries());
     results.replaceChildren();
     toolbar.hidden = false;
-    toggleAllButton.textContent = "Expand All";
+    toggleAllButton.textContent = "Expand all";
     const views = targets.map(createResult);
     startButton.disabled = true;
     cancelButton.disabled = false;
@@ -246,6 +246,6 @@
     sections.forEach((section) => {
       section.open = !collapse;
     });
-    toggleAllButton.textContent = collapse ? "Expand All" : "Collapse All";
+    toggleAllButton.textContent = collapse ? "Expand all" : "Collapse all";
   });
 })();

@@ -70,7 +70,7 @@
                 </select>
               </label>
               <div class="form snmp-v2-fields">
-                <label>Community<input name="community" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved community"></label>
+                <label>Community<input name="community" type="password" autocomplete="new-password"></label>
                 <span class="field-note snmp-community-note">Leave blank to keep the saved community.</span>
               </div>
               <div class="form snmp-v3-fields" hidden>
@@ -90,7 +90,7 @@
                       {% endfor %}
                     </select>
                   </label>
-                  <label>Authentication passphrase<input name="auth_key" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved passphrase"></label>
+                  <label>Authentication passphrase<input name="auth_key" type="password" autocomplete="new-password"></label>
                 </div>
                 <div class="snmp-security-grid snmp-priv-fields" hidden>
                   <label>Privacy
@@ -100,7 +100,7 @@
                       {% endfor %}
                     </select>
                   </label>
-                  <label>Privacy passphrase<input name="priv_key" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved passphrase"></label>
+                  <label>Privacy passphrase<input name="priv_key" type="password" autocomplete="new-password"></label>
                 </div>
                 <label>Context name <span class="optional-label">(optional)</span><input name="context_name" autocomplete="off" value="{{ profile.context_name }}"></label>
                 <span class="field-note">Leave secret fields blank while editing to keep their current values.</span>
@@ -291,7 +291,7 @@
       </fieldset>
     </div>
     <div class="button-row">
-      <button type="submit" {% if not hosts %}disabled{% endif %}>Run SNMP Tests</button>
+      <button type="submit" {% if not hosts %}disabled{% endif %}>Run SNMP tests</button>
     </div>
   </form>
 </section>

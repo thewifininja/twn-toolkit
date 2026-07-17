@@ -121,6 +121,11 @@ New tools should inherit the current visual language:
 - Add a named component modifier only when the layout need is documented and
   cannot be expressed by the shared macro or base class.
 - Use `data-loading-message` for actions that may take noticeable server time.
+- Let the shared button styles provide the calm-green primary action and subdued
+  secondary action. Apply `.danger` only to destructive controls; do not add
+  local action colors.
+- Write action labels in sentence case while preserving acronyms and product
+  names. Put field guidance in a helper or a placeholder, not both.
 - For dangerous actions, use preview-first flows, explicit confirmation, and
   `risk="high"` in the registry.
 
