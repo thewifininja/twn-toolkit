@@ -10,7 +10,7 @@
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
   <form class="form" method="post" id="port-scan-form" data-loading-message="Scanning TCP ports…">
-    <div class="grid two">
+    <div class="grid two port-profile-grid">
       <div class="form port-inline-profile" data-kind="hosts" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='hosts') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='hosts') }}">
         <label>Host profile
           <select class="port-existing-profile">
@@ -22,7 +22,7 @@
           <textarea name="hosts" class="port-profile-values" id="port-scan-hosts" rows="7" placeholder="Core Switch = 192.0.2.10&#10;Access switches = 10.0.0.1-10.0.0.24&#10;server.example.com" required>{{ form.hosts }}</textarea>
         </label>
         <span class="field-note">{{ host_range_guidance(50, 'hosts') }}</span>
-        <div class="button-row">
+        <div class="button-row port-profile-actions">
           <input class="port-profile-name" placeholder="Host profile name" maxlength="100">
           <button class="secondary port-save-profile" type="button">Save hosts</button>
           <button class="danger port-delete-profile" type="button">Delete</button>
@@ -39,7 +39,7 @@
           <textarea name="ports" class="port-profile-values" id="port-scan-ports" rows="7" placeholder="22, 53, 80, 443, 8000-8010" required>{{ form.ports }}</textarea>
         </label>
         <span class="field-note">Comma, whitespace, and ascending ranges are accepted. Maximum 200 unique ports.</span>
-        <div class="button-row">
+        <div class="button-row port-profile-actions">
           <input class="port-profile-name" placeholder="Port profile name" maxlength="100">
           <button class="secondary port-save-profile" type="button">Save ports</button>
           <button class="danger port-delete-profile" type="button">Delete</button>

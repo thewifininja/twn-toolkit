@@ -4033,14 +4033,27 @@ button.compact,
 }
 
 .port-profile-grid {
+  align-items: start;
   margin-top: 4px;
 }
 
-.port-profile-form {
-  align-content: start;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 14px;
+.port-inline-profile {
+  grid-template-rows: auto auto minmax(3.6em, auto) auto;
+}
+
+.port-inline-profile > .field-note {
+  align-self: start;
+}
+
+.port-profile-actions {
+  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.port-profile-actions > input,
+.port-profile-actions > button {
+  height: 42px;
 }
 
 .port-scan-options {
@@ -7310,6 +7323,14 @@ th {
 
   .ping-host-statistics .ping-statistics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .port-inline-profile {
+    grid-template-rows: none;
+  }
+
+  .port-profile-actions {
+    grid-template-columns: 1fr;
   }
 
   .ping-graph-card > header {
