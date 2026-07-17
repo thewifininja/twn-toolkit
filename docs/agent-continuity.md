@@ -160,7 +160,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.11.0: live multi-host SNMP interface monitoring,
+- Current milestone is 0.11.1: live multi-host SNMP interface monitoring,
   route-level audit enrichment, high-impact preview/confirmation flows,
   representative v0.9.1 upgrade fixtures, operator rollback guidance, managed
   installer restarts, bounded external operations, cross-origin mutation
@@ -181,6 +181,14 @@ accepted replay frames.
   incompatibility. Installations on v0.10.2 or older need one final conventional
   upgrade to v0.11.0; routine later upgrades must not require Git, the GitHub CLI,
   or manual tag manipulation.
+  The 0.11.1 field-validation release is the first intended production exercise
+  of that built-in upgrade path. Certificate Automation ships explicitly as a
+  Beta workflow: its encrypted local storage and guarded enrollment mechanics are
+  covered by automated tests, but operators must validate issuance, pending
+  collection, renewal, exports, the complete chain, and target RADIUS behavior
+  end to end before deployment. The release also adds optional high-capacity
+  fping rounds, shared bounded IPv4-range entry, and reusable UI consistency
+  improvements without making fping an installation requirement.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.

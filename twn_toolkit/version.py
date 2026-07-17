@@ -1,6 +1,53 @@
-APP_VERSION = "0.11.0"
+APP_VERSION = "0.11.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.11.1",
+        "date": "2026-07-17",
+        "title": "Certificate automation beta and scalable network workflows",
+        "summary": (
+            "Introduces a clearly labeled beta certificate-lifecycle workflow, "
+            "higher-capacity Multi-Ping, shared IP-range entry, and a cohesive "
+            "interface component pass while providing the first production test "
+            "of the verified in-app upgrade path."
+        ),
+        "groups": (
+            {
+                "title": "Certificate Automation beta",
+                "items": (
+                    "Added reusable encrypted enrollment credentials, PKI server profiles, certificate templates, managed private keys, CSR generation, AD CS Web Enrollment submission, pending-request collection, renewal tracking, and certificate/key export formats.",
+                    "Labeled Certificate Automation as Beta throughout navigation, Help, and the tool itself because enrollment, renewal, and end-to-end RADIUS deployment have not completed broad production validation.",
+                    "Kept HTTPS verification enabled by default with an explicit per-server exception, encrypted saved credentials and managed keys locally, and warned that downloaded archives contain unencrypted private-key material.",
+                    "Excluded Certificate Automation data from profile backups so customer-specific PKI endpoints, identities, keys, and credentials cannot be unintentionally transported.",
+                ),
+            },
+            {
+                "title": "Multi-Ping capacity and target entry",
+                "items": (
+                    "Added an optional single-process fping engine for bounded high-capacity rounds up to 250 targets, with a tested 100-target system-ping compatibility fallback when fping is unavailable or unusable.",
+                    "Exposed separate round interval and probe timeout controls, sub-second accelerated timeouts, engine and round-duration diagnostics, and adaptive browser-history retention.",
+                    "Reworked live results into a searchable status navigator and uncapped user-selected response-time graphs while monitoring and history collection continue for every target.",
+                    "Added shared inclusive IPv4 range expansion to Multi-Ping and other bounded host-entry workflows, including deterministic friendly names such as Name-0001.",
+                ),
+            },
+            {
+                "title": "Interface consistency",
+                "items": (
+                    "Standardized reusable profile collections, create/cancel controls, aligned action rows, nested surfaces, empty states, warning spacing, and calm green action styling across administration, Fortinet, SNMP, automation, PKI, and network-tool pages.",
+                    "Corrected dashboard metric overflow, form-label alignment, responsive update/recovery layouts, TCP scanner profile alignment, and scroll containment for large Multi-Ping target lists.",
+                    "Retained accessible text status alongside color, responsive stacking, dark-theme treatment, and user-controlled graph density without imposing an arbitrary chart limit.",
+                ),
+            },
+            {
+                "title": "Compatibility and upgrade validation",
+                "items": (
+                    "Introduced no incompatible migration of existing application databases or configuration; Certificate Automation uses a separate owner-only local data store.",
+                    "Kept installation functional without fping and never invokes a system package manager or sudo automatically; diagnostics explain how to enable accelerated mode.",
+                    "Prepared this release as the first production exercise of stable-release discovery, verified bundle installation, matched recovery-point creation, service restart validation, and rollback introduced in v0.11.0.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.11.0",
         "date": "2026-07-15",

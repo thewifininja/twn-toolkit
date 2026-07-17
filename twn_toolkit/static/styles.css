@@ -1376,6 +1376,16 @@ button.danger:hover {
   text-transform: uppercase;
 }
 
+.certificate-beta-pill {
+  font-size: 0.66rem;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.certificate-beta-note {
+  margin-top: 18px;
+}
+
 .certificate-automation-mark {
   align-items: center;
   background: var(--brand-green-dark);
