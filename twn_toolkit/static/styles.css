@@ -1490,8 +1490,7 @@ button.danger {
   gap: 12px;
 }
 
-.certificate-managed-card,
-.certificate-profile-group {
+.certificate-managed-card {
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
@@ -1554,9 +1553,7 @@ button.danger {
   font-size: 0.94rem;
 }
 
-.certificate-managed-state small,
-.certificate-profile-group small,
-.certificate-saved-profile small {
+.certificate-managed-state small {
   color: var(--muted);
 }
 
@@ -1663,61 +1660,6 @@ button.compact,
   font-weight: 500;
 }
 
-.certificate-profile-group > summary {
-  align-items: center;
-  background: var(--card-tint);
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  list-style: none;
-  padding: 15px 17px;
-}
-
-.certificate-profile-group > summary::-webkit-details-marker,
-.certificate-saved-profile > summary::-webkit-details-marker {
-  display: none;
-}
-
-.certificate-profile-group > summary span,
-.certificate-saved-profile > summary span {
-  display: grid;
-  gap: 2px;
-}
-
-.certificate-profile-group > summary b {
-  color: var(--brand-green-dark);
-  font-size: 1.25rem;
-  transition: transform 120ms ease;
-}
-
-.certificate-profile-group[open] > summary b {
-  transform: rotate(45deg);
-}
-
-.certificate-profile-content {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-}
-
-.certificate-profile-content .profile-create-details,
-.certificate-saved-profile {
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 12px;
-}
-
-.certificate-profile-content .profile-create-details > summary,
-.certificate-saved-profile > summary {
-  cursor: pointer;
-  font-weight: 850;
-}
-
-.certificate-profile-content details > .form {
-  margin-top: 14px;
-}
-
-.certificate-saved-profile > form:last-child,
 .certificate-profile-actions {
   margin-top: 10px;
 }
@@ -1787,8 +1729,7 @@ button.compact,
 }
 
 [data-theme="dark"] .certificate-request-options fieldset,
-[data-theme="dark"] .certificate-managed-details,
-[data-theme="dark"] .certificate-profile-group > summary {
+[data-theme="dark"] .certificate-managed-details {
   background: color-mix(in srgb, var(--panel), #000 9%);
 }
 

@@ -557,6 +557,14 @@ class CertificateAutomationRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Enrollment", response.data)
         self.assertNotIn(b"never-render-this", response.data)
+        self.assertIn(
+            b"access-profile-card profile-section certificate-profile-section",
+            response.data,
+        )
+        self.assertIn(b"profile-create-details card-action-details", response.data)
+        self.assertIn(b"New credential", response.data)
+        self.assertIn(b"New PKI server", response.data)
+        self.assertIn(b"New template", response.data)
 
     def test_profile_enrollment_and_download_archive(self) -> None:
         store = CertificateAutomationStore(
