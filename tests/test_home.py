@@ -164,7 +164,7 @@ class HomePageTests(unittest.TestCase):
 
         self.assertNotIn(b">Profile backup</h2>", settings.data)
         self.assertIn(b">Profile backups</h2>", updates.data)
-        self.assertIn(b"Back to Updates &amp; Recovery", backup.data)
+        self.assertIn(b"Back to Updates &amp; recovery", backup.data)
         self.assert_sidebar_section_open(backup.data.decode(), "Administration")
 
     def test_fortinet_pages_show_workflows_without_self_profile_card(self) -> None:

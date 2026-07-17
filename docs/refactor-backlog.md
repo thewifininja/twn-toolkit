@@ -173,16 +173,22 @@ Recommended direction:
 1. Keep the encryption rule: sensitive groups require encrypted backups.
 2. Consider a tiny typed backup-item helper if more domains register groups.
 
-### 7. UI patterns are improving, but not fully centralized
+### 7. Shared UI patterns are centralized for common workspaces
 
-The launch cards and newer collapsible sections are much cleaner. Some older
-tool templates still hand-roll similar panels/forms.
+The launch cards and newer collapsible sections now share Jinja macros for
+workspace introductions, section headers, standalone empty states, profile
+sections, create controls, saved-record cards, and action rows. The first
+migration covers certificate automation, SNMP, RADIUS, automations, settings,
+diagnostics, updates, FortiGate, FortiAuthenticator, the dashboard, and the
+datastore text viewer.
 
 Recommended direction:
 
-1. Add small Jinja macros for common form/card/action-row patterns.
+1. Use `templates/components/ui.html` when adding or touching these patterns;
+   extend a shared macro before introducing equivalent local markup.
 2. Keep `data-loading-message` required for slow server-side actions.
-3. Avoid a full template rewrite unless a page is already being touched.
+3. Continue opportunistic migration of specialized legacy pages without forcing
+   distinct operational displays into one visual shape.
 
 ### 8. Large risky tools need preview-first consistency
 
@@ -284,8 +290,13 @@ Status:
 
 ### Phase 4: UI component pass
 
-- Add Jinja macros for common collapsible cards and action rows.
-- Convert older templates opportunistically.
+- Done: add Jinja macros for common workspace introductions, section headers,
+  empty states, collapsible profile cards, create controls, and action rows.
+- Done: migrate the certificate, SNMP, RADIUS, automation, administration,
+  Fortinet profile, dashboard, and datastore text-viewer patterns touched by the
+  system audit.
+- Continue converting specialized older templates opportunistically when their
+  surrounding workflows are touched.
 - Keep the homepage/category card design as the visual baseline.
 
 Status:

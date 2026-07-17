@@ -26,15 +26,15 @@
         </select>
       </label>
       <div class="button-row">
-        <button class="secondary" type="submit">Fetch Data</button>
+        <button class="secondary" type="submit">Fetch data</button>
         <button formaction="{{ url_for('export_fortiauthenticator_mac_group_memberships') }}" type="submit">Export CSV</button>
-        <a class="button-link secondary" href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator Home</a>
+        <a class="button-link secondary" href="{{ url_for('fortiauthenticator_home') }}">FortiAuthenticator home</a>
       </div>
     </form>
   {% else %}
     <p class="empty">Create a FortiAuthenticator profile before fetching group memberships.</p>
     <div class="button-row result-actions">
-      <a class="button-link" href="{{ url_for('fortiauthenticator_home') }}">Create Profile</a>
+      <a class="button-link" href="{{ url_for('fortiauthenticator_home') }}">Create profile</a>
     </div>
   {% endif %}
 </section>

@@ -103,12 +103,29 @@ changes, while backup/user/admin actions map to `admin.settings`.
 New tools should inherit the current visual language:
 
 - Use homepage/category launch cards via the registry where possible.
-- Use `.panel`, `.panel-head`, `.home-hero`, `.home-section`, or existing tool
-  page patterns rather than inventing a new card system.
-- Use shared form grids and `.button-row` action clusters; add a named modifier
-  only when the tool has a documented layout need that the base pattern should
-  not impose everywhere.
+- Import the appropriate macros from `templates/components/ui.html` instead of
+  hand-writing repeated workspace introductions, section headers, empty states,
+  profile sections, profile cards, create controls, or action rows.
+- Use a standard `.panel` and `.panel-head` for a focused single-task tool. Use
+  `workspace_intro` for a multi-section workspace. Reserve `.home-hero` and
+  `.home-section` for dashboards and lifecycle pages that need a richer status
+  summary.
+- Use `section_header` for panel-level titles and actions. Pass actions through
+  its call block so they consistently occupy `.section-actions` and reflow on
+  narrow screens.
+- Use `profile_section`, `profile_create`, and `profile_card` for saved-profile
+  managers. Use `action_row`, with `detached=true` when independent forms must
+  share one row, instead of creating a tool-specific action wrapper.
+- Use `empty_state` for a standalone empty collection. Keep simple muted text
+  only when the absence is an inline part of another compact component.
+- Add a named component modifier only when the layout need is documented and
+  cannot be expressed by the shared macro or base class.
 - Use `data-loading-message` for actions that may take noticeable server time.
+- Let the shared button styles provide the calm-green primary action and subdued
+  secondary action. Apply `.danger` only to destructive controls; do not add
+  local action colors.
+- Write action labels in sentence case while preserving acronyms and product
+  names. Put field guidance in a helper or a placeholder, not both.
 - For dangerous actions, use preview-first flows, explicit confirmation, and
   `risk="high"` in the registry.
 

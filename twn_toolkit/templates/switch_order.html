@@ -29,7 +29,7 @@
         </label>
       </div>
       <div class="button-row">
-        <button type="button" id="load-switch-order">Load Current Order</button>
+        <button type="button" id="load-switch-order">Load current order</button>
         <a class="button-link secondary" href="{{ url_for('fortigate_home') }}">FortiGate</a>
       </div>
     </form>
@@ -55,11 +55,11 @@
         <input id="confirm-switch-order" type="checkbox">
         I reviewed the move preview and want to apply this exact order.
       </label>
-      <button type="button" id="apply-switch-order" disabled>Apply and Verify Order</button>
+      <button type="button" id="apply-switch-order" disabled>Apply and verify order</button>
     </section>
   {% else %}
     <div class="message error">Save a FortiGate profile before ordering managed switches.</div>
-    <a class="button-link" href="{{ url_for('fortigate_home') }}">Create Profile</a>
+    <a class="button-link" href="{{ url_for('fortigate_home') }}">Create profile</a>
   {% endif %}
 </section>
 <script src="{{ url_for('static', filename='switch-order.js') }}" defer></script>

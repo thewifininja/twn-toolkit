@@ -1,10 +1,7 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import workspace_intro %}
 {% block content %}
-<section class="workspace-intro datastore-text-intro">
-  <span class="eyebrow">Datastore · text viewer</span>
-  <h1>{{ filename }}</h1>
-  <p>{{ size_display }} · Read-only plain-text preview. File contents are displayed as text and are never rendered as HTML.</p>
-</section>
+{{ workspace_intro(filename, size_display ~ " · Read-only plain-text preview. File contents are displayed as text and are never rendered as HTML.", "Datastore · text viewer") }}
 
 <section class="panel datastore-text-viewer">
   <div class="section-head datastore-text-viewer-head">

@@ -202,9 +202,19 @@ make state, risk, and the next action obvious.
 - Make interactions predictable across tools. Reuse shared layout, form, action,
   collection, result, loading, and feedback patterns. A local override is an
   exception; prefer improving the shared component when the need is reusable.
+- `templates/components/ui.html` is the source of truth for workspace
+  introductions, section headers, standalone empty states, profile sections,
+  profile create controls, saved profile cards, and action rows. Import those
+  macros instead of reproducing their HTML structure in a tool template.
 - Show one clear primary action per task context. Separate destructive actions,
   require confirmation proportional to impact, and never rely on color alone to
   communicate risk or status.
+- Primary actions use the shared calm-green `--action-primary` tokens. Red is
+  reserved for destructive `.danger` actions and error/risk communication; do
+  not add page-specific button colors.
+- Action labels use sentence case while preserving acronyms and product names.
+  Keep field guidance in one place instead of repeating it in both placeholders
+  and helper text.
 - Design loading, empty, disabled, validation, failure, partial-success, success,
   stale, and permission-denied states with the main flow. Preserve operator input
   after recoverable errors and explain the next corrective action.
@@ -219,7 +229,8 @@ make state, risk, and the next action obvious.
   protected.
 
 - Primary/secondary actions belong consistently in a section header's
-  `.section-actions` area, normally at the top right on wide screens.
+  `.section-actions` area, normally at the top right on wide screens. Use the
+  `section_header` call block so the wrapper and responsive behavior are shared.
 - Card titles and descriptions should occupy separate blocks; short titles must
   not cause descriptions or kickers to run into them.
 - Collapsible parent sections and nested record cards use shared patterns.

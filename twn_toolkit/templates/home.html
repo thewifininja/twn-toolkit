@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import empty_state %}
 
 {% block content %}
 <section class="dashboard-hero">
@@ -160,10 +161,7 @@
       {% endfor %}
     </div>
   {% else %}
-    <div class="empty-state">
-      <strong>No user activity yet.</strong>
-      <span>Once tools record intentional actions, the most active users will appear here.</span>
-    </div>
+    {{ empty_state("No user activity yet.", "Once tools record intentional actions, the most active users will appear here.") }}
   {% endif %}
 </section>
 
@@ -184,10 +182,7 @@
       {% endfor %}
     </div>
   {% else %}
-    <div class="empty-state">
-      <strong>No activity history is being recorded yet.</strong>
-      <span>The activity store is ready; individual tools can now be wired into it.</span>
-    </div>
+    {{ empty_state("No activity history is being recorded yet.", "The activity store is ready; individual tools can now be wired into it.") }}
   {% endif %}
 </section>
 {% if current_user.is_admin %}<script src="{{ url_for('static', filename='dashboard-layout.js') }}"></script>{% endif %}

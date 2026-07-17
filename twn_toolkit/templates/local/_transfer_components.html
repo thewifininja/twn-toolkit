@@ -2,7 +2,7 @@
 <div class="tftp-history-head">
   <div><h3>{{ title }}</h3><p class="field-note">{{ note }}</p></div>
   {% if current_user.is_admin and transfers %}
-    <form method="post" action="{{ url_for(clear_endpoint) }}" onsubmit="return confirm('{{ confirm_text }}')"><button type="submit" class="danger secondary">Clear history</button></form>
+    <form method="post" action="{{ url_for(clear_endpoint) }}" onsubmit="return confirm('{{ confirm_text }}')"><button type="submit" class="danger">Clear history</button></form>
   {% endif %}
 </div>
 {% if transfers %}

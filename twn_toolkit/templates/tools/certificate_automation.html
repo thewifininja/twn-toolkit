@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import action_row, empty_state, profile_card, profile_create, profile_section %}
 
 {% block content %}
 <section class="panel tool-panel certificate-automation-hero">
@@ -31,11 +32,9 @@
     </div>
   </div>
   {% if not servers or not templates %}
-    <div class="empty-state certificate-onboarding">
-      <strong>Complete PKI setup first</strong>
-      <span>Create a PKI server and certificate template profile below. A saved credential is optional because credentials can be entered for each request.</span>
+    {% call empty_state("Complete PKI setup first", "Create a PKI server and certificate template profile below. A saved credential is optional because credentials can be entered for each request.", "certificate-onboarding") %}
       <a class="button-link secondary" href="#pki-profiles">Open PKI profiles</a>
-    </div>
+    {% endcall %}
   {% else %}
     <form class="form certificate-request-form" method="post" action="{{ url_for('tools.enroll_managed_certificate') }}" enctype="multipart/form-data" data-loading-message="Submitting certificate request…">
       <div class="certificate-form-grid">
@@ -188,7 +187,7 @@
         {% endif %}
       </article>
     {% else %}
-      <div class="empty-state"><strong>No managed certificates yet</strong><span>Your first successful or pending enrollment will appear here.</span></div>
+      {{ empty_state("No managed certificates yet", "Your first successful or pending enrollment will appear here.") }}
     {% endfor %}
   </div>
 </section>
@@ -202,9 +201,8 @@
     </div>
   </div>
   <div class="access-profile-list certificate-profile-columns">
-    <details class="access-profile-card profile-section certificate-profile-section" {% if not credentials %}open{% endif %}>
-      <summary><span><strong>Credentials</strong><small>{{ credentials|length }} saved · Enrollment identities with locally encrypted passwords</small></span></summary>
-      <details class="profile-create-details card-action-details" {% if not credentials %}open{% endif %}><summary><span>New credential</span></summary>
+    {% call profile_section("Credentials", credentials|length ~ " saved · Enrollment identities with locally encrypted passwords", not credentials, "certificate-profile-section") %}
+      {% call profile_create("New credential", not credentials) %}
           <form class="form" method="post" action="{{ url_for('tools.save_pki_credential') }}">
             <label>Profile name<input name="name" maxlength="100" required placeholder="Enrollment account"></label>
             <label>Username<input name="username" required autocomplete="off" placeholder="DOMAIN\username or user@example.org"></label>
@@ -212,26 +210,25 @@
             <span class="field-note">Encrypted locally and never displayed again.</span>
             <button type="submit">Save credential</button>
           </form>
-      </details>
+      {% endcall %}
       <div class="access-profile-list nested-profile-list">
-        {% for profile in credentials %}<details class="access-profile-card nested-profile-card"><summary><span><strong>{{ profile.name }}</strong><small>{{ profile.username }}</small></span></summary>
+        {% for profile in credentials %}{% call profile_card(profile.name, profile.username) %}
           <form class="form" id="pki-credential-{{ profile.id }}" method="post" action="{{ url_for('tools.save_pki_credential') }}">
             <input type="hidden" name="id" value="{{ profile.id }}">
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
             <label>Username<input name="username" required value="{{ profile.username }}"></label>
             <label>New password<input name="password" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved password"></label>
           </form>
-          <div class="button-row profile-form-actions">
+          {% call action_row(detached=true) %}
             <button type="submit" form="pki-credential-{{ profile.id }}">Update</button>
             <form method="post" action="{{ url_for('tools.delete_pki_credential', credential_id=profile.id) }}" data-confirm="Delete credential profile “{{ profile.name }}”?"><button class="danger" type="submit">Delete</button></form>
-          </div>
-        </details>{% endfor %}
+          {% endcall %}
+        {% endcall %}{% endfor %}
       </div>
-    </details>
+    {% endcall %}
 
-    <details class="access-profile-card profile-section certificate-profile-section" {% if not servers %}open{% endif %}>
-      <summary><span><strong>PKI servers</strong><small>{{ servers|length }} saved · Enrollment endpoints, trust, and retrieval settings</small></span></summary>
-      <details class="profile-create-details card-action-details" {% if not servers %}open{% endif %}><summary><span>New PKI server</span></summary>
+    {% call profile_section("PKI servers", servers|length ~ " saved · Enrollment endpoints, trust, and retrieval settings", not servers, "certificate-profile-section") %}
+      {% call profile_create("New PKI server", not servers) %}
           <form class="form" method="post" action="{{ url_for('tools.save_pki_server') }}" enctype="multipart/form-data">
             <label>Profile name<input name="name" maxlength="100" required placeholder="Production AD CS"></label>
             <label>Provider<select name="provider" disabled><option>Microsoft AD CS Web Enrollment</option></select></label>
@@ -244,9 +241,9 @@
             <span class="field-note">HTTPS certificate verification is enabled by default. Upload a private CA bundle when system trust is insufficient.</span>
             <button type="submit">Save PKI server</button>
           </form>
-      </details>
+      {% endcall %}
       <div class="access-profile-list nested-profile-list">
-        {% for profile in servers %}<details class="access-profile-card nested-profile-card"><summary><span><strong>{{ profile.name }}</strong><small>{{ profile.enrollment_url }}</small></span></summary>
+        {% for profile in servers %}{% call profile_card(profile.name, profile.enrollment_url) %}
           <form class="form" id="pki-server-{{ profile.id }}" method="post" action="{{ url_for('tools.save_pki_server') }}" enctype="multipart/form-data">
             <input type="hidden" name="id" value="{{ profile.id }}">
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
@@ -260,21 +257,20 @@
             <label>Certificate retrieval<select name="retrieval_strategy"><option value="same_endpoint" {% if profile.retrieval_strategy == 'same_endpoint' %}selected{% endif %}>Use enrollment endpoint</option><option value="resolved_ipv4" {% if profile.retrieval_strategy == 'resolved_ipv4' %}selected{% endif %}>Search resolved IPv4 backends</option></select></label>
             <label>Timeout<input name="timeout" type="number" min="2" max="60" value="{{ profile.timeout|int }}"></label>
           </form>
-          <div class="button-row profile-form-actions">
+          {% call action_row(detached=true) %}
             <button type="submit" form="pki-server-{{ profile.id }}">Update</button>
             <form method="post" action="{{ url_for('tools.test_pki_server', server_id=profile.id) }}" data-loading-message="Testing PKI server…">
               {% if not profile.credential_id %}<details class="certificate-one-time-credentials"><summary>Credentials for test</summary><div class="certificate-inline-fields"><label>Username<input name="username" autocomplete="username"></label><label>Password<input name="password" type="password" autocomplete="current-password"></label></div></details>{% endif %}
               <button class="secondary" type="submit">Test connection</button>
             </form>
             <form method="post" action="{{ url_for('tools.delete_pki_server', server_id=profile.id) }}" data-confirm="Delete PKI server profile “{{ profile.name }}”?"><button class="danger" type="submit">Delete</button></form>
-          </div>
-        </details>{% endfor %}
+          {% endcall %}
+        {% endcall %}{% endfor %}
       </div>
-    </details>
+    {% endcall %}
 
-    <details class="access-profile-card profile-section certificate-profile-section" {% if not templates %}open{% endif %}>
-      <summary><span><strong>Templates</strong><small>{{ templates|length }} saved · Reusable certificate request and renewal policies</small></span></summary>
-      <details class="profile-create-details card-action-details" {% if not templates %}open{% endif %}><summary><span>New template</span></summary>
+    {% call profile_section("Templates", templates|length ~ " saved · Reusable certificate request and renewal policies", not templates, "certificate-profile-section") %}
+      {% call profile_create("New template", not templates) %}
           <form class="form" method="post" action="{{ url_for('tools.save_pki_template') }}">
             <label>Profile name<input name="name" maxlength="100" required placeholder="RADIUS TLS server"></label>
             <label>PKI server<select name="server_id" required><option value="">Select a PKI server</option>{% for profile in servers %}<option value="{{ profile.id }}">{{ profile.name }}</option>{% endfor %}</select></label>
@@ -283,9 +279,9 @@
             <label>Renewal window<input name="renewal_days" type="number" min="1" max="365" value="30"><span class="field-note">Days before expiration.</span></label>
             <button type="submit">Save template</button>
           </form>
-      </details>
+      {% endcall %}
       <div class="access-profile-list nested-profile-list">
-        {% for profile in templates %}<details class="access-profile-card nested-profile-card"><summary><span><strong>{{ profile.name }}</strong><small>{{ profile.server_name }} · {{ profile.template_identifier }}</small></span></summary>
+        {% for profile in templates %}{% call profile_card(profile.name, profile.server_name ~ " · " ~ profile.template_identifier) %}
           <form class="form" id="pki-template-{{ profile.id }}" method="post" action="{{ url_for('tools.save_pki_template') }}">
             <input type="hidden" name="id" value="{{ profile.id }}">
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
@@ -294,13 +290,13 @@
             <label>RSA key size<select name="key_size">{% for size in valid_key_sizes %}<option value="{{ size }}" {% if size == profile.key_size %}selected{% endif %}>{{ size }} bits</option>{% endfor %}</select></label>
             <label>Renewal window<input name="renewal_days" type="number" min="1" max="365" value="{{ profile.renewal_days }}"></label>
           </form>
-          <div class="button-row profile-form-actions">
+          {% call action_row(detached=true) %}
             <button type="submit" form="pki-template-{{ profile.id }}">Update</button>
             <form method="post" action="{{ url_for('tools.delete_pki_template', template_id=profile.id) }}" data-confirm="Delete certificate template profile “{{ profile.name }}”?"><button class="danger" type="submit">Delete</button></form>
-          </div>
-        </details>{% endfor %}
+          {% endcall %}
+        {% endcall %}{% endfor %}
       </div>
-    </details>
+    {% endcall %}
   </div>
 </section>
 

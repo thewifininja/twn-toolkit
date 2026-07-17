@@ -242,17 +242,6 @@
     }
   });
 
-  document.querySelectorAll("details[data-automation-create]").forEach((details) => {
-    const label = details.querySelector(":scope > summary span");
-    if (!label) return;
-    const closedLabel = label.textContent.trim();
-    const syncLabel = () => {
-      label.textContent = details.open ? "Cancel" : closedLabel;
-    };
-    details.addEventListener("toggle", syncLabel);
-    syncLabel();
-  });
-
   document.querySelectorAll("[data-automation-edit-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
       const editorId = button.getAttribute("aria-controls");

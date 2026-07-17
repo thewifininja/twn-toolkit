@@ -13,6 +13,16 @@
   --ok: #1f7a3d;
   --warn: #8f5b00;
   --bad: #a72c2c;
+  --action-primary: #2f7656;
+  --action-primary-hover: #245b43;
+  --action-secondary: #344c40;
+  --action-secondary-hover: #263a30;
+  --action-danger: #7f1f1f;
+  --action-danger-hover: #651919;
+  --action-danger-text: #9b2929;
+  --control-border: #c8d5cc;
+  --field-label: #2f3b48;
+  --profile-collection-surface: color-mix(in srgb, var(--bg), var(--brand-green) 5%);
   --shadow: 0 12px 32px rgb(25 33 31 / 7%);
   --card-tint: color-mix(in srgb, var(--panel), var(--accent) 3%);
   --topbar-height: 75px;
@@ -801,7 +811,7 @@ p {
 }
 
 .choice-group legend {
-  color: #2f3b48;
+  color: var(--field-label);
   font-size: 0.9rem;
   font-weight: 800;
   padding: 0 5px;
@@ -828,7 +838,7 @@ p {
 }
 
 label {
-  color: #2f3b48;
+  color: var(--field-label);
   display: grid;
   font-size: 0.9rem;
   font-weight: 700;
@@ -838,7 +848,7 @@ label {
 input,
 select,
 textarea {
-  border: 1px solid #c8d5cc;
+  border: 1px solid var(--control-border);
   border-radius: 6px;
   color: var(--ink);
   font: inherit;
@@ -891,7 +901,7 @@ textarea {
 
 button,
 .button-link {
-  background: var(--accent);
+  background: var(--action-primary);
   border: 0;
   border-radius: 6px;
   color: #fff;
@@ -907,24 +917,25 @@ button,
 
 button:hover,
 .button-link:hover {
-  background: var(--accent-dark);
+  background: var(--action-primary-hover);
 }
 
-button.secondary {
-  background: #344c40;
-}
-
+button.secondary,
 .button-link.secondary {
-  background: #344c40;
+  background: var(--action-secondary);
 }
 
 button.secondary:hover,
 .button-link.secondary:hover {
-  background: #263a30;
+  background: var(--action-secondary-hover);
 }
 
 button.danger {
-  background: #7f1f1f;
+  background: var(--action-danger);
+}
+
+button.danger:hover {
+  background: var(--action-danger-hover);
 }
 
 .button-row {
@@ -1764,12 +1775,16 @@ button.compact,
 }
 
 .nested-profile-list {
-  background: color-mix(in srgb, var(--bg), var(--brand-green) 5%);
+  background: var(--profile-collection-surface);
   border: 0;
   border-radius: 0;
   box-shadow: none;
   margin: 0;
   padding: 12px;
+}
+
+.nested-profile-list:empty {
+  padding: 0;
 }
 
 .nested-profile-card {
@@ -2565,7 +2580,7 @@ button.compact,
 
 .csv-help summary,
 .advanced-options summary {
-  color: #2f3b48;
+  color: var(--field-label);
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 800;
@@ -2589,7 +2604,7 @@ button.compact,
 }
 
 .field-builder summary {
-  color: #2f3b48;
+  color: var(--field-label);
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 800;
@@ -2876,6 +2891,12 @@ button.compact,
   justify-content: space-between;
 }
 
+.section-head.has-actions {
+  column-gap: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .section-head > div {
   min-width: 0;
 }
@@ -2895,6 +2916,11 @@ button.compact,
 
 .section-head h2 {
   font-size: 1.15rem;
+}
+
+.section-head p {
+  line-height: 1.45;
+  max-width: 80ch;
 }
 
 .workspace-grid {
@@ -3098,6 +3124,7 @@ button.compact,
   display: grid;
   gap: 6px;
   min-height: 136px;
+  min-width: 0;
   padding: 14px;
   position: relative;
 }
@@ -3193,18 +3220,26 @@ button.compact,
 .dashboard-stat {
   align-items: baseline;
   display: flex;
-  gap: 8px;
+  column-gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  row-gap: 2px;
 }
 
 .dashboard-stat span {
+  flex: 0 1 auto;
   font-size: clamp(1.75rem, 3vw, 2.35rem);
+  font-variant-numeric: tabular-nums;
   font-weight: 900;
   letter-spacing: -0.06em;
   line-height: 1;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .dashboard-stat small {
   color: var(--muted);
+  flex: 0 0 auto;
   font-size: 0.78rem;
   font-weight: 850;
 }
@@ -5613,9 +5648,6 @@ button.compact,
 
 .updates-section-head {
   align-items: flex-start;
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
   padding-right: 0;
 }
 
@@ -5623,8 +5655,8 @@ button.compact,
   min-width: 0;
 }
 
-.updates-section-head > .button-link,
-.updates-section-head > .pill {
+.updates-section-head .section-actions > .button-link,
+.updates-section-head .section-actions > .pill {
   flex: 0 0 auto;
 }
 
@@ -5648,6 +5680,11 @@ button.compact,
 
 .updates-panel > .compact-message {
   margin-top: 1rem;
+}
+
+.updates-panel > .side-nav-empty {
+  margin-top: 1rem;
+  padding: 0;
 }
 
 .updates-empty-state {
@@ -5731,19 +5768,13 @@ button.compact,
   }
 }
 
-.auth-users-head {
+.profile-manager-head {
   margin-bottom: 18px;
   padding-right: 170px;
 }
 
-.auth-users-head h2 {
-  font-size: 1.12rem;
-  margin: 0;
-}
-
-.auth-users-head .field-note {
+.profile-manager-head p {
   line-height: 1.4;
-  margin: 8px 0 0;
 }
 
 .user-list {
@@ -5795,7 +5826,7 @@ button.compact,
 }
 
 .user-edit-card[open] .user-edit-button {
-  background: #263a30;
+  background: var(--action-secondary-hover);
 }
 
 .user-edit-panel {
@@ -5968,8 +5999,8 @@ button.compact,
   top: 26px;
 }
 
-.card-action-details > summary span {
-  background: #344c40;
+.card-action-details > summary > .card-action-label {
+  background: var(--action-secondary);
   border-radius: 6px;
   color: #fff;
   display: inline-flex;
@@ -5978,9 +6009,21 @@ button.compact,
   padding: 10px 14px;
 }
 
-.card-action-details > summary:hover span,
-.card-action-details[open] > summary span {
-  background: #263a30;
+.card-action-details > summary:hover > .card-action-label,
+.card-action-details[open] > summary > .card-action-label {
+  background: var(--action-secondary-hover);
+}
+
+.card-action-open-label {
+  display: none;
+}
+
+.card-action-details[open] > summary .card-action-closed-label {
+  display: none;
+}
+
+.card-action-details[open] > summary .card-action-open-label {
+  display: inline;
 }
 
 .card-action-details > form {
@@ -5995,6 +6038,12 @@ button.compact,
   margin: 14px 0 16px;
 }
 
+.profile-section > .profile-create-details.card-action-details[open] {
+  background: var(--profile-collection-surface);
+  margin: 0;
+  padding: 12px 12px 0;
+}
+
 .profile-create-details.card-action-details > summary {
   right: 62px;
   top: 25px;
@@ -6004,7 +6053,7 @@ button.compact,
   top: 15px;
 }
 
-.profile-create-details.card-action-details > summary span {
+.profile-create-details.card-action-details > summary > .card-action-label {
   min-height: 34px;
   padding: 7px 12px;
 }
@@ -6056,8 +6105,12 @@ button.compact,
   margin-top: 14px;
 }
 
-.automation-library-panel > .empty-state {
+.automation-manager > .empty-state {
   margin-top: 18px;
+}
+
+.radius-eap-warning {
+  margin-bottom: 16px;
 }
 
 .automation-library-panel > .profile-create-details[open] {
@@ -6291,6 +6344,10 @@ button.compact,
 .automation-condition-fields {
   display: grid;
   gap: 12px;
+}
+
+.automation-threshold-grid > label {
+  grid-template-rows: minmax(2.35em, auto) auto;
 }
 
 .schedule-settings-grid,
@@ -6669,13 +6726,13 @@ button.compact,
 
 button.text-danger {
   background: transparent;
-  color: #9b2929;
+  color: var(--action-danger-text);
   font-size: 0.78rem;
   padding: 7px 9px;
 }
 
 button.text-danger:hover {
-  background: color-mix(in srgb, #9b2929, transparent 88%);
+  background: color-mix(in srgb, var(--action-danger-text), transparent 88%);
 }
 
 .automation-run {
@@ -7006,12 +7063,15 @@ th {
 }
 
 @media (max-width: 760px) {
-  .updates-section-head {
-    align-items: stretch;
-    flex-direction: column;
+  .automation-threshold-grid > label {
+    grid-template-rows: auto;
   }
 
-  .updates-section-head > .button-link {
+  .updates-section-head {
+    align-items: stretch;
+  }
+
+  .updates-section-head .section-actions > .button-link {
     align-self: flex-start;
   }
 
@@ -7212,7 +7272,7 @@ th {
     padding: 20px;
   }
 
-  .auth-users-head {
+  .profile-manager-head {
     padding-right: 0;
   }
 
@@ -7225,6 +7285,11 @@ th {
     border-left-width: 0;
     margin-top: 12px;
     padding: 0;
+  }
+
+  .profile-section > .profile-create-details.card-action-details[open] {
+    background: transparent;
+    padding: 12px 0 0;
   }
 
   .nested-profile-card {
@@ -7246,7 +7311,7 @@ th {
     text-align: left;
   }
 
-  .profile-create-details.card-action-details > summary span {
+  .profile-create-details.card-action-details > summary > .card-action-label {
     justify-content: center;
     width: 100%;
   }
@@ -7433,6 +7498,10 @@ th {
     display: grid;
   }
 
+  .section-head.has-actions {
+    grid-template-columns: 1fr;
+  }
+
   .section-head form {
     justify-self: start;
   }
@@ -7497,8 +7566,11 @@ th {
   --ok: #67d487;
   --warn: #f0bd5c;
   --bad: #ff7b7f;
+  --action-primary: #357f5d;
+  --action-primary-hover: #2a654a;
   --shadow: 0 14px 34px rgb(0 0 0 / 18%);
   --card-tint: #1d2924;
+  --profile-collection-surface: #121b18;
 }
 
 [data-theme="dark"] input,
@@ -7574,7 +7646,7 @@ th {
 }
 
 [data-theme="dark"] .nested-profile-list {
-  background: #121b18;
+  background: var(--profile-collection-surface);
   box-shadow: none;
 }
 
