@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import requests
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -98,6 +99,14 @@ class _Session:
 
     def mount(self, prefix: str, adapter: object) -> None:
         self.mounts.append((prefix, adapter))
+
+
+class _FailingSession:
+    def __init__(self, error: requests.RequestException) -> None:
+        self.error = error
+
+    def get(self, url: str, **kwargs: object) -> _Response:
+        raise self.error
 
 
 class CertificateAutomationCoreTests(unittest.TestCase):
@@ -262,6 +271,34 @@ class CertificateAutomationCoreTests(unittest.TestCase):
         submitted = session.posts[0][1]["data"]
         self.assertEqual(submitted["CertAttrib"], "CertificateTemplate:InternalWebServer")
         self.assertNotIn("secret", str(session.posts))
+
+    def test_connection_failures_are_translated_without_masking_the_original_problem(self) -> None:
+        profile = {
+            "enrollment_url": "https://pki.example.test/certsrv",
+            "timeout": 10,
+            "retrieval_strategy": "same_endpoint",
+            "ca_bundle_pem": "",
+        }
+        failures = (
+            (
+                requests.exceptions.SSLError(
+                    "certificate verify failed: certificate has expired"
+                ),
+                "HTTPS certificate has expired",
+            ),
+            (requests.exceptions.Timeout("slow"), "configured timeout"),
+            (requests.exceptions.ConnectionError("offline"), "could not connect"),
+        )
+        for error, expected in failures:
+            with self.subTest(error=type(error).__name__):
+                provider = AdcsWebEnrollmentProvider(
+                    profile,
+                    "user",
+                    "password",
+                    session=_FailingSession(error),  # type: ignore[arg-type]
+                )
+                with self.assertRaisesRegex(CertificateAutomationError, expected):
+                    provider.test_connection()
 
     def test_resolved_backend_retrieval_preserves_tls_hostname_and_matches_key(self) -> None:
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -562,6 +599,46 @@ class CertificateAutomationRouteTests(unittest.TestCase):
             self.directory.name, str(self.app.config["SECRET_KEY"])
         )
         self.assertEqual(store.server_profiles(), [])
+
+    def test_server_connection_failure_returns_to_page_with_friendly_message(self) -> None:
+        store = CertificateAutomationStore(
+            self.directory.name, str(self.app.config["SECRET_KEY"])
+        )
+        credential = store.save_credential(
+            credential_id="",
+            name="Enrollment",
+            username="user@example.test",
+            password="secret",
+        )
+        server = store.save_server(
+            {
+                "name": "AD CS",
+                "provider": "adcs_web_enrollment",
+                "enrollment_url": "https://pki.example.test/certsrv",
+                "credential_id": credential["id"],
+                "ca_bundle_pem": "",
+                "retrieval_strategy": "same_endpoint",
+                "timeout": 15,
+            }
+        )
+
+        class FailingProvider:
+            def test_connection(self) -> int:
+                raise CertificateAutomationError(
+                    "The PKI server's HTTPS certificate has expired."
+                )
+
+        with patch(
+            "twn_toolkit.certificate_automation_routes._provider",
+            return_value=FailingProvider(),
+        ):
+            response = self.client.post(
+                f"/tools/certificate-automation/servers/{server['id']}/test",
+                follow_redirects=True,
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"HTTPS certificate has expired", response.data)
+        self.assertNotIn(b"Internal Server Error", response.data)
 
     def test_reset_data_removes_certificate_database_and_backups_exclude_keys(self) -> None:
         store = CertificateAutomationStore(

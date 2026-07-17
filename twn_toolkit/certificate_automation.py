@@ -1120,10 +1120,15 @@ def _extract_chain(content: bytes, leaf: x509.Certificate) -> bytes:
 
 
 def _request_error(exc: requests.RequestException) -> str:
-    if isinstance(exc, requests.SSLError):
+    if isinstance(exc, requests.exceptions.SSLError):
+        detail = str(exc).casefold()
+        if "certificate has expired" in detail or "certificate expired" in detail:
+            return "The PKI server's HTTPS certificate has expired."
+        if "hostname mismatch" in detail or "not valid for" in detail:
+            return "The PKI server's HTTPS certificate does not match its hostname."
         return "TLS validation of the PKI server failed. Check its certificate and configured CA bundle."
-    if isinstance(exc, requests.Timeout):
+    if isinstance(exc, requests.exceptions.Timeout):
         return "The PKI server did not respond before the configured timeout."
-    if isinstance(exc, requests.ConnectionError):
+    if isinstance(exc, requests.exceptions.ConnectionError):
         return "The toolkit could not connect to the PKI server."
     return "The PKI request failed."
