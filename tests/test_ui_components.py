@@ -37,6 +37,19 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('class="section-actions"', html)
         self.assertIn('class="empty-state"', html)
 
+    def test_host_range_guidance_documents_shared_syntax_and_expanded_limit(self) -> None:
+        html = self.render(
+            """
+            {% from "components/ui.html" import host_range_guidance %}
+            {{ host_range_guidance(50, "hosts") }}
+            """
+        )
+
+        self.assertIn("inclusive IP range", html)
+        self.assertIn("<code>Name = target</code>", html)
+        self.assertIn("<code>Name-0001</code>", html)
+        self.assertIn("Maximum 50 hosts after expansion", html)
+
     def test_profile_and_action_component_contracts(self) -> None:
         html = self.render(
             """

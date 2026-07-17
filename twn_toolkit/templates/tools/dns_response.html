@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import host_range_guidance %}
 
 {% block content %}
 <section class="panel tool-panel">
@@ -19,9 +20,9 @@
           </select>
         </label>
         <label>Hosts
-          <textarea name="hosts" id="dns-hosts" rows="7" placeholder="Website = example.com&#10;gateway.example.net" required>{{ form.hosts }}</textarea>
+          <textarea name="hosts" id="dns-hosts" rows="7" placeholder="Website = example.com&#10;Gateways = 192.0.2.1-192.0.2.4&#10;gateway.example.net" required>{{ form.hosts }}</textarea>
         </label>
-        <span class="field-note">One per line. Optional labels use <code>Name = hostname</code>.</span>
+        <span class="field-note">{{ host_range_guidance(100, 'hosts') }}</span>
         <div class="button-row">
           <input class="profile-name-input" data-kind="hosts" placeholder="Host profile name" maxlength="100">
           <button class="secondary dns-save-profile" data-kind="hosts" type="button">Save hosts</button>

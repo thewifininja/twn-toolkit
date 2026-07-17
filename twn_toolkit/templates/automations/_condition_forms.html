@@ -1,3 +1,4 @@
+{% from "components/ui.html" import host_range_guidance %}
 {% macro condition_form(values, definition=none) %}
   {% set config = definition.config if definition else values %}
   <form class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
@@ -42,7 +43,8 @@
     </div>
     <div class="automation-condition-fields" data-condition-fields="ping.multi">
       <label>Ping targets
-        <textarea name="condition_targets" rows="5" placeholder="Gateway = 192.0.2.1&#10;1.1.1.1&#10;8.8.8.8" required>{{ config.get('targets', config.get('condition_targets', '')) }}</textarea>
+        <textarea name="condition_targets" rows="5" placeholder="Gateway = 192.0.2.1&#10;Classroom = 10.0.0.1-10.0.0.24&#10;8.8.8.8" required>{{ config.get('targets', config.get('condition_targets', '')) }}</textarea>
+        <small class="field-note">{{ host_range_guidance(100) }}</small>
       </label>
       <div class="form-grid automation-threshold-grid">
         <label>Per-target timeout
@@ -63,8 +65,8 @@
     <div class="automation-condition-fields" data-condition-fields="dns.lookup" hidden>
       <div class="form-grid">
         <label>DNS names
-          <textarea name="dns_hosts" rows="5" placeholder="Primary portal = portal.example.com&#10;Secondary portal = portal-backup.example.com" required>{{ config.get('hosts', config.get('dns_hosts', '')) }}</textarea>
-          <small class="field-note">One name per line. Optional friendly names use <code>Name = hostname</code>.</small>
+          <textarea name="dns_hosts" rows="5" placeholder="Primary portal = portal.example.com&#10;Gateways = 192.0.2.1-192.0.2.4" required>{{ config.get('hosts', config.get('dns_hosts', '')) }}</textarea>
+          <small class="field-note">{{ host_range_guidance(50, 'DNS names') }}</small>
         </label>
         <label>DNS resolvers
           <textarea name="dns_servers" rows="5" placeholder="Internal DNS = 10.0.0.10&#10;Cloudflare = 1.1.1.1" required>{{ config.get('servers', config.get('dns_servers', '')) }}</textarea>

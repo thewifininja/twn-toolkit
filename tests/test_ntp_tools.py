@@ -130,10 +130,13 @@ class NTPToolTests(unittest.TestCase):
             client = app.test_client()
             response = client.post(
                 "/tools/ntp-test/profiles",
-                data={"name": "Time Servers", "values": "Primary = ntp.example\n192.0.2.20"},
+                data={
+                    "name": "Time Servers",
+                    "values": "Primary = ntp.example\nLab = 192.0.2.20-192.0.2.21",
+                },
             )
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.get_json()["profile"]["count"], 2)
+            self.assertEqual(response.get_json()["profile"]["count"], 3)
             page = client.get("/tools/ntp-test").data
             self.assertIn(b"Time Servers", page)
             self.assertNotIn(b"built-in method values", page)

@@ -60,11 +60,11 @@ class PortScannerTests(unittest.TestCase):
                 "/tools/port-scanner/profiles/hosts",
                 data={
                     "name": "Lab",
-                    "values": "Core = 192.0.2.10\nserver.example.com",
+                    "values": "Core = 192.0.2.10-192.0.2.11\nserver.example.com",
                 },
             )
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.get_json()["profile"]["count"], 2)
+            self.assertEqual(response.get_json()["profile"]["count"], 3)
 
             response = client.post(
                 "/tools/port-scanner/profiles/ports",

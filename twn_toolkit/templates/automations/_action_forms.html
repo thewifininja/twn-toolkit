@@ -1,3 +1,4 @@
+{% from "components/ui.html" import host_range_guidance %}
 {% macro action_form(values, definition=none) %}
   {% set config = definition.config if definition else values %}
   {% set definition_id = definition.id if definition else values.get('action_definition_id', '') %}
@@ -14,8 +15,8 @@
     <div data-action-fields="ssh.collect">
       <p class="field-note">SSH output is retained with each run. The password is encrypted using this toolkit installation’s secret key.</p>
       <label>SSH hosts
-      <textarea name="action_hosts" rows="4" placeholder="Basement Switch = 10.0.0.11&#10;10.0.0.12" required>{{ config.get('hosts', config.get('action_hosts', '')) }}</textarea>
-      <small class="field-note">Optional friendly names use <code>Name = hostname-or-IP</code>.</small>
+      <textarea name="action_hosts" rows="4" placeholder="Basement Switch = 10.0.0.11&#10;Access switches = 10.0.0.12-10.0.0.24" required>{{ config.get('hosts', config.get('action_hosts', '')) }}</textarea>
+      <small class="field-note">{{ host_range_guidance(50, 'hosts') }}</small>
       </label>
       <div class="form-grid">
       <label>Username
@@ -46,8 +47,8 @@
       {% set sftp_action_protocol = config.get('protocol', config.get('sftp_action_protocol', 'sftp')) %}
       <label>Transfer protocol<select name="sftp_action_protocol" required data-action-transfer-protocol><option value="sftp" {% if sftp_action_protocol == 'sftp' %}selected{% endif %}>SFTP</option><option value="scp" {% if sftp_action_protocol == 'scp' %}selected{% endif %}>SCP</option><option value="ftp" {% if sftp_action_protocol == 'ftp' %}selected{% endif %}>FTP</option></select></label>
       <label>Hosts
-        <textarea name="sftp_action_hosts" rows="4" placeholder="Basement Switch = 10.0.0.11&#10;10.0.0.12" required>{{ config.get('hosts', config.get('sftp_action_hosts', '')) }}</textarea>
-        <small class="field-note">Optional friendly names use <code>Name = hostname-or-IP</code>.</small>
+        <textarea name="sftp_action_hosts" rows="4" placeholder="Basement Switch = 10.0.0.11&#10;Access switches = 10.0.0.12-10.0.0.24" required>{{ config.get('hosts', config.get('sftp_action_hosts', '')) }}</textarea>
+        <small class="field-note">{{ host_range_guidance(50, 'hosts') }}</small>
       </label>
       <div class="form-grid">
         <label>Username<input name="sftp_action_username" value="{{ config.get('username', config.get('sftp_action_username', '')) }}" required></label>

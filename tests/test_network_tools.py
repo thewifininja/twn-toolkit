@@ -19,6 +19,7 @@ from twn_toolkit.network_tools import (
     ToolInputError,
     parse_dns_servers,
     parse_ping_targets,
+    parse_ping_targets_with_errors,
     parse_radius_attributes,
     parse_ssh_commands,
     parse_ssh_targets,
@@ -419,6 +420,52 @@ class NetworkToolTests(unittest.TestCase):
             ],
         )
 
+    def test_expands_named_and_unnamed_ip_ranges(self) -> None:
+        self.assertEqual(
+            parse_ping_targets(
+                "Classroom = 10.0.0.1-10.0.0.3\n2001:db8::1-2001:db8::2"
+            ),
+            [
+                {"label": "Classroom-0001", "host": "10.0.0.1"},
+                {"label": "Classroom-0002", "host": "10.0.0.2"},
+                {"label": "Classroom-0003", "host": "10.0.0.3"},
+                {"label": "", "host": "2001:db8::1"},
+                {"label": "", "host": "2001:db8::2"},
+            ],
+        )
+
+    def test_ip_ranges_preserve_hyphenated_hostnames(self) -> None:
+        self.assertEqual(
+            parse_ping_targets("core-switch-1.example.com"),
+            [{"label": "", "host": "core-switch-1.example.com"}],
+        )
+
+    def test_ip_ranges_enforce_order_family_and_expanded_limit(self) -> None:
+        for value, message in (
+            ("10.0.0.3-10.0.0.1", "ascending order"),
+            ("10.0.0.1-2001:db8::1", "same address family"),
+            ("10.0.0.1-10.0.0.999", "valid IP address"),
+        ):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                ToolInputError, message
+            ):
+                parse_ping_targets(value)
+        with self.assertRaisesRegex(ToolInputError, "maximum of 3 hosts"):
+            parse_ping_targets("10.0.0.1-10.0.0.4", limit=3)
+
+    def test_named_ip_range_reserves_space_for_numbered_suffix(self) -> None:
+        label = "x" * 96
+        with self.assertRaisesRegex(ToolInputError, "Invalid host value"):
+            parse_ping_targets(f"{label} = 10.0.0.1-10.0.0.2")
+
+    def test_partial_ping_validation_reports_malformed_range_without_losing_hosts(self) -> None:
+        targets, invalid = parse_ping_targets_with_errors(
+            "Gateway = 10.0.0.1\n10.0.0.3-10.0.0.1"
+        )
+        self.assertEqual(targets, [{"label": "Gateway", "host": "10.0.0.1"}])
+        self.assertEqual(invalid[0]["value"], "10.0.0.3-10.0.0.1")
+        self.assertIn("ascending order", invalid[0]["error"])
+
     def test_rejects_out_of_range_ipv4_shaped_ping_targets(self) -> None:
         for value in ("192.0.2.256", "999.999.999.999", "1.2.3.4.5"):
             with self.subTest(value=value), self.assertRaises(ToolInputError):
@@ -637,12 +684,13 @@ class NetworkToolTests(unittest.TestCase):
 
             response = client.post(
                 "/tools/ping/validate",
-                json={"hosts": "Gateway = 192.0.2.1\nexample.com"},
+                json={"hosts": "Gateway = 192.0.2.1-192.0.2.2\nexample.com"},
             )
             self.assertEqual(
                 response.get_json()["targets"],
                 [
-                    {"label": "Gateway", "host": "192.0.2.1"},
+                    {"label": "Gateway-0001", "host": "192.0.2.1"},
+                    {"label": "Gateway-0002", "host": "192.0.2.2"},
                     {"label": "", "host": "example.com"},
                 ],
             )
@@ -670,12 +718,19 @@ class NetworkToolTests(unittest.TestCase):
                 "/tools/ping/profiles",
                 json={
                     "name": "Office",
-                    "hosts": "Gateway = 192.0.2.1\n8.8.8.8",
+                    "hosts": "Gateway = 192.0.2.1-192.0.2.2\n8.8.8.8",
                     "interval": 5,
                 },
             )
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.get_json()["profile"]["targets"][0]["label"], "Gateway")
+            self.assertEqual(
+                response.get_json()["profile"]["targets"],
+                [
+                    {"label": "Gateway-0001", "host": "192.0.2.1"},
+                    {"label": "Gateway-0002", "host": "192.0.2.2"},
+                    {"label": "", "host": "8.8.8.8"},
+                ],
+            )
             self.assertIn(b"Office", client.get("/tools/ping").data)
 
             response = client.post(

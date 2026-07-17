@@ -126,6 +126,11 @@ New tools should inherit the current visual language:
   local action colors.
 - Write action labels in sentence case while preserving acronyms and product
   names. Put field guidance in a helper or a placeholder, not both.
+- For ordinary hostname/IP list fields, reuse
+  `network_tools.parse_ping_targets` (or its DNS/SSH alias) so inclusive IP
+  ranges, generated friendly names, validation, and expanded limits remain
+  consistent. Render `host_range_guidance` from `components/ui.html` beside the
+  field. Do not apply this parser to structured formats such as `host | ports`.
 - For dangerous actions, use preview-first flows, explicit confirmation, and
   `risk="high"` in the registry.
 

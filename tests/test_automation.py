@@ -689,7 +689,7 @@ class AutomationRouteTests(unittest.TestCase):
                 data={
                     "condition_name": "WAN reachability",
                     "condition_type": "ping.multi",
-                    "condition_targets": "Gateway = 192.0.2.1\nInternet = 198.51.100.1",
+                    "condition_targets": "Gateway = 192.0.2.1-192.0.2.2\nInternet = 198.51.100.1",
                     "condition_timeout": "1",
                     "condition_failure_mode": "at_least",
                     "condition_failure_count": "1",
@@ -697,8 +697,13 @@ class AutomationRouteTests(unittest.TestCase):
             )
             store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
             definition_id = store.condition_definitions()[0]["id"]
+            self.assertEqual(
+                store.condition_definitions()[0]["config"]["targets"],
+                "Gateway-0001 = 192.0.2.1\nGateway-0002 = 192.0.2.2\nInternet = 198.51.100.1",
+            )
             ping_results = [
                 {"host": "192.0.2.1", "reachable": True, "latency_ms": 2.4, "elapsed_ms": 3.0},
+                {"host": "192.0.2.2", "reachable": True, "latency_ms": 2.8, "elapsed_ms": 3.4},
                 {"host": "198.51.100.1", "reachable": False, "latency_ms": None, "elapsed_ms": 1001.2},
             ]
             with patch("twn_toolkit.automation_types.condition_types.network_triggers.ping_hosts", return_value=ping_results):

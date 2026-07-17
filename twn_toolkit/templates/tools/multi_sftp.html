@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import host_range_guidance %}
 
 {% block content %}
 <section class="panel tool-panel">
@@ -20,8 +21,8 @@
     </label>
     <label>
       Hosts
-      <textarea name="hosts" rows="5" placeholder="Basement Switch = 192.0.2.20&#10;core-switch.example.com" required>{{ form.hosts }}</textarea>
-      <small class="field-note">One host per line. Optional friendly names use <code>Name = hostname-or-IP</code>.</small>
+      <textarea name="hosts" rows="5" placeholder="Basement Switch = 192.0.2.20&#10;Access switches = 10.0.0.1-10.0.0.24&#10;core-switch.example.com" required>{{ form.hosts }}</textarea>
+      <small class="field-note">{{ host_range_guidance(50, 'hosts') }}</small>
     </label>
     <div class="form-grid">
       <label>Username

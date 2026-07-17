@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import host_range_guidance %}
 
 {% block content %}
 <section class="panel">
@@ -19,8 +20,8 @@
     </label>
     <div class="traceroute-options">
       <label>Destinations
-        <textarea name="hosts" id="traceroute-hosts" rows="4" placeholder="Public DNS = 1.1.1.1&#10;example.com" required>{{ form.host }}</textarea>
-        <span class="field-note">One hostname or IP address per line. Optional friendly names use <code>Name = host</code>. Maximum 10 destinations.</span>
+        <textarea name="hosts" id="traceroute-hosts" rows="4" placeholder="Public DNS = 1.1.1.1&#10;Test path = 10.0.0.1-10.0.0.4&#10;example.com" required>{{ form.host }}</textarea>
+        <span class="field-note">{{ host_range_guidance(10, 'destinations') }}</span>
       </label>
       <label>Address family
         <select name="family">

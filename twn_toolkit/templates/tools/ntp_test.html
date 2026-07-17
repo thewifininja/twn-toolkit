@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import host_range_guidance %}
 
 {% block content %}
 <section class="panel">
@@ -18,9 +19,9 @@
       </select>
     </label>
     <label>NTP servers
-      <textarea name="hosts" id="ntp-hosts" rows="5" placeholder="Primary = time.example.com&#10;Secondary = 192.0.2.20" required>{{ form.hosts }}</textarea>
+      <textarea name="hosts" id="ntp-hosts" rows="5" placeholder="Primary = time.example.com&#10;Site clocks = 192.0.2.20-192.0.2.24" required>{{ form.hosts }}</textarea>
     </label>
-    <span class="field-note">One hostname or IP address per line. Optional friendly names use <code>Name = host</code>. Maximum 20 servers.</span>
+    <span class="field-note">{{ host_range_guidance(20, 'servers') }}</span>
     <div class="button-row">
       <input id="ntp-profile-name" placeholder="Server profile name" maxlength="100">
       <button class="secondary" id="ntp-save-profile" type="button">Save servers</button>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import host_range_guidance %}
 
 {% block content %}
 <section class="panel tool-panel" id="ping-controls">
@@ -40,9 +41,9 @@
     </div>
     <label>
       Hosts
-      <textarea id="ping-hosts" rows="6" placeholder="Core Router = 192.0.2.1&#10;8.8.8.8&#10;router.example.com" required></textarea>
+      <textarea id="ping-hosts" rows="6" placeholder="Core Router = 192.0.2.1&#10;Classroom = 10.0.0.1-10.0.0.24&#10;router.example.com" required></textarea>
     </label>
-    <span class="field-note">Optional friendly names use <code>Name = host</code>. Starting a run snapshots this list. Edits take effect only after selecting <strong>Update targets</strong>, which preserves history for existing targets.</span>
+    <span class="field-note">{{ host_range_guidance(100) }} Starting a run snapshots this list. Edits take effect only after selecting <strong>Update targets</strong>, which preserves history for existing targets.</span>
     <label>
       Interval in seconds
       <input id="ping-interval" type="number" min="1" max="60" value="2">
