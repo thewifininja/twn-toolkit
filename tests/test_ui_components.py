@@ -130,6 +130,19 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("overflow-y: auto;", stylesheet)
         self.assertIn("scrollbar-gutter: stable;", stylesheet)
 
+    def test_port_scanner_profile_columns_share_aligned_rows(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        template = (TEMPLATE_ROOT / "tools" / "port_scanner.html").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('class="grid two port-profile-grid"', template)
+        self.assertEqual(template.count("button-row port-profile-actions"), 2)
+        self.assertIn("grid-template-rows: auto auto minmax(3.6em, auto) auto;", stylesheet)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) auto auto;", stylesheet)
+
 
 if __name__ == "__main__":
     unittest.main()
