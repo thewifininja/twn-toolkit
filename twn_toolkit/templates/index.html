@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "components/tool_cards.html" import tool_card %}
+{% from "components/ui.html" import section_header %}
 
 {% block content %}
 <section class="home-hero compact-hero">
@@ -17,12 +18,11 @@
 
 {% if can_manage_profiles %}
   <section class="panel fortinet-profile-panel">
-    <div class="auth-users-head">
-      <h2>FortiGate profiles</h2>
-      <p class="field-note">
-        Save FortiGate API connections once, then use them across AP, switch, wireless client, and inventory workflows.
-      </p>
-    </div>
+    {{ section_header(
+      "FortiGate profiles",
+      "Save FortiGate API connections once, then use them across AP, switch, wireless client, and inventory workflows.",
+      class_name="profile-manager-head"
+    ) }}
     <details class="add-user-card card-action-details" {% if not profiles %}open{% endif %}>
       <summary>
         <span>New profile</span>

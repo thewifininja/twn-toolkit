@@ -1,18 +1,7 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import action_row, profile_card, profile_create, profile_section, section_header %}
 
 {% block content %}
-{% if is_macos %}
-  <aside class="platform-warning" role="note" aria-label="macOS EAP compatibility notice">
-    <strong>⚠ macOS EAP compatibility</strong>
-    <p>
-      PAP and CHAP work normally. PEAP/MSCHAPv2 and EAP-TLS require a separately
-      installed <code>eapol_test</code> binary, which is not currently available
-      as a standard Homebrew formula. The EAP methods will not run unless that
-      executable is on the toolkit service’s <code>PATH</code>.
-    </p>
-  </aside>
-{% endif %}
-
 <section class="panel tool-panel">
   <div class="panel-head">
     <h1>RADIUS Authentication Test</h1>
@@ -20,7 +9,10 @@
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {% if not eapol_available %}
-    <div class="message">PEAP and EAP-TLS require the optional <code>eapol_test</code> executable. PAP and CHAP remain available.</div>
+    <div class="message warning" role="note">
+      <strong>{{ 'macOS EAP compatibility' if is_macos else 'Optional EAP dependency unavailable' }}</strong>
+      <p>PEAP/MSCHAPv2 and EAP-TLS require a separately installed <code>eapol_test</code> executable on the toolkit service’s <code>PATH</code>. PAP and CHAP remain available.{% if is_macos %} The executable is not currently available as a standard Homebrew formula.{% endif %}</p>
+    </div>
   {% endif %}
   <form class="form" method="post" enctype="multipart/form-data" data-loading-message="Running RADIUS authentication test…">
     <fieldset class="choice-group">
@@ -141,158 +133,102 @@
 {% endif %}
 
 <section class="panel tool-panel radius-management">
-  <div class="auth-users-head">
-    <h2>RADIUS profiles</h2>
-    <p class="field-note">
-      Profiles are reusable across tests. Saved secrets and passwords are never rendered back into this page.
-    </p>
-  </div>
+  {{ section_header("RADIUS profiles", "Profiles are reusable across tests. Saved secrets and passwords are never rendered back into this page.", class_name="profile-manager-head") }}
 
   <div class="access-profile-list radius-profile-groups">
-  <details class="access-profile-card profile-section radius-profile-section" {% if not servers %}open{% endif %}>
-    <summary>
-      <span>
-        <strong>RADIUS servers</strong>
-        <small>{{ servers|length }} saved · Shared secrets are write-only</small>
-      </span>
-    </summary>
-    <details class="profile-create-details card-action-details" {% if not servers %}open{% endif %}>
-      <summary><span>New server</span></summary>
+  {% call profile_section("RADIUS servers", servers|length ~ " saved · Shared secrets are write-only", not servers, "radius-profile-section") %}
+    {% call profile_create("New server", not servers) %}
       <form class="form radius-profile-form" data-kind="servers">
         <input name="original_name" type="hidden">
-        <h2 class="profile-form-title">Add Server Profile</h2>
         <label>Profile name<input name="name" maxlength="100" required placeholder="Primary NPS"></label>
         <label>Server address<input name="host" required placeholder="192.0.2.40"></label>
         <label>Authentication port<input name="port" type="number" min="1" max="65535" value="1812"></label>
         <label>Shared secret<input name="secret" type="password" autocomplete="new-password"></label>
         <span class="field-note secret-note">Required for a new profile.</span>
-        <div class="button-row">
-          <button type="submit">Save Server</button>
-        </div>
+        {% call action_row() %}<button type="submit">Save server</button>{% endcall %}
       </form>
-    </details>
+    {% endcall %}
     <div class="access-profile-list nested-profile-list">
       {% for server in servers %}
-        <details class="access-profile-card nested-profile-card">
-          <summary>
-            <span>
-              <strong>{{ server.name }}</strong>
-              <small>{{ server.host }}:{{ server.port }}</small>
-            </span>
-          </summary>
+        {% call profile_card(server.name, server.host ~ ":" ~ server.port) %}
           <form class="form radius-profile-form" data-kind="servers">
             <input name="original_name" type="hidden" value="{{ server.name }}">
-            <h2 class="profile-form-title">Edit {{ server.name }}</h2>
             <label>Profile name<input name="name" maxlength="100" required value="{{ server.name }}"></label>
             <label>Server address<input name="host" required value="{{ server.host }}"></label>
             <label>Authentication port<input name="port" type="number" min="1" max="65535" value="{{ server.port }}"></label>
             <label>Shared secret<input name="secret" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved secret"></label>
             <span class="field-note secret-note">Leave blank to keep the saved secret.</span>
-            <div class="button-row">
+            {% call action_row() %}
               <button type="submit">Update server</button>
               <button class="danger radius-delete-profile" data-kind="servers" data-name="{{ server.name }}" type="button">Delete</button>
-            </div>
+            {% endcall %}
           </form>
-        </details>
-      {% else %}<p class="empty">No server profiles saved yet.</p>{% endfor %}
+        {% endcall %}
+      {% endfor %}
     </div>
-  </details>
+  {% endcall %}
 
-  <details class="access-profile-card profile-section radius-profile-section" {% if not credentials %}open{% endif %}>
-    <summary>
-      <span>
-        <strong>Test credentials</strong>
-        <small>{{ credentials|length }} saved · Passwords are write-only</small>
-      </span>
-    </summary>
-    <details class="profile-create-details card-action-details" {% if not credentials %}open{% endif %}>
-      <summary><span>New credential</span></summary>
+  {% call profile_section("Test credentials", credentials|length ~ " saved · Passwords are write-only", not credentials, "radius-profile-section") %}
+    {% call profile_create("New credential", not credentials) %}
       <form class="form radius-profile-form" data-kind="credentials">
         <input name="original_name" type="hidden">
-        <h2 class="profile-form-title">Add Credential Profile</h2>
         <label>Profile name<input name="name" maxlength="100" required placeholder="Test user"></label>
         <label>Username<input name="username" required autocomplete="off"></label>
         <label>Password<input name="password" type="password" autocomplete="new-password"></label>
         <span class="field-note secret-note">Required for a new profile. Stored locally without encryption.</span>
-        <div class="button-row">
-          <button type="submit">Save Credentials</button>
-        </div>
+        {% call action_row() %}<button type="submit">Save credential</button>{% endcall %}
       </form>
-    </details>
+    {% endcall %}
     <div class="access-profile-list nested-profile-list">
       {% for profile in credentials %}
-        <details class="access-profile-card nested-profile-card">
-          <summary>
-            <span>
-              <strong>{{ profile.name }}</strong>
-              <small>{{ profile.username }}</small>
-            </span>
-          </summary>
+        {% call profile_card(profile.name, profile.username) %}
           <form class="form radius-profile-form" data-kind="credentials">
             <input name="original_name" type="hidden" value="{{ profile.name }}">
-            <h2 class="profile-form-title">Edit {{ profile.name }}</h2>
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
             <label>Username<input name="username" required autocomplete="off" value="{{ profile.username }}"></label>
             <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved password"></label>
             <span class="field-note secret-note">Leave blank to keep the saved password.</span>
-            <div class="button-row">
+            {% call action_row() %}
               <button type="submit">Update credentials</button>
               <button class="danger radius-delete-profile" data-kind="credentials" data-name="{{ profile.name }}" type="button">Delete</button>
-            </div>
+            {% endcall %}
           </form>
-        </details>
-      {% else %}<p class="empty">No credential profiles saved yet.</p>{% endfor %}
+        {% endcall %}
+      {% endfor %}
     </div>
-  </details>
+  {% endcall %}
 
-  <details class="access-profile-card profile-section radius-profile-section">
-    <summary>
-      <span>
-        <strong>Request attributes</strong>
-        <small>{{ attribute_profiles|length }} saved · Optional PAP/CHAP Access-Request additions</small>
-      </span>
-    </summary>
-    <details class="profile-create-details card-action-details" {% if not attribute_profiles %}open{% endif %}>
-      <summary><span>New attributes</span></summary>
+  {% call profile_section("Request attributes", attribute_profiles|length ~ " saved · Optional PAP/CHAP Access-Request additions", false, "radius-profile-section") %}
+    {% call profile_create("New attributes", not attribute_profiles) %}
       <form class="form radius-profile-form" data-kind="attributes">
         <input name="original_name" type="hidden">
-        <h2 class="profile-form-title">Add Attribute Profile</h2>
         <label>Profile name<input name="name" maxlength="100" required placeholder="Wireless controller NAS"></label>
         <label>Access-Request attributes
           <textarea name="attributes" rows="7" required placeholder="NAS-Identifier = HQ-WLC-01&#10;NAS-IP-Address = 192.0.2.10&#10;Called-Station-Id = AA-BB-CC-DD-EE-FF:Corp-WiFi"></textarea>
         </label>
         <span class="field-note">One <code>Name = value</code> per line. Unknown attributes accept <code>#type = hex</code> or <code>#vendor:type = hex</code>.</span>
-        <div class="button-row">
-          <button type="submit">Save Attributes</button>
-        </div>
+        {% call action_row() %}<button type="submit">Save attributes</button>{% endcall %}
       </form>
-    </details>
+    {% endcall %}
     <div class="access-profile-list nested-profile-list">
       {% for profile in attribute_profiles %}
-        <details class="access-profile-card nested-profile-card">
-          <summary>
-            <span>
-              <strong>{{ profile.name }}</strong>
-              <small>{{ profile.count }} attribute(s)</small>
-            </span>
-          </summary>
+        {% call profile_card(profile.name, profile.count ~ " attribute" ~ ("" if profile.count == 1 else "s")) %}
           <form class="form radius-profile-form" data-kind="attributes">
             <input name="original_name" type="hidden" value="{{ profile.name }}">
-            <h2 class="profile-form-title">Edit {{ profile.name }}</h2>
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
             <label>Access-Request attributes
               <textarea name="attributes" rows="7" required>{{ profile.source }}</textarea>
             </label>
             <span class="field-note">One <code>Name = value</code> per line. Unknown attributes accept <code>#type = hex</code> or <code>#vendor:type = hex</code>.</span>
-            <div class="button-row">
+            {% call action_row() %}
               <button type="submit">Update attributes</button>
               <button class="danger radius-delete-profile" data-kind="attributes" data-name="{{ profile.name }}" type="button">Delete</button>
-            </div>
+            {% endcall %}
           </form>
-        </details>
-      {% else %}<p class="empty">No request-attribute profiles saved yet.</p>{% endfor %}
+        {% endcall %}
+      {% endfor %}
     </div>
-  </details>
+  {% endcall %}
   </div>
   <span class="tool-status" id="radius-profile-status"></span>
 </section>

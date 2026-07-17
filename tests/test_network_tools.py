@@ -768,7 +768,8 @@ class NetworkToolTests(unittest.TestCase):
             with patch("twn_toolkit.radius_routes.platform.system", return_value="Darwin"):
                 mac_radius_page = client.get("/tools/radius-test").data
             self.assertIn(b"macOS EAP compatibility", mac_radius_page)
-            self.assertIn(b'class="platform-warning"', mac_radius_page)
+            self.assertEqual(mac_radius_page.count(b"macOS EAP compatibility"), 1)
+            self.assertIn(b'class="message warning" role="note"', mac_radius_page)
             self.assertIn(b"standard Homebrew formula", mac_radius_page)
 
             response = client.post(

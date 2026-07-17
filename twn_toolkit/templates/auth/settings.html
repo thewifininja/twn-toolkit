@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import section_header %}
 {% block content %}
 <div class="page-head auth-settings-head">
   <p class="eyebrow">Administration</p>
@@ -53,10 +54,7 @@
 
 {% if current_user.is_admin %}
   <section class="panel server-access-panel settings-automation-group" id="automation-retention">
-    <div class="auth-users-head">
-      <h2>Automation history retention</h2>
-      <p class="field-note">Limit routine check history while keeping collected action output for as long as your workflows require.</p>
-    </div>
+    {{ section_header("Automation history retention", "Limit routine check history while keeping collected action output for as long as your workflows require.") }}
     <div class="automation-storage-stats">
       <div><span>Database</span><strong>{{ automation_storage.database_size }}</strong></div>
       <div><span>Check records</span><strong>{{ automation_storage.check_count }}</strong><small>Oldest: {{ automation_storage.oldest_check }}</small></div>
@@ -90,7 +88,7 @@
   </section>
 
   <section class="panel server-access-panel settings-operations-group" id="operational-limits">
-    <div class="auth-users-head"><h2>Operational limits</h2><p class="field-note">Bound automation concurrency and storage consumption before routine work can exhaust the host.</p></div>
+    {{ section_header("Operational limits", "Bound automation concurrency and storage consumption before routine work can exhaust the host.") }}
     <div class="automation-storage-stats"><div><span>Datastore</span><strong>{{ operational_storage.datastore_display }}</strong><small>{{ operational_settings.datastore_quota_gib }} GiB quota</small></div><div><span>Automation artifacts</span><strong>{{ operational_storage.artifact_display }}</strong><small>{{ operational_settings.automation_artifact_quota_gib }} GiB quota</small></div><div><span>Free disk</span><strong>{{ operational_storage.disk_free_display }}</strong><small>{{ operational_settings.minimum_free_gib }} GiB reserved</small></div></div>
     <form method="post" action="{{ url_for('update_operational_settings') }}" class="form">
       <div class="form-grid"><label>Concurrent automation workers<input type="number" name="max_concurrent_automations" min="1" max="32" value="{{ operational_settings.max_concurrent_automations }}" required></label><label>Queued automation runs<input type="number" name="max_queued_automations" min="0" max="200" value="{{ operational_settings.max_queued_automations }}" required></label></div>
@@ -102,12 +100,11 @@
   </section>
 
   <section class="panel access-profile-panel settings-profiles-group" id="access-profiles">
-    <div class="auth-users-head">
-      <h2>Access profiles</h2>
-      <p class="field-note">
-        Build custom profiles from individual tool permissions. Users get the union of every profile assigned to them.
-      </p>
-    </div>
+    {{ section_header(
+      "Access profiles",
+      "Build custom profiles from individual tool permissions. Users get the union of every profile assigned to them.",
+      class_name="profile-manager-head"
+    ) }}
     <details class="create-access-profile-card card-action-details">
       <summary>
         <span>New profile</span>
@@ -208,13 +205,7 @@
 
 {% if current_user.is_admin %}
   <section class="panel server-access-panel settings-server-group" id="server-access">
-    <div class="auth-users-head">
-      <h2>Server access</h2>
-      <p class="field-note">
-        Choose where the service listens and which client addresses may reach it.
-        Loopback access is always allowed.
-      </p>
-    </div>
+    {{ section_header("Server access", "Choose where the service listens and which client addresses may reach it. Loopback access is always allowed.") }}
     <form method="post" action="{{ url_for('update_server_settings') }}"
           class="form server-access-form"
           onsubmit="return confirm('Save server access settings and restart the toolkit now?')">
@@ -265,10 +256,7 @@
 {% endif %}
 
 <section class="panel auth-users-panel settings-users-group" id="users">
-  <div class="auth-users-head">
-    <h2>Users</h2>
-    <p class="field-note">Password changes use the currently configured policy.</p>
-  </div>
+  {{ section_header("Users", "Password changes use the currently configured policy.", class_name="profile-manager-head") }}
   {% if current_user.is_admin %}
     <details class="add-user-card card-action-details">
       <summary>

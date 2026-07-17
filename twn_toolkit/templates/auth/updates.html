@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import section_header %}
 {% block content %}
 <div class="updates-page">
 <section class="home-hero">
@@ -8,7 +9,7 @@
 
 {% if upgrade_status %}
 <section class="panel updates-panel">
-  <div class="auth-users-head updates-section-head"><h2>Most recent operation</h2><span class="pill {{ 'error' if upgrade_status.error or upgrade_status.state == 'failed' else 'success' if upgrade_status.state in ['succeeded', 'backup_created', 'rolled_back'] else 'planned' }}">{{ upgrade_status.state|replace('_', ' ') }}</span></div>
+  {% call section_header("Most recent operation", class_name="updates-section-head") %}<span class="pill {{ 'error' if upgrade_status.error or upgrade_status.state == 'failed' else 'success' if upgrade_status.state in ['succeeded', 'backup_created', 'rolled_back'] else 'planned' }}">{{ upgrade_status.state|replace('_', ' ') }}</span>{% endcall %}
   <div class="upgrade-operation-details">
     <p>{{ upgrade_status.message }}</p>
     {% if upgrade_status.error %}<div class="message error"><strong>Recorded failure</strong><p>{{ upgrade_status.error }}</p></div>{% endif %}
@@ -18,7 +19,7 @@
 {% endif %}
 
 <section class="panel updates-panel">
-  <div class="auth-users-head updates-section-head"><div><h2>Stable releases</h2><p class="field-note">Release information comes from the official public repository. The toolkit accepts only bundles with a matching SHA-256 asset and a complete internal file manifest.</p></div><a class="button-link secondary" href="{{ url_for('updates', check=1) }}">Check for updates</a></div>
+  {% call section_header("Stable releases", "Release information comes from the official public repository. The toolkit accepts only bundles with a matching SHA-256 asset and a complete internal file manifest.", class_name="updates-section-head") %}<a class="button-link secondary" href="{{ url_for('updates', check=1) }}">Check for updates</a>{% endcall %}
   {% if release %}
     <article class="upgrade-release-card">
       <div><p class="eyebrow">Available</p><h3>v{{ release.version }} · {{ release.name }}</h3>{% if release.published_at %}<p class="field-note">Published {{ release.published_at[:10] }}</p>{% endif %}</div>
@@ -35,7 +36,7 @@
 </section>
 
 <section class="panel updates-panel">
-  <div class="auth-users-head updates-section-head"><div><h2>Manual release bundle</h2><p class="field-note">Use an official <code>twn-toolkit-vX.Y.Z.zip</code> release bundle when this host cannot reach the release API. The same manifest and version checks apply; arbitrary ZIP files are rejected. Releases that change Python dependencies may still require package-index access or a populated package cache.</p></div></div>
+  {{ section_header("Manual release bundle", "Use an official twn-toolkit-vX.Y.Z.zip release bundle when this host cannot reach the release API. The same manifest and version checks apply; arbitrary ZIP files are rejected. Releases that change Python dependencies may still require package-index access or a populated package cache.", class_name="updates-section-head") }}
   <form method="post" action="{{ url_for('upload_update_bundle') }}" enctype="multipart/form-data" class="form" data-loading-message="Uploading and validating the release bundle…">
     <label>Release bundle<input type="file" name="bundle" accept=".zip,application/zip" required></label>
     <label class="check execution-confirm"><input type="checkbox" name="confirm_upgrade" required><span><strong>Install this verified bundle</strong><small>Services will restart after a complete automatic recovery point is created.</small></span></label>
@@ -44,12 +45,12 @@
 </section>
 
 <section class="panel updates-panel">
-  <div class="auth-users-head updates-section-head"><div><h2>Profile backups</h2><p class="field-note">Export or restore toolkit configuration.</p></div></div>
+  {{ section_header("Profile backups", "Export or restore toolkit configuration.", class_name="updates-section-head") }}
   <a class="button-link secondary" href="{{ url_for('backup_settings') }}">Open backup &amp; restore</a>
 </section>
 
 <section class="panel updates-panel">
-  <div class="auth-users-head updates-section-head"><div><h2>Recovery points</h2><p class="field-note">Restore the entire toolkit after an upgrade. Recovery points are owner-only and the five newest are retained.</p></div></div>
+  {{ section_header("Recovery points", "Restore the entire toolkit after an upgrade. Recovery points are owner-only and the five newest are retained.", class_name="updates-section-head") }}
   <form method="post" action="{{ url_for('create_recovery_point') }}" class="form recovery-point-form" data-loading-message="Preparing a consistent recovery point…">
     <label class="check"><input type="checkbox" name="confirm_backup" required><span><strong>Create a recovery point now</strong><small>The toolkit restarts briefly so every SQLite database and saved file is copied consistently.</small></span></label>
     <button type="submit" class="secondary">Create recovery point</button>

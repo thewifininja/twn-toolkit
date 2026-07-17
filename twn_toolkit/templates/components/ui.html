@@ -1,0 +1,63 @@
+{% macro workspace_intro(title, description='', eyebrow='') -%}
+<section class="workspace-intro">
+  {% if eyebrow %}<span class="eyebrow">{{ eyebrow }}</span>{% endif %}
+  <h1>{{ title }}</h1>
+  {% if description %}<p>{{ description }}</p>{% endif %}
+</section>
+{%- endmacro %}
+
+{% macro section_header(title, description='', eyebrow='', compact=false, class_name='') -%}
+<div class="section-head{% if compact %} compact{% endif %}{% if class_name %} {{ class_name }}{% endif %}">
+  <div>
+    {% if eyebrow %}<span class="eyebrow">{{ eyebrow }}</span>{% endif %}
+    <h2>{{ title }}</h2>
+    {% if description %}<p>{{ description }}</p>{% endif %}
+  </div>
+  {% if caller is defined %}<div class="section-actions">{{ caller() }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro empty_state(title, description='', class_name='') -%}
+<div class="empty-state{% if class_name %} {{ class_name }}{% endif %}">
+  <strong>{{ title }}</strong>
+  {% if description %}<span>{{ description }}</span>{% endif %}
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro profile_section(title, description='', open=false, class_name='') -%}
+<details class="access-profile-card profile-section{% if class_name %} {{ class_name }}{% endif %}"{% if open %} open{% endif %}>
+  <summary>
+    <span>
+      <strong>{{ title }}</strong>
+      {% if description %}<small>{{ description }}</small>{% endif %}
+    </span>
+  </summary>
+  {{ caller() }}
+</details>
+{%- endmacro %}
+
+{% macro profile_create(label, open=false, class_name='') -%}
+<details class="profile-create-details card-action-details{% if class_name %} {{ class_name }}{% endif %}"{% if open %} open{% endif %}>
+  <summary><span>{{ label }}</span></summary>
+  {{ caller() }}
+</details>
+{%- endmacro %}
+
+{% macro profile_card(title, description='', open=false, class_name='') -%}
+<details class="access-profile-card nested-profile-card{% if class_name %} {{ class_name }}{% endif %}"{% if open %} open{% endif %}>
+  <summary>
+    <span>
+      <strong>{{ title }}</strong>
+      {% if description %}<small>{{ description }}</small>{% endif %}
+    </span>
+  </summary>
+  {{ caller() }}
+</details>
+{%- endmacro %}
+
+{% macro action_row(detached=false, class_name='') -%}
+<div class="button-row{% if detached %} profile-form-actions{% endif %}{% if class_name %} {{ class_name }}{% endif %}">
+  {{ caller() }}
+</div>
+{%- endmacro %}
