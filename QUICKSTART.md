@@ -109,8 +109,8 @@ The other Network Tools follow the same category layout shown in the sidebar:
 - **Addressing & Reachability:** IP information, subnet exclusion, DNS, NTP,
   Path MTU, and Traceroute
 - **Multi-Host Tools:** Ping, Multi-SSH, Multi-Transfer, and TCP Port Scanner
-- **Services & Protocols:** RADIUS, certificate inspection, SNMP, Webhook/API,
-  and Syslog
+- **Services & Protocols:** RADIUS, certificate inspection and AD CS enrollment,
+  SNMP, Webhook/API, and Syslog
 - **Traffic & Interfaces:** Wi-Fi/LAN Speed Test, DHCP Discover, and Packet
   Replay
 

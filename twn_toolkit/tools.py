@@ -4,6 +4,7 @@ from flask import Blueprint, redirect, url_for
 
 from .api_request_routes import register_api_request_routes
 from .certificate_routes import register_certificate_routes
+from .certificate_automation_routes import register_certificate_automation_routes
 from .dhcp_routes import register_dhcp_routes
 from .dns_routes import register_dns_routes
 from .ip_info_routes import register_ip_info_routes
@@ -25,6 +26,7 @@ from .traceroute_routes import register_traceroute_routes
 tools_bp = Blueprint("tools", __name__, url_prefix="/tools")
 register_api_request_routes(tools_bp)
 register_certificate_routes(tools_bp)
+register_certificate_automation_routes(tools_bp)
 register_dhcp_routes(tools_bp)
 register_dns_routes(tools_bp)
 register_ip_info_routes(tools_bp)
