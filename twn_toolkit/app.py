@@ -24,6 +24,7 @@ from flask import (
 from .activity import ActivityStore
 from .automation import AutomationStore
 from .automation_routes import register_automation_routes
+from .certificate_automation import CertificateAutomationStore
 from .datastore import LocalDatastore, MAX_UPLOAD_BYTES
 from .datastore_routes import register_datastore_routes
 from .tftp import TFTPHistoryStore, TFTPSettingsStore
@@ -74,6 +75,9 @@ def create_app(instance_path: str | None = None) -> Flask:
 
     auth_store = AuthStore(app.instance_path)
     automation_store = AutomationStore(app.instance_path, app.config["SECRET_KEY"])
+    certificate_automation_store = CertificateAutomationStore(
+        app.instance_path, app.config["SECRET_KEY"]
+    )
     datastore_store = LocalDatastore(app.instance_path)
     tftp_runtime_store = LocalDatastore(app.instance_path, "tftp_runtime")
     tftp_settings_store = TFTPSettingsStore(app.instance_path)
@@ -168,7 +172,14 @@ def create_app(instance_path: str | None = None) -> Flask:
     @app.after_request
     def audit_administrative_mutations(response: Response):
         user = getattr(g, "current_user", None)
-        audited_reads = {"download_automation_run", "download_datastore_file", "view_datastore_file_as_text", "bulk_download_datastore_files", "download_automation_artifact"}
+        audited_reads = {
+            "bulk_download_datastore_files",
+            "download_automation_artifact",
+            "download_automation_run",
+            "download_datastore_file",
+            "tools.download_managed_certificate",
+            "view_datastore_file_as_text",
+        }
         should_audit = request.method in {"POST", "PUT", "PATCH", "DELETE"} or (request.endpoint or "") in audited_reads
         context = getattr(g, "audit_event", {})
         if (
@@ -646,6 +657,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             return
         for profile_store in build_reset_stores(app.instance_path):
             profile_store.clear()
+        certificate_automation_store.clear()
         click.echo("The WiFi Ninja's Toolkit local profile data has been reset.")
 
     @app.get("/")

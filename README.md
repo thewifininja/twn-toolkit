@@ -114,6 +114,10 @@ The sidebar and Network Tools page use the same functional organization.
   attributes; optional `eapol_test` support adds PEAP/MSCHAPv2 and EAP-TLS.
 - **Certificate Chain Inspector** — inspect the exact TLS chain presented by a
   server and validate dates, hostname, order, intermediates, and local trust.
+- **Certificate Automation** — enroll and rotate TLS server certificates through
+  reusable Microsoft AD CS Web Enrollment profiles. Credentials and managed
+  private keys are encrypted locally; downloads include leaf, chain, full-chain,
+  key, and combined PEM formats.
 - **SNMP Tester** — manage reusable SNMPv2c/SNMPv3 credentials, hosts, and OID
   collections for GET and subtree-walk tests; build a live monitor set of up
   to 20 IF-MIB interfaces across saved hosts. Compact filled graphs place
