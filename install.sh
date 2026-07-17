@@ -60,3 +60,8 @@ echo "Open $TOOLKIT_URL to create the administrator account."
 if [ "$FRESH_INSTALL" -eq 1 ]; then
   echo "The generated certificate is self-signed, so your browser will require you to review its warning before continuing."
 fi
+if command -v fping >/dev/null 2>&1 && fping -C 1 -q -r 0 -t 250 127.0.0.1 >/dev/null 2>&1; then
+  echo "Optional high-capacity Multi-Ping support is available through fping."
+else
+  echo "Optional high-capacity Multi-Ping support is unavailable. Install and authorize fping, then restart the toolkit, to raise the Multi-Ping limit from 100 to 250 targets."
+fi

@@ -12,10 +12,13 @@ from twn_toolkit.audit import AuditStore
 from twn_toolkit.fortigate import FortiGateError
 from twn_toolkit.fortigate_routes import managed_switch_order, switch_order_moves
 from twn_toolkit.network_tools import (
+    _fping_hosts,
     _extract_ssh_prompt,
     _read_ssh_command,
     _ssh_host,
     _ping_host,
+    PING_ACCELERATED_LIMIT,
+    PING_COMPATIBILITY_LIMIT,
     ToolInputError,
     parse_dns_servers,
     parse_ping_targets,
@@ -23,6 +26,8 @@ from twn_toolkit.network_tools import (
     parse_radius_attributes,
     parse_ssh_commands,
     parse_ssh_targets,
+    ping_engine_capability,
+    ping_hosts,
     subtract_subnets,
     validate_hosts,
 )
@@ -30,6 +35,98 @@ from twn_toolkit.tasks import TaskResult
 
 
 class NetworkToolTests(unittest.TestCase):
+    def test_ping_engine_capability_requires_a_working_local_probe(self) -> None:
+        ping_engine_capability.cache_clear()
+        with patch("twn_toolkit.network_tools.shutil.which", return_value=None):
+            missing = ping_engine_capability()
+        self.assertFalse(missing["accelerated"])
+        self.assertEqual(missing["target_limit"], PING_COMPATIBILITY_LIMIT)
+
+        ping_engine_capability.cache_clear()
+        completed = subprocess.CompletedProcess(
+            ["/usr/bin/fping"], 0, "", "127.0.0.1 : 0.123\n"
+        )
+        with (
+            patch(
+                "twn_toolkit.network_tools.shutil.which",
+                return_value="/usr/bin/fping",
+            ),
+            patch("twn_toolkit.network_tools.subprocess.run", return_value=completed),
+        ):
+            accelerated = ping_engine_capability()
+        self.assertTrue(accelerated["accelerated"])
+        self.assertEqual(accelerated["target_limit"], PING_ACCELERATED_LIMIT)
+
+        ping_engine_capability.cache_clear()
+        unusable = subprocess.CompletedProcess(
+            ["/usr/bin/fping"], 1, "", "127.0.0.1 : -\n"
+        )
+        with (
+            patch(
+                "twn_toolkit.network_tools.shutil.which",
+                return_value="/usr/bin/fping",
+            ),
+            patch("twn_toolkit.network_tools.subprocess.run", return_value=unusable),
+        ):
+            rejected = ping_engine_capability()
+        self.assertFalse(rejected["accelerated"])
+        self.assertIn("lacks working ICMP capability", rejected["detail"])
+        ping_engine_capability.cache_clear()
+
+    def test_fping_batches_hosts_and_preserves_order_and_failures(self) -> None:
+        completed = subprocess.CompletedProcess(
+            ["/usr/bin/fping"],
+            1,
+            "",
+            "localhost : 0.125\n192.0.2.1 : -\nlocalhost : 0.250\n",
+        )
+        with (
+            patch("twn_toolkit.network_tools.subprocess.run", return_value=completed) as run,
+            patch("twn_toolkit.network_tools.time.monotonic", side_effect=[10, 11.1]),
+        ):
+            results = _fping_hosts(
+                ["localhost", "192.0.2.1", "localhost", "missing.invalid"],
+                0.25,
+                "/usr/bin/fping",
+            )
+
+        self.assertEqual(run.call_count, 1)
+        command = run.call_args.args[0]
+        self.assertIn("-i", command)
+        self.assertEqual(command[command.index("-t") + 1], "250")
+        self.assertEqual([result["host"] for result in results], [
+            "localhost", "192.0.2.1", "localhost", "missing.invalid"
+        ])
+        self.assertEqual([result["latency_ms"] for result in results], [
+            0.125, None, 0.25, None
+        ])
+        self.assertNotIn("error", results[1])
+        self.assertIn("could not be resolved", results[3]["error"])
+
+    def test_fping_failures_are_bounded_and_actionable(self) -> None:
+        failed = subprocess.CompletedProcess(["/usr/bin/fping"], 2, "", "fatal")
+        with patch("twn_toolkit.network_tools.subprocess.run", return_value=failed):
+            with self.assertRaisesRegex(ToolInputError, "System Diagnostics"):
+                _fping_hosts(["127.0.0.1"], 1, "/usr/bin/fping")
+        with patch(
+            "twn_toolkit.network_tools.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["/usr/bin/fping"], 2),
+        ):
+            with self.assertRaisesRegex(ToolInputError, "bounded round timeout"):
+                _fping_hosts(["127.0.0.1"], 1, "/usr/bin/fping")
+
+    def test_ping_hosts_retains_bounded_compatibility_fallback(self) -> None:
+        capability = {
+            "engine": "ping", "accelerated": False,
+            "target_limit": PING_COMPATIBILITY_LIMIT,
+        }
+        with (
+            patch("twn_toolkit.network_tools.ping_engine_capability", return_value=capability),
+            patch("twn_toolkit.network_tools._ping_hosts_compatibility", return_value=[{"host": "localhost"}]) as fallback,
+        ):
+            self.assertEqual(ping_hosts(["localhost"]), [{"host": "localhost"}])
+        fallback.assert_called_once_with(["localhost"], 1)
+
     def test_ping_timeout_does_not_expose_subprocess_command(self) -> None:
         with patch(
             "twn_toolkit.network_tools.subprocess.run",
@@ -466,6 +563,80 @@ class NetworkToolTests(unittest.TestCase):
         self.assertEqual(invalid[0]["value"], "10.0.0.3-10.0.0.1")
         self.assertIn("ascending order", invalid[0]["error"])
 
+    def test_multi_ping_limit_tracks_the_verified_engine_capability(self) -> None:
+        accelerated = {
+            "engine": "fping",
+            "accelerated": True,
+            "target_limit": PING_ACCELERATED_LIMIT,
+            "detail": "Batched high-capacity ICMP is available.",
+            "path": "/usr/bin/fping",
+        }
+        compatibility = {
+            "engine": "ping",
+            "accelerated": False,
+            "target_limit": PING_COMPATIBILITY_LIMIT,
+            "detail": "fping is unavailable.",
+        }
+        hosts = "\n".join(f"192.0.2.{index % 254 + 1}" for index in range(101))
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            with patch(
+                "twn_toolkit.ping_routes.ping_engine_capability",
+                return_value=accelerated,
+            ), patch(
+                "twn_toolkit.ping_routes.ping_hosts",
+                return_value=[{
+                    "host": "127.0.0.1", "reachable": True,
+                    "latency_ms": 0.1, "elapsed_ms": 0.1,
+                }],
+            ) as accelerated_ping:
+                page = client.get("/tools/ping")
+                accepted = client.post("/tools/ping/validate", json={"hosts": hosts})
+                run = client.post(
+                    "/tools/ping/run",
+                    json={"hosts": "127.0.0.1", "timeout": "0.25"},
+                )
+                saved = client.post(
+                    "/tools/ping/profiles",
+                    json={
+                        "name": "Fast LAN",
+                        "hosts": "127.0.0.1",
+                        "interval": 1,
+                        "timeout": "0.25",
+                    },
+                )
+            self.assertIn(b"High-capacity ping available", page.data)
+            self.assertIn(b"up to 250 hosts", page.data)
+            self.assertIn(b'id="ping-timeout"', page.data)
+            self.assertIn(b'min="0.1"', page.data)
+            self.assertEqual(accepted.status_code, 200)
+            self.assertEqual(len(accepted.get_json()["targets"]), 101)
+            self.assertEqual(run.status_code, 200)
+            self.assertEqual(run.get_json()["round"]["timeout"], 0.25)
+            accelerated_ping.assert_called_once_with(["127.0.0.1"], timeout=0.25)
+            self.assertEqual(saved.status_code, 200)
+            self.assertEqual(saved.get_json()["profile"]["timeout"], 0.25)
+
+            with patch(
+                "twn_toolkit.ping_routes.ping_engine_capability",
+                return_value=compatibility,
+            ):
+                page = client.get("/tools/ping")
+                rejected = client.post("/tools/ping/validate", json={"hosts": hosts})
+                timeout_rejected = client.post(
+                    "/tools/ping/run",
+                    json={"hosts": "127.0.0.1", "timeout": "0.25"},
+                )
+            self.assertIn(b"Compatibility ping engine active", page.data)
+            self.assertIn(b"100-target limit", page.data)
+            self.assertIn(b'min="1"', page.data)
+            self.assertEqual(rejected.status_code, 400)
+            self.assertIn("maximum of 100", rejected.get_json()["error"])
+            self.assertEqual(timeout_rejected.status_code, 400)
+            self.assertIn("between 1 and 10", timeout_rejected.get_json()["error"])
+
     def test_rejects_out_of_range_ipv4_shaped_ping_targets(self) -> None:
         for value in ("192.0.2.256", "999.999.999.999", "1.2.3.4.5"):
             with self.subTest(value=value), self.assertRaises(ToolInputError):
@@ -681,6 +852,7 @@ class NetworkToolTests(unittest.TestCase):
             with patch("twn_toolkit.ping_routes.ping_hosts", return_value=[ping_result]):
                 response = client.post("/tools/ping/run", json={"hosts": "Localhost = localhost"})
             self.assertEqual(response.get_json()["results"], [{**ping_result, "label": "Localhost"}])
+            self.assertIn("duration_ms", response.get_json()["round"])
 
             response = client.post(
                 "/tools/ping/validate",

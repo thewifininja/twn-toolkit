@@ -4095,13 +4095,6 @@ button.compact,
   flex-wrap: nowrap;
 }
 
-.ping-host-address {
-  color: var(--muted);
-  display: block;
-  font-size: 0.82rem;
-  margin-top: 3px;
-}
-
 .form-grid {
   display: grid;
   gap: 12px;
@@ -4133,27 +4126,8 @@ button.compact,
   white-space: pre-wrap;
 }
 
-.ping-up {
-  color: var(--ok);
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.ping-down {
-  color: var(--bad);
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.ping-paused {
-  color: var(--muted);
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.ping-history-cell {
-  min-width: 420px;
-  width: auto;
+.ping-timing-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .ping-history-controls {
@@ -4226,7 +4200,7 @@ button.compact,
 
 .ping-history-canvas {
   display: block;
-  height: 150px;
+  height: 240px;
   width: 100%;
 }
 
@@ -4270,10 +4244,8 @@ button.compact,
   grid-template-columns: repeat(2, minmax(72px, 1fr));
 }
 
-.ping-host-statistics {
-  border-top: 1px solid var(--line);
-  margin-top: 9px;
-  padding-top: 8px;
+.ping-host-statistics .ping-statistics {
+  grid-template-columns: repeat(5, minmax(72px, 1fr));
 }
 
 .ping-statistics span {
@@ -4305,11 +4277,6 @@ button.compact,
   z-index: 1000;
 }
 
-.preview-table-wrap .ping-table {
-  min-width: 780px;
-  table-layout: fixed;
-}
-
 #ping-results {
   max-width: none;
 }
@@ -4318,24 +4285,192 @@ button.compact,
   max-width: none;
 }
 
-#ping-results .preview-table-wrap {
-  max-height: none;
-  overflow-x: auto;
+.ping-results-workspace {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
 }
 
-.ping-table th:nth-child(1),
-.ping-table td:nth-child(1) {
-  width: 28%;
+.ping-host-browser {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  max-height: calc(100vh - 150px);
+  padding: 14px;
+  position: sticky;
+  top: 18px;
 }
 
-.ping-table th:nth-child(2),
-.ping-table td:nth-child(2) {
-  width: 8%;
+.ping-host-browser-head,
+.ping-graph-workspace-head,
+.ping-graph-card > header,
+.ping-graph-card-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
 }
 
-.ping-table th:nth-child(3),
-.ping-table td:nth-child(3) {
-  width: 64%;
+.ping-host-browser-head > div,
+.ping-graph-workspace-head > div,
+.ping-graph-card > header > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ping-host-browser-head small,
+.ping-graph-workspace-head > small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.ping-host-search,
+.ping-host-status-filter {
+  display: grid;
+  gap: 5px;
+}
+
+.ping-host-list {
+  display: grid;
+  gap: 7px;
+  max-height: clamp(280px, calc(100vh - 410px), 620px);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1px 3px 1px 1px;
+  scrollbar-gutter: stable;
+}
+
+.ping-host-option {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  display: grid;
+  gap: 9px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 54px;
+  padding: 9px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.ping-host-option:hover,
+.ping-host-option:focus-visible {
+  background: #f2f8f4;
+  border-color: #9bbdaa;
+}
+
+.ping-host-option.selected {
+  background: #eaf5ed;
+  border-color: #6fa784;
+  box-shadow: inset 3px 0 0 #4f9169;
+}
+
+.ping-host-option[hidden],
+.ping-graph-empty[hidden] {
+  display: none;
+}
+
+.ping-host-state-dot {
+  background: var(--muted);
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--line);
+  height: 11px;
+  width: 11px;
+}
+
+.ping-host-option[data-state="up"] .ping-host-state-dot {
+  background: var(--ok);
+}
+
+.ping-host-option[data-state="down"] .ping-host-state-dot {
+  background: var(--bad);
+}
+
+.ping-host-option[data-state="removed"] {
+  opacity: 0.7;
+}
+
+.ping-host-option-identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ping-host-option-identity strong,
+.ping-host-option-identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ping-host-option-identity small,
+.ping-host-option-state {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.ping-host-option[data-state="up"] .ping-host-option-state {
+  color: var(--ok);
+}
+
+.ping-host-option[data-state="down"] .ping-host-option-state {
+  color: var(--bad);
+}
+
+.ping-host-option-state {
+  font-weight: 800;
+}
+
+.ping-graph-workspace {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ping-graph-workspace-head {
+  min-height: 54px;
+}
+
+.ping-graph-workspace-head h2,
+.ping-graph-card h3 {
+  margin: 0;
+}
+
+.ping-graph-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.ping-graph-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.ping-graph-card code {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.ping-graph-card-actions {
+  flex: 0 0 auto;
+}
+
+.ping-graph-card .ping-history-canvas-wrap {
+  margin-top: 2px;
 }
 
 .ssh-results {
@@ -7062,6 +7197,21 @@ th {
   color: var(--bad);
 }
 
+@media (max-width: 1050px) {
+  .ping-results-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .ping-host-browser {
+    max-height: none;
+    position: static;
+  }
+
+  .ping-host-list {
+    max-height: 320px;
+  }
+}
+
 @media (max-width: 760px) {
   .automation-threshold-grid > label {
     grid-template-rows: auto;
@@ -7156,6 +7306,15 @@ th {
   .access-profile-grid,
   .ip-address-results {
     grid-template-columns: 1fr;
+  }
+
+  .ping-host-statistics .ping-statistics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ping-graph-card > header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .automation-manager > .section-head {
@@ -7608,8 +7767,26 @@ th {
 [data-theme="dark"] .speed-results article,
 [data-theme="dark"] .port-scan-summary > div,
 [data-theme="dark"] .ping-history-controls,
+[data-theme="dark"] .ping-host-browser,
 [data-theme="dark"] .ping-history-canvas-wrap {
   background: #1d2924;
+}
+
+[data-theme="dark"] .ping-host-option,
+[data-theme="dark"] .ping-graph-card {
+  background: #18211e;
+}
+
+[data-theme="dark"] .ping-host-option:hover,
+[data-theme="dark"] .ping-host-option:focus-visible {
+  background: #22342d;
+  border-color: #567564;
+}
+
+[data-theme="dark"] .ping-host-option.selected {
+  background: #233a2e;
+  border-color: #5f9974;
+  box-shadow: inset 3px 0 0 #67b582;
 }
 
 [data-theme="dark"] .side-nav-home,

@@ -5,8 +5,19 @@
 <section class="panel tool-panel" id="ping-controls">
   <div class="panel-head">
     <h1>Multi-Host Ping</h1>
-    <p>Troubleshoot reachability, latency, and packet loss for up to 100 hosts from this machine.</p>
+    <p>Troubleshoot reachability, latency, and packet loss for up to {{ ping_target_limit }} hosts from this machine.</p>
   </div>
+  {% if ping_capability.accelerated %}
+    <div class="message success" role="status">
+      <strong>High-capacity ping available</strong>
+      <p><code>fping</code> passed its local ICMP capability check. Each round uses one bounded batch process for up to {{ ping_target_limit }} targets.</p>
+    </div>
+  {% else %}
+    <div class="message warning" role="note">
+      <strong>Compatibility ping engine active</strong>
+      <p>{{ ping_capability.detail }} Multi-Ping remains available through the standard system <code>ping</code> command with a {{ ping_target_limit }}-target limit. Install and authorize <code>fping</code>, then restart the toolkit, to enable high-capacity mode.</p>
+    </div>
+  {% endif %}
   <form
     class="form"
     id="ping-form"
@@ -25,6 +36,7 @@
             <option
               value="{{ profile.name }}"
               data-interval="{{ profile.interval }}"
+              data-timeout="{{ profile.get('timeout', 1) }}"
               data-targets='{{ profile.targets|tojson }}'
             >{{ profile.name }}</option>
           {% endfor %}
@@ -43,11 +55,19 @@
       Hosts
       <textarea id="ping-hosts" rows="6" placeholder="Core Router = 192.0.2.1&#10;Classroom = 10.0.0.1-10.0.0.24&#10;router.example.com" required></textarea>
     </label>
-    <span class="field-note">{{ host_range_guidance(100) }} Starting a run snapshots this list. Edits take effect only after selecting <strong>Update targets</strong>, which preserves history for existing targets.</span>
-    <label>
-      Interval in seconds
-      <input id="ping-interval" type="number" min="1" max="60" value="2">
-    </label>
+    <span class="field-note">{{ host_range_guidance(ping_target_limit) }} Starting a run snapshots this list. Edits take effect only after selecting <strong>Update targets</strong>, which preserves history for existing targets.</span>
+    <div class="form-grid ping-timing-grid">
+      <label>
+        Round interval in seconds
+        <input id="ping-interval" type="number" min="1" max="60" value="2">
+        <small class="field-note">Rounds never overlap. If a round takes longer than this interval, the next begins as soon as the current round finishes.</small>
+      </label>
+      <label>
+        Probe timeout in seconds
+        <input id="ping-timeout" type="number" min="{{ 0.1 if ping_capability.accelerated else 1 }}" max="10" step="{{ 0.1 if ping_capability.accelerated else 1 }}" value="1">
+        <small class="field-note">How long to wait for a silent target. Lower values make rounds faster but may mark slow or distant replies down.</small>
+      </label>
+    </div>
     <div class="button-row">
       <button id="ping-start" type="submit">Start</button>
       <button class="secondary" id="ping-stop" type="button" disabled>Stop</button>
@@ -92,13 +112,43 @@
       </div>
     </details>
   </div>
-  <div class="preview-table-wrap">
-    <table class="ping-table">
-      <thead>
-        <tr><th>Host and latency statistics</th><th>Status</th><th>Response-time history</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <div class="ping-results-workspace">
+    <aside class="ping-host-browser" aria-label="Ping targets">
+      <div class="ping-host-browser-head">
+        <div>
+          <span class="eyebrow">Targets</span>
+          <strong id="ping-host-count">0 hosts</strong>
+        </div>
+        <small id="ping-selection-count">0 graphed</small>
+      </div>
+      <label class="ping-host-search">Find a host
+        <input id="ping-host-filter" type="search" placeholder="Name, address, or status…" autocomplete="off">
+      </label>
+      <label class="ping-host-status-filter">Show
+        <select id="ping-host-status-filter">
+          <option value="all">All targets</option>
+          <option value="down">Down targets</option>
+          <option value="up">Up targets</option>
+          <option value="selected">Selected graphs</option>
+        </select>
+      </label>
+      <div class="ping-host-list" id="ping-host-list" role="listbox" aria-label="Select hosts to graph" aria-multiselectable="true"></div>
+      <small class="field-note">Pinging and history collection continue for every target. Graph only the hosts useful to you, or select as many as you need.</small>
+    </aside>
+    <div class="ping-graph-workspace">
+      <div class="ping-graph-workspace-head">
+        <div>
+          <span class="eyebrow">Selected history</span>
+          <h2>Response-time graphs</h2>
+        </div>
+        <small id="ping-graph-summary">Select a host from the list.</small>
+      </div>
+      <div class="empty-state ping-graph-empty" id="ping-graph-empty">
+        <strong>No graphs selected</strong>
+        <span>Select a host on the left while all targets continue to be monitored.</span>
+      </div>
+      <div class="ping-graph-grid" id="ping-graph-grid"></div>
+    </div>
   </div>
 </section>
 <script src="{{ url_for('static', filename='ping-tool.js') }}"></script>

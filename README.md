@@ -98,7 +98,12 @@ The sidebar and Network Tools page use the same functional organization.
 #### Multi-Host Tools
 
 - **Multi-Host Ping** — graph reachability, latency, and loss for a validated
-  target snapshot; update targets without discarding unchanged history.
+  target snapshot; update targets without discarding unchanged history. A
+  working optional `fping` system command enables batched high-capacity rounds
+  and raises the target limit from 100 to 250. Without it, the standard system
+  `ping` compatibility engine remains available. Multi-Ping exposes separate
+  round-interval and per-target probe-timeout controls; accelerated mode accepts
+  sub-second timeouts for dense groups of known-local targets.
 - **Multi-SSH** — run prompt-aware command sequences concurrently, with friendly
   host names, per-command timeouts, downloadable results, and a scoped legacy
   algorithm exception for trusted older devices.
