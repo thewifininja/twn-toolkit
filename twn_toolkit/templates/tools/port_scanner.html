@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import host_range_guidance %}
 
 {% block content %}
 <section class="panel">
@@ -18,9 +19,9 @@
           </select>
         </label>
         <label>Hosts
-          <textarea name="hosts" class="port-profile-values" id="port-scan-hosts" rows="7" placeholder="Core Switch = 192.0.2.10&#10;server.example.com" required>{{ form.hosts }}</textarea>
+          <textarea name="hosts" class="port-profile-values" id="port-scan-hosts" rows="7" placeholder="Core Switch = 192.0.2.10&#10;Access switches = 10.0.0.1-10.0.0.24&#10;server.example.com" required>{{ form.hosts }}</textarea>
         </label>
-        <span class="field-note">One per line. Optional friendly names use <code>Name = host</code>.</span>
+        <span class="field-note">{{ host_range_guidance(50, 'hosts') }}</span>
         <div class="button-row">
           <input class="port-profile-name" placeholder="Host profile name" maxlength="100">
           <button class="secondary port-save-profile" type="button">Save hosts</button>

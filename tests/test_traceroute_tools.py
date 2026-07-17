@@ -249,10 +249,13 @@ class TracerouteToolTests(unittest.TestCase):
             client = app.test_client()
             response = client.post(
                 "/tools/traceroute/profiles",
-                data={"name": "Public Targets", "values": "Example = example.com\n192.0.2.10"},
+                data={
+                    "name": "Public Targets",
+                    "values": "Example = example.com\nLab = 192.0.2.10-192.0.2.11",
+                },
             )
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.get_json()["profile"]["count"], 2)
+            self.assertEqual(response.get_json()["profile"]["count"], 3)
             page = client.get("/tools/traceroute").data
             self.assertIn(b"Public Targets", page)
             self.assertNotIn(b"built-in method values", page)

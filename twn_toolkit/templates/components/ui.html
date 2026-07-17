@@ -70,3 +70,7 @@
   {{ caller() }}
 </div>
 {%- endmacro %}
+
+{% macro host_range_guidance(limit, noun='targets') -%}
+One hostname, IP address, or inclusive IP range per line. Optional names use <code>Name = target</code>; named ranges become <code>Name-0001</code>, <code>Name-0002</code>, and so on. Maximum {{ limit }} {{ noun }} after expansion.
+{%- endmacro %}

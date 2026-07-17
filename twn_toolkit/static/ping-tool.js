@@ -380,7 +380,9 @@
       validationWarning.textContent = "";
       return;
     }
-    const values = invalid.map((item) => item.value).join(", ");
+    const values = invalid
+      .map((item) => item.error ? `${item.value} (${item.error})` : item.value)
+      .join(", ");
     validationWarning.textContent = `${invalid.length} invalid target${invalid.length === 1 ? " was" : "s were"} skipped: ${values}`;
     validationWarning.hidden = false;
   }

@@ -63,6 +63,11 @@ to the next future occurrence rather than replaying a backlog.
   times per second so one-second checks are not held behind a one-second polling
   boundary; actual duration still includes the condition execution time.
 - Trigger modes: all targets fail, or at least a selected number fail.
+- General ping, DNS-name, SSH-command, and SSH-file-collection host lists accept
+  inclusive ascending IPv4 and IPv6 ranges. Named ranges use
+  `Friendly Name = start-address-end-address` and normalize to numbered labels
+  such as `Friendly Name-0001`; every expanded address counts toward the
+  condition or action's host limit.
 - Debounce: require consecutive met checks before firing.
 - Recovery: require consecutive clear checks before rearming.
 - Cooldown: minimum interval between incident triggers.
@@ -71,8 +76,9 @@ to the next future occurrence rather than replaying a backlog.
   prompt returns. Prefix an individual command with `[timeout=600]` when it
   needs a different ceiling; accepted values are 1 through 3600 seconds. The
   combined timeout budget across commands is limited to one hour per host.
-  Targets may use `Friendly Name = hostname-or-IP`; the address is retained for
-  troubleshooting while the friendly name is used in results and ZIP filenames.
+  Targets may use `Friendly Name = hostname-or-IP` or the shared inclusive IP
+  range syntax; the address is retained for troubleshooting while the friendly
+  name is used in results and ZIP filenames.
 - Action: send an RFC 5424 syslog message to up to 20 UDP or TCP collectors.
   Facility, severity, hostname, application name, timeout, and destination ports
   are configurable. Messages support the explicit variables

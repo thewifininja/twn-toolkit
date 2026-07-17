@@ -411,6 +411,14 @@ make state, risk, and the next action obvious.
   can require any or all values; comparisons ignore case and a final DNS dot.
   Availability, answer mismatch, and the configured failed-check threshold are
   represented in the common condition result contract.
+- General host-list fields use `network_tools.parse_ping_targets` (or its DNS
+  and SSH aliases) as the shared parsing boundary. In addition to hostnames and
+  individual addresses, it accepts inclusive ascending IPv4 and IPv6 ranges
+  such as `10.0.0.1-10.0.0.24`. A named range such as
+  `Classroom = 10.0.0.1-10.0.0.24` expands to stable labels beginning with
+  `Classroom-0001`. Expanded addresses count against the caller's existing
+  limit. Keep structured destination formats such as `host | ports` on their
+  dedicated parser rather than applying general range expansion implicitly.
 - `tcp.reachability` reuses the regular TCP scanner. Targets use
   `Friendly Name = host | ports`, allowing a different port/range list per host.
   Each expanded host/port pair is one check, and ports normalize to stable
@@ -488,10 +496,10 @@ make state, risk, and the next action obvious.
   rewriting, per-protocol bounded transfer history, total/per-client connection
   limits, and datastore/runtime-only roots. FTP and SSH uploads must preserve the
   shared `MAX_UPLOAD_BYTES` ceiling and delete incomplete `.part` files.
-- Both SSH surfaces accept `Friendly Name = hostname-or-IP`. Preserve the
-  connection target as `host` and the optional display value as `host_label` in
-  execution results. UI output and filenames prefer the label but still expose
-  the actual address.
+- Both SSH surfaces accept `Friendly Name = hostname-or-IP` and shared inclusive
+  IP ranges. Preserve the connection target as `host` and the optional display
+  value as `host_label` in execution results. UI output and filenames prefer the
+  label but still expose the actual address.
 - `syslog.send` reuses the regular RFC 5424 sender and accepts up to 20
   `Friendly Name = host | port` destinations under one UDP/TCP protocol. It
   substitutes only documented trigger/timestamp tokens rather than using a

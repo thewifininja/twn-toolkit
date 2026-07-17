@@ -32,6 +32,10 @@ class ToolInputError(ValueError):
     pass
 
 
+class _HostLimitError(ToolInputError):
+    pass
+
+
 def split_values(value: str) -> list[str]:
     values = re.split(r"[\s,]+", value.strip())
     return list(dict.fromkeys(item for item in values if item))
@@ -190,8 +194,10 @@ def _scan_tcp_port(target: dict[str, str], port: int, timeout: float) -> dict[st
 def parse_ping_targets(hosts_text: str, limit: int = 100) -> list[dict[str, str]]:
     targets, invalid = parse_ping_targets_with_errors(hosts_text, limit=limit)
     if invalid:
-        values = ", ".join(item["value"] for item in invalid[:5])
-        raise ToolInputError(f"Invalid host value(s): {values}")
+        details = ", ".join(
+            f"{item['value']} ({item['error']})" for item in invalid[:5]
+        )
+        raise ToolInputError(f"Invalid host value(s): {details}")
     return targets
 
 
@@ -219,6 +225,40 @@ def parse_ping_targets_with_errors(
         else:
             candidates = [("", host) for host in split_values(line)]
         for label, host in candidates:
+            try:
+                expanded_hosts = _expand_ip_range(
+                    host,
+                    limit=limit - candidate_count,
+                    total_limit=limit,
+                )
+            except _HostLimitError:
+                raise
+            except ToolInputError as exc:
+                candidate_count += 1
+                invalid.append({"value": host or line, "error": str(exc)})
+                continue
+            if expanded_hosts is not None:
+                if label and len(label) > 95:
+                    candidate_count += len(expanded_hosts)
+                    invalid.append(
+                        {
+                            "value": host or line,
+                            "error": (
+                                "Friendly names for IP ranges must be 95 characters "
+                                "or fewer."
+                            ),
+                        }
+                    )
+                    continue
+                candidate_count += len(expanded_hosts)
+                targets.extend(
+                    {
+                        "label": f"{label}-{index:04d}" if label else "",
+                        "host": expanded_host,
+                    }
+                    for index, expanded_host in enumerate(expanded_hosts, start=1)
+                )
+                continue
             candidate_count += 1
             if _valid_host(host):
                 targets.append({"label": label, "host": host})
@@ -230,6 +270,51 @@ def parse_ping_targets_with_errors(
     if candidate_count > limit:
         raise ToolInputError(f"A maximum of {limit} hosts is allowed per run.")
     return targets, invalid
+
+
+def _expand_ip_range(
+    value: str,
+    *,
+    limit: int,
+    total_limit: int,
+) -> list[str] | None:
+    if value.count("-") != 1:
+        return None
+    start_text, end_text = (part.strip() for part in value.split("-", 1))
+    start = _range_endpoint(start_text)
+    end = _range_endpoint(end_text)
+    if start is None and end is None:
+        if _looks_like_ip_literal(start_text) and _looks_like_ip_literal(end_text):
+            raise ToolInputError("IP ranges must contain valid IP addresses.")
+        return None
+    if start is None or end is None:
+        raise ToolInputError("IP ranges must contain a valid IP address on both sides.")
+    if start.version != end.version:
+        raise ToolInputError("IP range endpoints must use the same address family.")
+    start_number = int(start)
+    end_number = int(end)
+    if start_number > end_number:
+        raise ToolInputError("IP ranges must be in ascending order.")
+    address_count = end_number - start_number + 1
+    if address_count > limit:
+        raise _HostLimitError(
+            f"A maximum of {total_limit} hosts is allowed per run."
+        )
+    address_type = ipaddress.IPv4Address if start.version == 4 else ipaddress.IPv6Address
+    return [str(address_type(number)) for number in range(start_number, end_number + 1)]
+
+
+def _range_endpoint(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    if "%" in value:
+        return None
+    try:
+        return ipaddress.ip_address(value)
+    except ValueError:
+        return None
+
+
+def _looks_like_ip_literal(value: str) -> bool:
+    return ":" in value or bool(re.fullmatch(r"[0-9.]+", value))
 
 
 def parse_ssh_targets(hosts_text: str, limit: int = 50) -> list[dict[str, str]]:
