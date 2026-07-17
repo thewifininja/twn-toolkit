@@ -20,6 +20,7 @@
   --action-danger-text: #9b2929;
   --control-border: #c8d5cc;
   --field-label: #2f3b48;
+  --profile-collection-surface: color-mix(in srgb, var(--bg), var(--brand-green) 5%);
   --shadow: 0 12px 32px rgb(25 33 31 / 7%);
   --card-tint: color-mix(in srgb, var(--panel), var(--accent) 3%);
   --topbar-height: 75px;
@@ -1772,12 +1773,16 @@ button.compact,
 }
 
 .nested-profile-list {
-  background: color-mix(in srgb, var(--bg), var(--brand-green) 5%);
+  background: var(--profile-collection-surface);
   border: 0;
   border-radius: 0;
   box-shadow: none;
   margin: 0;
   padding: 12px;
+}
+
+.nested-profile-list:empty {
+  padding: 0;
 }
 
 .nested-profile-card {
@@ -6022,6 +6027,12 @@ button.compact,
   margin: 14px 0 16px;
 }
 
+.profile-section > .profile-create-details.card-action-details[open] {
+  background: var(--profile-collection-surface);
+  margin: 0;
+  padding: 12px 12px 0;
+}
+
 .profile-create-details.card-action-details > summary {
   right: 62px;
   top: 25px;
@@ -7257,6 +7268,11 @@ th {
     padding: 0;
   }
 
+  .profile-section > .profile-create-details.card-action-details[open] {
+    background: transparent;
+    padding: 12px 0 0;
+  }
+
   .nested-profile-card {
     padding: 10px;
   }
@@ -7533,6 +7549,7 @@ th {
   --bad: #ff7b7f;
   --shadow: 0 14px 34px rgb(0 0 0 / 18%);
   --card-tint: #1d2924;
+  --profile-collection-surface: #121b18;
 }
 
 [data-theme="dark"] input,
@@ -7608,7 +7625,7 @@ th {
 }
 
 [data-theme="dark"] .nested-profile-list {
-  background: #121b18;
+  background: var(--profile-collection-surface);
   box-shadow: none;
 }
 

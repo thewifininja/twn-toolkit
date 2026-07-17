@@ -57,6 +57,18 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('class="access-profile-card nested-profile-card" open', html)
         self.assertIn('class="button-row profile-form-actions"', html)
 
+    def test_profile_create_surface_uses_shared_collection_token(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("--profile-collection-surface:", stylesheet)
+        self.assertIn(
+            ".profile-section > .profile-create-details.card-action-details[open] {",
+            stylesheet,
+        )
+        self.assertIn("background: var(--profile-collection-surface);", stylesheet)
+
 
 if __name__ == "__main__":
     unittest.main()
