@@ -210,8 +210,8 @@ def register_tools(registry: ToolRegistry) -> None:
             ),
             ToolLink(
                 "tools.certificate_automation",
-                "Certificate Automation",
-                "Enroll, protect, rotate, and export TLS server certificates through reusable PKI profiles.",
+                "Certificate Automation · Beta",
+                "Beta: enroll, protect, rotate, and export TLS server certificates through reusable PKI profiles.",
                 "tools.certificate_automation",
                 "network",
                 "Network Tools",

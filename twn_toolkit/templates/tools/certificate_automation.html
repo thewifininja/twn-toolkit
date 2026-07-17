@@ -6,10 +6,14 @@
   <div class="panel-head certificate-automation-title">
     <div>
       <span class="eyebrow">Certificate lifecycle</span>
-      <h1>Certificate Automation</h1>
+      <h1>Certificate Automation <span class="pill planned certificate-beta-pill">Beta</span></h1>
       <p>Enroll and rotate TLS server certificates without moving private keys through a Windows workstation.</p>
     </div>
     <span class="certificate-automation-mark" aria-hidden="true">◇</span>
+  </div>
+  <div class="message warning certificate-beta-note" role="note">
+    <strong>Beta workflow</strong>
+    <p>Certificate Automation has not completed broad production validation. Test enrollment, pending-request collection, renewal, exported keys, and the complete certificate chain against your PKI and RADIUS platform before deployment. Keep your established certificate workflow available until the result is verified end to end.</p>
   </div>
   <div class="certificate-automation-stats" aria-label="Certificate automation summary">
     <article><strong>{{ managed|length }}</strong><span>Managed</span></article>

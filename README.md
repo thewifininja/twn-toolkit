@@ -13,7 +13,7 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.11.0**
+Current release: **v0.11.1**
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -119,10 +119,12 @@ The sidebar and Network Tools page use the same functional organization.
   attributes; optional `eapol_test` support adds PEAP/MSCHAPv2 and EAP-TLS.
 - **Certificate Chain Inspector** — inspect the exact TLS chain presented by a
   server and validate dates, hostname, order, intermediates, and local trust.
-- **Certificate Automation** — enroll and rotate TLS server certificates through
-  reusable Microsoft AD CS Web Enrollment profiles. Credentials and managed
-  private keys are encrypted locally; downloads include leaf, chain, full-chain,
-  key, and combined PEM formats.
+- **Certificate Automation (Beta)** — enroll and rotate TLS server certificates
+  through reusable Microsoft AD CS Web Enrollment profiles. Credentials and
+  managed private keys are encrypted locally; downloads include leaf, chain,
+  full-chain, key, and combined PEM formats. Validate enrollment, renewal,
+  exported keys, and the complete chain against the target PKI and RADIUS
+  platform before production deployment.
 - **SNMP Tester** — manage reusable SNMPv2c/SNMPv3 credentials, hosts, and OID
   collections for GET and subtree-walk tests; build a live monitor set of up
   to 20 IF-MIB interfaces across saved hosts. Compact filled graphs place
