@@ -83,6 +83,7 @@ class CertificateAutomationStore:
                     enrollment_url TEXT NOT NULL,
                     credential_id TEXT,
                     ca_bundle_pem TEXT NOT NULL DEFAULT '',
+                    verify_tls INTEGER NOT NULL DEFAULT 1,
                     retrieval_strategy TEXT NOT NULL DEFAULT 'same_endpoint',
                     timeout REAL NOT NULL DEFAULT 15,
                     created_at REAL NOT NULL,
@@ -135,6 +136,14 @@ class CertificateAutomationStore:
                     ON certificate_versions(managed_id, created_at DESC);
                 """
             )
+            server_columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(pki_servers)")
+            }
+            if "verify_tls" not in server_columns:
+                connection.execute(
+                    "ALTER TABLE pki_servers ADD COLUMN verify_tls INTEGER NOT NULL DEFAULT 1"
+                )
         os.chmod(self.path, 0o600)
 
     @contextmanager
@@ -265,13 +274,14 @@ class CertificateAutomationStore:
                     """
                     INSERT INTO pki_servers
                         (id, name, provider, enrollment_url, credential_id, ca_bundle_pem,
-                         retrieval_strategy, timeout, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         verify_tls, retrieval_strategy, timeout, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         name = excluded.name, provider = excluded.provider,
                         enrollment_url = excluded.enrollment_url,
                         credential_id = excluded.credential_id,
                         ca_bundle_pem = excluded.ca_bundle_pem,
+                        verify_tls = excluded.verify_tls,
                         retrieval_strategy = excluded.retrieval_strategy,
                         timeout = excluded.timeout, updated_at = excluded.updated_at
                     """,
@@ -282,6 +292,7 @@ class CertificateAutomationStore:
                         values["enrollment_url"],
                         values.get("credential_id") or None,
                         ca_bundle,
+                        1 if values.get("verify_tls", True) else 0,
                         values["retrieval_strategy"],
                         values["timeout"],
                         float(existing["created_at"]) if existing else now,
@@ -851,6 +862,9 @@ class AdcsWebEnrollmentProvider:
 
     @contextmanager
     def _verify_value(self) -> Iterator[bool | str]:
+        if not bool(self.profile.get("verify_tls", True)):
+            yield False
+            return
         ca_bundle = str(self.profile.get("ca_bundle_pem", ""))
         if not ca_bundle:
             yield True

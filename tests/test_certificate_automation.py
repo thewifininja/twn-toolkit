@@ -300,6 +300,23 @@ class CertificateAutomationCoreTests(unittest.TestCase):
                 with self.assertRaisesRegex(CertificateAutomationError, expected):
                     provider.test_connection()
 
+    def test_connection_can_explicitly_disable_https_certificate_verification(self) -> None:
+        session = _Session(_Response(), [_Response(status_code=200)])
+        provider = AdcsWebEnrollmentProvider(
+            {
+                "enrollment_url": "https://pki.example.test/certsrv",
+                "timeout": 10,
+                "verify_tls": 0,
+                "retrieval_strategy": "same_endpoint",
+                "ca_bundle_pem": "",
+            },
+            "user",
+            "password",
+            session=session,  # type: ignore[arg-type]
+        )
+        self.assertEqual(provider.test_connection(), 200)
+        self.assertIs(session.gets[0][1]["verify"], False)
+
     def test_resolved_backend_retrieval_preserves_tls_hostname_and_matches_key(self) -> None:
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         key_pem, csr_pem = build_certificate_request(
@@ -380,6 +397,7 @@ class CertificateAutomationStoreTests(unittest.TestCase):
                     "timeout": 15,
                 }
             )
+            self.assertEqual(server["verify_tls"], 1)
             template = store.save_template(
                 {
                     "name": "RADIUS",
@@ -484,6 +502,35 @@ class CertificateAutomationStoreTests(unittest.TestCase):
             )
             self.assertEqual(completed["status"], "issued")
             self.assertTrue(completed["fingerprint_sha256"])
+
+    def test_existing_server_table_gains_strict_tls_verification_default(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "certificate_automation.sqlite3")
+            with sqlite3.connect(path) as connection:
+                connection.execute(
+                    """
+                    CREATE TABLE pki_servers (
+                        id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                        provider TEXT NOT NULL, enrollment_url TEXT NOT NULL,
+                        credential_id TEXT, ca_bundle_pem TEXT NOT NULL DEFAULT '',
+                        retrieval_strategy TEXT NOT NULL DEFAULT 'same_endpoint',
+                        timeout REAL NOT NULL DEFAULT 15, created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO pki_servers
+                        (id, name, provider, enrollment_url, retrieval_strategy,
+                         timeout, created_at, updated_at)
+                    VALUES ('server-1', 'Existing', 'adcs_web_enrollment',
+                            'https://pki.example.test/certsrv', 'same_endpoint',
+                            15, 1, 1)
+                    """
+                )
+            store = CertificateAutomationStore(directory, "secret")
+            self.assertEqual(store.server_profile("server-1")["verify_tls"], 1)
 
 
 class CertificateAutomationRouteTests(unittest.TestCase):
@@ -639,6 +686,24 @@ class CertificateAutomationRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"HTTPS certificate has expired", response.data)
         self.assertNotIn(b"Internal Server Error", response.data)
+
+    def test_server_profile_can_deliberately_disable_tls_verification(self) -> None:
+        response = self.client.post(
+            "/tools/certificate-automation/servers",
+            data={
+                "name": "Legacy AD CS",
+                "enrollment_url": "https://pki.example.test/certsrv",
+                "retrieval_strategy": "same_endpoint",
+                "timeout": "15",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"HTTPS certificate verification is disabled", response.data)
+        store = CertificateAutomationStore(
+            self.directory.name, str(self.app.config["SECRET_KEY"])
+        )
+        self.assertEqual(store.server_profiles()[0]["verify_tls"], 0)
 
     def test_reset_data_removes_certificate_database_and_backups_exclude_keys(self) -> None:
         store = CertificateAutomationStore(

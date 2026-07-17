@@ -237,6 +237,7 @@
             <label>Enrollment URL<input name="enrollment_url" type="url" required placeholder="https://pki.example.org/certsrv"></label>
             <label>Default credential<select name="credential_id"><option value="">None · ask when used</option>{% for profile in credentials %}<option value="{{ profile.id }}">{{ profile.name }}</option>{% endfor %}</select></label>
             <label>Trusted CA bundle<input name="ca_bundle" type="file" accept=".pem,.crt,.cer"></label>
+            <label class="check"><input type="checkbox" name="verify_tls" value="1" checked><span><strong>Verify the PKI server HTTPS certificate</strong><small>Recommended. Uses system trust or the uploaded CA bundle.</small></span></label>
             <label>Certificate retrieval<select name="retrieval_strategy"><option value="same_endpoint">Use enrollment endpoint</option><option value="resolved_ipv4">Search resolved IPv4 backends</option></select></label>
             <label>Timeout<input name="timeout" type="number" min="2" max="60" value="15"></label>
             <span class="field-note">TLS verification is always enabled. Upload a private CA bundle when system trust is insufficient.</span>
@@ -252,6 +253,8 @@
             <label>Replace trusted CA bundle<input name="ca_bundle" type="file" accept=".pem,.crt,.cer"></label>
             <span class="field-note">{{ 'A custom CA bundle is configured.' if profile.has_ca_bundle else 'System trust is used.' }}</span>
             {% if profile.has_ca_bundle %}<label class="check"><input type="checkbox" name="remove_ca_bundle" value="1"><span>Remove the custom CA bundle and return to system trust</span></label>{% endif %}
+            <label class="check"><input type="checkbox" name="verify_tls" value="1" {% if profile.verify_tls %}checked{% endif %}><span><strong>Verify the PKI server HTTPS certificate</strong><small>Recommended. Turn off only when the endpoint cannot present a valid certificate.</small></span></label>
+            {% if not profile.verify_tls %}<div class="message warning">HTTPS certificate verification is disabled for this PKI server. The server identity and enrollment traffic cannot be authenticated by TLS.</div>{% endif %}
             <label>Certificate retrieval<select name="retrieval_strategy"><option value="same_endpoint" {% if profile.retrieval_strategy == 'same_endpoint' %}selected{% endif %}>Use enrollment endpoint</option><option value="resolved_ipv4" {% if profile.retrieval_strategy == 'resolved_ipv4' %}selected{% endif %}>Search resolved IPv4 backends</option></select></label>
             <label>Timeout<input name="timeout" type="number" min="2" max="60" value="{{ profile.timeout|int }}"></label>
             <div class="button-row"><button type="submit">Update</button></div>

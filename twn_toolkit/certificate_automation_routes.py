@@ -143,6 +143,7 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
                     "ca_bundle_pem": validate_ca_bundle(uploaded_bundle),
                     "keep_ca_bundle": not uploaded_bundle and bool(before),
                     "remove_ca_bundle": request.form.get("remove_ca_bundle") == "1",
+                    "verify_tls": request.form.get("verify_tls") == "1",
                     "retrieval_strategy": strategy,
                     "timeout": timeout,
                 }
