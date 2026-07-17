@@ -80,6 +80,16 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("background: var(--action-primary-hover);", stylesheet)
         self.assertIn("background: var(--action-danger);", stylesheet)
 
+    def test_dashboard_metric_values_stay_within_their_cards(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(".dashboard-stat {", stylesheet)
+        self.assertIn("flex-wrap: wrap;", stylesheet)
+        self.assertIn("font-variant-numeric: tabular-nums;", stylesheet)
+        self.assertIn("overflow-wrap: anywhere;", stylesheet)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3124,6 +3124,7 @@ button.compact,
   display: grid;
   gap: 6px;
   min-height: 136px;
+  min-width: 0;
   padding: 14px;
   position: relative;
 }
@@ -3219,18 +3220,26 @@ button.compact,
 .dashboard-stat {
   align-items: baseline;
   display: flex;
-  gap: 8px;
+  column-gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  row-gap: 2px;
 }
 
 .dashboard-stat span {
+  flex: 0 1 auto;
   font-size: clamp(1.75rem, 3vw, 2.35rem);
+  font-variant-numeric: tabular-nums;
   font-weight: 900;
   letter-spacing: -0.06em;
   line-height: 1;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .dashboard-stat small {
   color: var(--muted);
+  flex: 0 0 auto;
   font-size: 0.78rem;
   font-weight: 850;
 }
