@@ -6346,6 +6346,10 @@ button.compact,
   gap: 12px;
 }
 
+.automation-threshold-grid > label {
+  grid-template-rows: minmax(2.35em, auto) auto;
+}
+
 .schedule-settings-grid,
 .schedule-definition-summary {
   display: grid;
@@ -7059,6 +7063,10 @@ th {
 }
 
 @media (max-width: 760px) {
+  .automation-threshold-grid > label {
+    grid-template-rows: auto;
+  }
+
   .updates-section-head {
     align-items: stretch;
   }

@@ -44,7 +44,7 @@
       <label>Ping targets
         <textarea name="condition_targets" rows="5" placeholder="Gateway = 192.0.2.1&#10;1.1.1.1&#10;8.8.8.8" required>{{ config.get('targets', config.get('condition_targets', '')) }}</textarea>
       </label>
-      <div class="form-grid">
+      <div class="form-grid automation-threshold-grid">
         <label>Per-target timeout
           <div class="input-suffix"><input name="condition_timeout" type="number" min="1" max="10" value="{{ config.get('timeout', config.get('condition_timeout', '1')) }}" required><span>seconds</span></div>
         </label>
@@ -84,7 +84,7 @@
         <textarea name="dns_expected_answers" rows="3" placeholder="192.0.2.10&#10;192.0.2.11">{{ config.get('expected_answers', config.get('dns_expected_answers', '')) }}</textarea>
         <small class="field-note">Leave blank to require only a successful answer. Matching ignores letter case and a final DNS dot.</small>
       </label>
-      <div class="form-grid">
+      <div class="form-grid automation-threshold-grid">
         <label>Expected-answer matching
           {% set dns_answer_mode = config.get('answer_mode', config.get('dns_answer_mode', 'any')) %}
           <select name="dns_answer_mode">
@@ -122,7 +122,7 @@
           <div class="input-suffix"><input name="tcp_timeout" type="number" min="0.1" max="10" step="0.1" value="{{ config.get('timeout', config.get('tcp_timeout', '1')) }}" required><span>seconds</span></div>
         </label>
       </div>
-      <div class="form-grid tcp-policy-row">
+      <div class="form-grid tcp-policy-row automation-threshold-grid">
         <label>Condition is met when
           {% set tcp_failure_mode = config.get('failure_mode', config.get('tcp_failure_mode', 'at_least')) %}
           <select name="tcp_failure_mode">
@@ -148,7 +148,7 @@
         <div class="snmp-rule-list" data-snmp-rule-list></div>
         <p class="empty" data-snmp-rule-empty>No SNMP rules yet.</p>
       </div>
-      <div class="form-grid tcp-policy-row">
+      <div class="form-grid tcp-policy-row automation-threshold-grid">
         <label>Condition is met when all rules match on
           {% set snmp_host_failure_mode = config.get('host_failure_mode', config.get('snmp_host_failure_mode', 'at_least')) %}
           <select name="snmp_host_failure_mode"><option value="at_least" {% if snmp_host_failure_mode == 'at_least' %}selected{% endif %}>At least this many hosts</option><option value="all" {% if snmp_host_failure_mode == 'all' %}selected{% endif %}>All selected hosts</option></select>
@@ -178,7 +178,7 @@
         <label class="check"><input type="checkbox" name="certificate_check_trust" value="1" {% if config.get('check_trust', config.get('certificate_check_trust', true)) %}checked{% endif %}>Require validation by the toolkit server’s system trust store</label>
         <label class="check"><input type="checkbox" name="certificate_check_chain" value="1" {% if config.get('check_chain', config.get('certificate_check_chain', true)) %}checked{% endif %}>Require valid presented chain order with no likely missing intermediate</label>
       </fieldset>
-      <div class="form-grid tcp-policy-row">
+      <div class="form-grid tcp-policy-row automation-threshold-grid">
         <label>Condition is met when
           {% set certificate_failure_mode = config.get('failure_mode', config.get('certificate_failure_mode', 'at_least')) %}
           <select name="certificate_failure_mode"><option value="at_least" {% if certificate_failure_mode == 'at_least' %}selected{% endif %}>At least this many targets fail</option><option value="all" {% if certificate_failure_mode == 'all' %}selected{% endif %}>All targets fail</option></select>

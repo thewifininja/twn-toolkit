@@ -90,6 +90,18 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("font-variant-numeric: tabular-nums;", stylesheet)
         self.assertIn("overflow-wrap: anywhere;", stylesheet)
 
+    def test_automation_threshold_rows_share_aligned_label_space(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        condition_template = (
+            TEMPLATE_ROOT / "automations" / "_condition_forms.html"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(".automation-threshold-grid > label {", stylesheet)
+        self.assertIn("grid-template-rows: minmax(2.35em, auto) auto;", stylesheet)
+        self.assertGreaterEqual(condition_template.count("automation-threshold-grid"), 5)
+
 
 if __name__ == "__main__":
     unittest.main()
