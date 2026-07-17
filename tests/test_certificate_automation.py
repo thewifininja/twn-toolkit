@@ -565,7 +565,7 @@ class CertificateAutomationRouteTests(unittest.TestCase):
         self.assertIn(b"New credential", response.data)
         self.assertIn(b"New PKI server", response.data)
         self.assertIn(b"New template", response.data)
-        self.assertIn(b'class="certificate-profile-actions"', response.data)
+        self.assertIn(b'class="button-row profile-form-actions"', response.data)
         self.assertIn(b'form="pki-credential-', response.data)
 
     def test_profile_enrollment_and_download_archive(self) -> None:

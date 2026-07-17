@@ -221,7 +221,7 @@
             <label>Username<input name="username" required value="{{ profile.username }}"></label>
             <label>New password<input name="password" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved password"></label>
           </form>
-          <div class="certificate-profile-actions">
+          <div class="button-row profile-form-actions">
             <button type="submit" form="pki-credential-{{ profile.id }}">Update</button>
             <form method="post" action="{{ url_for('tools.delete_pki_credential', credential_id=profile.id) }}" data-confirm="Delete credential profile “{{ profile.name }}”?"><button class="danger" type="submit">Delete</button></form>
           </div>
@@ -260,7 +260,7 @@
             <label>Certificate retrieval<select name="retrieval_strategy"><option value="same_endpoint" {% if profile.retrieval_strategy == 'same_endpoint' %}selected{% endif %}>Use enrollment endpoint</option><option value="resolved_ipv4" {% if profile.retrieval_strategy == 'resolved_ipv4' %}selected{% endif %}>Search resolved IPv4 backends</option></select></label>
             <label>Timeout<input name="timeout" type="number" min="2" max="60" value="{{ profile.timeout|int }}"></label>
           </form>
-          <div class="certificate-profile-actions">
+          <div class="button-row profile-form-actions">
             <button type="submit" form="pki-server-{{ profile.id }}">Update</button>
             <form method="post" action="{{ url_for('tools.test_pki_server', server_id=profile.id) }}" data-loading-message="Testing PKI server…">
               {% if not profile.credential_id %}<details class="certificate-one-time-credentials"><summary>Credentials for test</summary><div class="certificate-inline-fields"><label>Username<input name="username" autocomplete="username"></label><label>Password<input name="password" type="password" autocomplete="current-password"></label></div></details>{% endif %}
@@ -294,7 +294,7 @@
             <label>RSA key size<select name="key_size">{% for size in valid_key_sizes %}<option value="{{ size }}" {% if size == profile.key_size %}selected{% endif %}>{{ size }} bits</option>{% endfor %}</select></label>
             <label>Renewal window<input name="renewal_days" type="number" min="1" max="365" value="{{ profile.renewal_days }}"></label>
           </form>
-          <div class="certificate-profile-actions">
+          <div class="button-row profile-form-actions">
             <button type="submit" form="pki-template-{{ profile.id }}">Update</button>
             <form method="post" action="{{ url_for('tools.delete_pki_template', template_id=profile.id) }}" data-confirm="Delete certificate template profile “{{ profile.name }}”?"><button class="danger" type="submit">Delete</button></form>
           </div>

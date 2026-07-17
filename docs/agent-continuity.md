@@ -238,6 +238,10 @@ make state, risk, and the next action obvious.
   geometry changes. Hover/focus may change background or border color but must
   remain visually consistent in light and dark themes. Apply fixes through the
   shared component selectors rather than per-tool overrides.
+- Saved-record actions use `.button-row`. When independent forms require the
+  actions to sit outside the edit form, add the shared `.profile-form-actions`
+  modifier so padding, spacing, and child-form margins remain consistent. Do not
+  create a tool-specific action-row wrapper.
 
 ## Architecture standards
 

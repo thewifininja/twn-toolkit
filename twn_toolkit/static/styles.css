@@ -1562,7 +1562,6 @@ button.danger {
 }
 
 .certificate-managed-actions,
-.certificate-profile-actions,
 .certificate-detail-actions {
   align-items: center;
   display: flex;
@@ -1571,7 +1570,6 @@ button.danger {
 }
 
 .certificate-managed-actions .compact,
-.certificate-profile-actions .compact,
 button.compact,
 .button-link.compact {
   min-height: 34px;
@@ -1660,8 +1658,13 @@ button.compact,
   font-weight: 500;
 }
 
-.certificate-profile-actions {
-  margin-top: 10px;
+.profile-form-actions {
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+  padding: 0 16px 16px;
+}
+
+.profile-form-actions > form {
+  margin: 0;
 }
 
 .sr-only {
