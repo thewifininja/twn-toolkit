@@ -1522,9 +1522,25 @@ class AutomationUiRegressionTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1] / "twn_toolkit"
         script = (root / "static" / "ping-tool.js").read_text(encoding="utf-8")
         template = (root / "templates" / "tools" / "ping.html").read_text(encoding="utf-8")
-        self.assertIn('body: JSON.stringify({hosts: roundHostsSource})', script)
+        self.assertIn('body: JSON.stringify({hosts: roundHostsSource, timeout: timeoutInput.value})', script)
         self.assertIn('id="ping-update-targets"', template)
+        self.assertIn('id="ping-timeout"', template)
+        self.assertIn("data-timeout", template)
         self.assertIn("Existing history was preserved", script)
+        self.assertIn("remainingDelay = Math.max(0", script)
+        self.assertIn("duration_ms", script)
+        self.assertIn("Effective cadence is limited", script)
+        self.assertIn("const historySampleBudget = 500_000", script)
+        self.assertIn("trimHistoryToBudget(series)", script)
+        self.assertIn('id="ping-host-list"', template)
+        self.assertIn('id="ping-graph-grid"', template)
+        self.assertIn('aria-multiselectable="true"', template)
+        self.assertIn("const selectedHosts = new Set()", script)
+        self.assertIn("const graphViews = new Map()", script)
+        self.assertIn("graphViews.forEach", script)
+        self.assertNotIn("maxSelectedGraphs", script)
+        self.assertNotIn("of 8", script)
+        self.assertEqual(script.count("totals.total += 1;"), 1)
 
 
 if __name__ == "__main__":

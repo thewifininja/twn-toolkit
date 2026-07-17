@@ -43,6 +43,7 @@ from .tool_catalog import TOOL_BY_ID, grouped_access_tools
 from .audit import AuditStore, annotate_audit_event, audit_reference
 from .operational import OperationalSettingsStore
 from .migrations import MigrationManager
+from .network_tools import ping_engine_capability
 from .tftp import tftp_process_status
 from .ssh_transfer_server import ssh_transfer_process_status
 from .ftp_server import ftp_process_status
@@ -297,7 +298,18 @@ def register_admin_routes(
                 finally: connection.close()
             except sqlite3.Error as exc: status = str(exc)
             databases.append({"name": path.name, "size": _format_bytes(path.stat().st_size), "status": status})
-        dependencies = [{"name": name, "available": bool(shutil.which(name))} for name in ("ping", "traceroute", "tcpdump", "openssl")]
+        dependencies = [
+            {"name": name, "available": bool(shutil.which(name)), "detail": ""}
+            for name in ("ping", "traceroute", "tcpdump", "openssl")
+        ]
+        ping_capability = ping_engine_capability()
+        dependencies.append(
+            {
+                "name": "fping high-capacity ICMP",
+                "available": ping_capability["accelerated"],
+                "detail": ping_capability["detail"],
+            }
+        )
         audit_query = request.args.get("audit_q", "").strip()[:160]
         try:
             audit_page_number = max(1, int(request.args.get("audit_page", "1")))

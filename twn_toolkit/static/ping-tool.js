@@ -2,6 +2,7 @@
   const form = document.getElementById("ping-form");
   const hostsInput = document.getElementById("ping-hosts");
   const intervalInput = document.getElementById("ping-interval");
+  const timeoutInput = document.getElementById("ping-timeout");
   const startButton = document.getElementById("ping-start");
   const stopButton = document.getElementById("ping-stop");
   const updateTargetsButton = document.getElementById("ping-update-targets");
@@ -12,7 +13,14 @@
   const status = document.getElementById("ping-status");
   const validationWarning = document.getElementById("ping-validation-warning");
   const resultsPanel = document.getElementById("ping-results");
-  const tableBody = document.querySelector(".ping-table tbody");
+  const hostList = document.getElementById("ping-host-list");
+  const hostFilter = document.getElementById("ping-host-filter");
+  const hostStatusFilter = document.getElementById("ping-host-status-filter");
+  const hostCount = document.getElementById("ping-host-count");
+  const selectionCount = document.getElementById("ping-selection-count");
+  const graphSummary = document.getElementById("ping-graph-summary");
+  const graphEmpty = document.getElementById("ping-graph-empty");
+  const graphGrid = document.getElementById("ping-graph-grid");
   const historyRange = document.getElementById("ping-history-range");
   const followLive = document.getElementById("ping-follow-live");
   const historyPosition = document.getElementById("ping-history-position");
@@ -22,10 +30,12 @@
   const historyNewer = document.getElementById("ping-history-newer");
   const historyNavigationSummary = document.getElementById("ping-history-navigation-summary");
 
-  if (!form || !hostsInput || !intervalInput || !startButton || !stopButton || !updateTargetsButton ||
+  if (!form || !hostsInput || !intervalInput || !timeoutInput || !startButton || !stopButton || !updateTargetsButton ||
       !profileSelect || !profileNameInput || !profileSaveButton ||
       !profileDeleteButton || !status || !validationWarning || !resultsPanel ||
-      !tableBody || !historyRange || !followLive || !historyPosition ||
+      !hostList || !hostFilter || !hostStatusFilter || !hostCount ||
+      !selectionCount || !graphSummary || !graphEmpty || !graphGrid ||
+      !historyRange || !followLive || !historyPosition ||
       !exportHistory || !historyEnd || !historyOlder ||
       !historyNewer || !historyNavigationSummary) {
     return;
@@ -43,14 +53,19 @@
   let activeHosts = new Set();
   let activeTargetRevision = 0;
   const history = new Map();
-  const resultRows = new Map();
+  const hostViews = new Map();
+  const graphViews = new Map();
+  const selectedHosts = new Set();
   const profileStorageKey = "twn:ping-profile";
   const activityIntervalMs = 30_000;
+  const historySampleBudget = 500_000;
   const chartTooltip = document.createElement("div");
   chartTooltip.className = "ping-chart-tooltip";
   chartTooltip.hidden = true;
   document.body.appendChild(chartTooltip);
   window.addEventListener("themechange", renderAllCharts);
+  hostFilter.addEventListener("input", applyHostFilters);
+  hostStatusFilter.addEventListener("change", applyHostFilters);
 
   historyRange.addEventListener("change", () => {
     if (!followLive.checked && lockedViewEnd != null) {
@@ -100,6 +115,7 @@
       .map((target) => target.label ? `${target.label} = ${target.host}` : target.host)
       .join("\n");
     intervalInput.value = option.dataset.interval || "2";
+    timeoutInput.value = option.dataset.timeout || "1";
     profileNameInput.value = option.value;
     loadedProfileName = option.value;
     sessionStorage.setItem(profileStorageKey, option.value);
@@ -127,6 +143,7 @@
           original_name: loadedProfileName,
           hosts: hostsInput.value,
           interval: intervalInput.value,
+          timeout: timeoutInput.value,
         }),
       });
       const data = await response.json();
@@ -200,11 +217,17 @@
     activeTargetRevision += 1;
     running = true;
     history.clear();
-    resultRows.clear();
+    hostViews.clear();
+    graphViews.clear();
+    selectedHosts.clear();
     lockedViewEnd = null;
     followLive.checked = true;
     historyPosition.value = "1000";
-    tableBody.innerHTML = "";
+    hostList.innerHTML = "";
+    graphGrid.innerHTML = "";
+    hostFilter.value = "";
+    hostStatusFilter.value = "all";
+    updateSelectionSummary();
     startButton.disabled = true;
     stopButton.disabled = false;
     updateTargetsButton.disabled = false;
@@ -232,12 +255,15 @@
       activeHostsSource = targetsToSource(targets);
       activeHosts = new Set(targets.map((target) => target.host));
       activeTargetRevision += 1;
-      resultRows.forEach((view, host) => {
+      hostViews.forEach((view, host) => {
         if (!activeHosts.has(host)) {
-          view.status.textContent = "Removed";
-          view.status.className = "ping-paused";
+          view.state = "removed";
+          updateHostView(view);
+          const graphView = graphViews.get(host);
+          if (graphView) updateGraphStatus(graphView, "removed");
         }
       });
+      applyHostFilters();
       status.textContent = `Updated active targets to ${targets.length}. Existing history was preserved.`;
     } catch (error) {
       status.textContent = error.message;
@@ -263,7 +289,7 @@
       const response = await fetch(form.dataset.runUrl, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({hosts: roundHostsSource}),
+        body: JSON.stringify({hosts: roundHostsSource, timeout: timeoutInput.value}),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -275,7 +301,16 @@
       if (roundRevision === activeTargetRevision) {
         renderResults(data.results || []);
         trackPingRound(data.results || []);
-        status.textContent = `Last round completed at ${new Date().toLocaleTimeString()}.`;
+        const durationMs = Number(data.round && data.round.duration_ms);
+        const timeoutSeconds = Number(data.round && data.round.timeout);
+        const engine = data.round && data.round.engine === "fping" ? "high-capacity fping" : "compatibility ping";
+        const configuredMs = Math.max(1, Math.min(60, Number(intervalInput.value) || 2)) * 1000;
+        const duration = Number.isFinite(durationMs) ? `${(durationMs / 1000).toFixed(2)}s` : "an unknown duration";
+        const cadenceNote = Number.isFinite(durationMs) && durationMs > configuredMs
+          ? ` Effective cadence is limited by the ${duration} round duration.`
+          : "";
+        const timeoutNote = Number.isFinite(timeoutSeconds) ? ` with a ${timeoutSeconds}s probe timeout` : "";
+        status.textContent = `Last round completed in ${duration} using ${engine}${timeoutNote} at ${new Date().toLocaleTimeString()}.${cadenceNote}`;
       }
     } catch (error) {
       status.textContent = error.message;
@@ -403,32 +438,125 @@
       });
       history.set(result.host, hostHistory);
 
-      let view = resultRows.get(result.host);
-      if (!view) {
-        view = createResultRow(result);
-        resultRows.set(result.host, view);
-        tableBody.appendChild(view.row);
+      let hostView = hostViews.get(result.host);
+      if (!hostView) {
+        hostView = createHostView(result);
+        hostViews.set(result.host, hostView);
+        hostList.appendChild(hostView.button);
       }
-      view.status.textContent = result.reachable ? "Up" : "Down";
-      view.status.className = result.reachable ? "ping-up" : "ping-down";
-      const statistics = statisticsCell(hostHistory);
-      view.statistics.replaceChildren(...statistics.childNodes);
-      renderHistoryCanvas(view, hostHistory);
+      hostView.result = result;
+      hostView.state = result.reachable ? "up" : "down";
+      updateHostView(hostView);
+
+      if (hostViews.size === 1 && selectedHosts.size === 0) {
+        selectGraph(result.host);
+      }
+      const graphView = graphViews.get(result.host);
+      if (graphView) updateGraphView(graphView, result, hostHistory);
     });
+    hostCount.textContent = `${activeHosts.size} host${activeHosts.size === 1 ? "" : "s"}`;
+    applyHostFilters();
+    updateSelectionSummary();
     updateHistoryNavigator();
   }
 
-  function createResultRow(result) {
-    const row = document.createElement("tr");
-    const host = hostCell(result);
+  function createHostView(result) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ping-host-option";
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", "false");
+    const indicator = document.createElement("span");
+    indicator.className = "ping-host-state-dot";
+    indicator.setAttribute("aria-hidden", "true");
+    const identity = document.createElement("span");
+    identity.className = "ping-host-option-identity";
+    const label = document.createElement("strong");
+    label.textContent = result.label || result.host;
+    identity.appendChild(label);
+    if (result.label) {
+      const address = document.createElement("small");
+      address.textContent = result.host;
+      identity.appendChild(address);
+    }
+    const state = document.createElement("span");
+    state.className = "ping-host-option-state";
+    button.append(indicator, identity, state);
+    const view = {button, indicator, stateLabel: state, result, state: "down"};
+    button.addEventListener("click", () => toggleGraph(result.host));
+    return view;
+  }
+
+  function updateHostView(view) {
+    const selected = selectedHosts.has(view.result.host);
+    view.button.dataset.state = view.state;
+    view.button.classList.toggle("selected", selected);
+    view.button.setAttribute("aria-selected", String(selected));
+    view.stateLabel.textContent = view.state === "up" ? "Up" : view.state === "down" ? "Down" : "Removed";
+  }
+
+  function toggleGraph(host) {
+    if (selectedHosts.has(host)) {
+      deselectGraph(host);
+      return;
+    }
+    selectGraph(host);
+  }
+
+  function selectGraph(host) {
+    const hostView = hostViews.get(host);
+    if (!hostView || selectedHosts.has(host)) return;
+    selectedHosts.add(host);
+    updateHostView(hostView);
+    const graphView = createGraphView(hostView.result);
+    graphViews.set(host, graphView);
+    graphGrid.appendChild(graphView.card);
+    const series = history.get(host);
+    if (series) updateGraphView(graphView, hostView.result, series);
+    if (hostView.state === "removed") updateGraphStatus(graphView, "removed");
+    updateSelectionSummary();
+    applyHostFilters();
+    updateHistoryNavigator();
+  }
+
+  function deselectGraph(host) {
+    selectedHosts.delete(host);
+    const hostView = hostViews.get(host);
+    if (hostView) updateHostView(hostView);
+    const graphView = graphViews.get(host);
+    if (graphView) graphView.card.remove();
+    graphViews.delete(host);
+    updateSelectionSummary();
+    applyHostFilters();
+    updateHistoryNavigator();
+  }
+
+  function createGraphView(result) {
+    const card = document.createElement("article");
+    card.className = "ping-graph-card";
+    const header = document.createElement("header");
+    const identity = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = result.label || result.host;
+    identity.appendChild(title);
+    if (result.label) {
+      const address = document.createElement("code");
+      address.textContent = result.host;
+      identity.appendChild(address);
+    }
+    const actions = document.createElement("div");
+    actions.className = "ping-graph-card-actions";
+    const state = document.createElement("span");
+    state.className = "pill";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "secondary compact";
+    remove.textContent = "Remove graph";
+    remove.addEventListener("click", () => deselectGraph(result.host));
+    actions.append(state, remove);
+    header.append(identity, actions);
     const statistics = document.createElement("div");
     statistics.className = "ping-host-statistics";
-    host.appendChild(statistics);
-    row.appendChild(host);
-    const statusCell = cell("");
-    row.appendChild(statusCell);
-    const historyCell = document.createElement("td");
-    historyCell.className = "ping-history-cell";
     const chart = document.createElement("div");
     chart.className = "ping-history-canvas-wrap";
     const canvas = document.createElement("canvas");
@@ -436,14 +564,46 @@
     canvas.setAttribute("role", "img");
     canvas.setAttribute("aria-label", `Latency history for ${result.label || result.host}`);
     chart.appendChild(canvas);
-    historyCell.appendChild(chart);
-    row.appendChild(historyCell);
-    const view = {row, status: statusCell, statistics, chart, canvas, host: result.host, visiblePoints: []};
+    card.append(header, statistics, chart);
+    const view = {card, status: state, statistics, chart, canvas, host: result.host, visiblePoints: []};
     canvas.addEventListener("mousemove", (event) => showCanvasTooltip(view, event));
     canvas.addEventListener("mouseleave", () => {
       chartTooltip.hidden = true;
     });
     return view;
+  }
+
+  function updateGraphView(view, result, series) {
+    updateGraphStatus(view, result.reachable ? "up" : "down");
+    const statistics = statisticsCell(series);
+    view.statistics.replaceChildren(...statistics.childNodes);
+    renderHistoryCanvas(view, series);
+  }
+
+  function updateGraphStatus(view, state) {
+    view.status.textContent = state === "up" ? "Up" : state === "down" ? "Down" : "Removed";
+    view.status.className = `pill${state === "up" ? " success" : state === "down" ? " error" : ""}`;
+  }
+
+  function updateSelectionSummary() {
+    const count = selectedHosts.size;
+    selectionCount.textContent = `${count} graphed`;
+    graphSummary.textContent = count
+      ? `${count} selected host${count === 1 ? "" : "s"}`
+      : "Select a host from the list.";
+    graphEmpty.hidden = count > 0;
+  }
+
+  function applyHostFilters() {
+    const query = hostFilter.value.trim().toLowerCase();
+    const stateFilter = hostStatusFilter.value;
+    hostViews.forEach((view, host) => {
+      const identity = `${view.result.label || ""} ${host} ${view.state}`.toLowerCase();
+      const stateMatches = stateFilter === "all"
+        || stateFilter === view.state
+        || (stateFilter === "selected" && selectedHosts.has(host));
+      view.button.hidden = !stateMatches || Boolean(query && !identity.includes(query));
+    });
   }
 
   function createHistory() {
@@ -453,17 +613,31 @@
   function addHistorySample(series, point) {
     series.raw.push(point);
     const now = point.time.getTime();
-    const rawCutoff = now - 60 * 60 * 1000;
+    const rawCutoff = now - 10 * 60 * 1000;
     while (series.raw.length && series.raw[0].time.getTime() < rawCutoff) {
       mergeBucket(series.tenSecond, pointToBucket(series.raw.shift()), 10_000);
     }
-    const tenSecondCutoff = now - 24 * 60 * 60 * 1000;
+    const tenSecondCutoff = now - 60 * 60 * 1000;
     while (series.tenSecond.length && series.tenSecond[0].time.getTime() < tenSecondCutoff) {
       mergeBucket(series.minute, series.tenSecond.shift(), 60_000);
     }
     const retainedCutoff = now - 7 * 24 * 60 * 60 * 1000;
     while (series.minute.length && series.minute[0].time.getTime() < retainedCutoff) {
       series.minute.shift();
+    }
+    trimHistoryToBudget(series);
+  }
+
+  function trimHistoryToBudget(series) {
+    const targetCount = Math.max(1, activeHosts.size);
+    const perHostBudget = Math.max(
+      600,
+      Math.min(20_000, Math.floor(historySampleBudget / targetCount))
+    );
+    while (series.raw.length + series.tenSecond.length + series.minute.length > perHostBudget) {
+      if (series.minute.length) series.minute.shift();
+      else if (series.tenSecond.length) series.tenSecond.shift();
+      else series.raw.shift();
     }
   }
 
@@ -519,7 +693,7 @@
     if (!points.length) return;
     const canvas = view.canvas;
     const cssWidth = Math.max(320, view.chart.clientWidth || 420);
-    const cssHeight = 150;
+    const cssHeight = 240;
     const scale = window.devicePixelRatio || 1;
     canvas.width = Math.round(cssWidth * scale);
     canvas.height = Math.round(cssHeight * scale);
@@ -529,7 +703,7 @@
     context.scale(scale, scale);
 
     const plotTop = 14;
-    const plotBottom = 112;
+    const plotBottom = cssHeight - 38;
     const plotLeft = 44;
     const plotRight = 12;
     const plotWidth = cssWidth - plotLeft - plotRight;
@@ -658,7 +832,7 @@
   }
 
   function statisticsCell(series) {
-    const item = document.createElement("td");
+    const item = document.createElement("div");
     const totals = [...series.minute, ...series.tenSecond].reduce(
       (summary, bucket) => ({
         min: bucket.received ? (summary.min == null ? bucket.min : Math.min(summary.min, bucket.min)) : summary.min,
@@ -713,7 +887,7 @@
   }
 
   function renderAllCharts() {
-    resultRows.forEach((view, host) => {
+    graphViews.forEach((view, host) => {
       const series = history.get(host);
       if (series) renderHistoryCanvas(view, series);
     });
@@ -723,7 +897,9 @@
   function retainedBounds() {
     let earliest = Infinity;
     let latest = -Infinity;
-    history.forEach((series) => {
+    selectedHosts.forEach((host) => {
+      const series = history.get(host);
+      if (!series) return;
       const points = historyPoints(series);
       if (points.length) {
         earliest = Math.min(earliest, points[0].time.getTime());
@@ -735,7 +911,16 @@
 
   function updateHistoryNavigator() {
     const bounds = retainedBounds();
-    if (!bounds) return;
+    if (!bounds) {
+      historyPosition.disabled = true;
+      historyPosition.value = "1000";
+      historyEnd.disabled = true;
+      historyEnd.value = "";
+      historyOlder.disabled = true;
+      historyNewer.disabled = true;
+      historyNavigationSummary.textContent = "No graph selected";
+      return;
+    }
     const selectedRange = Number(historyRange.value);
     const canNavigate = bounds.latest - bounds.earliest > selectedRange;
     historyPosition.disabled = !canNavigate;
@@ -903,27 +1088,6 @@
     chartTooltip.style.top = `${event.clientY + 12}px`;
   }
 
-  function cell(value) {
-    const item = document.createElement("td");
-    item.textContent = value;
-    return item;
-  }
-
-  function hostCell(result) {
-    const item = document.createElement("td");
-    if (!result.label) {
-      item.textContent = result.host;
-      return item;
-    }
-    const label = document.createElement("strong");
-    label.textContent = result.label;
-    const host = document.createElement("span");
-    host.className = "ping-host-address";
-    host.textContent = result.host;
-    item.append(label, host);
-    return item;
-  }
-
   function updateProfileOption(profile, originalName) {
     if (originalName && originalName !== profile.name) {
       profileSelect.querySelector(`option[value="${CSS.escape(originalName)}"]`)?.remove();
@@ -936,6 +1100,7 @@
     }
     option.textContent = profile.name;
     option.dataset.interval = String(profile.interval);
+    option.dataset.timeout = String(profile.timeout || 1);
     option.dataset.targets = JSON.stringify(profile.targets);
     profileSelect.value = profile.name;
   }

@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 from typing import Any
 
 from .ssh_security import disabled_ssh_algorithms, format_ssh_connection_error
@@ -20,6 +21,10 @@ HOSTNAME_PATTERN = re.compile(
     r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.?$"
 )
 PING_TIME_PATTERN = re.compile(r"time[=<]([\d.]+)\s*ms", re.IGNORECASE)
+FPING_RESULT_PATTERN = re.compile(r"^(.*?)\s+:\s+(-|<?[\d.]+)$")
+PING_COMPATIBILITY_LIMIT = 100
+PING_ACCELERATED_LIMIT = 250
+FPING_PACKET_INTERVAL_MS = 2
 SSH_TIMEOUT_PREFIX = re.compile(r"^\[timeout=(\d+)\]\s+(.+)$", re.IGNORECASE)
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 SSH_DEFAULT_COMMAND_TIMEOUT = 300
@@ -612,12 +617,144 @@ def _dns_lookup(
         }
 
 
-def ping_hosts(hosts: list[str], timeout: int = 1) -> list[dict[str, Any]]:
+@lru_cache(maxsize=1)
+def ping_engine_capability() -> dict[str, Any]:
+    binary = shutil.which("fping")
+    if not binary:
+        return {
+            "engine": "ping",
+            "accelerated": False,
+            "target_limit": PING_COMPATIBILITY_LIMIT,
+            "detail": "fping is not installed or is not on the toolkit service PATH.",
+        }
+    try:
+        completed = subprocess.run(
+            [binary, "-C", "1", "-q", "-r", "0", "-t", "250", "127.0.0.1"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {
+            "engine": "ping",
+            "accelerated": False,
+            "target_limit": PING_COMPATIBILITY_LIMIT,
+            "detail": "fping is installed but could not complete a local capability probe.",
+        }
+    output = f"{completed.stdout}\n{completed.stderr}"
+    if completed.returncode != 0 or not re.search(
+        r"^127\.0\.0\.1\s+:\s+(?:<?[\d.]+)$", output, re.MULTILINE
+    ):
+        return {
+            "engine": "ping",
+            "accelerated": False,
+            "target_limit": PING_COMPATIBILITY_LIMIT,
+            "detail": "fping is installed but lacks working ICMP capability for the toolkit service.",
+        }
+    return {
+        "engine": "fping",
+        "accelerated": True,
+        "target_limit": PING_ACCELERATED_LIMIT,
+        "detail": "Batched high-capacity ICMP is available.",
+        "path": binary,
+    }
+
+
+def ping_hosts(hosts: list[str], timeout: float = 1) -> list[dict[str, Any]]:
+    capability = ping_engine_capability()
+    if capability["accelerated"]:
+        return _fping_hosts(hosts, timeout, str(capability["path"]))
+    return _ping_hosts_compatibility(hosts, timeout)
+
+
+def _ping_hosts_compatibility(
+    hosts: list[str], timeout: float = 1
+) -> list[dict[str, Any]]:
     workers = min(20, len(hosts))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {executor.submit(_ping_host, host, timeout): index for index, host in enumerate(hosts)}
         indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
     return [result for _index, result in sorted(indexed_results)]
+
+
+def _fping_hosts(
+    hosts: list[str], timeout: float, binary: str
+) -> list[dict[str, Any]]:
+    if not hosts:
+        return []
+    timeout_ms = max(1, int(timeout * 1000))
+    command = [
+        binary,
+        "-C",
+        "1",
+        "-q",
+        "-r",
+        "0",
+        "-i",
+        str(FPING_PACKET_INTERVAL_MS),
+        "-t",
+        str(timeout_ms),
+        *hosts,
+    ]
+    safety_timeout = timeout + (len(hosts) * FPING_PACKET_INTERVAL_MS / 1000) + 1
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=safety_timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ToolInputError(
+            "The high-capacity ping engine exceeded its bounded round timeout."
+        ) from exc
+    except OSError as exc:
+        raise ToolInputError(
+            "The high-capacity ping engine could not be started. Restart the toolkit "
+            "to recheck its optional fping dependency."
+        ) from exc
+    if completed.returncode not in {0, 1}:
+        raise ToolInputError(
+            "The high-capacity ping engine failed. Check fping under System Diagnostics."
+        )
+
+    batch_elapsed_ms = round((time.monotonic() - started) * 1000, 1)
+    samples: dict[str, list[float | None]] = {}
+    output = f"{completed.stdout}\n{completed.stderr}"
+    for line in output.splitlines():
+        match = FPING_RESULT_PATTERN.match(line.strip())
+        if not match:
+            continue
+        host = _canonical_ping_identity(match.group(1))
+        value = match.group(2).lstrip("<")
+        samples.setdefault(host, []).append(None if value == "-" else float(value))
+
+    results = []
+    for host in hosts:
+        host_samples = samples.get(_canonical_ping_identity(host), [])
+        had_sample = bool(host_samples)
+        latency = host_samples.pop(0) if had_sample else None
+        result = {
+            "host": host,
+            "reachable": latency is not None,
+            "latency_ms": latency,
+            "elapsed_ms": latency if latency is not None else batch_elapsed_ms,
+        }
+        if not had_sample:
+            result["error"] = "Target could not be resolved or probed by fping."
+        results.append(result)
+    return results
+
+
+def _canonical_ping_identity(value: str) -> str:
+    candidate = value.strip()
+    try:
+        return str(ipaddress.ip_address(candidate.split("%", 1)[0])).lower()
+    except ValueError:
+        return candidate.rstrip(".").lower()
 
 
 def run_ssh_hosts(
@@ -753,7 +890,7 @@ def _valid_host(host: str) -> bool:
         return bool(HOSTNAME_PATTERN.fullmatch(host))
 
 
-def _ping_host(host: str, timeout: int) -> dict[str, Any]:
+def _ping_host(host: str, timeout: float) -> dict[str, Any]:
     is_ipv6 = False
     try:
         is_ipv6 = ipaddress.ip_address(host.split("%", 1)[0]).version == 6
@@ -763,13 +900,14 @@ def _ping_host(host: str, timeout: int) -> dict[str, Any]:
     system = platform.system()
     if is_ipv6 and system == "Darwin":
         binary = shutil.which("ping6") or "/sbin/ping6"
-        command = [binary, "-c", "1", "-W", str(timeout * 1000), host]
+        command = [binary, "-c", "1", "-W", str(max(1, round(timeout * 1000))), host]
     else:
         binary = shutil.which("ping") or "/sbin/ping"
         command = [binary]
         if is_ipv6:
             command.append("-6")
-        command.extend(["-c", "1", "-W", str(timeout * 1000 if system == "Darwin" else timeout), host])
+        wait = max(1, round(timeout * 1000)) if system == "Darwin" else max(1, round(timeout))
+        command.extend(["-c", "1", "-W", str(wait), host])
 
     started = time.monotonic()
     try:

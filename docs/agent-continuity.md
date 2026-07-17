@@ -419,6 +419,21 @@ make state, risk, and the next action obvious.
   `Classroom-0001`. Expanded addresses count against the caller's existing
   limit. Keep structured destination formats such as `host | ports` on their
   dedicated parser rather than applying general range expansion implicitly.
+- Multi-Host Ping capability is determined by
+  `network_tools.ping_engine_capability`, which runs and caches a real localhost
+  ICMP probe. A working optional `fping` command enables one bounded batch
+  subprocess per round and a 250-target limit. Missing or unusable `fping`
+  retains the 20-worker system-`ping` compatibility engine and its 100-target
+  limit. Do not auto-install OS packages or invoke privilege escalation from
+  the web application or installer. Rounds never overlap; the browser reports
+  actual duration when it exceeds the configured cadence. Browser history keeps
+  ten minutes of raw samples and one hour of ten-second buckets before using
+  minute buckets; a 500,000-sample global budget is divided across active
+  targets so long-running high-capacity sessions remain memory-bounded.
+  Multi-Ping keeps round interval separate from probe timeout. Accelerated mode
+  accepts 0.1–10 second timeouts; compatibility mode accepts 1–10 seconds because
+  portable system `ping` timeout flags do not reliably support sub-second values.
+  Existing saved profiles without a timeout load with the one-second default.
 - `tcp.reachability` reuses the regular TCP scanner. Targets use
   `Friendly Name = host | ports`, allowing a different port/range list per host.
   Each expanded host/port pair is one check, and ports normalize to stable
