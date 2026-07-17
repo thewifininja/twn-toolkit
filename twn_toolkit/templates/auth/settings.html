@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import section_header %}
+{% from "components/ui.html" import create_toggle, section_header %}
 {% block content %}
 <div class="page-head auth-settings-head">
   <p class="eyebrow">Administration</p>
@@ -106,9 +106,7 @@
       class_name="profile-manager-head"
     ) }}
     <details class="create-access-profile-card card-action-details">
-      <summary>
-        <span>New profile</span>
-      </summary>
+      {{ create_toggle("New profile") }}
       <form method="post" action="{{ url_for('save_access_profile') }}" class="form access-profile-form">
         <p class="field-note">Add a custom profile scoped to any combination of tools.</p>
         <label>Name
@@ -259,9 +257,7 @@
   {{ section_header("Users", "Password changes use the currently configured policy.", class_name="profile-manager-head") }}
   {% if current_user.is_admin %}
     <details class="add-user-card card-action-details">
-      <summary>
-        <span>New user</span>
-      </summary>
+      {{ create_toggle("New user") }}
       <form method="post" action="{{ url_for('create_user') }}" class="stack">
         <p class="field-note">Create an account and assign one or more access profiles.</p>
         <label>Username

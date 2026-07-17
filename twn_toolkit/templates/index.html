@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "components/tool_cards.html" import tool_card %}
-{% from "components/ui.html" import section_header %}
+{% from "components/ui.html" import create_toggle, section_header %}
 
 {% block content %}
 <section class="home-hero compact-hero">
@@ -24,9 +24,7 @@
       class_name="profile-manager-head"
     ) }}
     <details class="add-user-card card-action-details" {% if not profiles %}open{% endif %}>
-      <summary>
-        <span>New profile</span>
-      </summary>
+      {{ create_toggle("New profile") }}
       <form class="form" method="post" action="{{ url_for('save_profile') }}">
         <p class="field-note">Create a new FortiGate API profile.</p>
         <label>

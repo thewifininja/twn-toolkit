@@ -33,7 +33,7 @@ class UIComponentTests(unittest.TestCase):
 
         self.assertIn('class="workspace-intro"', html)
         self.assertIn('<span class="eyebrow">Workspace</span>', html)
-        self.assertIn('class="section-head profile-manager-head"', html)
+        self.assertIn('class="section-head has-actions profile-manager-head"', html)
         self.assertIn('class="section-actions"', html)
         self.assertIn('class="empty-state"', html)
 
@@ -52,6 +52,8 @@ class UIComponentTests(unittest.TestCase):
 
         self.assertIn('class="access-profile-card profile-section" open', html)
         self.assertIn('class="profile-create-details card-action-details"', html)
+        self.assertIn('class="card-action-closed-label">New credential</span>', html)
+        self.assertIn('class="card-action-open-label">Cancel</span>', html)
         self.assertIn('class="access-profile-card nested-profile-card" open', html)
         self.assertIn('class="button-row profile-form-actions"', html)
 

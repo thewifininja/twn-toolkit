@@ -2884,6 +2884,12 @@ button.compact,
   justify-content: space-between;
 }
 
+.section-head.has-actions {
+  column-gap: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .section-head > div {
   min-width: 0;
 }
@@ -2903,6 +2909,11 @@ button.compact,
 
 .section-head h2 {
   font-size: 1.15rem;
+}
+
+.section-head p {
+  line-height: 1.45;
+  max-width: 80ch;
 }
 
 .workspace-grid {
@@ -5621,9 +5632,6 @@ button.compact,
 
 .updates-section-head {
   align-items: flex-start;
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
   padding-right: 0;
 }
 
@@ -5656,6 +5664,11 @@ button.compact,
 
 .updates-panel > .compact-message {
   margin-top: 1rem;
+}
+
+.updates-panel > .side-nav-empty {
+  margin-top: 1rem;
+  padding: 0;
 }
 
 .updates-empty-state {
@@ -5970,7 +5983,7 @@ button.compact,
   top: 26px;
 }
 
-.card-action-details > summary span {
+.card-action-details > summary > .card-action-label {
   background: var(--action-secondary);
   border-radius: 6px;
   color: #fff;
@@ -5980,9 +5993,21 @@ button.compact,
   padding: 10px 14px;
 }
 
-.card-action-details > summary:hover span,
-.card-action-details[open] > summary span {
+.card-action-details > summary:hover > .card-action-label,
+.card-action-details[open] > summary > .card-action-label {
   background: var(--action-secondary-hover);
+}
+
+.card-action-open-label {
+  display: none;
+}
+
+.card-action-details[open] > summary .card-action-closed-label {
+  display: none;
+}
+
+.card-action-details[open] > summary .card-action-open-label {
+  display: inline;
 }
 
 .card-action-details > form {
@@ -6006,7 +6031,7 @@ button.compact,
   top: 15px;
 }
 
-.profile-create-details.card-action-details > summary span {
+.profile-create-details.card-action-details > summary > .card-action-label {
   min-height: 34px;
   padding: 7px 12px;
 }
@@ -6058,8 +6083,12 @@ button.compact,
   margin-top: 14px;
 }
 
-.automation-library-panel > .empty-state {
+.automation-manager > .empty-state {
   margin-top: 18px;
+}
+
+.radius-eap-warning {
+  margin-bottom: 16px;
 }
 
 .automation-library-panel > .profile-create-details[open] {
@@ -7010,7 +7039,6 @@ th {
 @media (max-width: 760px) {
   .updates-section-head {
     align-items: stretch;
-    flex-direction: column;
   }
 
   .updates-section-head .section-actions > .button-link {
@@ -7248,7 +7276,7 @@ th {
     text-align: left;
   }
 
-  .profile-create-details.card-action-details > summary span {
+  .profile-create-details.card-action-details > summary > .card-action-label {
     justify-content: center;
     width: 100%;
   }
@@ -7433,6 +7461,10 @@ th {
   .section-head {
     align-items: stretch;
     display: grid;
+  }
+
+  .section-head.has-actions {
+    grid-template-columns: 1fr;
   }
 
   .section-head form {

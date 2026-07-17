@@ -3,7 +3,7 @@
 {% from "automations/_condition_forms.html" import condition_form with context %}
 {% from "automations/_condition_evidence.html" import dns_test_evidence, ping_test_evidence, tcp_test_evidence, snmp_test_evidence, certificate_test_evidence with context %}
 {% from "automations/_action_forms.html" import action_form with context %}
-{% from "components/ui.html" import empty_state, workspace_intro %}
+{% from "components/ui.html" import create_toggle, empty_state, workspace_intro %}
 
 {% macro automation_form(values, automation=none) %}
   {% set selected_condition = automation.condition.id if automation else values.get('condition_definition_id', '') %}
@@ -69,7 +69,7 @@
 <section class="panel automation-manager automation-library-panel">
   <div class="section-head"><div><h2>Conditions</h2><p>{{ condition_definitions|length }} reusable observation{{ '' if condition_definitions|length == 1 else 's' }}</p></div></div>
   <details class="card-action-details profile-create-details" data-automation-create {% if form_error and form_section == 'condition' %}open{% endif %}>
-    <summary><span>New condition</span></summary>
+    {{ create_toggle("New condition") }}
     {% if form_error and form_section == 'condition' %}<div class="message error">{{ form_error }}</div>{% endif %}
     {{ condition_form(form) }}
   </details>
@@ -102,7 +102,7 @@
 <section class="panel automation-manager automation-library-panel">
   <div class="section-head"><div><h2>Actions</h2><p>{{ action_definitions|length }} reusable response{{ '' if action_definitions|length == 1 else 's' }}</p></div></div>
   <details class="card-action-details profile-create-details" data-automation-create {% if form_error and form_section == 'action' %}open{% endif %}>
-    <summary><span>New action</span></summary>
+    {{ create_toggle("New action") }}
     {% if form_error and form_section == 'action' %}<div class="message error">{{ form_error }}</div>{% endif %}
     {{ action_form(form) }}
   </details>
@@ -125,7 +125,7 @@
   <div class="section-head"><div><h2>Automations</h2><p>{{ automations|length }} configured · checks continue without an open browser</p></div></div>
   {% if not scheduler.running %}<div class="message warning automation-scheduler-warning"><strong>Automation scheduler is not running.</strong> Armed automations will not run until the toolkit is restarted with <code>./twn restart</code>.</div>{% endif %}
   <details class="card-action-details profile-create-details" data-automation-create {% if form_error and form_section == 'automation' %}open{% endif %}>
-    <summary><span>New automation</span></summary>
+    {{ create_toggle("New automation") }}
     {% if form_error and form_section == 'automation' %}<div class="message error">{{ form_error }}</div>{% endif %}
     {{ automation_form(form) }}
   </details>

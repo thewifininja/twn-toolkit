@@ -9,7 +9,7 @@
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {% if not eapol_available %}
-    <div class="message warning" role="note">
+    <div class="message warning radius-eap-warning" role="note">
       <strong>{{ 'macOS EAP compatibility' if is_macos else 'Optional EAP dependency unavailable' }}</strong>
       <p>PEAP/MSCHAPv2 and EAP-TLS require a separately installed <code>eapol_test</code> executable on the toolkit service’s <code>PATH</code>. PAP and CHAP remain available.{% if is_macos %} The executable is not currently available as a standard Homebrew formula.{% endif %}</p>
     </div>
