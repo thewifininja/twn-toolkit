@@ -111,7 +111,7 @@
       </div>
       <label>Message
         <textarea name="syslog_message" rows="5" maxlength="8192" placeholder="Toolkit automation fired: {{ '{{trigger.summary}}' }}" required>{{ config.get('message', config.get('syslog_message', 'Toolkit automation fired: {{trigger.summary}}')) }}</textarea>
-        <small class="field-note">Available variables: <code>{{ '{{trigger.status}}' }}</code>, <code>{{ '{{trigger.summary}}' }}</code>, <code>{{ '{{trigger.met}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>.</small>
+        <small class="field-note">Available variables: <code>{{ '{{trigger.status}}' }}</code>, <code>{{ '{{trigger.summary}}' }}</code>, <code>{{ '{{trigger.met}}' }}</code>, <code>{{ '{{trigger.job_id}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>.</small>
       </label>
     </div>
     <div data-action-fields="webhook.send" hidden>
@@ -178,6 +178,7 @@
               <code>{{ '{{trigger.summary}}' }}</code><span>Human-readable trigger summary.</span>
               <code>{{ '{{trigger.met}}' }}</code><span>Whether the condition was met.</span>
               <code>{{ '{{trigger.evidence}}' }}</code><span>Bounded evidence captured by the condition.</span>
+              <code>{{ '{{trigger.job_id}}' }}</code><span>Stable delivery identifier, also sent as the default Idempotency-Key header.</span>
               <code>{{ '{{actions.results}}' }}</code><span>Bounded, non-secret results from completed earlier stages.</span>
               <code>{{ '{{actions.successful}}' }}</code><span>Successful earlier-stage actions.</span>
               <code>{{ '{{actions.partial}}' }}</code><span>Partially successful earlier-stage actions.</span>

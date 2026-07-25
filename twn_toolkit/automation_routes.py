@@ -136,7 +136,10 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             form_error=form_error,
             form=form or _empty_form(),
             form_section=form_section,
-            scheduler=_scheduler_status(store.instance_path),
+            scheduler={
+                **_scheduler_status(store.instance_path),
+                **store.job_stats(),
+            },
             schedule_default_timezone=local_timezone_name(),
             datastore_folders=LocalDatastore(store.instance_path).folders(),
             page_section=page_section,
@@ -400,7 +403,11 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         condition = AUTOMATION_REGISTRY.conditions["manual.trigger"]
         trigger = condition.evaluate(automation["condition"]["config"])
         trigger.evidence["started_by"] = str(g.current_user["username"])
-        run_id = AutomationEngine(store).execute_actions(automation, trigger)
+        job_id = store.enqueue_manual_job(automation_id, trigger)
+        job = store.claim_job(job_id)
+        if not job:
+            raise RuntimeError("Manual automation job could not be claimed.")
+        run_id = AutomationEngine(store).process_job(job)
         run = store.get_run(run_id)
         annotate_audit_event(
             category="Automation", action="automation.ran_manually",
@@ -408,6 +415,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             resource_type="automation", resource_id=automation_id,
             resource_name=automation["name"],
             details={
+                "job id": job_id,
                 "run id": run_id,
                 "run status": (run or {}).get("status", ""),
                 "action stages": len(automation.get("action_stages", [])),
@@ -455,10 +463,13 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     def delete_automation(automation_id: str):
         require_admin()
         automation = store.get(automation_id)
+        if not automation:
+            abort(404)
         try:
             store.delete(automation_id)
-        except ValueError:
-            abort(404)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("automations", focus=automation_id))
         annotate_audit_event(
             category="Automation", action="automation.deleted",
             summary=f"Deleted automation {(automation or {}).get('name', automation_id)}.",
@@ -467,6 +478,29 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             details={"deleted automation": _automation_audit_snapshot(automation)},
         )
         flash("Automation and its retained history deleted.", "success")
+        return redirect(url_for("automations"))
+
+    @app.post("/automations/jobs/retry-failed")
+    def retry_failed_automation_jobs():
+        require_admin()
+        retried = store.retry_failed_jobs()
+        annotate_audit_event(
+            category="Automation",
+            action="automation.failed_jobs_retried",
+            summary=(
+                f"Requeued {retried} failed automation "
+                f"job{'s' if retried != 1 else ''}."
+            ),
+            resource_type="automation jobs",
+            details={"requeued jobs": retried},
+        )
+        flash(
+            (
+                f"Requeued {retried} failed automation "
+                f"job{'s' if retried != 1 else ''}."
+            ),
+            "success",
+        )
         return redirect(url_for("automations"))
 
     @app.post("/automations/<automation_id>/runs/clear")

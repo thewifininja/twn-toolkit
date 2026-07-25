@@ -77,6 +77,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "run_automation_now": "automation.home",
             "test_automation_condition": "automation.home",
             "delete_automation": "automation.home",
+            "retry_failed_automation_jobs": "automation.home",
             "clear_automation_runs": "automation.home",
             "delete_automation_run": "automation.home",
             "download_automation_run": "automation.home",
