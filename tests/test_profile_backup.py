@@ -49,6 +49,7 @@ class ProfileBackupTests(unittest.TestCase):
                 "port_scan_port_profiles",
                 "ntp_host_profiles",
                 "traceroute_host_profiles",
+                "wol_target_profiles",
                 "automation_definitions",
                 "dashboard_layout",
             ],

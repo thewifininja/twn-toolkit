@@ -111,8 +111,8 @@ The other Network Tools follow the same category layout shown in the sidebar:
 - **Multi-Host Tools:** Ping, Multi-SSH, Multi-Transfer, and TCP Port Scanner
 - **Services & Protocols:** RADIUS, certificate inspection and AD CS enrollment,
   SNMP, Webhook/API, and Syslog
-- **Traffic & Interfaces:** Wi-Fi/LAN Speed Test, DHCP Discover, and Packet
-  Replay
+- **Traffic & Interfaces:** Wi-Fi/LAN Speed Test, DHCP Discover, Wake-on-LAN,
+  and Packet Replay
 
 SNMP Tester can also discover the standard IF-MIB interfaces across saved SNMP
 hosts and build a monitor set of up to 20 interfaces. Each interface gets an

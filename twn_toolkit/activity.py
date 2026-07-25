@@ -117,6 +117,14 @@ METRIC_DEFINITIONS: tuple[MetricDefinition, ...] = (
         "ip", ("lookups",), "Addressing", "IP checks", "lookups", "checks",
         "Toolkit-facing client address", (RankDefinition("lookups", "IP checks", "checks"),),
     ),
+    MetricDefinition(
+        "wol", ("devices", "packets", "confirmed"), "Devices", "Wake-on-LAN",
+        "devices", "devices", "{confirmed} confirmed awake",
+        (
+            RankDefinition("devices", "Wake-on-LAN devices", "devices"),
+            RankDefinition("packets", "Wake-on-LAN packets", "packets"),
+        ),
+    ),
 )
 
 DEFAULT_COUNTERS: dict[str, dict[str, int]] = {
