@@ -1,0 +1,37 @@
+{% macro schedule_form(values, definition=none) %}
+  {% set config = definition.config if definition else values %}
+  {% set definition_id = definition.id if definition else values.get('schedule_definition_id', '') %}
+  {% set timezone_list_id = 'schedule-timezones-' ~ (definition_id or 'new') %}
+  <form class="form automation-form" method="post" action="{{ url_for('save_automation_schedule') }}">
+    {% if definition_id %}<input type="hidden" name="schedule_definition_id" value="{{ definition_id }}">{% endif %}
+    <label>Schedule name
+      <input name="schedule_name" maxlength="100" value="{{ definition.name if definition else values.get('schedule_name', '') }}" placeholder="Weekday maintenance window" required>
+    </label>
+    <div class="automation-condition-fields schedule-builder">
+      <div class="schedule-settings-grid">
+        <label>Timezone
+          <input name="schedule_timezone" list="{{ timezone_list_id }}" value="{{ config.get('timezone', config.get('schedule_timezone', schedule_default_timezone)) }}" placeholder="America/New_York" required>
+        </label>
+        <label>Missed occurrences
+          {% set missed_policy = config.get('missed_policy', config.get('schedule_missed_policy', 'grace')) %}
+          <select name="schedule_missed_policy" required>
+            <option value="grace" {% if missed_policy == 'grace' %}selected{% endif %}>Run within grace period</option>
+            <option value="run_late" {% if missed_policy == 'run_late' %}selected{% endif %}>Run when available</option>
+            <option value="skip" {% if missed_policy == 'skip' %}selected{% endif %}>Skip missed occurrences</option>
+          </select>
+        </label>
+        <label>Grace period
+          <div class="input-suffix"><input name="schedule_grace_minutes" type="number" min="1" max="1440" value="{{ config.get('grace_minutes', config.get('schedule_grace_minutes', '30')) }}" required><span>minutes</span></div>
+        </label>
+      </div>
+      <datalist id="{{ timezone_list_id }}"><option value="America/New_York"><option value="America/Chicago"><option value="America/Denver"><option value="America/Los_Angeles"><option value="UTC"></datalist>
+      <input type="hidden" name="schedule_rules_json" value="{{ config.get('rules', [])|tojson|forceescape }}" data-schedule-rules-json>
+      <div class="schedule-rule-editor" data-schedule-rule-editor>
+        <div class="schedule-rule-editor-head"><div><strong>Schedule rules</strong><small>Any matching rule runs the automation once.</small></div><button class="secondary" type="button" data-add-schedule-rule>Add schedule rule</button></div>
+        <div class="schedule-rule-list" data-schedule-rule-list></div>
+        <p class="empty" data-schedule-empty>No schedule rules yet.</p>
+      </div>
+    </div>
+    <div class="button-row"><button type="submit">{{ 'Update schedule' if definition else 'Save schedule' }}</button></div>
+  </form>
+{% endmacro %}

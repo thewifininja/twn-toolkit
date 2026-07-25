@@ -1,17 +1,22 @@
 # Automations
 
-Reusable conditions describe observations, reusable actions describe trusted
-responses, and automations connect them with scheduling and state policy. A
-single condition or action can be referenced by multiple automations. They
+Reusable schedules describe calendar timing, reusable conditions describe
+health observations, and reusable actions describe trusted responses.
+Automations choose one plain-language run mode—condition, schedule, or
+manual—and connect it to an action pipeline with state policy. A single
+definition can be referenced by multiple automations. They
 continue running without an open browser because
 `./twn start` launches a single scheduler process beside the Gunicorn web
 service.
 
-The web interface keeps the three responsibilities on separate pages under the
-**Automation** sidebar group: **Conditions** for observation definitions and
-tests, **Actions** for response definitions, and **Automations** for policy,
-pipelines, scheduler state, checks, and retained runs. This is a presentation
-split only; definitions remain reusable across any number of automations.
+The web interface keeps these responsibilities on separate pages under the
+**Automation** sidebar group: **Schedules** for reusable calendars,
+**Conditions** for health observations and tests, **Actions** for responses,
+and **Automations** for run mode, policy, pipelines, scheduler state, checks,
+and retained runs. Manual mode is selected directly on an automation and does
+not require a reusable definition. Existing manual and calendar source IDs
+remain valid; the storage compatibility layer does not rewrite saved
+automations.
 
 ## Calendar schedules
 
@@ -31,7 +36,7 @@ run only within a configurable grace period, or skip. Daylight-saving gaps move
 to the first valid local minute, and repeated fallback times run once. Multiple
 rules that resolve to the same instant are collapsed into one occurrence.
 
-Calendar conditions are reusable definitions, but every automation referencing
+Schedules are reusable definitions, but every automation referencing
 one consumes occurrences independently. Scheduled automations bypass the
 monitoring debounce, recovery, and cooldown state cycle. A claimed occurrence
 is leased in SQLite so scheduler restarts can retry it without two scheduler
@@ -57,8 +62,8 @@ to the next future occurrence rather than replaying a backlog.
 - Condition: multi-target TLS certificate health with expiration, hostname,
   system-trust, chain-order, likely-missing-intermediate, and connectivity
   policy.
-- Condition: reusable manual trigger for explicitly started, on-demand
-  automations. Manual conditions are never claimed by the scheduler.
+- Run mode: Manual for explicitly started, on-demand automations. Manual
+  automations are never claimed by the scheduler.
 - Check intervals: 1 second through 24 hours. The scheduler polls due work four
   times per second so one-second checks are not held behind a one-second polling
   boundary; actual duration still includes the condition execution time.
@@ -112,16 +117,23 @@ to the next future occurrence rather than replaying a backlog.
   collected action runs default to indefinite retention. Setting either policy
   to 0 disables automatic deletion for that record type.
 
-New condition and action implementations register through
+New schedule, condition, and action implementations register through
 `automation_registry.py`. The scheduler and state machine do not need
 tool-specific branches when a new registered type follows the common result
 contracts.
 
 Condition registrations live under `automation_types/condition_types/` and are
-grouped into network, trigger, SNMP, and certificate domains. The compatibility
-facade remains `automation_types/conditions.py`. Condition result rendering is
+grouped into network, SNMP, and certificate domains. Manual and calendar
+sources have a distinct internal event-source registry. The compatibility facade
+remains `automation_types/conditions.py`. Condition result rendering is
 kept in `_condition_evidence.html`, while dynamic SNMP rule editing is isolated
 in `automation-snmp.js` instead of expanding the shared automation script.
+
+Every persisted evaluation includes a versioned `evidence.evaluation` envelope
+with its source `kind` (`condition`, `schedule`, or `manual`), registered type,
+schema version, and observation timestamp. Type-specific evidence remains alongside
+that envelope for compatibility and readable diagnostics. Execution and
+prior-action metadata are added separately when an action job runs.
 
 ## Action pipelines
 
@@ -190,8 +202,8 @@ An armed automation moves through these states:
 An evaluation error produces the separate `error` state; it does not count as
 a met network condition.
 
-Automations that reference a Manual trigger do not use this scheduled state
-cycle. Their expanded card exposes `Run now`, and each explicit execution is
+Automations using Manual mode do not use this scheduled state cycle. Their
+expanded card exposes `Run now`, and each explicit execution is
 stored as a normal downloadable action run.
 
 ## Security and backups
@@ -234,7 +246,7 @@ scheduler log from `instance/twn-automation.log`.
 The current scheduler uses one process with atomic due-check and execution-job
 claiming in SQLite. Its heartbeat separates active condition checks from active
 action jobs. Web workers only configure and display automations; they do not
-run monitoring loops. Manual triggers are first written to the same durable
+run monitoring loops. Manual runs are first written to the same durable
 queue, then claimed and executed synchronously so the browser still receives
 the completed run.
 

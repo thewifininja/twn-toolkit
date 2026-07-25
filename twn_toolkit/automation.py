@@ -21,6 +21,7 @@ from .automation_registry import (
     AutomationRegistry,
     ConditionResult,
 )
+from .automation_types.models import evaluation_result
 from .schedule_tools import schedule_occurrence, schedule_should_fire
 
 
@@ -302,6 +303,56 @@ class AutomationStore:
         return definition_id
 
     def condition_definitions(self) -> list[dict[str, Any]]:
+        return [
+            item
+            for item in self.source_definitions()
+            if item["type"] not in AUTOMATION_REGISTRY.triggers
+        ]
+
+    def trigger_definitions(self) -> list[dict[str, Any]]:
+        return [
+            item
+            for item in self.source_definitions()
+            if item["type"] in AUTOMATION_REGISTRY.triggers
+        ]
+
+    def schedule_definitions(self) -> list[dict[str, Any]]:
+        return [
+            item
+            for item in self.source_definitions()
+            if item["type"] == "schedule.calendar"
+        ]
+
+    def ensure_manual_trigger_definition(self) -> str:
+        now = time.time()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id FROM automation_conditions
+                WHERE type = 'manual.trigger'
+                ORDER BY created_at, id
+                LIMIT 1
+                """
+            ).fetchone()
+            if row:
+                return str(row["id"])
+            definition_id = secrets.token_hex(12)
+            name = self._unique_definition_name(
+                connection,
+                "automation_conditions",
+                "Manual run",
+            )
+            connection.execute(
+                """
+                INSERT INTO automation_conditions
+                    (id, name, type, config_json, created_at, updated_at)
+                VALUES (?, ?, 'manual.trigger', '{}', ?, ?)
+                """,
+                (definition_id, name, now, now),
+            )
+        return definition_id
+
+    def source_definitions(self) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM automation_conditions ORDER BY name COLLATE NOCASE"
@@ -518,15 +569,20 @@ class AutomationStore:
             else:
                 summary = f"Skipped missed calendar occurrence ({lateness_seconds}s late): {matched}."
                 status = "skipped"
-            result = ConditionResult(
-                met=should_fire,
-                status=status,
-                summary=summary,
-                evidence={
-                    "trigger": "schedule",
-                    "occurrence": occurrence,
-                    "lateness_seconds": lateness_seconds,
-                },
+            result = evaluation_result(
+                ConditionResult(
+                    met=should_fire,
+                    status=status,
+                    summary=summary,
+                    evidence={
+                        "trigger": "schedule",
+                        "occurrence": occurrence,
+                        "lateness_seconds": lateness_seconds,
+                    },
+                ),
+                kind="schedule",
+                type_id="schedule.calendar",
+                observed_at=current_time,
             )
             if should_fire:
                 self._enqueue_execution_job(
@@ -594,10 +650,26 @@ class AutomationStore:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT * FROM automations WHERE id = ?", (automation_id,)
+                """
+                SELECT automations.*,
+                    COALESCE(automation_conditions.type, automations.condition_type)
+                        AS effective_condition_type
+                FROM automations
+                LEFT JOIN automation_conditions
+                    ON automation_conditions.id = automations.condition_definition_id
+                WHERE automations.id = ?
+                """,
+                (automation_id,),
             ).fetchone()
             if not row:
                 raise ValueError("Automation not found.")
+            if "evaluation" not in result.evidence:
+                result = evaluation_result(
+                    result,
+                    kind="condition",
+                    type_id=str(row["effective_condition_type"]),
+                    observed_at=now,
+                )
             state = str(row["state"])
             met_count = int(row["consecutive_met"])
             clear_count = int(row["consecutive_clear"])
@@ -697,6 +769,13 @@ class AutomationStore:
             ).fetchone()[0]
             if condition_type != "manual.trigger":
                 raise ValueError("Only manual-trigger automations can be queued manually.")
+            if "evaluation" not in trigger.evidence:
+                trigger = evaluation_result(
+                    trigger,
+                    kind="manual",
+                    type_id=str(condition_type),
+                    observed_at=now,
+                )
             return self._enqueue_execution_job(
                 connection,
                 row,
@@ -918,6 +997,26 @@ class AutomationStore:
             is_schedule = bool(
                 condition_type_row and condition_type_row["type"] == "schedule.calendar"
             )
+            condition_type = (
+                str(condition_type_row["type"])
+                if condition_type_row
+                else "unknown"
+            )
+            evidence = {
+                "evaluation": {
+                    "schema_version": 1,
+                    "kind": (
+                        "schedule"
+                        if condition_type == "schedule.calendar"
+                        else "manual"
+                        if condition_type == "manual.trigger"
+                        else "condition"
+                    ),
+                    "type": condition_type,
+                    "observed_at": now,
+                },
+                "error": {"message": message[:2000]},
+            }
             connection.execute(
                 """
                 UPDATE automations
@@ -943,9 +1042,14 @@ class AutomationStore:
                 """
                 INSERT INTO automation_checks
                     (automation_id, checked_at, met, status, summary, evidence_json)
-                VALUES (?, ?, 0, 'error', ?, '{}')
+                VALUES (?, ?, 0, 'error', ?, ?)
                 """,
-                (automation_id, now, message[:2000]),
+                (
+                    automation_id,
+                    now,
+                    message[:2000],
+                    json.dumps(evidence, separators=(",", ":")),
+                ),
             )
 
     def record_observation(self, automation_id: str, status: str, summary: str) -> None:
@@ -1834,8 +1938,10 @@ class AutomationEngine:
         self.registry = registry
 
     def test_condition(self, automation: dict[str, Any]) -> ConditionResult:
-        condition = self.registry.conditions[automation["condition"]["type"]]
-        return condition.evaluate(automation["condition"]["config"])
+        return self.registry.evaluate_condition(
+            automation["condition"]["type"],
+            automation["condition"]["config"],
+        )
 
     def run_once(self) -> int:
         processed = 0
@@ -2041,15 +2147,27 @@ class AutomationBackupStore:
         self.store = store
 
     def all(self) -> list[dict[str, Any]]:
-        conditions = [
+        sources = [
             {
-                "name": f"condition::{item['name']}",
-                "kind": "condition",
+                "name": (
+                    f"schedule::{item['name']}"
+                    if item["type"] == "schedule.calendar"
+                    else f"manual::{item['name']}"
+                    if item["type"] == "manual.trigger"
+                    else f"condition::{item['name']}"
+                ),
+                "kind": (
+                    "schedule"
+                    if item["type"] == "schedule.calendar"
+                    else "manual"
+                    if item["type"] == "manual.trigger"
+                    else "condition"
+                ),
                 "definition_name": item["name"],
                 "type": item["type"],
                 "config": item["config"],
             }
-            for item in self.store.condition_definitions()
+            for item in self.store.source_definitions()
         ]
         actions = [
             {
@@ -2084,7 +2202,7 @@ class AutomationBackupStore:
             }
             for item in self.store.all(include_secrets=True)
         ]
-        return [*conditions, *actions, *automations]
+        return [*sources, *actions, *automations]
 
     def replace_all(self, definitions: list[dict[str, Any]]) -> None:
         conditions: dict[str, tuple[str, dict[str, Any]]] = {}
@@ -2092,13 +2210,19 @@ class AutomationBackupStore:
         automations: list[dict[str, Any]] = []
         for definition in definitions:
             kind = definition.get("kind")
-            if kind == "condition":
+            if kind in {"condition", "trigger", "schedule", "manual"}:
                 name = str(definition.get("definition_name", ""))
                 type_id = str(definition.get("type", ""))
                 conditions[name] = (
                     type_id,
-                    AUTOMATION_REGISTRY.validate_condition(
-                        type_id, dict(definition.get("config", {}))
+                    (
+                        AUTOMATION_REGISTRY.validate_trigger(
+                            type_id, dict(definition.get("config", {}))
+                        )
+                        if type_id in AUTOMATION_REGISTRY.triggers
+                        else AUTOMATION_REGISTRY.validate_condition(
+                            type_id, dict(definition.get("config", {}))
+                        )
                     ),
                 )
             elif kind == "action":
@@ -2119,8 +2243,14 @@ class AutomationBackupStore:
                 condition_type = str(condition.get("type", ""))
                 conditions[condition_name] = (
                     condition_type,
-                    AUTOMATION_REGISTRY.validate_condition(
-                        condition_type, dict(condition.get("config", {}))
+                    (
+                        AUTOMATION_REGISTRY.validate_trigger(
+                            condition_type, dict(condition.get("config", {}))
+                        )
+                        if condition_type in AUTOMATION_REGISTRY.triggers
+                        else AUTOMATION_REGISTRY.validate_condition(
+                            condition_type, dict(condition.get("config", {}))
+                        )
                     ),
                 )
                 action_names = []

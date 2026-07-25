@@ -124,6 +124,11 @@ class AutomationStoreTests(unittest.TestCase):
         state, fire = self.store.record_condition(automation_id, clear)
         self.assertEqual(state["state"], "healthy")
         self.assertFalse(fire)
+        evaluation = self.store.recent_checks(automation_id)[0]["evidence"]["evaluation"]
+        self.assertEqual(
+            (evaluation["schema_version"], evaluation["kind"], evaluation["type"]),
+            (1, "condition", "test.condition"),
+        )
 
     def test_trigger_queues_encrypted_action_snapshot_before_execution(self) -> None:
         automation_id = self.save(trigger_after=1)
@@ -160,6 +165,10 @@ class AutomationStoreTests(unittest.TestCase):
             )
         )
         job = self.store.claim_jobs()[0]
+        self.assertEqual(
+            job["trigger"].evidence["evaluation"]["kind"],
+            "condition",
+        )
         run_id = AutomationEngine(self.store, registry).process_job(job)
         self.assertEqual(calls, [("admin", "very secret")])
         self.assertEqual(self.store.get_run(run_id)["status"], "success")
@@ -598,7 +607,7 @@ class AutomationStoreTests(unittest.TestCase):
         self.assertEqual(calls, ["error"])
         self.assertEqual(self.store.recent_runs(automation_id)[0]["status"], "error")
 
-    def test_manual_condition_is_never_claimed_by_scheduler(self) -> None:
+    def test_manual_trigger_is_separate_and_never_claimed_by_scheduler(self) -> None:
         condition_id = self.store.save_condition_definition(
             name="Run on demand", type_id="manual.trigger", config={}
         )
@@ -619,6 +628,13 @@ class AutomationStoreTests(unittest.TestCase):
         )
         self.store.set_enabled(automation_id, True)
         self.assertEqual(self.store.claim_due(), [])
+        self.assertEqual(self.store.condition_definitions(), [])
+        self.assertEqual(self.store.trigger_definitions()[0]["id"], condition_id)
+        trigger = AUTOMATION_REGISTRY.evaluate_trigger("manual.trigger", {})
+        self.assertEqual(
+            trigger.evidence["evaluation"]["kind"],
+            "manual",
+        )
 
     def test_engine_executes_calendar_occurrence_without_debounce(self) -> None:
         condition_id = self.store.save_condition_definition(
@@ -646,7 +662,7 @@ class AutomationStoreTests(unittest.TestCase):
         )
         calls = []
         registry = AutomationRegistry()
-        registry.add_condition(AUTOMATION_REGISTRY.conditions["schedule.calendar"])
+        registry.add_trigger(AUTOMATION_REGISTRY.triggers["schedule.calendar"])
         registry.add_action(
             ActionType(
                 "test.action",
@@ -667,6 +683,11 @@ class AutomationStoreTests(unittest.TestCase):
         self.assertEqual(calls, [["once"]])
         self.assertEqual(self.store.get(automation_id)["state"], "completed")
         self.assertEqual(len(self.store.recent_runs(automation_id)), 1)
+        evaluation = self.store.recent_checks(automation_id)[0]["evidence"]["evaluation"]
+        self.assertEqual(
+            (evaluation["kind"], evaluation["type"]),
+            ("schedule", "schedule.calendar"),
+        )
 
     def test_calendar_occurrence_is_not_consumed_when_job_enqueue_fails(self) -> None:
         condition_id = self.store.save_condition_definition(
@@ -978,7 +999,7 @@ class AutomationRouteTests(unittest.TestCase):
         self.assertIn(b"1 name", page.data)
         self.assertIn(b"2 resolvers", page.data)
 
-    def test_admin_can_create_calendar_condition_with_multiple_rules(self) -> None:
+    def test_admin_can_create_calendar_schedule_with_multiple_rules(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
             app = create_app(instance_path)
             app.testing = True
@@ -989,10 +1010,9 @@ class AutomationRouteTests(unittest.TestCase):
                 {"id": "alternate", "type": "interval_weeks", "interval": 2, "anchor_date": "2026-07-16", "time": "16:03"},
             ]
             response = client.post(
-                "/automations/conditions/save",
+                "/automations/schedules/save",
                 data={
-                    "condition_name": "Maintenance calendar",
-                    "condition_type": "schedule.calendar",
+                    "schedule_name": "Maintenance calendar",
                     "schedule_timezone": "America/New_York",
                     "schedule_missed_policy": "grace",
                     "schedule_grace_minutes": "30",
@@ -1000,13 +1020,34 @@ class AutomationRouteTests(unittest.TestCase):
                 },
             )
             store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
-            definition = store.condition_definitions()[0]
-            page = client.get("/automations/conditions")
+            definition = store.schedule_definitions()[0]
+            page = client.get("/automations/schedules")
+            action_id = store.save_action_definition(
+                name="Scheduled action",
+                type_id="test.action",
+                config={},
+            )
+            automation_response = client.post(
+                "/automations/save",
+                data={
+                    "name": "Scheduled workflow",
+                    "interval_seconds": "30",
+                    "trigger_after": "1",
+                    "recover_after": "1",
+                    "cooldown_seconds": "0",
+                    "run_mode": "schedule",
+                    "schedule_definition_id": definition["id"],
+                    "action_definition_id": action_id,
+                },
+            )
+            saved_automation = store.all()[0]
 
         self.assertEqual(response.status_code, 302)
+        self.assertEqual(automation_response.status_code, 302)
         self.assertEqual(definition["type"], "schedule.calendar")
+        self.assertEqual(saved_automation["condition"]["id"], definition["id"])
         self.assertEqual(len(definition["config"]["rules"]), 3)
-        self.assertIn(b"Calendar schedule", page.data)
+        self.assertIn(b"Schedules", page.data)
         self.assertIn(b"third Wednesday", page.data)
         self.assertIn(b"Next occurrences", page.data)
 
@@ -1056,6 +1097,7 @@ class AutomationRouteTests(unittest.TestCase):
                     "trigger_after": "2",
                     "recover_after": "2",
                     "cooldown_seconds": "300",
+                    "run_mode": "condition",
                     "condition_definition_id": condition_id,
                     "action_definition_id": action_id,
                 },
@@ -1075,6 +1117,7 @@ class AutomationRouteTests(unittest.TestCase):
                     "trigger_after": "3",
                     "recover_after": "3",
                     "cooldown_seconds": "300",
+                    "run_mode": "condition",
                     "condition_definition_id": condition_id,
                     "action_definition_id": action_id,
                 },
@@ -1131,6 +1174,7 @@ class AutomationRouteTests(unittest.TestCase):
                 },
             )
             self.assertEqual(client.get("/automations").status_code, 403)
+            self.assertEqual(client.get("/automations/schedules").status_code, 403)
             self.assertEqual(client.get("/automations/conditions").status_code, 403)
             self.assertEqual(client.get("/automations/actions").status_code, 403)
 
@@ -1140,6 +1184,7 @@ class AutomationRouteTests(unittest.TestCase):
             app.testing = True
             client = app.test_client()
             automations_page = client.get("/automations")
+            schedules_page = client.get("/automations/schedules")
             conditions_page = client.get("/automations/conditions")
             actions_page = client.get("/automations/actions")
 
@@ -1147,25 +1192,22 @@ class AutomationRouteTests(unittest.TestCase):
         self.assertIn(b"New automation", automations_page.data)
         self.assertNotIn(b"New condition", automations_page.data)
         self.assertNotIn(b"New action", automations_page.data)
+        self.assertIn(b"New schedule", schedules_page.data)
+        self.assertNotIn(b"New condition", schedules_page.data)
         self.assertIn(b"New condition", conditions_page.data)
+        self.assertNotIn(b"New schedule", conditions_page.data)
         self.assertNotIn(b"New automation", conditions_page.data)
         self.assertIn(b"New action", actions_page.data)
         self.assertNotIn(b"New automation", actions_page.data)
         self.assertIn(b'aria-current="page">Conditions', conditions_page.data)
+        self.assertIn(b'aria-current="page">Schedules', schedules_page.data)
         self.assertIn(b'aria-current="page">Actions', actions_page.data)
 
-    def test_manual_trigger_runs_actions_and_collected_data_can_be_deleted(self) -> None:
+    def test_manual_mode_runs_actions_and_collected_data_can_be_deleted(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
             app = create_app(instance_path)
             app.testing = True
             client = app.test_client()
-            client.post(
-                "/automations/conditions/save",
-                data={
-                    "condition_name": "Run on demand",
-                    "condition_type": "manual.trigger",
-                },
-            )
             client.post(
                 "/automations/actions/save",
                 data={
@@ -1187,11 +1229,13 @@ class AutomationRouteTests(unittest.TestCase):
                     "trigger_after": "3",
                     "recover_after": "3",
                     "cooldown_seconds": "300",
-                    "condition_definition_id": store.condition_definitions()[0]["id"],
+                    "run_mode": "manual",
                     "action_definition_id": store.action_definitions()[0]["id"],
                 },
             )
             self.assertEqual(response.status_code, 302)
+            self.assertEqual(store.schedule_definitions(), [])
+            self.assertEqual(store.condition_definitions(), [])
             automation_id = store.all()[0]["id"]
             ssh_results = [
                 {"host": "192.0.2.2", "status": "success", "output": "clock output"}

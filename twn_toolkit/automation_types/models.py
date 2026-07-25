@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 from typing import Any, Callable, Mapping
 
 
@@ -10,6 +11,30 @@ class ConditionResult:
     status: str
     summary: str
     evidence: dict[str, Any]
+
+
+def evaluation_result(
+    result: ConditionResult,
+    *,
+    kind: str,
+    type_id: str,
+    observed_at: float | None = None,
+) -> ConditionResult:
+    """Attach the common, versioned evaluation envelope without hiding evidence."""
+    return ConditionResult(
+        met=result.met,
+        status=result.status,
+        summary=result.summary,
+        evidence={
+            **result.evidence,
+            "evaluation": {
+                "schema_version": 1,
+                "kind": kind,
+                "type": type_id,
+                "observed_at": time.time() if observed_at is None else observed_at,
+            },
+        },
+    )
 
 
 @dataclass(frozen=True)
