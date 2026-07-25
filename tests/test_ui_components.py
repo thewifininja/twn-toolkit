@@ -135,16 +135,21 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(".ping-host-statistics .ping-statistics span {", stylesheet)
         self.assertIn("display: inline-flex;", stylesheet)
         self.assertIn(
-            "grid-template-columns: minmax(150px, 28%) minmax(300px, 1fr) auto;",
+            "grid-template-columns: fit-content(28%) minmax(300px, 1fr) auto;",
             stylesheet,
         )
+        self.assertIn("white-space: nowrap;", stylesheet)
         self.assertIn('["Now", current?.reachable', script)
         self.assertIn("header.append(identity, statistics, actions);", script)
         self.assertIn("card.append(header, chart);", script)
-        self.assertIn('remove.className = "ping-graph-remove";', script)
-        self.assertIn('remove.textContent = "×";', script)
+        self.assertIn(
+            'remove.className = "graph-close-button ping-graph-remove";',
+            script,
+        )
         self.assertIn('remove.setAttribute("aria-label", removeLabel);', script)
-        self.assertIn(".ping-graph-remove:hover,", stylesheet)
+        self.assertIn(".graph-close-button::before,", stylesheet)
+        self.assertIn("transform: translate(-50%, -50%) rotate(45deg);", stylesheet)
+        self.assertIn(".graph-close-button:hover,", stylesheet)
         self.assertIn("@media (max-width: 1050px) {", stylesheet)
         self.assertIn("grid-template-rows: auto auto auto minmax(0, 1fr) auto;", stylesheet)
         self.assertIn("overflow-y: auto;", stylesheet)
@@ -229,6 +234,11 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("const hiddenPollIntervalMs = 5_000;", script)
         self.assertNotIn("getJson(activeSession.detail_url", script)
         self.assertIn("activeSession = page.session;", script)
+        self.assertIn(
+            'remove.className = "graph-close-button snmp-monitor-remove";',
+            script,
+        )
+        self.assertIn('remove.setAttribute("aria-label", removeLabel);', script)
 
     def test_port_scanner_profile_columns_share_aligned_rows(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

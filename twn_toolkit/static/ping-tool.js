@@ -735,11 +735,10 @@
     state.className = "pill";
     const remove = document.createElement("button");
     remove.type = "button";
-    remove.className = "ping-graph-remove";
+    remove.className = "graph-close-button ping-graph-remove";
     const removeLabel = `Remove ${result.label || result.host} graph`;
     remove.title = removeLabel;
     remove.setAttribute("aria-label", removeLabel);
-    remove.textContent = "×";
     remove.addEventListener("click", () => deselectGraph(result.host));
     actions.append(state, remove);
     const statistics = document.createElement("div");

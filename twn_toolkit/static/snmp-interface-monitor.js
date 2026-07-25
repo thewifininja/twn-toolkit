@@ -138,9 +138,11 @@
     subtitle.textContent = `${target.hostAddress} · ifIndex ${target.interface.index}${target.interface.alias ? ` · ${target.interface.alias}` : ""}`;
     identity.append(title, subtitle);
     const remove = document.createElement("button");
-    remove.className = "secondary compact snmp-monitor-remove";
+    remove.className = "graph-close-button snmp-monitor-remove";
     remove.type = "button";
-    remove.textContent = "Remove";
+    const removeLabel = `Remove ${target.hostName} ${target.label} graph`;
+    remove.title = removeLabel;
+    remove.setAttribute("aria-label", removeLabel);
     remove.addEventListener("click", () => removeTarget(target.key));
     header.append(identity, remove);
 
