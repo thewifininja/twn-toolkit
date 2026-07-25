@@ -101,7 +101,11 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(".dashboard-stat {", stylesheet)
         self.assertIn("flex-wrap: wrap;", stylesheet)
         self.assertIn("font-variant-numeric: tabular-nums;", stylesheet)
-        self.assertIn("overflow-wrap: anywhere;", stylesheet)
+        self.assertIn("white-space: nowrap;", stylesheet)
+        dashboard_stat_rule = stylesheet.split(".dashboard-stat span {", 1)[1].split(
+            "}", 1
+        )[0]
+        self.assertNotIn("overflow-wrap: anywhere;", dashboard_stat_rule)
 
     def test_automation_threshold_rows_share_aligned_label_space(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
