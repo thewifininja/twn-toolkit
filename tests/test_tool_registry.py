@@ -20,6 +20,7 @@ class ToolRegistryTests(unittest.TestCase):
     def test_registry_builds_existing_lookup_maps(self) -> None:
         self.assertIn("tools.packet_replay", TOOL_BY_ID)
         self.assertIn("tools.wake_on_lan", TOOL_BY_ID)
+        self.assertEqual(TOOL_BY_ID["tools.wake_on_lan"].nav_group, "services")
         self.assertEqual(TASK_TOOL_IDS["rename-aps"], "fortigate.rename_aps")
         self.assertEqual(
             tool_id_for_endpoint("tools.packet_replay"),

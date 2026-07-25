@@ -138,6 +138,9 @@ The sidebar and Network Tools page use the same functional organization.
   scrollable history window can be changed without discarding collected
   samples. Persistent monitor sets continue through navigation, minimize to
   the Live tools footer dock, and restore their bounded server-side history.
+- **Wake-on-LAN** — send bounded magic packets to local broadcasts or custom
+  routed broadcast/relay destinations, with reusable device groups and optional
+  ping confirmation.
 - **Webhook / API Tester** — send bounded HTTP requests and inspect status,
   timing, headers, and response content without following redirects.
 - **Syslog Tools** — generate RFC 5424 messages or briefly collect bounded UDP
@@ -149,9 +152,6 @@ The sidebar and Network Tools page use the same functional organization.
   download, and upload performance on the local network.
 - **DHCP Discover** — send a customizable Discover and inspect Offers without
   requesting or accepting a lease.
-- **Wake-on-LAN** — send bounded magic packets to local broadcasts or custom
-  routed broadcast/relay destinations, with reusable device groups and optional
-  ping confirmation.
 - **Packet Replay** — preview, rewrite, VLAN-tag/fan-out, and transmit raw
   Ethernet frames from hex or classic Ethernet PCAP files after explicit
   authorization confirmation; each replay is bounded by frame count and
