@@ -7577,6 +7577,16 @@ th {
     --topbar-height: 67px;
   }
 
+  .wol-profile-actions {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wol-profile-actions > input {
+    grid-column: 1 / -1;
+  }
+
   .automation-variable-list {
     grid-template-columns: minmax(0, 1fr);
   }

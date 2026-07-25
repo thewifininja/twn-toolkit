@@ -21,6 +21,7 @@ from .ssh_routes import register_ssh_routes
 from .subnet_routes import register_subnet_routes
 from .syslog_routes import register_syslog_routes
 from .traceroute_routes import register_traceroute_routes
+from .wol_routes import register_wol_routes
 
 
 tools_bp = Blueprint("tools", __name__, url_prefix="/tools")
@@ -43,6 +44,7 @@ register_ssh_routes(tools_bp)
 register_subnet_routes(tools_bp)
 register_syslog_routes(tools_bp)
 register_traceroute_routes(tools_bp)
+register_wol_routes(tools_bp)
 
 
 @tools_bp.get("/")

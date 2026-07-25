@@ -171,3 +171,8 @@ class NTPHostProfileStore(PingProfileStore):
 class TracerouteHostProfileStore(PingProfileStore):
     def __init__(self, instance_path: str) -> None:
         super().__init__(instance_path, "traceroute_host_profiles.json")
+
+
+class WOLTargetProfileStore(PingProfileStore):
+    def __init__(self, instance_path: str) -> None:
+        super().__init__(instance_path, "wol_target_profiles.json")

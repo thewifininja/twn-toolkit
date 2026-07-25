@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>Wake-on-LAN</h1>
+    <p>Send bounded magic packets from the toolkit host to local devices or to a routed broadcast/relay destination, then optionally confirm that addressed devices respond to ping.</p>
+  </div>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+
+  <form
+    class="form"
+    method="post"
+    id="wol-form"
+    data-loading-message="Sending Wake-on-LAN packets…"
+    data-save-profile-url="{{ url_for('tools.save_wol_profile') }}"
+    data-delete-profile-url="{{ url_for('tools.delete_wol_profile') }}"
+  >
+    <label>Saved device group
+      <select id="wol-profile">
+        <option value="">New / unsaved group</option>
+        {% for profile in profiles %}
+          <option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} device{{ '' if profile.count == 1 else 's' }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>Devices
+      <textarea name="targets" id="wol-targets" rows="7" placeholder="Office PC | 00:11:22:33:44:55 | 192.0.2.25&#10;Lab server | aa:bb:cc:dd:ee:ff&#10;02:00:00:00:00:01" required>{{ form.targets }}</textarea>
+    </label>
+    <span class="field-note">
+      One device per line: <code>MAC</code>, <code>Name | MAC</code>, or <code>Name | MAC | verification hostname/IP</code>. Verification addresses are optional. Maximum {{ target_limit }} devices.
+    </span>
+    <div class="button-row wol-profile-actions">
+      <input id="wol-profile-name" placeholder="Device group name" maxlength="100">
+      <button class="secondary" id="wol-save-profile" type="button">Save devices</button>
+      <button class="danger" id="wol-delete-profile" type="button">Delete</button>
+    </div>
+
+    <div class="ntp-options">
+      <label>Destination mode
+        <select name="destination_mode" id="wol-destination-mode">
+          <option value="local" {{ 'selected' if form.destination_mode == 'local' else '' }}>Local broadcast</option>
+          <option value="custom" {{ 'selected' if form.destination_mode == 'custom' else '' }}>Custom broadcast or relay</option>
+        </select>
+      </label>
+      <label>Source interface
+        <select name="interface" id="wol-interface" required>
+          {% for interface in interfaces %}
+            <option
+              value="{{ interface.name }}"
+              data-address="{{ interface.address }}"
+              data-broadcast="{{ interface.broadcast }}"
+              {{ 'selected' if interface.name == form.interface else '' }}
+            >{{ interface.name }} · {{ interface.address }}{% if interface.broadcast %} → {{ interface.broadcast }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Custom destination IPv4
+        <input name="custom_destination" id="wol-custom-destination" value="{{ form.custom_destination }}" placeholder="10.20.30.255">
+      </label>
+    </div>
+
+    <div class="ntp-options">
+      <label>UDP port
+        <select name="port">
+          <option value="9" {{ 'selected' if form.port == '9' else '' }}>9</option>
+          <option value="7" {{ 'selected' if form.port == '7' else '' }}>7</option>
+        </select>
+      </label>
+      <label>Packets per device
+        <input name="repeats" type="number" min="1" max="5" value="{{ form.repeats }}" required>
+      </label>
+      <label>Verification timeout (seconds)
+        <input name="verify_timeout" id="wol-verify-timeout" type="number" min="5" max="60" value="{{ form.verify_timeout }}" required>
+      </label>
+    </div>
+
+    <label class="check">
+      <input name="verify" id="wol-verify" type="checkbox" value="1" {% if form.verify %}checked{% endif %}>
+      Ping configured verification addresses until they answer or the timeout expires
+    </label>
+    <div class="message warning">
+      Routed Wake-on-LAN requires the destination network to forward or regenerate the magic packet. Packet delivery only confirms that this toolkit host sent it; ping verification is the independent confirmation that a device woke.
+    </div>
+    <div class="button-row">
+      <button type="submit" {% if not interfaces %}disabled{% endif %}>Wake devices</button>
+    </div>
+    <span class="tool-status" id="wol-status">
+      {% if interfaces %}Choose a source interface and destination mode.{% else %}No IPv4 source interface is available to send Wake-on-LAN packets.{% endif %}
+    </span>
+  </form>
+</section>
+
+{% if outcome %}
+<section class="panel">
+  <div class="certificate-result-head">
+    <div>
+      <h2>Wake request complete</h2>
+      <p>{{ outcome.interface }} · {{ outcome.source_address }} → {{ outcome.destination }}:{{ outcome.port }} · {{ outcome.elapsed_ms }} ms</p>
+    </div>
+    <span class="pill {{ 'error' if outcome.send_failures else 'success' }}">{{ 'partial' if outcome.send_failures else 'sent' }}</span>
+  </div>
+
+  <div class="ntp-summary">
+    <article><span>Devices</span><strong>{{ outcome.device_count }}</strong><small>Unique target MAC addresses</small></article>
+    <article><span>Packets sent</span><strong>{{ outcome.packets_sent }}</strong><small>{{ outcome.repeats }} requested per device</small></article>
+    <article><span>Send failures</span><strong>{{ outcome.send_failures }}</strong><small>Local socket delivery failures</small></article>
+    <article><span>Confirmed awake</span><strong>{{ outcome.confirmed_awake }}</strong><small>Of {{ outcome.verification_configured }} configured addresses</small></article>
+  </div>
+
+  <div class="preview-table-wrap">
+    <table>
+      <thead><tr><th>Device</th><th>MAC address</th><th>Verification address</th><th>Packets</th><th>Delivery</th><th>Verification</th></tr></thead>
+      <tbody>
+        {% for result in outcome.results %}
+          <tr>
+            <td>{{ result.name or 'Unnamed device' }}</td>
+            <td><code>{{ result.mac }}</code></td>
+            <td>{% if result.host %}<code>{{ result.host }}</code>{% else %}Not configured{% endif %}</td>
+            <td>{{ result.packets_sent }}</td>
+            <td>
+              <span class="pill {{ 'success' if result.send_status == 'sent' else 'error' }}">{{ result.send_status }}</span>
+              {% if result.send_error %}<small>{{ result.send_error }}</small>{% endif %}
+            </td>
+            <td>
+              {% set verify_class = 'success' if result.verification == 'awake' else 'error' if result.verification in ['timeout', 'error'] else 'planned' %}
+              <span class="pill {{ verify_class }}">{{ result.verification | replace('_', ' ') }}</span>
+              {% if result.latency_ms is defined and result.latency_ms is not none %}<small>{{ result.latency_ms }} ms</small>{% endif %}
+              {% if result.verification_error %}<small>{{ result.verification_error }}</small>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<script src="{{ url_for('static', filename='wake-on-lan.js') }}"></script>
+{% endblock %}

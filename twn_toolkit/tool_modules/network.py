@@ -12,6 +12,7 @@ from twn_toolkit.profiles import (
     SNMPHostProfileStore,
     SNMPOidProfileStore,
     TracerouteHostProfileStore,
+    WOLTargetProfileStore,
 )
 from twn_toolkit.tool_catalog import ToolLink, ToolRegistry
 
@@ -107,6 +108,13 @@ def backup_items(instance_path: str) -> list[dict[str, Any]]:
             "label": "Traceroute host profiles",
             "description": "Saved traceroute target lists.",
             "store": TracerouteHostProfileStore(instance_path),
+            "sensitive": False,
+        },
+        {
+            "id": "wol_target_profiles",
+            "label": "Wake-on-LAN device groups",
+            "description": "Saved device names, MAC addresses, and optional verification hosts.",
+            "store": WOLTargetProfileStore(instance_path),
             "sensitive": False,
         },
     ]
@@ -262,6 +270,17 @@ def register_tools(registry: ToolRegistry) -> None:
                 nav_group="traffic",
             ),
             ToolLink(
+                "tools.wake_on_lan",
+                "Wake-on-LAN",
+                "Wake local or routed devices with bounded magic packets and optional ping verification.",
+                "tools.wake_on_lan",
+                "network",
+                "Network Tools",
+                risk="advanced",
+                nav_icon="⏻",
+                nav_group="traffic",
+            ),
+            ToolLink(
                 "tools.packet_replay",
                 "Packet Replay",
                 "Preview, modify, and transmit raw Ethernet frames.",
@@ -330,6 +349,9 @@ def register_tools(registry: ToolRegistry) -> None:
             "tools.save_traceroute_profile": "tools.traceroute",
             "tools.delete_traceroute_profile": "tools.traceroute",
             "tools.traceroute_run": "tools.traceroute",
+            "tools.wake_on_lan": "tools.wake_on_lan",
+            "tools.save_wol_profile": "tools.wake_on_lan",
+            "tools.delete_wol_profile": "tools.wake_on_lan",
             "tools.port_scanner": "tools.port_scanner",
             "tools.save_port_scan_profile": "tools.port_scanner",
             "tools.delete_port_scan_profile": "tools.port_scanner",
