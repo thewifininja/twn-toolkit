@@ -3,6 +3,7 @@ from __future__ import annotations
 """ICMP, DNS, TCP, manual, and calendar condition implementations."""
 
 import json
+import statistics
 from typing import Any, Mapping
 
 from ...network_tools import (
@@ -26,6 +27,32 @@ def _validate_ping(config: dict[str, Any]) -> dict[str, Any]:
         raise ToolInputError("Ping timeout must be a whole number.") from exc
     if not 1 <= timeout <= 10:
         raise ToolInputError("Ping timeout must be between 1 and 10 seconds.")
+    try:
+        probe_count = int(config.get("probe_count", 1))
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError("Ping probes per target must be a whole number.") from exc
+    if not 1 <= probe_count <= 10:
+        raise ToolInputError("Ping probes per target must be between 1 and 10.")
+    quality_limits = {
+        "max_packet_loss_pct": _optional_number(
+            config.get("max_packet_loss_pct"),
+            "Maximum packet loss",
+            minimum=0,
+            maximum=100,
+        ),
+        "max_latency_ms": _optional_number(
+            config.get("max_latency_ms"),
+            "Maximum average latency",
+            minimum=0.1,
+            maximum=60000,
+        ),
+        "max_jitter_ms": _optional_number(
+            config.get("max_jitter_ms"),
+            "Maximum jitter",
+            minimum=0,
+            maximum=60000,
+        ),
+    }
     failure_mode = str(config.get("failure_mode", "all"))
     if failure_mode not in {"all", "at_least"}:
         raise ToolInputError("Select a valid ping failure threshold.")
@@ -45,6 +72,8 @@ def _validate_ping(config: dict[str, Any]) -> dict[str, Any]:
             for target in targets
         ),
         "timeout": timeout,
+        "probe_count": probe_count,
+        **quality_limits,
         "failure_mode": failure_mode,
         "failure_count": failure_count,
     }
@@ -53,18 +82,92 @@ def _validate_ping(config: dict[str, Any]) -> dict[str, Any]:
 def _evaluate_ping(config: dict[str, Any]) -> ConditionResult:
     normalized = _validate_ping(config)
     targets = parse_ping_targets(normalized["targets"], limit=100)
-    raw_results = ping_hosts(
-        [target["host"] for target in targets], timeout=normalized["timeout"]
-    )
-    results = [
-        {**result, "label": targets[index]["label"]}
-        for index, result in enumerate(raw_results)
+    rounds = [
+        ping_hosts(
+            [target["host"] for target in targets],
+            timeout=normalized["timeout"],
+        )
+        for _probe in range(normalized["probe_count"])
     ]
-    failed = [result for result in results if not result.get("reachable")]
+    results: list[dict[str, Any]] = []
+    for index, target in enumerate(targets):
+        samples = [round_results[index] for round_results in rounds]
+        latencies = [
+            float(sample["latency_ms"])
+            for sample in samples
+            if sample.get("reachable") and sample.get("latency_ms") is not None
+        ]
+        received = len(latencies)
+        packet_loss_pct = round(
+            ((normalized["probe_count"] - received) / normalized["probe_count"]) * 100,
+            1,
+        )
+        average_latency_ms = round(statistics.fmean(latencies), 1) if latencies else None
+        jitter_ms = (
+            round(
+                statistics.fmean(
+                    abs(current - previous)
+                    for previous, current in zip(latencies, latencies[1:])
+                ),
+                1,
+            )
+            if len(latencies) > 1
+            else 0.0 if latencies else None
+        )
+        reasons: list[str] = []
+        if not latencies:
+            reasons.append("No ICMP replies received.")
+        if (
+            normalized["max_packet_loss_pct"] is not None
+            and packet_loss_pct > normalized["max_packet_loss_pct"]
+        ):
+            reasons.append(
+                f"Packet loss {packet_loss_pct:g}% exceeds "
+                f"{normalized['max_packet_loss_pct']:g}%."
+            )
+        if (
+            normalized["max_latency_ms"] is not None
+            and average_latency_ms is not None
+            and average_latency_ms > normalized["max_latency_ms"]
+        ):
+            reasons.append(
+                f"Average latency {average_latency_ms:g} ms exceeds "
+                f"{normalized['max_latency_ms']:g} ms."
+            )
+        if (
+            normalized["max_jitter_ms"] is not None
+            and jitter_ms is not None
+            and jitter_ms > normalized["max_jitter_ms"]
+        ):
+            reasons.append(
+                f"Jitter {jitter_ms:g} ms exceeds "
+                f"{normalized['max_jitter_ms']:g} ms."
+            )
+        results.append(
+            {
+                "host": target["host"],
+                "label": target["label"],
+                "reachable": bool(latencies),
+                "failed": bool(reasons),
+                "reason": " ".join(reasons),
+                "sent": normalized["probe_count"],
+                "received": received,
+                "packet_loss_pct": packet_loss_pct,
+                "latency_ms": average_latency_ms,
+                "average_latency_ms": average_latency_ms,
+                "jitter_ms": jitter_ms,
+                "samples": samples,
+                "elapsed_ms": max(
+                    (float(sample.get("elapsed_ms", 0)) for sample in samples),
+                    default=0,
+                ),
+            }
+        )
+    failed = [result for result in results if result["failed"]]
     required = normalized["failure_count"]
     met = len(failed) >= required
     summary = (
-        f"{len(failed)} of {len(results)} targets failed; "
+        f"{len(failed)} of {len(results)} targets breached the ping policy; "
         f"threshold is {required}."
     )
     return ConditionResult(
@@ -74,10 +177,40 @@ def _evaluate_ping(config: dict[str, Any]) -> ConditionResult:
         evidence={
             "targets": results,
             "failed": len(failed),
-            "reachable": len(results) - len(failed),
+            "reachable": sum(bool(result["reachable"]) for result in results),
+            "healthy": len(results) - len(failed),
             "required_failed": required,
+            "probe_count": normalized["probe_count"],
+            "quality_limits": {
+                key: normalized[key]
+                for key in (
+                    "max_packet_loss_pct",
+                    "max_latency_ms",
+                    "max_jitter_ms",
+                )
+            },
         },
     )
+
+
+def _optional_number(
+    value: Any,
+    label: str,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError(f"{label} must be a number.") from exc
+    if not minimum <= parsed <= maximum:
+        raise ToolInputError(
+            f"{label} must be between {minimum:g} and {maximum:g}."
+        )
+    return parsed
 
 
 def _validate_dns(config: dict[str, Any]) -> dict[str, Any]:
@@ -191,6 +324,117 @@ def _evaluate_dns(config: dict[str, Any]) -> ConditionResult:
             "required_failed": required,
             "record_type": normalized["record_type"],
             "expected_answers": sorted(expected),
+        },
+    )
+
+
+def _validate_dns_performance(config: dict[str, Any]) -> dict[str, Any]:
+    hosts = parse_dns_hosts(str(config.get("hosts", "")), limit=50)
+    servers = parse_dns_servers(str(config.get("servers", "")), limit=10)
+    record_type = str(config.get("record_type", "A")).upper()
+    if record_type not in {"A", "AAAA", "CNAME", "MX", "NS", "PTR", "TXT"}:
+        raise ToolInputError("Select a supported DNS record type.")
+    timeout = _optional_number(
+        config.get("timeout", 3),
+        "DNS timeout",
+        minimum=0.2,
+        maximum=30,
+    )
+    if timeout is None:
+        raise ToolInputError("DNS timeout is required.")
+    response_limit_ms = _optional_number(
+        config.get("response_limit_ms", 250),
+        "DNS response-time limit",
+        minimum=1,
+        maximum=30000,
+    )
+    if response_limit_ms is None:
+        raise ToolInputError("DNS response-time limit is required.")
+    failure_mode = str(config.get("failure_mode", "at_least"))
+    if failure_mode not in {"all", "at_least"}:
+        raise ToolInputError("Select a valid DNS performance threshold.")
+    check_count = len(hosts) * len(servers)
+    try:
+        failure_count = int(config.get("failure_count", 1))
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError(
+            "Required slow or failed DNS checks must be a whole number."
+        ) from exc
+    if failure_mode == "all":
+        failure_count = check_count
+    if not 1 <= failure_count <= check_count:
+        raise ToolInputError(
+            f"Required slow or failed DNS checks must be between 1 and {check_count}."
+        )
+    return {
+        "hosts": "\n".join(
+            f"{host['label']} = {host['host']}" if host["label"] else host["host"]
+            for host in hosts
+        ),
+        "servers": "\n".join(
+            f"{server['label']} = {server['address']}"
+            if server["label"]
+            else server["address"]
+            for server in servers
+        ),
+        "record_type": record_type,
+        "timeout": timeout,
+        "response_limit_ms": response_limit_ms,
+        "failure_mode": failure_mode,
+        "failure_count": failure_count,
+        "check_count": check_count,
+    }
+
+
+def _evaluate_dns_performance(config: dict[str, Any]) -> ConditionResult:
+    normalized = _validate_dns_performance(config)
+    results = dns_lookup_matrix(
+        parse_dns_hosts(normalized["hosts"], limit=50),
+        parse_dns_servers(normalized["servers"], limit=10),
+        record_type=normalized["record_type"],
+        timeout=normalized["timeout"],
+    )
+    evaluated: list[dict[str, Any]] = []
+    for result in results:
+        response_ms = float(result.get("response_ms", 0))
+        resolved = result.get("status") == "success" and bool(result.get("answers"))
+        slow = resolved and response_ms > normalized["response_limit_ms"]
+        reason = (
+            str(result.get("error") or result.get("status"))
+            if not resolved
+            else (
+                f"Response time {response_ms:g} ms exceeds "
+                f"{normalized['response_limit_ms']:g} ms."
+                if slow
+                else ""
+            )
+        )
+        evaluated.append(
+            {
+                **result,
+                "failed": not resolved or slow,
+                "slow": slow,
+                "reason": reason,
+                "response_limit_ms": normalized["response_limit_ms"],
+            }
+        )
+    failed = [result for result in evaluated if result["failed"]]
+    required = normalized["failure_count"]
+    met = len(failed) >= required
+    return ConditionResult(
+        met=met,
+        status="met" if met else "clear",
+        summary=(
+            f"{len(failed)} of {len(evaluated)} DNS checks were slow or failed; "
+            f"threshold is {required} at {normalized['response_limit_ms']:g} ms."
+        ),
+        evidence={
+            "checks": evaluated,
+            "failed": len(failed),
+            "successful": len(evaluated) - len(failed),
+            "required_failed": required,
+            "response_limit_ms": normalized["response_limit_ms"],
+            "record_type": normalized["record_type"],
         },
     )
 
@@ -335,11 +579,15 @@ def _evaluate_schedule(config: dict[str, Any]) -> ConditionResult:
     )
 
 def _parse_ping_form(form: Mapping[str, Any]) -> dict[str, Any]:
-    return {"targets": form.get("condition_targets", ""), "timeout": form.get("condition_timeout", "1"), "failure_mode": form.get("condition_failure_mode", "all"), "failure_count": form.get("condition_failure_count", "1")}
+    return {"targets": form.get("condition_targets", ""), "timeout": form.get("condition_timeout", "1"), "probe_count": form.get("condition_probe_count", "3"), "max_packet_loss_pct": form.get("condition_max_packet_loss_pct", ""), "max_latency_ms": form.get("condition_max_latency_ms", ""), "max_jitter_ms": form.get("condition_max_jitter_ms", ""), "failure_mode": form.get("condition_failure_mode", "all"), "failure_count": form.get("condition_failure_count", "1")}
 
 
 def _parse_dns_form(form: Mapping[str, Any]) -> dict[str, Any]:
     return {"hosts": form.get("dns_hosts", ""), "servers": form.get("dns_servers", ""), "record_type": form.get("dns_record_type", "A"), "expected_answers": form.get("dns_expected_answers", ""), "answer_mode": form.get("dns_answer_mode", "any"), "failure_mode": form.get("dns_failure_mode", "at_least"), "failure_count": form.get("dns_failure_count", "1"), "timeout": form.get("dns_timeout", "3")}
+
+
+def _parse_dns_performance_form(form: Mapping[str, Any]) -> dict[str, Any]:
+    return {"hosts": form.get("dns_performance_hosts", ""), "servers": form.get("dns_performance_servers", ""), "record_type": form.get("dns_performance_record_type", "A"), "timeout": form.get("dns_performance_timeout", "3"), "response_limit_ms": form.get("dns_performance_response_limit_ms", "250"), "failure_mode": form.get("dns_performance_failure_mode", "at_least"), "failure_count": form.get("dns_performance_failure_count", "1")}
 
 
 def _parse_tcp_form(form: Mapping[str, Any]) -> dict[str, Any]:
