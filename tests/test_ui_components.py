@@ -134,7 +134,13 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(".ping-graph-card {", stylesheet)
         self.assertIn(".ping-host-statistics .ping-statistics span {", stylesheet)
         self.assertIn("display: inline-flex;", stylesheet)
+        self.assertIn(
+            "grid-template-columns: minmax(150px, 28%) minmax(300px, 1fr) auto;",
+            stylesheet,
+        )
         self.assertIn('["Now", current?.reachable', script)
+        self.assertIn("header.append(identity, statistics, actions);", script)
+        self.assertIn("card.append(header, chart);", script)
         self.assertIn("@media (max-width: 1050px) {", stylesheet)
         self.assertIn("grid-template-rows: auto auto auto minmax(0, 1fr) auto;", stylesheet)
         self.assertIn("overflow-y: auto;", stylesheet)

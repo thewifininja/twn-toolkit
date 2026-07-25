@@ -739,9 +739,9 @@
     remove.textContent = "Remove graph";
     remove.addEventListener("click", () => deselectGraph(result.host));
     actions.append(state, remove);
-    header.append(identity, actions);
     const statistics = document.createElement("div");
     statistics.className = "ping-host-statistics";
+    header.append(identity, statistics, actions);
     const chart = document.createElement("div");
     chart.className = "ping-history-canvas-wrap";
     const canvas = document.createElement("canvas");
@@ -749,7 +749,7 @@
     canvas.setAttribute("role", "img");
     canvas.setAttribute("aria-label", `Latency history for ${result.label || result.host}`);
     chart.appendChild(canvas);
-    card.append(header, statistics, chart);
+    card.append(header, chart);
     const view = {card, status: state, statistics, chart, canvas, host: result.host, visiblePoints: []};
     canvas.addEventListener("mousemove", (event) => showCanvasTooltip(view, event));
     canvas.addEventListener("mouseleave", () => {

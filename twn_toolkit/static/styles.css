@@ -4829,6 +4829,11 @@ button.compact,
   padding: 12px;
 }
 
+.ping-graph-card > header {
+  display: grid;
+  grid-template-columns: minmax(150px, 28%) minmax(300px, 1fr) auto;
+}
+
 .ping-graph-card code {
   color: var(--muted);
   overflow-wrap: anywhere;
@@ -7691,7 +7696,11 @@ th {
 
   .ping-graph-card > header {
     align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .ping-graph-card > header > .ping-host-statistics {
+    grid-row: 2;
   }
 
   .automation-manager > .section-head {
