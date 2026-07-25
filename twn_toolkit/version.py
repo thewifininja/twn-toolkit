@@ -12,6 +12,15 @@ RELEASE_NOTES = (
         ),
         "groups": (
             {
+                "title": "Packet capture and automated incident evidence",
+                "items": (
+                    "Added a standalone Packet Capture tool for bounded PCAP collection from local or switch SPAN/mirror-connected interfaces, with validated BPF filters, duration, packet-count, file-size, snapshot-length, and promiscuous-mode controls.",
+                    "Runs standalone captures in dedicated background workers that survive browser navigation, enforce one active capture per interface, report live progress, and provide retained PCAP download, stop, and delete controls.",
+                    "Added a reusable Packet Capture automation action backed by the same capture engine; completed PCAPs join the existing run-artifact lifecycle and Download ZIP output.",
+                    "Counts standalone and automated PCAPs against the configured automation-artifact quota and minimum free-disk reserve without installing tcpdump, invoking sudo, or changing host capture permissions.",
+                ),
+            },
+            {
                 "title": "Wake-on-LAN",
                 "items": (
                     "Added a grantable Wake-on-LAN tool with reusable device groups, normalized MAC-address entry, selectable IPv4 source interfaces, one to five bounded packets per device, UDP ports 7 and 9, and optional ping confirmation.",

@@ -148,6 +148,9 @@ The sidebar and Network Tools page use the same functional organization.
 
 #### Traffic & Interfaces
 
+- **Packet Capture** — retain bounded PCAP files from a local or
+  SPAN/mirror-connected interface, with validated BPF filters, duration,
+  packet-count, file-size, snapshot-length, and promiscuous-mode controls.
 - **Wi-Fi / LAN Speed Test** — measure browser-to-toolkit latency, jitter,
   download, and upload performance on the local network.
 - **DHCP Discover** — send a customizable Discover and inspect Offers without

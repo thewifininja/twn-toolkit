@@ -17,6 +17,7 @@ from ..network_tools import (
     run_ssh_hosts,
     validate_hosts,
 )
+from ..packet_capture import run_packet_capture, validate_capture_config
 from ..datastore import DatastoreError, LocalDatastore
 from ..transfer_tools import (
     DEFAULT_TRANSFER_FILENAME_PATTERN as SFTP_DEFAULT_FILENAME_PATTERN,
@@ -514,6 +515,62 @@ def _execute_webhook(config: dict[str, Any], trigger: ConditionResult) -> Action
         output={"endpoints": results, "method": normalized["method"]},
     )
 
+
+def _validate_packet_capture(config: dict[str, Any]) -> dict[str, Any]:
+    return validate_capture_config(config, require_runtime=False)
+
+
+def _execute_packet_capture(
+    config: dict[str, Any], trigger: ConditionResult
+) -> ActionResult:
+    normalized = validate_capture_config(config)
+    instance_path = str(config.get("_instance_path", "")).strip()
+    if not instance_path:
+        raise ToolInputError("Automation packet-capture context is unavailable.")
+    staging = Path(tempfile.mkdtemp(prefix="twn-automation-pcap-"))
+    keep_staging = False
+    try:
+        timestamp = datetime.now().astimezone().strftime("%Y%m%d%H%M%S")
+        interface = re.sub(
+            r"[^A-Za-z0-9._-]+", "-", normalized["interface"]
+        ).strip(".-_") or "interface"
+        filename = f"{timestamp}-{interface}-capture.pcap"
+        output_path = staging / filename
+        result = run_packet_capture(
+            normalized,
+            instance_path=instance_path,
+            output_path=output_path,
+        )
+        keep_staging = True
+        return ActionResult(
+            status="success",
+            summary=(
+                f"Captured {result['packet_count_captured']:,} packet(s) "
+                f"on {normalized['interface']} for {result['elapsed_seconds']:.1f} seconds."
+            ),
+            output={
+                "trigger": trigger.evidence,
+                "interface": normalized["interface"],
+                "capture_filter": normalized["capture_filter"],
+                "elapsed_seconds": result["elapsed_seconds"],
+                "packet_count": result["packet_count_captured"],
+                "size_bytes": result["size_bytes"],
+                "termination_reason": result["termination_reason"],
+                "_artifact_sources": [
+                    {
+                        "source_path": str(output_path),
+                        "filename": filename,
+                        "interface": normalized["interface"],
+                        "size": result["size_bytes"],
+                    }
+                ],
+            },
+        )
+    finally:
+        if not keep_staging:
+            shutil.rmtree(staging, ignore_errors=True)
+
+
 def _parse_ssh_form(form: Mapping[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
     password = str(form.get("action_password", "")) or str(existing.get("password", ""))
     return {"hosts": form.get("action_hosts", ""), "username": form.get("action_username", ""), "password": password, "commands": form.get("action_commands", ""), "command_timeout": form.get("action_command_timeout", "300"), "port": form.get("action_port", "22"), "allow_unknown_hosts": "action_allow_unknown_hosts" in form, "allow_legacy_algorithms": "action_allow_legacy_algorithms" in form, "send_ctrl_y": "action_send_ctrl_y" in form}
@@ -548,10 +605,27 @@ def _parse_webhook_form(form: Mapping[str, Any], existing: dict[str, Any]) -> di
     return {"endpoints": form.get("webhook_endpoints", ""), "method": form.get("webhook_method", "POST"), "headers": headers, "body_format": form.get("webhook_body_format", "json"), "body": form.get("webhook_body", ""), "timeout": form.get("webhook_timeout", "10"), "verify_tls": "webhook_verify_tls" in form, "expected_statuses": form.get("webhook_expected_statuses", "200-299")}
 
 
+def _parse_packet_capture_form(
+    form: Mapping[str, Any], _existing: dict[str, Any]
+) -> dict[str, Any]:
+    return validate_capture_config(
+        {
+            "interface": form.get("capture_action_interface", ""),
+            "capture_filter": form.get("capture_action_filter", ""),
+            "duration_seconds": form.get("capture_action_duration", "60"),
+            "packet_count": form.get("capture_action_packet_count", "0"),
+            "max_size_mib": form.get("capture_action_max_size", "100"),
+            "snap_length": form.get("capture_action_snap_length", "0"),
+            "promiscuous": "capture_action_promiscuous" in form,
+        }
+    )
+
+
 def registered_actions() -> tuple[ActionType, ...]:
     return (
         ActionType("ssh.collect", "SSH command collection", "Run a command set on one or more SSH targets and retain the output.", _validate_ssh, _execute_ssh, _parse_ssh_form, ("password",)),
         ActionType("sftp.fetch", "Remote file collection", "Fetch files from multiple hosts over SFTP, SCP, or FTP into retained run output or the datastore.", _validate_sftp, _execute_sftp, _parse_sftp_form, ("password",)),
         ActionType("syslog.send", "Send syslog message", "Send an RFC 5424 message to one or more UDP or TCP collectors.", _validate_syslog, _execute_syslog, _parse_syslog_form),
         ActionType("webhook.send", "Webhook / API notification", "Send a templated HTTP notification to one or more endpoints.", _validate_webhook, _execute_webhook, _parse_webhook_form, ("headers",)),
+        ActionType("packet.capture", "Packet capture", "Capture a bounded PCAP from a local or SPAN-connected interface when an automation fires.", _validate_packet_capture, _execute_packet_capture, _parse_packet_capture_form),
     )

@@ -198,6 +198,40 @@
         <p class="field-note automation-security-note">Redirects are reported but not followed. The toolkit retains only a 4 KiB response preview per endpoint.</p>
       </section>
     </div>
+    <div data-action-fields="packet.capture" hidden>
+      <p class="field-note">Capture a bounded PCAP from a local interface after this action is triggered. A dedicated interface connected to a switch SPAN or mirror port is the intended deployment.</p>
+      <div class="form-grid">
+        <label>Capture interface
+          <select name="capture_action_interface" required>
+            {% for interface in capture_interfaces %}
+              <option value="{{ interface.name }}" {% if config.get('interface', config.get('capture_action_interface', '')) == interface.name %}selected{% endif %}>{{ interface.name }}{% if interface.loopback %} · loopback{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Duration
+          <div class="input-suffix"><input name="capture_action_duration" type="number" min="5" max="300" value="{{ config.get('duration_seconds', config.get('capture_action_duration', '60')) }}" required><span>seconds</span></div>
+        </label>
+      </div>
+      <label>Capture filter <span class="inline-label-note">(optional)</span>
+        <input name="capture_action_filter" maxlength="1000" value="{{ config.get('capture_filter', config.get('capture_action_filter', '')) }}" placeholder="host 10.0.0.1 and port 443">
+        <small class="field-note">Standard tcpdump/BPF syntax. The filter is validated again when the action runs.</small>
+      </label>
+      <div class="form-grid">
+        <label>Packet limit
+          <input name="capture_action_packet_count" type="number" min="0" max="1000000" value="{{ config.get('packet_count', config.get('capture_action_packet_count', '0')) }}" required>
+          <small class="field-note">Use 0 for no packet-count limit.</small>
+        </label>
+        <label>Maximum file size
+          <div class="input-suffix"><input name="capture_action_max_size" type="number" min="1" max="512" value="{{ config.get('max_size_mib', config.get('capture_action_max_size', '100')) }}" required><span>MiB</span></div>
+        </label>
+        <label>Snapshot length
+          <div class="input-suffix"><input name="capture_action_snap_length" type="number" min="0" max="65535" value="{{ config.get('snap_length', config.get('capture_action_snap_length', '0')) }}" required><span>bytes</span></div>
+          <small class="field-note">Use 0 for full packets or 64–65535 for partial packets.</small>
+        </label>
+      </div>
+      <label class="check"><input name="capture_action_promiscuous" type="checkbox" {% if config.get('promiscuous', config.get('capture_action_promiscuous', true)) %}checked{% endif %}><span><strong>Promiscuous mode</strong><small>Normally required for traffic received from a SPAN or mirror port.</small></span></label>
+      <div class="message warning">PCAP files can contain credentials and sensitive payloads. They are retained with the automation run until deleted or removed by the run-retention policy.</div>
+    </div>
     <div class="button-row"><button type="submit">{{ 'Update action' if definition_id else 'Save action' }}</button></div>
   </form>
 {% endmacro %}

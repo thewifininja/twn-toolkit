@@ -281,6 +281,17 @@ def register_tools(registry: ToolRegistry) -> None:
                 nav_group="services",
             ),
             ToolLink(
+                "tools.packet_capture",
+                "Packet Capture",
+                "Capture bounded PCAP files from a local or SPAN-connected interface.",
+                "tools.packet_capture",
+                "network",
+                "Network Tools",
+                risk="high",
+                nav_icon="●",
+                nav_group="traffic",
+            ),
+            ToolLink(
                 "tools.packet_replay",
                 "Packet Replay",
                 "Preview, modify, and transmit raw Ethernet frames.",
@@ -335,6 +346,12 @@ def register_tools(registry: ToolRegistry) -> None:
     )
     registry.map_endpoints(
         {
+            "tools.packet_capture": "tools.packet_capture",
+            "tools.start_packet_capture": "tools.packet_capture",
+            "tools.packet_capture_status": "tools.packet_capture",
+            "tools.stop_packet_capture": "tools.packet_capture",
+            "tools.download_packet_capture": "tools.packet_capture",
+            "tools.delete_packet_capture": "tools.packet_capture",
             "tools.dhcp_discover": "tools.dhcp_discover",
             "tools.packet_replay": "tools.packet_replay",
             "tools.path_mtu": "tools.path_mtu",

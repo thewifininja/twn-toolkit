@@ -363,6 +363,10 @@ stop_automation() {
   cleanup_daemon_processes "twn_toolkit.automation_worker" 0
 }
 
+stop_packet_captures() {
+  cleanup_daemon_processes "twn_toolkit.packet_capture_worker" 0
+}
+
 start_supervisor() {
   if supervisor_is_running; then
     supervisor_pid=$(cat "$SUPERVISOR_PIDFILE")
@@ -616,6 +620,7 @@ stop() {
     rm -f "$PIDFILE"
     rm -f "$SCHEME_FILE"
     stop_supervisor
+    stop_packet_captures
     stop_automation
     stop_tftp
     stop_ssh_transfer
@@ -625,6 +630,7 @@ stop() {
   fi
 
   stop_supervisor
+  stop_packet_captures
   stop_automation
   stop_tftp
   stop_ssh_transfer

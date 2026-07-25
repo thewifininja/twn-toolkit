@@ -122,6 +122,10 @@ to the next future occurrence rather than replaying a backlog.
   grouped per host) or retained as bounded run artifacts for ZIP download.
   Collision-safe token filenames and per-host/per-path outcomes are preserved
   for both successful and partial runs.
+- Action: capture a bounded PCAP from a local or SPAN-connected interface using
+  the shared Packet Capture engine. Interface, BPF filter, duration, packet
+  count, file-size ceiling, snapshot length, and promiscuous mode are explicit.
+  The completed PCAP is retained with the run and included in its ZIP download.
 - History: retain condition checks, triggers, per-host command output, and
   action status in `instance/automations.sqlite3`.
 - Downloads: each action run can be downloaded as a ZIP containing JSON run

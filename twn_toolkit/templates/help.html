@@ -14,7 +14,7 @@
   <div class="section-head"><div><h2 id="help-contents">Guide contents</h2><p>Jump directly to the area you need.</p></div></div>
   <div class="help-search"><label for="help-search-input">Search this guide</label><div class="help-search-controls"><input id="help-search-input" type="search" placeholder="Try automation, VLAN, backup, sudo…" autocomplete="off" data-help-search><button class="secondary" type="button" data-help-search-clear hidden>Clear</button></div><small data-help-search-status aria-live="polite"></small></div>
   <nav class="help-toc" aria-label="Help topics">
-    <a href="#release-notes">Release notes</a><a href="#getting-started">Getting started</a><a href="#dashboard">Dashboard</a><a href="#accounts">Accounts &amp; access</a><a href="#profiles">Profiles &amp; backups</a><a href="#fortinet">Fortinet</a><a href="#network-tools">Network tools</a><a href="#local-tools">Local tools</a><a href="#automations">Automations</a><a href="#packet-replay">Packet Replay</a><a href="#operations">Operations</a><a href="#security">Security</a>
+    <a href="#release-notes">Release notes</a><a href="#getting-started">Getting started</a><a href="#dashboard">Dashboard</a><a href="#accounts">Accounts &amp; access</a><a href="#profiles">Profiles &amp; backups</a><a href="#fortinet">Fortinet</a><a href="#network-tools">Network tools</a><a href="#local-tools">Local tools</a><a href="#automations">Automations</a><a href="#packet-capture">Packet Capture</a><a href="#packet-replay">Packet Replay</a><a href="#operations">Operations</a><a href="#security">Security</a>
   </nav>
 </section>
 
@@ -238,11 +238,27 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
     <p>JSON templates are parsed before substitution, so exact trigger and prior-action variables retain boolean/object/list types. Text and JSON templates also support status, summary, and timestamp. Redirects are reported but not followed; retained response previews are capped at 4 KiB per endpoint.</p>
     <p>Authorization/API-key headers are encrypted, never rendered back into the editor, and never copied into retained run output. Leave the field blank to keep saved headers, or select Remove all saved headers while updating.</p>
   </div></details>
+  <details class="help-topic"><summary>Packet capture action</summary><div class="help-topic-body">
+    <p>Starts the same bounded local <code>tcpdump</code> capture available in Network Tools when an automation fires. Select a local or SPAN-connected interface, optional BPF filter, duration, packet count, file-size ceiling, snapshot length, and promiscuous-mode policy.</p>
+    <p>The PCAP is retained as a binary automation artifact and included in Download ZIP. It begins after the triggering condition is detected, so it does not include packets from before detection. A retry may create another PCAP because automation action delivery is intentionally at least once.</p>
+  </div></details>
   <details class="help-topic"><summary>History, downloads, cleanup, and scheduler</summary><div class="help-topic-body">
     <p>Checks, triggers, action status, and structured retained output live in <code>instance/automations.sqlite3</code>; binary transfer artifacts live in <code>instance/automation_artifacts/</code>. SSH ZIPs contain timestamped host files, SFTP/SCP ZIPs include retained fetched files, and syslog ZIPs contain destination JSON. Delete run removes one result and its artifacts; Clear collected data removes action runs but preserves condition history.</p>
     <p>Administration → Settings controls global retention. Check records default to 7 days; collected action runs default to never expire. Use 0 for indefinite retention. The card previews eligible records, supports an immediate policy-based prune, and reports database size and oldest records.</p>
     <p>The scheduler prunes at most once daily. Optimize database is a separate manual action that reclaims unused SQLite file space and may briefly pause automation writes.</p>
     <p><code>./twn start</code> launches one scheduler beside the web service. Work continues without a browser. Imported automations remain paused.</p>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="packet-capture">
+  <div class="section-head"><div><span class="eyebrow">Passive diagnostics</span><h2>Packet Capture</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Standalone captures and SPAN interfaces</summary><div class="help-topic-body">
+    <p>Packet Capture runs <code>tcpdump</code> on an interface local to the toolkit server. A common deployment connects a secondary server interface to a managed switch SPAN or mirror destination while the primary interface remains dedicated to toolkit management and active health checks.</p>
+    <p>Choose an interface, optional BPF filter, duration, packet limit, maximum file size, snapshot length, and promiscuous mode. The first reached limit stops the capture. The background worker continues after navigation, and the page can stop, download, or delete retained PCAP files.</p>
+  </div></details>
+  <details class="help-topic"><summary>Permissions, storage, and sensitive traffic</summary><div class="help-topic-body">
+    <p>The toolkit service account must be allowed to capture packets through root, Linux capabilities, or platform-specific BPF access. The page reports missing <code>tcpdump</code>; a permission problem appears as a failed capture with the exact safe error.</p>
+    <p>Only one capture may run on an interface at a time across standalone and automation use. Standalone and automation PCAPs share the configured automation-artifact quota and minimum free-disk reserve. PCAPs may contain credentials and payload data, are excluded from profile backups, and should be deleted when no longer needed.</p>
   </div></details>
 </section>
 

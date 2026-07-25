@@ -10,6 +10,7 @@ from .dns_routes import register_dns_routes
 from .ip_info_routes import register_ip_info_routes
 from .ntp_routes import register_ntp_routes
 from .packet_replay_routes import register_packet_replay_routes
+from .packet_capture_routes import register_packet_capture_routes
 from .path_mtu_routes import register_path_mtu_routes
 from .ping_routes import register_ping_routes
 from .port_scanner_routes import register_port_scanner_routes
@@ -32,6 +33,7 @@ register_dhcp_routes(tools_bp)
 register_dns_routes(tools_bp)
 register_ip_info_routes(tools_bp)
 register_ntp_routes(tools_bp)
+register_packet_capture_routes(tools_bp)
 register_packet_replay_routes(tools_bp)
 register_path_mtu_routes(tools_bp)
 register_ping_routes(tools_bp)
