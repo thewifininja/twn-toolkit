@@ -1039,10 +1039,10 @@
     });
     const current = series.raw[series.raw.length - 1];
     const values = [
-      ["Current", current?.reachable && Number.isFinite(current.latency) ? formatLatency(current.latency) : "Down"],
-      ["Minimum", totals.received ? formatLatency(totals.min) : "—"],
-      ["Average", totals.received ? formatLatency(totals.sum / totals.received) : "—"],
-      ["Maximum", totals.received ? formatLatency(totals.max) : "—"],
+      ["Now", current?.reachable && Number.isFinite(current.latency) ? formatLatency(current.latency) : "Down"],
+      ["Min", totals.received ? formatLatency(totals.min) : "—"],
+      ["Avg", totals.received ? formatLatency(totals.sum / totals.received) : "—"],
+      ["Max", totals.received ? formatLatency(totals.max) : "—"],
       ["Loss", `${(totals.total ? (totals.total - totals.received) / totals.total * 100 : 0).toFixed(1)}%`],
     ];
     const grid = document.createElement("div");

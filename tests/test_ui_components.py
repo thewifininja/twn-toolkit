@@ -123,12 +123,18 @@ class UIComponentTests(unittest.TestCase):
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
         )
+        script = (
+            TEMPLATE_ROOT.parent / "static" / "ping-tool.js"
+        ).read_text(encoding="utf-8")
 
         self.assertIn(".ping-results-workspace {", stylesheet)
         self.assertIn("grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);", stylesheet)
         self.assertIn('.ping-host-option[data-state="up"] .ping-host-state-dot {', stylesheet)
         self.assertIn('.ping-host-option[data-state="down"] .ping-host-state-dot {', stylesheet)
         self.assertIn(".ping-graph-card {", stylesheet)
+        self.assertIn(".ping-host-statistics .ping-statistics span {", stylesheet)
+        self.assertIn("display: inline-flex;", stylesheet)
+        self.assertIn('["Now", current?.reachable', script)
         self.assertIn("@media (max-width: 1050px) {", stylesheet)
         self.assertIn("grid-template-rows: auto auto auto minmax(0, 1fr) auto;", stylesheet)
         self.assertIn("overflow-y: auto;", stylesheet)

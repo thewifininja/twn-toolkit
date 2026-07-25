@@ -4598,7 +4598,23 @@ button.compact,
 }
 
 .ping-host-statistics .ping-statistics {
-  grid-template-columns: repeat(5, minmax(72px, 1fr));
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  justify-content: space-between;
+}
+
+.ping-host-statistics .ping-statistics span {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 5px;
+}
+
+.ping-host-statistics .ping-statistics small,
+.ping-host-statistics .ping-statistics strong {
+  display: inline;
+  margin: 0;
 }
 
 .ping-statistics span {
@@ -4808,9 +4824,9 @@ button.compact,
   border: 1px solid var(--line);
   border-radius: 8px;
   display: grid;
-  gap: 12px;
+  gap: 9px;
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
 }
 
 .ping-graph-card code {
@@ -7661,12 +7677,12 @@ th {
     grid-template-columns: 1fr;
   }
 
-  .ping-host-statistics .ping-statistics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .port-inline-profile {
     grid-template-rows: none;
+  }
+
+  .ping-host-statistics .ping-statistics {
+    justify-content: flex-start;
   }
 
   .port-profile-actions {
