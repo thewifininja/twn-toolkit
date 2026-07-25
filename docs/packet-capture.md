@@ -63,9 +63,11 @@ permissions automatically.
 ## Storage and security
 
 Standalone PCAPs live beneath `instance/packet_captures/`. Automation PCAPs
-move into the existing `instance/automation_artifacts/` run directory.
-Together they use the automation-artifact quota and minimum free-disk reserve.
-Neither form is included in profile backups.
+can move into the existing `instance/automation_artifacts/` run directory or
+be saved directly to a selected datastore folder. Standalone and run-retained
+captures use the automation-artifact quota and minimum free-disk reserve;
+datastore captures use the datastore quota. Neither form is included in profile
+backups.
 
 **Save to datastore** copies a completed standalone PCAP into the selected
 datastore folder. The copy then follows the datastore quota and lifecycle and

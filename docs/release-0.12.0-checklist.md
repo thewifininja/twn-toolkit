@@ -6,8 +6,9 @@
   expose live status, stop, download, and delete controls.
 - [x] Interface ownership, BPF validation, duration, packet, size, snapshot,
   and promiscuous-mode limits are enforced server-side.
-- [x] Packet Capture is reusable as an automation action and retained PCAPs
-  participate in run ZIP download, deletion, and retention.
+- [x] Packet Capture is reusable as an automation action; captures can
+  participate in run ZIP download, deletion, and retention or save directly
+  beneath a selected datastore folder.
 - [x] Standalone and automated PCAP storage shares the artifact quota and
   minimum free-space reserve.
 - [x] Live, completed, and datastore PCAP inspection uses a floating,

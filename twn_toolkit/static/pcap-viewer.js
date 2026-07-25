@@ -2,6 +2,7 @@
   const viewer = document.querySelector("#pcap-floating-window");
   if (!viewer) return;
 
+  const scrim = document.querySelector("[data-pcap-scrim]");
   const STORAGE_KEY = "twn-pcap-viewer";
   const MAX_VISIBLE_ROWS = 1000;
   const title = viewer.querySelector("#pcap-floating-title");
@@ -135,6 +136,7 @@
     minimized = Boolean(value);
     viewer.classList.toggle("is-minimized", minimized);
     viewer.setAttribute("aria-expanded", String(!minimized));
+    if (scrim) scrim.hidden = minimized;
     saveState();
     if (!minimized) scrollToLatest();
   };
@@ -145,6 +147,7 @@
     loading = false;
     source = null;
     viewer.hidden = true;
+    if (scrim) scrim.hidden = true;
     rows.replaceChildren();
     window.sessionStorage.removeItem(STORAGE_KEY);
   };
@@ -266,6 +269,7 @@
     download.hidden = live || !source.downloadUrl;
     loadMore.hidden = true;
     viewer.hidden = false;
+    if (scrim) scrim.hidden = false;
     autoScroll.checked = candidate.autoScroll !== false;
     setMinimized(restore ? Boolean(candidate.minimized) : false);
     saveState();

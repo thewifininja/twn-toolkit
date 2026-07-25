@@ -355,6 +355,10 @@ class PacketCaptureTests(unittest.TestCase):
             self.assertEqual(actions_page.status_code, 200)
             self.assertIn(b"Packet capture", actions_page.data)
             self.assertIn(b'name="capture_action_interface"', actions_page.data)
+            self.assertIn(b"Collection destination", actions_page.data)
+            self.assertIn(b'name="capture_action_destination_mode"', actions_page.data)
+            self.assertIn(b'name="capture_action_datastore_folder"', actions_page.data)
+            self.assertIn(b'data-pcap-scrim', actions_page.data)
 
     def test_automation_action_returns_capture_as_run_artifact(self) -> None:
         action = AUTOMATION_REGISTRY.actions["packet.capture"]
@@ -371,10 +375,12 @@ class PacketCaptureTests(unittest.TestCase):
                     "capture_action_max_size": "10",
                     "capture_action_snap_length": "128",
                     "capture_action_promiscuous": "on",
+                    "capture_action_destination_mode": "run",
                 },
             )
         self.assertEqual(parsed["interface"], "en7")
         self.assertEqual(parsed["duration_seconds"], 30)
+        self.assertEqual(parsed["destination_mode"], "run")
 
         def capture(_config, *, output_path, **_kwargs):
             Path(output_path).write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 28)
@@ -408,6 +414,46 @@ class PacketCaptureTests(unittest.TestCase):
             self.assertTrue(artifact["filename"].endswith("-en7-capture.pcap"))
         finally:
             shutil.rmtree(Path(artifact["source_path"]).parent, ignore_errors=True)
+
+    def test_automation_action_can_save_capture_to_datastore(self) -> None:
+        action = AUTOMATION_REGISTRY.actions["packet.capture"]
+
+        def capture(_config, *, output_path, **_kwargs):
+            Path(output_path).write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 28)
+            return {
+                **VALID_CONFIG,
+                "elapsed_seconds": 2.0,
+                "size_bytes": 32,
+                "packet_count_captured": 3,
+                "termination_reason": "packet limit reached",
+            }
+
+        with tempfile.TemporaryDirectory() as instance:
+            with (
+                patch(
+                    "twn_toolkit.automation_types.actions.validate_capture_config",
+                    return_value=VALID_CONFIG,
+                ),
+                patch(
+                    "twn_toolkit.automation_types.actions.run_packet_capture",
+                    side_effect=capture,
+                ),
+            ):
+                result = action.execute(
+                    {
+                        **VALID_CONFIG,
+                        "_instance_path": instance,
+                        "destination_mode": "datastore",
+                        "datastore_folder": "",
+                    },
+                    ConditionResult(True, "met", "WAN degraded", {}),
+                )
+
+            stored_path = Path(instance) / "datastore" / result.output["stored_path"]
+            self.assertEqual(result.status, "success")
+            self.assertEqual(result.output["destination_mode"], "datastore")
+            self.assertNotIn("_artifact_sources", result.output)
+            self.assertEqual(stored_path.read_bytes()[:4], b"\xd4\xc3\xb2\xa1")
 
 
 if __name__ == "__main__":

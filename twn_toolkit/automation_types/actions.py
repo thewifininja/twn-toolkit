@@ -516,14 +516,33 @@ def _execute_webhook(config: dict[str, Any], trigger: ConditionResult) -> Action
     )
 
 
+def _packet_capture_destination(config: dict[str, Any]) -> dict[str, str]:
+    destination_mode = str(config.get("destination_mode", "run"))
+    if destination_mode not in {"run", "datastore"}:
+        raise ToolInputError("Choose retained-run or datastore packet-capture output.")
+    datastore_folder = str(config.get("datastore_folder", "")).replace("\\", "/").strip("/")
+    if any(part == ".." for part in Path(datastore_folder).parts):
+        raise ToolInputError("The packet-capture datastore destination is invalid.")
+    return {
+        "destination_mode": destination_mode,
+        "datastore_folder": datastore_folder,
+    }
+
+
 def _validate_packet_capture(config: dict[str, Any]) -> dict[str, Any]:
-    return validate_capture_config(config, require_runtime=False)
+    return {
+        **validate_capture_config(config, require_runtime=False),
+        **_packet_capture_destination(config),
+    }
 
 
 def _execute_packet_capture(
     config: dict[str, Any], trigger: ConditionResult
 ) -> ActionResult:
-    normalized = validate_capture_config(config)
+    normalized = {
+        **validate_capture_config(config),
+        **_packet_capture_destination(config),
+    }
     instance_path = str(config.get("_instance_path", "")).strip()
     if not instance_path:
         raise ToolInputError("Automation packet-capture context is unavailable.")
@@ -541,30 +560,41 @@ def _execute_packet_capture(
             instance_path=instance_path,
             output_path=output_path,
         )
-        keep_staging = True
+        output = {
+            "trigger": trigger.evidence,
+            "interface": normalized["interface"],
+            "capture_filter": normalized["capture_filter"],
+            "elapsed_seconds": result["elapsed_seconds"],
+            "packet_count": result["packet_count_captured"],
+            "size_bytes": result["size_bytes"],
+            "termination_reason": result["termination_reason"],
+            "destination_mode": normalized["destination_mode"],
+        }
+        if normalized["destination_mode"] == "datastore":
+            store = LocalDatastore(instance_path)
+            store.list(normalized["datastore_folder"])
+            with output_path.open("rb") as source:
+                saved = _save_sftp_datastore_file(
+                    store, normalized["datastore_folder"], filename, source
+                )
+            output["stored_path"] = store.relative(saved)
+        else:
+            keep_staging = True
+            output["_artifact_sources"] = [
+                {
+                    "source_path": str(output_path),
+                    "filename": filename,
+                    "interface": normalized["interface"],
+                    "size": result["size_bytes"],
+                }
+            ]
         return ActionResult(
             status="success",
             summary=(
                 f"Captured {result['packet_count_captured']:,} packet(s) "
                 f"on {normalized['interface']} for {result['elapsed_seconds']:.1f} seconds."
             ),
-            output={
-                "trigger": trigger.evidence,
-                "interface": normalized["interface"],
-                "capture_filter": normalized["capture_filter"],
-                "elapsed_seconds": result["elapsed_seconds"],
-                "packet_count": result["packet_count_captured"],
-                "size_bytes": result["size_bytes"],
-                "termination_reason": result["termination_reason"],
-                "_artifact_sources": [
-                    {
-                        "source_path": str(output_path),
-                        "filename": filename,
-                        "interface": normalized["interface"],
-                        "size": result["size_bytes"],
-                    }
-                ],
-            },
+            output=output,
         )
     finally:
         if not keep_staging:
@@ -608,7 +638,7 @@ def _parse_webhook_form(form: Mapping[str, Any], existing: dict[str, Any]) -> di
 def _parse_packet_capture_form(
     form: Mapping[str, Any], _existing: dict[str, Any]
 ) -> dict[str, Any]:
-    return validate_capture_config(
+    return _validate_packet_capture(
         {
             "interface": form.get("capture_action_interface", ""),
             "capture_filter": form.get("capture_action_filter", ""),
@@ -617,6 +647,8 @@ def _parse_packet_capture_form(
             "max_size_mib": form.get("capture_action_max_size", "100"),
             "snap_length": form.get("capture_action_snap_length", "0"),
             "promiscuous": "capture_action_promiscuous" in form,
+            "destination_mode": form.get("capture_action_destination_mode", "run"),
+            "datastore_folder": form.get("capture_action_datastore_folder", ""),
         }
     )
 

@@ -230,7 +230,18 @@
         </label>
       </div>
       <label class="check"><input name="capture_action_promiscuous" type="checkbox" {% if config.get('promiscuous', config.get('capture_action_promiscuous', true)) %}checked{% endif %}><span><strong>Promiscuous mode</strong><small>Normally required for traffic received from a SPAN or mirror port.</small></span></label>
-      <div class="message warning">PCAP files can contain credentials and sensitive payloads. They are retained with the automation run until deleted or removed by the run-retention policy.</div>
+      {% set capture_destination_mode = config.get('destination_mode', config.get('capture_action_destination_mode', 'run')) %}
+      <fieldset class="choice-group" data-capture-action-output>
+        <legend>Collection destination</legend>
+        <label class="check"><input type="radio" name="capture_action_destination_mode" value="run" {% if capture_destination_mode == 'run' %}checked{% endif %}><span><strong>Collected action run</strong><small>Keep the PCAP with the run and include it in Download ZIP.</small></span></label>
+        <label class="check"><input type="radio" name="capture_action_destination_mode" value="datastore" {% if capture_destination_mode == 'datastore' %}checked{% endif %}><span><strong>Datastore</strong><small>Persist the PCAP beneath a selected datastore folder.</small></span></label>
+      </fieldset>
+      <div data-capture-action-datastore {% if capture_destination_mode != 'datastore' %}hidden{% endif %}>
+        <label>Datastore folder
+          <select name="capture_action_datastore_folder">{% for folder in datastore_folders %}<option value="{{ folder.path }}" {% if config.get('datastore_folder', config.get('capture_action_datastore_folder', '')) == folder.path %}selected{% endif %}>{{ folder.name }}</option>{% endfor %}</select>
+        </label>
+      </div>
+      <div class="message warning">PCAP files can contain credentials and sensitive payloads. Captures remain in the selected destination until deleted; retained-run captures also follow the run-retention policy.</div>
     </div>
     <div class="button-row"><button type="submit">{{ 'Update action' if definition_id else 'Save action' }}</button></div>
   </form>

@@ -6610,6 +6610,13 @@ button.compact,
   width: auto;
 }
 
+.pcap-viewer-scrim {
+  background: rgb(7 18 14 / 22%);
+  inset: 0;
+  position: fixed;
+  z-index: 890;
+}
+
 .pcap-floating-window {
   background: var(--panel);
   border: 1px solid var(--line);

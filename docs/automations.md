@@ -125,7 +125,8 @@ to the next future occurrence rather than replaying a backlog.
 - Action: capture a bounded PCAP from a local or SPAN-connected interface using
   the shared Packet Capture engine. Interface, BPF filter, duration, packet
   count, file-size ceiling, snapshot length, and promiscuous mode are explicit.
-  The completed PCAP is retained with the run and included in its ZIP download.
+  The completed PCAP can be retained with the run for ZIP download or saved
+  directly beneath a selected Local Datastore folder.
 - History: retain condition checks, triggers, per-host command output, and
   action status in `instance/automations.sqlite3`.
 - Downloads: each action run can be downloaded as a ZIP containing JSON run
