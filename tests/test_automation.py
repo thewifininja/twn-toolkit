@@ -130,6 +130,106 @@ class AutomationStoreTests(unittest.TestCase):
             (1, "condition", "test.condition"),
         )
 
+    def test_condition_groups_evaluate_all_and_any_as_one_check(self) -> None:
+        condition_ids = [
+            self.store.save_condition_definition(
+                name=name, type_id=type_id, config={}
+            )
+            for name, type_id in (
+                ("WAN unavailable", "test.met"),
+                ("DNS unavailable", "test.clear"),
+            )
+        ]
+        action_id = self.store.save_action_definition(
+            name="Collect diagnostics", type_id="test.action", config={}
+        )
+        automation_id = self.store.save(
+            name="Correlated outage",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_ids=condition_ids,
+            condition_operator="all",
+            action_definition_ids=[action_id],
+            created_by="user-1",
+        )
+        registry = AutomationRegistry()
+        registry.add_condition(
+            ConditionType(
+                "test.met", "Met", "", lambda value: value,
+                lambda _config: ConditionResult(True, "met", "WAN failed", {}),
+            )
+        )
+        registry.add_condition(
+            ConditionType(
+                "test.clear", "Clear", "", lambda value: value,
+                lambda _config: ConditionResult(False, "clear", "DNS healthy", {}),
+            )
+        )
+        engine = AutomationEngine(self.store, registry)
+        automation = self.store.get(automation_id)
+
+        all_result = engine.test_condition(automation)
+        self.assertFalse(all_result.met)
+        self.assertEqual(all_result.summary, "ALL: 1 of 2 conditions met.")
+        self.assertEqual(
+            [item["name"] for item in all_result.evidence["conditions"]],
+            ["WAN unavailable", "DNS unavailable"],
+        )
+        self.assertEqual(
+            all_result.evidence["evaluation"]["type"], "condition.group"
+        )
+
+        self.store.save(
+            automation_id=automation_id,
+            name="Correlated outage",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_ids=condition_ids,
+            condition_operator="any",
+            action_definition_ids=[action_id],
+            created_by="user-1",
+        )
+        any_result = engine.test_condition(self.store.get(automation_id))
+        self.assertTrue(any_result.met)
+        self.assertEqual(any_result.summary, "ANY: 1 of 2 conditions met.")
+
+    def test_group_condition_edit_pauses_automation_and_blocks_deletion(self) -> None:
+        condition_ids = [
+            self.store.save_condition_definition(
+                name=name, type_id="test.condition", config={"value": name}
+            )
+            for name in ("Primary condition", "Secondary condition")
+        ]
+        action_id = self.store.save_action_definition(
+            name="Group action", type_id="test.action", config={}
+        )
+        automation_id = self.store.save(
+            name="Grouped condition references",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_ids=condition_ids,
+            condition_operator="all",
+            action_definition_ids=[action_id],
+            created_by="user-1",
+        )
+        self.store.set_enabled(automation_id, True)
+
+        self.store.save_condition_definition(
+            definition_id=condition_ids[1],
+            name="Secondary condition",
+            type_id="test.condition",
+            config={"value": "updated"},
+        )
+        self.assertFalse(self.store.get(automation_id)["enabled"])
+        with self.assertRaisesRegex(ValueError, "still used"):
+            self.store.delete_condition_definition(condition_ids[1])
+
     def test_trigger_queues_encrypted_action_snapshot_before_execution(self) -> None:
         automation_id = self.save(trigger_after=1)
         self.store.set_enabled(automation_id, True)
@@ -321,7 +421,14 @@ class AutomationStoreTests(unittest.TestCase):
         automation_id = self.save()
         connection = sqlite3.connect(self.store.path)
         try:
-            connection.execute("UPDATE automations SET condition_definition_id = NULL, action_definition_ids = NULL")
+            connection.execute(
+                """
+                UPDATE automations
+                SET condition_definition_id = NULL,
+                    condition_definition_ids = NULL,
+                    action_definition_ids = NULL
+                """
+            )
             connection.execute("DELETE FROM automation_conditions")
             connection.execute("DELETE FROM automation_actions")
             connection.commit()
@@ -332,6 +439,10 @@ class AutomationStoreTests(unittest.TestCase):
         migrated = migrated_store.get(automation_id, include_secrets=True)
         self.assertEqual(migrated["name"], "Branch outage collection")
         self.assertEqual(migrated["condition"]["type"], "test.condition")
+        self.assertEqual(
+            migrated["condition_definition_ids"],
+            [migrated["condition"]["id"]],
+        )
         self.assertEqual(migrated["actions"][0]["type"], "test.action")
         self.assertEqual(migrated["actions"][0]["config"]["password"], "very secret")
         self.assertEqual(len(migrated_store.condition_definitions()), 1)
@@ -536,6 +647,19 @@ class AutomationStoreTests(unittest.TestCase):
             migration[0],
             "Add durable leased automation execution jobs",
         )
+
+    def test_condition_group_migration_is_recorded(self) -> None:
+        connection = sqlite3.connect(self.store.path)
+        try:
+            migration = connection.execute(
+                """
+                SELECT description FROM automation_schema_migrations
+                WHERE version = 5
+                """
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual(migration[0], "Add ALL and ANY condition groups")
 
     def test_legacy_snmp_condition_migration_is_persisted(self) -> None:
         now = 1.0
@@ -774,6 +898,38 @@ class AutomationStoreTests(unittest.TestCase):
             ],
             created_by="user-1",
         )
+        primary_condition_id = self.store.get(automation_id)["condition"]["id"]
+        second_condition_id = self.store.save_condition_definition(
+            name="Backup DNS condition",
+            type_id="dns.lookup",
+            config={
+                "hosts": "example.com",
+                "servers": "192.0.2.53",
+                "record_type": "A",
+                "timeout": 1,
+                "expected_answers": "",
+                "answer_mode": "any",
+                "failure_mode": "all",
+                "failure_count": 1,
+            },
+        )
+        self.store.save(
+            automation_id=automation_id,
+            name="Portable automation",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=2,
+            cooldown_seconds=300,
+            condition_definition_ids=[
+                primary_condition_id,
+                second_condition_id,
+            ],
+            condition_operator="any",
+            action_definition_ids=[
+                self.store.action_definitions(include_secrets=True)[0]["id"]
+            ],
+            created_by="user-1",
+        )
         self.store.set_enabled(automation_id, True)
         self.store.record_condition(
             automation_id, ConditionResult(True, "met", "failed", {})
@@ -791,6 +947,8 @@ class AutomationStoreTests(unittest.TestCase):
             self.assertEqual(restored_action["config"]["password"], "very secret")
             self.assertFalse(restored["enabled"])
             self.assertEqual(restored["state"], "disabled")
+            self.assertEqual(restored["condition_operator"], "any")
+            self.assertEqual(len(restored["conditions"]), 2)
             self.assertEqual(destination_store.recent_checks(restored["id"]), [])
 
 
@@ -1119,6 +1277,20 @@ class AutomationRouteTests(unittest.TestCase):
                 600,
             )
             condition_id = store.condition_definitions()[0]["id"]
+            second_condition_id = store.save_condition_definition(
+                name="DNS unavailable",
+                type_id="dns.lookup",
+                config={
+                    "hosts": "example.com",
+                    "servers": "192.0.2.53",
+                    "record_type": "A",
+                    "timeout": 1,
+                    "expected_answers": "",
+                    "answer_mode": "any",
+                    "failure_mode": "all",
+                    "failure_count": 1,
+                },
+            )
             action_id = store.action_definitions()[0]["id"]
             response = client.post(
                 "/automations/save",
@@ -1129,7 +1301,11 @@ class AutomationRouteTests(unittest.TestCase):
                     "recover_after": "2",
                     "cooldown_seconds": "300",
                     "run_mode": "condition",
-                    "condition_definition_id": condition_id,
+                    "condition_definition_id": [
+                        condition_id,
+                        second_condition_id,
+                    ],
+                    "condition_operator": "any",
                     "action_definition_id": action_id,
                 },
             )
@@ -1137,6 +1313,8 @@ class AutomationRouteTests(unittest.TestCase):
             page = client.get("/automations")
             self.assertIn(b"Outage logs", page.data)
             self.assertIn(b"WAN unavailable", page.data)
+            self.assertIn(b"DNS unavailable", page.data)
+            self.assertIn(b"ANY:", page.data)
             self.assertIn(b"Collect switch logs", page.data)
             self.assertIn(b"paused", page.data)
 
@@ -1154,9 +1332,16 @@ class AutomationRouteTests(unittest.TestCase):
                 },
             )
             self.assertEqual(second.status_code, 302)
-            self.assertEqual(len(store.condition_definitions()), 1)
+            self.assertEqual(len(store.condition_definitions()), 2)
             self.assertEqual(len(store.action_definitions()), 1)
             self.assertEqual(len(store.all()), 2)
+            grouped = next(
+                automation
+                for automation in store.all()
+                if automation["name"] == "Outage logs"
+            )
+            self.assertEqual(grouped["condition_operator"], "any")
+            self.assertEqual(len(grouped["conditions"]), 2)
 
             automation_id = store.all()[0]["id"]
             run_id = store.record_run(

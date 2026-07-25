@@ -78,7 +78,13 @@ class PriorReleaseUpgradeTests(unittest.TestCase):
             )
             self.assertEqual(
                 [item["version"] for item in automation_store.migration_status()],
-                ["automation-1", "automation-2", "automation-3", "automation-4"],
+                [
+                    "automation-1",
+                    "automation-2",
+                    "automation-3",
+                    "automation-4",
+                    "automation-5",
+                ],
             )
             self.assertEqual(
                 json.loads((instance / "schema_migrations.json").read_text())[0][

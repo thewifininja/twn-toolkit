@@ -51,6 +51,8 @@ class AutomationStore:
         condition: dict[str, Any] | None = None,
         actions: list[dict[str, Any]] | None = None,
         condition_definition_id: str = "",
+        condition_definition_ids: list[str] | None = None,
+        condition_operator: str = "all",
         action_definition_ids: list[str] | None = None,
         action_stages: list[dict[str, Any]] | None = None,
         created_by: str,
@@ -67,14 +69,47 @@ class AutomationStore:
             raise ValueError("Recovery threshold must be between 1 and 100 checks.")
         if not 0 <= cooldown_seconds <= 604800:
             raise ValueError("Cooldown must be between 0 seconds and 7 days.")
-        if not condition_definition_id:
+        condition_definition_ids = [
+            str(value).strip()
+            for value in (condition_definition_ids or [])
+            if str(value).strip()
+        ]
+        if not condition_definition_ids and condition_definition_id:
+            condition_definition_ids = [condition_definition_id]
+        if not condition_definition_ids:
             if not condition:
                 raise ValueError("Select an automation condition.")
-            condition_definition_id = self.save_condition_definition(
-                name=f"{name} condition",
-                type_id=str(condition["type"]),
-                config=dict(condition["config"]),
-            )
+            condition_definition_ids = [
+                self.save_condition_definition(
+                    name=f"{name} condition",
+                    type_id=str(condition["type"]),
+                    config=dict(condition["config"]),
+                )
+            ]
+        condition_definition_ids = list(dict.fromkeys(condition_definition_ids))
+        if len(condition_definition_ids) > 10:
+            raise ValueError("An automation may use at most 10 conditions.")
+        if condition_operator not in {"all", "any"}:
+            raise ValueError("Select whether all or any conditions must be met.")
+        condition_definitions = [
+            self.get_condition_definition(definition_id)
+            for definition_id in condition_definition_ids
+        ]
+        if any(definition is None for definition in condition_definitions):
+            raise ValueError("One or more selected condition definitions were not found.")
+        selected_conditions = [
+            definition
+            for definition in condition_definitions
+            if definition is not None
+        ]
+        trigger_sources = [
+            definition
+            for definition in selected_conditions
+            if definition["type"] in AUTOMATION_REGISTRY.triggers
+        ]
+        if trigger_sources and len(selected_conditions) != 1:
+            raise ValueError("Schedules and manual mode cannot be combined with conditions.")
+        condition_definition_id = condition_definition_ids[0]
         if not action_definition_ids and not action_stages:
             if not actions:
                 raise ValueError("Select at least one automation action.")
@@ -95,9 +130,6 @@ class AutomationStore:
             for stage in action_stages
             for action_id in stage["action_definition_ids"]
         ]
-        condition_definition = self.get_condition_definition(condition_definition_id)
-        if not condition_definition:
-            raise ValueError("Selected condition definition was not found.")
         action_definitions = [
             self.get_action_definition(action_id, include_secrets=True)
             for action_id in action_definition_ids
@@ -105,8 +137,8 @@ class AutomationStore:
         if not action_definitions or any(action is None for action in action_definitions):
             raise ValueError("One or more selected action definitions were not found.")
         condition = {
-            "type": condition_definition["type"],
-            "config": condition_definition["config"],
+            "type": selected_conditions[0]["type"],
+            "config": selected_conditions[0]["config"],
         }
         actions = [
             {"type": action["type"], "config": action["config"]}
@@ -137,7 +169,8 @@ class AutomationStore:
                         actions_encrypted = ?, enabled = 0, state = 'disabled',
                         consecutive_met = 0, consecutive_clear = 0, next_check_at = NULL,
                         pending_schedule_at = NULL,
-                        condition_definition_id = ?, action_definition_ids = ?,
+                        condition_definition_id = ?, condition_definition_ids = ?,
+                        condition_operator = ?, action_definition_ids = ?,
                         action_stages = ?, updated_at = ?
                     WHERE id = ?
                     """,
@@ -151,6 +184,8 @@ class AutomationStore:
                         json.dumps(condition["config"], separators=(",", ":")),
                         encrypted_actions,
                         condition_definition_id,
+                        json.dumps(condition_definition_ids),
+                        condition_operator,
                         json.dumps(action_definition_ids),
                         json.dumps(action_stages, separators=(",", ":")),
                         now,
@@ -165,10 +200,11 @@ class AutomationStore:
                 INSERT INTO automations (
                     id, name, enabled, interval_seconds, trigger_after, recover_after,
                     cooldown_seconds, condition_type, condition_config, actions_encrypted,
-                    condition_definition_id, action_definition_ids, action_stages,
+                    condition_definition_id, condition_definition_ids, condition_operator,
+                    action_definition_ids, action_stages,
                     state, consecutive_met, consecutive_clear, next_check_at,
                     created_by, created_at, updated_at
-                ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'disabled', 0, 0, NULL, ?, ?, ?)
+                ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'disabled', 0, 0, NULL, ?, ?, ?)
                 """,
                 (
                     automation_id,
@@ -181,6 +217,8 @@ class AutomationStore:
                     json.dumps(condition["config"], separators=(",", ":")),
                     encrypted_actions,
                     condition_definition_id,
+                    json.dumps(condition_definition_ids),
+                    condition_operator,
                     json.dumps(action_definition_ids),
                     json.dumps(action_stages, separators=(",", ":")),
                     created_by,
@@ -384,10 +422,17 @@ class AutomationStore:
 
     def delete_condition_definition(self, definition_id: str) -> None:
         with self._connect() as connection:
-            if connection.execute(
-                "SELECT 1 FROM automations WHERE condition_definition_id = ? LIMIT 1",
-                (definition_id,),
-            ).fetchone():
+            rows = connection.execute(
+                "SELECT condition_definition_id, condition_definition_ids FROM automations"
+            ).fetchall()
+            if any(
+                definition_id
+                in (
+                    json.loads(row["condition_definition_ids"] or "[]")
+                    or [str(row["condition_definition_id"] or "")]
+                )
+                for row in rows
+            ):
                 raise ValueError("That condition is still used by an automation.")
             cursor = connection.execute(
                 "DELETE FROM automation_conditions WHERE id = ?", (definition_id,)
@@ -987,7 +1032,8 @@ class AutomationStore:
         with self._connect() as connection:
             condition_type_row = connection.execute(
                 """
-                SELECT COALESCE(automation_conditions.type, automations.condition_type) AS type
+                SELECT COALESCE(automation_conditions.type, automations.condition_type) AS type,
+                    automations.condition_definition_ids
                 FROM automations LEFT JOIN automation_conditions
                     ON automation_conditions.id = automations.condition_definition_id
                 WHERE automations.id = ?
@@ -1002,6 +1048,14 @@ class AutomationStore:
                 if condition_type_row
                 else "unknown"
             )
+            condition_ids = (
+                json.loads(condition_type_row["condition_definition_ids"] or "[]")
+                if condition_type_row
+                else []
+            )
+            evidence_type = (
+                "condition.group" if len(condition_ids) > 1 else condition_type
+            )
             evidence = {
                 "evaluation": {
                     "schema_version": 1,
@@ -1012,7 +1066,7 @@ class AutomationStore:
                         if condition_type == "manual.trigger"
                         else "condition"
                     ),
-                    "type": condition_type,
+                    "type": evidence_type,
                     "observed_at": now,
                 },
                 "error": {"message": message[:2000]},
@@ -1501,8 +1555,19 @@ class AutomationStore:
         self, row: sqlite3.Row, include_secrets: bool
     ) -> dict[str, Any]:
         condition_definition_id = str(row["condition_definition_id"] or "")
+        condition_definition_ids = json.loads(
+            row["condition_definition_ids"] or "[]"
+        )
+        if not condition_definition_ids and condition_definition_id:
+            condition_definition_ids = [condition_definition_id]
         action_definition_ids = json.loads(row["action_definition_ids"] or "[]")
-        condition = self.get_condition_definition(condition_definition_id)
+        conditions = [
+            definition
+            for definition_id in condition_definition_ids
+            if (definition := self.get_condition_definition(str(definition_id)))
+            is not None
+        ]
+        condition = conditions[0] if conditions else None
         action_map = {}
         for action_id in action_definition_ids:
             action = self.get_action_definition(action_id, include_secrets=include_secrets)
@@ -1532,6 +1597,19 @@ class AutomationStore:
                 "type": row["condition_type"],
                 "config": json.loads(row["condition_config"]),
             },
+            "conditions": conditions
+            or [
+                {
+                    "id": "",
+                    "name": "Legacy condition",
+                    "type": row["condition_type"],
+                    "config": json.loads(row["condition_config"]),
+                }
+            ],
+            "condition_definition_ids": [
+                str(definition_id) for definition_id in condition_definition_ids
+            ],
+            "condition_operator": str(row["condition_operator"] or "all"),
             "actions": actions,
             "action_stages": stages,
         }
@@ -1575,15 +1653,28 @@ class AutomationStore:
     def _pause_automations_for_condition(
         connection: sqlite3.Connection, definition_id: str, now: float
     ) -> None:
-        connection.execute(
-            """
-            UPDATE automations SET enabled = 0, state = 'disabled',
-                consecutive_met = 0, consecutive_clear = 0, next_check_at = NULL,
-                pending_schedule_at = NULL,
-                updated_at = ? WHERE condition_definition_id = ?
-            """,
-            (now, definition_id),
-        )
+        rows = connection.execute(
+            "SELECT id, condition_definition_id, condition_definition_ids FROM automations"
+        ).fetchall()
+        ids = [
+            str(row["id"])
+            for row in rows
+            if definition_id
+            in (
+                json.loads(row["condition_definition_ids"] or "[]")
+                or [str(row["condition_definition_id"] or "")]
+            )
+        ]
+        for automation_id in ids:
+            connection.execute(
+                """
+                UPDATE automations SET enabled = 0, state = 'disabled',
+                    consecutive_met = 0, consecutive_clear = 0, next_check_at = NULL,
+                    pending_schedule_at = NULL,
+                    updated_at = ? WHERE id = ?
+                """,
+                (now, automation_id),
+            )
 
     @staticmethod
     def _pause_automations_for_action(
@@ -1655,6 +1746,8 @@ class AutomationStore:
                 condition_config TEXT NOT NULL,
                 actions_encrypted TEXT NOT NULL,
                 condition_definition_id TEXT,
+                condition_definition_ids TEXT,
+                condition_operator TEXT NOT NULL DEFAULT 'all',
                 action_definition_ids TEXT,
                 action_stages TEXT,
                 state TEXT NOT NULL DEFAULT 'disabled',
@@ -1753,6 +1846,14 @@ class AutomationStore:
         if "action_definition_ids" not in columns:
             connection.execute(
                 "ALTER TABLE automations ADD COLUMN action_definition_ids TEXT"
+            )
+        if "condition_definition_ids" not in columns:
+            connection.execute(
+                "ALTER TABLE automations ADD COLUMN condition_definition_ids TEXT"
+            )
+        if "condition_operator" not in columns:
+            connection.execute(
+                "ALTER TABLE automations ADD COLUMN condition_operator TEXT NOT NULL DEFAULT 'all'"
             )
         if "pending_schedule_at" not in columns:
             connection.execute(
@@ -1854,6 +1955,32 @@ class AutomationStore:
                 """,
                 (time.time(), "Add durable leased automation execution jobs"),
             )
+        if 5 not in applied:
+            rows = connection.execute(
+                """
+                SELECT id, condition_definition_id
+                FROM automations
+                WHERE condition_definition_ids IS NULL
+                    AND condition_definition_id IS NOT NULL
+                """
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    """
+                    UPDATE automations
+                    SET condition_definition_ids = ?, condition_operator = 'all'
+                    WHERE id = ?
+                    """,
+                    (json.dumps([str(row["condition_definition_id"])]), row["id"]),
+                )
+            connection.execute(
+                """
+                INSERT INTO automation_schema_migrations
+                    (version, applied_at, description)
+                VALUES (5, ?, ?)
+                """,
+                (time.time(), "Add ALL and ANY condition groups"),
+            )
 
     def _migrate_reusable_definitions(self, connection: sqlite3.Connection) -> None:
         rows = connection.execute(
@@ -1905,9 +2032,16 @@ class AutomationStore:
                 "action_definition_ids": action_ids,
             }]
             connection.execute(
-                "UPDATE automations SET condition_definition_id = ?, action_definition_ids = ?, action_stages = ? WHERE id = ?",
+                """
+                UPDATE automations
+                SET condition_definition_id = ?, condition_definition_ids = ?,
+                    condition_operator = 'all', action_definition_ids = ?,
+                    action_stages = ?
+                WHERE id = ?
+                """,
                 (
                     condition_id,
+                    json.dumps([condition_id]),
                     json.dumps(action_ids),
                     json.dumps(stages, separators=(",", ":")),
                     row["id"],
@@ -1938,9 +2072,58 @@ class AutomationEngine:
         self.registry = registry
 
     def test_condition(self, automation: dict[str, Any]) -> ConditionResult:
-        return self.registry.evaluate_condition(
-            automation["condition"]["type"],
-            automation["condition"]["config"],
+        conditions = automation.get("conditions") or [automation["condition"]]
+        if len(conditions) == 1:
+            return self.registry.evaluate_condition(
+                conditions[0]["type"],
+                conditions[0]["config"],
+            )
+        evaluated = []
+        for condition in conditions:
+            try:
+                result = self.registry.evaluate_condition(
+                    condition["type"],
+                    condition["config"],
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    f"{condition['name']}: {type(exc).__name__}: {exc}"
+                ) from exc
+            evaluated.append(
+                {
+                    "id": condition["id"],
+                    "name": condition["name"],
+                    "type": condition["type"],
+                    "met": result.met,
+                    "status": result.status,
+                    "summary": result.summary,
+                    "evidence": result.evidence,
+                }
+            )
+        operator = str(automation.get("condition_operator", "all"))
+        met_count = sum(bool(item["met"]) for item in evaluated)
+        met = (
+            met_count == len(evaluated)
+            if operator == "all"
+            else met_count > 0
+        )
+        label = "ALL" if operator == "all" else "ANY"
+        return evaluation_result(
+            ConditionResult(
+                met=met,
+                status="met" if met else "clear",
+                summary=(
+                    f"{label}: {met_count} of {len(evaluated)} conditions met."
+                ),
+                evidence={
+                    "operator": operator,
+                    "met_count": met_count,
+                    "condition_count": len(evaluated),
+                    "conditions": evaluated,
+                },
+            ),
+            kind="condition",
+            type_id="condition.group",
         )
 
     def run_once(self) -> int:
@@ -2189,6 +2372,10 @@ class AutomationBackupStore:
                 "recover_after": item["recover_after"],
                 "cooldown_seconds": item["cooldown_seconds"],
                 "condition_name": item["condition"]["name"],
+                "condition_names": [
+                    condition["name"] for condition in item["conditions"]
+                ],
+                "condition_operator": item["condition_operator"],
                 "action_names": [action["name"] for action in item["actions"]],
                 "action_stages": [
                     {
@@ -2289,14 +2476,20 @@ class AutomationBackupStore:
             for name, value in actions.items()
         }
         for definition in automations:
-            condition_name = str(definition.get("condition_name", ""))
+            condition_names = [
+                str(name)
+                for name in definition.get("condition_names", [])
+                if str(name)
+            ]
+            if not condition_names:
+                condition_names = [str(definition.get("condition_name", ""))]
             selected_action_names = [str(name) for name in definition.get("action_names", [])]
             stage_definitions = definition.get("action_stages") or [{
                 "id": "stage-1", "name": "Stage 1",
                 "continue_policy": "all_completed",
                 "action_names": selected_action_names,
             }]
-            if condition_name not in condition_ids or any(
+            if any(name not in condition_ids for name in condition_names) or any(
                 name not in action_ids for name in selected_action_names
             ):
                 raise ValueError("Automation backup references a missing condition or action.")
@@ -2306,7 +2499,12 @@ class AutomationBackupStore:
                 trigger_after=int(definition.get("trigger_after", 3)),
                 recover_after=int(definition.get("recover_after", 3)),
                 cooldown_seconds=int(definition.get("cooldown_seconds", 300)),
-                condition_definition_id=condition_ids[condition_name],
+                condition_definition_ids=[
+                    condition_ids[name] for name in condition_names
+                ],
+                condition_operator=str(
+                    definition.get("condition_operator", "all")
+                ),
                 action_stages=[
                     {
                         "id": str(stage.get("id", "")),
