@@ -98,7 +98,10 @@ The sidebar and Network Tools page use the same functional organization.
 #### Multi-Host Tools
 
 - **Multi-Host Ping** — graph reachability, latency, and loss for a validated
-  target snapshot; update targets without discarding unchanged history. A
+  target snapshot; update targets without discarding unchanged history.
+  Persistent runs continue through normal toolkit navigation and can be
+  minimized to the global Live tools footer dock, then restored with retained history.
+  A
   working optional `fping` system command enables batched high-capacity rounds
   and raises the target limit from 100 to 250. Without it, the standard system
   `ping` compatibility engine remains available. Multi-Ping exposes separate
@@ -132,7 +135,8 @@ The sidebar and Network Tools page use the same functional organization.
   and endpoint upload (interface receive) below it. Hover a graph to inspect
   both rates at the nearest retained sample; polling intervals and a shared
   scrollable history window can be changed without discarding collected
-  samples.
+  samples. Persistent monitor sets continue through navigation, minimize to
+  the Live tools footer dock, and restore their bounded server-side history.
 - **Webhook / API Tester** — send bounded HTTP requests and inspect status,
   timing, headers, and response content without following redirects.
 - **Syslog Tools** — generate RFC 5424 messages or briefly collect bounded UDP

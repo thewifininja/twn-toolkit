@@ -2,6 +2,7 @@
 {% from "components/ui.html" import host_range_guidance %}
 
 {% block content %}
+<div id="ping-workspace">
 <section class="panel tool-panel" id="ping-controls">
   <div class="panel-head">
     <h1>Multi-Host Ping</h1>
@@ -22,8 +23,8 @@
     class="form"
     id="ping-form"
     data-delete-profile-url="{{ url_for('tools.delete_ping_profile') }}"
-    data-activity-url="{{ url_for('tools.ping_activity') }}"
-    data-run-url="{{ url_for('tools.ping_run') }}"
+    data-session-start-url="{{ url_for('tools.start_ping_session') }}"
+    data-requested-session="{{ requested_live_session }}"
     data-validate-url="{{ url_for('tools.ping_validate_targets') }}"
     data-save-profile-url="{{ url_for('tools.save_ping_profile') }}"
   >
@@ -55,7 +56,7 @@
       Hosts
       <textarea id="ping-hosts" rows="6" placeholder="Core Router = 192.0.2.1&#10;Classroom = 10.0.0.1-10.0.0.24&#10;router.example.com" required></textarea>
     </label>
-    <span class="field-note">{{ host_range_guidance(ping_target_limit) }} Starting a run snapshots this list. Edits take effect only after selecting <strong>Update targets</strong>, which preserves history for existing targets.</span>
+    <span class="field-note">{{ host_range_guidance(ping_target_limit) }} Starting a run snapshots these settings. Later edits take effect only after selecting <strong>Apply changes</strong>, which preserves history for existing targets.</span>
     <div class="form-grid ping-timing-grid">
       <label>
         Round interval in seconds
@@ -71,7 +72,8 @@
     <div class="button-row">
       <button id="ping-start" type="submit">Start</button>
       <button class="secondary" id="ping-stop" type="button" disabled>Stop</button>
-      <button class="secondary" id="ping-update-targets" type="button" disabled>Update targets</button>
+      <button class="secondary" id="ping-update-targets" type="button" disabled>Apply changes</button>
+      <button class="secondary" id="ping-minimize" type="button" disabled>Minimize</button>
     </div>
     <span class="tool-status" id="ping-status"></span>
     <div class="message warning" id="ping-validation-warning" hidden></div>
@@ -150,6 +152,15 @@
       <div class="ping-graph-grid" id="ping-graph-grid"></div>
     </div>
   </div>
+</section>
+</div>
+<section class="panel tool-panel ping-minimized-placeholder" id="ping-minimized" hidden>
+  <div>
+    <span class="eyebrow">Live tool</span>
+    <h1>Multi-Host Ping is minimized</h1>
+    <p>The run is still collecting results. You can navigate anywhere in the toolkit and restore it from the Live tools footer dock.</p>
+  </div>
+  <button id="ping-restore-inline" type="button">Restore workspace</button>
 </section>
 <script src="{{ url_for('static', filename='ping-tool.js') }}"></script>
 {% endblock %}

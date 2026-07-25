@@ -134,6 +134,38 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("overflow-y: auto;", stylesheet)
         self.assertIn("scrollbar-gutter: stable;", stylesheet)
 
+    def test_live_tools_use_a_low_profile_footer_dock(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+        script = (
+            TEMPLATE_ROOT.parent / "static" / "live-tools.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("--live-tool-dock-height: 42px;", stylesheet)
+        self.assertIn("bottom: calc(100% + 8px);", stylesheet)
+        self.assertIn("left: 300px;", stylesheet)
+        self.assertIn(".sidebar-collapsed .live-tool-tray {", stylesheet)
+        self.assertIn('id="live-tool-dock-summary"', template)
+        self.assertIn('const expandedKey = "twn:live-tools-dock-expanded";', script)
+        self.assertIn("collapse: () => setExpanded(false)", script)
+
+    def test_snmp_monitor_restores_from_persistent_live_tool_samples(self) -> None:
+        template = (
+            TEMPLATE_ROOT / "tools" / "snmp_test.html"
+        ).read_text(encoding="utf-8")
+        script = (
+            TEMPLATE_ROOT.parent / "static" / "snmp-interface-monitor.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('data-requested-session="{{ requested_live_session }}"', template)
+        self.assertIn("snmp-monitor-minimize", template)
+        self.assertIn("activeSession.samples_url", script)
+        self.assertIn("restoreSession(root.dataset.requestedSession)", script)
+        self.assertIn("window.TwnLiveTools?.refresh()", script)
+        self.assertNotIn('window.addEventListener("pagehide"', script)
+
     def test_port_scanner_profile_columns_share_aligned_rows(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
