@@ -2,12 +2,13 @@
 
 {% from "automations/_condition_forms.html" import condition_form with context %}
 {% from "automations/_schedule_forms.html" import schedule_form with context %}
-{% from "automations/_condition_evidence.html" import dns_test_evidence, ping_test_evidence, tcp_test_evidence, snmp_test_evidence, certificate_test_evidence with context %}
+{% from "automations/_condition_evidence.html" import condition_group_evidence, dns_test_evidence, ping_test_evidence, tcp_test_evidence, snmp_test_evidence, certificate_test_evidence with context %}
 {% from "automations/_action_forms.html" import action_form with context %}
 {% from "components/ui.html" import create_toggle, empty_state, workspace_intro %}
 
 {% macro automation_form(values, automation=none) %}
-  {% set selected_condition = automation.condition.id if automation else values.get('condition_definition_id', '') %}
+  {% set selected_conditions = automation.condition_definition_ids if automation else values.get('condition_definition_ids', [values.get('condition_definition_id', '')]) %}
+  {% set selected_condition_operator = automation.condition_operator if automation else values.get('condition_operator', 'all') %}
   {% set selected_schedule = automation.condition.id if automation and automation.run_mode == 'schedule' else values.get('schedule_definition_id', '') %}
   {% set selected_run_mode = automation.run_mode if automation else values.get('run_mode', 'condition') %}
   {% set selected_stages = automation.stage_form if automation else values.get('action_stages', []) %}
@@ -40,12 +41,20 @@
         </select>
       </label>
       <div data-automation-run-fields="condition">
-        {% if condition_definitions %}<label>Condition
-          <select name="condition_definition_id" required>
-            <option value="">Select a condition</option>
-            {% for item in condition_definitions %}<option value="{{ item.id }}" {% if selected_condition == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
-          </select>
-        </label>{% else %}<p class="empty">Create a condition before using condition mode.</p>{% endif %}
+        {% if condition_definitions %}
+          <label>Combine selected conditions
+            <select name="condition_operator">
+              <option value="all" {% if selected_condition_operator == 'all' %}selected{% endif %}>ALL conditions must be met</option>
+              <option value="any" {% if selected_condition_operator == 'any' %}selected{% endif %}>ANY condition may be met</option>
+            </select>
+          </label>
+          <fieldset class="choice-group compact-choice-group">
+            <legend>Conditions <small>(select 1–10)</small></legend>
+            {% for item in condition_definitions %}
+              <label class="check"><input type="checkbox" name="condition_definition_id" value="{{ item.id }}" {% if item.id in selected_conditions %}checked{% endif %}><span><strong>{{ item.name }}</strong><small>{{ item.type }}</small></span></label>
+            {% endfor %}
+          </fieldset>
+        {% else %}<p class="empty">Create a condition before using condition mode.</p>{% endif %}
       </div>
       <div data-automation-run-fields="schedule" hidden>
         {% if schedule_definitions %}<label>Schedule
@@ -189,7 +198,7 @@
     {% for automation in automations %}
       <details class="access-profile-card automation-card profile-section" {% if request.args.get('focus') == automation.id or (test_result and test_result.automation_id == automation.id) %}open{% endif %}>
         {% set is_manual = automation.condition.type == 'manual.trigger' %}{% set is_schedule = automation.condition.type == 'schedule.calendar' %}
-        <summary><span><strong>{{ automation.name }}</strong><small>{{ automation.condition.name }} → {{ automation.actions|map(attribute='name')|join(', ') }} · {{ 'on demand' if is_manual else 'next ' ~ automation.next_check_display if is_schedule and automation.enabled else 'schedule completed' if is_schedule and automation.state == 'completed' else 'schedule paused' if is_schedule else 'every ' ~ automation.interval_seconds ~ 's · ' ~ ('armed' if automation.enabled else 'paused') }}</small></span><span class="pill {{ 'planned' if is_manual or is_schedule else 'success' if automation.state == 'healthy' else 'error' if automation.state == 'error' else 'planned' }}">{{ 'manual' if is_manual else automation.state }}</span></summary>
+        <summary><span><strong>{{ automation.name }}</strong><small>{% if automation.conditions|length > 1 %}{{ automation.condition_operator|upper }}: {{ automation.conditions|map(attribute='name')|join(' + ' if automation.condition_operator == 'all' else ' / ') }}{% else %}{{ automation.condition.name }}{% endif %} → {{ automation.actions|map(attribute='name')|join(', ') }} · {{ 'on demand' if is_manual else 'next ' ~ automation.next_check_display if is_schedule and automation.enabled else 'schedule completed' if is_schedule and automation.state == 'completed' else 'schedule paused' if is_schedule else 'every ' ~ automation.interval_seconds ~ 's · ' ~ ('armed' if automation.enabled else 'paused') }}</small></span><span class="pill {{ 'planned' if is_manual or is_schedule else 'success' if automation.state == 'healthy' else 'error' if automation.state == 'error' else 'planned' }}">{{ 'manual' if is_manual else automation.state }}</span></summary>
         <div class="automation-card-body">
           <div class="automation-pipeline-summary" aria-label="Action pipeline">
             {% for stage in automation.action_stages %}
@@ -200,6 +209,7 @@
           {% if is_schedule %}<div class="automation-status-grid schedule-status-grid"><div><span>Next occurrence</span><strong>{{ automation.next_check_display }}</strong></div><div><span>Last scheduled run</span><strong>{{ automation.last_triggered_display }}</strong></div><div><span>Timezone</span><strong>{{ automation.condition.config.timezone }}</strong></div><div><span>Latest schedule event</span><strong>{{ automation.last_summary or 'No occurrences yet' }}</strong></div></div>{% elif not is_manual %}<div class="automation-status-grid"><div><span>Last check</span><strong>{{ automation.last_check_display }}</strong></div><div><span>Last trigger</span><strong>{{ automation.last_triggered_display }}</strong></div><div><span>Threshold progress</span><strong>{{ automation.consecutive_met }} / {{ automation.trigger_after }}</strong></div><div><span>Latest observation</span><strong>{{ automation.last_summary or 'No checks yet' }}</strong></div></div>{% else %}<p class="field-note automation-context-note">This automation runs only when an administrator explicitly starts it.</p>{% endif %}
           {% if automation.last_error %}<div class="message error">{{ automation.last_error }}</div>{% endif %}
           {% if test_result and test_result.automation_id == automation.id %}<div class="message {{ 'error' if test_result.status == 'error' else 'success' if test_result.status == 'clear' else 'warning' }}"><strong>{{ 'Schedule preview' if is_schedule else 'Condition test: ' ~ test_result.status }}</strong> · {{ test_result.summary }}</div>{% endif %}
+          {% if automation.conditions|length > 1 and test_result and test_result.automation_id == automation.id %}{{ condition_group_evidence(test_result) }}{% endif %}
           {% if automation.condition.type in ['dns.lookup', 'dns.performance'] and test_result and test_result.automation_id == automation.id %}{{ dns_test_evidence(test_result) }}{% endif %}
           {% if automation.condition.type == 'ping.multi' and test_result and test_result.automation_id == automation.id %}{{ ping_test_evidence(test_result) }}{% endif %}
           {% if automation.condition.type == 'tcp.reachability' and test_result and test_result.automation_id == automation.id %}{{ tcp_test_evidence(test_result) }}{% endif %}

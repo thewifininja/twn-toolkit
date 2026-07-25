@@ -18,6 +18,21 @@ not require a reusable definition. Existing manual and calendar source IDs
 remain valid; the storage compatibility layer does not rewrite saved
 automations.
 
+Condition-mode automations can select up to 10 reusable conditions and combine
+them with one explicit operator:
+
+- **ALL** is met only when every selected condition is met in the same
+  automation check.
+- **ANY** is met when one or more selected conditions are met.
+
+The scheduler evaluates every selected condition inside one claimed worker
+task, persists one combined observation, and applies debounce, recovery, and
+cooldown to that combined result. Evidence retains each member's name, type,
+status, summary, and complete type-specific evidence. A member evaluation
+error fails the whole automation check into the existing error state instead
+of silently treating the member as clear. Existing single-condition
+automations load as one-member ALL groups without rewriting their saved rows.
+
 ## Calendar schedules
 
 A reusable Calendar schedule condition can contain up to 50 independent rules,
@@ -264,5 +279,3 @@ the completed run.
 - Explicit production and out-of-band source-interface binding.
 - Optional repeated collection during a long-lived incident.
 - Granular permissions for viewing, arming, editing, and downloading output.
-- Multiple conditions with `ALL`/`ANY` grouping after the single-condition
-  workflow is proven.

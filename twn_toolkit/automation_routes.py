@@ -43,7 +43,11 @@ def _automation_audit_snapshot(automation: dict[str, Any] | None) -> dict[str, A
         "trigger after": automation.get("trigger_after"),
         "recover after": automation.get("recover_after"),
         "cooldown seconds": automation.get("cooldown_seconds"),
-        "condition": (automation.get("condition") or {}).get("name", ""),
+        "condition operator": automation.get("condition_operator", "all"),
+        "conditions": [
+            condition.get("name", "")
+            for condition in automation.get("conditions", [])
+        ] or [(automation.get("condition") or {}).get("name", "")],
         "action stages": [
             {
                 "name": stage.get("name", ""),
@@ -181,6 +185,9 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         form = {key: value for key, value in request.form.items()}
         form["snmp_host_names"] = request.form.getlist("snmp_host_name")
         form["action_definition_ids"] = request.form.getlist("action_definition_id")
+        form["condition_definition_ids"] = request.form.getlist(
+            "condition_definition_id"
+        )
         try:
             form["action_stages"] = json.loads(
                 request.form.get("action_stages_json", "[]")
@@ -194,6 +201,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             if run_mode:
                 if run_mode == "manual":
                     source_definition_id = store.ensure_manual_trigger_definition()
+                    source_definition_ids = [source_definition_id]
                 elif run_mode == "schedule":
                     source_definition_id = request.form.get(
                         "schedule_definition_id", ""
@@ -201,13 +209,24 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                     source = store.get_condition_definition(source_definition_id)
                     if not source or source["type"] != "schedule.calendar":
                         raise ValueError("Select a reusable schedule.")
+                    source_definition_ids = [source_definition_id]
                 elif run_mode == "condition":
-                    source_definition_id = request.form.get(
-                        "condition_definition_id", ""
+                    source_definition_ids = request.form.getlist(
+                        "condition_definition_id"
                     )
-                    source = store.get_condition_definition(source_definition_id)
-                    if not source or source["type"] in AUTOMATION_REGISTRY.triggers:
-                        raise ValueError("Select a reusable condition.")
+                    if not source_definition_ids:
+                        raise ValueError("Select at least one reusable condition.")
+                    sources = [
+                        store.get_condition_definition(definition_id)
+                        for definition_id in source_definition_ids
+                    ]
+                    if any(
+                        not source
+                        or source["type"] in AUTOMATION_REGISTRY.triggers
+                        for source in sources
+                    ):
+                        raise ValueError("Select only reusable conditions.")
+                    source_definition_id = source_definition_ids[0]
                 else:
                     raise ValueError("Select when this automation should run.")
             else:
@@ -215,6 +234,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 source_definition_id = request.form.get(
                     "condition_definition_id", ""
                 )
+                source_definition_ids = [source_definition_id]
             saved_id = store.save(
                 automation_id=automation_id,
                 name=request.form.get("name", ""),
@@ -223,6 +243,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 recover_after=int(request.form.get("recover_after", "3")),
                 cooldown_seconds=int(request.form.get("cooldown_seconds", "300")),
                 condition_definition_id=source_definition_id,
+                condition_definition_ids=source_definition_ids,
+                condition_operator=request.form.get("condition_operator", "all"),
                 action_definition_ids=request.form.getlist("action_definition_id"),
                 action_stages=form["action_stages"],
                 created_by=str(g.current_user["id"]),
