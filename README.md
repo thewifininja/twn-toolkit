@@ -101,7 +101,7 @@ The sidebar and Network Tools page use the same functional organization.
   target snapshot; update targets without discarding unchanged history.
   Persistent runs continue through normal toolkit navigation and can be
   minimized to the collapsed-by-default Live tools footer dock, renamed in
-  place, then restored with retained history using compact play/stop controls.
+  place, then restored with retained history by selecting the session card.
   A
   working optional `fping` system command enables batched high-capacity rounds
   and raises the target limit from 100 to 250. Without it, the standard system

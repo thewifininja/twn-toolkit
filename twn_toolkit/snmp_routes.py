@@ -417,6 +417,7 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
         )
         if page is None:
             return jsonify({"error": "Live SNMP monitor not found."}), 404
+        page["session"] = public_live_session(page["session"])
         return jsonify(page)
 
     @tools_bp.post("/snmp-test/interface-monitor/sessions/<session_id>")

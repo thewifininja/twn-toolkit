@@ -123,12 +123,33 @@ class UIComponentTests(unittest.TestCase):
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
         )
+        script = (
+            TEMPLATE_ROOT.parent / "static" / "ping-tool.js"
+        ).read_text(encoding="utf-8")
 
         self.assertIn(".ping-results-workspace {", stylesheet)
         self.assertIn("grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);", stylesheet)
         self.assertIn('.ping-host-option[data-state="up"] .ping-host-state-dot {', stylesheet)
         self.assertIn('.ping-host-option[data-state="down"] .ping-host-state-dot {', stylesheet)
         self.assertIn(".ping-graph-card {", stylesheet)
+        self.assertIn(".ping-host-statistics .ping-statistics span {", stylesheet)
+        self.assertIn("display: inline-flex;", stylesheet)
+        self.assertIn(
+            "grid-template-columns: fit-content(28%) minmax(300px, 1fr) auto;",
+            stylesheet,
+        )
+        self.assertIn("white-space: nowrap;", stylesheet)
+        self.assertIn('["Now", current?.reachable', script)
+        self.assertIn("header.append(identity, statistics, actions);", script)
+        self.assertIn("card.append(header, chart);", script)
+        self.assertIn(
+            'remove.className = "graph-close-button ping-graph-remove";',
+            script,
+        )
+        self.assertIn('remove.setAttribute("aria-label", removeLabel);', script)
+        self.assertIn(".graph-close-button::before,", stylesheet)
+        self.assertIn("transform: translate(-50%, -50%) rotate(45deg);", stylesheet)
+        self.assertIn(".graph-close-button:hover,", stylesheet)
         self.assertIn("@media (max-width: 1050px) {", stylesheet)
         self.assertIn("grid-template-rows: auto auto auto minmax(0, 1fr) auto;", stylesheet)
         self.assertIn("overflow-y: auto;", stylesheet)
@@ -153,11 +174,47 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("collapse: () => setExpanded(false)", script)
         self.assertIn('iconButton("✎"', script)
         self.assertIn('save.type = "submit";', script)
-        self.assertIn('restore.append(iconSymbol("▶"))', script)
-        self.assertIn('iconButton("■"', script)
+        self.assertIn('restore.className = "live-tool-card-restore";', script)
+        self.assertIn('iconButton("×", `Stop ${title.textContent}`', script)
         self.assertIn('restore.setAttribute("aria-label"', script)
+        self.assertNotIn('iconSymbol("▶")', script)
         self.assertIn(".live-tool-card .live-tool-rename {", stylesheet)
         self.assertIn(".live-tool-card .live-tool-icon-action {", stylesheet)
+        self.assertIn(".live-tool-card-restore {", stylesheet)
+        self.assertIn("inset: 0;", stylesheet)
+
+    def test_live_ping_page_refreshes_samples_subsecond_while_visible(self) -> None:
+        script = (
+            TEMPLATE_ROOT.parent / "static" / "ping-tool.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("const visiblePollIntervalMs = 250;", script)
+        self.assertIn("const hiddenPollIntervalMs = 5_000;", script)
+        self.assertIn(
+            "document.hidden ? hiddenPollIntervalMs : visiblePollIntervalMs",
+            script,
+        )
+        self.assertNotIn("setTimeout(pollSession, 2_000)", script)
+        self.assertNotIn("fetch(activeSession.detail_url", script)
+        self.assertIn("if (data.session) activeSession = data.session;", script)
+
+    def test_live_ping_graph_selection_persists_for_each_session(self) -> None:
+        script = (
+            TEMPLATE_ROOT.parent / "static" / "ping-tool.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('const graphSelectionStoragePrefix = "twn:ping-graphs:";', script)
+        self.assertIn("restoreGraphSelection();", script)
+        self.assertIn("persistGraphSelection();", script)
+        self.assertIn(
+            "if (selectedHosts.has(result.host) && !graphViews.has(result.host))",
+            script,
+        )
+        self.assertIn("selectGraph(result.host, {persist: false});", script)
+        self.assertIn(
+            "sessionStorage.setItem(storageKey, JSON.stringify(hosts));",
+            script,
+        )
 
     def test_snmp_monitor_restores_from_persistent_live_tool_samples(self) -> None:
         template = (
@@ -173,6 +230,15 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("restoreSession(root.dataset.requestedSession)", script)
         self.assertIn("window.TwnLiveTools?.refresh()", script)
         self.assertNotIn('window.addEventListener("pagehide"', script)
+        self.assertIn("const visiblePollIntervalMs = 250;", script)
+        self.assertIn("const hiddenPollIntervalMs = 5_000;", script)
+        self.assertNotIn("getJson(activeSession.detail_url", script)
+        self.assertIn("activeSession = page.session;", script)
+        self.assertIn(
+            'remove.className = "graph-close-button snmp-monitor-remove";',
+            script,
+        )
+        self.assertIn('remove.setAttribute("aria-label", removeLabel);', script)
 
     def test_port_scanner_profile_columns_share_aligned_rows(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

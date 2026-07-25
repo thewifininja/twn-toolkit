@@ -162,10 +162,30 @@ body {
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) auto;
   padding: 10px;
+  position: relative;
+  transition: background 120ms ease, border-color 120ms ease;
 }
 
 .live-tool-card.error {
   border-left-color: var(--bad);
+}
+
+.live-tool-card:hover,
+.live-tool-card:focus-within {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 9%);
+  border-color: color-mix(in srgb, var(--brand-green-dark), var(--line) 55%);
+}
+
+.live-tool-card-restore {
+  border-radius: inherit;
+  inset: 0;
+  position: absolute;
+  z-index: 1;
+}
+
+.live-tool-card-restore:focus-visible {
+  outline: 3px solid rgb(78 203 88 / 32%);
+  outline-offset: 2px;
 }
 
 .live-tool-card-identity {
@@ -205,6 +225,8 @@ body {
   align-items: center;
   display: flex;
   gap: 3px;
+  position: relative;
+  z-index: 2;
 }
 
 .live-tool-card .live-tool-icon-action {
@@ -235,7 +257,9 @@ body {
   height: 24px;
   min-height: 24px;
   opacity: 0.45;
+  position: relative;
   width: 24px;
+  z-index: 2;
 }
 
 .live-tool-card:hover .live-tool-rename,
@@ -250,6 +274,10 @@ body {
   color: var(--bad);
 }
 
+.live-tool-card .live-tool-stop {
+  font-size: 1.05rem;
+}
+
 .live-tool-card .live-tool-icon-action:disabled {
   cursor: wait;
   opacity: 0.45;
@@ -261,6 +289,8 @@ body {
   gap: 3px;
   grid-template-columns: minmax(0, 1fr) auto auto;
   min-width: 0;
+  position: relative;
+  z-index: 2;
 }
 
 .live-tool-card .live-tool-rename-input {
@@ -4568,7 +4598,24 @@ button.compact,
 }
 
 .ping-host-statistics .ping-statistics {
-  grid-template-columns: repeat(5, minmax(72px, 1fr));
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  justify-content: space-between;
+}
+
+.ping-host-statistics .ping-statistics span {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.ping-host-statistics .ping-statistics small,
+.ping-host-statistics .ping-statistics strong {
+  display: inline;
+  margin: 0;
 }
 
 .ping-statistics span {
@@ -4778,9 +4825,18 @@ button.compact,
   border: 1px solid var(--line);
   border-radius: 8px;
   display: grid;
-  gap: 12px;
+  gap: 9px;
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
+}
+
+.ping-graph-card > header {
+  display: grid;
+  grid-template-columns: fit-content(28%) minmax(300px, 1fr) auto;
+}
+
+.ping-graph-card > header > div:first-child {
+  min-width: 150px;
 }
 
 .ping-graph-card code {
@@ -4790,6 +4846,51 @@ button.compact,
 
 .ping-graph-card-actions {
   flex: 0 0 auto;
+}
+
+.graph-close-button {
+  background: color-mix(in srgb, var(--panel), var(--bad) 9%);
+  border: 1px solid color-mix(in srgb, var(--bad), transparent 62%);
+  border-radius: 50%;
+  box-sizing: border-box;
+  color: var(--bad);
+  display: inline-grid;
+  flex: 0 0 auto;
+  height: 32px;
+  line-height: 0;
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0;
+  place-items: center;
+  position: relative;
+  width: 32px;
+}
+
+.graph-close-button::before,
+.graph-close-button::after {
+  background: currentColor;
+  border-radius: 999px;
+  content: "";
+  height: 2px;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  width: 14px;
+}
+
+.graph-close-button::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.graph-close-button::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.graph-close-button:hover,
+.graph-close-button:focus-visible {
+  background: color-mix(in srgb, var(--panel), var(--bad) 17%);
+  border-color: color-mix(in srgb, var(--bad), transparent 35%);
+  color: var(--bad);
 }
 
 .ping-graph-card .ping-history-canvas-wrap {
@@ -7631,12 +7732,12 @@ th {
     grid-template-columns: 1fr;
   }
 
-  .ping-host-statistics .ping-statistics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .port-inline-profile {
     grid-template-rows: none;
+  }
+
+  .ping-host-statistics .ping-statistics {
+    justify-content: flex-start;
   }
 
   .port-profile-actions {
@@ -7645,7 +7746,11 @@ th {
 
   .ping-graph-card > header {
     align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .ping-graph-card > header > .ping-host-statistics {
+    grid-row: 2;
   }
 
   .automation-manager > .section-head {

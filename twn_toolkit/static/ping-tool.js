@@ -55,12 +55,17 @@
   let lockedViewEnd = null;
   let activeHostsSource = "";
   let activeHosts = new Set();
+  let renderFrame = null;
+  let hasStoredGraphSelection = false;
   const history = new Map();
   const hostViews = new Map();
   const graphViews = new Map();
   const selectedHosts = new Set();
   const profileStorageKey = "twn:ping-profile";
+  const graphSelectionStoragePrefix = "twn:ping-graphs:";
   const historySampleBudget = 500_000;
+  const visiblePollIntervalMs = 250;
+  const hiddenPollIntervalMs = 5_000;
   const chartTooltip = document.createElement("div");
   chartTooltip.className = "ping-chart-tooltip";
   chartTooltip.hidden = true;
@@ -302,6 +307,12 @@
     }
   });
   window.addEventListener("pagehide", () => clearTimeout(timer));
+  document.addEventListener("visibilitychange", () => {
+    if (!activeSession || activeSession.state !== "running") return;
+    clearTimeout(timer);
+    if (!document.hidden && !pollInFlight) pollSession();
+    else if (document.hidden) scheduleSessionPoll();
+  });
   document.addEventListener("livetoolstopped", (event) => {
     if (event.detail?.session?.id === activeSession?.id) {
       markSessionStopped("Stopped from the Live tools tray.");
@@ -313,12 +324,6 @@
     if (!activeSession || pollInFlight) return;
     pollInFlight = true;
     try {
-      const response = await fetch(activeSession.detail_url, {
-        headers: {"Accept": "application/json"},
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Live ping status could not be loaded.");
-      activeSession = data.session;
       await loadNewSamples();
       updateSessionStatus();
       if (activeSession.state !== "running") {
@@ -331,9 +336,17 @@
     } finally {
       pollInFlight = false;
       if (activeSession && activeSession.state === "running") {
-        timer = setTimeout(pollSession, 2_000);
+        scheduleSessionPoll();
       }
     }
+  }
+
+  function scheduleSessionPoll() {
+    clearTimeout(timer);
+    timer = setTimeout(
+      pollSession,
+      document.hidden ? hiddenPollIntervalMs : visiblePollIntervalMs
+    );
   }
 
   async function loadNewSamples() {
@@ -347,6 +360,7 @@
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Ping history could not be loaded.");
+      if (data.session) activeSession = data.session;
       const samples = Array.isArray(data.samples) ? data.samples : [];
       if (samples.length) {
         ingestSamples(samples);
@@ -374,7 +388,15 @@
     [...rounds.entries()].forEach(([sampledAt, results]) => {
       renderResults(results, new Date(Number(sampledAt) * 1000), true);
     });
-    refreshRenderedResults();
+    scheduleRenderedResults();
+  }
+
+  function scheduleRenderedResults() {
+    if (renderFrame !== null) return;
+    renderFrame = window.requestAnimationFrame(() => {
+      renderFrame = null;
+      refreshRenderedResults();
+    });
   }
 
   async function stopPingRun() {
@@ -431,6 +453,7 @@
     hostViews.clear();
     graphViews.clear();
     selectedHosts.clear();
+    restoreGraphSelection();
     lockedViewEnd = null;
     followLive.checked = true;
     historyPosition.value = "1000";
@@ -439,6 +462,54 @@
     hostFilter.value = "";
     hostStatusFilter.value = "all";
     updateSelectionSummary();
+  }
+
+  function graphSelectionStorageKey() {
+    return activeSession?.id
+      ? `${graphSelectionStoragePrefix}${activeSession.id}`
+      : "";
+  }
+
+  function restoreGraphSelection() {
+    hasStoredGraphSelection = false;
+    const storageKey = graphSelectionStorageKey();
+    if (!storageKey) return;
+    try {
+      const stored = sessionStorage.getItem(storageKey);
+      if (stored === null) return;
+      const hosts = JSON.parse(stored);
+      if (!Array.isArray(hosts)) throw new Error("Invalid graph selection");
+      const validHosts = hosts.filter(
+        (host) => typeof host === "string" && activeHosts.has(host)
+      );
+      if (hosts.length && !validHosts.length) {
+        sessionStorage.removeItem(storageKey);
+        return;
+      }
+      validHosts.forEach((host) => selectedHosts.add(host));
+      hasStoredGraphSelection = true;
+      if (validHosts.length !== hosts.length) {
+        sessionStorage.setItem(storageKey, JSON.stringify(validHosts));
+      }
+    } catch (_error) {
+      try {
+        sessionStorage.removeItem(storageKey);
+      } catch (_storageError) {
+        // Monitoring remains usable when browser storage is unavailable.
+      }
+    }
+  }
+
+  function persistGraphSelection() {
+    hasStoredGraphSelection = true;
+    const storageKey = graphSelectionStorageKey();
+    if (!storageKey) return;
+    const hosts = [...selectedHosts].filter((host) => activeHosts.has(host));
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(hosts));
+    } catch (_error) {
+      // Monitoring remains usable when browser storage is unavailable.
+    }
   }
 
   function updateSessionStatus() {
@@ -458,8 +529,20 @@
     const duration = Number.isFinite(durationMs)
       ? `${(durationMs / 1000).toFixed(2)}s`
       : "an unknown duration";
-    const completedAt = new Date(Number(activeSession.last_round_at) * 1000);
-    status.textContent = `Last round completed in ${duration} using ${engine} at ${completedAt.toLocaleTimeString()}. This run can be safely minimized.`;
+    const completedAt = new Date(
+      Number(activeSession.last_round_at) * 1000
+      + (Number.isFinite(durationMs) ? durationMs : 0)
+    );
+    const intervalSeconds = Number(
+      activeSession.config?.interval || activeSession.interval || 2
+    );
+    const constrained = Number.isFinite(durationMs)
+      && Number.isFinite(intervalSeconds)
+      && durationMs >= intervalSeconds * 1000;
+    const cadenceNote = constrained
+      ? ` The ${duration} round exceeded the ${intervalSeconds}s target; lower the ping timeout for a true ${intervalSeconds}-second cadence.`
+      : "";
+    status.textContent = `Last round completed in ${duration} using ${engine} at ${completedAt.toLocaleTimeString()}.${cadenceNote} This run can be safely minimized.`;
   }
 
   async function validateTargets(source) {
@@ -521,7 +604,13 @@
       hostView.state = result.reachable ? "up" : "down";
       updateHostView(hostView);
 
-      if (hostViews.size === 1 && selectedHosts.size === 0) {
+      if (selectedHosts.has(result.host) && !graphViews.has(result.host)) {
+        selectGraph(result.host, {persist: false});
+      } else if (
+        !hasStoredGraphSelection
+        && hostViews.size === 1
+        && selectedHosts.size === 0
+      ) {
         selectGraph(result.host);
       }
       const graphView = graphViews.get(result.host);
@@ -594,17 +683,21 @@
     selectGraph(host);
   }
 
-  function selectGraph(host) {
+  function selectGraph(host, {persist = true} = {}) {
     const hostView = hostViews.get(host);
-    if (!hostView || selectedHosts.has(host)) return;
+    if (!hostView) return;
     selectedHosts.add(host);
     updateHostView(hostView);
-    const graphView = createGraphView(hostView.result);
-    graphViews.set(host, graphView);
-    graphGrid.appendChild(graphView.card);
+    let graphView = graphViews.get(host);
+    if (!graphView) {
+      graphView = createGraphView(hostView.result);
+      graphViews.set(host, graphView);
+      graphGrid.appendChild(graphView.card);
+    }
     const series = history.get(host);
     if (series) updateGraphView(graphView, hostView.result, series);
     if (hostView.state === "removed") updateGraphStatus(graphView, "removed");
+    if (persist) persistGraphSelection();
     updateSelectionSummary();
     applyHostFilters();
     updateHistoryNavigator();
@@ -617,6 +710,7 @@
     const graphView = graphViews.get(host);
     if (graphView) graphView.card.remove();
     graphViews.delete(host);
+    persistGraphSelection();
     updateSelectionSummary();
     applyHostFilters();
     updateHistoryNavigator();
@@ -641,13 +735,15 @@
     state.className = "pill";
     const remove = document.createElement("button");
     remove.type = "button";
-    remove.className = "secondary compact";
-    remove.textContent = "Remove graph";
+    remove.className = "graph-close-button ping-graph-remove";
+    const removeLabel = `Remove ${result.label || result.host} graph`;
+    remove.title = removeLabel;
+    remove.setAttribute("aria-label", removeLabel);
     remove.addEventListener("click", () => deselectGraph(result.host));
     actions.append(state, remove);
-    header.append(identity, actions);
     const statistics = document.createElement("div");
     statistics.className = "ping-host-statistics";
+    header.append(identity, statistics, actions);
     const chart = document.createElement("div");
     chart.className = "ping-history-canvas-wrap";
     const canvas = document.createElement("canvas");
@@ -655,7 +751,7 @@
     canvas.setAttribute("role", "img");
     canvas.setAttribute("aria-label", `Latency history for ${result.label || result.host}`);
     chart.appendChild(canvas);
-    card.append(header, statistics, chart);
+    card.append(header, chart);
     const view = {card, status: state, statistics, chart, canvas, host: result.host, visiblePoints: []};
     canvas.addEventListener("mousemove", (event) => showCanvasTooltip(view, event));
     canvas.addEventListener("mouseleave", () => {
@@ -945,10 +1041,10 @@
     });
     const current = series.raw[series.raw.length - 1];
     const values = [
-      ["Current", current?.reachable && Number.isFinite(current.latency) ? formatLatency(current.latency) : "Down"],
-      ["Minimum", totals.received ? formatLatency(totals.min) : "—"],
-      ["Average", totals.received ? formatLatency(totals.sum / totals.received) : "—"],
-      ["Maximum", totals.received ? formatLatency(totals.max) : "—"],
+      ["Now", current?.reachable && Number.isFinite(current.latency) ? formatLatency(current.latency) : "Down"],
+      ["Min", totals.received ? formatLatency(totals.min) : "—"],
+      ["Avg", totals.received ? formatLatency(totals.sum / totals.received) : "—"],
+      ["Max", totals.received ? formatLatency(totals.max) : "—"],
       ["Loss", `${(totals.total ? (totals.total - totals.received) / totals.total * 100 : 0).toFixed(1)}%`],
     ];
     const grid = document.createElement("div");
@@ -1209,8 +1305,8 @@
       activateSession(data.session, {resetHistory: true});
       await loadNewSamples();
       updateSessionStatus();
-      if (data.session.state === "running") pollSession();
-      else markSessionStopped(data.session.last_error || `Session ${data.session.state}.`);
+      if (activeSession.state === "running") pollSession();
+      else markSessionStopped(activeSession.last_error || `Session ${activeSession.state}.`);
     } catch (error) {
       status.textContent = error.message;
       startButton.disabled = false;

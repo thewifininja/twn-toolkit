@@ -97,15 +97,14 @@
     const actions = document.createElement("div");
     actions.className = "live-tool-card-actions";
     const restore = document.createElement("a");
-    restore.className = "live-tool-icon-action live-tool-restore";
+    restore.className = "live-tool-card-restore";
     restore.href = session.restore_url;
-    restore.title = "Restore";
+    restore.title = `Restore ${title.textContent}`;
     restore.setAttribute("aria-label", `Restore ${title.textContent}`);
-    restore.append(iconSymbol("▶"));
-    const stop = iconButton("■", `Stop ${title.textContent}`, "live-tool-stop");
+    const stop = iconButton("×", `Stop ${title.textContent}`, "live-tool-stop");
     stop.addEventListener("click", () => stopSession(session, stop));
-    actions.append(restore, stop);
-    card.append(identity, actions);
+    actions.append(stop);
+    card.append(restore, identity, actions);
     return card;
   }
 

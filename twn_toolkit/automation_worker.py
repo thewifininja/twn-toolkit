@@ -7,7 +7,7 @@ import sys
 import time
 import json
 import secrets
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 from .automation import AutomationEngine, AutomationStore
@@ -113,7 +113,18 @@ def main() -> None:
             _write_heartbeat(
                 heartbeat_path, max_workers, futures, live_futures=live_futures
             )
-            time.sleep(max(0.2, args.poll_seconds))
+            wait_seconds = live_store.seconds_until_next_due(
+                maximum=max(0.2, args.poll_seconds)
+            )
+            pending_futures = [*futures, *live_futures]
+            if pending_futures:
+                wait(
+                    pending_futures,
+                    timeout=wait_seconds,
+                    return_when=FIRST_COMPLETED,
+                )
+            else:
+                time.sleep(wait_seconds)
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
         live_executor.shutdown(wait=False, cancel_futures=True)
