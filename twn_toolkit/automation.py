@@ -375,6 +375,17 @@ class AutomationStore:
 
     def delete(self, automation_id: str) -> None:
         with self._connect() as connection:
+            if connection.execute(
+                """
+                SELECT 1 FROM automation_jobs
+                WHERE automation_id = ? AND status IN ('queued', 'running')
+                LIMIT 1
+                """,
+                (automation_id,),
+            ).fetchone():
+                raise ValueError(
+                    "That automation still has queued or running action work."
+                )
             cursor = connection.execute(
                 "DELETE FROM automations WHERE id = ?", (automation_id,)
             )
@@ -517,6 +528,14 @@ class AutomationStore:
                     "lateness_seconds": lateness_seconds,
                 },
             )
+            if should_fire:
+                self._enqueue_execution_job(
+                    connection,
+                    row,
+                    result,
+                    scheduled_at=scheduled_at,
+                    queued_at=current_time,
+                )
             next_cursor = current_time if current_time - scheduled_at > 60 else scheduled_at
             following = schedule_occurrence(config, next_cursor + 0.001)
             next_check = following["timestamp"] if following else None
@@ -564,7 +583,11 @@ class AutomationStore:
         return updated, result, should_fire
 
     def record_condition(
-        self, automation_id: str, result: ConditionResult
+        self,
+        automation_id: str,
+        result: ConditionResult,
+        *,
+        scheduled_at: float | None = None,
     ) -> tuple[dict[str, Any], bool]:
         now = time.time()
         should_fire = False
@@ -599,6 +622,14 @@ class AutomationStore:
                 else:
                     state = "healthy"
                     clear_count = 0
+            if should_fire:
+                self._enqueue_execution_job(
+                    connection,
+                    row,
+                    result,
+                    scheduled_at=scheduled_at if scheduled_at is not None else now,
+                    queued_at=now,
+                )
             connection.execute(
                 """
                 UPDATE automations
@@ -639,6 +670,238 @@ class AutomationStore:
         if updated is None:
             raise ValueError("Automation not found.")
         return updated, should_fire
+
+    def enqueue_manual_job(
+        self,
+        automation_id: str,
+        trigger: ConditionResult,
+    ) -> str:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM automations WHERE id = ?",
+                (automation_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("Automation not found.")
+            condition_type = connection.execute(
+                """
+                SELECT COALESCE(automation_conditions.type, automations.condition_type)
+                FROM automations
+                LEFT JOIN automation_conditions
+                    ON automation_conditions.id = automations.condition_definition_id
+                WHERE automations.id = ?
+                """,
+                (automation_id,),
+            ).fetchone()[0]
+            if condition_type != "manual.trigger":
+                raise ValueError("Only manual-trigger automations can be queued manually.")
+            return self._enqueue_execution_job(
+                connection,
+                row,
+                trigger,
+                scheduled_at=now,
+                queued_at=now,
+            )
+
+    def claim_jobs(
+        self,
+        *,
+        limit: int = 10,
+        lease_seconds: int = 300,
+        exclude_automation_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        now = time.time()
+        lease_seconds = max(30, min(int(lease_seconds), 3600))
+        claimed_ids: list[str] = []
+        excluded = sorted(exclude_automation_ids or set())
+        exclusion_sql = (
+            f" AND automation_id NOT IN ({','.join('?' for _ in excluded)})"
+            if excluded
+            else ""
+        )
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                f"""
+                SELECT id FROM automation_jobs
+                WHERE (
+                    (
+                        status = 'queued'
+                        AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+                    ) OR (
+                        status = 'running'
+                        AND lease_until IS NOT NULL
+                        AND lease_until <= ?
+                    )
+                )
+                {exclusion_sql}
+                ORDER BY queued_at, id
+                LIMIT ?
+                """,
+                (now, now, *excluded, max(1, int(limit))),
+            ).fetchall()
+            for row in rows:
+                job_id = str(row["id"])
+                connection.execute(
+                    """
+                    UPDATE automation_jobs
+                    SET status = 'running',
+                        claimed_at = ?,
+                        started_at = COALESCE(started_at, ?),
+                        lease_until = ?,
+                        next_attempt_at = NULL,
+                        attempt_count = attempt_count + 1
+                    WHERE id = ?
+                    """,
+                    (now, now, now + lease_seconds, job_id),
+                )
+                claimed_ids.append(job_id)
+            claimed = [
+                connection.execute(
+                    "SELECT * FROM automation_jobs WHERE id = ?",
+                    (job_id,),
+                ).fetchone()
+                for job_id in claimed_ids
+            ]
+        return [self._job_from_row(row) for row in claimed if row is not None]
+
+    def claim_job(
+        self,
+        job_id: str,
+        *,
+        lease_seconds: int = 300,
+    ) -> dict[str, Any] | None:
+        now = time.time()
+        lease_seconds = max(30, min(int(lease_seconds), 3600))
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                UPDATE automation_jobs
+                SET status = 'running',
+                    claimed_at = ?,
+                    started_at = COALESCE(started_at, ?),
+                    lease_until = ?,
+                    next_attempt_at = NULL,
+                    attempt_count = attempt_count + 1
+                WHERE id = ? AND status = 'queued'
+                    AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+                """,
+                (now, now, now + lease_seconds, job_id, now),
+            )
+            if not cursor.rowcount:
+                return None
+            row = connection.execute(
+                "SELECT * FROM automation_jobs WHERE id = ?",
+                (job_id,),
+            ).fetchone()
+        return self._job_from_row(row) if row is not None else None
+
+    def renew_job_lease(self, job_id: str, *, lease_seconds: int = 300) -> bool:
+        now = time.time()
+        lease_seconds = max(30, min(int(lease_seconds), 3600))
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE automation_jobs
+                SET lease_until = ?
+                WHERE id = ? AND status = 'running'
+                """,
+                (now + lease_seconds, job_id),
+            )
+        return bool(cursor.rowcount)
+
+    def complete_job(self, job_id: str, run_id: str) -> None:
+        now = time.time()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE automation_jobs
+                SET status = 'completed', finished_at = ?, lease_until = NULL,
+                    run_id = ?, last_error = NULL
+                WHERE id = ? AND status = 'running'
+                """,
+                (now, run_id, job_id),
+            )
+            if not cursor.rowcount:
+                raise ValueError("Automation job is not running.")
+
+    def fail_job(
+        self,
+        job_id: str,
+        message: str,
+        *,
+        max_attempts: int = 3,
+    ) -> str:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT attempt_count FROM automation_jobs WHERE id = ?",
+                (job_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("Automation job not found.")
+            attempts = int(row["attempt_count"])
+            terminal = attempts >= max(1, int(max_attempts))
+            status = "failed" if terminal else "queued"
+            retry_at = None if terminal else now + min(300, 5 * (2 ** max(0, attempts - 1)))
+            connection.execute(
+                """
+                UPDATE automation_jobs
+                SET status = ?, finished_at = ?, lease_until = NULL,
+                    next_attempt_at = ?, last_error = ?
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    now if terminal else None,
+                    retry_at,
+                    str(message)[:2000],
+                    job_id,
+                ),
+            )
+        return status
+
+    def job_stats(self) -> dict[str, Any]:
+        now = time.time()
+        with self._connect() as connection:
+            counts = {
+                str(row["status"]): int(row["count"])
+                for row in connection.execute(
+                    "SELECT status, COUNT(*) AS count FROM automation_jobs GROUP BY status"
+                )
+            }
+            oldest = connection.execute(
+                """
+                SELECT MIN(queued_at) FROM automation_jobs
+                WHERE status IN ('queued', 'running')
+                """
+            ).fetchone()[0]
+        return {
+            "queued_jobs": counts.get("queued", 0),
+            "running_jobs": counts.get("running", 0),
+            "failed_jobs": counts.get("failed", 0),
+            "completed_jobs": counts.get("completed", 0),
+            "oldest_pending_age": max(0, int(now - float(oldest))) if oldest else None,
+        }
+
+    def retry_failed_jobs(self) -> int:
+        now = time.time()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE automation_jobs
+                SET status = 'queued', next_attempt_at = ?, attempt_count = 0,
+                    claimed_at = NULL, started_at = NULL, finished_at = NULL,
+                    lease_until = NULL
+                WHERE status = 'failed'
+                """,
+                (now,),
+            )
+        return int(cursor.rowcount)
 
     def record_error(self, automation_id: str, message: str) -> None:
         now = time.time()
@@ -802,6 +1065,10 @@ class AutomationStore:
 
     def delete_run(self, run_id: str) -> None:
         with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM automation_jobs WHERE run_id = ?",
+                (run_id,),
+            )
             cursor = connection.execute(
                 "DELETE FROM automation_runs WHERE id = ?", (run_id,)
             )
@@ -818,6 +1085,13 @@ class AutomationStore:
             run_ids = [row[0] for row in connection.execute(
                 "SELECT id FROM automation_runs WHERE automation_id = ?", (automation_id,)
             )]
+            connection.execute(
+                """
+                DELETE FROM automation_jobs
+                WHERE automation_id = ? AND status = 'completed'
+                """,
+                (automation_id,),
+            )
             cursor = connection.execute(
                 "DELETE FROM automation_runs WHERE automation_id = ?", (automation_id,)
             )
@@ -977,6 +1251,14 @@ class AutomationStore:
                     "SELECT id FROM automation_runs WHERE started_at < ?",
                     (now - run_days * 86400,),
                 )]
+                if expired_run_ids:
+                    connection.execute(
+                        f"""
+                        DELETE FROM automation_jobs
+                        WHERE run_id IN ({','.join('?' for _ in expired_run_ids)})
+                        """,
+                        expired_run_ids,
+                    )
                 deleted_runs = connection.execute(
                     "DELETE FROM automation_runs WHERE started_at < ?",
                     (now - run_days * 86400,),
@@ -1019,6 +1301,97 @@ class AutomationStore:
                 {"version": f"automation-{row['version']}", "applied_at": row["applied_at"], "description": row["description"]}
                 for row in connection.execute("SELECT version, applied_at, description FROM automation_schema_migrations ORDER BY version")
             ]
+
+    def _enqueue_execution_job(
+        self,
+        connection: sqlite3.Connection,
+        automation_row: sqlite3.Row,
+        trigger: ConditionResult,
+        *,
+        scheduled_at: float,
+        queued_at: float,
+    ) -> str:
+        job_id = secrets.token_hex(12)
+        trigger_payload = {
+            "met": bool(trigger.met),
+            "status": str(trigger.status),
+            "summary": str(trigger.summary),
+            "evidence": trigger.evidence,
+        }
+        execution_plan = self._execution_plan_from_row(connection, automation_row)
+        connection.execute(
+            """
+            INSERT INTO automation_jobs (
+                id, automation_id, status, scheduled_at, queued_at,
+                attempt_count, trigger_json, execution_plan_encrypted
+            ) VALUES (?, ?, 'queued', ?, ?, 0, ?, ?)
+            """,
+            (
+                job_id,
+                automation_row["id"],
+                float(scheduled_at),
+                float(queued_at),
+                json.dumps(trigger_payload, separators=(",", ":")),
+                self._encrypt(execution_plan),
+            ),
+        )
+        return job_id
+
+    def _execution_plan_from_row(
+        self,
+        connection: sqlite3.Connection,
+        automation_row: sqlite3.Row,
+    ) -> dict[str, Any]:
+        action_ids = json.loads(automation_row["action_definition_ids"] or "[]")
+        action_map: dict[str, dict[str, Any]] = {}
+        for action_id in action_ids:
+            row = connection.execute(
+                "SELECT * FROM automation_actions WHERE id = ?",
+                (action_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError(
+                    "An automation action disappeared before execution could be queued."
+                )
+            action_map[str(action_id)] = {
+                "id": str(row["id"]),
+                "name": str(row["name"]),
+                "type": str(row["type"]),
+                "config": self._decrypt(str(row["config_encrypted"])),
+            }
+        raw_stages = json.loads(automation_row["action_stages"] or "null")
+        normalized_stages = self._normalize_action_stages(raw_stages, action_ids)
+        stages = []
+        for stage in normalized_stages:
+            actions = [
+                action_map[action_id]
+                for action_id in stage["action_definition_ids"]
+                if action_id in action_map
+            ]
+            if len(actions) != len(stage["action_definition_ids"]):
+                raise ValueError(
+                    "An automation stage could not snapshot all of its actions."
+                )
+            stages.append({**stage, "actions": actions})
+        return {
+            "id": str(automation_row["id"]),
+            "name": str(automation_row["name"]),
+            "action_stages": stages,
+            "actions": [action for stage in stages for action in stage["actions"]],
+        }
+
+    def _job_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        trigger = json.loads(str(row["trigger_json"]))
+        return {
+            **dict(row),
+            "trigger": ConditionResult(
+                met=bool(trigger["met"]),
+                status=str(trigger["status"]),
+                summary=str(trigger["summary"]),
+                evidence=dict(trigger.get("evidence", {})),
+            ),
+            "automation": self._decrypt(str(row["execution_plan_encrypted"])),
+        }
 
     def _automation_from_row(
         self, row: sqlite3.Row, include_secrets: bool
@@ -1233,6 +1606,27 @@ class AutomationStore:
             );
             CREATE INDEX IF NOT EXISTS automation_runs_recent
                 ON automation_runs(automation_id, started_at DESC);
+            CREATE TABLE IF NOT EXISTS automation_jobs (
+                id TEXT PRIMARY KEY,
+                automation_id TEXT NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
+                status TEXT NOT NULL,
+                scheduled_at REAL NOT NULL,
+                queued_at REAL NOT NULL,
+                claimed_at REAL,
+                started_at REAL,
+                finished_at REAL,
+                lease_until REAL,
+                next_attempt_at REAL,
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                trigger_json TEXT NOT NULL,
+                execution_plan_encrypted TEXT NOT NULL,
+                run_id TEXT REFERENCES automation_runs(id) ON DELETE SET NULL,
+                last_error TEXT
+            );
+            CREATE INDEX IF NOT EXISTS automation_jobs_due
+                ON automation_jobs(status, next_attempt_at, lease_until, queued_at);
+            CREATE INDEX IF NOT EXISTS automation_jobs_automation
+                ON automation_jobs(automation_id, queued_at DESC);
             CREATE TABLE IF NOT EXISTS automation_schema_migrations (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
@@ -1347,6 +1741,15 @@ class AutomationStore:
                 "INSERT INTO automation_schema_migrations (version, applied_at, description) VALUES (3, ?, ?)",
                 (now, "Add configurable automation history retention"),
             )
+        if 4 not in applied:
+            connection.execute(
+                """
+                INSERT INTO automation_schema_migrations
+                    (version, applied_at, description)
+                VALUES (4, ?, ?)
+                """,
+                (time.time(), "Add durable leased automation execution jobs"),
+            )
 
     def _migrate_reusable_definitions(self, connection: sqlite3.Connection) -> None:
         rows = connection.execute(
@@ -1439,6 +1842,8 @@ class AutomationEngine:
         for automation in self.store.claim_due():
             processed += 1
             self.process_automation(automation)
+        for job in self.store.claim_jobs():
+            self.process_job(job)
         return processed
 
     def process_automation(self, automation: dict[str, Any]) -> None:
@@ -1452,8 +1857,6 @@ class AutomationEngine:
                     automation["id"], f"{type(exc).__name__}: {exc}"
                 )
                 return
-            if should_fire:
-                self.execute_actions(updated, result)
             return
         try:
             result = self.test_condition(automation)
@@ -1462,10 +1865,37 @@ class AutomationEngine:
                 automation["id"], f"{type(exc).__name__}: {exc}"
             )
             return
-        updated, should_fire = self.store.record_condition(automation["id"], result)
-        if not should_fire:
-            return
-        self.execute_actions(updated, result)
+        self.store.record_condition(
+            automation["id"],
+            result,
+            scheduled_at=automation.get("next_check_at"),
+        )
+
+    def process_job(self, job: dict[str, Any]) -> str:
+        trigger = ConditionResult(
+            met=job["trigger"].met,
+            status=job["trigger"].status,
+            summary=job["trigger"].summary,
+            evidence={
+                **job["trigger"].evidence,
+                "execution": {
+                    "job_id": job["id"],
+                    "attempt": job["attempt_count"],
+                    "scheduled_at": job["scheduled_at"],
+                    "queued_at": job["queued_at"],
+                },
+            },
+        )
+        try:
+            run_id = self.execute_actions(job["automation"], trigger)
+            self.store.complete_job(job["id"], run_id)
+            return run_id
+        except Exception as exc:
+            self.store.fail_job(
+                job["id"],
+                f"{type(exc).__name__}: {exc}",
+            )
+            raise
 
     def record_backpressure(self, automation_id: str, reason: str) -> None:
         self.store.record_observation(automation_id, "skipped", reason)

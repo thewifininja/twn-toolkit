@@ -148,6 +148,31 @@ adds ordered stages and converts existing action lists into a single default
 parallel stage transactionally. Migration 2 converts the first SNMP condition
 format into persisted per-host AND rules and pauses dependent automations for
 review. Migration 3 adds the global retention policy and daily-pruning ledger.
+Migration 4 adds the durable action-execution queue.
+
+## Durable execution
+
+When a condition reaches its trigger threshold, the state transition and an
+action-execution job are written in one SQLite transaction. Calendar
+occurrences similarly advance only when their execution job is safely queued.
+Each job contains an encrypted snapshot of the action pipeline, so later edits
+cannot silently change work that has already been triggered.
+
+The scheduler claims jobs with time-limited leases and renews those leases
+while actions run. If the process exits, another scheduler can reclaim the job
+after its lease expires. Infrastructure failures use bounded exponential
+backoff and become visibly failed after three attempts; an administrator can
+requeue failed jobs from the Automations page. The page also reports queued
+and running counts and the age of the oldest unfinished job.
+
+Execution is deliberately **at least once**. A process can complete an external
+action and exit before recording job completion, so that action may be repeated
+after recovery. Every retry retains the same execution job ID in
+`trigger.evidence.execution.job_id`; templates can use `{{trigger.job_id}}`.
+Webhook actions automatically send that ID in the `Idempotency-Key` header
+unless the action defines its own header, allowing compatible receivers to
+deduplicate retries. Run history also records the scheduled and queued
+timestamps and the attempt number.
 
 ## State model
 
@@ -206,9 +231,12 @@ registrations.
 `status` reports the web service and scheduler separately. `logs` includes the
 scheduler log from `instance/twn-automation.log`.
 
-The current scheduler uses one process with due-check claiming in SQLite. Web
-workers only configure and display automations; they do not run monitoring
-loops.
+The current scheduler uses one process with atomic due-check and execution-job
+claiming in SQLite. Its heartbeat separates active condition checks from active
+action jobs. Web workers only configure and display automations; they do not
+run monitoring loops. Manual triggers are first written to the same durable
+queue, then claimed and executed synchronously so the browser still receives
+the completed run.
 
 ## Planned extensions
 

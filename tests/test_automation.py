@@ -6,6 +6,7 @@ import io
 import json
 import re
 import sqlite3
+import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -123,6 +124,165 @@ class AutomationStoreTests(unittest.TestCase):
         state, fire = self.store.record_condition(automation_id, clear)
         self.assertEqual(state["state"], "healthy")
         self.assertFalse(fire)
+
+    def test_trigger_queues_encrypted_action_snapshot_before_execution(self) -> None:
+        automation_id = self.save(trigger_after=1)
+        self.store.set_enabled(automation_id, True)
+        _updated, should_fire = self.store.record_condition(
+            automation_id,
+            ConditionResult(True, "met", "edge failed", {"failed": 1}),
+            scheduled_at=1234.0,
+        )
+        self.assertTrue(should_fire)
+        self.assertEqual(self.store.job_stats()["queued_jobs"], 1)
+        self.assertNotIn(b"very secret", Path(self.store.path).read_bytes())
+
+        action = self.store.get(automation_id, include_secrets=True)["actions"][0]
+        self.store.save_action_definition(
+            definition_id=action["id"],
+            name=action["name"],
+            type_id=action["type"],
+            config={"username": "changed", "password": "new secret"},
+        )
+
+        calls = []
+        registry = AutomationRegistry()
+        registry.add_action(
+            ActionType(
+                "test.action",
+                "Test action",
+                "",
+                lambda value: value,
+                lambda config, _trigger: (
+                    calls.append((config["username"], config["password"]))
+                    or ActionResult("success", "complete", {})
+                ),
+            )
+        )
+        job = self.store.claim_jobs()[0]
+        run_id = AutomationEngine(self.store, registry).process_job(job)
+        self.assertEqual(calls, [("admin", "very secret")])
+        self.assertEqual(self.store.get_run(run_id)["status"], "success")
+        self.assertEqual(self.store.job_stats()["completed_jobs"], 1)
+        self.store.delete_run(run_id)
+        self.assertEqual(self.store.job_stats()["completed_jobs"], 0)
+
+    def test_job_claim_is_atomic_and_expired_lease_is_recovered(self) -> None:
+        automation_id = self.save(trigger_after=1)
+        self.store.set_enabled(automation_id, True)
+        with patch("twn_toolkit.automation.time.time", return_value=1000.0):
+            self.store.record_condition(
+                automation_id,
+                ConditionResult(True, "met", "edge failed", {}),
+            )
+            claimed = self.store.claim_jobs(lease_seconds=30)
+        self.assertEqual(len(claimed), 1)
+        self.assertEqual(claimed[0]["attempt_count"], 1)
+
+        competing_store = AutomationStore(self.temp.name, "installation secret")
+        with patch("twn_toolkit.automation.time.time", return_value=1029.0):
+            self.assertEqual(competing_store.claim_jobs(), [])
+        with patch("twn_toolkit.automation.time.time", return_value=1031.0):
+            recovered = competing_store.claim_jobs()
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual(recovered[0]["id"], claimed[0]["id"])
+        self.assertEqual(recovered[0]["attempt_count"], 2)
+
+    def test_failed_job_retries_with_backoff_then_becomes_terminal(self) -> None:
+        automation_id = self.save(trigger_after=1)
+        self.store.set_enabled(automation_id, True)
+        with patch("twn_toolkit.automation.time.time", return_value=1000.0):
+            self.store.record_condition(
+                automation_id,
+                ConditionResult(True, "met", "edge failed", {}),
+            )
+            first = self.store.claim_jobs()[0]
+            self.assertEqual(self.store.fail_job(first["id"], "first failure"), "queued")
+        with patch("twn_toolkit.automation.time.time", return_value=1004.0):
+            self.assertEqual(self.store.claim_jobs(), [])
+        with patch("twn_toolkit.automation.time.time", return_value=1005.0):
+            second = self.store.claim_jobs()[0]
+            self.assertEqual(self.store.fail_job(second["id"], "second failure"), "queued")
+        with patch("twn_toolkit.automation.time.time", return_value=1015.0):
+            third = self.store.claim_jobs()[0]
+            self.assertEqual(self.store.fail_job(third["id"], "third failure"), "failed")
+        stats = self.store.job_stats()
+        self.assertEqual(stats["queued_jobs"], 0)
+        self.assertEqual(stats["failed_jobs"], 1)
+        self.assertEqual(self.store.retry_failed_jobs(), 1)
+        stats = self.store.job_stats()
+        self.assertEqual(stats["queued_jobs"], 1)
+        self.assertEqual(stats["failed_jobs"], 0)
+
+    def test_automation_with_pending_job_cannot_be_deleted(self) -> None:
+        automation_id = self.save(trigger_after=1)
+        self.store.set_enabled(automation_id, True)
+        self.store.record_condition(
+            automation_id,
+            ConditionResult(True, "met", "edge failed", {}),
+        )
+        with self.assertRaisesRegex(ValueError, "queued or running"):
+            self.store.delete(automation_id)
+
+    def test_trigger_state_and_job_enqueue_are_one_transaction(self) -> None:
+        automation_id = self.save(trigger_after=1)
+        self.store.set_enabled(automation_id, True)
+        with patch.object(
+            self.store,
+            "_enqueue_execution_job",
+            side_effect=RuntimeError("simulated queue failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "simulated queue failure"):
+                self.store.record_condition(
+                    automation_id,
+                    ConditionResult(True, "met", "edge failed", {}),
+                )
+        automation = self.store.get(automation_id)
+        self.assertEqual(automation["state"], "healthy")
+        self.assertIsNone(automation["last_triggered_at"])
+        self.assertEqual(self.store.recent_checks(automation_id), [])
+        self.assertEqual(self.store.job_stats()["queued_jobs"], 0)
+
+    def test_completion_failure_leaves_job_retriable_with_stable_identity(self) -> None:
+        automation_id = self.save(trigger_after=1)
+        self.store.set_enabled(automation_id, True)
+        self.store.record_condition(
+            automation_id,
+            ConditionResult(True, "met", "edge failed", {}),
+        )
+        job = self.store.claim_jobs()[0]
+        calls = []
+        registry = AutomationRegistry()
+        registry.add_action(
+            ActionType(
+                "test.action",
+                "Test action",
+                "",
+                lambda value: value,
+                lambda _config, trigger: (
+                    calls.append(trigger.evidence["execution"]["job_id"])
+                    or ActionResult("success", "complete", {})
+                ),
+            )
+        )
+        engine = AutomationEngine(self.store, registry)
+        with patch.object(
+            self.store,
+            "complete_job",
+            side_effect=RuntimeError("simulated completion crash"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "simulated completion crash"):
+                engine.process_job(job)
+        self.assertEqual(self.store.job_stats()["queued_jobs"], 1)
+        self.assertEqual(len(self.store.recent_runs(automation_id)), 1)
+
+        retry_at = time.time() + 10
+        with patch("twn_toolkit.automation.time.time", return_value=retry_at):
+            retried = self.store.claim_jobs()[0]
+        engine.process_job(retried)
+        self.assertEqual(calls, [job["id"], job["id"]])
+        self.assertEqual(len(self.store.recent_runs(automation_id)), 2)
+        self.assertEqual(self.store.job_stats()["completed_jobs"], 1)
 
     def test_editing_an_armed_automation_pauses_and_resets_it(self) -> None:
         automation_id = self.save(trigger_after=1)
@@ -352,6 +512,22 @@ class AutomationStoreTests(unittest.TestCase):
             connection.close()
         self.assertEqual(migration[0], "Add ordered parallel action stages")
 
+    def test_durable_job_migration_is_recorded(self) -> None:
+        connection = sqlite3.connect(self.store.path)
+        try:
+            migration = connection.execute(
+                """
+                SELECT description FROM automation_schema_migrations
+                WHERE version = 4
+                """
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual(
+            migration[0],
+            "Add durable leased automation execution jobs",
+        )
+
     def test_legacy_snmp_condition_migration_is_persisted(self) -> None:
         now = 1.0
         legacy = {
@@ -491,6 +667,59 @@ class AutomationStoreTests(unittest.TestCase):
         self.assertEqual(calls, [["once"]])
         self.assertEqual(self.store.get(automation_id)["state"], "completed")
         self.assertEqual(len(self.store.recent_runs(automation_id)), 1)
+
+    def test_calendar_occurrence_is_not_consumed_when_job_enqueue_fails(self) -> None:
+        condition_id = self.store.save_condition_definition(
+            name="Calendar rollback",
+            type_id="schedule.calendar",
+            config={
+                "timezone": "UTC",
+                "missed_policy": "grace",
+                "grace_minutes": 30,
+                "rules": [
+                    {
+                        "id": "once",
+                        "type": "once",
+                        "date": "2026-07-11",
+                        "time": "12:00",
+                    }
+                ],
+            },
+        )
+        action_id = self.store.save_action_definition(
+            name="Scheduled rollback action",
+            type_id="test.action",
+            config={"password": "secret"},
+        )
+        automation_id = self.store.save(
+            name="Calendar rollback workflow",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_id=condition_id,
+            action_definition_ids=[action_id],
+            created_by="user-1",
+        )
+        with patch("twn_toolkit.automation.time.time", return_value=1783771200 - 3600):
+            self.store.set_enabled(automation_id, True)
+        before = self.store.get(automation_id)
+
+        with patch("twn_toolkit.automation.time.time", return_value=1783771201):
+            with patch.object(
+                self.store,
+                "_enqueue_execution_job",
+                side_effect=RuntimeError("simulated queue failure"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "simulated queue failure"):
+                    self.store.record_schedule_occurrence(automation_id)
+
+        after = self.store.get(automation_id)
+        self.assertEqual(after["state"], before["state"])
+        self.assertEqual(after["next_check_at"], before["next_check_at"])
+        self.assertEqual(after["last_triggered_at"], before["last_triggered_at"])
+        self.assertEqual(self.store.recent_checks(automation_id), [])
+        self.assertEqual(self.store.job_stats()["queued_jobs"], 0)
 
     def test_backup_adapter_moves_definitions_and_secrets_but_not_runtime_state(self) -> None:
         automation_id = self.store.save(
@@ -1302,7 +1531,12 @@ class AutomationRegistryTests(unittest.TestCase):
 
     def test_webhook_action_renders_json_safely_and_reports_partial_delivery(self) -> None:
         action = AUTOMATION_REGISTRY.actions["webhook.send"]
-        trigger = ConditionResult(True, "met", 'Gateway said "down"', {"failed": 2})
+        trigger = ConditionResult(
+            True,
+            "met",
+            'Gateway said "down"',
+            {"failed": 2, "execution": {"job_id": "job-123"}},
+        )
         success_response = {
             "status": 204, "reason": "No Content", "elapsed_ms": 12.3,
             "resolved_addresses": ["192.0.2.10"], "body": "", "truncated": False,
@@ -1322,7 +1556,7 @@ class AutomationRegistryTests(unittest.TestCase):
                     "endpoints": "Primary = https://hooks.example.com/events\nhttps://backup.example.net/events",
                     "method": "POST", "headers": "Authorization: Bearer secret",
                     "body_format": "json",
-                    "body": '{"summary":"{{trigger.summary}}","met":"{{trigger.met}}","evidence":"{{trigger.evidence}}"}',
+                    "body": '{"summary":"{{trigger.summary}}","met":"{{trigger.met}}","job":"{{trigger.job_id}}","evidence":"{{trigger.evidence}}"}',
                     "timeout": 5, "verify_tls": True, "expected_statuses": "200-299",
                 },
                 trigger,
@@ -1330,7 +1564,15 @@ class AutomationRegistryTests(unittest.TestCase):
         sent_body = json.loads(sender.call_args_list[0].kwargs["body"])
         self.assertEqual(sent_body["summary"], 'Gateway said "down"')
         self.assertIs(sent_body["met"], True)
-        self.assertEqual(sent_body["evidence"], {"failed": 2})
+        self.assertEqual(sent_body["job"], "job-123")
+        self.assertEqual(
+            sent_body["evidence"],
+            {"failed": 2, "execution": {"job_id": "job-123"}},
+        )
+        self.assertEqual(
+            sender.call_args_list[0].kwargs["headers"]["Idempotency-Key"],
+            "job-123",
+        )
         self.assertEqual(result.status, "partial")
         self.assertEqual(result.output["endpoints"][0]["status"], "success")
         self.assertEqual(result.output["endpoints"][1]["http_status"], 500)
@@ -1338,7 +1580,12 @@ class AutomationRegistryTests(unittest.TestCase):
 
     def test_syslog_action_substitutes_trigger_and_reports_partial_delivery(self) -> None:
         action = AUTOMATION_REGISTRY.actions["syslog.send"]
-        trigger = ConditionResult(True, "met", "Two WAN probes failed", {"failed": 2})
+        trigger = ConditionResult(
+            True,
+            "met",
+            "Two WAN probes failed",
+            {"failed": 2, "execution": {"job_id": "job-456"}},
+        )
         sent_result = {
             "protocol": "UDP", "host": "syslog.example.com", "address": "192.0.2.10",
             "port": 514, "priority": 134, "facility": 16, "severity": 6,
@@ -1353,7 +1600,7 @@ class AutomationRegistryTests(unittest.TestCase):
                     "destinations": "Primary = syslog.example.com | 514\nBackup = bad.example | 5514",
                     "protocol": "udp", "facility": 16, "severity": 6,
                     "hostname": "toolkit", "app_name": "automation",
-                    "message": "{{trigger.status}}: {{trigger.summary}} at {{timestamp}}",
+                    "message": "{{trigger.status}}: {{trigger.summary}} [{{trigger.job_id}}] at {{timestamp}}",
                     "timeout": 3,
                 },
                 trigger,
@@ -1362,7 +1609,10 @@ class AutomationRegistryTests(unittest.TestCase):
         self.assertEqual(result.summary, "Syslog message sent to 1 of 2 destinations.")
         self.assertEqual(result.output["destinations"][0]["status"], "success")
         self.assertEqual(result.output["destinations"][1]["status"], "error")
-        self.assertIn("met: Two WAN probes failed at ", result.output["message"])
+        self.assertIn(
+            "met: Two WAN probes failed [job-456] at ",
+            result.output["message"],
+        )
         self.assertEqual(sender.call_args_list[0].kwargs["message"], result.output["message"])
 
     def test_tcp_condition_normalizes_per_host_port_lists_and_legacy_config(self) -> None:

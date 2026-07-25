@@ -296,10 +296,12 @@ def _validate_syslog(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _render_syslog_message(template: str, trigger: ConditionResult) -> str:
+    execution = trigger.evidence.get("execution", {})
     replacements = {
         "{{trigger.status}}": trigger.status,
         "{{trigger.summary}}": trigger.summary,
         "{{trigger.met}}": "true" if trigger.met else "false",
+        "{{trigger.job_id}}": execution.get("job_id", ""),
         "{{timestamp}}": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
     }
     rendered = template
@@ -428,11 +430,13 @@ def _validate_webhook(config: dict[str, Any]) -> dict[str, Any]:
 
 def _webhook_values(trigger: ConditionResult) -> dict[str, Any]:
     actions = trigger.evidence.get("actions", {})
+    execution = trigger.evidence.get("execution", {})
     return {
         "{{trigger.status}}": trigger.status,
         "{{trigger.summary}}": trigger.summary,
         "{{trigger.met}}": trigger.met,
         "{{trigger.evidence}}": trigger.evidence,
+        "{{trigger.job_id}}": execution.get("job_id", ""),
         "{{actions.results}}": actions.get("results", []),
         "{{actions.successful}}": actions.get("successful", []),
         "{{actions.partial}}": actions.get("partial", []),
@@ -471,6 +475,9 @@ def _render_webhook_body(config: dict[str, Any], trigger: ConditionResult) -> st
 def _execute_webhook(config: dict[str, Any], trigger: ConditionResult) -> ActionResult:
     normalized = _validate_webhook(config)
     headers = parse_http_headers(normalized["headers"])
+    job_id = str(trigger.evidence.get("execution", {}).get("job_id", ""))
+    if job_id and not any(name.lower() == "idempotency-key" for name in headers):
+        headers["Idempotency-Key"] = job_id
     if normalized["body_format"] == "json" and not any(name.lower() == "content-type" for name in headers):
         headers["Content-Type"] = "application/json"
     body = _render_webhook_body(normalized, trigger)

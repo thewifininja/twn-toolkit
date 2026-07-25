@@ -55,11 +55,12 @@ def main() -> None:
     live_executor = ThreadPoolExecutor(
         max_workers=live_max_workers, thread_name_prefix="twn-live-tool"
     )
-    futures: dict[object, str] = {}
+    futures: dict[object, dict[str, str]] = {}
     live_futures: dict[object, str] = {}
     heartbeat_path = Path(instance_path) / "automation-heartbeat.json"
     running = True
     next_retention_check = 0.0
+    next_lease_renewal = 0.0
 
     def stop(_signum: int, _frame: object) -> None:
         nonlocal running
@@ -82,17 +83,49 @@ def main() -> None:
                 next_retention_check = now + 3600
             for future in list(futures):
                 if future.done():
-                    automation_id = futures.pop(future)
-                    try: future.result()
-                    except Exception as exc: store.record_error(automation_id, f"{type(exc).__name__}: {exc}")
+                    work = futures.pop(future)
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        if work["kind"] == "check":
+                            store.record_error(
+                                work["automation_id"],
+                                f"{type(exc).__name__}: {exc}",
+                            )
+            if now >= next_lease_renewal:
+                for work in futures.values():
+                    if work["kind"] == "job":
+                        store.renew_job_lease(work["id"])
+                next_lease_renewal = now + 30
             available = max(0, max_pending - len(futures))
-            active_ids = set(futures.values())
+            active_ids = {work["automation_id"] for work in futures.values()}
+            while available:
+                jobs = store.claim_jobs(
+                    limit=1,
+                    exclude_automation_ids=active_ids,
+                )
+                if not jobs:
+                    break
+                job = jobs[0]
+                future = executor.submit(engine.process_job, job)
+                futures[future] = {
+                    "kind": "job",
+                    "id": job["id"],
+                    "automation_id": job["automation_id"],
+                }
+                active_ids.add(job["automation_id"])
+                available -= 1
             for automation in store.claim_due(limit=max(1, available)) if available else []:
                 if operational["skip_overlapping_automations"] and automation["id"] in active_ids:
                     store.record_observation(automation["id"], "skipped", "Skipped because the previous run is still active.")
                     continue
                 future = executor.submit(engine.process_automation, automation)
-                futures[future] = automation["id"]; active_ids.add(automation["id"])
+                futures[future] = {
+                    "kind": "check",
+                    "id": automation["id"],
+                    "automation_id": automation["id"],
+                }
+                active_ids.add(automation["id"])
             for future in list(live_futures):
                 if future.done():
                     session_id = live_futures.pop(future)
@@ -158,7 +191,7 @@ def _daemonize(pid_file: str, log_file: str) -> None:
 def _write_heartbeat(
     path: Path,
     max_workers: int,
-    futures: dict[object, str],
+    futures: dict[object, dict[str, str]],
     *,
     live_futures: dict[object, str] | None = None,
 ) -> None:
@@ -168,6 +201,16 @@ def _write_heartbeat(
         "active": sum(1 for future in futures if future.running()),
         "queued": sum(1 for future in futures if not future.running() and not future.done()),
         "tracked": len(futures),
+        "active_checks": sum(
+            1
+            for future, work in futures.items()
+            if work["kind"] == "check" and future.running()
+        ),
+        "active_jobs": sum(
+            1
+            for future, work in futures.items()
+            if work["kind"] == "job" and future.running()
+        ),
         "live_tools_active": sum(
             1 for future in live_futures if future.running()
         ),

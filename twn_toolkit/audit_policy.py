@@ -61,6 +61,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "reset_activity_scoreboard",
         "reset_activity_user_score",
         "reset_dashboard_layout",
+        "retry_failed_automation_jobs",
         "rollback_update",
         "run_automation_now",
         "save_access_profile",
