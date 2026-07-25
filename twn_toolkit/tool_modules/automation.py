@@ -12,7 +12,7 @@ def backup_items(instance_path: str):
         {
             "id": "automation_definitions",
             "label": "Automation definitions",
-            "description": "Conditions, trigger policies, SSH actions, and saved credentials. Runtime history is excluded.",
+            "description": "Schedules, conditions, actions, and saved credentials. Runtime history is excluded.",
             "store": AutomationBackupStore(store),
             "sensitive": True,
         }
@@ -32,6 +32,20 @@ def register_tools(registry: ToolRegistry) -> None:
             risk="advanced",
             grantable=False,
             nav_icon="⚙",
+        )
+    )
+    registry.add_tool(
+        ToolLink(
+            "automation.schedules",
+            "Schedules",
+            "Create reusable calendars for scheduled automations.",
+            "automation_schedules",
+            "automation",
+            "Automation",
+            admin_only=True,
+            risk="advanced",
+            grantable=False,
+            nav_icon="▦",
         )
     )
     registry.add_tool(
@@ -70,6 +84,10 @@ def register_tools(registry: ToolRegistry) -> None:
             "save_automation_condition": "automation.conditions",
             "test_condition_definition": "automation.conditions",
             "delete_automation_condition": "automation.conditions",
+            "automation_schedules": "automation.schedules",
+            "save_automation_schedule": "automation.schedules",
+            "test_schedule_definition": "automation.schedules",
+            "delete_automation_schedule": "automation.schedules",
             "automation_actions": "automation.actions",
             "save_automation_action": "automation.actions",
             "delete_automation_action": "automation.actions",

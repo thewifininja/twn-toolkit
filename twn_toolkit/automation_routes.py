@@ -80,6 +80,13 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     ) -> str:
         automations = store.all()
         for automation in automations:
+            automation["run_mode"] = (
+                "manual"
+                if automation["condition"]["type"] == "manual.trigger"
+                else "schedule"
+                if automation["condition"]["type"] == "schedule.calendar"
+                else "condition"
+            )
             automation["stage_form"] = [
                 {
                     "id": stage["id"],
@@ -103,7 +110,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 automation.get("pending_schedule_at") or automation["next_check_at"]
             )
         condition_definitions = store.condition_definitions()
-        for definition in condition_definitions:
+        schedule_definitions = store.schedule_definitions()
+        for definition in schedule_definitions:
             if definition["type"] == "schedule.calendar":
                 definition["rule_descriptions"] = [
                     describe_schedule_rule(rule) for rule in definition["config"]["rules"]
@@ -111,7 +119,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 definition["schedule_preview"] = schedule_preview(
                     definition["config"], time.time(), 5
                 )
-            elif definition["type"] in {
+        for definition in condition_definitions:
+            if definition["type"] in {
                 "tcp.reachability", "snmp.value", "certificate.health"
             }:
                 # Normalize legacy global host/port definitions for display.
@@ -122,6 +131,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             "automations/index.html",
             automations=automations,
             condition_definitions=condition_definitions,
+            schedule_definitions=schedule_definitions,
             action_definitions=store.action_definitions(),
             action_choices=[
                 {"id": item["id"], "name": item["name"], "type": item["type"]}
@@ -155,6 +165,11 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         require_admin()
         return render_page(page_section="conditions")
 
+    @app.get("/automations/schedules")
+    def automation_schedules():
+        require_admin()
+        return render_page(page_section="schedules")
+
     @app.get("/automations/actions")
     def automation_actions():
         require_admin()
@@ -175,6 +190,31 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         automation_id = request.form.get("automation_id", "").strip()
         before = store.get(automation_id) if automation_id else None
         try:
+            run_mode = request.form.get("run_mode", "").strip()
+            if run_mode:
+                if run_mode == "manual":
+                    source_definition_id = store.ensure_manual_trigger_definition()
+                elif run_mode == "schedule":
+                    source_definition_id = request.form.get(
+                        "schedule_definition_id", ""
+                    )
+                    source = store.get_condition_definition(source_definition_id)
+                    if not source or source["type"] != "schedule.calendar":
+                        raise ValueError("Select a reusable schedule.")
+                elif run_mode == "condition":
+                    source_definition_id = request.form.get(
+                        "condition_definition_id", ""
+                    )
+                    source = store.get_condition_definition(source_definition_id)
+                    if not source or source["type"] in AUTOMATION_REGISTRY.triggers:
+                        raise ValueError("Select a reusable condition.")
+                else:
+                    raise ValueError("Select when this automation should run.")
+            else:
+                # Compatibility for pre-run-mode forms and imported requests.
+                source_definition_id = request.form.get(
+                    "condition_definition_id", ""
+                )
             saved_id = store.save(
                 automation_id=automation_id,
                 name=request.form.get("name", ""),
@@ -182,7 +222,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 trigger_after=int(request.form.get("trigger_after", "3")),
                 recover_after=int(request.form.get("recover_after", "3")),
                 cooldown_seconds=int(request.form.get("cooldown_seconds", "300")),
-                condition_definition_id=request.form.get("condition_definition_id", ""),
+                condition_definition_id=source_definition_id,
                 action_definition_ids=request.form.getlist("action_definition_id"),
                 action_stages=form["action_stages"],
                 created_by=str(g.current_user["id"]),
@@ -247,6 +287,58 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         )
         return redirect(url_for("automation_conditions", focus_condition=definition_id))
 
+    @app.post("/automations/schedules/save")
+    def save_automation_schedule():
+        require_admin()
+        form = {key: value for key, value in request.form.items()}
+        try:
+            form["rules"] = json.loads(request.form.get("schedule_rules_json", "[]"))
+        except json.JSONDecodeError:
+            form["rules"] = []
+        requested_definition_id = request.form.get("schedule_definition_id", "")
+        before = (
+            store.get_condition_definition(requested_definition_id)
+            if requested_definition_id
+            else None
+        )
+        try:
+            type_id = "schedule.calendar"
+            config = AUTOMATION_REGISTRY.trigger_config_from_form(
+                "schedule.calendar", request.form
+            )
+            definition_id = store.save_condition_definition(
+                definition_id=requested_definition_id,
+                name=request.form.get("schedule_name", ""),
+                type_id=type_id,
+                config=config,
+            )
+        except (ToolInputError, ValueError) as exc:
+            return render_page(
+                page_section="schedules",
+                form_error=str(exc),
+                form=form,
+                form_section="schedule",
+            ), 400
+        after = store.get_condition_definition(definition_id)
+        annotate_audit_event(
+            category="Automation",
+            action="schedule.updated" if before else "schedule.created",
+            summary=(
+                f"{'Updated' if before else 'Created'} schedule "
+                f"{after['name'] if after else definition_id}."
+            ),
+            resource_type="schedule",
+            resource_id=definition_id,
+            resource_name=str((after or {}).get("name", "")),
+            before=_definition_audit_snapshot(before),
+            after=_definition_audit_snapshot(after),
+        )
+        flash(
+            "Schedule saved. Any automation using an edited schedule was paused.",
+            "success",
+        )
+        return redirect(url_for("automation_schedules", focus_schedule=definition_id))
+
     @app.post("/automations/actions/save")
     def save_automation_action():
         require_admin()
@@ -304,8 +396,9 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             resource_name=definition["name"],
         )
         try:
-            condition = AUTOMATION_REGISTRY.conditions[definition["type"]]
-            result = condition.evaluate(definition["config"])
+            result = AUTOMATION_REGISTRY.evaluate_condition(
+                definition["type"], definition["config"]
+            )
             test_result = {
                 "condition_id": definition_id,
                 "status": result.status,
@@ -320,6 +413,39 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 "evidence": {},
             }
         return render_page(page_section="conditions", test_result=test_result)
+
+    @app.post("/automations/schedules/<definition_id>/test")
+    def test_schedule_definition(definition_id: str):
+        require_admin()
+        definition = store.get_condition_definition(definition_id)
+        if not definition or definition["type"] != "schedule.calendar":
+            abort(404)
+        annotate_audit_event(
+            category="Automation",
+            action="schedule.tested",
+            summary=f"Tested schedule {definition['name']}.",
+            resource_type="schedule",
+            resource_id=definition_id,
+            resource_name=definition["name"],
+        )
+        try:
+            result = AUTOMATION_REGISTRY.evaluate_trigger(
+                definition["type"], definition["config"]
+            )
+            test_result = {
+                "condition_id": definition_id,
+                "status": result.status,
+                "summary": result.summary,
+                "evidence": result.evidence,
+            }
+        except Exception as exc:
+            test_result = {
+                "condition_id": definition_id,
+                "status": "error",
+                "summary": f"{type(exc).__name__}: {exc}",
+                "evidence": {},
+            }
+        return render_page(page_section="schedules", test_result=test_result)
 
     @app.post("/automations/conditions/<definition_id>/delete")
     def delete_automation_condition(definition_id: str):
@@ -339,6 +465,29 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             )
             flash("Condition deleted.", "success")
         return redirect(url_for("automation_conditions"))
+
+    @app.post("/automations/schedules/<definition_id>/delete")
+    def delete_automation_schedule(definition_id: str):
+        require_admin()
+        definition = store.get_condition_definition(definition_id)
+        if not definition or definition["type"] != "schedule.calendar":
+            abort(404)
+        try:
+            store.delete_condition_definition(definition_id)
+        except ValueError as exc:
+            flash(str(exc).replace("condition", "schedule"), "error")
+        else:
+            annotate_audit_event(
+                category="Automation",
+                action="schedule.deleted",
+                summary=f"Deleted schedule {definition['name']}.",
+                resource_type="schedule",
+                resource_id=definition_id,
+                resource_name=definition["name"],
+                details={"deleted definition": _definition_audit_snapshot(definition)},
+            )
+            flash("Schedule deleted.", "success")
+        return redirect(url_for("automation_schedules"))
 
     @app.post("/automations/actions/<definition_id>/delete")
     def delete_automation_action(definition_id: str):
@@ -400,8 +549,9 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         if automation["condition"]["type"] != "manual.trigger":
             flash("Run now is available only for Manual trigger automations.", "error")
             return redirect(url_for("automations", focus=automation_id))
-        condition = AUTOMATION_REGISTRY.conditions["manual.trigger"]
-        trigger = condition.evaluate(automation["condition"]["config"])
+        trigger = AUTOMATION_REGISTRY.evaluate_trigger(
+            "manual.trigger", automation["condition"]["config"]
+        )
         trigger.evidence["started_by"] = str(g.current_user["username"])
         job_id = store.enqueue_manual_job(automation_id, trigger)
         job = store.claim_job(job_id)

@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 
 {% from "automations/_condition_forms.html" import condition_form with context %}
+{% from "automations/_schedule_forms.html" import schedule_form with context %}
 {% from "automations/_condition_evidence.html" import dns_test_evidence, ping_test_evidence, tcp_test_evidence, snmp_test_evidence, certificate_test_evidence with context %}
 {% from "automations/_action_forms.html" import action_form with context %}
 {% from "components/ui.html" import create_toggle, empty_state, workspace_intro %}
 
 {% macro automation_form(values, automation=none) %}
   {% set selected_condition = automation.condition.id if automation else values.get('condition_definition_id', '') %}
+  {% set selected_schedule = automation.condition.id if automation and automation.run_mode == 'schedule' else values.get('schedule_definition_id', '') %}
+  {% set selected_run_mode = automation.run_mode if automation else values.get('run_mode', 'condition') %}
   {% set selected_stages = automation.stage_form if automation else values.get('action_stages', []) %}
   <form class="form automation-form" method="post" action="{{ url_for('save_automation') }}">
     {% if automation %}<input type="hidden" name="automation_id" value="{{ automation.id }}">{% endif %}
@@ -27,16 +30,34 @@
         <div class="input-suffix"><input name="cooldown_seconds" type="number" min="0" max="604800" value="{{ automation.cooldown_seconds if automation else values.get('cooldown_seconds', '300') }}" required><span>seconds</span></div>
       </label>
     </div>
-    <fieldset class="automation-builder-block">
-      <legend>Condition</legend>
-      {% if condition_definitions %}
-        <label>Reusable condition
-          <select name="condition_definition_id" data-automation-condition-select required>
+    <fieldset class="automation-builder-block" data-automation-run-source>
+      <legend>Run when</legend>
+      <label>Run mode
+        <select name="run_mode" data-automation-run-mode required>
+          <option value="condition" {% if selected_run_mode == 'condition' %}selected{% endif %}>A condition is met</option>
+          <option value="schedule" {% if selected_run_mode == 'schedule' %}selected{% endif %}>On a schedule</option>
+          <option value="manual" {% if selected_run_mode == 'manual' %}selected{% endif %}>Manually</option>
+        </select>
+      </label>
+      <div data-automation-run-fields="condition">
+        {% if condition_definitions %}<label>Condition
+          <select name="condition_definition_id" required>
             <option value="">Select a condition</option>
-            {% for item in condition_definitions %}<option value="{{ item.id }}" data-condition-type="{{ item.type }}" {% if selected_condition == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
+            {% for item in condition_definitions %}<option value="{{ item.id }}" {% if selected_condition == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
           </select>
-        </label>
-      {% else %}<p class="empty">Create a condition before building an automation.</p>{% endif %}
+        </label>{% else %}<p class="empty">Create a condition before using condition mode.</p>{% endif %}
+      </div>
+      <div data-automation-run-fields="schedule" hidden>
+        {% if schedule_definitions %}<label>Schedule
+          <select name="schedule_definition_id" required>
+            <option value="">Select a schedule</option>
+            {% for item in schedule_definitions %}<option value="{{ item.id }}" {% if selected_schedule == item.id %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
+          </select>
+        </label>{% else %}<p class="empty">Create a schedule before using schedule mode.</p>{% endif %}
+      </div>
+      <div data-automation-run-fields="manual" hidden>
+        <p class="field-note">This automation runs only when an administrator clicks Run now.</p>
+      </div>
     </fieldset>
     <fieldset class="automation-builder-block automation-pipeline-builder">
       <legend>Action pipeline</legend>
@@ -48,22 +69,51 @@
         </div>
       {% else %}<p class="empty">Create an action before building an automation.</p>{% endif %}
     </fieldset>
-    <div class="button-row"><button type="submit" {% if not condition_definitions or not action_definitions %}disabled{% endif %}>{{ 'Update automation' if automation else 'Save automation' }}</button></div>
+    <div class="button-row"><button type="submit" {% if not action_definitions %}disabled{% endif %}>{{ 'Update automation' if automation else 'Save automation' }}</button></div>
   </form>
 {% endmacro %}
 
 {% block content %}
 {{ workspace_intro(
-  'Conditions' if page_section == 'conditions' else 'Actions' if page_section == 'actions' else 'Automations',
-  'Create and test reusable observations that can be shared by multiple automations.' if page_section == 'conditions' else 'Create reusable responses, then arrange them into parallel and sequential automation stages.' if page_section == 'actions' else 'Connect reusable conditions and actions with scheduling, trigger, recovery, and cooldown policies.',
+  'Schedules' if page_section == 'schedules' else 'Conditions' if page_section == 'conditions' else 'Actions' if page_section == 'actions' else 'Automations',
+  'Create reusable calendars for automations that run at specific times.' if page_section == 'schedules' else 'Create and test reusable health observations that can be shared by multiple automations.' if page_section == 'conditions' else 'Create reusable responses, then arrange them into parallel and sequential automation stages.' if page_section == 'actions' else 'Choose when to run, then connect it to a staged action pipeline.',
   'Automation'
 ) }}
 
 <nav class="automation-page-nav" aria-label="Automation workspace">
   <a class="button-link {{ 'secondary' if page_section != 'automations' }}" href="{{ url_for('automations') }}" {% if page_section == 'automations' %}aria-current="page"{% endif %}>Automations</a>
+  <a class="button-link {{ 'secondary' if page_section != 'schedules' }}" href="{{ url_for('automation_schedules') }}" {% if page_section == 'schedules' %}aria-current="page"{% endif %}>Schedules</a>
   <a class="button-link {{ 'secondary' if page_section != 'conditions' }}" href="{{ url_for('automation_conditions') }}" {% if page_section == 'conditions' %}aria-current="page"{% endif %}>Conditions</a>
   <a class="button-link {{ 'secondary' if page_section != 'actions' }}" href="{{ url_for('automation_actions') }}" {% if page_section == 'actions' %}aria-current="page"{% endif %}>Actions</a>
 </nav>
+
+{% if page_section == 'schedules' %}
+<section class="panel automation-manager automation-library-panel">
+  <div class="section-head"><div><h2>Schedules</h2><p>{{ schedule_definitions|length }} reusable calendar{{ '' if schedule_definitions|length == 1 else 's' }}</p></div></div>
+  <details class="card-action-details profile-create-details" data-automation-create {% if form_error and form_section == 'schedule' %}open{% endif %}>
+    {{ create_toggle("New schedule") }}
+    {% if form_error and form_section == 'schedule' %}<div class="message error">{{ form_error }}</div>{% endif %}
+    {{ schedule_form(form) }}
+  </details>
+  {% if schedule_definitions %}<div class="automation-list">
+    {% for definition in schedule_definitions %}
+      <details class="access-profile-card automation-card" {% if request.args.get('focus_schedule') == definition.id or (test_result and test_result.condition_id == definition.id) %}open{% endif %}>
+        <summary><span><strong>{{ definition.name }}</strong><small>{{ definition.config.rules|length }} rule{{ '' if definition.config.rules|length == 1 else 's' }} · {{ definition.config.timezone }}</small></span></summary>
+        <div class="automation-card-body">
+          {% if definition.type == 'schedule.calendar' %}<div class="schedule-definition-summary"><div><span>Rules</span>{% for description in definition.rule_descriptions %}<strong>{{ description }}</strong>{% endfor %}</div><div><span>Next occurrences</span>{% if definition.schedule_preview %}{% for occurrence in definition.schedule_preview %}<strong>{{ occurrence.display }}</strong>{% endfor %}{% else %}<strong>No future occurrences</strong>{% endif %}</div></div>{% endif %}
+          {% if test_result and test_result.condition_id == definition.id %}<div class="message {{ 'error' if test_result.status == 'error' else 'success' }}"><strong>Schedule preview</strong> · {{ test_result.summary }}</div>{% endif %}
+          <div class="button-row automation-actions">
+            <form method="post" action="{{ url_for('test_schedule_definition', definition_id=definition.id) }}" data-loading-message="Refreshing schedule preview…"><button class="secondary" type="submit">Refresh next run times</button></form>
+            <button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-schedule-{{ definition.id }}">Edit</button>
+            <form method="post" action="{{ url_for('delete_automation_schedule', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable schedule?')"><button class="danger" type="submit">Delete</button></form>
+          </div>
+          <div class="automation-record-editor" id="edit-schedule-{{ definition.id }}" hidden>{{ schedule_form({}, definition) }}</div>
+        </div>
+      </details>
+    {% endfor %}
+  </div>{% else %}{{ empty_state("No reusable schedules yet.", "Create a calendar once, then attach it to any number of automations.") }}{% endif %}
+</section>
+{% endif %}
 
 {% if page_section == 'conditions' %}
 <section class="panel automation-manager automation-library-panel">
@@ -76,17 +126,16 @@
   {% if condition_definitions %}<div class="automation-list">
     {% for definition in condition_definitions %}
       <details class="access-profile-card automation-card" {% if request.args.get('focus_condition') == definition.id or (test_result and test_result.condition_id == definition.id) %}open{% endif %}>
-        <summary><span><strong>{{ definition.name }}</strong><small>{% if definition.type == 'manual.trigger' %}Manual trigger · on demand{% elif definition.type == 'schedule.calendar' %}Calendar schedule · {{ definition.config.rules|length }} rule{{ '' if definition.config.rules|length == 1 else 's' }} · {{ definition.config.timezone }}{% elif definition.type == 'dns.lookup' %}DNS {{ definition.config.record_type }} · {{ definition.config.hosts.split('\n')|length }} name{{ '' if definition.config.hosts.split('\n')|length == 1 else 's' }} × {{ definition.config.servers.split('\n')|length }} resolver{{ '' if definition.config.servers.split('\n')|length == 1 else 's' }}{% elif definition.type == 'tcp.reachability' %}TCP · {{ definition.config.target_count }} host{{ '' if definition.config.target_count == 1 else 's' }} · {{ definition.config.check_count }} check{{ '' if definition.config.check_count == 1 else 's' }} · expected {{ definition.config.expected_state }}{% elif definition.type == 'snmp.value' %}SNMP · {{ definition.config.host_names|length }} host{{ '' if definition.config.host_names|length == 1 else 's' }} · {{ definition.config.rules|length }} AND rule{{ '' if definition.config.rules|length == 1 else 's' }} · {{ definition.config.host_failure_count }} host threshold{% elif definition.type == 'certificate.health' %}Certificate · {{ definition.config.target_count }} target{{ '' if definition.config.target_count == 1 else 's' }} · {{ definition.config.expiry_days }}-day warning{% else %}{{ definition.type }} · {{ definition.config.failure_count }} of {{ definition.config.targets.split('\n')|length }} failed target threshold{% endif %}</small></span></summary>
+        <summary><span><strong>{{ definition.name }}</strong><small>{% if definition.type == 'dns.lookup' %}DNS {{ definition.config.record_type }} · {{ definition.config.hosts.split('\n')|length }} name{{ '' if definition.config.hosts.split('\n')|length == 1 else 's' }} × {{ definition.config.servers.split('\n')|length }} resolver{{ '' if definition.config.servers.split('\n')|length == 1 else 's' }}{% elif definition.type == 'tcp.reachability' %}TCP · {{ definition.config.target_count }} host{{ '' if definition.config.target_count == 1 else 's' }} · {{ definition.config.check_count }} check{{ '' if definition.config.check_count == 1 else 's' }} · expected {{ definition.config.expected_state }}{% elif definition.type == 'snmp.value' %}SNMP · {{ definition.config.host_names|length }} host{{ '' if definition.config.host_names|length == 1 else 's' }} · {{ definition.config.rules|length }} AND rule{{ '' if definition.config.rules|length == 1 else 's' }} · {{ definition.config.host_failure_count }} host threshold{% elif definition.type == 'certificate.health' %}Certificate · {{ definition.config.target_count }} target{{ '' if definition.config.target_count == 1 else 's' }} · {{ definition.config.expiry_days }}-day warning{% else %}{{ definition.type }} · {{ definition.config.failure_count }} of {{ definition.config.targets.split('\n')|length }} failed target threshold{% endif %}</small></span></summary>
         <div class="automation-card-body">
-          {% if definition.type == 'schedule.calendar' %}<div class="schedule-definition-summary"><div><span>Rules</span>{% for description in definition.rule_descriptions %}<strong>{{ description }}</strong>{% endfor %}</div><div><span>Next occurrences</span>{% if definition.schedule_preview %}{% for occurrence in definition.schedule_preview %}<strong>{{ occurrence.display }}</strong>{% endfor %}{% else %}<strong>No future occurrences</strong>{% endif %}</div></div>{% endif %}
-          {% if test_result and test_result.condition_id == definition.id %}<div class="message {{ 'error' if test_result.status == 'error' else 'success' if test_result.status == 'clear' else 'warning' }}"><strong>{{ 'Schedule preview' if definition.type == 'schedule.calendar' else 'Condition test: ' ~ test_result.status }}</strong> · {{ test_result.summary }}</div>{% endif %}
+          {% if test_result and test_result.condition_id == definition.id %}<div class="message {{ 'error' if test_result.status == 'error' else 'success' if test_result.status == 'clear' else 'warning' }}"><strong>Condition test: {{ test_result.status }}</strong> · {{ test_result.summary }}</div>{% endif %}
           {% if definition.type == 'dns.lookup' and test_result and test_result.condition_id == definition.id %}{{ dns_test_evidence(test_result) }}{% endif %}
           {% if definition.type == 'ping.multi' and test_result and test_result.condition_id == definition.id %}{{ ping_test_evidence(test_result) }}{% endif %}
           {% if definition.type == 'tcp.reachability' and test_result and test_result.condition_id == definition.id %}{{ tcp_test_evidence(test_result) }}{% endif %}
           {% if definition.type == 'snmp.value' and test_result and test_result.condition_id == definition.id %}{{ snmp_test_evidence(test_result) }}{% endif %}
           {% if definition.type == 'certificate.health' and test_result and test_result.condition_id == definition.id %}{{ certificate_test_evidence(test_result) }}{% endif %}
           <div class="button-row automation-actions">
-            {% if definition.type != 'manual.trigger' %}<form method="post" action="{{ url_for('test_condition_definition', definition_id=definition.id) }}" data-loading-message="{{ 'Refreshing schedule preview…' if definition.type == 'schedule.calendar' else 'Testing reusable condition…' }}"><button class="secondary" type="submit" {% if definition.type == 'schedule.calendar' %}title="Read-only: recalculates upcoming occurrences without arming or running anything."{% endif %}>{{ 'Refresh next run times' if definition.type == 'schedule.calendar' else 'Test' }}</button></form>{% endif %}
+            <form method="post" action="{{ url_for('test_condition_definition', definition_id=definition.id) }}" data-loading-message="Testing reusable condition…"><button class="secondary" type="submit">Test</button></form>
             <button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-condition-{{ definition.id }}">Edit</button>
             <form method="post" action="{{ url_for('delete_automation_condition', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable condition?')"><button class="danger" type="submit">Delete</button></form>
           </div>
@@ -224,7 +273,7 @@
         </div>
       </details>
     {% endfor %}
-  </div>{% else %}{{ empty_state("No automations yet.", "Create reusable conditions and actions from their library pages, then connect them here.") }}{% endif %}
+  </div>{% else %}{{ empty_state("No automations yet.", "Create an action, then choose condition, schedule, or manual mode here.") }}{% endif %}
 </section>
 {% endif %}
 <script src="{{ url_for('static', filename='automation.js') }}"></script>

@@ -3,7 +3,6 @@
   {% set config = definition.config if definition else values %}
   <form class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
     {% set definition_id = definition.id if definition else values.get('condition_definition_id', '') %}
-    {% set timezone_list_id = 'schedule-timezones-' ~ (definition_id or 'new') %}
     {% if definition_id %}<input type="hidden" name="condition_definition_id" value="{{ definition_id }}">{% endif %}
     <label>Condition name
       <input name="condition_name" maxlength="100" value="{{ definition.name if definition else values.get('condition_name', '') }}" placeholder="Production path unavailable" required>
@@ -13,34 +12,6 @@
         {% for item in condition_types %}<option value="{{ item.id }}" {% if (definition and definition.type == item.id) or (not definition and values.get('condition_type', 'ping.multi') == item.id) %}selected{% endif %}>{{ item.label }}</option>{% endfor %}
       </select>
     </label>
-    <div data-condition-fields="manual.trigger" hidden>
-      <p class="field-note">This condition is met only when a user clicks Run now on an automation that uses it.</p>
-    </div>
-    <div class="automation-condition-fields schedule-builder" data-condition-fields="schedule.calendar" hidden>
-      <div class="schedule-settings-grid">
-        <label>Timezone
-          <input name="schedule_timezone" list="{{ timezone_list_id }}" value="{{ config.get('timezone', config.get('schedule_timezone', schedule_default_timezone)) }}" placeholder="America/New_York" required>
-        </label>
-        <label>Missed occurrences
-          {% set missed_policy = config.get('missed_policy', config.get('schedule_missed_policy', 'grace')) %}
-          <select name="schedule_missed_policy" required>
-            <option value="grace" {% if missed_policy == 'grace' %}selected{% endif %}>Run within grace period</option>
-            <option value="run_late" {% if missed_policy == 'run_late' %}selected{% endif %}>Run when available</option>
-            <option value="skip" {% if missed_policy == 'skip' %}selected{% endif %}>Skip missed occurrences</option>
-          </select>
-        </label>
-        <label>Grace period
-          <div class="input-suffix"><input name="schedule_grace_minutes" type="number" min="1" max="1440" value="{{ config.get('grace_minutes', config.get('schedule_grace_minutes', '30')) }}" required><span>minutes</span></div>
-        </label>
-      </div>
-      <datalist id="{{ timezone_list_id }}"><option value="America/New_York"><option value="America/Chicago"><option value="America/Denver"><option value="America/Los_Angeles"><option value="UTC"></datalist>
-      <input type="hidden" name="schedule_rules_json" value="{{ config.get('rules', [])|tojson|forceescape }}" data-schedule-rules-json>
-      <div class="schedule-rule-editor" data-schedule-rule-editor>
-        <div class="schedule-rule-editor-head"><div><strong>Schedule rules</strong><small>Any matching rule triggers the automation once.</small></div><button class="secondary" type="button" data-add-schedule-rule>Add schedule rule</button></div>
-        <div class="schedule-rule-list" data-schedule-rule-list></div>
-        <p class="empty" data-schedule-empty>No schedule rules yet.</p>
-      </div>
-    </div>
     <div class="automation-condition-fields" data-condition-fields="ping.multi">
       <label>Ping targets
         <textarea name="condition_targets" rows="5" placeholder="Gateway = 192.0.2.1&#10;Classroom = 10.0.0.1-10.0.0.24&#10;8.8.8.8" required>{{ config.get('targets', config.get('condition_targets', '')) }}</textarea>

@@ -225,19 +225,26 @@
       syncTransferProtocol();
     }
 
-    const automationCondition = form.querySelector("[data-automation-condition-select]");
+    const automationRunMode = form.querySelector("[data-automation-run-mode]");
     const scheduledPolicy = form.querySelector("[data-scheduled-policy]");
-    if (automationCondition && scheduledPolicy) {
+    if (automationRunMode && scheduledPolicy) {
       const syncAutomationPolicy = () => {
-        const selected = automationCondition.selectedOptions[0];
-        const hidden = ["manual.trigger", "schedule.calendar"].includes(selected?.dataset.conditionType);
+        const hidden = automationRunMode.value !== "condition";
         scheduledPolicy.hidden = hidden;
         scheduledPolicy.querySelectorAll("input, select, textarea").forEach((field) => {
           if (!field.dataset.originalRequired) field.dataset.originalRequired = field.required ? "true" : "false";
           field.required = !hidden && field.dataset.originalRequired === "true";
         });
+        form.querySelectorAll("[data-automation-run-fields]").forEach((group) => {
+          const active = group.dataset.automationRunFields === automationRunMode.value;
+          group.hidden = !active;
+          group.querySelectorAll("input, select, textarea").forEach((field) => {
+            if (!field.dataset.originalRequired) field.dataset.originalRequired = field.required ? "true" : "false";
+            field.required = active && field.dataset.originalRequired === "true";
+          });
+        });
       };
-      automationCondition.addEventListener("change", syncAutomationPolicy);
+      automationRunMode.addEventListener("change", syncAutomationPolicy);
       syncAutomationPolicy();
     }
   });
