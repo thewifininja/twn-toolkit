@@ -17,7 +17,9 @@
 - [x] Local Datastore invokes PCAP inspection directly without requiring
   navigation through Packet Capture.
 - [x] Completed captures copy into a selected datastore folder without tying
-  the retained copy to capture-history deletion.
+  the retained copy to capture-history deletion. Standalone saves accept custom
+  filenames, while automation patterns support timestamp, action, and interface
+  tokens; collisions never overwrite existing captures.
 
 ## Product and compatibility
 

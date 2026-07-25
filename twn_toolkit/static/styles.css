@@ -6610,6 +6610,11 @@ button.compact,
   width: auto;
 }
 
+.packet-capture-save input {
+  min-width: min(22rem, 100%);
+  width: auto;
+}
+
 .pcap-viewer-scrim {
   background: rgb(7 18 14 / 22%);
   inset: 0;
@@ -6829,6 +6834,7 @@ button.compact,
   }
 
   .packet-capture-save,
+  .packet-capture-save input,
   .packet-capture-save select {
     width: 100%;
   }

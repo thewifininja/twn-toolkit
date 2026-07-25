@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
+from typing import BinaryIO
 
 from flask import (
     Blueprint,
@@ -28,6 +30,7 @@ from .packet_capture import (
     PacketCaptureStore,
     capture_capability,
     capture_interfaces,
+    normalize_capture_filename,
 )
 from .pcap_viewer import inspect_packet_capture
 
@@ -65,11 +68,14 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
         datastore_folders = []
         if can_use_datastore():
             datastore_folders = datastore().folders()
+        captures = store().recent()
+        for capture in captures:
+            capture["datastore_filename"] = _capture_filename(capture)
         return render_template(
             "tools/packet_capture.html",
             capability=capture_capability(),
             interfaces=interfaces,
-            captures=store().recent(),
+            captures=captures,
             can_use_datastore=can_use_datastore(),
             datastore_folders=datastore_folders,
             form=form,
@@ -231,16 +237,20 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
         if not source.is_file():
             abort(404)
         destination_folder = request.form.get("destination", "")
-        filename = _capture_filename(capture)
+        requested_filename = request.form.get("filename", _capture_filename(capture))
         try:
+            filename = normalize_capture_filename(requested_filename)
             with source.open("rb") as stream:
-                saved, size = datastore().save_upload(
+                saved, size = _save_capture_to_datastore(
+                    datastore(),
                     destination_folder,
                     filename,
                     stream,
-                    max_bytes=max(1, int(capture["max_size_mib"])) * 1024 * 1024,
+                    max_bytes=(
+                        max(1, int(capture["max_size_mib"])) * 1024 * 1024
+                    ),
                 )
-        except (DatastoreError, OSError) as exc:
+        except (DatastoreError, OSError, ToolInputError) as exc:
             flash(f"PCAP was not saved: {exc}", "error")
         else:
             relative_path = datastore().relative(saved)
@@ -300,3 +310,26 @@ def _capture_filename(capture: dict[str, object]) -> str:
         f"{stamp:%Y%m%d%H%M%S}-"
         f"{_safe_filename(str(capture['interface']))}-capture.pcap"
     )
+
+
+def _save_capture_to_datastore(
+    store: LocalDatastore,
+    destination: str,
+    filename: str,
+    source: BinaryIO,
+    *,
+    max_bytes: int,
+) -> tuple[Path, int]:
+    path = Path(filename)
+    candidate = filename
+    for index in range(1, 1001):
+        try:
+            return store.save_upload(
+                destination, candidate, source, max_bytes=max_bytes
+            )
+        except DatastoreError as exc:
+            if "already exists" not in str(exc):
+                raise
+            source.seek(0)
+            candidate = f"{path.stem}-{index + 1}{path.suffix}"
+    raise DatastoreError("Unable to choose an unused packet capture filename.")

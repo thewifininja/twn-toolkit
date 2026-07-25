@@ -230,6 +230,10 @@
         </label>
       </div>
       <label class="check"><input name="capture_action_promiscuous" type="checkbox" {% if config.get('promiscuous', config.get('capture_action_promiscuous', true)) %}checked{% endif %}><span><strong>Promiscuous mode</strong><small>Normally required for traffic received from a SPAN or mirror port.</small></span></label>
+      <label>Filename pattern
+        <input name="capture_action_filename_pattern" maxlength="240" value="{{ config.get('filename_pattern', config.get('capture_action_filename_pattern', '{timestamp}-{action}-{interface}.pcap')) }}" required>
+        <small class="field-note">Tokens: <code>{timestamp}</code>, <code>{action}</code>, and <code>{interface}</code>. The <code>.pcap</code> extension is added when omitted; duplicate names never overwrite.</small>
+      </label>
       {% set capture_destination_mode = config.get('destination_mode', config.get('capture_action_destination_mode', 'run')) %}
       <fieldset class="choice-group" data-capture-action-output>
         <legend>Collection destination</legend>

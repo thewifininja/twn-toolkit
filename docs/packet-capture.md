@@ -70,8 +70,11 @@ datastore captures use the datastore quota. Neither form is included in profile
 backups.
 
 **Save to datastore** copies a completed standalone PCAP into the selected
-datastore folder. The copy then follows the datastore quota and lifecycle and
-is independent of capture-history deletion.
+datastore folder using an editable filename. Automation capture names support
+`{timestamp}`, `{action}`, and `{interface}` pattern tokens. The `.pcap`
+extension is added when omitted, and duplicate names receive a numeric suffix
+instead of overwriting. Datastore copies follow the datastore quota and
+lifecycle and are independent of capture-history deletion.
 
 Packet captures can contain credentials, session tokens, personal data, and
 application payloads. Grant the tool only to authorized operators and delete

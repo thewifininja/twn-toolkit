@@ -113,6 +113,8 @@
             >{{ 'Open live viewer' if capture.active else 'Inspect PCAP' }}</button>
             {% if can_use_datastore %}
               <form class="packet-capture-save" method="post" action="{{ url_for('tools.save_packet_capture', capture_id=capture.id) }}" data-capture-save {% if not capture.downloadable %}hidden{% endif %}>
+                <label class="sr-only" for="capture-filename-{{ capture.id }}">Datastore filename</label>
+                <input id="capture-filename-{{ capture.id }}" name="filename" maxlength="255" value="{{ capture.datastore_filename }}">
                 <select id="capture-destination-{{ capture.id }}" name="destination" aria-label="Datastore destination folder">
                   {% for folder in datastore_folders %}<option value="{{ folder.path }}">{{ folder.name }}</option>{% endfor %}
                 </select>

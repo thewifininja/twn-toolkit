@@ -126,7 +126,9 @@ to the next future occurrence rather than replaying a backlog.
   the shared Packet Capture engine. Interface, BPF filter, duration, packet
   count, file-size ceiling, snapshot length, and promiscuous mode are explicit.
   The completed PCAP can be retained with the run for ZIP download or saved
-  directly beneath a selected Local Datastore folder.
+  directly beneath a selected Local Datastore folder. Filename patterns support
+  `{timestamp}`, `{action}`, and `{interface}` tokens; duplicate names receive
+  a numeric suffix and never overwrite an existing capture.
 - History: retain condition checks, triggers, per-host command output, and
   action status in `instance/automations.sqlite3`.
 - Downloads: each action run can be downloaded as a ZIP containing JSON run

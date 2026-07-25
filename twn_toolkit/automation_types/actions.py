@@ -17,7 +17,13 @@ from ..network_tools import (
     run_ssh_hosts,
     validate_hosts,
 )
-from ..packet_capture import run_packet_capture, validate_capture_config
+from ..packet_capture import (
+    DEFAULT_CAPTURE_FILENAME_PATTERN,
+    format_capture_filename,
+    run_packet_capture,
+    validate_capture_config,
+    validate_capture_filename_pattern,
+)
 from ..datastore import DatastoreError, LocalDatastore
 from ..transfer_tools import (
     DEFAULT_TRANSFER_FILENAME_PATTERN as SFTP_DEFAULT_FILENAME_PATTERN,
@@ -526,6 +532,9 @@ def _packet_capture_destination(config: dict[str, Any]) -> dict[str, str]:
     return {
         "destination_mode": destination_mode,
         "datastore_folder": datastore_folder,
+        "filename_pattern": validate_capture_filename_pattern(
+            str(config.get("filename_pattern", DEFAULT_CAPTURE_FILENAME_PATTERN))
+        ),
     }
 
 
@@ -553,7 +562,12 @@ def _execute_packet_capture(
         interface = re.sub(
             r"[^A-Za-z0-9._-]+", "-", normalized["interface"]
         ).strip(".-_") or "interface"
-        filename = f"{timestamp}-{interface}-capture.pcap"
+        filename = format_capture_filename(
+            normalized["filename_pattern"],
+            timestamp=timestamp,
+            action=str(config.get("_action_name", "packet-capture")),
+            interface=interface,
+        )
         output_path = staging / filename
         result = run_packet_capture(
             normalized,
@@ -647,6 +661,10 @@ def _parse_packet_capture_form(
             "max_size_mib": form.get("capture_action_max_size", "100"),
             "snap_length": form.get("capture_action_snap_length", "0"),
             "promiscuous": "capture_action_promiscuous" in form,
+            "filename_pattern": form.get(
+                "capture_action_filename_pattern",
+                DEFAULT_CAPTURE_FILENAME_PATTERN,
+            ),
             "destination_mode": form.get("capture_action_destination_mode", "run"),
             "datastore_folder": form.get("capture_action_datastore_folder", ""),
         }

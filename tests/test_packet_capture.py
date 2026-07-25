@@ -15,9 +15,13 @@ from twn_toolkit import create_app
 from twn_toolkit.automation_registry import AUTOMATION_REGISTRY, ConditionResult
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.packet_capture import (
+    DEFAULT_CAPTURE_FILENAME_PATTERN,
     PacketCaptureStore,
+    format_capture_filename,
+    normalize_capture_filename,
     run_packet_capture,
     validate_capture_config,
+    validate_capture_filename_pattern,
 )
 from twn_toolkit.pcap_viewer import inspect_packet_capture
 
@@ -77,6 +81,25 @@ class PacketCaptureTests(unittest.TestCase):
                 {**VALID_CONFIG, "interface": "span9"}, require_runtime=False
             )
         self.assertEqual(portable["interface"], "span9")
+
+    def test_capture_filename_patterns_are_safe_and_add_extension(self) -> None:
+        pattern = validate_capture_filename_pattern(
+            "{timestamp}-{action}-{interface}"
+        )
+        self.assertEqual(
+            format_capture_filename(
+                pattern,
+                timestamp="20260725193422",
+                action="WAN Degradation",
+                interface="en7",
+            ),
+            "20260725193422-WAN-Degradation-en7.pcap",
+        )
+        self.assertEqual(normalize_capture_filename("Incident 42"), "Incident 42.pcap")
+        with self.assertRaisesRegex(ToolInputError, "tokens"):
+            validate_capture_filename_pattern("{automation}-{interface}")
+        with self.assertRaisesRegex(ToolInputError, "slashes"):
+            normalize_capture_filename("../capture")
 
     def test_runner_builds_bounded_tcpdump_command_and_retains_pcap(self) -> None:
         class FakeProcess:
@@ -320,9 +343,13 @@ class PacketCaptureTests(unittest.TestCase):
             expected_download = output.read_bytes()
             saved = client.post(
                 f"/tools/packet-capture/{capture['id']}/save",
-                data={"destination": ""},
+                data={"destination": "", "filename": "WAN incident.pcap"},
             )
-            saved_path = next((Path(instance) / "datastore").glob("*.pcap"))
+            duplicate_save = client.post(
+                f"/tools/packet-capture/{capture['id']}/save",
+                data={"destination": "", "filename": "WAN incident.pcap"},
+            )
+            saved_path = Path(instance) / "datastore" / "WAN incident.pcap"
             inspected_saved = client.get(
                 "/local/datastore/view-pcap",
                 query_string={"path": saved_path.name},
@@ -339,7 +366,12 @@ class PacketCaptureTests(unittest.TestCase):
             self.assertEqual(download.data, expected_download)
             download.close()
             self.assertEqual(saved.status_code, 302)
+            self.assertEqual(duplicate_save.status_code, 302)
             self.assertEqual(saved_path.read_bytes(), expected_download)
+            self.assertEqual(
+                (Path(instance) / "datastore" / "WAN incident-2.pcap").read_bytes(),
+                expected_download,
+            )
             self.assertEqual(
                 inspected_saved.get_json()["packets"][0]["destination_port"], 443
             )
@@ -358,7 +390,10 @@ class PacketCaptureTests(unittest.TestCase):
             self.assertIn(b"Collection destination", actions_page.data)
             self.assertIn(b'name="capture_action_destination_mode"', actions_page.data)
             self.assertIn(b'name="capture_action_datastore_folder"', actions_page.data)
+            self.assertIn(b'name="capture_action_filename_pattern"', actions_page.data)
             self.assertIn(b'data-pcap-scrim', actions_page.data)
+            self.assertIn(b'name="filename"', completed_page.data)
+            self.assertIn(b"WAN incident", datastore_page.data)
 
     def test_automation_action_returns_capture_as_run_artifact(self) -> None:
         action = AUTOMATION_REGISTRY.actions["packet.capture"]
@@ -376,11 +411,13 @@ class PacketCaptureTests(unittest.TestCase):
                     "capture_action_snap_length": "128",
                     "capture_action_promiscuous": "on",
                     "capture_action_destination_mode": "run",
+                    "capture_action_filename_pattern": DEFAULT_CAPTURE_FILENAME_PATTERN,
                 },
             )
         self.assertEqual(parsed["interface"], "en7")
         self.assertEqual(parsed["duration_seconds"], 30)
         self.assertEqual(parsed["destination_mode"], "run")
+        self.assertEqual(parsed["filename_pattern"], DEFAULT_CAPTURE_FILENAME_PATTERN)
 
         def capture(_config, *, output_path, **_kwargs):
             Path(output_path).write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 28)
@@ -403,7 +440,12 @@ class PacketCaptureTests(unittest.TestCase):
             ),
         ):
             result = action.execute(
-                {**normalized, "_instance_path": "/tmp/instance"},
+                {
+                    **normalized,
+                    "_instance_path": "/tmp/instance",
+                    "_action_name": "WAN Degradation",
+                    "filename_pattern": DEFAULT_CAPTURE_FILENAME_PATTERN,
+                },
                 ConditionResult(True, "met", "WAN degraded", {}),
             )
         artifact = result.output["_artifact_sources"][0]
@@ -411,7 +453,9 @@ class PacketCaptureTests(unittest.TestCase):
             self.assertEqual(result.status, "success")
             self.assertIn("9 packet(s)", result.summary)
             self.assertEqual(Path(artifact["source_path"]).read_bytes()[:4], b"\xd4\xc3\xb2\xa1")
-            self.assertTrue(artifact["filename"].endswith("-en7-capture.pcap"))
+            self.assertTrue(
+                artifact["filename"].endswith("-WAN-Degradation-en7.pcap")
+            )
         finally:
             shutil.rmtree(Path(artifact["source_path"]).parent, ignore_errors=True)
 
@@ -445,6 +489,8 @@ class PacketCaptureTests(unittest.TestCase):
                         "_instance_path": instance,
                         "destination_mode": "datastore",
                         "datastore_folder": "",
+                        "_action_name": "WAN Degradation",
+                        "filename_pattern": DEFAULT_CAPTURE_FILENAME_PATTERN,
                     },
                     ConditionResult(True, "met", "WAN degraded", {}),
                 )
@@ -454,6 +500,7 @@ class PacketCaptureTests(unittest.TestCase):
             self.assertEqual(result.output["destination_mode"], "datastore")
             self.assertNotIn("_artifact_sources", result.output)
             self.assertEqual(stored_path.read_bytes()[:4], b"\xd4\xc3\xb2\xa1")
+            self.assertTrue(stored_path.name.endswith("-WAN-Degradation-en7.pcap"))
 
 
 if __name__ == "__main__":
