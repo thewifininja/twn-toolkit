@@ -278,51 +278,6 @@ class LocalDatastore:
                 folders.append({"name": relative, "path": relative})
         return folders
 
-    def files_with_suffixes(
-        self, suffixes: set[str], *, limit: int = 500
-    ) -> list[dict[str, object]]:
-        """Return bounded metadata for matching regular files beneath the datastore."""
-        normalized = {str(suffix).casefold() for suffix in suffixes}
-        if not normalized or not 1 <= limit <= 5000:
-            raise DatastoreError("Choose valid file suffixes and a result limit.")
-        matches: list[dict[str, object]] = []
-        for folder, directory_names, file_names in os.walk(
-            self.root, followlinks=False
-        ):
-            folder_path = Path(folder)
-            directory_names[:] = sorted(
-                [
-                    name
-                    for name in directory_names
-                    if not (folder_path / name).is_symlink()
-                ],
-                key=str.casefold,
-            )
-            for name in sorted(file_names, key=str.casefold):
-                path = folder_path / name
-                if path.is_symlink() or path.suffix.casefold() not in normalized:
-                    continue
-                stat = path.stat()
-                matches.append(
-                    {
-                        "name": path.name,
-                        "path": self.relative(path),
-                        "size": stat.st_size,
-                        "modified_at": stat.st_mtime,
-                    }
-                )
-                if len(matches) >= limit:
-                    return sorted(
-                        matches,
-                        key=lambda item: float(item["modified_at"]),
-                        reverse=True,
-                    )
-        return sorted(
-            matches,
-            key=lambda item: float(item["modified_at"]),
-            reverse=True,
-        )
-
     def clear(self) -> None:
         for entry in self.root.iterdir():
             if entry.is_symlink() or entry.is_file():

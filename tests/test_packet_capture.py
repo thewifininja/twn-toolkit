@@ -324,10 +324,11 @@ class PacketCaptureTests(unittest.TestCase):
             )
             saved_path = next((Path(instance) / "datastore").glob("*.pcap"))
             inspected_saved = client.get(
-                "/tools/packet-capture/datastore/packets",
+                "/local/datastore/view-pcap",
                 query_string={"path": saved_path.name},
             )
             completed_page = client.get("/tools/packet-capture")
+            datastore_page = client.get("/local/datastore")
             deleted = client.post(
                 f"/tools/packet-capture/{capture['id']}/delete"
             )
@@ -343,8 +344,11 @@ class PacketCaptureTests(unittest.TestCase):
                 inspected_saved.get_json()["packets"][0]["destination_port"], 443
             )
             self.assertIn(b'class="button-link secondary"', completed_page.data)
-            self.assertIn(b"Stored packet captures", completed_page.data)
-            self.assertIn(b"Inspect packet headers", completed_page.data)
+            self.assertNotIn(b"Stored packet captures", completed_page.data)
+            self.assertIn(b"data-pcap-viewer-open", completed_page.data)
+            self.assertIn(b'id="pcap-floating-window"', completed_page.data)
+            self.assertIn(b"Inspect PCAP", datastore_page.data)
+            self.assertIn(b"/local/datastore/view-pcap", datastore_page.data)
             self.assertEqual(deleted.status_code, 302)
             self.assertIsNone(store.get(capture["id"]))
             actions_page = client.get("/automations/actions")

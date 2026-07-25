@@ -117,7 +117,7 @@ class AccessProfileTests(unittest.TestCase):
             self.assertNotIn(b"Stored packet captures", page.data)
             self.assertEqual(
                 client.get(
-                    "/tools/packet-capture/datastore/packets",
+                    "/local/datastore/view-pcap",
                     query_string={"path": "capture.pcap"},
                 ).status_code,
                 403,

@@ -111,7 +111,18 @@
             </summary>
             <div>
               {% if not entry.is_dir %}
-                <a class="button-link secondary" href="{{ url_for('view_datastore_file_as_text', path=entry.path) }}">View as text</a>
+                {% if entry.pcap_viewable %}
+                  <button
+                    class="secondary"
+                    type="button"
+                    data-pcap-viewer-open
+                    data-pcap-viewer-url="{{ url_for('view_datastore_pcap', path=entry.path) }}"
+                    data-pcap-viewer-title="{{ entry.name }}"
+                    data-pcap-viewer-download-url="{{ url_for('download_datastore_file', path=entry.path) }}"
+                  >Inspect PCAP</button>
+                {% else %}
+                  <a class="button-link secondary" href="{{ url_for('view_datastore_file_as_text', path=entry.path) }}">View as text</a>
+                {% endif %}
                 <a class="button-link secondary" href="{{ url_for('download_datastore_file', path=entry.path) }}">Download</a>
               {% endif %}
               <form method="post" action="{{ url_for('rename_datastore_entry') }}" class="datastore-rename-form">

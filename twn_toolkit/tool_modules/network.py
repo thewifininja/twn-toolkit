@@ -353,7 +353,6 @@ def register_tools(registry: ToolRegistry) -> None:
             "tools.stop_packet_capture": "tools.packet_capture",
             "tools.download_packet_capture": "tools.packet_capture",
             "tools.save_packet_capture": "tools.packet_capture",
-            "tools.inspect_datastore_packets": "tools.packet_capture",
             "tools.delete_packet_capture": "tools.packet_capture",
             "tools.dhcp_discover": "tools.dhcp_discover",
             "tools.packet_replay": "tools.packet_replay",

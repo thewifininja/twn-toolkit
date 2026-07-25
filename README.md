@@ -151,8 +151,9 @@ The sidebar and Network Tools page use the same functional organization.
 - **Packet Capture** — retain bounded PCAP files from a local or
   SPAN/mirror-connected interface, with validated BPF filters, duration,
   packet-count, file-size, snapshot-length, and promiscuous-mode controls;
-  inspect live or retained packet headers, download captures, or copy them to
-  the Local Datastore for longer-term storage and later inspection.
+  inspect live or retained packet headers in a floating auto-scrolling viewer,
+  download captures, or copy them to the Local Datastore for longer-term
+  storage and direct inspection.
 - **Wi-Fi / LAN Speed Test** — measure browser-to-toolkit latency, jitter,
   download, and upload performance on the local network.
 - **DHCP Discover** — send a customizable Discover and inspect Offers without

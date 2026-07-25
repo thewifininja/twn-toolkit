@@ -35,6 +35,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "upload_datastore_files": "local.datastore",
             "download_datastore_file": "local.datastore",
             "view_datastore_file_as_text": "local.datastore",
+            "view_datastore_pcap": "local.datastore",
             "bulk_download_datastore_files": "local.datastore",
             "rename_datastore_entry": "local.datastore",
             "delete_datastore_entry": "local.datastore",

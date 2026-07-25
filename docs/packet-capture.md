@@ -31,17 +31,21 @@ captures run in a dedicated process and continue through browser navigation.
 
 ## Packet viewer
 
-Open **Inspect packet headers** on a running or completed capture to review a
-bounded table of capture time, source and destination MAC/IP/port, protocol,
-VLAN identifiers, and captured/wire length. Running viewers poll for new
-complete packet records. The viewer deliberately does not render payload
-contents or attempt full protocol dissection.
+Open the viewer on a running or completed capture to review a bounded table of
+capture time, source and destination MAC/IP/port, protocol, VLAN identifiers,
+and captured/wire length. The floating window can be moved or minimized and
+restores across toolkit navigation. Running viewers poll for new complete
+packet records and auto-scroll by default; scrolling upward or turning off the
+toggle pauses that behavior. The viewer retains at most 1,000 rendered rows
+while its packet count continues forward. It deliberately does not render
+payload contents or attempt full protocol dissection.
 
-The same page lists `.pcap`, `.pcapng`, and `.cap` files already present in
-Local Datastore for basic inspection. This stored-file section and Save to
-datastore controls require access to both Packet Capture and Local Datastore.
-Large files are read in bounded pages; use Wireshark or another dedicated
-analyzer for filtering, streams, payloads, and deep decoding.
+Local Datastore places **Inspect PCAP** in the file actions for `.pcap`,
+`.pcapng`, and `.cap` files. Datastore users can invoke the same floating viewer without
+navigating to Packet Capture. Save to datastore from capture history still
+requires access to both tools. Large files are read in bounded pages; use
+Wireshark or another dedicated analyzer for filtering, streams, payloads, and
+deep decoding.
 
 ## Permissions
 

@@ -18,7 +18,7 @@ from flask import (
 
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run
-from .datastore import DatastoreError, LocalDatastore, format_bytes
+from .datastore import DatastoreError, LocalDatastore
 from .network_tools import ToolInputError
 from .packet_capture import (
     DEFAULT_DURATION_SECONDS,
@@ -29,7 +29,7 @@ from .packet_capture import (
     capture_capability,
     capture_interfaces,
 )
-from .pcap_viewer import SUPPORTED_CAPTURE_SUFFIXES, inspect_packet_capture
+from .pcap_viewer import inspect_packet_capture
 
 
 def register_packet_capture_routes(tools_bp: Blueprint) -> None:
@@ -62,26 +62,15 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
                 (item for item in interfaces if not item["loopback"]), interfaces[0]
             )
             form["interface"] = non_loopback["name"]
-        datastore_files = []
         datastore_folders = []
         if can_use_datastore():
-            datastore_store = datastore()
-            datastore_folders = datastore_store.folders()
-            datastore_files = datastore_store.files_with_suffixes(
-                SUPPORTED_CAPTURE_SUFFIXES
-            )
-            for item in datastore_files:
-                item["size_display"] = format_bytes(int(item["size"]))
-                item["modified_display"] = datetime.fromtimestamp(
-                    float(item["modified_at"])
-                ).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+            datastore_folders = datastore().folders()
         return render_template(
             "tools/packet_capture.html",
             capability=capture_capability(),
             interfaces=interfaces,
             captures=store().recent(),
             can_use_datastore=can_use_datastore(),
-            datastore_files=datastore_files,
             datastore_folders=datastore_folders,
             form=form,
         )
@@ -274,24 +263,6 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
         return redirect(
             url_for("tools.packet_capture", focus=capture_id, _anchor=f"capture-{capture_id}")
         )
-
-    @tools_bp.get("/packet-capture/datastore/packets")
-    def inspect_datastore_packets():
-        if not can_use_datastore():
-            abort(403)
-        relative_path = request.args.get("path", "")
-        try:
-            path = datastore().file(relative_path)
-            if path.suffix.casefold() not in SUPPORTED_CAPTURE_SUFFIXES:
-                raise DatastoreError("Choose a .pcap, .pcapng, or .cap file.")
-            result = inspect_packet_capture(
-                path,
-                start=request.args.get("start", 0),
-                cursor=request.args.get("cursor"),
-            )
-        except (DatastoreError, ToolInputError) as exc:
-            return jsonify({"error": str(exc)}), 422
-        return jsonify(result)
 
     @tools_bp.post("/packet-capture/<capture_id>/delete")
     def delete_packet_capture(capture_id: str):
