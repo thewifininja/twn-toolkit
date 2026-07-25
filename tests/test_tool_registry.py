@@ -19,12 +19,17 @@ from twn_toolkit.tool_catalog import (
 class ToolRegistryTests(unittest.TestCase):
     def test_registry_builds_existing_lookup_maps(self) -> None:
         self.assertIn("tools.packet_replay", TOOL_BY_ID)
+        self.assertIn("tools.packet_capture", TOOL_BY_ID)
         self.assertIn("tools.wake_on_lan", TOOL_BY_ID)
         self.assertEqual(TOOL_BY_ID["tools.wake_on_lan"].nav_group, "services")
         self.assertEqual(TASK_TOOL_IDS["rename-aps"], "fortigate.rename_aps")
         self.assertEqual(
             tool_id_for_endpoint("tools.packet_replay"),
             "tools.packet_replay",
+        )
+        self.assertEqual(
+            tool_id_for_endpoint("tools.packet_capture_status"),
+            "tools.packet_capture",
         )
         self.assertEqual(
             tool_id_for_endpoint("task_form", {"task_id": "export-switches"}),
@@ -74,6 +79,7 @@ class ToolRegistryTests(unittest.TestCase):
             for tool in tools
         }
         self.assertIn("tools.packet_replay", access_tool_ids)
+        self.assertIn("tools.packet_capture", access_tool_ids)
         self.assertNotIn("admin.settings", access_tool_ids)
 
     def test_logged_in_routes_are_mapped_or_intentionally_self_service(self) -> None:

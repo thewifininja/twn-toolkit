@@ -120,7 +120,8 @@ The other Network Tools follow the same category layout shown in the sidebar:
 - **Multi-Host Tools:** Ping, Multi-SSH, Multi-Transfer, and TCP Port Scanner
 - **Services & Protocols:** RADIUS, certificate inspection and AD CS enrollment,
   SNMP, Wake-on-LAN, Webhook/API, and Syslog
-- **Traffic & Interfaces:** Wi-Fi/LAN Speed Test, DHCP Discover, and Packet Replay
+- **Traffic & Interfaces:** Packet Capture, Wi-Fi/LAN Speed Test, DHCP Discover,
+  and Packet Replay
 
 SNMP Tester can also discover the standard IF-MIB interfaces across saved SNMP
 hosts and build a monitor set of up to 20 interfaces. Each interface gets an
@@ -337,7 +338,8 @@ If a privileged run leaves root-owned instance files, stop the toolkit and run
 
 - **DHCP Discover** binds UDP client port 68 and may require root or equivalent
   Linux capabilities.
-- **Packet Replay** requires raw Ethernet/BPF access. Linux normally needs root
+- **Packet Capture** and **Packet Replay** require packet/BPF access. Linux
+  normally needs root
   or `CAP_NET_RAW`; macOS may require BPF permission.
 - Standard TFTP/FTP listener ports may need privileged bind permission. The
   default high ports avoid that requirement.

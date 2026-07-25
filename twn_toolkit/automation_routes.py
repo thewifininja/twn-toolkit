@@ -28,6 +28,7 @@ from .audit import annotate_audit_event
 from .activity_context import record_current_activity
 from .datastore import LocalDatastore
 from .network_tools import ToolInputError
+from .packet_capture import capture_interfaces
 from .schedule_tools import describe_schedule_rule, local_timezone_name, schedule_preview
 from .profiles import SNMPHostProfileStore, SNMPOidProfileStore
 from .snmp_tools import parse_oid_profile
@@ -156,6 +157,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             },
             schedule_default_timezone=local_timezone_name(),
             datastore_folders=LocalDatastore(store.instance_path).folders(),
+            capture_interfaces=capture_interfaces(),
             page_section=page_section,
         )
 

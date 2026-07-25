@@ -1,5 +1,16 @@
 # v0.12.0 release checklist
 
+## Packet Capture
+
+- [x] Standalone captures run outside the web request, survive navigation, and
+  expose live status, stop, download, and delete controls.
+- [x] Interface ownership, BPF validation, duration, packet, size, snapshot,
+  and promiscuous-mode limits are enforced server-side.
+- [x] Packet Capture is reusable as an automation action and retained PCAPs
+  participate in run ZIP download, deletion, and retention.
+- [x] Standalone and automated PCAP storage shares the artifact quota and
+  minimum free-space reserve.
+
 ## Product and compatibility
 
 - [x] Wake-on-LAN packets, target parsing, interface selection, bounded repeats,

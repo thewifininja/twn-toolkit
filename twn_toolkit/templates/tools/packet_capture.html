@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>Packet Capture</h1>
+    <p>Collect a bounded PCAP from a local interface, including dedicated interfaces connected to switch SPAN or mirror ports.</p>
+  </div>
+
+  {% if not capability.available %}
+    <div class="message error">{{ capability.detail }}</div>
+  {% endif %}
+
+  <form class="form" method="post" action="{{ url_for('tools.start_packet_capture') }}" data-loading-message="Starting packet capture…">
+    <div class="form-grid packet-capture-primary-grid">
+      <label>Capture interface
+        <select name="interface" required {% if not capability.available %}disabled{% endif %}>
+          {% for interface in interfaces %}
+            <option value="{{ interface.name }}" {% if interface.name == form.interface %}selected{% endif %}>{{ interface.name }}{% if interface.loopback %} · loopback{% endif %}</option>
+          {% endfor %}
+        </select>
+        <small class="field-note">For passive monitoring, select the interface connected to your switch SPAN or mirror destination.</small>
+      </label>
+      <label>Duration
+        <div class="input-suffix"><input name="duration_seconds" type="number" min="5" max="300" value="{{ form.duration_seconds }}" required {% if not capability.available %}disabled{% endif %}><span>seconds</span></div>
+        <small class="field-note">The capture stops when the first configured limit is reached.</small>
+      </label>
+    </div>
+
+    <label>Capture filter <span class="inline-label-note">(optional)</span>
+      <input name="capture_filter" maxlength="1000" value="{{ form.capture_filter }}" placeholder="host 10.0.0.1 and port 443" {% if not capability.available %}disabled{% endif %}>
+      <small class="field-note">Standard tcpdump/BPF syntax. The filter is compiled and validated before a capture starts.</small>
+    </label>
+
+    <div class="form-grid">
+      <label>Packet limit
+        <input name="packet_count" type="number" min="0" max="1000000" value="{{ form.packet_count }}" required {% if not capability.available %}disabled{% endif %}>
+        <small class="field-note">Use 0 for no packet-count limit.</small>
+      </label>
+      <label>Maximum file size
+        <div class="input-suffix"><input name="max_size_mib" type="number" min="1" max="512" value="{{ form.max_size_mib }}" required {% if not capability.available %}disabled{% endif %}><span>MiB</span></div>
+      </label>
+      <label>Snapshot length
+        <div class="input-suffix"><input name="snap_length" type="number" min="0" max="65535" value="{{ form.snap_length }}" required {% if not capability.available %}disabled{% endif %}><span>bytes</span></div>
+        <small class="field-note">Use 0 for full packets or 64–65535 for a bounded portion of each packet.</small>
+      </label>
+    </div>
+
+    <label class="check">
+      <input name="promiscuous" type="checkbox" {% if form.promiscuous %}checked{% endif %} {% if not capability.available %}disabled{% endif %}>
+      <span><strong>Promiscuous mode</strong><small>Normally required to see all frames delivered by a SPAN or mirror port.</small></span>
+    </label>
+
+    <div class="message warning">
+      PCAP files can contain credentials, session data, and other sensitive traffic. Capture only networks you are authorized to inspect and delete retained files when they are no longer needed.
+    </div>
+
+    <div class="button-row">
+      <button type="submit" {% if not capability.available or not interfaces %}disabled{% endif %}>Start capture</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head packet-capture-history-head">
+    <div>
+      <h2>Recent captures</h2>
+      <p>Captures continue in a dedicated worker after you leave this page.</p>
+    </div>
+  </div>
+
+  {% if captures %}
+    <div class="packet-capture-list">
+      {% for capture in captures %}
+        <article
+          class="packet-capture-row"
+          id="capture-{{ capture.id }}"
+          data-capture-row
+          data-capture-active="{{ 'true' if capture.active else 'false' }}"
+          data-status-url="{{ url_for('tools.packet_capture_status', capture_id=capture.id) }}"
+        >
+          <div class="packet-capture-row-head">
+            <div>
+              <strong>{{ capture.interface }}</strong>
+              <small>{{ capture.created_display }}{% if capture.capture_filter %} · <code>{{ capture.capture_filter }}</code>{% endif %}</small>
+            </div>
+            <span class="pill {{ 'success' if capture.status == 'completed' else 'error' if capture.status == 'error' else 'planned' }}" data-capture-status>{{ capture.status }}</span>
+          </div>
+          <dl class="packet-capture-stats">
+            <div><dt>Elapsed</dt><dd data-capture-elapsed>{{ capture.elapsed_seconds|round(1) }}s</dd></div>
+            <div><dt>Size</dt><dd data-capture-size>{{ capture.size_display }}</dd></div>
+            <div><dt>Packets</dt><dd data-capture-packets>{{ capture.packet_count or '—' }}</dd></div>
+            <div><dt>Stopped by</dt><dd data-capture-reason>{{ capture.termination_reason or 'In progress' }}</dd></div>
+          </dl>
+          <p class="message error" data-capture-error {% if not capture.error %}hidden{% endif %}>{{ capture.error }}</p>
+          <div class="button-row packet-capture-actions">
+            <form method="post" action="{{ url_for('tools.stop_packet_capture', capture_id=capture.id) }}" data-capture-stop {% if not capture.active %}hidden{% endif %}>
+              <button class="danger secondary" type="submit">Stop capture</button>
+            </form>
+            <a class="button secondary" href="{{ url_for('tools.download_packet_capture', capture_id=capture.id) }}" data-capture-download {% if not capture.downloadable %}hidden{% endif %}>Download PCAP</a>
+            <form method="post" action="{{ url_for('tools.delete_packet_capture', capture_id=capture.id) }}" data-capture-delete {% if capture.active %}hidden{% endif %} onsubmit="return confirm('Delete this retained packet capture?');">
+              <button class="danger secondary" type="submit">Delete</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <h3>No packet captures yet</h3>
+      <p>Start a capture above. Completed PCAP files will remain here until deleted.</p>
+    </div>
+  {% endif %}
+</section>
+
+<script src="{{ url_for('static', filename='packet-capture.js', v=app_version) }}"></script>
+{% endblock %}

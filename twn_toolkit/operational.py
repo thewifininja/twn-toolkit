@@ -64,12 +64,11 @@ class OperationalSettingsStore:
     def storage_summary(self) -> dict[str, Any]:
         settings = self.get()
         datastore = self.instance_path / "datastore"
-        artifacts = self.instance_path / "automation_artifacts"
         usage = shutil.disk_usage(self.instance_path)
         return {
             **settings,
             "datastore_bytes": directory_bytes(datastore),
-            "artifact_bytes": directory_bytes(artifacts),
+            "artifact_bytes": _artifact_bytes(self.instance_path),
             "disk_total_bytes": usage.total,
             "disk_free_bytes": usage.free,
             "disk_used_bytes": usage.used,
@@ -89,11 +88,18 @@ def directory_bytes(path: Path) -> int:
 def ensure_storage_capacity(instance_path: str | Path, area: str, incoming_bytes: int, *, existing_bytes: int = 0) -> None:
     instance = Path(instance_path)
     settings = OperationalSettingsStore(str(instance)).get()
-    root = instance / ("datastore" if area == "datastore" else "automation_artifacts")
+    root = instance / "datastore"
     quota_gib = settings["datastore_quota_gib" if area == "datastore" else "automation_artifact_quota_gib"]
-    projected = directory_bytes(root) - max(0, existing_bytes) + max(0, incoming_bytes)
+    current_bytes = directory_bytes(root) if area == "datastore" else _artifact_bytes(instance)
+    projected = current_bytes - max(0, existing_bytes) + max(0, incoming_bytes)
     if projected > quota_gib * 1024**3:
         raise ValueError(f"The {area.replace('_', ' ')} quota of {quota_gib} GiB would be exceeded.")
     free = shutil.disk_usage(instance).free
     if free - max(0, incoming_bytes) < settings["minimum_free_gib"] * 1024**3:
         raise ValueError("This write would cross the configured minimum free-disk reserve.")
+
+
+def _artifact_bytes(instance_path: Path) -> int:
+    return directory_bytes(instance_path / "automation_artifacts") + directory_bytes(
+        instance_path / "packet_captures"
+    )
