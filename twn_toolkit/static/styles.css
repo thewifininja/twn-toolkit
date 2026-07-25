@@ -174,6 +174,17 @@ body {
   min-width: 0;
 }
 
+.live-tool-card-title-row {
+  align-items: center;
+  display: flex;
+  gap: 3px;
+  min-width: 0;
+}
+
+.live-tool-card-title-row strong {
+  min-width: 0;
+}
+
 .live-tool-card-identity strong,
 .live-tool-card-identity small {
   overflow: hidden;
@@ -191,8 +202,84 @@ body {
 }
 
 .live-tool-card-actions {
+  align-items: center;
   display: flex;
-  gap: 6px;
+  gap: 3px;
+}
+
+.live-tool-card .live-tool-icon-action {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  display: inline-flex;
+  flex: none;
+  font-size: 0.78rem;
+  height: 28px;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0;
+  text-decoration: none;
+  width: 28px;
+}
+
+.live-tool-card .live-tool-icon-action:hover,
+.live-tool-card .live-tool-icon-action:focus-visible {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 15%);
+  border-color: var(--control-border);
+  color: var(--ink);
+}
+
+.live-tool-card .live-tool-rename {
+  height: 24px;
+  min-height: 24px;
+  opacity: 0.45;
+  width: 24px;
+}
+
+.live-tool-card:hover .live-tool-rename,
+.live-tool-card .live-tool-rename:focus-visible {
+  opacity: 1;
+}
+
+.live-tool-card .live-tool-stop:hover,
+.live-tool-card .live-tool-stop:focus-visible {
+  background: color-mix(in srgb, var(--panel), var(--bad) 9%);
+  border-color: color-mix(in srgb, var(--bad), transparent 65%);
+  color: var(--bad);
+}
+
+.live-tool-card .live-tool-icon-action:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
+.live-tool-rename-form {
+  align-items: center;
+  display: grid;
+  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-width: 0;
+}
+
+.live-tool-card .live-tool-rename-input {
+  border-radius: 6px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  height: 30px;
+  min-height: 30px;
+  min-width: 0;
+  padding: 4px 7px;
+  width: 100%;
+}
+
+.live-tool-card .live-tool-rename-save {
+  color: var(--ok);
+}
+
+.live-tool-card .live-tool-rename-cancel {
+  color: var(--bad);
 }
 
 .live-tool-tray-note {
@@ -237,13 +324,8 @@ body {
   }
 
   .live-tool-card {
-    align-items: stretch;
-    grid-template-columns: 1fr;
-  }
-
-  .live-tool-card-actions > * {
-    flex: 1;
-    text-align: center;
+    align-items: center;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .ping-minimized-placeholder,

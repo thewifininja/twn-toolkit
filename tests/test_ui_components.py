@@ -148,8 +148,16 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("left: 300px;", stylesheet)
         self.assertIn(".sidebar-collapsed .live-tool-tray {", stylesheet)
         self.assertIn('id="live-tool-dock-summary"', template)
-        self.assertIn('const expandedKey = "twn:live-tools-dock-expanded";', script)
+        self.assertIn("setExpanded(false);", script)
+        self.assertNotIn("localStorage", script)
         self.assertIn("collapse: () => setExpanded(false)", script)
+        self.assertIn('iconButton("✎"', script)
+        self.assertIn('save.type = "submit";', script)
+        self.assertIn('restore.append(iconSymbol("▶"))', script)
+        self.assertIn('iconButton("■"', script)
+        self.assertIn('restore.setAttribute("aria-label"', script)
+        self.assertIn(".live-tool-card .live-tool-rename {", stylesheet)
+        self.assertIn(".live-tool-card .live-tool-icon-action {", stylesheet)
 
     def test_snmp_monitor_restores_from_persistent_live_tool_samples(self) -> None:
         template = (

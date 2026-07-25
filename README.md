@@ -100,7 +100,8 @@ The sidebar and Network Tools page use the same functional organization.
 - **Multi-Host Ping** — graph reachability, latency, and loss for a validated
   target snapshot; update targets without discarding unchanged history.
   Persistent runs continue through normal toolkit navigation and can be
-  minimized to the global Live tools footer dock, then restored with retained history.
+  minimized to the collapsed-by-default Live tools footer dock, renamed in
+  place, then restored with retained history using compact play/stop controls.
   A
   working optional `fping` system command enables batched high-capacity rounds
   and raises the target limit from 100 to 250. Without it, the standard system
