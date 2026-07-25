@@ -45,11 +45,17 @@ to the next future occurrence rather than replaying a backlog.
 
 ## First supported vertical slice
 
-- Condition: multi-host ICMP reachability.
+- Condition: multi-host Ping health with reachability plus optional packet
+  loss, average latency, and jitter limits. Each evaluation can take 1–10
+  probes per target before applying a degraded-target threshold. Existing
+  `ping.multi` definitions remain compatible.
 - Condition: DNS lookup health across a hostname-by-resolver matrix. A, AAAA,
   CNAME, MX, NS, PTR, and TXT records can require any successful answer or
   compare returned values against an expected set. Thresholds can trigger when
   one, several, or every query path fails or returns an unexpected answer.
+- Condition: DNS performance across the same hostname-by-resolver matrix,
+  triggering when one, several, or every query path fails or exceeds a selected
+  response-time limit.
 - Condition: TCP service state with a custom port list per host. Ports and
   inclusive ranges are supported, and a check can require an open service or a
   definitive connection refusal. Timeouts remain failures rather than being
@@ -67,7 +73,8 @@ to the next future occurrence rather than replaying a backlog.
 - Check intervals: 1 second through 24 hours. The scheduler polls due work four
   times per second so one-second checks are not held behind a one-second polling
   boundary; actual duration still includes the condition execution time.
-- Trigger modes: all targets fail, or at least a selected number fail.
+- Per-condition thresholds: all targets breach policy, or at least a selected
+  number breach policy.
 - General ping, DNS-name, SSH-command, and SSH-file-collection host lists accept
   inclusive ascending IPv4 and IPv6 ranges. Named ranges use
   `Friendly Name = start-address-end-address` and normalize to numbered labels

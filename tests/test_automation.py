@@ -941,6 +941,7 @@ class AutomationRouteTests(unittest.TestCase):
                     "condition_type": "ping.multi",
                     "condition_targets": "Gateway = 192.0.2.1-192.0.2.2\nInternet = 198.51.100.1",
                     "condition_timeout": "1",
+                    "condition_probe_count": "1",
                     "condition_failure_mode": "at_least",
                     "condition_failure_count": "1",
                 },
@@ -962,10 +963,10 @@ class AutomationRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Gateway", response.data)
         self.assertIn(b"192.0.2.1", response.data)
-        self.assertIn(b"2.4 ms RTT", response.data)
+        self.assertIn(b"2.4 ms avg", response.data)
         self.assertIn(b"Internet", response.data)
-        self.assertIn(b"No ICMP reply before timeout", response.data)
-        self.assertIn(b"1001.2 ms elapsed", response.data)
+        self.assertIn(b"No ICMP replies received", response.data)
+        self.assertIn(b"100.0% loss", response.data)
 
     def test_admin_can_create_dns_lookup_condition(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
@@ -998,6 +999,36 @@ class AutomationRouteTests(unittest.TestCase):
         self.assertIn(b"DNS A", page.data)
         self.assertIn(b"1 name", page.data)
         self.assertIn(b"2 resolvers", page.data)
+
+    def test_admin_can_create_dns_performance_condition(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            response = client.post(
+                "/automations/conditions/save",
+                data={
+                    "condition_name": "Resolver latency",
+                    "condition_type": "dns.performance",
+                    "dns_performance_hosts": "Portal = portal.example.com",
+                    "dns_performance_servers": "Internal = 192.0.2.53\nPublic = 198.51.100.53",
+                    "dns_performance_record_type": "A",
+                    "dns_performance_timeout": "2.5",
+                    "dns_performance_response_limit_ms": "125",
+                    "dns_performance_failure_mode": "at_least",
+                    "dns_performance_failure_count": "1",
+                },
+            )
+            store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
+            definition = store.condition_definitions()[0]
+            page = client.get("/automations/conditions")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(definition["type"], "dns.performance")
+        self.assertEqual(definition["config"]["response_limit_ms"], 125.0)
+        self.assertEqual(definition["config"]["check_count"], 2)
+        self.assertIn(b"DNS performance", page.data)
+        self.assertIn(b"125.0 ms limit", page.data)
 
     def test_admin_can_create_calendar_schedule_with_multiple_rules(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
@@ -1797,6 +1828,93 @@ class AutomationRegistryTests(unittest.TestCase):
         self.assertFalse(all_result.met)
         self.assertTrue(one_result.met)
         self.assertEqual(one_result.evidence["failed"], 1)
+
+    def test_ping_health_combines_loss_latency_and_jitter_thresholds(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["ping.multi"]
+        rounds = [
+            [
+                {"host": "192.0.2.1", "reachable": True, "latency_ms": 10.0},
+                {"host": "192.0.2.2", "reachable": True, "latency_ms": 5.0},
+            ],
+            [
+                {"host": "192.0.2.1", "reachable": False, "latency_ms": None},
+                {"host": "192.0.2.2", "reachable": True, "latency_ms": 25.0},
+            ],
+            [
+                {"host": "192.0.2.1", "reachable": True, "latency_ms": 30.0},
+                {"host": "192.0.2.2", "reachable": True, "latency_ms": 5.0},
+            ],
+        ]
+        with patch(
+            "twn_toolkit.automation_types.condition_types.network_triggers.ping_hosts",
+            side_effect=rounds,
+        ):
+            result = condition.evaluate(
+                {
+                    "targets": "WAN = 192.0.2.1\nLAN = 192.0.2.2",
+                    "timeout": 1,
+                    "probe_count": 3,
+                    "max_packet_loss_pct": 20,
+                    "max_latency_ms": 15,
+                    "max_jitter_ms": 10,
+                    "failure_mode": "at_least",
+                    "failure_count": 2,
+                }
+            )
+
+        self.assertTrue(result.met)
+        self.assertEqual(result.evidence["failed"], 2)
+        self.assertEqual(result.evidence["targets"][0]["packet_loss_pct"], 33.3)
+        self.assertEqual(result.evidence["targets"][0]["average_latency_ms"], 20.0)
+        self.assertEqual(result.evidence["targets"][0]["jitter_ms"], 20.0)
+        self.assertIn("Packet loss", result.evidence["targets"][0]["reason"])
+        self.assertIn("Jitter", result.evidence["targets"][1]["reason"])
+
+    def test_dns_performance_counts_slow_and_failed_queries(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["dns.performance"]
+        results = [
+            {
+                "host": "example.com", "host_label": "", "server": "192.0.2.53",
+                "server_label": "Fast", "record_type": "A", "status": "success",
+                "answers": ["192.0.2.10"], "response_ms": 24.0,
+            },
+            {
+                "host": "example.com", "host_label": "", "server": "198.51.100.53",
+                "server_label": "Slow", "record_type": "A", "status": "success",
+                "answers": ["192.0.2.10"], "response_ms": 175.0,
+            },
+            {
+                "host": "example.net", "host_label": "", "server": "192.0.2.53",
+                "server_label": "Fast", "record_type": "A", "status": "Timeout",
+                "answers": [], "response_ms": 1000.0, "error": "timed out",
+            },
+            {
+                "host": "example.net", "host_label": "", "server": "198.51.100.53",
+                "server_label": "Slow", "record_type": "A", "status": "success",
+                "answers": ["192.0.2.20"], "response_ms": 30.0,
+            },
+        ]
+        with patch(
+            "twn_toolkit.automation_types.condition_types.network_triggers.dns_lookup_matrix",
+            return_value=results,
+        ):
+            result = condition.evaluate(
+                {
+                    "hosts": "example.com\nexample.net",
+                    "servers": "192.0.2.53\n198.51.100.53",
+                    "record_type": "A",
+                    "timeout": 1,
+                    "response_limit_ms": 100,
+                    "failure_mode": "at_least",
+                    "failure_count": 2,
+                }
+            )
+
+        self.assertTrue(result.met)
+        self.assertEqual(result.evidence["failed"], 2)
+        self.assertTrue(result.evidence["checks"][1]["slow"])
+        self.assertIn("175 ms exceeds 100 ms", result.evidence["checks"][1]["reason"])
+        self.assertEqual(result.evidence["checks"][2]["reason"], "timed out")
 
 
 class AutomationUiRegressionTests(unittest.TestCase):

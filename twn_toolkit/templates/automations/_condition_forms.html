@@ -21,14 +21,37 @@
         <label>Per-target timeout
           <div class="input-suffix"><input name="condition_timeout" type="number" min="1" max="10" value="{{ config.get('timeout', config.get('condition_timeout', '1')) }}" required><span>seconds</span></div>
         </label>
+        <label>Probes per target
+          <input name="condition_probe_count" type="number" min="1" max="10" value="{{ config.get('probe_count', config.get('condition_probe_count', '3')) }}" required>
+        </label>
+      </div>
+      <fieldset class="automation-builder-block">
+        <legend>Quality limits <small>(optional)</small></legend>
+        {% set ping_loss_limit = config.get('max_packet_loss_pct', config.get('condition_max_packet_loss_pct', '')) %}
+        {% set ping_latency_limit = config.get('max_latency_ms', config.get('condition_max_latency_ms', '')) %}
+        {% set ping_jitter_limit = config.get('max_jitter_ms', config.get('condition_max_jitter_ms', '')) %}
+        <div class="form-grid automation-threshold-grid">
+          <label>Maximum packet loss
+            <div class="input-suffix"><input name="condition_max_packet_loss_pct" type="number" min="0" max="100" step="0.1" value="{{ '' if ping_loss_limit is none else ping_loss_limit }}"><span>%</span></div>
+          </label>
+          <label>Maximum average latency
+            <div class="input-suffix"><input name="condition_max_latency_ms" type="number" min="0.1" max="60000" step="0.1" value="{{ '' if ping_latency_limit is none else ping_latency_limit }}"><span>ms</span></div>
+          </label>
+          <label>Maximum jitter
+            <div class="input-suffix"><input name="condition_max_jitter_ms" type="number" min="0" max="60000" step="0.1" value="{{ '' if ping_jitter_limit is none else ping_jitter_limit }}"><span>ms</span></div>
+          </label>
+        </div>
+        <small class="field-note">Jitter is the average change between consecutive successful round-trip times. Leave every limit blank for reachability-only monitoring.</small>
+      </fieldset>
+      <div class="form-grid automation-threshold-grid">
         <label>Condition is met when
           {% set failure_mode = config.get('failure_mode', config.get('condition_failure_mode', 'all')) %}
           <select name="condition_failure_mode">
-            <option value="all" {% if failure_mode == 'all' %}selected{% endif %}>All targets fail</option>
-            <option value="at_least" {% if failure_mode == 'at_least' %}selected{% endif %}>At least this many fail</option>
+            <option value="all" {% if failure_mode == 'all' %}selected{% endif %}>All targets breach the policy</option>
+            <option value="at_least" {% if failure_mode == 'at_least' %}selected{% endif %}>At least this many breach the policy</option>
           </select>
         </label>
-        <label>Required failed targets
+        <label>Required degraded targets
           <input name="condition_failure_count" type="number" min="1" value="{{ config.get('failure_count', config.get('condition_failure_count', '1')) }}" required>
         </label>
       </div>
@@ -77,6 +100,43 @@
         </label>
       </div>
       <p class="field-note">Each DNS name is queried through every resolver. A timeout, DNS error, empty response, or unexpected answer counts as one failed check.</p>
+    </div>
+    <div class="automation-condition-fields" data-condition-fields="dns.performance" hidden>
+      <div class="form-grid">
+        <label>DNS names
+          <textarea name="dns_performance_hosts" rows="5" placeholder="Primary portal = portal.example.com&#10;Public site = example.com" required>{{ config.get('hosts', config.get('dns_performance_hosts', '')) }}</textarea>
+          <small class="field-note">{{ host_range_guidance(50, 'DNS names') }}</small>
+        </label>
+        <label>DNS resolvers
+          <textarea name="dns_performance_servers" rows="5" placeholder="Internal DNS = 10.0.0.10&#10;Cloudflare = 1.1.1.1" required>{{ config.get('servers', config.get('dns_performance_servers', '')) }}</textarea>
+          <small class="field-note">Each resolver must be an IPv4 or IPv6 address.</small>
+        </label>
+      </div>
+      <div class="form-grid automation-threshold-grid">
+        <label>Record type
+          {% set dns_performance_record_type = config.get('record_type', config.get('dns_performance_record_type', 'A')) %}
+          <select name="dns_performance_record_type" required>{% for record_type in ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'TXT'] %}<option value="{{ record_type }}" {% if dns_performance_record_type == record_type %}selected{% endif %}>{{ record_type }}</option>{% endfor %}</select>
+        </label>
+        <label>Per-query timeout
+          <div class="input-suffix"><input name="dns_performance_timeout" type="number" min="0.2" max="30" step="0.1" value="{{ config.get('timeout', config.get('dns_performance_timeout', '3')) }}" required><span>seconds</span></div>
+        </label>
+        <label>Maximum response time
+          <div class="input-suffix"><input name="dns_performance_response_limit_ms" type="number" min="1" max="30000" step="0.1" value="{{ config.get('response_limit_ms', config.get('dns_performance_response_limit_ms', '250')) }}" required><span>ms</span></div>
+        </label>
+      </div>
+      <div class="form-grid automation-threshold-grid">
+        <label>Condition is met when
+          {% set dns_performance_failure_mode = config.get('failure_mode', config.get('dns_performance_failure_mode', 'at_least')) %}
+          <select name="dns_performance_failure_mode">
+            <option value="at_least" {% if dns_performance_failure_mode == 'at_least' %}selected{% endif %}>At least this many checks are slow or fail</option>
+            <option value="all" {% if dns_performance_failure_mode == 'all' %}selected{% endif %}>All hostname/resolver checks are slow or fail</option>
+          </select>
+        </label>
+        <label>Required slow or failed checks
+          <input name="dns_performance_failure_count" type="number" min="1" value="{{ config.get('failure_count', config.get('dns_performance_failure_count', '1')) }}" required>
+        </label>
+      </div>
+      <p class="field-note">Each DNS name is queried through every resolver. A failed lookup or response above the limit counts as one policy breach.</p>
     </div>
     <div class="automation-condition-fields" data-condition-fields="tcp.reachability" hidden>
       <label>TCP targets and ports
