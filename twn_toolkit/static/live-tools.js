@@ -9,9 +9,9 @@
     return;
   }
 
-  const expandedKey = "twn:live-tools-dock-expanded";
   let refreshTimer = null;
   let refreshing = false;
+  let editingSessionId = "";
 
   toggle.addEventListener("click", () => {
     const expanded = toggle.getAttribute("aria-expanded") !== "true";
@@ -26,7 +26,6 @@
     toggle.setAttribute("aria-expanded", String(expanded));
     body.hidden = !expanded;
     tray.classList.toggle("collapsed", !expanded);
-    localStorage.setItem(expandedKey, expanded ? "1" : "0");
   }
 
   async function refresh() {
@@ -57,10 +56,14 @@
 
   function render(sessions) {
     count.textContent = String(sessions.length);
-    list.replaceChildren(...sessions.map(sessionCard));
     tray.hidden = sessions.length === 0;
     document.body.classList.toggle("has-live-tool-dock", sessions.length > 0);
     dockSummary.textContent = dockSummaryText(sessions);
+    if (editingSessionId && sessions.some((session) => session.id === editingSessionId)) {
+      return;
+    }
+    editingSessionId = "";
+    list.replaceChildren(...sessions.map(sessionCard));
     if (!sessions.length) setExpanded(false);
   }
 
@@ -80,26 +83,118 @@
     card.className = `live-tool-card ${session.state === "error" ? "error" : ""}`;
     const identity = document.createElement("div");
     identity.className = "live-tool-card-identity";
+    const titleRow = document.createElement("div");
+    titleRow.className = "live-tool-card-title-row";
     const title = document.createElement("strong");
     title.textContent = session.title || "Live tool";
+    const rename = iconButton("✎", `Rename ${title.textContent}`, "live-tool-rename");
+    rename.addEventListener("click", () => beginRename(session, identity, titleRow));
+    titleRow.append(title, rename);
     const summary = document.createElement("small");
     summary.textContent = sessionSummary(session);
-    identity.append(title, summary);
+    identity.append(titleRow, summary);
 
     const actions = document.createElement("div");
     actions.className = "live-tool-card-actions";
     const restore = document.createElement("a");
-    restore.className = "button-link compact";
+    restore.className = "live-tool-icon-action live-tool-restore";
     restore.href = session.restore_url;
-    restore.textContent = "Restore";
-    const stop = document.createElement("button");
-    stop.className = "secondary compact";
-    stop.type = "button";
-    stop.textContent = "Stop";
+    restore.title = "Restore";
+    restore.setAttribute("aria-label", `Restore ${title.textContent}`);
+    restore.append(iconSymbol("▶"));
+    const stop = iconButton("■", `Stop ${title.textContent}`, "live-tool-stop");
     stop.addEventListener("click", () => stopSession(session, stop));
     actions.append(restore, stop);
     card.append(identity, actions);
     return card;
+  }
+
+  function iconButton(symbol, label, className) {
+    const button = document.createElement("button");
+    button.className = `live-tool-icon-action ${className}`;
+    button.type = "button";
+    button.title = label.split(" ", 1)[0];
+    button.setAttribute("aria-label", label);
+    button.append(iconSymbol(symbol));
+    return button;
+  }
+
+  function iconSymbol(symbol) {
+    const span = document.createElement("span");
+    span.setAttribute("aria-hidden", "true");
+    span.textContent = symbol;
+    return span;
+  }
+
+  function beginRename(session, identity, titleRow) {
+    editingSessionId = session.id;
+    const form = document.createElement("form");
+    form.className = "live-tool-rename-form";
+    const input = document.createElement("input");
+    input.className = "live-tool-rename-input";
+    input.type = "text";
+    input.maxLength = 100;
+    input.required = true;
+    input.value = session.title || "";
+    input.setAttribute("aria-label", "Live tool name");
+    const save = iconButton("✓", "Save live tool name", "live-tool-rename-save");
+    save.type = "submit";
+    const cancel = iconButton("×", "Cancel rename", "live-tool-rename-cancel");
+    cancel.addEventListener("click", () => {
+      editingSessionId = "";
+      refresh();
+    });
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      renameSession(session, input, save, cancel);
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancel.click();
+      }
+    });
+    form.append(input, save, cancel);
+    titleRow.replaceWith(form);
+    identity.classList.add("renaming");
+    input.focus();
+    input.select();
+  }
+
+  async function renameSession(session, input, save, cancel) {
+    const title = input.value.trim().replace(/\s+/g, " ");
+    if (!title) {
+      input.setCustomValidity("Enter a name for this live tool.");
+      input.reportValidity();
+      return;
+    }
+    input.setCustomValidity("");
+    input.disabled = true;
+    save.disabled = true;
+    cancel.disabled = true;
+    try {
+      const response = await fetch(session.rename_url, {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({title}),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The live tool could not be renamed.");
+      editingSessionId = "";
+      document.dispatchEvent(
+        new CustomEvent("livetoolrenamed", {detail: {session: data.session}})
+      );
+      await refresh();
+    } catch (error) {
+      window.alert(error.message);
+      input.disabled = false;
+      save.disabled = false;
+      cancel.disabled = false;
+      input.focus();
+    }
   }
 
   function sessionSummary(session) {
@@ -139,7 +234,7 @@
     }
   }
 
-  setExpanded(localStorage.getItem(expandedKey) === "1");
+  setExpanded(false);
   window.TwnLiveTools = {
     refresh,
     collapse: () => setExpanded(false),

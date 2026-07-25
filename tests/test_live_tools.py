@@ -49,6 +49,35 @@ class LiveToolStoreTests(unittest.TestCase):
         self.assertEqual(stopped["state"], "stopped")
         self.assertEqual(self.store.sessions_for_user("operator-1"), [])
 
+    def test_active_session_can_be_renamed_by_its_owner(self) -> None:
+        session = self.create_session()
+
+        self.assertIsNone(
+            self.store.rename_session(
+                str(session["id"]),
+                user_id="operator-2",
+                title="Someone else's monitor",
+            )
+        )
+        renamed = self.store.rename_session(
+            str(session["id"]),
+            user_id="operator-1",
+            title="Branch office WAN",
+        )
+        self.assertEqual(renamed["title"], "Branch office WAN")
+        self.assertEqual(renamed["_previous_title"], "Branch reachability")
+        self.assertTrue(renamed["_renamed"])
+        self.assertEqual(renamed["revision"], session["revision"])
+
+        self.store.stop_session(str(session["id"]), user_id="operator-1")
+        self.assertIsNone(
+            self.store.rename_session(
+                str(session["id"]),
+                user_id="operator-1",
+                title="Stopped monitor",
+            )
+        )
+
     def test_claim_round_history_and_revision_updates(self) -> None:
         session = self.create_session()
         claimed = self.store.claim_due()
@@ -235,6 +264,31 @@ class LiveToolRouteTests(unittest.TestCase):
                 tray_session = listed.get_json()["sessions"][0]
                 self.assertNotIn("config", tray_session)
                 self.assertNotIn("_user_id", tray_session)
+
+                renamed = client.post(
+                    session["rename_url"],
+                    json={"title": "  Branch   office WAN  "},
+                )
+                self.assertEqual(renamed.status_code, 200)
+                self.assertEqual(
+                    renamed.get_json()["session"]["title"],
+                    "Branch office WAN",
+                )
+                self.assertEqual(
+                    client.get("/tools/live-sessions")
+                    .get_json()["sessions"][0]["title"],
+                    "Branch office WAN",
+                )
+                self.assertEqual(
+                    client.post(session["rename_url"], json={"title": " "}).status_code,
+                    400,
+                )
+                self.assertEqual(
+                    client.post(
+                        session["rename_url"], json={"title": "x" * 101}
+                    ).status_code,
+                    400,
+                )
 
                 updated = client.post(
                     session["targets_url"],

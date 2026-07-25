@@ -393,6 +393,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "tools.ping_session": "tools.ping",
             "tools.ping_session_samples": "tools.ping",
             "tools.update_ping_session_targets": "tools.ping",
+            "tools.rename_live_tool_session": "tools.ping",
             "tools.stop_live_tool_session": "tools.ping",
             "tools.save_ping_profile": "tools.ping",
             "tools.delete_ping_profile": "tools.ping",

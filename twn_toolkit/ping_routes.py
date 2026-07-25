@@ -222,6 +222,41 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             )
         return jsonify({"session": public_live_session(session)})
 
+    @tools_bp.post("/live-sessions/<session_id>/rename")
+    def rename_live_tool_session(session_id: str):
+        payload = request.get_json(silent=True) or {}
+        title = " ".join(str(payload.get("title", "")).strip().split())
+        if not title:
+            return jsonify({"error": "Live tool names cannot be blank."}), 400
+        if len(title) > 100:
+            return jsonify(
+                {"error": "Live tool names must be 100 characters or fewer."}
+            ), 400
+        session = _live_tool_store().rename_session(
+            session_id,
+            user_id=_current_user()["id"],
+            title=title,
+        )
+        if not session:
+            return jsonify({"error": "Live tool session not found."}), 404
+        if session.get("_renamed", False):
+            annotate_audit_event(
+                category="Network tools",
+                action="live_tool.session_renamed",
+                summary="Renamed a live tool session.",
+                resource_type="live_tool_session",
+                resource_id=session["id"],
+                resource_name=session["title"],
+                details={
+                    "previous_name": session["_previous_title"],
+                    "new_name": session["title"],
+                    "tool": session["tool_key"],
+                },
+            )
+        else:
+            suppress_audit_event()
+        return jsonify({"session": public_live_session(session)})
+
     @tools_bp.post("/ping/run")
     def ping_run():
         suppress_audit_event()

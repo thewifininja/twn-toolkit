@@ -81,6 +81,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "toggle_automation",
         "tools.start_snmp_interface_monitor",
         "tools.start_ping_session",
+        "tools.rename_live_tool_session",
         "tools.stop_live_tool_session",
         "tools.delete_dns_profile",
         "tools.delete_ntp_profile",

@@ -290,6 +290,42 @@ class LiveToolStore:
         session["_was_running"] = True
         return session
 
+    def rename_session(
+        self,
+        session_id: str,
+        *,
+        user_id: str,
+        title: str,
+    ) -> dict[str, Any] | None:
+        now = time.time()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM live_tool_sessions
+                WHERE id = ? AND user_id = ? AND state IN ('running', 'error')
+                """,
+                (session_id, user_id),
+            ).fetchone()
+            if not row:
+                return None
+            previous_title = str(row["title"])
+            if previous_title != title:
+                connection.execute(
+                    """
+                    UPDATE live_tool_sessions
+                    SET title = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (title, now, session_id),
+                )
+            renamed = connection.execute(
+                "SELECT * FROM live_tool_sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+        session = self._session_from_row(renamed)
+        session["_previous_title"] = previous_title
+        session["_renamed"] = previous_title != title
+        return session
+
     def ping_samples(
         self,
         session_id: str,
@@ -1040,5 +1076,8 @@ def public_live_session(
         )
     public["stop_url"] = url_for(
         "tools.stop_live_tool_session", session_id=session_id
+    )
+    public["rename_url"] = url_for(
+        "tools.rename_live_tool_session", session_id=session_id
     )
     return public
