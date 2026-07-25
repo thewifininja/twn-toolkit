@@ -278,7 +278,7 @@ def register_tools(registry: ToolRegistry) -> None:
                 "Network Tools",
                 risk="advanced",
                 nav_icon="⏻",
-                nav_group="traffic",
+                nav_group="services",
             ),
             ToolLink(
                 "tools.packet_replay",
