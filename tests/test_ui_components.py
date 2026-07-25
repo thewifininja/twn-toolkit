@@ -153,11 +153,27 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("collapse: () => setExpanded(false)", script)
         self.assertIn('iconButton("✎"', script)
         self.assertIn('save.type = "submit";', script)
-        self.assertIn('restore.append(iconSymbol("▶"))', script)
-        self.assertIn('iconButton("■"', script)
+        self.assertIn('restore.className = "live-tool-card-restore";', script)
+        self.assertIn('iconButton("×", `Stop ${title.textContent}`', script)
         self.assertIn('restore.setAttribute("aria-label"', script)
+        self.assertNotIn('iconSymbol("▶")', script)
         self.assertIn(".live-tool-card .live-tool-rename {", stylesheet)
         self.assertIn(".live-tool-card .live-tool-icon-action {", stylesheet)
+        self.assertIn(".live-tool-card-restore {", stylesheet)
+        self.assertIn("inset: 0;", stylesheet)
+
+    def test_live_ping_page_refreshes_samples_subsecond_while_visible(self) -> None:
+        script = (
+            TEMPLATE_ROOT.parent / "static" / "ping-tool.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("const visiblePollIntervalMs = 500;", script)
+        self.assertIn("const hiddenPollIntervalMs = 5_000;", script)
+        self.assertIn(
+            "document.hidden ? hiddenPollIntervalMs : visiblePollIntervalMs",
+            script,
+        )
+        self.assertNotIn("setTimeout(pollSession, 2_000)", script)
 
     def test_snmp_monitor_restores_from_persistent_live_tool_samples(self) -> None:
         template = (

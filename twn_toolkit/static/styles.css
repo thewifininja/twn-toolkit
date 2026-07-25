@@ -162,10 +162,30 @@ body {
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) auto;
   padding: 10px;
+  position: relative;
+  transition: background 120ms ease, border-color 120ms ease;
 }
 
 .live-tool-card.error {
   border-left-color: var(--bad);
+}
+
+.live-tool-card:hover,
+.live-tool-card:focus-within {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 9%);
+  border-color: color-mix(in srgb, var(--brand-green-dark), var(--line) 55%);
+}
+
+.live-tool-card-restore {
+  border-radius: inherit;
+  inset: 0;
+  position: absolute;
+  z-index: 1;
+}
+
+.live-tool-card-restore:focus-visible {
+  outline: 3px solid rgb(78 203 88 / 32%);
+  outline-offset: 2px;
 }
 
 .live-tool-card-identity {
@@ -205,6 +225,8 @@ body {
   align-items: center;
   display: flex;
   gap: 3px;
+  position: relative;
+  z-index: 2;
 }
 
 .live-tool-card .live-tool-icon-action {
@@ -235,7 +257,9 @@ body {
   height: 24px;
   min-height: 24px;
   opacity: 0.45;
+  position: relative;
   width: 24px;
+  z-index: 2;
 }
 
 .live-tool-card:hover .live-tool-rename,
@@ -250,6 +274,10 @@ body {
   color: var(--bad);
 }
 
+.live-tool-card .live-tool-stop {
+  font-size: 1.05rem;
+}
+
 .live-tool-card .live-tool-icon-action:disabled {
   cursor: wait;
   opacity: 0.45;
@@ -261,6 +289,8 @@ body {
   gap: 3px;
   grid-template-columns: minmax(0, 1fr) auto auto;
   min-width: 0;
+  position: relative;
+  z-index: 2;
 }
 
 .live-tool-card .live-tool-rename-input {

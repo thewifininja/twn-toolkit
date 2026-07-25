@@ -78,6 +78,15 @@ class LiveToolStoreTests(unittest.TestCase):
             )
         )
 
+    def test_transient_sqlite_sidecars_can_disappear_while_securing(self) -> None:
+        with patch(
+            "twn_toolkit.live_tools.os.chmod",
+            side_effect=[None, FileNotFoundError, None],
+        ) as chmod:
+            self.store._secure_database_files()
+
+        self.assertEqual(chmod.call_count, 3)
+
     def test_claim_round_history_and_revision_updates(self) -> None:
         session = self.create_session()
         claimed = self.store.claim_due()

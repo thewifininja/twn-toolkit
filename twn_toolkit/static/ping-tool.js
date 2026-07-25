@@ -61,6 +61,8 @@
   const selectedHosts = new Set();
   const profileStorageKey = "twn:ping-profile";
   const historySampleBudget = 500_000;
+  const visiblePollIntervalMs = 500;
+  const hiddenPollIntervalMs = 5_000;
   const chartTooltip = document.createElement("div");
   chartTooltip.className = "ping-chart-tooltip";
   chartTooltip.hidden = true;
@@ -302,6 +304,12 @@
     }
   });
   window.addEventListener("pagehide", () => clearTimeout(timer));
+  document.addEventListener("visibilitychange", () => {
+    if (!activeSession || activeSession.state !== "running") return;
+    clearTimeout(timer);
+    if (!document.hidden && !pollInFlight) pollSession();
+    else if (document.hidden) scheduleSessionPoll();
+  });
   document.addEventListener("livetoolstopped", (event) => {
     if (event.detail?.session?.id === activeSession?.id) {
       markSessionStopped("Stopped from the Live tools tray.");
@@ -331,9 +339,17 @@
     } finally {
       pollInFlight = false;
       if (activeSession && activeSession.state === "running") {
-        timer = setTimeout(pollSession, 2_000);
+        scheduleSessionPoll();
       }
     }
+  }
+
+  function scheduleSessionPoll() {
+    clearTimeout(timer);
+    timer = setTimeout(
+      pollSession,
+      document.hidden ? hiddenPollIntervalMs : visiblePollIntervalMs
+    );
   }
 
   async function loadNewSamples() {

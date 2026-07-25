@@ -813,8 +813,11 @@ class LiveToolStore:
             self.path.with_name(f"{self.path.name}-wal"),
             self.path.with_name(f"{self.path.name}-shm"),
         ):
-            if candidate.exists():
+            try:
                 os.chmod(candidate, 0o600)
+            except FileNotFoundError:
+                # SQLite may remove transient WAL/SHM files between close and chmod.
+                pass
 
     @staticmethod
     def _initialize(connection: sqlite3.Connection) -> None:

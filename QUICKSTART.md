@@ -97,8 +97,8 @@ credentials:
    response-time history.
 5. Select **Minimize** to keep the run active while using other toolkit pages.
    Restore it from the compact **Live tools** footer dock. The dock starts
-   collapsed; open it to rename a run with the pencil or use the compact
-   play/stop controls.
+   collapsed; open it to rename a run with the pencil, select its card to
+   restore it, or use the compact × control to stop it.
 6. Edit the settings and select **Apply changes** when the active run should
    change. Unchanged targets keep their history; removed targets remain visible
    as removed.
