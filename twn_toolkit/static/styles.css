@@ -4843,6 +4843,29 @@ button.compact,
   flex: 0 0 auto;
 }
 
+.ping-graph-remove {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--control-border);
+  border-radius: 50%;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 1.1rem;
+  height: 32px;
+  justify-content: center;
+  line-height: 1;
+  min-height: 32px;
+  padding: 0;
+  width: 32px;
+}
+
+.ping-graph-remove:hover,
+.ping-graph-remove:focus-visible {
+  background: color-mix(in srgb, var(--panel), var(--bad) 9%);
+  border-color: color-mix(in srgb, var(--bad), transparent 65%);
+  color: var(--bad);
+}
+
 .ping-graph-card .ping-history-canvas-wrap {
   margin-top: 2px;
 }
