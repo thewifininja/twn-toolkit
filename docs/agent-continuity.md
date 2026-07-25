@@ -188,7 +188,10 @@ accepted replay frames.
   collection, renewal, exports, the complete chain, and target RADIUS behavior
   end to end before deployment. The release also adds optional high-capacity
   fping rounds, shared bounded IPv4-range entry, and reusable UI consistency
-  improvements without making fping an installation requirement.
+  improvements without making fping an installation requirement. Production
+  validation successfully exercised v0.11.0-to-v0.11.1 discovery and installation,
+  recovery-point creation, service and audit/status checks, rollback to the matched
+  v0.11.0 state, and the return to v0.11.1.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.
