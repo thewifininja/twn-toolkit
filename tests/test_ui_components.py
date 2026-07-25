@@ -19,6 +19,15 @@ class UIComponentTests(unittest.TestCase):
     def render(self, source: str) -> str:
         return self.environment.from_string(source).render()
 
+    def test_shared_page_shell_uses_wide_responsive_content_cap(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("--page-content-max-width: 1600px;", stylesheet)
+        self.assertIn(".shell > * {", stylesheet)
+        self.assertIn("max-width: var(--page-content-max-width);", stylesheet)
+
     def test_workspace_section_and_empty_state_contracts(self) -> None:
         html = self.render(
             """
