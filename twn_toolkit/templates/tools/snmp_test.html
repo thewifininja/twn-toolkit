@@ -190,11 +190,13 @@
 
 <section
   class="panel snmp-interface-monitor"
+  id="snmp-interface-monitor-workspace"
   data-discover-url="{{ url_for('tools.snmp_interfaces') }}"
   data-sample-url="{{ url_for('tools.snmp_interface_sample') }}"
   data-samples-url="{{ url_for('tools.snmp_interface_samples') }}"
   data-start-url="{{ url_for('tools.start_snmp_interface_monitor') }}"
-  data-stop-url="{{ url_for('tools.stop_snmp_interface_monitor') }}"
+  data-requested-session="{{ requested_live_session }}"
+  data-session-url-template="{{ url_for('tools.snmp_interface_monitor_session', session_id='__SESSION__') }}"
 >
   <div class="panel-head">
     <h2>Multi-interface bandwidth monitor</h2>
@@ -258,8 +260,17 @@
       <button class="snmp-monitor-start" type="button">Start monitoring</button>
       <button class="secondary snmp-monitor-stop" type="button" disabled>Stop</button>
       <button class="secondary snmp-monitor-clear" type="button" disabled>Clear graphs</button>
+      <button class="secondary snmp-monitor-minimize" type="button" disabled>Minimize</button>
     </div>
   </div>
+</section>
+<section class="panel tool-panel snmp-monitor-minimized-placeholder" id="snmp-monitor-minimized" hidden>
+  <div>
+    <span class="eyebrow">Live tool</span>
+    <h2>SNMP bandwidth monitor is minimized</h2>
+    <p>Interface polling is still running. Restore it here or from the Live tools footer dock.</p>
+  </div>
+  <button class="snmp-monitor-restore-inline" type="button">Restore monitor</button>
 </section>
 
 <section class="panel">

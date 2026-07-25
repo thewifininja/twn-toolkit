@@ -333,7 +333,7 @@ make state, risk, and the next action obvious.
 
 ## SNMP interface bandwidth monitor
 
-- The SNMP Tester includes a browser-lived multi-interface monitor built from
+- The SNMP Tester includes a persistent multi-interface monitor built from
   existing saved SNMP credential and host profiles. It is part of the existing
   `network.snmp` tool and does not create another permission or persistence
   surface.
@@ -342,16 +342,19 @@ make state, risk, and the next action obvious.
   64-bit `ifHCInOctets`/`ifHCOutOctets`, falls back to 32-bit counters, preserves
   Counter64 values as decimal strings for JavaScript `BigInt`, and returns
   uptime/discontinuity/error/discard data for safe re-baselining and diagnostics.
-- The browser can monitor up to 20 interfaces across multiple saved hosts.
-  `/tools/snmp-test/interface-samples` polls the bounded set concurrently and
-  isolates per-interface failures. Discovery and sampling increment raw SNMP
-  poll metrics but suppress high-frequency audit events. Only explicit monitor
-  start/stop lifecycle boundaries are recorded in activity/audit history, with
-  the selected targets and interval.
-- Graph samples and counter baselines stay in the open browser page and are not
-  written to SQLite or backup data. The browser retains at most 10,000 calculated
-  points per interface. Polling intervals are 1, 5, 10, 15, 30, or 60 seconds and
-  may be changed while running without clearing history.
+- The worker can monitor up to 20 interfaces across multiple saved hosts.
+  `LiveToolRunner` resolves saved host and credential profiles at poll time,
+  polls the bounded set concurrently, and isolates per-interface failures.
+  Live-session configuration stores profile names and interface metadata, never
+  communities or SNMPv3 keys. Discovery and sampling increment raw SNMP poll
+  metrics but suppress high-frequency audit events. Explicit start, interval
+  update, and stop boundaries are recorded in activity/audit history.
+- Raw counter samples are capped at 100,000 rows per session in
+  `live_tools.sqlite3`; the restored browser derives rates and retains at most
+  10,000 calculated points per interface. Polling intervals are 1, 5, 10, 15,
+  30, or 60 seconds and may be changed while running without clearing history.
+  A five-minute browser lease and 24-hour stopped-session cleanup match persistent
+  Multi-Host Ping.
 - Visible windows are 1, 2, 5, 15, 30, or 60 minutes. A shared history slider and
   Older/Live/Newer controls move every interface graph together while collection
   continues. The zero line shifts within a bounded 20–80% vertical range according
@@ -367,6 +370,7 @@ make state, risk, and the next action obvious.
   upload/interface RX below zero. Tooltip positioning accounts for the canvas's
   internal minimum width on narrow displays.
 - Relevant implementation files are `snmp_tools.py`, `snmp_routes.py`,
+  `live_tools.py`,
   `templates/tools/snmp_test.html`, `static/snmp-interface-monitor.js`, the shared
   SNMP monitor styles in `static/styles.css`, and `tests/test_snmp_tools.py`.
 
@@ -433,8 +437,15 @@ make state, risk, and the next action obvious.
   subprocess per round and a 250-target limit. Missing or unusable `fping`
   retains the 20-worker system-`ping` compatibility engine and its 100-target
   limit. Do not auto-install OS packages or invoke privilege escalation from
-  the web application or installer. Rounds never overlap; the browser reports
-  actual duration when it exceeds the configured cadence. Browser history keeps
+  the web application or installer. Persistent rounds are claimed and executed
+  by `automation_worker` through `LiveToolStore`/`LiveToolRunner`; Gunicorn
+  workers only create, inspect, update, and stop user-owned sessions in
+  `instance/live_tools.sqlite3`. A five-minute lease is renewed by the global
+  Live tools footer dock or a restored Ping/SNMP page, so closing the toolkit
+  eventually stops abandoned polling. Per-session raw server history is capped
+  at 100,000 samples and stopped sessions are removed after 24 hours. Rounds never overlap;
+  the browser reports actual duration when it exceeds the configured cadence.
+  Restored browser history keeps
   ten minutes of raw samples and one hour of ten-second buckets before using
   minute buckets; a 500,000-sample global budget is divided across active
   targets so long-running high-capacity sessions remain memory-bounded.

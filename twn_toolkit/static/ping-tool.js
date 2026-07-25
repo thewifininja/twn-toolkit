@@ -6,6 +6,10 @@
   const startButton = document.getElementById("ping-start");
   const stopButton = document.getElementById("ping-stop");
   const updateTargetsButton = document.getElementById("ping-update-targets");
+  const minimizeButton = document.getElementById("ping-minimize");
+  const workspace = document.getElementById("ping-workspace");
+  const minimizedPlaceholder = document.getElementById("ping-minimized");
+  const restoreInlineButton = document.getElementById("ping-restore-inline");
   const profileSelect = document.getElementById("ping-profile");
   const profileNameInput = document.getElementById("ping-profile-name");
   const profileSaveButton = document.getElementById("ping-profile-save");
@@ -31,6 +35,7 @@
   const historyNavigationSummary = document.getElementById("ping-history-navigation-summary");
 
   if (!form || !hostsInput || !intervalInput || !timeoutInput || !startButton || !stopButton || !updateTargetsButton ||
+      !minimizeButton || !workspace || !minimizedPlaceholder || !restoreInlineButton ||
       !profileSelect || !profileNameInput || !profileSaveButton ||
       !profileDeleteButton || !status || !validationWarning || !resultsPanel ||
       !hostList || !hostFilter || !hostStatusFilter || !hostCount ||
@@ -43,21 +48,18 @@
 
   let running = false;
   let timer = null;
+  let activeSession = null;
+  let sampleCursor = 0;
+  let pollInFlight = false;
   let loadedProfileName = "";
   let lockedViewEnd = null;
-  let runId = "";
-  let pendingProbesSent = 0;
-  let pendingRepliesReceived = 0;
-  let lastActivityReport = 0;
   let activeHostsSource = "";
   let activeHosts = new Set();
-  let activeTargetRevision = 0;
   const history = new Map();
   const hostViews = new Map();
   const graphViews = new Map();
   const selectedHosts = new Set();
   const profileStorageKey = "twn:ping-profile";
-  const activityIntervalMs = 30_000;
   const historySampleBudget = 500_000;
   const chartTooltip = document.createElement("div");
   chartTooltip.className = "ping-chart-tooltip";
@@ -66,6 +68,19 @@
   window.addEventListener("themechange", renderAllCharts);
   hostFilter.addEventListener("input", applyHostFilters);
   hostStatusFilter.addEventListener("change", applyHostFilters);
+
+  minimizeButton.addEventListener("click", () => {
+    if (!activeSession) return;
+    workspace.hidden = true;
+    minimizedPlaceholder.hidden = false;
+    window.TwnLiveTools?.collapse();
+    window.TwnLiveTools?.refresh();
+  });
+  restoreInlineButton.addEventListener("click", () => {
+    workspace.hidden = false;
+    minimizedPlaceholder.hidden = true;
+    renderAllCharts();
+  });
 
   historyRange.addEventListener("change", () => {
     if (!followLive.checked && lockedViewEnd != null) {
@@ -213,9 +228,205 @@
       return;
     }
     activeHostsSource = targetsToSource(targets);
+    status.textContent = "Starting persistent ping session...";
+    try {
+      const response = await fetch(form.dataset.sessionStartUrl, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          hosts: activeHostsSource,
+          interval: intervalInput.value,
+          timeout: timeoutInput.value,
+          title: profileNameInput.value || profileSelect.value || "Multi-Host Ping",
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "The persistent ping session could not be started.");
+      }
+      activateSession(data.session, {resetHistory: true});
+      status.textContent = "Persistent ping session started. Waiting for the first round...";
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}?session=${encodeURIComponent(data.session.id)}`
+      );
+      window.TwnLiveTools?.refresh();
+      pollSession();
+    } catch (error) {
+      status.textContent = error.message;
+      startButton.disabled = false;
+    }
+  });
+
+  stopButton.addEventListener("click", async () => {
+    await stopPingRun();
+  });
+  updateTargetsButton.addEventListener("click", async () => {
+    if (!running || !activeSession) return;
+    updateTargetsButton.disabled = true;
+    status.textContent = "Validating updated targets...";
+    try {
+      const targets = await validateTargets(hostsInput.value);
+      const response = await fetch(activeSession.targets_url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          hosts: targetsToSource(targets),
+          interval: intervalInput.value,
+          timeout: timeoutInput.value,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "The live targets could not be updated.");
+      }
+      activeSession = data.session;
+      activeHostsSource = targetsToSource(data.session.config.targets || targets);
+      activeHosts = new Set(targets.map((target) => target.host));
+      hostViews.forEach((view, host) => {
+        if (!activeHosts.has(host)) {
+          view.state = "removed";
+          updateHostView(view);
+          const graphView = graphViews.get(host);
+          if (graphView) updateGraphStatus(graphView, "removed");
+        }
+      });
+      applyHostFilters();
+      status.textContent = `Updated the live run to ${targets.length} targets. Existing history was preserved.`;
+      window.TwnLiveTools?.refresh();
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      updateTargetsButton.disabled = !running;
+    }
+  });
+  window.addEventListener("pagehide", () => clearTimeout(timer));
+  document.addEventListener("livetoolstopped", (event) => {
+    if (event.detail?.session?.id === activeSession?.id) {
+      markSessionStopped("Stopped from the Live tools tray.");
+    }
+  });
+
+  async function pollSession() {
+    clearTimeout(timer);
+    if (!activeSession || pollInFlight) return;
+    pollInFlight = true;
+    try {
+      const response = await fetch(activeSession.detail_url, {
+        headers: {"Accept": "application/json"},
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Live ping status could not be loaded.");
+      activeSession = data.session;
+      await loadNewSamples();
+      updateSessionStatus();
+      if (activeSession.state !== "running") {
+        markSessionStopped(
+          activeSession.last_error || `Session ${activeSession.state}.`
+        );
+      }
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      pollInFlight = false;
+      if (activeSession && activeSession.state === "running") {
+        timer = setTimeout(pollSession, 2_000);
+      }
+    }
+  }
+
+  async function loadNewSamples() {
+    let hasMore = true;
+    let restored = 0;
+    while (hasMore && activeSession) {
+      const separator = activeSession.samples_url.includes("?") ? "&" : "?";
+      const response = await fetch(
+        `${activeSession.samples_url}${separator}after=${sampleCursor}&limit=10000`,
+        {headers: {"Accept": "application/json"}}
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Ping history could not be loaded.");
+      const samples = Array.isArray(data.samples) ? data.samples : [];
+      if (samples.length) {
+        ingestSamples(samples);
+        restored += samples.length;
+      }
+      sampleCursor = Number(data.next_after || sampleCursor);
+      hasMore = Boolean(data.has_more);
+      if (hasMore) status.textContent = `Restoring ping history… ${restored.toLocaleString()} samples loaded`;
+    }
+  }
+
+  function ingestSamples(samples) {
+    const rounds = new Map();
+    samples.forEach((sample) => {
+      const key = String(sample.sampled_at);
+      const round = rounds.get(key) || [];
+      round.push({
+        host: sample.host,
+        label: sample.label || "",
+        reachable: Boolean(sample.reachable),
+        latency_ms: sample.latency_ms,
+      });
+      rounds.set(key, round);
+    });
+    [...rounds.entries()].forEach(([sampledAt, results]) => {
+      renderResults(results, new Date(Number(sampledAt) * 1000), true);
+    });
+    refreshRenderedResults();
+  }
+
+  async function stopPingRun() {
+    if (!activeSession) return;
+    stopButton.disabled = true;
+    status.textContent = "Stopping...";
+    try {
+      const response = await fetch(activeSession.stop_url, {
+        method: "POST",
+        headers: {"Accept": "application/json"},
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The session could not be stopped.");
+      activeSession = data.session;
+      markSessionStopped("Stopped.");
+      window.TwnLiveTools?.refresh();
+    } catch (error) {
+      status.textContent = error.message;
+      stopButton.disabled = false;
+    }
+  }
+
+  function markSessionStopped(message) {
+    running = false;
+    clearTimeout(timer);
+    startButton.disabled = false;
+    stopButton.disabled = true;
+    updateTargetsButton.disabled = true;
+    minimizeButton.disabled = true;
+    status.textContent = message;
+  }
+
+  function activateSession(session, {resetHistory = false} = {}) {
+    activeSession = session;
+    running = session.state === "running";
+    sampleCursor = 0;
+    const config = session.config || {};
+    const targets = Array.isArray(config.targets) ? config.targets : [];
+    activeHostsSource = targetsToSource(targets);
     activeHosts = new Set(targets.map((target) => target.host));
-    activeTargetRevision += 1;
-    running = true;
+    hostsInput.value = activeHostsSource;
+    intervalInput.value = String(config.interval || session.interval || 2);
+    timeoutInput.value = String(config.timeout || session.timeout || 1);
+    if (resetHistory) resetResultsWorkspace();
+    startButton.disabled = running;
+    stopButton.disabled = !running;
+    updateTargetsButton.disabled = !running;
+    minimizeButton.disabled = !running;
+    resultsPanel.hidden = false;
+  }
+
+  function resetResultsWorkspace() {
     history.clear();
     hostViews.clear();
     graphViews.clear();
@@ -228,165 +439,27 @@
     hostFilter.value = "";
     hostStatusFilter.value = "all";
     updateSelectionSummary();
-    startButton.disabled = true;
-    stopButton.disabled = false;
-    updateTargetsButton.disabled = false;
-    resultsPanel.hidden = false;
-    resetActivityRun();
-    reportPingActivity("start", {
-      targets: targets.length,
-      target_hosts: targets.map((target) => ({
-        host: target.host,
-        label: target.label || "",
-      })),
-    });
-    runRound();
-  });
+  }
 
-  stopButton.addEventListener("click", () => {
-    stopPingRun();
-  });
-  updateTargetsButton.addEventListener("click", async () => {
-    if (!running) return;
-    updateTargetsButton.disabled = true;
-    status.textContent = "Validating updated targets...";
-    try {
-      const targets = await validateTargets(hostsInput.value);
-      activeHostsSource = targetsToSource(targets);
-      activeHosts = new Set(targets.map((target) => target.host));
-      activeTargetRevision += 1;
-      hostViews.forEach((view, host) => {
-        if (!activeHosts.has(host)) {
-          view.state = "removed";
-          updateHostView(view);
-          const graphView = graphViews.get(host);
-          if (graphView) updateGraphStatus(graphView, "removed");
-        }
-      });
-      applyHostFilters();
-      status.textContent = `Updated active targets to ${targets.length}. Existing history was preserved.`;
-    } catch (error) {
-      status.textContent = error.message;
-    } finally {
-      updateTargetsButton.disabled = !running;
-    }
-  });
-  window.addEventListener("pagehide", () => {
-    if (running || pendingProbesSent || pendingRepliesReceived) {
-      flushPingActivity("final", true);
-    }
-  });
-
-  async function runRound() {
-    if (!running) {
+  function updateSessionStatus() {
+    if (!activeSession) return;
+    if (activeSession.state === "error") {
+      status.textContent = activeSession.last_error || "The live ping session stopped with an error.";
       return;
     }
-    const roundStarted = performance.now();
-    const roundRevision = activeTargetRevision;
-    const roundHostsSource = activeHostsSource;
-    status.textContent = "Pinging...";
-    try {
-      const response = await fetch(form.dataset.runUrl, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({hosts: roundHostsSource, timeout: timeoutInput.value}),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Ping request failed.");
-      }
-      if (!running) {
-        return;
-      }
-      if (roundRevision === activeTargetRevision) {
-        renderResults(data.results || []);
-        trackPingRound(data.results || []);
-        const durationMs = Number(data.round && data.round.duration_ms);
-        const timeoutSeconds = Number(data.round && data.round.timeout);
-        const engine = data.round && data.round.engine === "fping" ? "high-capacity fping" : "compatibility ping";
-        const configuredMs = Math.max(1, Math.min(60, Number(intervalInput.value) || 2)) * 1000;
-        const duration = Number.isFinite(durationMs) ? `${(durationMs / 1000).toFixed(2)}s` : "an unknown duration";
-        const cadenceNote = Number.isFinite(durationMs) && durationMs > configuredMs
-          ? ` Effective cadence is limited by the ${duration} round duration.`
-          : "";
-        const timeoutNote = Number.isFinite(timeoutSeconds) ? ` with a ${timeoutSeconds}s probe timeout` : "";
-        status.textContent = `Last round completed in ${duration} using ${engine}${timeoutNote} at ${new Date().toLocaleTimeString()}.${cadenceNote}`;
-      }
-    } catch (error) {
-      status.textContent = error.message;
-      running = false;
-      startButton.disabled = false;
-      stopButton.disabled = true;
-      updateTargetsButton.disabled = true;
-      flushPingActivity("final");
+    if (!activeSession.rounds_completed) {
+      status.textContent = "Persistent ping session is waiting for its first round...";
       return;
     }
-
-    const seconds = Math.max(1, Math.min(60, Number(intervalInput.value) || 2));
-    const remainingDelay = Math.max(0, (seconds * 1000) - (performance.now() - roundStarted));
-    timer = setTimeout(runRound, remainingDelay);
-  }
-
-  function stopPingRun() {
-    running = false;
-    clearTimeout(timer);
-    startButton.disabled = false;
-    stopButton.disabled = true;
-    updateTargetsButton.disabled = true;
-    status.textContent = "Stopped.";
-    flushPingActivity("final");
-  }
-
-  function resetActivityRun() {
-    runId = window.crypto && window.crypto.randomUUID
-      ? window.crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    pendingProbesSent = 0;
-    pendingRepliesReceived = 0;
-    lastActivityReport = performance.now();
-  }
-
-  function trackPingRound(results) {
-    pendingProbesSent += results.length;
-    pendingRepliesReceived += results.filter((result) => result.reachable).length;
-    if (performance.now() - lastActivityReport >= activityIntervalMs) {
-      flushPingActivity("checkpoint");
-    }
-  }
-
-  function flushPingActivity(event, beacon = false) {
-    if (!form.dataset.activityUrl || (!pendingProbesSent && !pendingRepliesReceived && event !== "start" && event !== "final")) {
-      return;
-    }
-    const payload = {
-      event,
-      run_id: runId,
-      probes_sent: pendingProbesSent,
-      replies_received: pendingRepliesReceived,
-    };
-    pendingProbesSent = 0;
-    pendingRepliesReceived = 0;
-    lastActivityReport = performance.now();
-    reportPingActivityPayload(payload, beacon);
-  }
-
-  function reportPingActivity(event, extra = {}) {
-    reportPingActivityPayload({event, run_id: runId, ...extra});
-  }
-
-  function reportPingActivityPayload(payload, beacon = false) {
-    const body = JSON.stringify(payload);
-    if (beacon && navigator.sendBeacon) {
-      const blob = new Blob([body], {type: "application/json"});
-      navigator.sendBeacon(form.dataset.activityUrl, blob);
-      return;
-    }
-    fetch(form.dataset.activityUrl, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body,
-      keepalive: true,
-    }).catch(() => {});
+    const durationMs = Number(activeSession.last_duration_ms);
+    const engine = activeSession.last_engine === "fping"
+      ? "high-capacity fping"
+      : "compatibility ping";
+    const duration = Number.isFinite(durationMs)
+      ? `${(durationMs / 1000).toFixed(2)}s`
+      : "an unknown duration";
+    const completedAt = new Date(Number(activeSession.last_round_at) * 1000);
+    status.textContent = `Last round completed in ${duration} using ${engine} at ${completedAt.toLocaleTimeString()}. This run can be safely minimized.`;
   }
 
   async function validateTargets(source) {
@@ -428,13 +501,13 @@
       .join("\n");
   }
 
-  function renderResults(results) {
+  function renderResults(results, sampledAt = new Date(), deferCharts = false) {
     results.forEach((result) => {
       const hostHistory = history.get(result.host) || createHistory();
       addHistorySample(hostHistory, {
         latency: result.latency_ms == null ? null : Number(result.latency_ms),
         reachable: Boolean(result.reachable),
-        time: new Date(),
+        time: sampledAt,
       });
       history.set(result.host, hostHistory);
 
@@ -452,7 +525,25 @@
         selectGraph(result.host);
       }
       const graphView = graphViews.get(result.host);
-      if (graphView) updateGraphView(graphView, result, hostHistory);
+      if (graphView && !deferCharts) updateGraphView(graphView, result, hostHistory);
+    });
+    if (deferCharts) return;
+    hostCount.textContent = `${activeHosts.size} host${activeHosts.size === 1 ? "" : "s"}`;
+    applyHostFilters();
+    updateSelectionSummary();
+    updateHistoryNavigator();
+  }
+
+  function refreshRenderedResults() {
+    hostViews.forEach((view, host) => {
+      if (!activeHosts.has(host)) view.state = "removed";
+      updateHostView(view);
+      const graphView = graphViews.get(host);
+      const series = history.get(host);
+      if (graphView && series) {
+        updateGraphView(graphView, view.result, series);
+        if (view.state === "removed") updateGraphStatus(graphView, "removed");
+      }
     });
     hostCount.textContent = `${activeHosts.size} host${activeHosts.size === 1 ? "" : "s"}`;
     applyHostFilters();
@@ -1103,5 +1194,30 @@
     option.dataset.timeout = String(profile.timeout || 1);
     option.dataset.targets = JSON.stringify(profile.targets);
     profileSelect.value = profile.name;
+  }
+
+  async function restoreLiveSession(sessionId) {
+    startButton.disabled = true;
+    status.textContent = "Restoring live ping session...";
+    try {
+      const response = await fetch(
+        `${form.dataset.sessionStartUrl}/${encodeURIComponent(sessionId)}`,
+        {headers: {"Accept": "application/json"}}
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Live ping session could not be restored.");
+      activateSession(data.session, {resetHistory: true});
+      await loadNewSamples();
+      updateSessionStatus();
+      if (data.session.state === "running") pollSession();
+      else markSessionStopped(data.session.last_error || `Session ${data.session.state}.`);
+    } catch (error) {
+      status.textContent = error.message;
+      startButton.disabled = false;
+    }
+  }
+
+  if (form.dataset.requestedSession) {
+    restoreLiveSession(form.dataset.requestedSession);
   }
 })();

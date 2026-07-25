@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, g, jsonify, render_template, request
 
 from .activity_context import increment_current_activity, record_current_activity
 from .audit import (
@@ -12,6 +12,7 @@ from .audit import (
     annotate_tool_run,
     suppress_audit_event,
 )
+from .live_tools import LiveToolStore, public_live_session
 from .network_tools import ToolInputError, validate_hosts
 from .profiles import (
     SNMPCredentialProfileStore,
@@ -134,6 +135,7 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
             results=results,
             selected_hosts=selected_hosts,
             selected_oid_profiles=selected_oid_profiles,
+            requested_live_session=str(request.args.get("session", "")).strip()[:80],
         )
 
     @tools_bp.post("/snmp-test/profiles/<kind>")
@@ -348,41 +350,102 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.post("/snmp-test/interface-monitor/start")
     def start_snmp_interface_monitor():
+        payload = request.get_json(silent=True) or {}
         try:
-            targets, interval = _monitor_request_values()
+            targets, interval, round_timeout = _monitor_request_values()
+            title = " ".join(str(payload.get("title", "")).strip().split())
+            if len(title) > 100:
+                raise ToolInputError("Live tool names must be 100 characters or fewer.")
+            user = _current_user()
+            session = _live_tool_store().create_snmp_interface_session(
+                user_id=user["id"],
+                username=user["username"],
+                title=title or "SNMP Bandwidth Monitor",
+                targets=targets,
+                interval=interval,
+                round_timeout=round_timeout,
+            )
         except (ToolInputError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
         detail = f"{len(targets)} interface(s) · every {interval} second(s)"
         annotate_audit_event(
             category="Infrastructure",
-            action="start_snmp_interface_monitor",
-            summary=f"Started SNMP bandwidth monitor for {len(targets)} interface(s).",
-            resource_type="snmp_interface_monitor",
-            resource_id="monitor-set",
-            resource_name=f"{len(targets)} interface monitor set",
+            action="snmp.live_interface_session_started",
+            summary=(
+                "Started persistent SNMP bandwidth monitoring for "
+                f"{len(targets)} interface(s)."
+            ),
+            resource_type="live_tool_session",
+            resource_id=session["id"],
+            resource_name=session["title"],
             details={"targets": targets, "interval_seconds": interval},
         )
-        _record_snmp_activity("Started SNMP bandwidth monitor", detail, count_action=True)
-        return jsonify({"ok": True})
+        _record_snmp_activity(
+            "Started persistent SNMP bandwidth monitor",
+            detail,
+            count_action=True,
+        )
+        return jsonify(
+            {"session": public_live_session(session, include_config=True)}
+        ), 201
 
-    @tools_bp.post("/snmp-test/interface-monitor/stop")
-    def stop_snmp_interface_monitor():
+    @tools_bp.get("/snmp-test/interface-monitor/sessions/<session_id>")
+    def snmp_interface_monitor_session(session_id: str):
+        suppress_audit_event()
+        session = _live_tool_store().renew_session(
+            session_id, user_id=_current_user()["id"]
+        )
+        if not session or session["tool_key"] != "snmp_interface":
+            return jsonify({"error": "Live SNMP monitor not found."}), 404
+        return jsonify(
+            {"session": public_live_session(session, include_config=True)}
+        )
+
+    @tools_bp.get("/snmp-test/interface-monitor/sessions/<session_id>/samples")
+    def snmp_interface_monitor_session_samples(session_id: str):
+        suppress_audit_event()
         try:
-            targets, interval = _monitor_request_values()
+            after_id = int(request.args.get("after", "0"))
+            limit = int(request.args.get("limit", "10000"))
+        except ValueError:
+            return jsonify({"error": "Sample cursor and limit must be integers."}), 400
+        page = _live_tool_store().snmp_interface_samples(
+            session_id,
+            user_id=_current_user()["id"],
+            after_id=after_id,
+            limit=limit,
+        )
+        if page is None:
+            return jsonify({"error": "Live SNMP monitor not found."}), 404
+        return jsonify(page)
+
+    @tools_bp.post("/snmp-test/interface-monitor/sessions/<session_id>")
+    def update_snmp_interface_monitor_session(session_id: str):
+        try:
+            interval = int(_request_value("interval"))
+            if interval not in INTERFACE_MONITOR_INTERVALS:
+                raise ToolInputError("Select a supported polling interval.")
+            session = _live_tool_store().update_snmp_interface_session(
+                session_id,
+                user_id=_current_user()["id"],
+                interval=interval,
+            )
         except (ToolInputError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
-        detail = f"{len(targets)} interface(s) · every {interval} second(s)"
+        if not session:
+            return jsonify({"error": "Live SNMP monitor not found."}), 404
         annotate_audit_event(
             category="Infrastructure",
-            action="stop_snmp_interface_monitor",
-            summary=f"Stopped SNMP bandwidth monitor for {len(targets)} interface(s).",
-            resource_type="snmp_interface_monitor",
-            resource_id="monitor-set",
-            resource_name=f"{len(targets)} interface monitor set",
-            details={"targets": targets, "interval_seconds": interval},
+            action="snmp.live_interface_session_updated",
+            summary="Updated a persistent SNMP bandwidth monitor.",
+            resource_type="live_tool_session",
+            resource_id=session["id"],
+            resource_name=session["title"],
+            details={"interval_seconds": interval},
         )
-        _record_snmp_activity("Stopped SNMP bandwidth monitor", detail, count_action=False)
-        return jsonify({"ok": True})
+        return jsonify(
+            {"session": public_live_session(session, include_config=True)}
+        )
 
 
 def _snmp_credential_store() -> SNMPCredentialProfileStore:
@@ -395,6 +458,18 @@ def _snmp_host_store() -> SNMPHostProfileStore:
 
 def _snmp_oid_store() -> SNMPOidProfileStore:
     return SNMPOidProfileStore(current_app.instance_path)
+
+
+def _live_tool_store() -> LiveToolStore:
+    return LiveToolStore(current_app.instance_path)
+
+
+def _current_user() -> dict[str, str]:
+    user = getattr(g, "current_user", {}) or {}
+    return {
+        "id": str(user.get("id", "")),
+        "username": str(user.get("username", "")),
+    }
 
 
 def _public_snmp_credential(profile: dict[str, Any]) -> dict[str, Any]:
@@ -424,13 +499,14 @@ def _saved_snmp_target(host_name: str) -> tuple[dict[str, Any], dict[str, Any]]:
     return host, credential
 
 
-def _monitor_request_values() -> tuple[list[dict[str, Any]], int]:
+def _monitor_request_values() -> tuple[list[dict[str, Any]], int, float]:
     payload = request.get_json(silent=True) if request.is_json else None
     raw_targets = (payload or {}).get("targets")
     if not isinstance(raw_targets, list) or not 1 <= len(raw_targets) <= 20:
         raise ToolInputError("Select between 1 and 20 interfaces to monitor.")
     targets: list[dict[str, Any]] = []
     seen: set[tuple[str, int]] = set()
+    round_timeout = 10.0
     for raw_target in raw_targets:
         if not isinstance(raw_target, dict):
             raise ToolInputError("The monitor set contains an invalid interface.")
@@ -444,15 +520,37 @@ def _monitor_request_values() -> tuple[list[dict[str, Any]], int]:
             raise ToolInputError("The monitor set contains the same interface more than once.")
         seen.add(key)
         interface_label = str(raw_target.get("interface_label", "")).strip()[:160]
+        interface_alias = str(raw_target.get("interface_alias", "")).strip()[:160]
+        interface_description = str(
+            raw_target.get("interface_description", "")
+        ).strip()[:160]
+        interface_oper_status = str(
+            raw_target.get("interface_oper_status", "")
+        ).strip()[:32]
+        try:
+            interface_speed_bps = int(raw_target.get("interface_speed_bps") or 0)
+        except (TypeError, ValueError):
+            interface_speed_bps = 0
+        interface_speed_bps = max(0, min(interface_speed_bps, 10**15))
         targets.append(
             {
                 "host_name": host["name"],
                 "host_address": host["host"],
                 "interface_index": interface_index,
                 "interface_label": interface_label or f"Interface {interface_index}",
+                "interface_alias": interface_alias,
+                "interface_description": interface_description,
+                "interface_oper_status": interface_oper_status,
+                "interface_speed_bps": interface_speed_bps or None,
             }
+        )
+        round_timeout = max(
+            round_timeout,
+            float(host.get("timeout", 2))
+            * (int(host.get("retries", 1)) + 1)
+            + 10,
         )
     interval = int(_request_value("interval"))
     if interval not in INTERFACE_MONITOR_INTERVALS:
         raise ToolInputError("Select a supported polling interval.")
-    return targets, interval
+    return targets, interval, round_timeout

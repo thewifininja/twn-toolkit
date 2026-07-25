@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .automation import AutomationEngine, AutomationStore
 from .auth import load_or_create_secret_key
+from .live_tools import LiveToolRunner, LiveToolStore
 from .operational import OperationalSettingsStore
 from .pidfiles import (
     acquire_singleton_lock,
@@ -43,11 +44,19 @@ def main() -> None:
         load_or_create_secret_key(instance_path),
     )
     engine = AutomationEngine(store)
+    live_store = LiveToolStore(instance_path)
+    live_store.release_stale_claims()
+    live_runner = LiveToolRunner(live_store)
     operational = OperationalSettingsStore(instance_path).get()
     max_workers = int(operational["max_concurrent_automations"])
     max_pending = max_workers + int(operational["max_queued_automations"])
     executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="twn-automation")
+    live_max_workers = 4
+    live_executor = ThreadPoolExecutor(
+        max_workers=live_max_workers, thread_name_prefix="twn-live-tool"
+    )
     futures: dict[object, str] = {}
+    live_futures: dict[object, str] = {}
     heartbeat_path = Path(instance_path) / "automation-heartbeat.json"
     running = True
     next_retention_check = 0.0
@@ -66,6 +75,10 @@ def main() -> None:
                     store.prune_history_if_due(now)
                 except Exception as exc:
                     print(f"Automation history pruning failed: {exc}", file=sys.stderr)
+                try:
+                    live_store.cleanup()
+                except Exception as exc:
+                    print(f"Live tool cleanup failed: {exc}", file=sys.stderr)
                 next_retention_check = now + 3600
             for future in list(futures):
                 if future.done():
@@ -80,10 +93,30 @@ def main() -> None:
                     continue
                 future = executor.submit(engine.process_automation, automation)
                 futures[future] = automation["id"]; active_ids.add(automation["id"])
-            _write_heartbeat(heartbeat_path, max_workers, futures)
+            for future in list(live_futures):
+                if future.done():
+                    session_id = live_futures.pop(future)
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        print(
+                            f"Live tool session {session_id} failed: "
+                            f"{type(exc).__name__}: {exc}",
+                            file=sys.stderr,
+                        )
+            live_available = max(0, live_max_workers - len(live_futures))
+            for live_session in (
+                live_store.claim_due(limit=live_available) if live_available else []
+            ):
+                future = live_executor.submit(live_runner.process, live_session)
+                live_futures[future] = live_session["id"]
+            _write_heartbeat(
+                heartbeat_path, max_workers, futures, live_futures=live_futures
+            )
             time.sleep(max(0.2, args.poll_seconds))
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
+        live_executor.shutdown(wait=False, cancel_futures=True)
         heartbeat_path.unlink(missing_ok=True)
         remove_own_pid_file(args.pid_file)
 
@@ -111,12 +144,23 @@ def _daemonize(pid_file: str, log_file: str) -> None:
     write_pid_file(pid_file)
 
 
-def _write_heartbeat(path: Path, max_workers: int, futures: dict[object, str]) -> None:
+def _write_heartbeat(
+    path: Path,
+    max_workers: int,
+    futures: dict[object, str],
+    *,
+    live_futures: dict[object, str] | None = None,
+) -> None:
+    live_futures = live_futures or {}
     payload = {
         "updated_at": time.time(), "pid": os.getpid(), "max_workers": max_workers,
         "active": sum(1 for future in futures if future.running()),
         "queued": sum(1 for future in futures if not future.running() and not future.done()),
         "tracked": len(futures),
+        "live_tools_active": sum(
+            1 for future in live_futures if future.running()
+        ),
+        "live_tools_tracked": len(live_futures),
     }
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
     temporary.write_text(json.dumps(payload), encoding="utf-8"); os.chmod(temporary, 0o600); os.replace(temporary, path)

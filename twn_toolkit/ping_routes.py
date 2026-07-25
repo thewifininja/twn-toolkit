@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, g, jsonify, render_template, request
 
 from .activity_context import increment_current_activity, record_current_activity
 from .audit import (
@@ -18,6 +18,7 @@ from .network_tools import (
     ping_engine_capability,
     ping_hosts,
 )
+from .live_tools import LiveToolStore, public_live_session
 from .profiles import PingProfileStore
 
 
@@ -30,7 +31,196 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             profiles=_ping_profile_store().all(),
             ping_capability=capability,
             ping_target_limit=capability["target_limit"],
+            requested_live_session=str(request.args.get("session", "")).strip()[:80],
         )
+
+    @tools_bp.get("/live-sessions")
+    def live_tool_sessions():
+        suppress_audit_event()
+        user = _current_user()
+        sessions = _live_tool_store().sessions_for_user(user["id"])
+        return jsonify(
+            {"sessions": [public_live_session(session) for session in sessions]}
+        )
+
+    @tools_bp.post("/ping/sessions")
+    def start_ping_session():
+        payload = request.get_json(silent=True) or {}
+        capability = ping_engine_capability()
+        try:
+            targets = parse_ping_targets(
+                str(payload.get("hosts", "")), limit=capability["target_limit"]
+            )
+            interval = int(payload.get("interval", 2))
+            if not 1 <= interval <= 60:
+                raise ToolInputError("Interval must be between 1 and 60 seconds.")
+            timeout = _ping_timeout(payload.get("timeout", 1), capability)
+            title = " ".join(str(payload.get("title", "")).strip().split())
+            if len(title) > 100:
+                raise ToolInputError("Live tool names must be 100 characters or fewer.")
+            user = _current_user()
+            session = _live_tool_store().create_ping_session(
+                user_id=user["id"],
+                username=user["username"],
+                title=title or "Multi-Host Ping",
+                targets=targets,
+                interval=interval,
+                timeout=timeout,
+            )
+        except (ToolInputError, TypeError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        detail = f"{len(targets)} target{'s' if len(targets) != 1 else ''} · every {interval}s"
+        record_current_activity(
+            "Reachability",
+            "Started persistent ping run",
+            detail,
+            count_action=True,
+        )
+        annotate_audit_event(
+            category="Network tools",
+            action="ping.live_session_started",
+            summary="Started a persistent Multi-Host Ping session.",
+            resource_type="live_tool_session",
+            resource_id=session["id"],
+            resource_name=session["title"],
+            details={
+                "target_count": len(targets),
+                "targets": targets,
+                "interval_seconds": interval,
+                "timeout_seconds": timeout,
+            },
+        )
+        return jsonify(
+            {"session": public_live_session(session, include_config=True)}
+        ), 201
+
+    @tools_bp.get("/ping/sessions/<session_id>")
+    def ping_session(session_id: str):
+        suppress_audit_event()
+        session = _live_tool_store().renew_session(
+            session_id, user_id=_current_user()["id"]
+        )
+        if not session or session["tool_key"] != "ping":
+            return jsonify({"error": "Live ping session not found."}), 404
+        return jsonify({"session": public_live_session(session, include_config=True)})
+
+    @tools_bp.get("/ping/sessions/<session_id>/samples")
+    def ping_session_samples(session_id: str):
+        suppress_audit_event()
+        try:
+            after_id = int(request.args.get("after", "0"))
+            limit = int(request.args.get("limit", "10000"))
+        except ValueError:
+            return jsonify({"error": "Sample cursor and limit must be integers."}), 400
+        page = _live_tool_store().ping_samples(
+            session_id,
+            user_id=_current_user()["id"],
+            after_id=after_id,
+            limit=limit,
+        )
+        if page is None:
+            return jsonify({"error": "Live ping session not found."}), 404
+        return jsonify(page)
+
+    @tools_bp.post("/ping/sessions/<session_id>/targets")
+    def update_ping_session_targets(session_id: str):
+        payload = request.get_json(silent=True) or {}
+        capability = ping_engine_capability()
+        try:
+            targets = parse_ping_targets(
+                str(payload.get("hosts", "")), limit=capability["target_limit"]
+            )
+            interval = int(payload.get("interval", 2))
+            if not 1 <= interval <= 60:
+                raise ToolInputError("Interval must be between 1 and 60 seconds.")
+            timeout = _ping_timeout(payload.get("timeout", 1), capability)
+            session = _live_tool_store().update_ping_session(
+                session_id,
+                user_id=_current_user()["id"],
+                targets=targets,
+                interval=interval,
+                timeout=timeout,
+            )
+        except (ToolInputError, TypeError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        if not session:
+            return jsonify({"error": "Live ping session not found."}), 404
+        annotate_audit_event(
+            category="Network tools",
+            action="ping.live_session_targets_updated",
+            summary="Updated persistent Multi-Host Ping targets.",
+            resource_type="live_tool_session",
+            resource_id=session["id"],
+            resource_name=session["title"],
+            details={
+                "target_count": len(targets),
+                "targets": targets,
+                "interval_seconds": interval,
+                "timeout_seconds": timeout,
+            },
+        )
+        return jsonify({"session": public_live_session(session, include_config=True)})
+
+    @tools_bp.post("/live-sessions/<session_id>/stop")
+    def stop_live_tool_session(session_id: str):
+        user = _current_user()
+        session = _live_tool_store().stop_session(session_id, user_id=user["id"])
+        if not session:
+            return jsonify({"error": "Live tool session not found."}), 404
+        if not session.get("_was_running", False):
+            suppress_audit_event()
+            return jsonify({"session": public_live_session(session)})
+        if session["tool_key"] == "snmp_interface":
+            detail = (
+                f"{session['target_count']} interface"
+                f"{'s' if session['target_count'] != 1 else ''} · "
+                f"{session['probes_sent']} polls"
+            )
+            record_current_activity(
+                "Infrastructure",
+                "Stopped persistent SNMP bandwidth monitor",
+                detail,
+                count_action=False,
+            )
+            annotate_audit_event(
+                category="Infrastructure",
+                action="snmp.live_interface_session_stopped",
+                summary="Stopped a persistent SNMP bandwidth monitor.",
+                resource_type="live_tool_session",
+                resource_id=session["id"],
+                resource_name=session["title"],
+                details={
+                    "interface_count": session["target_count"],
+                    "polls_sent": session["probes_sent"],
+                    "successful_polls": session["replies_received"],
+                },
+            )
+        else:
+            detail = (
+                f"{session['target_count']} target"
+                f"{'s' if session['target_count'] != 1 else ''} · "
+                f"{session['probes_sent']} probes"
+            )
+            record_current_activity(
+                "Reachability",
+                "Stopped persistent ping run",
+                detail,
+                count_action=False,
+            )
+            annotate_audit_event(
+                category="Network tools",
+                action="ping.live_session_stopped",
+                summary="Stopped a persistent Multi-Host Ping session.",
+                resource_type="live_tool_session",
+                resource_id=session["id"],
+                resource_name=session["title"],
+                details={
+                    "target_count": session["target_count"],
+                    "probes_sent": session["probes_sent"],
+                    "replies_received": session["replies_received"],
+                },
+            )
+        return jsonify({"session": public_live_session(session)})
 
     @tools_bp.post("/ping/run")
     def ping_run():
@@ -201,6 +391,18 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
 
 def _ping_profile_store() -> PingProfileStore:
     return PingProfileStore(current_app.instance_path)
+
+
+def _live_tool_store() -> LiveToolStore:
+    return LiveToolStore(current_app.instance_path)
+
+
+def _current_user() -> dict[str, str]:
+    user = getattr(g, "current_user", {}) or {}
+    return {
+        "id": str(user.get("id", "")),
+        "username": str(user.get("username", "")),
+    }
 
 
 def _bounded_int(value: object, minimum: int, maximum: int) -> int:

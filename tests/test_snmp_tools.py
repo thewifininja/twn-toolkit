@@ -350,8 +350,33 @@ class SNMPToolTests(unittest.TestCase):
                 }],
                 "interval": 5,
             }
-            self.assertEqual(client.post("/tools/snmp-test/interface-monitor/start", json=payload).status_code, 200)
-            self.assertEqual(client.post("/tools/snmp-test/interface-monitor/stop", json=payload).status_code, 200)
+            started = client.post(
+                "/tools/snmp-test/interface-monitor/start", json=payload
+            )
+            self.assertEqual(started.status_code, 201)
+            live_session = started.get_json()["session"]
+            self.assertEqual(live_session["tool_key"], "snmp_interface")
+            self.assertEqual(
+                live_session["config"]["targets"][0]["host_name"], "Core"
+            )
+            self.assertNotIn(
+                b"private",
+                Path(instance, "live_tools.sqlite3").read_bytes(),
+            )
+            detail = client.get(live_session["detail_url"])
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(
+                detail.get_json()["session"]["config"]["interval"], 5
+            )
+            updated = client.post(live_session["update_url"], json={"interval": 10})
+            self.assertEqual(updated.status_code, 200)
+            self.assertEqual(
+                updated.get_json()["session"]["config"]["interval"], 10
+            )
+            samples = client.get(live_session["samples_url"])
+            self.assertEqual(samples.status_code, 200)
+            self.assertEqual(samples.get_json()["samples"], [])
+            self.assertEqual(client.post(live_session["stop_url"]).status_code, 200)
             self.assertEqual(
                 client.post(
                     "/tools/snmp-test/interface-monitor/start",
@@ -369,11 +394,15 @@ class SNMPToolTests(unittest.TestCase):
             summary = ActivityStore(instance).summary()
             self.assertEqual(summary["counters"]["snmp"]["polls"], 10)
             self.assertEqual(summary["counters"]["actions"]["total"], 1)
-            self.assertEqual(summary["recent"][0]["title"], "Stopped SNMP bandwidth monitor")
+            self.assertEqual(
+                summary["recent"][0]["title"],
+                "Stopped persistent SNMP bandwidth monitor",
+            )
             page = client.get("/tools/snmp-test")
             self.assertIn(b"Multi-interface bandwidth monitor", page.data)
             self.assertIn(b"Visible time range", page.data)
             self.assertIn(b"History navigation", page.data)
+            self.assertIn(b"snmp-monitor-minimize", page.data)
             self.assertIn(b"snmp-interface-monitor.js", page.data)
 
 

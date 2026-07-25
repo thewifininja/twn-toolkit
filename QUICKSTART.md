@@ -95,14 +95,21 @@ credentials:
 3. Select **Start**.
 4. Review live reachability, current/minimum/average/maximum latency, loss, and
    response-time history.
-5. Edit the target box and select **Update targets** when the active run should
+5. Select **Minimize** to keep the run active while using other toolkit pages.
+   Restore it from the compact **Live tools** footer dock.
+6. Edit the settings and select **Apply changes** when the active run should
    change. Unchanged targets keep their history; removed targets remain visible
    as removed.
 
 Invalid entries are reported without preventing valid targets from running.
 The active run uses a validated snapshot, so typing does not create partial
-hosts in the charts. Ping chart history exists in the browser session unless
-exported.
+hosts in the charts. The background scheduler records bounded live history in
+the toolkit instance so a run survives page navigation. Closing the toolkit
+stops an abandoned run after its short browser lease expires.
+
+The SNMP Tester’s multi-interface bandwidth monitor uses the same Live tools
+footer dock. Start a monitor set, select **Minimize**, and restore its retained
+IF-MIB counter history after navigating elsewhere.
 
 The other Network Tools follow the same category layout shown in the sidebar:
 

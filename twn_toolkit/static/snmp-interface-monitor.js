@@ -17,6 +17,9 @@
   const startButton = root.querySelector(".snmp-monitor-start");
   const stopButton = root.querySelector(".snmp-monitor-stop");
   const clearButton = root.querySelector(".snmp-monitor-clear");
+  const minimizeButton = root.querySelector(".snmp-monitor-minimize");
+  const minimizedPlaceholder = document.getElementById("snmp-monitor-minimized");
+  const restoreInlineButton = minimizedPlaceholder?.querySelector(".snmp-monitor-restore-inline");
   const status = root.querySelector(".snmp-monitor-status");
   const monitorSet = root.querySelector(".snmp-monitor-set");
   const count = root.querySelector(".snmp-monitor-count");
@@ -29,8 +32,12 @@
   let timer = null;
   let pollController = null;
   let pollInFlight = false;
+  let activeSession = null;
+  let sampleCursor = 0;
   let historyEndAt = null;
   const MAX_POINTS = 10000;
+
+  if (!minimizeButton || !minimizedPlaceholder || !restoreInlineButton) return;
 
   const postJson = async (url, payload, signal) => {
     const response = await fetch(url, {
@@ -38,6 +45,18 @@
       headers: {"Content-Type": "application/json"},
       credentials: "same-origin",
       body: JSON.stringify(payload),
+      signal,
+    });
+    let data = {};
+    try { data = await response.json(); } catch (_error) { /* handled below */ }
+    if (!response.ok) throw new Error(data.error || `Request failed (HTTP ${response.status}).`);
+    return data;
+  };
+
+  const getJson = async (url, signal) => {
+    const response = await fetch(url, {
+      headers: {"Accept": "application/json"},
+      credentials: "same-origin",
       signal,
     });
     let data = {};
@@ -83,13 +102,12 @@
       host_name: target.hostName,
       interface_index: target.interface.index,
       interface_label: target.label,
+      interface_alias: target.interface.alias || "",
+      interface_description: target.interface.description || "",
+      interface_oper_status: target.interface.oper_status || "",
+      interface_speed_bps: target.interface.speed_bps || null,
     })),
     interval: Number(intervalSelect.value),
-  });
-
-  const samplePayload = (target) => ({
-    host_name: target.hostName,
-    interface_index: target.interface.index,
   });
 
   const metric = (label, className, secondaryClass = "") => {
@@ -166,6 +184,7 @@
     monitorSet.hidden = targets.size === 0;
     startButton.disabled = running || targets.size === 0;
     stopButton.disabled = !running;
+    minimizeButton.disabled = !running;
     clearButton.disabled = ![...targets.values()].some((target) => target.points.length);
     addButton.disabled = running || targets.size >= 20 || !interfaceSelect.value;
     targets.forEach((target) => { target.ui.remove.disabled = running; });
@@ -191,6 +210,8 @@
       label: interfaceName(selected),
       baseline: null,
       points: [],
+      peakDownload: 0,
+      peakUpload: 0,
       hoverAt: null,
       chartState: null,
       lastError: "",
@@ -202,6 +223,43 @@
     updateHistoryControls();
     setStatus(`Added ${target.hostName} / ${target.label}. Select another host or interface, or start monitoring.`, "success");
     drawChart(target);
+  };
+
+  const restoreTargets = (configuredTargets) => {
+    targetList.replaceChildren();
+    targets.clear();
+    (configuredTargets || []).forEach((configured) => {
+      const interfaceIndex = Number(configured.interface_index);
+      const hostName = String(configured.host_name || "");
+      const key = targetKey(hostName, interfaceIndex);
+      const target = {
+        key,
+        hostName,
+        hostAddress: String(configured.host_address || ""),
+        interface: {
+          index: interfaceIndex,
+          name: String(configured.interface_label || `Interface ${interfaceIndex}`),
+          description: String(configured.interface_description || ""),
+          alias: String(configured.interface_alias || ""),
+          oper_status: String(configured.interface_oper_status || "unknown"),
+          speed_bps: Number(configured.interface_speed_bps) || null,
+        },
+        label: String(configured.interface_label || `Interface ${interfaceIndex}`),
+        baseline: null,
+        points: [],
+        peakDownload: 0,
+        peakUpload: 0,
+        hoverAt: null,
+        chartState: null,
+        lastError: "",
+        ui: null,
+      };
+      targets.set(key, target);
+      targetList.append(createTargetCard(target));
+    });
+    updateSetControls();
+    updateHistoryControls();
+    drawAllCharts();
   };
 
   const removeTarget = (key) => {
@@ -242,7 +300,11 @@
     };
   };
 
-  const applySample = (target, sample) => {
+  const applySample = (
+    target,
+    sample,
+    {draw = true, trim = true} = {},
+  ) => {
     const currentInput = BigInt(sample.input_octets);
     const currentOutput = BigInt(sample.output_octets);
     const ui = target.ui;
@@ -273,21 +335,25 @@
     const uploadRate = Number(inputDelta) * 8 / elapsed;
     const speed = sample.speed_bps || target.interface.speed_bps || null;
     target.points.push({at: sample.sampled_at_ms, download: downloadRate, upload: uploadRate});
-    if (target.points.length > MAX_POINTS) target.points.splice(0, target.points.length - MAX_POINTS);
+    if (trim && target.points.length > MAX_POINTS) {
+      target.points.splice(0, target.points.length - MAX_POINTS);
+    }
     ui.download.value.textContent = formatRate(downloadRate);
     ui.download.secondary.textContent = formatPercent(downloadRate, speed);
     ui.upload.value.textContent = formatRate(uploadRate);
     ui.upload.secondary.textContent = formatPercent(uploadRate, speed);
-    const peakDownload = Math.max(...target.points.map((point) => point.download));
-    const peakUpload = Math.max(...target.points.map((point) => point.upload));
-    ui.peaks.value.textContent = `${formatRate(peakDownload)} down / ${formatRate(peakUpload)} up`;
+    target.peakDownload = Math.max(target.peakDownload || 0, downloadRate);
+    target.peakUpload = Math.max(target.peakUpload || 0, uploadRate);
+    ui.peaks.value.textContent = `${formatRate(target.peakDownload)} down / ${formatRate(target.peakUpload)} up`;
     ui.empty.hidden = true;
-    drawChart(target);
+    if (draw) drawChart(target);
   };
 
   const resetTarget = (target) => {
     target.baseline = null;
     target.points = [];
+    target.peakDownload = 0;
+    target.peakUpload = 0;
     target.hoverAt = null;
     target.chartState = null;
     target.lastError = "";
@@ -521,57 +587,75 @@
 
   const schedulePoll = () => {
     if (!running) return;
-    const intervalMs = Number(intervalSelect.value) * 1000;
     window.clearTimeout(timer);
-    timer = window.setTimeout(poll, intervalMs);
+    timer = window.setTimeout(poll, document.hidden ? 5000 : 1000);
   };
 
   const poll = async () => {
-    if (!running || pollInFlight) return;
+    if (!activeSession || pollInFlight) return;
     pollInFlight = true;
-    const entries = [...targets.values()];
     pollController = new AbortController();
-    let successes = 0;
-    let failures = 0;
     try {
-      const round = await postJson(
-        root.dataset.samplesUrl,
-        {targets: entries.map(samplePayload)},
-        pollController.signal,
-      );
-      (round.results || []).forEach((result, index) => {
-        const target = entries[index];
-        if (!target) return;
-        if (result.status === "success") {
-          successes += 1;
-          applySample(target, result.sample);
-        } else {
-          failures += 1;
-          target.lastError = result.error || "Polling failed.";
-          target.ui.empty.hidden = false;
-          target.ui.empty.textContent = target.lastError;
+      const detail = await getJson(activeSession.detail_url, pollController.signal);
+      activeSession = detail.session;
+      running = activeSession.state === "running";
+      let hasMore = true;
+      while (hasMore) {
+        const separator = activeSession.samples_url.includes("?") ? "&" : "?";
+        const page = await getJson(
+          `${activeSession.samples_url}${separator}after=${sampleCursor}&limit=10000`,
+          pollController.signal,
+        );
+        (page.samples || []).forEach((record) => {
+          const target = targets.get(record.target_key);
+          if (!target) return;
+          if (record.status === "success" && record.sample) {
+            applySample(target, record.sample, {draw: false, trim: false});
+          } else {
+            target.lastError = record.error || "Polling failed.";
+            target.ui.empty.hidden = false;
+            target.ui.empty.textContent = target.lastError;
+          }
+        });
+        sampleCursor = Number(page.next_after || sampleCursor);
+        hasMore = Boolean(page.has_more);
+      }
+      targets.forEach((target) => {
+        if (target.points.length > MAX_POINTS) {
+          target.points.splice(0, target.points.length - MAX_POINTS);
         }
       });
     } catch (error) {
       if (error.name !== "AbortError") {
-        failures = entries.length;
-        entries.forEach((target) => {
-          target.lastError = error.message;
-          target.ui.empty.hidden = false;
-          target.ui.empty.textContent = error.message;
-        });
+        setStatus(error.message, "error");
       }
     } finally {
       pollController = null;
       pollInFlight = false;
     }
     if (running) {
-      const detail = failures ? ` ${failures} interface(s) could not be polled.` : "";
-      setStatus(`Monitoring ${targets.size} interface(s). ${successes} responded on the latest round.${detail}`, failures ? "error" : "success");
+      if (!activeSession.rounds_completed) {
+        setStatus(`Starting persistent monitor for ${targets.size} interface(s)…`);
+      } else {
+        const successes = Number(activeSession.last_up_count || 0);
+        const failures = Math.max(0, targets.size - successes);
+        const detail = failures ? ` ${failures} interface(s) could not be polled.` : "";
+        setStatus(
+          `Monitoring ${targets.size} interface(s). ${successes} responded on the latest round.${detail}`,
+          failures ? "error" : "success",
+        );
+      }
       updateSetControls();
       updateHistoryControls();
       drawAllCharts();
       schedulePoll();
+    } else if (activeSession?.state === "error") {
+      setRunningControls(false);
+      setStatus(activeSession.last_error || "The persistent SNMP monitor stopped with an error.", "error");
+    } else if (activeSession?.state === "stopped") {
+      setRunningControls(false);
+      const samples = [...targets.values()].reduce((total, target) => total + target.points.length, 0);
+      setStatus(`Monitoring stopped. ${samples} traffic sample${samples === 1 ? "" : "s"} remain visible.`);
     }
   };
 
@@ -584,17 +668,50 @@
   };
 
   const stop = async (notify = true) => {
-    if (!running) return;
-    const payload = monitorPayload();
+    if (!running || !activeSession) return;
     running = false;
     window.clearTimeout(timer);
     pollController?.abort();
     pollController = null;
     setRunningControls(false);
     if (notify) {
-      try { await postJson(root.dataset.stopUrl, payload); } catch (_error) { /* already stopped locally */ }
-      const samples = [...targets.values()].reduce((total, target) => total + target.points.length, 0);
-      setStatus(`Monitoring stopped. ${samples} traffic sample${samples === 1 ? "" : "s"} remain visible.`);
+      try {
+        const data = await postJson(activeSession.stop_url, {});
+        activeSession = data.session;
+        const samples = [...targets.values()].reduce((total, target) => total + target.points.length, 0);
+        setStatus(`Monitoring stopped. ${samples} traffic sample${samples === 1 ? "" : "s"} remain visible.`);
+        window.TwnLiveTools?.refresh();
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    }
+  };
+
+  const activateSession = (session, {restore = false} = {}) => {
+    activeSession = session;
+    running = session.state === "running";
+    intervalSelect.value = String(session.config?.interval || session.interval || 5);
+    if (restore) {
+      sampleCursor = 0;
+      historyEndAt = null;
+      restoreTargets(session.config?.targets || []);
+    }
+    setRunningControls(running);
+    if (running) schedulePoll();
+  };
+
+  const restoreSession = async (sessionId) => {
+    setStatus("Restoring persistent SNMP bandwidth monitor…");
+    const detailUrl = root.dataset.sessionUrlTemplate.replace(
+      "__SESSION__",
+      encodeURIComponent(sessionId),
+    );
+    try {
+      const data = await getJson(detailUrl);
+      activateSession(data.session, {restore: true});
+      await poll();
+    } catch (error) {
+      setStatus(error.message, "error");
     }
   };
 
@@ -631,11 +748,19 @@
 
   interfaceSelect.addEventListener("change", updateSetControls);
   addButton.addEventListener("click", addTarget);
-  intervalSelect.addEventListener("change", () => {
-    if (!running) return;
-    if (!pollInFlight) schedulePoll();
+  intervalSelect.addEventListener("change", async () => {
+    if (!running || !activeSession) return;
     const seconds = Number(intervalSelect.value);
-    setStatus(`Polling interval changed to every ${seconds} second${seconds === 1 ? "" : "s"}. Existing history was retained.`, "success");
+    try {
+      const data = await postJson(activeSession.update_url, {interval: seconds});
+      activeSession = data.session;
+      setStatus(`Polling interval changed to every ${seconds} second${seconds === 1 ? "" : "s"}. Existing history was retained.`, "success");
+      window.TwnLiveTools?.refresh();
+      if (!pollInFlight) schedulePoll();
+    } catch (error) {
+      intervalSelect.value = String(activeSession.config?.interval || activeSession.interval || 5);
+      setStatus(error.message, "error");
+    }
   });
   windowSelect.addEventListener("change", () => {
     updateHistoryControls();
@@ -666,12 +791,18 @@
   startButton.addEventListener("click", async () => {
     if (!targets.size || running) return;
     try {
-      await postJson(root.dataset.startUrl, monitorPayload());
+      const data = await postJson(root.dataset.startUrl, monitorPayload());
       targets.forEach(resetTarget);
-      running = true;
+      sampleCursor = 0;
       historyEndAt = null;
-      setRunningControls(true);
+      activateSession(data.session);
       setStatus(`Starting monitor set for ${targets.size} interface(s)…`);
+      window.history.replaceState(
+        {},
+        "",
+        `${window.location.pathname}?session=${encodeURIComponent(data.session.id)}`,
+      );
+      window.TwnLiveTools?.refresh();
       await poll();
     } catch (error) {
       setStatus(error.message, "error");
@@ -679,16 +810,35 @@
   });
   stopButton.addEventListener("click", () => stop(true));
   clearButton.addEventListener("click", clearGraphs);
-  window.addEventListener("resize", () => window.requestAnimationFrame(drawAllCharts));
-  window.addEventListener("themechange", () => window.requestAnimationFrame(drawAllCharts));
-  window.addEventListener("pagehide", () => {
-    if (!running) return;
-    const blob = new Blob([JSON.stringify(monitorPayload())], {type: "application/json"});
-    navigator.sendBeacon?.(root.dataset.stopUrl, blob);
+  minimizeButton.addEventListener("click", () => {
+    if (!activeSession || !running) return;
+    root.hidden = true;
+    minimizedPlaceholder.hidden = false;
+    window.TwnLiveTools?.collapse();
+    window.TwnLiveTools?.refresh();
+  });
+  restoreInlineButton.addEventListener("click", () => {
+    root.hidden = false;
+    minimizedPlaceholder.hidden = true;
+    drawAllCharts();
+  });
+  document.addEventListener("livetoolstopped", (event) => {
+    if (event.detail?.session?.id !== activeSession?.id) return;
     running = false;
+    activeSession.state = "stopped";
     window.clearTimeout(timer);
     pollController?.abort();
+    setRunningControls(false);
+    setStatus("Monitoring stopped from the Live tools dock.");
   });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && running && !pollInFlight) poll();
+  });
+  window.addEventListener("resize", () => window.requestAnimationFrame(drawAllCharts));
+  window.addEventListener("themechange", () => window.requestAnimationFrame(drawAllCharts));
   updateHistoryControls();
   updateSetControls();
+  if (root.dataset.requestedSession) {
+    restoreSession(root.dataset.requestedSession);
+  }
 })();
