@@ -167,13 +167,15 @@ class UIComponentTests(unittest.TestCase):
             TEMPLATE_ROOT.parent / "static" / "ping-tool.js"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("const visiblePollIntervalMs = 500;", script)
+        self.assertIn("const visiblePollIntervalMs = 250;", script)
         self.assertIn("const hiddenPollIntervalMs = 5_000;", script)
         self.assertIn(
             "document.hidden ? hiddenPollIntervalMs : visiblePollIntervalMs",
             script,
         )
         self.assertNotIn("setTimeout(pollSession, 2_000)", script)
+        self.assertNotIn("fetch(activeSession.detail_url", script)
+        self.assertIn("if (data.session) activeSession = data.session;", script)
 
     def test_snmp_monitor_restores_from_persistent_live_tool_samples(self) -> None:
         template = (
@@ -189,6 +191,10 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("restoreSession(root.dataset.requestedSession)", script)
         self.assertIn("window.TwnLiveTools?.refresh()", script)
         self.assertNotIn('window.addEventListener("pagehide"', script)
+        self.assertIn("const visiblePollIntervalMs = 250;", script)
+        self.assertIn("const hiddenPollIntervalMs = 5_000;", script)
+        self.assertNotIn("getJson(activeSession.detail_url", script)
+        self.assertIn("activeSession = page.session;", script)
 
     def test_port_scanner_profile_columns_share_aligned_rows(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

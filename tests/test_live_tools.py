@@ -114,6 +114,8 @@ class LiveToolStoreTests(unittest.TestCase):
         )
         self.assertEqual(len(page["samples"]), 2)
         self.assertEqual(page["samples"][0]["label"], "Loopback")
+        self.assertEqual(page["session"]["rounds_completed"], 1)
+        self.assertEqual(page["session"]["config"]["interval"], 2)
         detail = self.store.get_session(
             str(session["id"]), user_id="operator-1"
         )
@@ -129,6 +131,80 @@ class LiveToolStoreTests(unittest.TestCase):
         )
         self.assertEqual(updated["revision"], 2)
         self.assertEqual(updated["config"]["interval"], 5)
+
+    def test_round_deadlines_stay_anchored_without_replaying_long_pauses(self) -> None:
+        session = self.create_session()
+        session_id = str(session["id"])
+
+        def set_deadline(value: float) -> None:
+            with self.store._connect() as connection:
+                connection.execute(
+                    """
+                    UPDATE live_tool_sessions
+                    SET next_run_at = ?, busy_until = NULL
+                    WHERE id = ?
+                    """,
+                    (value, session_id),
+                )
+
+        set_deadline(1_000.0)
+        with patch("twn_toolkit.live_tools.time.time", return_value=1_000.4):
+            self.assertTrue(
+                self.store.record_ping_round(
+                    session_id,
+                    revision=int(session["revision"]),
+                    sampled_at=1_000.2,
+                    duration_ms=200.0,
+                    engine="ping",
+                    results=[],
+                )
+            )
+        detail = self.store.get_session(session_id, user_id="operator-1")
+        self.assertEqual(detail["next_run_at"], 1_002.0)
+
+        set_deadline(1_000.0)
+        with patch("twn_toolkit.live_tools.time.time", return_value=1_002.2):
+            self.store.record_ping_round(
+                session_id,
+                revision=int(session["revision"]),
+                sampled_at=1_000.0,
+                duration_ms=2_200.0,
+                engine="ping",
+                results=[],
+            )
+        detail = self.store.get_session(session_id, user_id="operator-1")
+        self.assertEqual(detail["next_run_at"], 1_002.2)
+
+        set_deadline(1_000.0)
+        with patch("twn_toolkit.live_tools.time.time", return_value=1_005.1):
+            self.store.record_ping_round(
+                session_id,
+                revision=int(session["revision"]),
+                sampled_at=1_005.0,
+                duration_ms=100.0,
+                engine="ping",
+                results=[],
+            )
+        detail = self.store.get_session(session_id, user_id="operator-1")
+        self.assertEqual(detail["next_run_at"], 1_007.0)
+
+    def test_worker_wait_targets_the_next_live_deadline(self) -> None:
+        session = self.create_session()
+        with self.store._connect() as connection:
+            connection.execute(
+                """
+                UPDATE live_tool_sessions
+                SET next_run_at = 1000.125, lease_expires_at = 2000,
+                    busy_until = NULL
+                WHERE id = ?
+                """,
+                (session["id"],),
+            )
+
+        with patch("twn_toolkit.live_tools.time.time", return_value=1_000.0):
+            delay = self.store.seconds_until_next_due(maximum=0.25)
+
+        self.assertAlmostEqual(delay, 0.125)
 
     def test_runner_records_a_ping_round(self) -> None:
         session = self.create_session()
@@ -230,6 +306,8 @@ class LiveToolStoreTests(unittest.TestCase):
             str(session["id"]), user_id="operator-1"
         )
         self.assertEqual(page["samples"][0]["target_key"], "Core::2")
+        self.assertEqual(page["session"]["rounds_completed"], 1)
+        self.assertEqual(page["session"]["config"]["interval"], 5)
         self.assertEqual(
             page["samples"][0]["sample"]["input_octets"],
             "9007199254740993",
@@ -311,6 +389,15 @@ class LiveToolRouteTests(unittest.TestCase):
                 self.assertEqual(
                     updated.get_json()["session"]["target_count"], 2
                 )
+
+                samples = client.get(session["samples_url"])
+                self.assertEqual(samples.status_code, 200)
+                sample_payload = samples.get_json()
+                self.assertEqual(sample_payload["samples"], [])
+                self.assertEqual(sample_payload["session"]["id"], session["id"])
+                self.assertEqual(sample_payload["session"]["interval"], 5)
+                self.assertNotIn("config", sample_payload["session"])
+                self.assertIn("samples_url", sample_payload["session"])
 
                 stopped = client.post(session["stop_url"])
                 self.assertEqual(stopped.status_code, 200)

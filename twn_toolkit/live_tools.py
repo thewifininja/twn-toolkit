@@ -335,16 +335,30 @@ class LiveToolStore:
         limit: int = 10_000,
     ) -> dict[str, Any] | None:
         limit = max(1, min(10_000, int(limit)))
+        now = time.time()
         with self._connect() as connection:
             session = connection.execute(
                 """
-                SELECT id FROM live_tool_sessions
+                SELECT * FROM live_tool_sessions
                 WHERE id = ? AND user_id = ? AND tool_key = 'ping'
                 """,
                 (session_id, user_id),
             ).fetchone()
             if not session:
                 return None
+            if (
+                session["state"] == "running"
+                and float(session["lease_expires_at"])
+                < now + LIVE_SESSION_LEASE_SECONDS / 2
+            ):
+                connection.execute(
+                    """
+                    UPDATE live_tool_sessions
+                    SET lease_expires_at = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (now + LIVE_SESSION_LEASE_SECONDS, now, session_id),
+                )
             rows = connection.execute(
                 """
                 SELECT id, host, label, sampled_at, reachable, latency_ms
@@ -355,9 +369,13 @@ class LiveToolStore:
                 """,
                 (session_id, max(0, int(after_id)), limit + 1),
             ).fetchall()
+            session = connection.execute(
+                "SELECT * FROM live_tool_sessions WHERE id = ?", (session_id,)
+            ).fetchone()
         has_more = len(rows) > limit
         rows = rows[:limit]
         return {
+            "session": self._session_from_row(session),
             "samples": [
                 {
                     "id": row["id"],
@@ -382,16 +400,30 @@ class LiveToolStore:
         limit: int = 10_000,
     ) -> dict[str, Any] | None:
         limit = max(1, min(10_000, int(limit)))
+        now = time.time()
         with self._connect() as connection:
             session = connection.execute(
                 """
-                SELECT id FROM live_tool_sessions
+                SELECT * FROM live_tool_sessions
                 WHERE id = ? AND user_id = ? AND tool_key = 'snmp_interface'
                 """,
                 (session_id, user_id),
             ).fetchone()
             if not session:
                 return None
+            if (
+                session["state"] == "running"
+                and float(session["lease_expires_at"])
+                < now + LIVE_SESSION_LEASE_SECONDS / 2
+            ):
+                connection.execute(
+                    """
+                    UPDATE live_tool_sessions
+                    SET lease_expires_at = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (now + LIVE_SESSION_LEASE_SECONDS, now, session_id),
+                )
             rows = connection.execute(
                 """
                 SELECT id, target_key, sampled_at, status, sample_json, error
@@ -402,9 +434,13 @@ class LiveToolStore:
                 """,
                 (session_id, max(0, int(after_id)), limit + 1),
             ).fetchall()
+            session = connection.execute(
+                "SELECT * FROM live_tool_sessions WHERE id = ?", (session_id,)
+            ).fetchone()
         has_more = len(rows) > limit
         rows = rows[:limit]
         return {
+            "session": self._session_from_row(session),
             "samples": [
                 {
                     "id": row["id"],
@@ -419,6 +455,26 @@ class LiveToolStore:
             "has_more": has_more,
             "next_after": rows[-1]["id"] if rows else max(0, int(after_id)),
         }
+
+    def seconds_until_next_due(self, *, maximum: float = 0.25) -> float:
+        """Return a short, precise worker wait for the next unclaimed live round."""
+        maximum = max(0.005, float(maximum))
+        now = time.time()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT MIN(next_run_at) AS next_run_at
+                FROM live_tool_sessions
+                WHERE state = 'running'
+                    AND lease_expires_at > ?
+                    AND (busy_until IS NULL OR busy_until < ?)
+                """,
+                (now, now),
+            ).fetchone()
+        next_run_at = row["next_run_at"] if row else None
+        if next_run_at is None:
+            return maximum
+        return max(0.005, min(maximum, float(next_run_at) - now))
 
     def claim_due(self, *, limit: int = 4) -> list[dict[str, Any]]:
         now = time.time()
@@ -525,7 +581,12 @@ class LiveToolStore:
                 ],
             )
             interval = max(1, min(60, int(config.get("interval", 2))))
-            next_run = max(now, sampled_at + interval)
+            next_run = self._next_run_at(
+                row,
+                sampled_at=sampled_at,
+                completed_at=now,
+                interval=interval,
+            )
             connection.execute(
                 """
                 UPDATE live_tool_sessions
@@ -631,7 +692,12 @@ class LiveToolStore:
                 records,
             )
             interval = max(1, min(60, int(config.get("interval", 5))))
-            next_run = max(now, sampled_at + interval)
+            next_run = self._next_run_at(
+                row,
+                sampled_at=sampled_at,
+                completed_at=now,
+                interval=interval,
+            )
             last_error = ""
             if successes < len(results):
                 failures = len(results) - successes
@@ -774,6 +840,7 @@ class LiveToolStore:
             "timeout": config.get("timeout"),
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
+            "next_run_at": row["next_run_at"],
             "last_round_at": row["last_round_at"],
             "last_duration_ms": row["last_duration_ms"],
             "last_engine": row["last_engine"],
@@ -787,6 +854,20 @@ class LiveToolStore:
         if include_config:
             session["config"] = config
         return session
+
+    @staticmethod
+    def _next_run_at(
+        row: sqlite3.Row,
+        *,
+        sampled_at: float,
+        completed_at: float,
+        interval: int,
+    ) -> float:
+        """Keep a stable cadence without replaying missed rounds after a long pause."""
+        scheduled_at = float(row["next_run_at"])
+        if sampled_at - scheduled_at >= interval:
+            scheduled_at = sampled_at
+        return max(completed_at, scheduled_at + interval)
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:

@@ -120,6 +120,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
         )
         if page is None:
             return jsonify({"error": "Live ping session not found."}), 404
+        page["session"] = public_live_session(page["session"])
         return jsonify(page)
 
     @tools_bp.post("/ping/sessions/<session_id>/targets")

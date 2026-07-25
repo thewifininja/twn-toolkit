@@ -376,6 +376,13 @@ class SNMPToolTests(unittest.TestCase):
             samples = client.get(live_session["samples_url"])
             self.assertEqual(samples.status_code, 200)
             self.assertEqual(samples.get_json()["samples"], [])
+            self.assertEqual(
+                samples.get_json()["session"]["id"], live_session["id"]
+            )
+            self.assertEqual(
+                samples.get_json()["session"]["interval"], 10
+            )
+            self.assertNotIn("config", samples.get_json()["session"])
             self.assertEqual(client.post(live_session["stop_url"]).status_code, 200)
             self.assertEqual(
                 client.post(

@@ -55,13 +55,14 @@
   let lockedViewEnd = null;
   let activeHostsSource = "";
   let activeHosts = new Set();
+  let renderFrame = null;
   const history = new Map();
   const hostViews = new Map();
   const graphViews = new Map();
   const selectedHosts = new Set();
   const profileStorageKey = "twn:ping-profile";
   const historySampleBudget = 500_000;
-  const visiblePollIntervalMs = 500;
+  const visiblePollIntervalMs = 250;
   const hiddenPollIntervalMs = 5_000;
   const chartTooltip = document.createElement("div");
   chartTooltip.className = "ping-chart-tooltip";
@@ -321,12 +322,6 @@
     if (!activeSession || pollInFlight) return;
     pollInFlight = true;
     try {
-      const response = await fetch(activeSession.detail_url, {
-        headers: {"Accept": "application/json"},
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Live ping status could not be loaded.");
-      activeSession = data.session;
       await loadNewSamples();
       updateSessionStatus();
       if (activeSession.state !== "running") {
@@ -363,6 +358,7 @@
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Ping history could not be loaded.");
+      if (data.session) activeSession = data.session;
       const samples = Array.isArray(data.samples) ? data.samples : [];
       if (samples.length) {
         ingestSamples(samples);
@@ -390,7 +386,15 @@
     [...rounds.entries()].forEach(([sampledAt, results]) => {
       renderResults(results, new Date(Number(sampledAt) * 1000), true);
     });
-    refreshRenderedResults();
+    scheduleRenderedResults();
+  }
+
+  function scheduleRenderedResults() {
+    if (renderFrame !== null) return;
+    renderFrame = window.requestAnimationFrame(() => {
+      renderFrame = null;
+      refreshRenderedResults();
+    });
   }
 
   async function stopPingRun() {
@@ -474,8 +478,20 @@
     const duration = Number.isFinite(durationMs)
       ? `${(durationMs / 1000).toFixed(2)}s`
       : "an unknown duration";
-    const completedAt = new Date(Number(activeSession.last_round_at) * 1000);
-    status.textContent = `Last round completed in ${duration} using ${engine} at ${completedAt.toLocaleTimeString()}. This run can be safely minimized.`;
+    const completedAt = new Date(
+      Number(activeSession.last_round_at) * 1000
+      + (Number.isFinite(durationMs) ? durationMs : 0)
+    );
+    const intervalSeconds = Number(
+      activeSession.config?.interval || activeSession.interval || 2
+    );
+    const constrained = Number.isFinite(durationMs)
+      && Number.isFinite(intervalSeconds)
+      && durationMs >= intervalSeconds * 1000;
+    const cadenceNote = constrained
+      ? ` The ${duration} round exceeded the ${intervalSeconds}s target; lower the ping timeout for a true ${intervalSeconds}-second cadence.`
+      : "";
+    status.textContent = `Last round completed in ${duration} using ${engine} at ${completedAt.toLocaleTimeString()}.${cadenceNote} This run can be safely minimized.`;
   }
 
   async function validateTargets(source) {
@@ -1225,8 +1241,8 @@
       activateSession(data.session, {resetHistory: true});
       await loadNewSamples();
       updateSessionStatus();
-      if (data.session.state === "running") pollSession();
-      else markSessionStopped(data.session.last_error || `Session ${data.session.state}.`);
+      if (activeSession.state === "running") pollSession();
+      else markSessionStopped(activeSession.last_error || `Session ${activeSession.state}.`);
     } catch (error) {
       status.textContent = error.message;
       startButton.disabled = false;

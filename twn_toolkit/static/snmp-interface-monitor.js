@@ -35,7 +35,10 @@
   let activeSession = null;
   let sampleCursor = 0;
   let historyEndAt = null;
+  let renderFrame = null;
   const MAX_POINTS = 10000;
+  const visiblePollIntervalMs = 250;
+  const hiddenPollIntervalMs = 5_000;
 
   if (!minimizeButton || !minimizedPlaceholder || !restoreInlineButton) return;
 
@@ -585,10 +588,21 @@
 
   const drawAllCharts = () => targets.forEach(drawChart);
 
+  const scheduleChartDraw = () => {
+    if (renderFrame !== null) return;
+    renderFrame = window.requestAnimationFrame(() => {
+      renderFrame = null;
+      drawAllCharts();
+    });
+  };
+
   const schedulePoll = () => {
     if (!running) return;
     window.clearTimeout(timer);
-    timer = window.setTimeout(poll, document.hidden ? 5000 : 1000);
+    timer = window.setTimeout(
+      poll,
+      document.hidden ? hiddenPollIntervalMs : visiblePollIntervalMs,
+    );
   };
 
   const poll = async () => {
@@ -596,9 +610,6 @@
     pollInFlight = true;
     pollController = new AbortController();
     try {
-      const detail = await getJson(activeSession.detail_url, pollController.signal);
-      activeSession = detail.session;
-      running = activeSession.state === "running";
       let hasMore = true;
       while (hasMore) {
         const separator = activeSession.samples_url.includes("?") ? "&" : "?";
@@ -606,6 +617,10 @@
           `${activeSession.samples_url}${separator}after=${sampleCursor}&limit=10000`,
           pollController.signal,
         );
+        if (page.session) {
+          activeSession = page.session;
+          running = activeSession.state === "running";
+        }
         (page.samples || []).forEach((record) => {
           const target = targets.get(record.target_key);
           if (!target) return;
@@ -640,14 +655,23 @@
         const successes = Number(activeSession.last_up_count || 0);
         const failures = Math.max(0, targets.size - successes);
         const detail = failures ? ` ${failures} interface(s) could not be polled.` : "";
+        const durationMs = Number(activeSession.last_duration_ms);
+        const intervalSeconds = Number(
+          activeSession.config?.interval || activeSession.interval || 5
+        );
+        const cadenceNote = Number.isFinite(durationMs)
+          && Number.isFinite(intervalSeconds)
+          && durationMs >= intervalSeconds * 1000
+          ? ` The latest ${(durationMs / 1000).toFixed(2)}s round exceeded the ${intervalSeconds}s target; increase the interval or shorten the saved host timeout/retries.`
+          : "";
         setStatus(
-          `Monitoring ${targets.size} interface(s). ${successes} responded on the latest round.${detail}`,
+          `Monitoring ${targets.size} interface(s). ${successes} responded on the latest round.${detail}${cadenceNote}`,
           failures ? "error" : "success",
         );
       }
       updateSetControls();
       updateHistoryControls();
-      drawAllCharts();
+      scheduleChartDraw();
       schedulePoll();
     } else if (activeSession?.state === "error") {
       setRunningControls(false);
