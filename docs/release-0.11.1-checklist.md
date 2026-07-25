@@ -21,19 +21,19 @@
 - [x] Build the v0.11.1 bundle from the release-preparation commit and verify its
   internal manifest and external SHA-256 checksum.
 - [x] Pass the complete local pytest suite and release-specific metadata tests.
-- [ ] Pass pull-request CI on Ubuntu 3.10, Ubuntu 3.13, macOS 3.13, repository
+- [x] Pass pull-request CI on Ubuntu 3.10, Ubuntu 3.13, macOS 3.13, repository
   checks, and the dependency audit.
-- [ ] After approval and squash merge, pass merged-main CI before creating the
+- [x] After approval and squash merge, pass merged-main CI before creating the
   tag.
-- [ ] Create and push the exact annotated `v0.11.1` tag only after every
+- [x] Create and push the exact annotated `v0.11.1` tag only after every
   preceding gate is complete and the project owner explicitly approves it.
-- [ ] Pass tag CI/version validation and publish the GitHub release.
-- [ ] Verify the release contains `twn-toolkit-v0.11.1.zip` and
+- [x] Pass tag CI/version validation and publish the GitHub release.
+- [x] Verify the release contains `twn-toolkit-v0.11.1.zip` and
   `twn-toolkit-v0.11.1.zip.sha256` before testing production discovery.
-- [ ] From a production v0.11.0 installation, discover and install v0.11.1;
+- [x] From a production v0.11.0 installation, discover and install v0.11.1;
   verify recovery-point creation, web/scheduler/supervisor health, enabled
   services, audit history, and upgrade status after restart.
-- [ ] Exercise rollback to the matched v0.11.0 recovery point and confirm the
+- [x] Exercise rollback to the matched v0.11.0 recovery point and confirm the
   prior code and instance data return healthy.
 
 Do not tag or publish from this preparation branch. The project owner explicitly
