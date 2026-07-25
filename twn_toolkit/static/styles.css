@@ -6597,10 +6597,123 @@ button.compact,
   margin-top: 0;
 }
 
+.packet-capture-save {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.packet-capture-save select {
+  min-height: 40px;
+  min-width: 11rem;
+  width: auto;
+}
+
+.packet-viewer {
+  border-top: 1px solid var(--line);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.packet-viewer > summary {
+  background: var(--action-secondary);
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 800;
+  list-style: none;
+  min-height: 40px;
+  padding: 10px 14px;
+}
+
+.packet-viewer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.packet-viewer > summary:hover {
+  background: var(--action-secondary-hover);
+}
+
+.packet-viewer > summary::after {
+  content: "▾";
+  font-size: 0.8rem;
+  margin-left: 0.55rem;
+  transition: transform 120ms ease;
+}
+
+.packet-viewer[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.packet-viewer-body {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 1rem;
+}
+
+.packet-viewer-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.packet-viewer-head p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.packet-viewer .table-scroll {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  max-height: 30rem;
+  overflow: auto;
+}
+
+.packet-viewer-table {
+  min-width: 760px;
+}
+
+.packet-viewer-table thead th {
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.packet-viewer-table td strong,
+.packet-viewer-table td small {
+  display: block;
+}
+
+.packet-viewer-table td small {
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+.packet-viewer-table th:first-child,
+.packet-viewer-table td:first-child,
+.packet-viewer-table th:last-child,
+.packet-viewer-table td:last-child {
+  white-space: nowrap;
+}
+
+.packet-capture-stored-row .packet-capture-actions {
+  margin-top: 1rem;
+}
+
 @media (max-width: 720px) {
   .packet-capture-primary-grid,
   .packet-capture-stats {
     grid-template-columns: 1fr;
+  }
+
+  .packet-capture-save,
+  .packet-capture-save select {
+    width: 100%;
   }
 }
 

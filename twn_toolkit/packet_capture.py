@@ -606,6 +606,7 @@ class PacketCaptureStore:
         item["downloadable"] = (
             item["status"] in {"completed", "stopped"} and item["size_bytes"] >= 24
         )
+        item["viewable"] = item["active"] or item["size_bytes"] >= 24
         item["created_display"] = datetime.fromtimestamp(
             float(item["created_at"])
         ).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")

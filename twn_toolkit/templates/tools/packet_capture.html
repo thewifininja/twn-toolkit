@@ -78,6 +78,7 @@
           data-capture-row
           data-capture-active="{{ 'true' if capture.active else 'false' }}"
           data-status-url="{{ url_for('tools.packet_capture_status', capture_id=capture.id) }}"
+          data-packets-url="{{ url_for('tools.inspect_captured_packets', capture_id=capture.id) }}"
         >
           <div class="packet-capture-row-head">
             <div>
@@ -97,11 +98,36 @@
             <form method="post" action="{{ url_for('tools.stop_packet_capture', capture_id=capture.id) }}" data-capture-stop {% if not capture.active %}hidden{% endif %}>
               <button class="danger secondary" type="submit">Stop capture</button>
             </form>
-            <a class="button secondary" href="{{ url_for('tools.download_packet_capture', capture_id=capture.id) }}" data-capture-download {% if not capture.downloadable %}hidden{% endif %}>Download PCAP</a>
+            <a class="button-link secondary" href="{{ url_for('tools.download_packet_capture', capture_id=capture.id) }}" data-capture-download {% if not capture.downloadable %}hidden{% endif %}>Download PCAP</a>
+            {% if can_use_datastore %}
+              <form class="packet-capture-save" method="post" action="{{ url_for('tools.save_packet_capture', capture_id=capture.id) }}" data-capture-save {% if not capture.downloadable %}hidden{% endif %}>
+                <select id="capture-destination-{{ capture.id }}" name="destination" aria-label="Datastore destination folder">
+                  {% for folder in datastore_folders %}<option value="{{ folder.path }}">{{ folder.name }}</option>{% endfor %}
+                </select>
+                <button class="secondary" type="submit">Save to datastore</button>
+              </form>
+            {% endif %}
             <form method="post" action="{{ url_for('tools.delete_packet_capture', capture_id=capture.id) }}" data-capture-delete {% if capture.active %}hidden{% endif %} onsubmit="return confirm('Delete this retained packet capture?');">
               <button class="danger secondary" type="submit">Delete</button>
             </form>
           </div>
+          <details class="packet-viewer" data-pcap-viewer {% if not capture.viewable %}hidden{% endif %}>
+            <summary>Inspect packet headers</summary>
+            <div class="packet-viewer-body">
+              <div class="packet-viewer-head">
+                <p data-pcap-viewer-status>Open the viewer to load packet summaries.</p>
+                <button class="secondary" type="button" data-pcap-viewer-refresh>Refresh</button>
+              </div>
+              <div class="table-scroll" data-pcap-viewer-table hidden>
+                <table class="packet-viewer-table">
+                  <thead><tr><th># / time</th><th>Source</th><th>Destination</th><th>Protocol</th><th>Length</th></tr></thead>
+                  <tbody data-pcap-viewer-rows></tbody>
+                </table>
+              </div>
+              <div class="button-row"><button class="secondary" type="button" data-pcap-viewer-more hidden>Load more</button></div>
+              <p class="field-note">Header summary only. Packet payloads are not displayed.</p>
+            </div>
+          </details>
         </article>
       {% endfor %}
     </div>
@@ -112,6 +138,62 @@
     </div>
   {% endif %}
 </section>
+
+{% if can_use_datastore %}
+<section class="panel">
+  <div class="panel-head packet-capture-history-head">
+    <div>
+      <h2>Stored packet captures</h2>
+      <p>Inspect PCAP files saved or uploaded to the Local Datastore.</p>
+    </div>
+    <a class="button-link secondary" href="{{ url_for('local_datastore') }}">Open datastore</a>
+  </div>
+
+  {% if datastore_files %}
+    <div class="packet-capture-list">
+      {% for item in datastore_files %}
+        <article class="packet-capture-row packet-capture-stored-row">
+          <div class="packet-capture-row-head">
+            <div>
+              <strong>{{ item.name }}</strong>
+              <small>{{ item.path }} · {{ item.modified_display }} · {{ item.size_display }}</small>
+            </div>
+          </div>
+          <div class="button-row packet-capture-actions">
+            <a class="button-link secondary" href="{{ url_for('download_datastore_file', path=item.path) }}">Download PCAP</a>
+          </div>
+          <details
+            class="packet-viewer"
+            data-pcap-viewer
+            data-packets-url="{{ url_for('tools.inspect_datastore_packets', path=item.path) }}"
+          >
+            <summary>Inspect packet headers</summary>
+            <div class="packet-viewer-body">
+              <div class="packet-viewer-head">
+                <p data-pcap-viewer-status>Open the viewer to load packet summaries.</p>
+                <button class="secondary" type="button" data-pcap-viewer-refresh>Refresh</button>
+              </div>
+              <div class="table-scroll" data-pcap-viewer-table hidden>
+                <table class="packet-viewer-table">
+                  <thead><tr><th># / time</th><th>Source</th><th>Destination</th><th>Protocol</th><th>Length</th></tr></thead>
+                  <tbody data-pcap-viewer-rows></tbody>
+                </table>
+              </div>
+              <div class="button-row"><button class="secondary" type="button" data-pcap-viewer-more hidden>Load more</button></div>
+              <p class="field-note">Header summary only. Packet payloads are not displayed.</p>
+            </div>
+          </details>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <h3>No PCAP files in the datastore</h3>
+      <p>Save a completed capture here or upload a .pcap, .pcapng, or .cap file through Local Datastore.</p>
+    </div>
+  {% endif %}
+</section>
+{% endif %}
 
 <script src="{{ url_for('static', filename='packet-capture.js', v=app_version) }}"></script>
 {% endblock %}

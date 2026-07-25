@@ -10,6 +10,10 @@
   participate in run ZIP download, deletion, and retention.
 - [x] Standalone and automated PCAP storage shares the artifact quota and
   minimum free-space reserve.
+- [x] Live, completed, and datastore PCAP inspection exposes bounded header
+  summaries without rendering packet payloads.
+- [x] Completed captures copy into a selected datastore folder without tying
+  the retained copy to capture-history deletion.
 
 ## Product and compatibility
 

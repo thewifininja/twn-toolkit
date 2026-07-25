@@ -254,11 +254,12 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
   <div class="section-head"><div><span class="eyebrow">Passive diagnostics</span><h2>Packet Capture</h2></div><a href="#help-contents">Back to contents</a></div>
   <details class="help-topic" open><summary>Standalone captures and SPAN interfaces</summary><div class="help-topic-body">
     <p>Packet Capture runs <code>tcpdump</code> on an interface local to the toolkit server. A common deployment connects a secondary server interface to a managed switch SPAN or mirror destination while the primary interface remains dedicated to toolkit management and active health checks.</p>
-    <p>Choose an interface, optional BPF filter, duration, packet limit, maximum file size, snapshot length, and promiscuous mode. The first reached limit stops the capture. The background worker continues after navigation, and the page can stop, download, or delete retained PCAP files.</p>
+    <p>Choose an interface, optional BPF filter, duration, packet limit, maximum file size, snapshot length, and promiscuous mode. The first reached limit stops the capture. The background worker continues after navigation, and the page can stop, download, save to Local Datastore, or delete retained PCAP files.</p>
+    <p>Open <strong>Inspect packet headers</strong> during or after capture to see bounded source and destination MAC/IP/port, protocol, VLAN, timestamp, and length summaries without payload contents. The same page can inspect <code>.pcap</code>, <code>.pcapng</code>, and <code>.cap</code> files already stored in Local Datastore.</p>
   </div></details>
   <details class="help-topic"><summary>Permissions, storage, and sensitive traffic</summary><div class="help-topic-body">
     <p>The toolkit service account must be allowed to capture packets through root, Linux capabilities, or platform-specific BPF access. The page reports missing <code>tcpdump</code>; a permission problem appears as a failed capture with the exact safe error.</p>
-    <p>Only one capture may run on an interface at a time across standalone and automation use. Standalone and automation PCAPs share the configured automation-artifact quota and minimum free-disk reserve. PCAPs may contain credentials and payload data, are excluded from profile backups, and should be deleted when no longer needed.</p>
+    <p>Only one capture may run on an interface at a time across standalone and automation use. Standalone and automation PCAPs share the configured automation-artifact quota and minimum free-disk reserve. Datastore copies follow the separate datastore quota and remain after capture-history deletion. PCAPs may contain credentials and payload data, are excluded from profile backups, and should be deleted when no longer needed.</p>
   </div></details>
 </section>
 

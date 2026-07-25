@@ -62,6 +62,18 @@ class LocalDatastoreTests(unittest.TestCase):
         self.assertFalse((self.store.root / "large.bin").exists())
         self.assertEqual(list(self.store.root.glob(".upload-*")), [])
 
+    def test_suffix_search_is_recursive_case_insensitive_and_bounded(self) -> None:
+        self.store.create_folder("", "captures")
+        self.store.save_upload("captures", "one.PCAP", io.BytesIO(b"one"))
+        self.store.save_upload("captures", "two.pcapng", io.BytesIO(b"two"))
+        self.store.save_upload("", "notes.txt", io.BytesIO(b"notes"))
+        matches = self.store.files_with_suffixes({".pcap", ".pcapng"})
+        self.assertEqual(
+            {item["path"] for item in matches},
+            {"captures/one.PCAP", "captures/two.pcapng"},
+        )
+        self.assertEqual(len(self.store.files_with_suffixes({".pcap"}, limit=1)), 1)
+
     def test_bulk_move_and_delete_validate_before_changing_files(self) -> None:
         self.store.create_folder("", "incoming")
         self.store.create_folder("", "archive")

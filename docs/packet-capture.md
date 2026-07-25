@@ -29,6 +29,20 @@ The first reached limit stops a capture. Only one capture may own an interface
 at a time, including across standalone and automation captures. Standalone
 captures run in a dedicated process and continue through browser navigation.
 
+## Packet viewer
+
+Open **Inspect packet headers** on a running or completed capture to review a
+bounded table of capture time, source and destination MAC/IP/port, protocol,
+VLAN identifiers, and captured/wire length. Running viewers poll for new
+complete packet records. The viewer deliberately does not render payload
+contents or attempt full protocol dissection.
+
+The same page lists `.pcap`, `.pcapng`, and `.cap` files already present in
+Local Datastore for basic inspection. This stored-file section and Save to
+datastore controls require access to both Packet Capture and Local Datastore.
+Large files are read in bounded pages; use Wireshark or another dedicated
+analyzer for filtering, streams, payloads, and deep decoding.
+
 ## Permissions
 
 `tcpdump` must be installed and available on the toolkit service `PATH`. The
@@ -48,6 +62,10 @@ Standalone PCAPs live beneath `instance/packet_captures/`. Automation PCAPs
 move into the existing `instance/automation_artifacts/` run directory.
 Together they use the automation-artifact quota and minimum free-disk reserve.
 Neither form is included in profile backups.
+
+**Save to datastore** copies a completed standalone PCAP into the selected
+datastore folder. The copy then follows the datastore quota and lifecycle and
+is independent of capture-history deletion.
 
 Packet captures can contain credentials, session tokens, personal data, and
 application payloads. Grant the tool only to authorized operators and delete
