@@ -177,6 +177,24 @@ class UIComponentTests(unittest.TestCase):
         self.assertNotIn("fetch(activeSession.detail_url", script)
         self.assertIn("if (data.session) activeSession = data.session;", script)
 
+    def test_live_ping_graph_selection_persists_for_each_session(self) -> None:
+        script = (
+            TEMPLATE_ROOT.parent / "static" / "ping-tool.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('const graphSelectionStoragePrefix = "twn:ping-graphs:";', script)
+        self.assertIn("restoreGraphSelection();", script)
+        self.assertIn("persistGraphSelection();", script)
+        self.assertIn(
+            "if (selectedHosts.has(result.host) && !graphViews.has(result.host))",
+            script,
+        )
+        self.assertIn("selectGraph(result.host, {persist: false});", script)
+        self.assertIn(
+            "sessionStorage.setItem(storageKey, JSON.stringify(hosts));",
+            script,
+        )
+
     def test_snmp_monitor_restores_from_persistent_live_tool_samples(self) -> None:
         template = (
             TEMPLATE_ROOT / "tools" / "snmp_test.html"

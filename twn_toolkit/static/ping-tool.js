@@ -56,11 +56,13 @@
   let activeHostsSource = "";
   let activeHosts = new Set();
   let renderFrame = null;
+  let hasStoredGraphSelection = false;
   const history = new Map();
   const hostViews = new Map();
   const graphViews = new Map();
   const selectedHosts = new Set();
   const profileStorageKey = "twn:ping-profile";
+  const graphSelectionStoragePrefix = "twn:ping-graphs:";
   const historySampleBudget = 500_000;
   const visiblePollIntervalMs = 250;
   const hiddenPollIntervalMs = 5_000;
@@ -451,6 +453,7 @@
     hostViews.clear();
     graphViews.clear();
     selectedHosts.clear();
+    restoreGraphSelection();
     lockedViewEnd = null;
     followLive.checked = true;
     historyPosition.value = "1000";
@@ -459,6 +462,54 @@
     hostFilter.value = "";
     hostStatusFilter.value = "all";
     updateSelectionSummary();
+  }
+
+  function graphSelectionStorageKey() {
+    return activeSession?.id
+      ? `${graphSelectionStoragePrefix}${activeSession.id}`
+      : "";
+  }
+
+  function restoreGraphSelection() {
+    hasStoredGraphSelection = false;
+    const storageKey = graphSelectionStorageKey();
+    if (!storageKey) return;
+    try {
+      const stored = sessionStorage.getItem(storageKey);
+      if (stored === null) return;
+      const hosts = JSON.parse(stored);
+      if (!Array.isArray(hosts)) throw new Error("Invalid graph selection");
+      const validHosts = hosts.filter(
+        (host) => typeof host === "string" && activeHosts.has(host)
+      );
+      if (hosts.length && !validHosts.length) {
+        sessionStorage.removeItem(storageKey);
+        return;
+      }
+      validHosts.forEach((host) => selectedHosts.add(host));
+      hasStoredGraphSelection = true;
+      if (validHosts.length !== hosts.length) {
+        sessionStorage.setItem(storageKey, JSON.stringify(validHosts));
+      }
+    } catch (_error) {
+      try {
+        sessionStorage.removeItem(storageKey);
+      } catch (_storageError) {
+        // Monitoring remains usable when browser storage is unavailable.
+      }
+    }
+  }
+
+  function persistGraphSelection() {
+    hasStoredGraphSelection = true;
+    const storageKey = graphSelectionStorageKey();
+    if (!storageKey) return;
+    const hosts = [...selectedHosts].filter((host) => activeHosts.has(host));
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(hosts));
+    } catch (_error) {
+      // Monitoring remains usable when browser storage is unavailable.
+    }
   }
 
   function updateSessionStatus() {
@@ -553,7 +604,13 @@
       hostView.state = result.reachable ? "up" : "down";
       updateHostView(hostView);
 
-      if (hostViews.size === 1 && selectedHosts.size === 0) {
+      if (selectedHosts.has(result.host) && !graphViews.has(result.host)) {
+        selectGraph(result.host, {persist: false});
+      } else if (
+        !hasStoredGraphSelection
+        && hostViews.size === 1
+        && selectedHosts.size === 0
+      ) {
         selectGraph(result.host);
       }
       const graphView = graphViews.get(result.host);
@@ -626,17 +683,21 @@
     selectGraph(host);
   }
 
-  function selectGraph(host) {
+  function selectGraph(host, {persist = true} = {}) {
     const hostView = hostViews.get(host);
-    if (!hostView || selectedHosts.has(host)) return;
+    if (!hostView) return;
     selectedHosts.add(host);
     updateHostView(hostView);
-    const graphView = createGraphView(hostView.result);
-    graphViews.set(host, graphView);
-    graphGrid.appendChild(graphView.card);
+    let graphView = graphViews.get(host);
+    if (!graphView) {
+      graphView = createGraphView(hostView.result);
+      graphViews.set(host, graphView);
+      graphGrid.appendChild(graphView.card);
+    }
     const series = history.get(host);
     if (series) updateGraphView(graphView, hostView.result, series);
     if (hostView.state === "removed") updateGraphStatus(graphView, "removed");
+    if (persist) persistGraphSelection();
     updateSelectionSummary();
     applyHostFilters();
     updateHistoryNavigator();
@@ -649,6 +710,7 @@
     const graphView = graphViews.get(host);
     if (graphView) graphView.card.remove();
     graphViews.delete(host);
+    persistGraphSelection();
     updateSelectionSummary();
     applyHostFilters();
     updateHistoryNavigator();
