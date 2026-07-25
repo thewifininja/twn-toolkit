@@ -160,14 +160,17 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.11.1: live multi-host SNMP interface monitoring,
-  route-level audit enrichment, high-impact preview/confirmation flows,
-  representative v0.9.1 upgrade fixtures, operator rollback guidance, managed
-  installer restarts, bounded external operations, cross-origin mutation
-  protection, and dependency-audit release gates are implemented. The audit
-  policy has no pending mutating endpoints. This remains a pre-1.0 release;
-  broader real-world upgrade history, packaging, and an explicit supported 1.0
-  compatibility contract still need deliberate hardening. The 0.10.1 hotfix
+- Current milestone is 0.12.0: bounded local and routed Wake-on-LAN, persistent
+  owner-scoped Ping and SNMP interface-monitor sessions, worker-side cadence,
+  the compact Live tools footer dock, restored graph selection, and a wider
+  responsive page shell are implemented. Real Linux validation confirmed the
+  standard system-ping fallback without fping and automatic high-capacity
+  availability after fping installation and a toolkit restart. Real-device SNMP
+  monitor validation is complete. Certificate Automation remains the only
+  explicitly labeled Beta workflow. The audit policy has no pending mutating
+  endpoints. This remains a pre-1.0 release; broader real-world upgrade history,
+  packaging, and an explicit supported 1.0 compatibility contract still need
+  deliberate hardening. The 0.10.1 hotfix
   makes browser-verified same-origin mutation metadata authoritative before the
   backend Host fallback, preserving logins through aliases and proxies while
   continuing to reject cross-site mutations. The complete test command is
@@ -192,6 +195,13 @@ accepted replay frames.
   validation successfully exercised v0.11.0-to-v0.11.1 discovery and installation,
   recovery-point creation, service and audit/status checks, rollback to the matched
   v0.11.0 state, and the return to v0.11.1.
+  The 0.12.0 feature release adds a separate owner-only transient live-session
+  store without changing existing application databases, profiles, or
+  configuration. Live Ping and SNMP sessions continue through page navigation;
+  SNMP session records contain profile references and samples rather than
+  credentials. Wake-on-LAN sends are bounded and report local delivery separately
+  from optional remote ping confirmation because routed forwarding remains an
+  environmental responsibility.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.

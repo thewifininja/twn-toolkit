@@ -1,6 +1,52 @@
-APP_VERSION = "0.11.1"
+APP_VERSION = "0.12.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.12.0",
+        "date": "2026-07-25",
+        "title": "Persistent live monitoring and Wake-on-LAN workflows",
+        "summary": (
+            "Adds a bounded Wake-on-LAN sender and turns live Ping and SNMP "
+            "monitoring into durable operator workspaces that continue through "
+            "navigation, restore cleanly, and use wide screens more effectively."
+        ),
+        "groups": (
+            {
+                "title": "Wake-on-LAN",
+                "items": (
+                    "Added a grantable Wake-on-LAN tool with reusable device groups, normalized MAC-address entry, selectable IPv4 source interfaces, one to five bounded packets per device, UDP ports 7 and 9, and optional ping confirmation.",
+                    "Supports local interface broadcasts plus custom directed-broadcast or relay destinations while clearly distinguishing successful local UDP delivery from proof that a router, relay, firmware, or powered device accepted the request.",
+                    "Records secret-safe audit and activity summaries without retaining target MAC addresses or verification hosts in the audit database, and includes saved device groups in selectable profile backups.",
+                    "Placed Wake-on-LAN under Services & Protocols throughout navigation, Help, README, and Quick Start guidance.",
+                ),
+            },
+            {
+                "title": "Persistent Ping and SNMP monitoring",
+                "items": (
+                    "Added owner-scoped live-tool sessions and worker-side scheduling so Multi-Ping and SNMP interface monitoring continue while operators navigate elsewhere in the toolkit.",
+                    "Added a collapsed-by-default footer dock with rename, card-based restore, and compact stop controls; restored views reload bounded server-side history without storing SNMP credentials in the live-session database.",
+                    "Anchored polling to monotonic round deadlines, avoided replaying missed work after long pauses, and increased visible-page refresh cadence so one-second Ping and SNMP intervals render smoothly without dropping collected samples.",
+                    "Preserved selected Ping graphs across navigation and condensed each graph header into an adaptive single-row identity, statistics, state, and accessible close control.",
+                ),
+            },
+            {
+                "title": "Operator interface and field validation",
+                "items": (
+                    "Raised the shared page-content ceiling from 1180 to 1600 pixels so graphs, tables, and operational workspaces use wide displays while intentionally narrow forms retain their focused widths.",
+                    "Validated the standard system-ping fallback on Linux without fping, then confirmed that installing fping and restarting the toolkit enables high-capacity mode through the existing capability check.",
+                    "Completed real-device SNMP interface-monitor validation and retained Certificate Automation as the only explicitly labeled Beta workflow.",
+                ),
+            },
+            {
+                "title": "Compatibility and upgrade safety",
+                "items": (
+                    "Introduces no incompatible migration of existing application databases, profiles, or configuration; live monitoring uses a separate owner-only transient session store.",
+                    "Keeps Multi-Ping functional without fping and does not install system packages or request elevated privileges automatically.",
+                    "Retains the verified release-bundle, recovery-point, service validation, and rollback workflow successfully exercised by the v0.11.1 production upgrade.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.11.1",
         "date": "2026-07-17",
