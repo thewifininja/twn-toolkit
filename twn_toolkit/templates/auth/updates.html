@@ -2,67 +2,94 @@
 {% from "components/ui.html" import section_header %}
 {% block content %}
 <div class="updates-page">
-<section class="home-hero">
-  <div><p class="eyebrow">Administration</p><h1>Updates &amp; recovery</h1><p>Install verified stable releases without Git or manual tags. Every upgrade creates a matched code and instance recovery point before anything changes.</p></div>
-  <div class="home-hero-card"><span>Installed version</span><strong>v{{ installed_version }}</strong><small>Stable channel</small></div>
-</section>
+  <section class="home-hero updates-hero">
+    <div>
+      <p class="eyebrow">Administration</p>
+      <h1>Updates &amp; recovery</h1>
+      <p>Install verified releases, create matched recovery points, and move selected profile configuration between toolkit installations.</p>
+    </div>
+    <div class="home-hero-card"><span>Installed version</span><strong>v{{ installed_version }}</strong><small>Stable channel</small></div>
+  </section>
 
-{% if upgrade_status %}
-<section class="panel updates-panel">
-  {% call section_header("Most recent operation", class_name="updates-section-head") %}<span class="pill {{ 'error' if upgrade_status.error or upgrade_status.state == 'failed' else 'success' if upgrade_status.state in ['succeeded', 'backup_created', 'rolled_back'] else 'planned' }}">{{ upgrade_status.state|replace('_', ' ') }}</span>{% endcall %}
-  <div class="upgrade-operation-details">
-    <p>{{ upgrade_status.message }}</p>
-    {% if upgrade_status.error %}<div class="message error"><strong>Recorded failure</strong><p>{{ upgrade_status.error }}</p></div>{% endif %}
-    {% if upgrade_status.backup_id %}<p class="field-note">Recovery point: <code>{{ upgrade_status.backup_id }}</code></p>{% endif %}
-  </div>
-</section>
-{% endif %}
+  <nav class="admin-page-nav" aria-label="Updates and recovery categories">
+    <a class="button-link {{ 'secondary' if updates_section != 'updates' }}" href="{{ url_for('updates', section='updates') }}" {% if updates_section == 'updates' %}aria-current="page"{% endif %}>Updates</a>
+    <a class="button-link {{ 'secondary' if updates_section != 'recovery' }}" href="{{ url_for('updates', section='recovery') }}" {% if updates_section == 'recovery' %}aria-current="page"{% endif %}>Recovery points</a>
+    <a class="button-link secondary" href="{{ url_for('backup_settings') }}">Profile backups</a>
+  </nav>
 
-<section class="panel updates-panel">
-  {% call section_header("Stable releases", "Release information comes from the official public repository. The toolkit accepts only bundles with a matching SHA-256 asset and a complete internal file manifest.", class_name="updates-section-head") %}<a class="button-link secondary" href="{{ url_for('updates', check=1) }}">Check for updates</a>{% endcall %}
-  {% if release %}
-    <article class="upgrade-release-card">
-      <div><p class="eyebrow">Available</p><h3>v{{ release.version }} · {{ release.name }}</h3>{% if release.published_at %}<p class="field-note">Published {{ release.published_at[:10] }}</p>{% endif %}</div>
-      {% if release.notes %}<details><summary>Release notes</summary><pre class="upgrade-release-notes">{{ release.notes }}</pre></details>{% endif %}
-      <form method="post" action="{{ url_for('install_update') }}" class="form" data-loading-message="Downloading and validating the release bundle…">
-        <input type="hidden" name="version" value="{{ release.version }}">
-        <label class="check execution-confirm"><input type="checkbox" name="confirm_upgrade" required><span><strong>Install v{{ release.version }}</strong><small>Services will restart. A complete recovery point is created first and restored automatically if validation fails.</small></span></label>
-        <button type="submit">Download and upgrade</button>
+  {% if updates_section == 'updates' %}
+    {% if upgrade_status %}
+    <section class="panel updates-panel upgrade-status-card">
+      {% call section_header("Most recent operation", class_name="updates-section-head") %}<span class="pill {{ 'error' if upgrade_status.error or upgrade_status.state == 'failed' else 'success' if upgrade_status.state in ['succeeded', 'backup_created', 'rolled_back'] else 'planned' }}">{{ upgrade_status.state|replace('_', ' ') }}</span>{% endcall %}
+      <div class="upgrade-operation-details">
+        <p>{{ upgrade_status.message }}</p>
+        {% if upgrade_status.error %}<div class="message error"><strong>Recorded failure</strong><p>{{ upgrade_status.error }}</p></div>{% endif %}
+        {% if upgrade_status.backup_id %}<p class="field-note">Recovery point: <code>{{ upgrade_status.backup_id }}</code></p>{% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="panel updates-panel">
+      {% call section_header("Stable releases", "Release information comes from the official public repository. Only bundles with a matching SHA-256 asset and complete internal manifest are accepted.", class_name="updates-section-head") %}<a class="button-link secondary" href="{{ url_for('updates', section='updates', check=1) }}">Check for updates</a>{% endcall %}
+      {% if release %}
+        <article class="upgrade-release-card">
+          <div><p class="eyebrow">Available</p><h3>v{{ release.version }} · {{ release.name }}</h3>{% if release.published_at %}<p class="field-note">Published {{ release.published_at[:10] }}</p>{% endif %}</div>
+          {% if release.notes %}<details><summary>Release notes</summary><pre class="upgrade-release-notes">{{ release.notes }}</pre></details>{% endif %}
+          <form method="post" action="{{ url_for('install_update') }}" class="form" data-loading-message="Downloading and validating the release bundle…">
+            <input type="hidden" name="version" value="{{ release.version }}">
+            <label class="check execution-confirm"><input type="checkbox" name="confirm_upgrade" required><span><strong>Install v{{ release.version }}</strong><small>Services restart after a complete automatic recovery point is created. Failed validation restores it automatically.</small></span></label>
+            <button type="submit">Download and upgrade</button>
+          </form>
+        </article>
+      {% elif request.args.get('check') == '1' %}
+        <div class="message {{ 'error' if check_error and 'No newer stable release' not in check_error else 'info' }}">{{ check_error or 'No newer compatible stable release is available.' }}</div>
+      {% else %}<p class="side-nav-empty">Check when you are ready to contact the release service.</p>{% endif %}
+
+      <details class="updates-advanced-details">
+        <summary><span><strong>Install from a local bundle</strong><small>For disconnected hosts or a manually downloaded official release.</small></span></summary>
+        <form method="post" action="{{ url_for('upload_update_bundle') }}" enctype="multipart/form-data" class="form" data-loading-message="Uploading and validating the release bundle…">
+          <p class="field-note">Choose an official <code>twn-toolkit-vX.Y.Z.zip</code> bundle. Arbitrary ZIP files are rejected; releases that change Python dependencies may still require package-index access or a populated package cache.</p>
+          <label>Release bundle<input type="file" name="bundle" accept=".zip,application/zip" required></label>
+          <label class="check execution-confirm"><input type="checkbox" name="confirm_upgrade" required><span><strong>Install this verified bundle</strong><small>Services restart after a complete automatic recovery point is created.</small></span></label>
+          <button type="submit">Upload and upgrade</button>
+        </form>
+      </details>
+    </section>
+  {% endif %}
+
+  {% if updates_section == 'recovery' %}
+    <section class="panel updates-panel">
+      {{ section_header("Recovery points", "Restore the complete toolkit—code and instance data—as a matched pair. The five newest points are retained.", class_name="updates-section-head") }}
+      <form method="post" action="{{ url_for('create_recovery_point') }}" class="form recovery-point-form recovery-point-create" data-loading-message="Preparing a consistent recovery point…">
+        <label class="check"><input type="checkbox" name="confirm_backup" required><span><strong>Create a recovery point now</strong><small>The toolkit restarts briefly so every SQLite database and saved file is copied consistently.</small></span></label>
+        <button type="submit" class="secondary">Create recovery point</button>
       </form>
-    </article>
-  {% elif request.args.get('check') == '1' %}
-    <div class="message {{ 'error' if check_error and 'No newer stable release' not in check_error else 'info' }}">{{ check_error or 'No newer compatible stable release is available.' }}</div>
-  {% else %}<p class="side-nav-empty">Check when you are ready to contact the release service.</p>{% endif %}
-</section>
-
-<section class="panel updates-panel">
-  {{ section_header("Manual release bundle", "Use an official twn-toolkit-vX.Y.Z.zip release bundle when this host cannot reach the release API. The same manifest and version checks apply; arbitrary ZIP files are rejected. Releases that change Python dependencies may still require package-index access or a populated package cache.", class_name="updates-section-head") }}
-  <form method="post" action="{{ url_for('upload_update_bundle') }}" enctype="multipart/form-data" class="form" data-loading-message="Uploading and validating the release bundle…">
-    <label>Release bundle<input type="file" name="bundle" accept=".zip,application/zip" required></label>
-    <label class="check execution-confirm"><input type="checkbox" name="confirm_upgrade" required><span><strong>Install this verified bundle</strong><small>Services will restart after a complete automatic recovery point is created.</small></span></label>
-    <button type="submit">Upload and upgrade</button>
-  </form>
-</section>
-
-<section class="panel updates-panel">
-  {{ section_header("Profile backups", "Export or restore toolkit configuration.", class_name="updates-section-head") }}
-  <a class="button-link secondary" href="{{ url_for('backup_settings') }}">Open backup &amp; restore</a>
-</section>
-
-<section class="panel updates-panel">
-  {{ section_header("Recovery points", "Restore the entire toolkit after an upgrade. Recovery points are owner-only and the five newest are retained.", class_name="updates-section-head") }}
-  <form method="post" action="{{ url_for('create_recovery_point') }}" class="form recovery-point-form" data-loading-message="Preparing a consistent recovery point…">
-    <label class="check"><input type="checkbox" name="confirm_backup" required><span><strong>Create a recovery point now</strong><small>The toolkit restarts briefly so every SQLite database and saved file is copied consistently.</small></span></label>
-    <button type="submit" class="secondary">Create recovery point</button>
-  </form>
-  {% if recovery_points %}
-  <div class="tftp-history-list upgrade-recovery-list">
-    {% for backup in recovery_points %}
-    <article><span class="pill success">v{{ backup.from_version }}</span><div><strong>{{ backup.created_display }}</strong><small><code>{{ backup.id }}</code>{% if backup.target_version and backup.target_version != backup.from_version %} · created before v{{ backup.target_version }}{% endif %}</small></div><form method="post" action="{{ url_for('rollback_update') }}" onsubmit="return confirm('Replace current toolkit code and all instance data with this recovery point?')"><input type="hidden" name="backup_id" value="{{ backup.id }}"><label class="check"><input type="checkbox" name="confirm_rollback" required>Confirm matched restore</label><button class="danger" type="submit">Restore</button></form></article>
-    {% endfor %}
-  </div>
-  {% else %}<p class="updates-empty-state">No recovery points exist yet.</p>{% endif %}
-  <div class="message info compact-message">A restore never runs older code against newer instance data. It replaces both using the same recovery point.</div>
-</section>
+      {% if recovery_points %}
+      <div class="upgrade-recovery-cards">
+        {% for backup in recovery_points %}
+        <details class="upgrade-recovery-card">
+          <summary>
+            <span class="upgrade-recovery-summary">
+              <span class="pill success">v{{ backup.from_version }}</span>
+              <span><strong>{{ backup.created_display }}</strong><small>{% if backup.target_version and backup.target_version != backup.from_version %}Created before v{{ backup.target_version }}{% else %}Manual recovery point{% endif %}</small></span>
+            </span>
+          </summary>
+          <div class="upgrade-recovery-body">
+            <p class="field-note">Recovery point ID: <code>{{ backup.id }}</code></p>
+            <form method="post" action="{{ url_for('rollback_update') }}" onsubmit="return confirm('Replace current toolkit code and all instance data with this recovery point?')">
+              <input type="hidden" name="backup_id" value="{{ backup.id }}">
+              <label class="check"><input type="checkbox" name="confirm_rollback" required><span><strong>Confirm matched restore</strong><small>Current toolkit code and all instance data will be replaced.</small></span></label>
+              <button class="danger" type="submit">Restore recovery point</button>
+            </form>
+          </div>
+        </details>
+        {% endfor %}
+      </div>
+      {% else %}
+        <div class="empty-state updates-recovery-empty"><strong>No recovery points yet</strong><p>Create one before a risky system change or rely on the automatic point created during an upgrade.</p></div>
+      {% endif %}
+      <div class="message info compact-message">A restore never runs older code against newer instance data. Both are replaced from the same recovery point.</div>
+    </section>
+  {% endif %}
 </div>
 {% endblock %}

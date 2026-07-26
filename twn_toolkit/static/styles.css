@@ -6206,6 +6206,32 @@ button.compact,
   margin-bottom: 4px;
 }
 
+.admin-page-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: -0.35rem 0 0.25rem;
+}
+
+.admin-page-nav .button-link {
+  min-width: 9rem;
+  text-align: center;
+}
+
+.page-section-intro {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.page-section-intro h2,
+.page-section-intro p {
+  margin: 0;
+}
+
+.page-section-intro h2 {
+  font-size: 1.15rem;
+}
+
 .updates-section-head {
   align-items: flex-start;
   padding-right: 0;
@@ -6247,18 +6273,6 @@ button.compact,
   padding: 0;
 }
 
-.updates-empty-state {
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 0.86rem;
-  margin: 1.25rem 0 0;
-  padding-top: 1rem;
-}
-
-.backup-return-actions {
-  margin-top: 1rem;
-}
-
 .upgrade-release-card {
   background: var(--card-tint);
   border: 1px solid var(--line);
@@ -6290,12 +6304,136 @@ button.compact,
   white-space: pre-wrap;
 }
 
-.upgrade-recovery-list article > form {
+.upgrade-status-card {
+  border-left: 4px solid var(--accent);
+  padding-block: 1rem;
+}
+
+.updates-advanced-details {
+  border-top: 1px solid var(--line);
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+}
+
+.updates-advanced-details > summary,
+.upgrade-recovery-card > summary {
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.updates-advanced-details > summary::-webkit-details-marker,
+.upgrade-recovery-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.updates-advanced-details > summary {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.updates-advanced-details > summary::after,
+.upgrade-recovery-card > summary::after {
+  color: var(--muted);
+  content: "+";
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.updates-advanced-details[open] > summary::after,
+.upgrade-recovery-card[open] > summary::after {
+  content: "−";
+}
+
+.updates-advanced-details > summary > span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.updates-advanced-details > summary small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.updates-advanced-details > form {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.recovery-point-create {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.recovery-point-create > button {
+  justify-self: start;
+}
+
+.upgrade-recovery-cards {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.upgrade-recovery-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.upgrade-recovery-card > summary {
+  align-items: center;
+  background: var(--card-tint);
+  display: flex;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+}
+
+.upgrade-recovery-summary {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.upgrade-recovery-summary > span:last-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.upgrade-recovery-summary small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.upgrade-recovery-body {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.upgrade-recovery-body > p {
+  margin: 0;
+}
+
+.upgrade-recovery-body > form {
   align-items: end;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem;
-  justify-content: end;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.updates-recovery-empty {
+  margin-top: 1rem;
 }
 
 .loading-progress {
@@ -8088,9 +8226,14 @@ th {
     align-self: flex-start;
   }
 
-  .upgrade-recovery-list article > form {
+  .upgrade-recovery-body > form {
     align-items: flex-start;
+    flex-direction: column;
     justify-content: flex-start;
+  }
+
+  .admin-page-nav .button-link {
+    flex: 1 1 10rem;
   }
 
   .snmp-monitor-controls,
@@ -8790,20 +8933,6 @@ th {
   background: #3a2022;
   color: #ffaaa6;
 }
-.settings-jump-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .55rem;
-  margin: 0 0 1rem;
-}
-.settings-jump-nav a {
-  background: var(--panel, #fff);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: inherit;
-  padding: .45rem .8rem;
-  text-decoration: none;
-}
 .settings-organizer { display: flex; flex-direction: column; gap: 1rem; }
 .settings-organizer > * { margin-block: 0 !important; }
 .settings-server-group { order: 10; }
@@ -8815,7 +8944,6 @@ th {
 .settings-profiles-group { order: 60; }
 .settings-users-group { order: 70; }
 .settings-recovery-group { order: 80; }
-.settings-organizer .settings-grid { display: block; }
 .smtp-settings-form {
   margin-top: 1rem;
 }

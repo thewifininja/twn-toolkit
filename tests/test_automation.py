@@ -516,7 +516,7 @@ class AutomationStoreTests(unittest.TestCase):
         app = create_app(self.temp.name)
         app.testing = True
         client = app.test_client()
-        page = client.get("/settings")
+        page = client.get("/settings?section=operations")
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"Automation history retention", page.data)
         response = client.post(

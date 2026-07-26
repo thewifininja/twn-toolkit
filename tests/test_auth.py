@@ -176,9 +176,39 @@ def test_zero_idle_timeout_never_expires_session(tmp_path):
 
     assert response.status_code == 200
     assert store.idle_timeout_minutes() == 0
-    settings_page = client.get("/settings")
+    settings_page = client.get("/settings?section=accounts")
     assert b"Idle minutes (0 = never expire)" in settings_page.data
     assert b'min="0"' in settings_page.data
+
+
+def test_admin_settings_categories_only_render_the_selected_section(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+
+    system_page = client.get("/settings")
+    assert b'id="server-access"' in system_page.data
+    assert b'id="smtp-delivery"' not in system_page.data
+    assert b'id="operational-limits"' not in system_page.data
+    assert b'id="authentication-policy"' not in system_page.data
+
+    email_page = client.get("/settings?section=email")
+    assert b'id="smtp-delivery"' in email_page.data
+    assert b'id="server-access"' not in email_page.data
+
+    operations_page = client.get("/settings?section=operations")
+    assert b'id="operational-limits"' in operations_page.data
+    assert b'id="automation-retention"' in operations_page.data
+    assert b'id="server-access"' not in operations_page.data
+
+    accounts_page = client.get("/settings?section=accounts")
+    assert b'id="authentication-policy"' in accounts_page.data
+    assert b'id="access-profiles"' in accounts_page.data
+    assert b'id="users"' in accounts_page.data
+    assert b'id="server-access"' not in accounts_page.data
+
+    invalid_page = client.get("/settings?section=unknown")
+    assert b'id="server-access"' in invalid_page.data
 
 
 def test_admin_can_create_custom_access_profile_and_assign_to_user(tmp_path):

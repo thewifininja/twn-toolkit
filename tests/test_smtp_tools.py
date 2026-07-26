@@ -125,7 +125,7 @@ class SMTPSettingsTests(unittest.TestCase):
                 },
             )
             self.assertEqual(response.status_code, 302)
-            settings_page = client.get("/settings")
+            settings_page = client.get("/settings?section=email")
             self.assertIn(b"Email delivery", settings_page.data)
             self.assertNotIn(b"route-secret", settings_page.data)
 

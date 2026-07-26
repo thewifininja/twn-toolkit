@@ -221,6 +221,14 @@ def register_admin_routes(
 
     @app.get("/settings")
     def settings():
+        requested_section = str(request.args.get("section", "system")).strip().lower()
+        settings_section = (
+            requested_section
+            if requested_section in {"system", "email", "operations", "accounts"}
+            else "system"
+        )
+        if not g.current_user.get("is_admin"):
+            settings_section = "accounts"
         visible_users = (
             auth_store.users()
             if g.current_user.get("is_admin")
@@ -258,6 +266,7 @@ def register_admin_routes(
             operational_settings=operational_store.get(),
             operational_storage=_format_storage_summary(operational_store.storage_summary()),
             smtp_settings=smtp_store.get(),
+            settings_section=settings_section,
         )
 
     @app.post("/settings/smtp")
@@ -294,7 +303,7 @@ def register_admin_routes(
                 after=after,
             )
             flash("SMTP delivery settings saved.", "success")
-        return redirect(url_for("settings", _anchor="smtp-delivery"))
+        return redirect(url_for("settings", section="email", _anchor="smtp-delivery"))
 
     @app.post("/settings/smtp/test")
     def test_smtp_settings():
@@ -333,7 +342,7 @@ def register_admin_routes(
                 details={"recipient count": 1},
             )
             flash("SMTP test message sent.", "success")
-        return redirect(url_for("settings", _anchor="smtp-delivery"))
+        return redirect(url_for("settings", section="email", _anchor="smtp-delivery"))
 
     @app.post("/settings/operations")
     def update_operational_settings():
@@ -357,7 +366,7 @@ def register_admin_routes(
                 before=before, after=after,
             )
             flash("Operational limits saved. Scheduler concurrency changes apply after toolkit restart.", "success")
-        return redirect(url_for("settings", _anchor="operational-limits"))
+        return redirect(url_for("settings", section="operations", _anchor="operational-limits"))
 
     @app.get("/settings/diagnostics")
     def diagnostics():
@@ -447,9 +456,15 @@ def register_admin_routes(
     def updates():
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
+        requested_section = str(request.args.get("section", "updates")).strip().lower()
+        updates_section = (
+            requested_section
+            if requested_section in {"updates", "recovery"}
+            else "updates"
+        )
         release = None
         check_error = ""
-        if request.args.get("check") == "1":
+        if request.args.get("check") == "1" and updates_section == "updates":
             try:
                 release = ReleaseClient().release(APP_VERSION)
             except UpgradeError as exc:
@@ -466,6 +481,7 @@ def register_admin_routes(
             check_error=check_error,
             upgrade_status=upgrade_manager.status(),
             recovery_points=backups,
+            updates_section=updates_section,
         )
 
     @app.get("/settings/updates/status")
@@ -527,7 +543,7 @@ def register_admin_routes(
             operation = upgrade_manager.launch_upgrade(bundle, upgrade_actor())
         except UpgradeError as exc:
             flash(str(exc), "error")
-            return redirect(url_for("updates"))
+            return redirect(url_for("updates", section="updates"))
         return render_upgrade_started(
             operation, f"Requested manual toolkit upgrade to v{operation['target_version']}.",
         )
@@ -542,7 +558,7 @@ def register_admin_routes(
             operation = upgrade_manager.launch_backup(upgrade_actor())
         except UpgradeError as exc:
             flash(str(exc), "error")
-            return redirect(url_for("updates"))
+            return redirect(url_for("updates", section="recovery"))
         return render_upgrade_started(operation, "Requested a complete toolkit recovery point.")
 
     @app.post("/settings/updates/rollback")
@@ -557,7 +573,7 @@ def register_admin_routes(
             )
         except UpgradeError as exc:
             flash(str(exc), "error")
-            return redirect(url_for("updates"))
+            return redirect(url_for("updates", section="recovery"))
         return render_upgrade_started(
             operation, f"Requested rollback to recovery point {operation['backup_id']}.",
         )
@@ -601,7 +617,7 @@ def register_admin_routes(
                 resource_name="Automation retention", before=before, after=after,
             )
             flash("Automation retention settings updated.", "success")
-        return redirect(url_for("settings", _anchor="automation-retention"))
+        return redirect(url_for("settings", section="operations", _anchor="automation-retention"))
 
     @app.post("/settings/automation-retention/prune")
     def prune_automation_history():
@@ -621,7 +637,7 @@ def register_admin_routes(
             f"Pruned {deleted['checks']} check record(s) and {deleted['runs']} collected action run(s).",
             "success",
         )
-        return redirect(url_for("settings", _anchor="automation-retention"))
+        return redirect(url_for("settings", section="operations", _anchor="automation-retention"))
 
     @app.post("/settings/automation-retention/optimize")
     def optimize_automation_database():
@@ -639,7 +655,7 @@ def register_admin_routes(
                 resource_name="Automation database",
             )
             flash("Automation database optimized.", "success")
-        return redirect(url_for("settings", _anchor="automation-retention"))
+        return redirect(url_for("settings", section="operations", _anchor="automation-retention"))
 
     @app.post("/settings/users")
     def create_user():
@@ -666,7 +682,7 @@ def register_admin_routes(
                     after=_user_audit_snapshot(created, auth_store.access_profiles()),
                 )
                 flash("User created.", "success")
-        return redirect(url_for("settings"))
+        return redirect(url_for("settings", section="accounts"))
 
     @app.post("/settings/users/<user_id>/access")
     def update_user_access(user_id: str):
@@ -692,7 +708,7 @@ def register_admin_routes(
                 after=_user_audit_snapshot(after, auth_store.access_profiles()),
             )
             flash("User access updated.", "success")
-        return redirect(url_for("settings"))
+        return redirect(url_for("settings", section="accounts"))
 
     @app.post("/settings/access-profiles")
     def save_access_profile():
@@ -723,7 +739,7 @@ def register_admin_routes(
                 after=_profile_audit_snapshot(saved),
             )
             flash("Access profile saved.", "success")
-        return redirect(url_for("settings"))
+        return redirect(url_for("settings", section="accounts"))
 
     @app.post("/settings/access-profiles/<profile_id>/delete")
     def delete_access_profile(profile_id: str):
@@ -743,7 +759,7 @@ def register_admin_routes(
                 details={"deleted profile": _profile_audit_snapshot(profile)},
             )
             flash("Access profile deleted.", "success")
-        return redirect(url_for("settings"))
+        return redirect(url_for("settings", section="accounts"))
 
     @app.post("/settings/users/<user_id>/password")
     def change_user_password(user_id: str):
@@ -773,7 +789,7 @@ def register_admin_routes(
                     details={"existing sessions invalidated": True},
                 )
                 flash("Password updated. Existing sessions for that user were signed out.", "success")
-        return redirect(url_for("settings"))
+        return redirect(url_for("settings", section="accounts"))
 
     @app.post("/settings/users/<user_id>/delete")
     def delete_user(user_id: str):
@@ -800,7 +816,7 @@ def register_admin_routes(
                     },
                 )
                 flash("User deleted.", "success")
-        return redirect(url_for("settings"))
+        return redirect(url_for("settings", section="accounts"))
 
     @app.post("/settings/session")
     def update_session_settings():
@@ -839,7 +855,7 @@ def register_admin_routes(
                     resource_name="Authentication policy", before=before, after=after,
                 )
                 flash("Session settings updated.", "success")
-        return redirect(url_for("settings"))
+        return redirect(url_for("settings", section="accounts"))
 
     @app.post("/settings/server")
     def update_server_settings():
@@ -928,7 +944,11 @@ def register_admin_routes(
     def backup_settings():
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
-        return render_template("auth/backup.html", backup_catalog=backup_catalog)
+        return render_template(
+            "auth/backup.html",
+            backup_catalog=backup_catalog,
+            installed_version=APP_VERSION,
+        )
 
     @app.post("/settings/backup/export")
     def export_profile_backup():
