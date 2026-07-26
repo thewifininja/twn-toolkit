@@ -160,16 +160,19 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.13.0: durable automation claims and renewable leases,
+- Current milestone is 0.13.1: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
   saves, metadata-only SMTP email actions, and the reorganized Administration
   interface are implemented. Packet capture retains the host's existing
   permission boundary and never installs software or invokes sudo. Certificate
-  Automation remains the only explicitly labeled Beta workflow. This remains a
-  pre-1.0 release; broader real-world upgrade history, packaging, and an explicit
-  supported 1.0 compatibility contract still need deliberate hardening. The
+  Automation now includes a tested, guided Let's Encrypt DNS-01 workflow that
+  distinguishes configured-resolver caching from authoritative propagation,
+  retains protected Certbot material, and no longer carries a Beta label.
+  Microsoft AD CS remains explicitly Beta. This remains a pre-1.0 release;
+  broader real-world upgrade history, packaging, and an explicit supported 1.0
+  compatibility contract still need deliberate hardening. The
   0.10.1 hotfix
   makes browser-verified same-origin mutation metadata authoritative before the
   backend Host fallback, preserving logins through aliases and proxies while
