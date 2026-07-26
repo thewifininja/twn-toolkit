@@ -8802,12 +8802,14 @@ th {
 .smtp-settings-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 660px), 1fr));
 }
 .smtp-config-card {
   background: var(--card-tint);
   border: 1px solid var(--line);
   border-radius: 10px;
+  container-name: smtp-card;
+  container-type: inline-size;
   display: grid;
   gap: 14px;
   padding: 16px;
@@ -8871,14 +8873,13 @@ th {
 .smtp-test-row > button {
   width: auto;
 }
-@media (max-width: 900px) {
-  .smtp-settings-grid {
+@container smtp-card (max-width: 620px) {
+  .smtp-host-grid,
+  .smtp-pair-grid {
     grid-template-columns: 1fr;
   }
 }
 @media (max-width: 620px) {
-  .smtp-host-grid,
-  .smtp-pair-grid,
   .smtp-test-row {
     grid-template-columns: 1fr;
   }
