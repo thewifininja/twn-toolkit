@@ -299,11 +299,11 @@
             <label>From address
               <input name="smtp_from_address" type="email" maxlength="320" value="{{ smtp_settings.from_address }}" placeholder="toolkit@example.com" required>
             </label>
-            <label>Username <span class="inline-label-note">(optional)</span>
+            <label><span class="smtp-field-label">Username <span class="inline-label-note">(optional)</span></span>
               <input name="smtp_username" maxlength="320" value="{{ smtp_settings.username }}" autocomplete="off">
             </label>
-            <label><span>SMTP password <span class="inline-label-note">(write-only)</span></span>
-              <input name="smtp_password" type="password" autocomplete="new-password" {% if smtp_settings.has_password %}placeholder="Leave blank to keep saved password"{% endif %}>
+            <label><span class="smtp-field-label">SMTP password <span class="inline-label-note">({{ 'saved · ' if smtp_settings.has_password }}write-only)</span></span>
+              <input name="smtp_password" type="password" autocomplete="new-password" {% if smtp_settings.has_password %}placeholder="Leave blank to keep it"{% endif %}>
             </label>
           </div>
         </section>

@@ -8826,6 +8826,15 @@ th {
 .smtp-config-card-head p {
   font-size: 0.84rem;
 }
+.smtp-field-label {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.smtp-field-label > .inline-label-note {
+  white-space: nowrap;
+}
 .smtp-host-grid,
 .smtp-pair-grid {
   display: grid;
