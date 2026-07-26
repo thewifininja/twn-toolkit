@@ -21,6 +21,15 @@
     return `The ${ordinalNames[String(rule.ordinal || 1)]} ${weekdayNames[Number(rule.weekday || 0)]} of every month at ${at}`;
   };
   const newRuleId = () => globalThis.crypto?.randomUUID?.() || `rule-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  let sshCommandlets = [];
+  try {
+    sshCommandlets = JSON.parse(
+      document.querySelector("[data-automation-ssh-commandlets]")?.textContent
+      || "[]",
+    );
+  } catch (_error) {
+    sshCommandlets = [];
+  }
 
   document.querySelectorAll("[data-schedule-rule-editor]").forEach((editor) => {
     const form = editor.closest("form");
@@ -197,6 +206,56 @@
       };
       actionType.addEventListener("change", syncActionFields);
       syncActionFields();
+
+      const sshMatrixRoot = form.querySelector("[data-ssh-matrix-editor]");
+      const sshCommands = form.querySelector("[data-automation-ssh-commands]");
+      const sshVariablePicker = form.querySelector(
+        "[data-automation-ssh-variable-picker]",
+      );
+      const sshMatrixEditor = globalThis.TwnSshMatrixEditor?.create(
+        sshMatrixRoot,
+        {
+          commands: sshCommands,
+          picker: sshVariablePicker,
+        },
+      );
+      const commandletPicker = form.querySelector(
+        "[data-automation-ssh-commandlet]",
+      );
+      commandletPicker?.addEventListener("change", () => {
+        const commandlet = sshCommandlets.find(
+          (item) => item.name === commandletPicker.value,
+        );
+        if (!commandlet) return;
+        sshCommands.value = commandlet.commands || "";
+        form.querySelector('[name="action_command_timeout"]').value = String(
+          commandlet.command_timeout || 300,
+        );
+        if (commandlet.target_matrix) {
+          sshMatrixEditor?.load(commandlet.target_matrix);
+        }
+        sshCommands.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      form.addEventListener("submit", (event) => {
+        if (actionType.value !== "ssh.collect" || !sshMatrixEditor) return;
+        const matrixInput = sshMatrixRoot.querySelector("[data-ssh-matrix]");
+        if (sshMatrixEditor.mode === "grid") {
+          sshMatrixEditor.sync();
+          if (!sshMatrixEditor.validate({ focus: true, requireTargets: true })) {
+            event.preventDefault();
+          }
+          return;
+        }
+        try {
+          sshMatrixEditor.parse(matrixInput.value);
+        } catch (error) {
+          event.preventDefault();
+          const message = sshMatrixRoot.querySelector("[data-ssh-matrix-error]");
+          message.textContent = error.message;
+          message.hidden = false;
+          matrixInput.focus();
+        }
+      });
 
       const sftpOutput = form.querySelector("[data-sftp-action-output]");
       const sftpDatastore = form.querySelector("[data-sftp-action-datastore]");

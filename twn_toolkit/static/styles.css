@@ -8184,6 +8184,21 @@ button.compact,
   font-size: 0.84rem;
 }
 
+.automation-ssh-matrix-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.automation-ssh-matrix-head .automation-form-section-head {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.automation-ssh-matrix-head .multi-ssh-matrix-mode {
+  margin-left: auto;
+}
+
 .automation-request-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
 }
@@ -9058,6 +9073,17 @@ th {
   }
 
   .multi-ssh-matrix-step-head .multi-ssh-matrix-mode {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .automation-ssh-matrix-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .automation-ssh-matrix-head .multi-ssh-matrix-mode {
+    align-self: center;
     margin-left: auto;
     margin-right: auto;
   }

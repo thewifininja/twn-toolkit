@@ -30,6 +30,7 @@ from twn_toolkit.profiles import (
     SNMPHostProfileStore,
     SNMPOidProfileStore,
 )
+from twn_toolkit.ssh_commandlets import SSHCommandletStore
 
 
 class AutomationStoreTests(unittest.TestCase):
@@ -953,6 +954,66 @@ class AutomationStoreTests(unittest.TestCase):
 
 
 class AutomationRouteTests(unittest.TestCase):
+    def test_ssh_action_uses_target_matrix_and_exposes_commandlets(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            SSHCommandletStore(instance_path).upsert(
+                {
+                    "name": "Collect AP diagnostics",
+                    "platform": "Wireless AP",
+                    "description": "Collect status from an AP fleet.",
+                    "commands": "show ap {{ site_id }}",
+                    "command_timeout": 600,
+                    "target_matrix": (
+                        "Name | Host | Site ID\n"
+                        "Lobby AP | ap-1.example.com | HQ"
+                    ),
+                }
+            )
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            initial = client.get("/automations/actions")
+            response = client.post(
+                "/automations/actions/save",
+                data={
+                    "action_name": "Collect switch interfaces",
+                    "action_type": "ssh.collect",
+                    "action_matrix": (
+                        "Name | Host | Interface\n"
+                        "Closet 1 | switch-1.example.com | port1\n"
+                        "Closet 2 | switch-2.example.com | port2"
+                    ),
+                    "action_username": "admin",
+                    "action_password": "secret",
+                    "action_port": "22",
+                    "action_commands": "show interface {{ interface }}",
+                    "action_command_timeout": "600",
+                },
+            )
+            store = AutomationStore(
+                instance_path,
+                load_or_create_secret_key(instance_path),
+            )
+            definition = store.action_definitions(include_secrets=True)[0]
+            saved_page = client.get("/automations/actions")
+
+        self.assertEqual(initial.status_code, 200)
+        self.assertIn(b"Load Stored Commandlet", initial.data)
+        self.assertIn(b"Collect AP diagnostics", initial.data)
+        self.assertIn(b"data-automation-ssh-commandlets", initial.data)
+        self.assertIn(b"data-ssh-matrix-editor", initial.data)
+        self.assertIn(b'data-ssh-target-limit="5000"', initial.data)
+        self.assertIn(b"Add variable", initial.data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(definition["config"]["target_count"], 2)
+        self.assertEqual(definition["config"]["variables"], ["interface"])
+        self.assertIn("Name | Host | Interface", definition["config"]["matrix"])
+        self.assertEqual(definition["config"]["password"], "secret")
+        self.assertIn(b"SSH command collection", saved_page.data)
+        self.assertIn(b"2 hosts", saved_page.data)
+        self.assertIn(b"1 variable", saved_page.data)
+        self.assertNotIn(b'value="secret"', saved_page.data)
+
     def test_admin_can_create_webhook_action_with_write_only_headers(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
             app = create_app(instance_path)
@@ -1272,10 +1333,16 @@ class AutomationRouteTests(unittest.TestCase):
             )
             self.assertEqual(action_response.status_code, 302)
             store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
+            saved_action_config = store.action_definitions(include_secrets=True)[0][
+                "config"
+            ]
             self.assertEqual(
-                store.action_definitions(include_secrets=True)[0]["config"]["command_timeout"],
+                saved_action_config["command_timeout"],
                 600,
             )
+            self.assertEqual(saved_action_config["target_count"], 1)
+            self.assertIn("Name|Host", saved_action_config["matrix"])
+            self.assertIn("192.0.2.2|192.0.2.2", saved_action_config["matrix"])
             condition_id = store.condition_definitions()[0]["id"]
             second_condition_id = store.save_condition_definition(
                 name="DNS unavailable",
@@ -1457,7 +1524,7 @@ class AutomationRouteTests(unittest.TestCase):
                 {"host": "192.0.2.2", "status": "success", "output": "clock output"}
             ]
             with patch(
-                "twn_toolkit.automation_types.actions.run_ssh_hosts",
+                "twn_toolkit.automation_types.actions.run_ssh_host_plans",
                 return_value=ssh_results,
             ):
                 run = client.post(f"/automations/{automation_id}/run-now")
@@ -1491,6 +1558,60 @@ class AutomationRouteTests(unittest.TestCase):
 
 
 class AutomationRegistryTests(unittest.TestCase):
+    def test_ssh_action_renders_per_host_commands_for_large_matrices(self) -> None:
+        matrix = "Name | Host | Site ID\n" + "\n".join(
+            f"AP {index} | ap-{index}.example.com | site-{index}"
+            for index in range(1, 126)
+        )
+        config = AUTOMATION_REGISTRY.action_config_from_form(
+            "ssh.collect",
+            {
+                "action_matrix": matrix,
+                "action_username": "admin",
+                "action_password": "secret",
+                "action_port": "22",
+                "action_commands": "show site {{ site_id }}",
+                "action_command_timeout": "300",
+            },
+        )
+        captured_plans = []
+
+        def run_plans(plans, **_kwargs):
+            captured_plans.extend(plans)
+            return [
+                {
+                    "host": plan["host"],
+                    "host_label": plan["label"],
+                    "status": "success",
+                    "output": "diagnostics",
+                }
+                for plan in plans
+            ]
+
+        with patch(
+            "twn_toolkit.automation_types.actions.run_ssh_host_plans",
+            side_effect=run_plans,
+        ):
+            result = AUTOMATION_REGISTRY.actions["ssh.collect"].execute(
+                config,
+                ConditionResult(True, "met", "manual", {}),
+            )
+
+        self.assertEqual(config["target_count"], 125)
+        self.assertEqual(config["variables"], ["site_id"])
+        self.assertEqual(len(captured_plans), 125)
+        self.assertEqual(
+            captured_plans[0]["command_specs"][0]["command"],
+            "show site site-1",
+        )
+        self.assertEqual(
+            captured_plans[-1]["command_specs"][0]["command"],
+            "show site site-125",
+        )
+        self.assertEqual(result.status, "success")
+        self.assertEqual(result.output["execution_batch_count"], 3)
+        self.assertEqual(result.output["target_count"], 125)
+
     def test_sftp_action_can_retain_or_store_fetched_files(self) -> None:
         action = AUTOMATION_REGISTRY.actions["sftp.fetch"]
         base = {

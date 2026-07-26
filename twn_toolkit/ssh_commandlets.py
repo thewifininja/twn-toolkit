@@ -14,6 +14,7 @@ from .network_tools import (
     SSH_TARGET_LIMIT,
     ToolInputError,
     parse_ssh_commands,
+    parse_ssh_targets,
     validate_ssh_target,
 )
 from .profiles import JsonListStore
@@ -137,6 +138,22 @@ def parse_ssh_target_matrix(
         "targets": targets,
         "variable_names": list(dict.fromkeys(variable_names)),
     }
+
+
+def ssh_hosts_to_matrix(hosts_text: str) -> str:
+    """Convert the legacy friendly-name target syntax into a target matrix."""
+    targets = parse_ssh_targets(str(hosts_text), limit=SSH_MATRIX_ROW_LIMIT)
+    output = StringIO()
+    writer = csv.writer(
+        output,
+        delimiter="|",
+        quotechar='"',
+        lineterminator="\n",
+    )
+    writer.writerow(["Name", "Host"])
+    for target in targets:
+        writer.writerow([target["label"] or target["host"], target["host"]])
+    return output.getvalue().strip()
 
 
 def referenced_ssh_variables(commands: list[str] | str) -> list[str]:

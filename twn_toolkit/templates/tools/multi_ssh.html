@@ -64,7 +64,7 @@
       <input name="commandlet_original_name" type="hidden" value="{{ form.commandlet_original_name }}">
 
       <div class="multi-ssh-authoring-grid">
-        <section class="multi-ssh-workspace-card">
+        <section class="multi-ssh-workspace-card" data-ssh-matrix-editor>
           <div class="multi-ssh-step-head multi-ssh-matrix-step-head">
             <span>1</span>
             <div class="multi-ssh-step-copy">
@@ -322,5 +322,8 @@
   </section>
   <script src="{{ url_for('static', filename='multi-ssh-export.js') }}"></script>
 {% endif %}
-{% if mode == 'advanced' %}<script src="{{ url_for('static', filename='multi-ssh.js') }}"></script>{% endif %}
+{% if mode == 'advanced' %}
+  <script src="{{ url_for('static', filename='ssh-matrix-editor.js') }}"></script>
+  <script src="{{ url_for('static', filename='multi-ssh.js') }}"></script>
+{% endif %}
 {% endblock %}

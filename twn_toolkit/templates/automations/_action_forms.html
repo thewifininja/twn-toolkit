@@ -13,34 +13,103 @@
       </select>
     </label>
     <div data-action-fields="ssh.collect">
-      <p class="field-note">SSH output is retained with each run. The password is encrypted using this toolkit installation’s secret key.</p>
-      <label>SSH hosts
-      <textarea name="action_hosts" rows="4" placeholder="Basement Switch = 10.0.0.11&#10;Access switches = 10.0.0.12-10.0.0.24" required>{{ config.get('hosts', config.get('action_hosts', '')) }}</textarea>
-      <small class="field-note">{{ host_range_guidance(50, 'hosts') }}</small>
-      </label>
-      <div class="form-grid">
-      <label>Username
-        <input name="action_username" value="{{ config.get('username', config.get('action_username', '')) }}" required>
-      </label>
-      <label>Password
-        <input name="action_password" type="password" {% if definition_id %}placeholder="Leave blank to keep saved password"{% else %}required{% endif %}>
-      </label>
-      <label>SSH port
-        <input name="action_port" type="number" min="1" max="65535" value="{{ config.get('port', config.get('action_port', '22')) }}" required>
-      </label>
-      </div>
-      <label>Commands
-      <textarea class="command-input" name="action_commands" rows="7" placeholder="show clock&#10;show logging&#10;[timeout=600] diag debug report" required>{{ config.get('commands', config.get('action_commands', '')) }}</textarea>
-      </label>
-      <label>Default command timeout
-      <div class="input-suffix"><input name="action_command_timeout" type="number" min="1" max="3600" value="{{ config.get('command_timeout', config.get('action_command_timeout', '300')) }}" required><span>seconds</span></div>
-      <small class="field-note">A command completes when the device prompt returns. Override one command with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
-      </label>
-      <div class="check-grid">
-      <label class="check"><input name="action_allow_unknown_hosts" type="checkbox" {% if config.get('allow_unknown_hosts') or config.get('action_allow_unknown_hosts') %}checked{% endif %}>Allow unknown SSH host keys</label>
-      <label class="check"><input name="action_allow_legacy_algorithms" type="checkbox" {% if config.get('allow_legacy_algorithms') or config.get('action_allow_legacy_algorithms') %}checked{% endif %}><span><strong>Allow legacy SSH algorithms</strong><small>Persistent exception for trusted legacy targets; enables weaker algorithms still supported by the toolkit.</small></span></label>
-      <label class="check"><input name="action_send_ctrl_y" type="checkbox" {% if config.get('send_ctrl_y') or config.get('action_send_ctrl_y') %}checked{% endif %}>Send Ctrl+Y before commands</label>
-      </div>
+      <p class="field-note">Per-host SSH output is retained with each run. Credentials are encrypted using this toolkit installation’s secret key.</p>
+
+      <section class="automation-form-section">
+        <div class="automation-form-section-head">
+          <h4>Starting point</h4>
+          <p>Start fresh or copy a Stored Commandlet into this action. The action keeps its own snapshot.</p>
+        </div>
+        {% if ssh_commandlets %}
+          <label>Load Stored Commandlet
+            <select data-automation-ssh-commandlet>
+              <option value="">Choose a Commandlet…</option>
+              {% for commandlet in ssh_commandlets %}
+                <option value="{{ commandlet.name }}">{{ commandlet.name }}{% if commandlet.platform %} · {{ commandlet.platform }}{% endif %}{% if commandlet.target_count %} · {{ commandlet.target_count }} target(s){% endif %}</option>
+              {% endfor %}
+            </select>
+            <small class="field-note">Loading copies the template, timeout, and saved target matrix. Later Commandlet edits do not alter this automation action.</small>
+          </label>
+        {% else %}
+          <p class="field-note">No Stored Commandlets yet. You can build the action here or save one from Multi-SSH Advanced mode.</p>
+        {% endif %}
+      </section>
+
+      <section class="automation-form-section automation-ssh-matrix-editor" data-ssh-matrix-editor data-ssh-target-limit="{{ ssh_target_limit }}">
+        <div class="automation-ssh-matrix-head">
+          <div class="automation-form-section-head">
+            <h4>Target matrix</h4>
+            <p>Define up to {{ ssh_target_limit_label }} hosts and any per-host variables used by the commands.</p>
+          </div>
+          <button class="secondary multi-ssh-matrix-mode" type="button" data-ssh-matrix-toggle data-ssh-matrix-mode="raw" aria-label="Switch to Raw matrix" title="Switch to Raw matrix">Raw matrix</button>
+        </div>
+        <div class="message error" role="alert" data-ssh-matrix-error hidden></div>
+        <div class="message info compact-message" data-ssh-matrix-notice hidden></div>
+        <div class="multi-ssh-matrix-grid" data-ssh-matrix-grid hidden>
+          <div class="table-wrap multi-ssh-matrix-table-wrap">
+            <table class="multi-ssh-matrix-table" aria-label="Automation SSH target matrix">
+              <thead data-ssh-matrix-head></thead>
+              <tbody data-ssh-matrix-body></tbody>
+            </table>
+          </div>
+          <div class="multi-ssh-matrix-sheet-controls">
+            <button class="multi-ssh-sheet-add" type="button" data-ssh-add-target aria-label="Add target row" title="Add target row"><span aria-hidden="true"></span>Add row</button>
+            <button class="multi-ssh-sheet-add" type="button" data-ssh-add-variable aria-label="Add variable column" title="Add variable column"><span aria-hidden="true"></span>Add variable</button>
+          </div>
+          <p class="multi-ssh-grid-hint">Paste a spreadsheet block into any cell. <kbd>Enter</kbd> moves down; <kbd>Tab</kbd> moves across.</p>
+          <div class="multi-ssh-matrix-summary" data-ssh-matrix-summary></div>
+        </div>
+        <div data-ssh-matrix-raw>
+          <label>Raw matrix
+            <textarea class="command-input multi-ssh-matrix" name="action_matrix" rows="10" placeholder="Name | Host | VLAN ID&#10;Switch 1 | 10.103.255.2 | 4" data-ssh-matrix data-1p-ignore required>{{ config.get('matrix', config.get('action_matrix', '')) }}</textarea>
+          </label>
+          <small class="field-note">Paste pipe-, tab-, or comma-separated data here. Return to Table editor for row and cell editing.</small>
+        </div>
+        <small class="field-note">Name and Host stay fixed. Custom headings become lowercase variables with separators converted to underscores. Built-ins: <code>name</code>, <code>host</code>, and <code>row_number</code>.</small>
+      </section>
+
+      <section class="automation-form-section">
+        <div class="automation-form-section-head">
+          <h4>Command template</h4>
+          <p>Each target receives commands rendered with its own matrix values.</p>
+        </div>
+        <label>Commands
+          <textarea class="command-input" name="action_commands" rows="7" placeholder="show clock&#10;show interface {{ '{{ interface }}' }}&#10;[timeout=600] diag debug report" required data-automation-ssh-commands data-1p-ignore>{{ config.get('commands', config.get('action_commands', '')) }}</textarea>
+        </label>
+        <div class="multi-ssh-variable-picker" data-automation-ssh-variable-picker aria-label="Available command variables">
+          <span>Insert variable</span>
+          {% for variable in ['name', 'host', 'row_number'] %}
+            <button class="secondary ssh-variable-chip" type="button" data-ssh-variable="{{ variable }}">{{ '{{ ' ~ variable ~ ' }}' }}</button>
+          {% endfor %}
+        </div>
+        <label>Default command timeout
+          <div class="input-suffix"><input name="action_command_timeout" type="number" min="1" max="3600" value="{{ config.get('command_timeout', config.get('action_command_timeout', '300')) }}" required data-1p-ignore><span>seconds</span></div>
+          <small class="field-note">A command completes when the device prompt returns. Override one command with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
+        </label>
+      </section>
+
+      <section class="automation-form-section">
+        <div class="automation-form-section-head">
+          <h4>Connection and fleet execution</h4>
+          <p>Targets run in batches of {{ ssh_batch_size }} with at most {{ ssh_execution_workers }} simultaneous SSH connections. The action completes after every batch finishes.</p>
+        </div>
+        <div class="form-grid">
+          <label>Username
+            <input name="action_username" value="{{ config.get('username', config.get('action_username', '')) }}" required data-1p-ignore>
+          </label>
+          <label>Password
+            <input name="action_password" type="password" data-1p-ignore {% if definition_id %}placeholder="Leave blank to keep saved password"{% else %}required{% endif %}>
+          </label>
+          <label>SSH port
+            <input name="action_port" type="number" min="1" max="65535" value="{{ config.get('port', config.get('action_port', '22')) }}" required data-1p-ignore>
+          </label>
+        </div>
+        <div class="check-grid">
+          <label class="check"><input name="action_allow_unknown_hosts" type="checkbox" {% if config.get('allow_unknown_hosts') or config.get('action_allow_unknown_hosts') %}checked{% endif %}>Allow unknown SSH host keys</label>
+          <label class="check"><input name="action_allow_legacy_algorithms" type="checkbox" {% if config.get('allow_legacy_algorithms') or config.get('action_allow_legacy_algorithms') %}checked{% endif %}><span><strong>Allow legacy SSH algorithms</strong><small>Persistent exception for trusted legacy targets; enables weaker algorithms still supported by the toolkit.</small></span></label>
+          <label class="check"><input name="action_send_ctrl_y" type="checkbox" {% if config.get('send_ctrl_y') or config.get('action_send_ctrl_y') %}checked{% endif %}>Send Ctrl+Y before commands</label>
+        </div>
+      </section>
     </div>
     <div data-action-fields="sftp.fetch" hidden>
       <p class="field-note">Fetch regular files over SFTP, SCP, or FTP. The encrypted password is write-only. FTP is plaintext and should stay on trusted management networks.</p>

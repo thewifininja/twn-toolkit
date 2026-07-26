@@ -218,7 +218,8 @@ Public Portal = portal.example.com | 443</code></pre>
     <p>Missed occurrences may run late, run only within a grace period, or skip. Refresh next run time is read-only. Simultaneous rules collapse into one occurrence.</p>
   </div></details>
   <details class="help-topic"><summary>SSH collection action</summary><div class="help-topic-body">
-    <p>Runs up to 50 hosts concurrently and retains output. Completion is the return of the original device prompt. Default ceiling is 300 seconds; override one command:</p>
+    <p>Runs a variable-aware command template against a spreadsheet-style matrix of up to 5,000 hosts and retains per-host output. Use fixed Name and Host columns plus custom variable columns, or load a Stored Commandlet to copy its commands, timeout, and optional targets into the action. The action keeps its own snapshot so later Commandlet edits do not silently change an armed automation.</p>
+    <p>Fleet execution uses batches of 50 with at most 10 simultaneous SSH connections. Completion is the return of the original device prompt. Default ceiling is 300 seconds; override one command:</p>
     <pre><code>[timeout=600] diag debug report</code></pre>
     <p>Overrides are 1–3600 seconds with a one-hour combined budget per host. Timeouts retain partial output and stop later commands only on that host.</p>
   </div></details>

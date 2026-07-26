@@ -12,10 +12,10 @@ from urllib.parse import urlsplit
 from ..auth import load_or_create_secret_key
 from ..diagnostic_tools import parse_http_headers, send_api_request, send_syslog
 from ..network_tools import (
+    SSH_EXECUTION_BATCH_SIZE,
     ToolInputError,
-    parse_ssh_commands,
     parse_ssh_targets,
-    run_ssh_hosts,
+    run_ssh_host_plans,
     validate_hosts,
 )
 from ..packet_capture import (
@@ -32,6 +32,7 @@ from ..smtp_tools import (
     parse_email_recipients,
     send_smtp_message,
 )
+from ..ssh_commandlets import build_ssh_command_plans, ssh_hosts_to_matrix
 from ..transfer_tools import (
     DEFAULT_TRANSFER_FILENAME_PATTERN as SFTP_DEFAULT_FILENAME_PATTERN,
     fetch_transfer_files as fetch_ssh_files,
@@ -41,7 +42,9 @@ from ..transfer_tools import (
 from .models import ActionResult, ActionType, ConditionResult
 
 def _validate_ssh(config: dict[str, Any]) -> dict[str, Any]:
-    targets = parse_ssh_targets(str(config.get("hosts", "")), limit=50)
+    matrix = str(config.get("matrix", "")).strip()
+    if not matrix:
+        matrix = ssh_hosts_to_matrix(str(config.get("hosts", "")))
     username = str(config.get("username", "")).strip()
     password = str(config.get("password", ""))
     commands = [
@@ -59,22 +62,19 @@ def _validate_ssh(config: dict[str, Any]) -> dict[str, Any]:
         raise ToolInputError("Enter an SSH username.")
     if not password:
         raise ToolInputError("Enter an SSH password.")
-    if not commands:
-        raise ToolInputError("Enter at least one SSH command.")
-    if len(commands) > 50:
-        raise ToolInputError("A maximum of 50 SSH commands is allowed per action.")
-    if any(len(command) > 500 for command in commands):
-        raise ToolInputError("Each SSH command must be 500 characters or fewer.")
     if not 1 <= port <= 65535:
         raise ToolInputError("SSH port must be between 1 and 65535.")
     if not 1 <= command_timeout <= 3600:
         raise ToolInputError("Default command timeout must be between 1 and 3600 seconds.")
-    parse_ssh_commands(commands, command_timeout)
+    preview = build_ssh_command_plans(matrix, commands, command_timeout)
     return {
+        "matrix": matrix,
         "hosts": "\n".join(
             f"{target['label']} = {target['host']}" if target["label"] else target["host"]
-            for target in targets
+            for target in preview["targets"]
         ),
+        "target_count": len(preview["targets"]),
+        "variables": preview["referenced_variables"],
         "username": username,
         "password": password,
         "commands": "\n".join(commands),
@@ -88,18 +88,19 @@ def _validate_ssh(config: dict[str, Any]) -> dict[str, Any]:
 
 def _execute_ssh(config: dict[str, Any], trigger: ConditionResult) -> ActionResult:
     normalized = _validate_ssh(config)
-    hosts = parse_ssh_targets(normalized["hosts"], limit=50)
-    commands = normalized["commands"].splitlines()
-    results = run_ssh_hosts(
-        hosts=hosts,
+    preview = build_ssh_command_plans(
+        normalized["matrix"],
+        normalized["commands"],
+        normalized["command_timeout"],
+    )
+    results = run_ssh_host_plans(
+        preview["plans"],
         username=normalized["username"],
         password=normalized["password"],
-        commands=commands,
         port=normalized["port"],
         allow_unknown_hosts=normalized["allow_unknown_hosts"],
         allow_legacy_algorithms=normalized["allow_legacy_algorithms"],
         send_ctrl_y=normalized["send_ctrl_y"],
-        default_command_timeout=normalized["command_timeout"],
     )
     successes = sum(result.get("status") == "success" for result in results)
     status = "success" if successes == len(results) else "partial" if successes else "error"
@@ -109,7 +110,13 @@ def _execute_ssh(config: dict[str, Any], trigger: ConditionResult) -> ActionResu
         output={
             "trigger": trigger.evidence,
             "hosts": results,
-            "command_count": len(commands),
+            "command_count": len(preview["plans"][0]["command_specs"]),
+            "target_count": len(preview["plans"]),
+            "execution_batch_count": (
+                len(preview["plans"]) + SSH_EXECUTION_BATCH_SIZE - 1
+            )
+            // SSH_EXECUTION_BATCH_SIZE,
+            "referenced_variables": preview["referenced_variables"],
         },
     )
 
@@ -707,7 +714,20 @@ def _execute_packet_capture(
 
 def _parse_ssh_form(form: Mapping[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
     password = str(form.get("action_password", "")) or str(existing.get("password", ""))
-    return {"hosts": form.get("action_hosts", ""), "username": form.get("action_username", ""), "password": password, "commands": form.get("action_commands", ""), "command_timeout": form.get("action_command_timeout", "300"), "port": form.get("action_port", "22"), "allow_unknown_hosts": "action_allow_unknown_hosts" in form, "allow_legacy_algorithms": "action_allow_legacy_algorithms" in form, "send_ctrl_y": "action_send_ctrl_y" in form}
+    matrix = str(form.get("action_matrix", "")).strip()
+    if not matrix and str(form.get("action_hosts", "")).strip():
+        matrix = ssh_hosts_to_matrix(str(form.get("action_hosts", "")))
+    return {
+        "matrix": matrix,
+        "username": form.get("action_username", ""),
+        "password": password,
+        "commands": form.get("action_commands", ""),
+        "command_timeout": form.get("action_command_timeout", "300"),
+        "port": form.get("action_port", "22"),
+        "allow_unknown_hosts": "action_allow_unknown_hosts" in form,
+        "allow_legacy_algorithms": "action_allow_legacy_algorithms" in form,
+        "send_ctrl_y": "action_send_ctrl_y" in form,
+    }
 
 
 def _parse_sftp_form(form: Mapping[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
@@ -775,7 +795,7 @@ def _parse_packet_capture_form(
 
 def registered_actions() -> tuple[ActionType, ...]:
     return (
-        ActionType("ssh.collect", "SSH command collection", "Run a command set on one or more SSH targets and retain the output.", _validate_ssh, _execute_ssh, _parse_ssh_form, ("password",)),
+        ActionType("ssh.collect", "SSH command collection", "Render a variable-aware command template across a target matrix and retain per-host output.", _validate_ssh, _execute_ssh, _parse_ssh_form, ("password",)),
         ActionType("sftp.fetch", "Remote file collection", "Fetch files from multiple hosts over SFTP, SCP, or FTP into retained run output or the datastore.", _validate_sftp, _execute_sftp, _parse_sftp_form, ("password",)),
         ActionType("syslog.send", "Send syslog message", "Send an RFC 5424 message to one or more UDP or TCP collectors.", _validate_syslog, _execute_syslog, _parse_syslog_form),
         ActionType("webhook.send", "Webhook / API notification", "Send a templated HTTP notification to one or more endpoints.", _validate_webhook, _execute_webhook, _parse_webhook_form, ("headers",)),

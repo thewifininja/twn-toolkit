@@ -242,7 +242,9 @@ Available conditions include:
 
 Available actions include:
 
-- prompt-aware multi-host SSH command collection;
+- prompt-aware SSH command collection with Stored Commandlet loading,
+  spreadsheet-style per-host variables, and fleet batching for up to 5,000
+  targets;
 - SFTP, SCP, or FTP file collection to the Datastore or retained artifacts;
 - bounded packet capture to retained artifacts or the Datastore;
 - RFC 5424 Syslog and metadata-only email notifications; and
