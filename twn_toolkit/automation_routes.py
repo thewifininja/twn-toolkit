@@ -27,11 +27,17 @@ from .automation_registry import AUTOMATION_REGISTRY
 from .audit import annotate_audit_event
 from .activity_context import record_current_activity
 from .datastore import LocalDatastore
-from .network_tools import ToolInputError
+from .network_tools import (
+    SSH_EXECUTION_BATCH_SIZE,
+    SSH_EXECUTION_WORKERS,
+    SSH_TARGET_LIMIT,
+    ToolInputError,
+)
 from .packet_capture import capture_interfaces
 from .schedule_tools import describe_schedule_rule, local_timezone_name, schedule_preview
 from .profiles import SNMPHostProfileStore, SNMPOidProfileStore
 from .snmp_tools import parse_oid_profile
+from .ssh_commandlets import SSHCommandletStore, ssh_hosts_to_matrix
 
 
 def _automation_audit_snapshot(automation: dict[str, Any] | None) -> dict[str, Any]:
@@ -132,12 +138,25 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 definition["config"] = AUTOMATION_REGISTRY.validate_condition(
                     definition["type"], definition["config"]
                 )
+        action_definitions = store.action_definitions()
+        for definition in action_definitions:
+            config = definition.get("config", {})
+            if definition.get("type") != "ssh.collect" or config.get("matrix"):
+                continue
+            try:
+                config["matrix"] = ssh_hosts_to_matrix(config.get("hosts", ""))
+                config["target_count"] = max(
+                    0, len(config["matrix"].splitlines()) - 1
+                )
+            except ToolInputError:
+                config["matrix"] = ""
+                config["target_count"] = 0
         return render_template(
             "automations/index.html",
             automations=automations,
             condition_definitions=condition_definitions,
             schedule_definitions=schedule_definitions,
-            action_definitions=store.action_definitions(),
+            action_definitions=action_definitions,
             action_choices=[
                 {"id": item["id"], "name": item["name"], "type": item["type"]}
                 for item in store.action_definitions()
@@ -158,6 +177,11 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             schedule_default_timezone=local_timezone_name(),
             datastore_folders=LocalDatastore(store.instance_path).folders(),
             capture_interfaces=capture_interfaces(),
+            ssh_commandlets=SSHCommandletStore(store.instance_path).all(),
+            ssh_target_limit=SSH_TARGET_LIMIT,
+            ssh_target_limit_label=f"{SSH_TARGET_LIMIT:,}",
+            ssh_batch_size=SSH_EXECUTION_BATCH_SIZE,
+            ssh_execution_workers=SSH_EXECUTION_WORKERS,
             page_section=page_section,
         )
 

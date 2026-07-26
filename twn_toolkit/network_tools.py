@@ -31,6 +31,10 @@ SSH_DEFAULT_COMMAND_TIMEOUT = 300
 SSH_MAX_COMMAND_TIMEOUT = 3600
 SSH_MAX_RUN_TIMEOUT = 3600
 SSH_OUTPUT_LIMIT = 5 * 1024 * 1024
+SSH_TARGET_LIMIT = 5_000
+SSH_EXECUTION_BATCH_SIZE = 50
+SSH_EXECUTION_WORKERS = 10
+SSH_FLEET_OUTPUT_BUDGET = 50 * 1024 * 1024
 
 
 class ToolInputError(ValueError):
@@ -769,12 +773,8 @@ def run_ssh_hosts(
     default_command_timeout: int = SSH_DEFAULT_COMMAND_TIMEOUT,
     allow_legacy_algorithms: bool = False,
 ) -> list[dict[str, Any]]:
-    if not username:
-        raise ToolInputError("Enter an SSH username.")
-    if not password:
-        raise ToolInputError("Enter an SSH password.")
     command_specs = parse_ssh_commands(commands, default_command_timeout)
-    targets = []
+    plans = []
     for item in hosts:
         if isinstance(item, dict):
             host = str(item.get("host", "")).strip()
@@ -782,35 +782,105 @@ def run_ssh_hosts(
         else:
             host = str(item).strip()
             label = ""
-        if not _valid_host(host):
-            raise ToolInputError(f"Invalid host value: {host}")
-        if len(label) > 100:
-            raise ToolInputError("Friendly names must be 100 characters or fewer.")
-        targets.append({"host": host, "label": label})
-    if not targets:
+        validate_ssh_target(host, label)
+        plans.append(
+            {
+                "host": host,
+                "label": label,
+                "command_specs": command_specs,
+            }
+        )
+    return run_ssh_host_plans(
+        plans,
+        username=username,
+        password=password,
+        port=port,
+        allow_unknown_hosts=allow_unknown_hosts,
+        send_ctrl_y=send_ctrl_y,
+        command_delay=command_delay,
+        allow_legacy_algorithms=allow_legacy_algorithms,
+    )
+
+
+def run_ssh_host_plans(
+    plans: list[dict[str, Any]],
+    username: str,
+    password: str,
+    port: int = 22,
+    allow_unknown_hosts: bool = False,
+    send_ctrl_y: bool = False,
+    command_delay: float = 1.0,
+    allow_legacy_algorithms: bool = False,
+) -> list[dict[str, Any]]:
+    if not username:
+        raise ToolInputError("Enter an SSH username.")
+    if not password:
+        raise ToolInputError("Enter an SSH password.")
+    normalized_plans: list[dict[str, Any]] = []
+    for plan in plans:
+        host = str(plan.get("host", "")).strip()
+        label = str(plan.get("label", "")).strip()
+        validate_ssh_target(host, label)
+        command_specs = plan.get("command_specs")
+        if not isinstance(command_specs, list) or not command_specs:
+            raise ToolInputError("Each SSH host plan needs at least one command.")
+        if any(not isinstance(spec, dict) for spec in command_specs):
+            raise ToolInputError("Each SSH host plan contains an invalid command.")
+        normalized_command_lines: list[str] = []
+        for spec in command_specs:
+            try:
+                timeout = int(spec.get("timeout"))
+            except (TypeError, ValueError) as exc:
+                raise ToolInputError(
+                    "Each SSH host plan contains an invalid command timeout."
+                ) from exc
+            normalized_command_lines.append(
+                f"[timeout={timeout}] {spec.get('command', '')}"
+            )
+        command_specs = parse_ssh_commands(
+            normalized_command_lines,
+            SSH_DEFAULT_COMMAND_TIMEOUT,
+        )
+        normalized_plans.append(
+            {"host": host, "label": label, "command_specs": command_specs}
+        )
+    if not normalized_plans:
         raise ToolInputError("Enter at least one IP address or hostname.")
     if not 1 <= port <= 65535:
         raise ToolInputError("SSH port must be between 1 and 65535.")
 
-    workers = min(10, len(targets))
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {
-            executor.submit(
-                _ssh_host,
-                target["host"],
-                username,
-                password,
-                command_specs,
-                port,
-                allow_unknown_hosts,
-                send_ctrl_y,
-                command_delay,
-                target["label"],
-                allow_legacy_algorithms,
-            ): index
-            for index, target in enumerate(targets)
-        }
-        indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
+    per_host_capture_limit = min(
+        SSH_OUTPUT_LIMIT,
+        max(8 * 1024, SSH_FLEET_OUTPUT_BUDGET // len(normalized_plans)),
+    )
+    indexed_results: list[tuple[int, dict[str, Any]]] = []
+    for batch_start in range(0, len(normalized_plans), SSH_EXECUTION_BATCH_SIZE):
+        batch = normalized_plans[
+            batch_start : batch_start + SSH_EXECUTION_BATCH_SIZE
+        ]
+        workers = min(SSH_EXECUTION_WORKERS, len(batch))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(
+                    _ssh_host,
+                    plan["host"],
+                    username,
+                    password,
+                    plan["command_specs"],
+                    port,
+                    allow_unknown_hosts,
+                    send_ctrl_y,
+                    command_delay,
+                    plan["label"],
+                    allow_legacy_algorithms,
+                    per_host_capture_limit,
+                ): batch_start + index
+                for index, plan in enumerate(batch)
+            }
+            indexed_results.extend(
+                (futures[future], future.result())
+                for future in as_completed(futures)
+            )
     return [result for _index, result in sorted(indexed_results)]
 
 
@@ -890,6 +960,13 @@ def _valid_host(host: str) -> bool:
         return bool(HOSTNAME_PATTERN.fullmatch(host))
 
 
+def validate_ssh_target(host: str, label: str = "") -> None:
+    if not _valid_host(host):
+        raise ToolInputError(f"Invalid host value: {host}")
+    if len(label) > 100:
+        raise ToolInputError("Friendly names must be 100 characters or fewer.")
+
+
 def _ping_host(host: str, timeout: float) -> dict[str, Any]:
     is_ipv6 = False
     try:
@@ -954,6 +1031,7 @@ def _ssh_host(
     command_delay: float,
     host_label: str = "",
     allow_legacy_algorithms: bool = False,
+    capture_limit: int = SSH_OUTPUT_LIMIT,
 ) -> dict[str, Any]:
     import paramiko
 
@@ -995,7 +1073,9 @@ def _ssh_host(
                 channel,
                 command_timeout,
                 prompt,
-                capture_limit=max(0, SSH_OUTPUT_LIMIT - sum(len(item) for item in output)),
+                capture_limit=max(
+                    0, capture_limit - sum(len(item) for item in output)
+                ),
             )
             output.append(command_output)
             if not completed:
@@ -1003,7 +1083,9 @@ def _ssh_host(
                     "host": host,
                     "host_label": host_label,
                     "status": "timeout",
-                    "output": _bounded_output("".join(output)),
+                    "output": _bounded_output(
+                        "".join(output), limit=capture_limit
+                    ),
                     "error": (
                         f"Command exceeded its {command_timeout}-second timeout: {command}"
                     ),
@@ -1014,14 +1096,14 @@ def _ssh_host(
             "host": host,
             "host_label": host_label,
             "status": "success",
-            "output": _bounded_output("".join(output)),
+            "output": _bounded_output("".join(output), limit=capture_limit),
         }
     except Exception as exc:
         return {
             "host": host,
             "host_label": host_label,
             "status": "error",
-            "output": _bounded_output("".join(output)),
+            "output": _bounded_output("".join(output), limit=capture_limit),
             "error": format_ssh_connection_error(exc),
         }
     finally:

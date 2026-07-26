@@ -108,9 +108,16 @@ The sidebar and Network Tools page use the same functional organization.
   `ping` compatibility engine remains available. Multi-Ping exposes separate
   round-interval and per-target probe-timeout controls; accelerated mode accepts
   sub-second timeouts for dense groups of known-local targets.
-- **Multi-SSH** — run prompt-aware command sequences concurrently, with friendly
-  host names, per-command timeouts, downloadable results, and a scoped legacy
-  algorithm exception for trusted older devices.
+- **Multi-SSH** — run prompt-aware command sequences concurrently in Basic mode,
+  or use the spreadsheet-style target table and Raw Matrix editor in Advanced
+  mode to substitute literal `{{ variable }}` values into reusable Stored
+  Commandlets. The fixed `Host` column maps directly to `{{ host }}`; older
+  `IP/FQDN` headings remain accepted when importing saved matrices. Fleet runs
+  support up to 5,000 targets, submitted in batches of 50 with at most 10
+  simultaneous SSH connections and a bounded aggregate output budget.
+  Commandlets can optionally retain their target matrix and per-host values,
+  while credentials remain per-run only. Signed previews show every rendered
+  command before execution.
 - **Multi-Transfer** — fetch files concurrently over SFTP, SCP, or FTP into the
   Datastore or a one-shot ZIP, using collision-safe filename templates and the
   same explicit legacy SSH exception for SFTP/SCP.
@@ -235,7 +242,9 @@ Available conditions include:
 
 Available actions include:
 
-- prompt-aware multi-host SSH command collection;
+- prompt-aware SSH command collection with Stored Commandlet loading,
+  spreadsheet-style per-host variables, and fleet batching for up to 5,000
+  targets;
 - SFTP, SCP, or FTP file collection to the Datastore or retained artifacts;
 - bounded packet capture to retained artifacts or the Datastore;
 - RFC 5424 Syslog and metadata-only email notifications; and

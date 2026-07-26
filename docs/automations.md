@@ -90,7 +90,7 @@ to the next future occurrence rather than replaying a backlog.
   boundary; actual duration still includes the condition execution time.
 - Per-condition thresholds: all targets breach policy, or at least a selected
   number breach policy.
-- General ping, DNS-name, SSH-command, and SSH-file-collection host lists accept
+- General ping, DNS-name, and SSH-file-collection host lists accept
   inclusive ascending IPv4 and IPv6 ranges. Named ranges use
   `Friendly Name = start-address-end-address` and normalize to numbered labels
   such as `Friendly Name-0001`; every expanded address counts toward the
@@ -98,14 +98,16 @@ to the next future occurrence rather than replaying a backlog.
 - Debounce: require consecutive met checks before firing.
 - Recovery: require consecutive clear checks before rearming.
 - Cooldown: minimum interval between incident triggers.
-- Action: run a command set on up to 50 SSH targets concurrently. Commands use
-  a 300-second default ceiling and complete as soon as the original device
+- Action: render a command template against a target matrix of up to 5,000 SSH
+  hosts. Fixed Name and Host columns plus operator-defined variable columns use
+  the same `{{ variable }}` substitution as Multi-SSH. A Stored Commandlet can
+  populate the action editor, but the action saves a snapshot rather than a
+  live reference. Fleet execution submits batches of 50 with no more than 10
+  simultaneous SSH connections and a bounded aggregate output budget. Commands
+  use a 300-second default ceiling and complete as soon as the original device
   prompt returns. Prefix an individual command with `[timeout=600]` when it
   needs a different ceiling; accepted values are 1 through 3600 seconds. The
   combined timeout budget across commands is limited to one hour per host.
-  Targets may use `Friendly Name = hostname-or-IP` or the shared inclusive IP
-  range syntax; the address is retained for troubleshooting while the friendly
-  name is used in results and ZIP filenames.
 - Action: send an RFC 5424 syslog message to up to 20 UDP or TCP collectors.
   Facility, severity, hostname, application name, timeout, and destination ports
   are configurable. Messages support the explicit variables
