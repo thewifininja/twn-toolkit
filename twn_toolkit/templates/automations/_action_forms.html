@@ -13,27 +13,7 @@
       </select>
     </label>
     <div data-action-fields="ssh.collect">
-      <p class="field-note">Per-host SSH output is retained with each run. Credentials are encrypted using this toolkit installation’s secret key.</p>
-
-      <section class="automation-form-section">
-        <div class="automation-form-section-head">
-          <h4>Starting point</h4>
-          <p>Start fresh or copy a Stored Commandlet into this action. The action keeps its own snapshot.</p>
-        </div>
-        {% if ssh_commandlets %}
-          <label>Load Stored Commandlet
-            <select data-automation-ssh-commandlet>
-              <option value="">Choose a Commandlet…</option>
-              {% for commandlet in ssh_commandlets %}
-                <option value="{{ commandlet.name }}">{{ commandlet.name }}{% if commandlet.platform %} · {{ commandlet.platform }}{% endif %}{% if commandlet.target_count %} · {{ commandlet.target_count }} target(s){% endif %}</option>
-              {% endfor %}
-            </select>
-            <small class="field-note">Loading copies the template, timeout, and saved target matrix. Later Commandlet edits do not alter this automation action.</small>
-          </label>
-        {% else %}
-          <p class="field-note">No Stored Commandlets yet. You can build the action here or save one from Multi-SSH Advanced mode.</p>
-        {% endif %}
-      </section>
+      <p class="field-note"><strong>Build this action directly below.</strong> Add targets and commands here; a Stored Commandlet is only an optional shortcut. Per-host output is retained with each run, and credentials are encrypted.</p>
 
       <section class="automation-form-section automation-ssh-matrix-editor" data-ssh-matrix-editor data-ssh-target-limit="{{ ssh_target_limit }}">
         <div class="automation-ssh-matrix-head">
@@ -43,6 +23,22 @@
           </div>
           <button class="secondary multi-ssh-matrix-mode" type="button" data-ssh-matrix-toggle data-ssh-matrix-mode="raw" aria-label="Switch to Raw matrix" title="Switch to Raw matrix">Raw matrix</button>
         </div>
+        {% if ssh_commandlets %}
+          <details class="automation-helper-details">
+            <summary>Optional shortcut: load a Stored Commandlet</summary>
+            <div class="automation-helper-body">
+              <label>Stored Commandlet
+                <select data-automation-ssh-commandlet>
+                  <option value="">Choose a Commandlet…</option>
+                  {% for commandlet in ssh_commandlets %}
+                    <option value="{{ commandlet.name }}">{{ commandlet.name }}{% if commandlet.platform %} · {{ commandlet.platform }}{% endif %}{% if commandlet.target_count %} · {{ commandlet.target_count }} target(s){% endif %}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <p>Loading copies the commands, timeout, and saved target matrix into this form. The action keeps its own snapshot, so later Commandlet edits do not change it.</p>
+            </div>
+          </details>
+        {% endif %}
         <div class="message error" role="alert" data-ssh-matrix-error hidden></div>
         <div class="message info compact-message" data-ssh-matrix-notice hidden></div>
         <div class="multi-ssh-matrix-grid" data-ssh-matrix-grid hidden>

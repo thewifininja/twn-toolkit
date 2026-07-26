@@ -998,7 +998,12 @@ class AutomationRouteTests(unittest.TestCase):
             saved_page = client.get("/automations/actions")
 
         self.assertEqual(initial.status_code, 200)
-        self.assertIn(b"Load Stored Commandlet", initial.data)
+        self.assertIn(b"Build this action directly below.", initial.data)
+        self.assertIn(
+            b"Optional shortcut: load a Stored Commandlet",
+            initial.data,
+        )
+        self.assertNotIn(b"<h4>Starting point</h4>", initial.data)
         self.assertIn(b"Collect AP diagnostics", initial.data)
         self.assertIn(b"data-automation-ssh-commandlets", initial.data)
         self.assertIn(b"data-ssh-matrix-editor", initial.data)
