@@ -31,6 +31,10 @@ SSH_DEFAULT_COMMAND_TIMEOUT = 300
 SSH_MAX_COMMAND_TIMEOUT = 3600
 SSH_MAX_RUN_TIMEOUT = 3600
 SSH_OUTPUT_LIMIT = 5 * 1024 * 1024
+SSH_TARGET_LIMIT = 5_000
+SSH_EXECUTION_BATCH_SIZE = 50
+SSH_EXECUTION_WORKERS = 10
+SSH_FLEET_OUTPUT_BUDGET = 50 * 1024 * 1024
 
 
 class ToolInputError(ValueError):
@@ -845,25 +849,38 @@ def run_ssh_host_plans(
     if not 1 <= port <= 65535:
         raise ToolInputError("SSH port must be between 1 and 65535.")
 
-    workers = min(10, len(normalized_plans))
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {
-            executor.submit(
-                _ssh_host,
-                plan["host"],
-                username,
-                password,
-                plan["command_specs"],
-                port,
-                allow_unknown_hosts,
-                send_ctrl_y,
-                command_delay,
-                plan["label"],
-                allow_legacy_algorithms,
-            ): index
-            for index, plan in enumerate(normalized_plans)
-        }
-        indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
+    per_host_capture_limit = min(
+        SSH_OUTPUT_LIMIT,
+        max(8 * 1024, SSH_FLEET_OUTPUT_BUDGET // len(normalized_plans)),
+    )
+    indexed_results: list[tuple[int, dict[str, Any]]] = []
+    for batch_start in range(0, len(normalized_plans), SSH_EXECUTION_BATCH_SIZE):
+        batch = normalized_plans[
+            batch_start : batch_start + SSH_EXECUTION_BATCH_SIZE
+        ]
+        workers = min(SSH_EXECUTION_WORKERS, len(batch))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(
+                    _ssh_host,
+                    plan["host"],
+                    username,
+                    password,
+                    plan["command_specs"],
+                    port,
+                    allow_unknown_hosts,
+                    send_ctrl_y,
+                    command_delay,
+                    plan["label"],
+                    allow_legacy_algorithms,
+                    per_host_capture_limit,
+                ): batch_start + index
+                for index, plan in enumerate(batch)
+            }
+            indexed_results.extend(
+                (futures[future], future.result())
+                for future in as_completed(futures)
+            )
     return [result for _index, result in sorted(indexed_results)]
 
 
@@ -1014,6 +1031,7 @@ def _ssh_host(
     command_delay: float,
     host_label: str = "",
     allow_legacy_algorithms: bool = False,
+    capture_limit: int = SSH_OUTPUT_LIMIT,
 ) -> dict[str, Any]:
     import paramiko
 
@@ -1055,7 +1073,9 @@ def _ssh_host(
                 channel,
                 command_timeout,
                 prompt,
-                capture_limit=max(0, SSH_OUTPUT_LIMIT - sum(len(item) for item in output)),
+                capture_limit=max(
+                    0, capture_limit - sum(len(item) for item in output)
+                ),
             )
             output.append(command_output)
             if not completed:
@@ -1063,7 +1083,9 @@ def _ssh_host(
                     "host": host,
                     "host_label": host_label,
                     "status": "timeout",
-                    "output": _bounded_output("".join(output)),
+                    "output": _bounded_output(
+                        "".join(output), limit=capture_limit
+                    ),
                     "error": (
                         f"Command exceeded its {command_timeout}-second timeout: {command}"
                     ),
@@ -1074,14 +1096,14 @@ def _ssh_host(
             "host": host,
             "host_label": host_label,
             "status": "success",
-            "output": _bounded_output("".join(output)),
+            "output": _bounded_output("".join(output), limit=capture_limit),
         }
     except Exception as exc:
         return {
             "host": host,
             "host_label": host_label,
             "status": "error",
-            "output": _bounded_output("".join(output)),
+            "output": _bounded_output("".join(output), limit=capture_limit),
             "error": format_ssh_connection_error(exc),
         }
     finally:

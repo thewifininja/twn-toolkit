@@ -4683,12 +4683,27 @@ button.compact,
   border-radius: 50%;
   color: var(--action-primary);
   display: inline-flex;
-  font-size: 1rem;
-  font-weight: 700;
   height: 25px;
   justify-content: center;
-  line-height: 1;
+  position: relative;
   width: 25px;
+}
+
+.multi-ssh-sheet-add > span::before,
+.multi-ssh-sheet-add > span::after {
+  background: currentColor;
+  border-radius: 2px;
+  content: "";
+  height: 2px;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+}
+
+.multi-ssh-sheet-add > span::after {
+  transform: translate(-50%, -50%) rotate(90deg);
 }
 
 .multi-ssh-sheet-add:hover > span,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import subprocess
 import unittest
+from concurrent.futures import Future
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -19,6 +20,9 @@ from twn_toolkit.network_tools import (
     _ping_host,
     PING_ACCELERATED_LIMIT,
     PING_COMPATIBILITY_LIMIT,
+    SSH_EXECUTION_BATCH_SIZE,
+    SSH_EXECUTION_WORKERS,
+    SSH_FLEET_OUTPUT_BUDGET,
     ToolInputError,
     parse_dns_servers,
     parse_ping_targets,
@@ -28,6 +32,7 @@ from twn_toolkit.network_tools import (
     parse_ssh_targets,
     ping_engine_capability,
     ping_hosts,
+    run_ssh_host_plans,
     subtract_subnets,
     validate_hosts,
 )
@@ -161,6 +166,81 @@ class NetworkToolTests(unittest.TestCase):
                 {"label": "Basement Switch", "host": "192.0.2.20"},
                 {"label": "", "host": "core-switch.example.com"},
             ],
+        )
+
+    def test_ssh_host_plans_submit_large_fleets_in_bounded_batches(self) -> None:
+        executors: list[object] = []
+
+        class RecordingExecutor:
+            def __init__(self, max_workers: int) -> None:
+                self.max_workers = max_workers
+                self.submitted = 0
+                executors.append(self)
+
+            def __enter__(self) -> "RecordingExecutor":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+            def submit(self, function: object, *args: object) -> Future:
+                self.submitted += 1
+                future: Future = Future()
+                future.set_result(function(*args))
+                return future
+
+        plans = [
+            {
+                "host": f"ap-{index}.example.com",
+                "label": f"AP {index}",
+                "command_specs": [{"command": "show status", "timeout": 30}],
+            }
+            for index in range(1, 126)
+        ]
+
+        def completed_host(*args: object) -> dict[str, object]:
+            return {
+                "host": args[0],
+                "host_label": args[8],
+                "status": "success",
+                "output": "",
+                "capture_limit": args[10],
+            }
+
+        with (
+            patch(
+                "twn_toolkit.network_tools.ThreadPoolExecutor",
+                RecordingExecutor,
+            ),
+            patch(
+                "twn_toolkit.network_tools._ssh_host",
+                side_effect=completed_host,
+            ),
+        ):
+            results = run_ssh_host_plans(
+                plans,
+                username="admin",
+                password="secret",
+            )
+
+        self.assertEqual(
+            [executor.submitted for executor in executors],
+            [SSH_EXECUTION_BATCH_SIZE, SSH_EXECUTION_BATCH_SIZE, 25],
+        )
+        self.assertTrue(
+            all(
+                executor.max_workers == SSH_EXECUTION_WORKERS
+                for executor in executors
+            )
+        )
+        self.assertEqual(len(results), 125)
+        self.assertEqual(results[0]["host"], "ap-1.example.com")
+        self.assertEqual(results[-1]["host"], "ap-125.example.com")
+        self.assertTrue(
+            all(
+                result["capture_limit"] == SSH_FLEET_OUTPUT_BUDGET // 125
+                for result in results
+            )
         )
 
     def test_ssh_command_waits_for_the_original_device_prompt(self) -> None:

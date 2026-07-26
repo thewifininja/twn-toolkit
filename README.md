@@ -112,7 +112,9 @@ The sidebar and Network Tools page use the same functional organization.
   or use the spreadsheet-style target table and Raw Matrix editor in Advanced
   mode to substitute literal `{{ variable }}` values into reusable Stored
   Commandlets. The fixed `Host` column maps directly to `{{ host }}`; older
-  `IP/FQDN` headings remain accepted when importing saved matrices.
+  `IP/FQDN` headings remain accepted when importing saved matrices. Fleet runs
+  support up to 5,000 targets, submitted in batches of 50 with at most 10
+  simultaneous SSH connections and a bounded aggregate output budget.
   Commandlets can optionally retain their target matrix and per-host values,
   while credentials remain per-run only. Signed previews show every rendered
   command before execution.

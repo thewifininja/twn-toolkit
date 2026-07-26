@@ -11,6 +11,7 @@ from twn_toolkit import create_app
 from twn_toolkit.audit import AuditStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.ssh_commandlets import (
+    SSH_MATRIX_ROW_LIMIT,
     SSHCommandletStore,
     build_ssh_command_plans,
     normalize_variable_name,
@@ -55,6 +56,26 @@ class SSHCommandletParserTests(unittest.TestCase):
         self.assertEqual(
             comma["targets"][0]["variables"]["description"], "HQ, first floor"
         )
+
+    def test_matrix_supports_large_fleets_with_a_bounded_ceiling(self) -> None:
+        fleet = parse_ssh_target_matrix(
+            "Name | Host\n"
+            + "\n".join(
+                f"AP {index} | ap-{index}.example.com"
+                for index in range(1, 126)
+            )
+        )
+        self.assertEqual(len(fleet["targets"]), 125)
+
+        oversized = "Name | Host\n" + "\n".join(
+            f"AP {index} | ap-{index}.example.com"
+            for index in range(1, SSH_MATRIX_ROW_LIMIT + 2)
+        )
+        with self.assertRaisesRegex(
+            ToolInputError,
+            f"maximum of {SSH_MATRIX_ROW_LIMIT} SSH hosts",
+        ):
+            parse_ssh_target_matrix(oversized)
 
     def test_matrix_rejects_missing_host_duplicate_headers_and_bad_rows(self) -> None:
         with self.assertRaisesRegex(ToolInputError, "Host column"):
@@ -179,7 +200,9 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b'aria-label="Add target row"', initial_page.data)
             self.assertIn(b'aria-label="Add variable column"', initial_page.data)
             self.assertIn(b"Add row", initial_page.data)
-            self.assertIn(b"Add column", initial_page.data)
+            self.assertIn(b"Add variable", initial_page.data)
+            self.assertIn(b'data-ssh-target-limit="5000"', initial_page.data)
+            self.assertIn(b"batches of 50", initial_page.data)
             self.assertIn(b"Name and Host stay fixed", initial_page.data)
             self.assertNotIn(b"Name and IP/FQDN stay fixed", initial_page.data)
             self.assertIn(b"data-ssh-matrix data-1p-ignore", initial_page.data)

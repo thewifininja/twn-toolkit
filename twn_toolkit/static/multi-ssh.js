@@ -18,6 +18,7 @@
   const matrixNotice = form.querySelector("[data-ssh-matrix-notice]");
   const matrixSummary = form.querySelector("[data-ssh-matrix-summary]");
   const modeButtons = [...form.querySelectorAll("[data-ssh-matrix-mode]")];
+  const targetLimit = Number(form.dataset.sshTargetLimit) || 5000;
 
   const fixedHeaders = [
     { label: "Name", key: "name", locked: true },
@@ -112,7 +113,9 @@
         ...customIndexes.map((index) => paddedRow[index]),
       ];
     });
-    if (nextRows.length > 50) throw new Error("A maximum of 50 targets is allowed.");
+    if (nextRows.length > targetLimit) {
+      throw new Error(`A maximum of ${targetLimit} targets is allowed.`);
+    }
     return { headers: nextHeaders, rows: nextRows.length ? nextRows : [nextHeaders.map(() => "")] };
   };
 
@@ -304,8 +307,8 @@
   };
 
   const addBlankRow = () => {
-    if (rows.length >= 50) {
-      setMatrixError("A maximum of 50 targets is allowed.");
+    if (rows.length >= targetLimit) {
+      setMatrixError(`A maximum of ${targetLimit} targets is allowed.`);
       return false;
     }
     rows.push(headers.map(() => ""));
@@ -352,8 +355,8 @@
       setMatrixError("A maximum of 20 matrix columns is allowed.");
       return;
     }
-    if (requiredRows > 50) {
-      setMatrixError("A maximum of 50 targets is allowed.");
+    if (requiredRows > targetLimit) {
+      setMatrixError(`A maximum of ${targetLimit} targets is allowed.`);
       return;
     }
     while (headers.length < requiredColumns) {
@@ -567,8 +570,8 @@
     const duplicate = event.target.closest("[data-ssh-duplicate-row]");
     const remove = event.target.closest("[data-ssh-delete-row]");
     if (duplicate) {
-      if (rows.length >= 50) {
-        setMatrixError("A maximum of 50 targets is allowed.");
+      if (rows.length >= targetLimit) {
+        setMatrixError(`A maximum of ${targetLimit} targets is allowed.`);
         return;
       }
       const index = Number(duplicate.dataset.sshDuplicateRow);

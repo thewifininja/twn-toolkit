@@ -11,6 +11,7 @@ from typing import Any
 
 from .network_tools import (
     SSH_DEFAULT_COMMAND_TIMEOUT,
+    SSH_TARGET_LIMIT,
     ToolInputError,
     parse_ssh_commands,
     validate_ssh_target,
@@ -18,7 +19,7 @@ from .network_tools import (
 from .profiles import JsonListStore
 
 
-SSH_MATRIX_ROW_LIMIT = 50
+SSH_MATRIX_ROW_LIMIT = SSH_TARGET_LIMIT
 SSH_MATRIX_COLUMN_LIMIT = 20
 SSH_MATRIX_VALUE_LIMIT = 500
 SSH_COMMANDLET_DESCRIPTION_LIMIT = 500

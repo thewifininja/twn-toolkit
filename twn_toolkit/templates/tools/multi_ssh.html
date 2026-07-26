@@ -7,7 +7,7 @@
 <section class="panel tool-panel multi-ssh-panel">
   <div class="panel-head">
     <h1>Multi-SSH</h1>
-    <p>Run prompt-aware command sequences across up to 50 SSH hosts. Advanced mode renders per-host variables and supports reusable Commandlets.</p>
+    <p>Run prompt-aware command sequences across up to {{ ssh_target_limit_label }} SSH hosts. Advanced mode renders per-host variables and supports reusable Commandlets.</p>
   </div>
   <nav class="admin-page-nav multi-ssh-mode-nav" aria-label="Multi-SSH mode">
     <a class="button-link {{ 'secondary' if mode != 'basic' }}" href="{{ url_for('tools.multi_ssh', mode='basic') }}" {% if mode == 'basic' %}aria-current="page"{% endif %}>Basic</a>
@@ -22,7 +22,8 @@
       <label>
         Hosts
         <textarea name="hosts" rows="5" placeholder="Basement Switch = 192.0.2.20&#10;Access switches = 10.0.0.1-10.0.0.24&#10;core-switch.example.com" data-1p-ignore required>{{ form.hosts }}</textarea>
-        <small class="field-note">{{ host_range_guidance(50, 'hosts') }}</small>
+        <small class="field-note">{{ host_range_guidance(ssh_target_limit_label, 'hosts') }}</small>
+        <small class="field-note">Large target lists run in batches of {{ ssh_batch_size }} with at most {{ ssh_execution_workers }} simultaneous SSH connections.</small>
       </label>
       <div class="form-grid">
         <label>
@@ -57,7 +58,7 @@
       <p class="field-note">Credentials are used only for this request and are not stored.</p>
     </form>
   {% else %}
-    <form class="form multi-ssh-advanced-form" method="post" autocomplete="off" data-multi-ssh-advanced>
+    <form class="form multi-ssh-advanced-form" method="post" autocomplete="off" data-multi-ssh-advanced data-ssh-target-limit="{{ ssh_target_limit }}">
       <input name="mode" type="hidden" value="advanced">
       <input name="preview_token" type="hidden" value="{{ preview_token }}" data-ssh-preview-token>
       <input name="commandlet_original_name" type="hidden" value="{{ form.commandlet_original_name }}">
@@ -86,12 +87,12 @@
             </div>
             <div class="multi-ssh-matrix-sheet-controls">
               <button class="multi-ssh-sheet-add" type="button" data-ssh-add-target aria-label="Add target row" title="Add target row">
-                <span aria-hidden="true">+</span>
+                <span aria-hidden="true"></span>
                 Add row
               </button>
               <button class="multi-ssh-sheet-add" type="button" data-ssh-add-variable aria-label="Add variable column" title="Add variable column">
-                Add column
-                <span aria-hidden="true">+</span>
+                <span aria-hidden="true"></span>
+                Add variable
               </button>
             </div>
             <p class="multi-ssh-grid-hint">Paste a spreadsheet block into any cell. <kbd>Enter</kbd> moves down; <kbd>Tab</kbd> moves across.</p>
@@ -105,6 +106,7 @@
             <small class="field-note">Paste pipe-, tab-, or comma-separated data here. Return to Table editor for row and cell editing.</small>
           </div>
           <small class="field-note">Name and Host stay fixed. Custom headings become lowercase variables with separators converted to underscores. Built-ins: <code>name</code>, <code>host</code>, and <code>row_number</code>.</small>
+          <small class="field-note">Large fleets run in batches of {{ ssh_batch_size }} with at most {{ ssh_execution_workers }} simultaneous SSH connections. Results appear after all batches finish.</small>
         </section>
 
         <section class="multi-ssh-workspace-card">
@@ -184,11 +186,11 @@
             <div class="preview-head">
               <div>
                 <h2>Per-host command preview</h2>
-                <p>{{ preview.plans | length }} host(s) · {{ preview.referenced_variables | length }} referenced variable(s)</p>
+                <p>{{ preview.plans | length }} host(s) · {{ preview.execution_batch_count }} execution batch(es) · {{ preview.referenced_variables | length }} referenced variable(s)</p>
               </div>
             </div>
             <div class="multi-ssh-preview-grid">
-              {% for plan in preview.plans %}
+              {% for plan in preview.display_plans %}
                 <article class="multi-ssh-preview-card">
                   <header>
                     <strong>{{ plan.label or plan.host }}</strong>
@@ -199,6 +201,9 @@
                 </article>
               {% endfor %}
             </div>
+            {% if preview.hidden_plan_count %}
+              <p class="field-note">Showing the first {{ preview.display_plans | length }} host previews. The remaining {{ preview.hidden_plan_count }} host(s) are included in the signed preview and execution.</p>
+            {% endif %}
           </section>
         {% endif %}
 

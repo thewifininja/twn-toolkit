@@ -17,6 +17,9 @@ from .activity_context import record_current_activity
 from .audit import annotate_audit_event, annotate_tool_run, suppress_audit_event
 from .network_tools import (
     SSH_DEFAULT_COMMAND_TIMEOUT,
+    SSH_EXECUTION_BATCH_SIZE,
+    SSH_EXECUTION_WORKERS,
+    SSH_TARGET_LIMIT,
     ToolInputError,
     parse_ssh_targets,
     run_ssh_host_plans,
@@ -32,6 +35,7 @@ from .ssh_commandlets import (
 
 
 _PREVIEW_TOKEN_SALT = "multi-ssh-advanced-preview-v1"
+_PREVIEW_DISPLAY_LIMIT = 100
 
 
 def register_ssh_routes(tools_bp: Blueprint) -> None:
@@ -100,6 +104,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                         str(form["commands"]),
                         int(str(form["command_timeout"])),
                     )
+                    _annotate_preview_scale(preview)
                     if action == "preview":
                         preview_token = _preview_serializer().dumps(
                             {"digest": ssh_command_plan_digest(preview["plans"])}
@@ -156,6 +161,10 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             preview=preview,
             preview_token=preview_token,
             commandlets=_ssh_commandlet_store().all(),
+            ssh_target_limit=SSH_TARGET_LIMIT,
+            ssh_target_limit_label=f"{SSH_TARGET_LIMIT:,}",
+            ssh_batch_size=SSH_EXECUTION_BATCH_SIZE,
+            ssh_execution_workers=SSH_EXECUTION_WORKERS,
         )
 
     @tools_bp.post("/multi-ssh/commandlets/delete")
@@ -255,7 +264,7 @@ def _run_basic(
 ) -> tuple[list[dict[str, object]], int, int]:
     if request.form.get("confirm_execution") != "on":
         raise ToolInputError("Confirm that you intend to execute these commands.")
-    hosts = parse_ssh_targets(str(form["hosts"]), limit=50)
+    hosts = parse_ssh_targets(str(form["hosts"]), limit=SSH_TARGET_LIMIT)
     commands = [
         command
         for command in str(form["commands"]).splitlines()
@@ -286,6 +295,17 @@ def _run_advanced(
         allow_unknown_hosts=bool(form["allow_unknown_hosts"]),
         allow_legacy_algorithms=bool(form["allow_legacy_algorithms"]),
         send_ctrl_y=bool(form["send_ctrl_y"]),
+    )
+
+
+def _annotate_preview_scale(preview: dict[str, object]) -> None:
+    plans = list(preview.get("plans", []))
+    preview["display_plans"] = plans[:_PREVIEW_DISPLAY_LIMIT]
+    preview["hidden_plan_count"] = max(0, len(plans) - _PREVIEW_DISPLAY_LIMIT)
+    preview["execution_batch_size"] = SSH_EXECUTION_BATCH_SIZE
+    preview["execution_batch_count"] = (
+        (len(plans) + SSH_EXECUTION_BATCH_SIZE - 1)
+        // SSH_EXECUTION_BATCH_SIZE
     )
 
 
