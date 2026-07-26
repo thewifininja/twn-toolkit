@@ -322,6 +322,7 @@ For more detailed first-run and profile instructions, see
 ./twn start             Start web, scheduler, supervisor, and enabled services
 ./twn stop              Stop the toolkit
 ./twn restart           Restart the toolkit
+./twn recover           Repair an orphaned/sudo-started server and start normally
 ./twn status            Show process state and usable access URLs
 ./twn logs              Show recent web and scheduler errors
 ./twn enable-https ...  Generate or regenerate toolkit-managed HTTPS
@@ -358,7 +359,12 @@ permission:
   high ports avoid that requirement.
 
 Starting the whole toolkit with `sudo` can make `instance/` root-owned. Return
-to normal operation with `./twn fix-permissions`.
+to normal operation with `./twn recover`. The recovery command detects Linux or
+macOS, verifies that a process occupying the configured port belongs to this
+installation, stops orphaned toolkit processes, repairs instance ownership, and
+starts the service as the invoking user. It will not terminate an unrelated
+process that happens to use the same port. Use `./twn fix-permissions` when only
+the instance ownership needs repair.
 
 See [Packet Replay setup](docs/packet-replay.md) for platform-specific details.
 
