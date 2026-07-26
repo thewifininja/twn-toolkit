@@ -8,7 +8,11 @@
     row.querySelector("[data-capture-elapsed]").textContent =
       `${Number(payload.elapsed_seconds || 0).toFixed(1)}s`;
     row.querySelector("[data-capture-size]").textContent = payload.size_display;
+    row.querySelector("[data-capture-summary-size]").textContent =
+      payload.size_display;
     row.querySelector("[data-capture-packets]").textContent =
+      payload.packet_count || "—";
+    row.querySelector("[data-capture-summary-packets]").textContent =
       payload.packet_count || "—";
     row.querySelector("[data-capture-reason]").textContent =
       payload.termination_reason || (payload.active ? "In progress" : "—");
@@ -27,6 +31,14 @@
     row.querySelector("[data-capture-stop]").hidden = !payload.active;
     row.querySelector("[data-capture-download]").hidden = !payload.downloadable;
     row.querySelector("[data-capture-delete]").hidden = payload.active;
+    const save = row.querySelector("[data-capture-save]");
+    if (save) save.hidden = !payload.downloadable;
+    const viewer = row.querySelector("[data-capture-viewer]");
+    if (viewer) {
+      viewer.hidden = !payload.viewable;
+      viewer.dataset.pcapViewerLive = String(payload.active);
+      viewer.textContent = payload.active ? "Open live viewer" : "Inspect PCAP";
+    }
   };
 
   const refresh = async () => {

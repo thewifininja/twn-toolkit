@@ -123,6 +123,14 @@ The other Network Tools follow the same category layout shown in the sidebar:
 - **Traffic & Interfaces:** Packet Capture, Wi-Fi/LAN Speed Test, DHCP Discover,
   and Packet Replay
 
+Packet Capture includes a floating, minimizable header viewer for live
+captures. Auto-scroll follows incoming packets by default. Local Datastore adds
+an **Inspect PCAP** file action for retained `.pcap`, `.pcapng`, and `.cap`
+files, so they do not need to be opened through Packet Capture. The
+viewer shows addresses, ports, protocols, VLANs, timestamps, and lengths
+without displaying packet payloads. Completed captures can be downloaded or
+copied to a selected datastore folder.
+
 SNMP Tester can also discover the standard IF-MIB interfaces across saved SNMP
 hosts and build a monitor set of up to 20 interfaces. Each interface gets an
 adaptive mirrored graph with endpoint download (interface transmit) above zero

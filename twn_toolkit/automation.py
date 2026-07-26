@@ -2244,7 +2244,11 @@ class AutomationEngine:
             try:
                 action = self.registry.actions[action_definition["type"]]
                 result = action.execute(
-                    {**action_definition["config"], "_instance_path": str(self.store.instance_path)},
+                    {
+                        **action_definition["config"],
+                        "_instance_path": str(self.store.instance_path),
+                        "_action_name": action_definition["name"],
+                    },
                     contextual_trigger,
                 )
                 return ActionResult(

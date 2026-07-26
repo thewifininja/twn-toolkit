@@ -216,7 +216,7 @@
         <input name="capture_action_filter" maxlength="1000" value="{{ config.get('capture_filter', config.get('capture_action_filter', '')) }}" placeholder="host 10.0.0.1 and port 443">
         <small class="field-note">Standard tcpdump/BPF syntax. The filter is validated again when the action runs.</small>
       </label>
-      <div class="form-grid">
+      <div class="form-grid packet-capture-limits-grid">
         <label>Packet limit
           <input name="capture_action_packet_count" type="number" min="0" max="1000000" value="{{ config.get('packet_count', config.get('capture_action_packet_count', '0')) }}" required>
           <small class="field-note">Use 0 for no packet-count limit.</small>
@@ -230,7 +230,22 @@
         </label>
       </div>
       <label class="check"><input name="capture_action_promiscuous" type="checkbox" {% if config.get('promiscuous', config.get('capture_action_promiscuous', true)) %}checked{% endif %}><span><strong>Promiscuous mode</strong><small>Normally required for traffic received from a SPAN or mirror port.</small></span></label>
-      <div class="message warning">PCAP files can contain credentials and sensitive payloads. They are retained with the automation run until deleted or removed by the run-retention policy.</div>
+      <label>Filename pattern
+        <input name="capture_action_filename_pattern" maxlength="240" value="{{ config.get('filename_pattern', config.get('capture_action_filename_pattern', '{timestamp}-{action}-{interface}.pcap')) }}" required>
+        <small class="field-note">Tokens: <code>{timestamp}</code>, <code>{action}</code>, and <code>{interface}</code>. The <code>.pcap</code> extension is added when omitted; duplicate names never overwrite.</small>
+      </label>
+      {% set capture_destination_mode = config.get('destination_mode', config.get('capture_action_destination_mode', 'run')) %}
+      <fieldset class="choice-group" data-capture-action-output>
+        <legend>Collection destination</legend>
+        <label class="check"><input type="radio" name="capture_action_destination_mode" value="run" {% if capture_destination_mode == 'run' %}checked{% endif %}><span><strong>Collected action run</strong><small>Keep the PCAP with the run and include it in Download ZIP.</small></span></label>
+        <label class="check"><input type="radio" name="capture_action_destination_mode" value="datastore" {% if capture_destination_mode == 'datastore' %}checked{% endif %}><span><strong>Datastore</strong><small>Persist the PCAP beneath a selected datastore folder.</small></span></label>
+      </fieldset>
+      <div data-capture-action-datastore {% if capture_destination_mode != 'datastore' %}hidden{% endif %}>
+        <label>Datastore folder
+          <select name="capture_action_datastore_folder">{% for folder in datastore_folders %}<option value="{{ folder.path }}" {% if config.get('datastore_folder', config.get('capture_action_datastore_folder', '')) == folder.path %}selected{% endif %}>{{ folder.name }}</option>{% endfor %}</select>
+        </label>
+      </div>
+      <div class="message warning">PCAP files can contain credentials and sensitive payloads. Captures remain in the selected destination until deleted; retained-run captures also follow the run-retention policy.</div>
     </div>
     <div class="button-row"><button type="submit">{{ 'Update action' if definition_id else 'Save action' }}</button></div>
   </form>

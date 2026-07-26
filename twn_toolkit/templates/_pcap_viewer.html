@@ -1,0 +1,59 @@
+<div class="pcap-viewer-scrim" data-pcap-scrim hidden aria-hidden="true"></div>
+<aside
+  class="pcap-floating-window"
+  id="pcap-floating-window"
+  role="dialog"
+  aria-modal="false"
+  aria-labelledby="pcap-floating-title"
+  hidden
+>
+  <header class="pcap-floating-titlebar" data-pcap-drag-handle>
+    <div>
+      <span class="pcap-live-dot" data-pcap-live-dot hidden aria-hidden="true"></span>
+      <strong id="pcap-floating-title">Packet viewer</strong>
+    </div>
+    <div class="pcap-window-controls">
+      <button type="button" data-pcap-minimize aria-label="Minimize packet viewer" title="Minimize">—</button>
+      <button type="button" data-pcap-close aria-label="Close packet viewer" title="Close">×</button>
+    </div>
+  </header>
+  <div class="pcap-floating-statusbar">
+    <span data-pcap-status>Ready</span>
+    <div>
+      <label class="pcap-auto-scroll">
+        <input type="checkbox" data-pcap-auto-scroll checked>
+        <span>Auto-scroll</span>
+      </label>
+      <span class="pcap-packet-count" data-pcap-count>0</span>
+    </div>
+  </div>
+  <div class="pcap-floating-table-wrap" data-pcap-scroll-region>
+    <table class="pcap-floating-table">
+      <thead>
+        <tr>
+          <th># / time</th>
+          <th>Source</th>
+          <th>Destination</th>
+          <th>Protocol</th>
+          <th>Length</th>
+        </tr>
+      </thead>
+      <tbody data-pcap-rows></tbody>
+    </table>
+    <div class="pcap-floating-empty" data-pcap-empty>
+      Waiting for packet headers…
+    </div>
+  </div>
+  <footer class="pcap-floating-footer">
+    <span>Header summaries only; payloads are not displayed.</span>
+    <div class="button-row">
+      <button class="secondary" type="button" data-pcap-reload>Reload from start</button>
+      <button class="secondary" type="button" data-pcap-load-more hidden>Load more</button>
+      <a class="button-link secondary" data-pcap-download hidden>Download PCAP</a>
+      <form method="post" data-pcap-stop-form hidden>
+        <button class="danger" type="submit">Stop capture</button>
+      </form>
+      <button class="secondary" type="button" data-pcap-close>Close</button>
+    </div>
+  </footer>
+</aside>

@@ -4,16 +4,26 @@ import tempfile
 import unittest
 from pathlib import Path
 import shutil
+import struct
 from unittest.mock import patch
+
+from scapy.layers.inet import IP, TCP, UDP
+from scapy.layers.l2 import Ether
+from scapy.utils import PcapNgWriter, wrpcap
 
 from twn_toolkit import create_app
 from twn_toolkit.automation_registry import AUTOMATION_REGISTRY, ConditionResult
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.packet_capture import (
+    DEFAULT_CAPTURE_FILENAME_PATTERN,
     PacketCaptureStore,
+    format_capture_filename,
+    normalize_capture_filename,
     run_packet_capture,
     validate_capture_config,
+    validate_capture_filename_pattern,
 )
+from twn_toolkit.pcap_viewer import inspect_packet_capture
 
 
 VALID_CONFIG = {
@@ -71,6 +81,25 @@ class PacketCaptureTests(unittest.TestCase):
                 {**VALID_CONFIG, "interface": "span9"}, require_runtime=False
             )
         self.assertEqual(portable["interface"], "span9")
+
+    def test_capture_filename_patterns_are_safe_and_add_extension(self) -> None:
+        pattern = validate_capture_filename_pattern(
+            "{timestamp}-{action}-{interface}"
+        )
+        self.assertEqual(
+            format_capture_filename(
+                pattern,
+                timestamp="20260725193422",
+                action="WAN Degradation",
+                interface="en7",
+            ),
+            "20260725193422-WAN-Degradation-en7.pcap",
+        )
+        self.assertEqual(normalize_capture_filename("Incident 42"), "Incident 42.pcap")
+        with self.assertRaisesRegex(ToolInputError, "tokens"):
+            validate_capture_filename_pattern("{automation}-{interface}")
+        with self.assertRaisesRegex(ToolInputError, "slashes"):
+            normalize_capture_filename("../capture")
 
     def test_runner_builds_bounded_tcpdump_command_and_retains_pcap(self) -> None:
         class FakeProcess:
@@ -158,6 +187,72 @@ class PacketCaptureTests(unittest.TestCase):
             self.assertIsNone(store.get(capture_id))
             self.assertFalse(output.exists())
 
+    def test_header_viewer_decodes_endpoints_protocols_and_pages(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.pcap"
+            packets = [
+                Ether(src="00:11:22:33:44:55", dst="66:77:88:99:aa:bb")
+                / IP(src="192.0.2.10", dst="198.51.100.20")
+                / TCP(sport=49152, dport=443, flags="S"),
+                Ether(src="66:77:88:99:aa:bb", dst="00:11:22:33:44:55")
+                / IP(src="198.51.100.20", dst="192.0.2.10")
+                / UDP(sport=53, dport=49153),
+            ]
+            wrpcap(str(path), packets)
+
+            first = inspect_packet_capture(path, limit=1)
+            second = inspect_packet_capture(path, start=first["next_start"], limit=1)
+            pcapng_path = Path(directory) / "sample.pcapng"
+            writer = PcapNgWriter(str(pcapng_path))
+            writer.write(packets[0])
+            writer.close()
+            pcapng = inspect_packet_capture(pcapng_path)
+
+        self.assertTrue(first["has_more"])
+        self.assertIsInstance(first["next_cursor"], int)
+        self.assertEqual(first["packets"][0]["source_mac"], "00:11:22:33:44:55")
+        self.assertEqual(first["packets"][0]["source_ip"], "192.0.2.10")
+        self.assertEqual(first["packets"][0]["destination_port"], 443)
+        self.assertEqual(first["packets"][0]["protocol"], "TCP")
+        self.assertEqual(second["packets"][0]["protocol"], "UDP")
+        self.assertFalse(second["has_more"])
+        self.assertEqual(pcapng["packets"][0]["destination_ip"], "198.51.100.20")
+
+    def test_live_viewer_resumes_at_an_incomplete_packet_record(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            complete = Path(directory) / "complete.pcap"
+            live = Path(directory) / "live.pcap"
+            packets = [
+                Ether() / IP(src="192.0.2.1", dst="198.51.100.1") / UDP(sport=1, dport=2),
+                Ether() / IP(src="192.0.2.2", dst="198.51.100.2") / UDP(sport=3, dport=4),
+            ]
+            wrpcap(str(complete), packets)
+            data = complete.read_bytes()
+            first_captured_length = struct.unpack_from("<I", data, 24 + 8)[0]
+            second_record = 24 + 16 + first_captured_length
+            live.write_bytes(data[: second_record + 10])
+
+            first = inspect_packet_capture(live, allow_incomplete=True)
+            live.write_bytes(data)
+            second = inspect_packet_capture(
+                live,
+                start=first["next_start"],
+                cursor=first["next_cursor"],
+                allow_incomplete=True,
+            )
+
+        self.assertEqual(len(first["packets"]), 1)
+        self.assertEqual(first["next_cursor"], second_record)
+        self.assertEqual(second["packets"][0]["source_ip"], "192.0.2.2")
+
+    def test_header_viewer_waits_for_live_file_header(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "live.pcap"
+            path.touch()
+            result = inspect_packet_capture(path, allow_incomplete=True)
+        self.assertTrue(result["waiting"])
+        self.assertEqual(result["packets"], [])
+
     def test_worker_launch_uses_absolute_instance_and_daemon_marker(self) -> None:
         class Worker:
             pid = 4567
@@ -218,37 +313,89 @@ class PacketCaptureTests(unittest.TestCase):
             store = PacketCaptureStore(instance)
             capture = store.recent(1)[0]
             output = store.output_file(capture)
-            output.write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 28)
+            wrpcap(
+                str(output),
+                [
+                    Ether(src="00:11:22:33:44:55", dst="66:77:88:99:aa:bb")
+                    / IP(src="192.0.2.10", dst="198.51.100.20")
+                    / TCP(sport=49152, dport=443, flags="S")
+                ],
+            )
             store.finish(
                 capture["id"],
                 status="completed",
                 result={
                     "elapsed_seconds": 2,
-                    "size_bytes": 32,
-                    "packet_count_captured": 4,
+                    "size_bytes": output.stat().st_size,
+                    "packet_count_captured": 1,
                     "termination_reason": "packet limit reached",
                 },
             )
             status = client.get(
                 f"/tools/packet-capture/{capture['id']}/status"
             )
+            inspected = client.get(
+                f"/tools/packet-capture/{capture['id']}/packets"
+            )
             download = client.get(
                 f"/tools/packet-capture/{capture['id']}/download"
             )
             expected_download = output.read_bytes()
+            saved = client.post(
+                f"/tools/packet-capture/{capture['id']}/save",
+                data={"destination": "", "filename": "WAN incident.pcap"},
+            )
+            duplicate_save = client.post(
+                f"/tools/packet-capture/{capture['id']}/save",
+                data={"destination": "", "filename": "WAN incident.pcap"},
+            )
+            saved_path = Path(instance) / "datastore" / "WAN incident.pcap"
+            inspected_saved = client.get(
+                "/local/datastore/view-pcap",
+                query_string={"path": saved_path.name},
+            )
+            completed_page = client.get("/tools/packet-capture")
+            datastore_page = client.get("/local/datastore")
             deleted = client.post(
                 f"/tools/packet-capture/{capture['id']}/delete"
             )
-            self.assertEqual(status.get_json()["packet_count"], 4)
+            self.assertEqual(status.get_json()["packet_count"], 1)
+            self.assertTrue(status.get_json()["viewable"])
+            self.assertEqual(inspected.get_json()["packets"][0]["protocol"], "TCP")
             self.assertEqual(download.status_code, 200)
             self.assertEqual(download.data, expected_download)
             download.close()
+            self.assertEqual(saved.status_code, 302)
+            self.assertEqual(duplicate_save.status_code, 302)
+            self.assertEqual(saved_path.read_bytes(), expected_download)
+            self.assertEqual(
+                (Path(instance) / "datastore" / "WAN incident-2.pcap").read_bytes(),
+                expected_download,
+            )
+            self.assertEqual(
+                inspected_saved.get_json()["packets"][0]["destination_port"], 443
+            )
+            self.assertIn(b'class="button-link secondary"', completed_page.data)
+            self.assertNotIn(b"Stored packet captures", completed_page.data)
+            self.assertIn(b"data-pcap-viewer-open", completed_page.data)
+            self.assertIn(b'class="packet-capture-row"', completed_page.data)
+            self.assertIn(b"packet-capture-row-summary-meta", completed_page.data)
+            self.assertIn(b'id="pcap-floating-window"', completed_page.data)
+            self.assertIn(b"Inspect PCAP", datastore_page.data)
+            self.assertIn(b"/local/datastore/view-pcap", datastore_page.data)
             self.assertEqual(deleted.status_code, 302)
             self.assertIsNone(store.get(capture["id"]))
             actions_page = client.get("/automations/actions")
             self.assertEqual(actions_page.status_code, 200)
             self.assertIn(b"Packet capture", actions_page.data)
             self.assertIn(b'name="capture_action_interface"', actions_page.data)
+            self.assertIn(b"Collection destination", actions_page.data)
+            self.assertIn(b'name="capture_action_destination_mode"', actions_page.data)
+            self.assertIn(b'name="capture_action_datastore_folder"', actions_page.data)
+            self.assertIn(b'name="capture_action_filename_pattern"', actions_page.data)
+            self.assertIn(b'data-pcap-scrim', actions_page.data)
+            self.assertIn(b'name="filename"', completed_page.data)
+            self.assertIn(b"WAN incident", datastore_page.data)
 
     def test_automation_action_returns_capture_as_run_artifact(self) -> None:
         action = AUTOMATION_REGISTRY.actions["packet.capture"]
@@ -265,10 +412,14 @@ class PacketCaptureTests(unittest.TestCase):
                     "capture_action_max_size": "10",
                     "capture_action_snap_length": "128",
                     "capture_action_promiscuous": "on",
+                    "capture_action_destination_mode": "run",
+                    "capture_action_filename_pattern": DEFAULT_CAPTURE_FILENAME_PATTERN,
                 },
             )
         self.assertEqual(parsed["interface"], "en7")
         self.assertEqual(parsed["duration_seconds"], 30)
+        self.assertEqual(parsed["destination_mode"], "run")
+        self.assertEqual(parsed["filename_pattern"], DEFAULT_CAPTURE_FILENAME_PATTERN)
 
         def capture(_config, *, output_path, **_kwargs):
             Path(output_path).write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 28)
@@ -291,7 +442,12 @@ class PacketCaptureTests(unittest.TestCase):
             ),
         ):
             result = action.execute(
-                {**normalized, "_instance_path": "/tmp/instance"},
+                {
+                    **normalized,
+                    "_instance_path": "/tmp/instance",
+                    "_action_name": "WAN Degradation",
+                    "filename_pattern": DEFAULT_CAPTURE_FILENAME_PATTERN,
+                },
                 ConditionResult(True, "met", "WAN degraded", {}),
             )
         artifact = result.output["_artifact_sources"][0]
@@ -299,9 +455,54 @@ class PacketCaptureTests(unittest.TestCase):
             self.assertEqual(result.status, "success")
             self.assertIn("9 packet(s)", result.summary)
             self.assertEqual(Path(artifact["source_path"]).read_bytes()[:4], b"\xd4\xc3\xb2\xa1")
-            self.assertTrue(artifact["filename"].endswith("-en7-capture.pcap"))
+            self.assertTrue(
+                artifact["filename"].endswith("-WAN-Degradation-en7.pcap")
+            )
         finally:
             shutil.rmtree(Path(artifact["source_path"]).parent, ignore_errors=True)
+
+    def test_automation_action_can_save_capture_to_datastore(self) -> None:
+        action = AUTOMATION_REGISTRY.actions["packet.capture"]
+
+        def capture(_config, *, output_path, **_kwargs):
+            Path(output_path).write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 28)
+            return {
+                **VALID_CONFIG,
+                "elapsed_seconds": 2.0,
+                "size_bytes": 32,
+                "packet_count_captured": 3,
+                "termination_reason": "packet limit reached",
+            }
+
+        with tempfile.TemporaryDirectory() as instance:
+            with (
+                patch(
+                    "twn_toolkit.automation_types.actions.validate_capture_config",
+                    return_value=VALID_CONFIG,
+                ),
+                patch(
+                    "twn_toolkit.automation_types.actions.run_packet_capture",
+                    side_effect=capture,
+                ),
+            ):
+                result = action.execute(
+                    {
+                        **VALID_CONFIG,
+                        "_instance_path": instance,
+                        "destination_mode": "datastore",
+                        "datastore_folder": "",
+                        "_action_name": "WAN Degradation",
+                        "filename_pattern": DEFAULT_CAPTURE_FILENAME_PATTERN,
+                    },
+                    ConditionResult(True, "met", "WAN degraded", {}),
+                )
+
+            stored_path = Path(instance) / "datastore" / result.output["stored_path"]
+            self.assertEqual(result.status, "success")
+            self.assertEqual(result.output["destination_mode"], "datastore")
+            self.assertNotIn("_artifact_sources", result.output)
+            self.assertEqual(stored_path.read_bytes()[:4], b"\xd4\xc3\xb2\xa1")
+            self.assertTrue(stored_path.name.endswith("-WAN-Degradation-en7.pcap"))
 
 
 if __name__ == "__main__":

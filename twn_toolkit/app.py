@@ -179,6 +179,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             "download_datastore_file",
             "tools.download_managed_certificate",
             "view_datastore_file_as_text",
+            "view_datastore_pcap",
         }
         should_audit = request.method in {"POST", "PUT", "PATCH", "DELETE"} or (request.endpoint or "") in audited_reads
         context = getattr(g, "audit_event", {})

@@ -32,7 +32,7 @@
       <small class="field-note">Standard tcpdump/BPF syntax. The filter is compiled and validated before a capture starts.</small>
     </label>
 
-    <div class="form-grid">
+    <div class="form-grid packet-capture-limits-grid">
       <label>Packet limit
         <input name="packet_count" type="number" min="0" max="1000000" value="{{ form.packet_count }}" required {% if not capability.available %}disabled{% endif %}>
         <small class="field-note">Use 0 for no packet-count limit.</small>
@@ -72,37 +72,71 @@
   {% if captures %}
     <div class="packet-capture-list">
       {% for capture in captures %}
-        <article
+        <details
           class="packet-capture-row"
           id="capture-{{ capture.id }}"
           data-capture-row
           data-capture-active="{{ 'true' if capture.active else 'false' }}"
           data-status-url="{{ url_for('tools.packet_capture_status', capture_id=capture.id) }}"
+          {% if capture.active or request.args.get('focus') == capture.id %}open{% endif %}
         >
-          <div class="packet-capture-row-head">
+          <summary class="packet-capture-row-head">
             <div>
               <strong>{{ capture.interface }}</strong>
               <small>{{ capture.created_display }}{% if capture.capture_filter %} · <code>{{ capture.capture_filter }}</code>{% endif %}</small>
             </div>
-            <span class="pill {{ 'success' if capture.status == 'completed' else 'error' if capture.status == 'error' else 'planned' }}" data-capture-status>{{ capture.status }}</span>
+            <div class="packet-capture-row-summary-meta">
+              <small><span data-capture-summary-size>{{ capture.size_display }}</span> · <span data-capture-summary-packets>{{ capture.packet_count or '—' }}</span> packets</small>
+              <span class="pill {{ 'success' if capture.status == 'completed' else 'error' if capture.status == 'error' else 'planned' }}" data-capture-status>{{ capture.status }}</span>
+            </div>
+          </summary>
+          <div class="packet-capture-row-body">
+            <dl class="packet-capture-stats">
+              <div><dt>Elapsed</dt><dd data-capture-elapsed>{{ capture.elapsed_seconds|round(1) }}s</dd></div>
+              <div><dt>Size</dt><dd data-capture-size>{{ capture.size_display }}</dd></div>
+              <div><dt>Packets</dt><dd data-capture-packets>{{ capture.packet_count or '—' }}</dd></div>
+              <div><dt>Stopped by</dt><dd data-capture-reason>{{ capture.termination_reason or 'In progress' }}</dd></div>
+            </dl>
+            <p class="message error" data-capture-error {% if not capture.error %}hidden{% endif %}>{{ capture.error }}</p>
+            <div class="packet-capture-actions">
+              <div class="button-row packet-capture-primary-actions">
+              <form method="post" action="{{ url_for('tools.stop_packet_capture', capture_id=capture.id) }}" data-capture-stop {% if not capture.active %}hidden{% endif %}>
+                <button class="danger secondary" type="submit">Stop capture</button>
+              </form>
+              <a class="button-link secondary" href="{{ url_for('tools.download_packet_capture', capture_id=capture.id) }}" data-capture-download {% if not capture.downloadable %}hidden{% endif %}>Download PCAP</a>
+              <button
+                class="secondary"
+                type="button"
+                data-pcap-viewer-open
+                data-pcap-viewer-url="{{ url_for('tools.inspect_captured_packets', capture_id=capture.id) }}"
+                data-pcap-viewer-title="{{ capture.interface }} packet capture"
+                data-pcap-viewer-live="{{ 'true' if capture.active else 'false' }}"
+                data-pcap-viewer-status-url="{{ url_for('tools.packet_capture_status', capture_id=capture.id) }}"
+                data-pcap-viewer-stop-url="{{ url_for('tools.stop_packet_capture', capture_id=capture.id) }}"
+                data-pcap-viewer-download-url="{{ url_for('tools.download_packet_capture', capture_id=capture.id) }}"
+                data-capture-viewer
+                {% if not capture.viewable %}hidden{% endif %}
+              >{{ 'Open live viewer' if capture.active else 'Inspect PCAP' }}</button>
+              <form method="post" action="{{ url_for('tools.delete_packet_capture', capture_id=capture.id) }}" data-capture-delete {% if capture.active %}hidden{% endif %} onsubmit="return confirm('Delete this retained packet capture?');">
+                <button class="danger secondary" type="submit">Delete</button>
+              </form>
+              </div>
+              {% if can_use_datastore %}
+                <form class="packet-capture-save" method="post" action="{{ url_for('tools.save_packet_capture', capture_id=capture.id) }}" data-capture-save {% if not capture.downloadable %}hidden{% endif %}>
+                  <label for="capture-filename-{{ capture.id }}">Filename
+                    <input id="capture-filename-{{ capture.id }}" name="filename" maxlength="255" value="{{ capture.datastore_filename }}">
+                  </label>
+                  <label for="capture-destination-{{ capture.id }}">Destination
+                    <select id="capture-destination-{{ capture.id }}" name="destination">
+                      {% for folder in datastore_folders %}<option value="{{ folder.path }}">{{ folder.name }}</option>{% endfor %}
+                    </select>
+                  </label>
+                  <button class="secondary" type="submit">Save to datastore</button>
+                </form>
+              {% endif %}
+            </div>
           </div>
-          <dl class="packet-capture-stats">
-            <div><dt>Elapsed</dt><dd data-capture-elapsed>{{ capture.elapsed_seconds|round(1) }}s</dd></div>
-            <div><dt>Size</dt><dd data-capture-size>{{ capture.size_display }}</dd></div>
-            <div><dt>Packets</dt><dd data-capture-packets>{{ capture.packet_count or '—' }}</dd></div>
-            <div><dt>Stopped by</dt><dd data-capture-reason>{{ capture.termination_reason or 'In progress' }}</dd></div>
-          </dl>
-          <p class="message error" data-capture-error {% if not capture.error %}hidden{% endif %}>{{ capture.error }}</p>
-          <div class="button-row packet-capture-actions">
-            <form method="post" action="{{ url_for('tools.stop_packet_capture', capture_id=capture.id) }}" data-capture-stop {% if not capture.active %}hidden{% endif %}>
-              <button class="danger secondary" type="submit">Stop capture</button>
-            </form>
-            <a class="button secondary" href="{{ url_for('tools.download_packet_capture', capture_id=capture.id) }}" data-capture-download {% if not capture.downloadable %}hidden{% endif %}>Download PCAP</a>
-            <form method="post" action="{{ url_for('tools.delete_packet_capture', capture_id=capture.id) }}" data-capture-delete {% if capture.active %}hidden{% endif %} onsubmit="return confirm('Delete this retained packet capture?');">
-              <button class="danger secondary" type="submit">Delete</button>
-            </form>
-          </div>
-        </article>
+        </details>
       {% endfor %}
     </div>
   {% else %}

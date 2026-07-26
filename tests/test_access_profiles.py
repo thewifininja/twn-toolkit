@@ -90,6 +90,46 @@ class AccessProfileTests(unittest.TestCase):
             self.assertEqual(client.get("/tools/packet-replay").status_code, 200)
             self.assertEqual(client.get("/settings/backup").status_code, 403)
 
+    def test_packet_capture_only_user_cannot_browse_or_save_datastore_pcaps(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            client = app.test_client()
+            setup_admin(client)
+            store = AuthStore(instance)
+            profile = store.save_access_profile(
+                name="Packet capture only",
+                tool_ids=["tools.packet_capture"],
+            )
+            store.create_user(
+                "captureuser",
+                "a different long password",
+                access_profile_ids=[profile["id"]],
+            )
+
+            client.post("/logout")
+            client.post(
+                "/login",
+                data={"username": "captureuser", "password": "a different long password"},
+            )
+
+            page = client.get("/tools/packet-capture")
+            self.assertEqual(page.status_code, 200)
+            self.assertNotIn(b"Stored packet captures", page.data)
+            self.assertEqual(
+                client.get(
+                    "/local/datastore/view-pcap",
+                    query_string={"path": "capture.pcap"},
+                ).status_code,
+                403,
+            )
+            self.assertEqual(
+                client.post(
+                    "/tools/packet-capture/missing/save",
+                    data={"destination": ""},
+                ).status_code,
+                403,
+            )
+
     def test_nav_and_home_only_show_allowed_categories(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)

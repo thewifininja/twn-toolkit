@@ -207,6 +207,15 @@
       sftpOutput?.addEventListener("change", syncSftpOutput);
       syncSftpOutput();
 
+      const captureOutput = form.querySelector("[data-capture-action-output]");
+      const captureDatastore = form.querySelector("[data-capture-action-datastore]");
+      const syncCaptureOutput = () => {
+        const selected = captureOutput?.querySelector("input:checked");
+        if (captureDatastore) captureDatastore.hidden = selected?.value !== "datastore";
+      };
+      captureOutput?.addEventListener("change", syncCaptureOutput);
+      syncCaptureOutput();
+
       const transferProtocol = form.querySelector("[data-action-transfer-protocol]");
       const transferPort = form.querySelector("[data-action-transfer-port]");
       const sshOptions = form.querySelectorAll("[data-action-ssh-host-key-option]");

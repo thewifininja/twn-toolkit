@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
+from typing import BinaryIO
 
 from flask import (
     Blueprint,
@@ -18,6 +20,7 @@ from flask import (
 
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run
+from .datastore import DatastoreError, LocalDatastore
 from .network_tools import ToolInputError
 from .packet_capture import (
     DEFAULT_DURATION_SECONDS,
@@ -27,12 +30,23 @@ from .packet_capture import (
     PacketCaptureStore,
     capture_capability,
     capture_interfaces,
+    normalize_capture_filename,
 )
+from .pcap_viewer import inspect_packet_capture
 
 
 def register_packet_capture_routes(tools_bp: Blueprint) -> None:
     def store() -> PacketCaptureStore:
         return PacketCaptureStore(current_app.instance_path)
+
+    def datastore() -> LocalDatastore:
+        return LocalDatastore(current_app.instance_path)
+
+    def can_use_datastore() -> bool:
+        return bool(
+            g.current_user.get("is_admin")
+            or "local.datastore" in getattr(g, "allowed_tool_ids", set())
+        )
 
     @tools_bp.get("/packet-capture")
     def packet_capture():
@@ -51,11 +65,19 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
                 (item for item in interfaces if not item["loopback"]), interfaces[0]
             )
             form["interface"] = non_loopback["name"]
+        datastore_folders = []
+        if can_use_datastore():
+            datastore_folders = datastore().folders()
+        captures = store().recent()
+        for capture in captures:
+            capture["datastore_filename"] = _capture_filename(capture)
         return render_template(
             "tools/packet_capture.html",
             capability=capture_capability(),
             interfaces=interfaces,
-            captures=store().recent(),
+            captures=captures,
+            can_use_datastore=can_use_datastore(),
+            datastore_folders=datastore_folders,
             form=form,
         )
 
@@ -125,6 +147,7 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
                     "status",
                     "active",
                     "downloadable",
+                    "viewable",
                     "elapsed_seconds",
                     "size_bytes",
                     "size_display",
@@ -134,6 +157,24 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
                 )
             }
         )
+
+    @tools_bp.get("/packet-capture/<capture_id>/packets")
+    def inspect_captured_packets(capture_id: str):
+        capture_store = store()
+        capture = capture_store.get(capture_id)
+        if not capture:
+            abort(404)
+        path = capture_store.output_file(capture)
+        try:
+            result = inspect_packet_capture(
+                path,
+                start=request.args.get("start", 0),
+                allow_incomplete=capture["active"],
+                cursor=request.args.get("cursor"),
+            )
+        except ToolInputError as exc:
+            return jsonify({"error": str(exc)}), 422
+        return jsonify(result)
 
     @tools_bp.post("/packet-capture/<capture_id>/stop")
     def stop_packet_capture(capture_id: str):
@@ -165,11 +206,7 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
         path = capture_store.output_file(capture)
         if not path.is_file():
             abort(404)
-        stamp = datetime.fromtimestamp(float(capture["created_at"])).astimezone()
-        filename = (
-            f"{stamp:%Y%m%d%H%M%S}-"
-            f"{_safe_filename(str(capture['interface']))}-capture.pcap"
-        )
+        filename = _capture_filename(capture)
         annotate_tool_run(
             category="Network tools",
             action_namespace="packet_capture",
@@ -186,6 +223,55 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
             mimetype="application/vnd.tcpdump.pcap",
             as_attachment=True,
             download_name=filename,
+        )
+
+    @tools_bp.post("/packet-capture/<capture_id>/save")
+    def save_packet_capture(capture_id: str):
+        if not can_use_datastore():
+            abort(403)
+        capture_store = store()
+        capture = capture_store.get(capture_id)
+        if not capture or not capture["downloadable"]:
+            abort(404)
+        source = capture_store.output_file(capture)
+        if not source.is_file():
+            abort(404)
+        destination_folder = request.form.get("destination", "")
+        requested_filename = request.form.get("filename", _capture_filename(capture))
+        try:
+            filename = normalize_capture_filename(requested_filename)
+            with source.open("rb") as stream:
+                saved, size = _save_capture_to_datastore(
+                    datastore(),
+                    destination_folder,
+                    filename,
+                    stream,
+                    max_bytes=(
+                        max(1, int(capture["max_size_mib"])) * 1024 * 1024
+                    ),
+                )
+        except (DatastoreError, OSError, ToolInputError) as exc:
+            flash(f"PCAP was not saved: {exc}", "error")
+        else:
+            relative_path = datastore().relative(saved)
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="packet_capture",
+                tool_name="packet capture",
+                outcome="saved to datastore",
+                details={
+                    "capture id": capture_id,
+                    "interface": capture["interface"],
+                    "datastore path": relative_path,
+                    "size bytes": size,
+                },
+            )
+            record_current_activity(
+                "Packets", "Saved packet capture", relative_path
+            )
+            flash(f"Saved PCAP to datastore as {relative_path}.", "success")
+        return redirect(
+            url_for("tools.packet_capture", focus=capture_id, _anchor=f"capture-{capture_id}")
         )
 
     @tools_bp.post("/packet-capture/<capture_id>/delete")
@@ -216,3 +302,34 @@ def _safe_filename(value: str) -> str:
         for character in value
     ).strip(".-_")
     return (cleaned or "interface")[:100]
+
+
+def _capture_filename(capture: dict[str, object]) -> str:
+    stamp = datetime.fromtimestamp(float(capture["created_at"])).astimezone()
+    return (
+        f"{stamp:%Y%m%d%H%M%S}-"
+        f"{_safe_filename(str(capture['interface']))}-capture.pcap"
+    )
+
+
+def _save_capture_to_datastore(
+    store: LocalDatastore,
+    destination: str,
+    filename: str,
+    source: BinaryIO,
+    *,
+    max_bytes: int,
+) -> tuple[Path, int]:
+    path = Path(filename)
+    candidate = filename
+    for index in range(1, 1001):
+        try:
+            return store.save_upload(
+                destination, candidate, source, max_bytes=max_bytes
+            )
+        except DatastoreError as exc:
+            if "already exists" not in str(exc):
+                raise
+            source.seek(0)
+            candidate = f"{path.stem}-{index + 1}{path.suffix}"
+    raise DatastoreError("Unable to choose an unused packet capture filename.")

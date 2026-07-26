@@ -6533,6 +6533,13 @@ button.compact,
   grid-template-columns: minmax(0, 2fr) minmax(12rem, 1fr);
 }
 
+.packet-capture-limits-grid {
+  grid-template-columns:
+    minmax(14rem, 1fr)
+    minmax(10rem, 0.5fr)
+    minmax(18rem, 0.85fr);
+}
+
 .packet-capture-history-head,
 .packet-capture-row-head {
   display: flex;
@@ -6547,11 +6554,43 @@ button.compact,
 }
 
 .packet-capture-row {
-  padding: 1rem;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--panel);
   box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.packet-capture-row > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 1rem;
+}
+
+.packet-capture-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.packet-capture-row > summary::after {
+  color: var(--muted);
+  content: "›";
+  flex: 0 0 auto;
+  font-size: 1.45rem;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 150ms ease;
+}
+
+.packet-capture-row[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.packet-capture-row[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.packet-capture-row-body {
+  padding: 0 1rem 1rem;
 }
 
 .packet-capture-row-head > div {
@@ -6561,6 +6600,18 @@ button.compact,
 .packet-capture-row-head strong,
 .packet-capture-row-head small {
   display: block;
+}
+
+.packet-capture-row-summary-meta {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.packet-capture-row-summary-meta small {
+  margin: 0;
+  white-space: nowrap;
 }
 
 .packet-capture-row-head small {
@@ -6594,13 +6645,305 @@ button.compact,
 }
 
 .packet-capture-actions {
+  display: grid;
+  gap: 0.8rem;
   margin-top: 0;
+}
+
+.packet-capture-primary-actions {
+  align-items: center;
+}
+
+.packet-capture-save {
+  align-items: end;
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(16rem, 1.35fr) minmax(12rem, 0.9fr) auto;
+  padding: 0.75rem;
+}
+
+.packet-capture-save label {
+  margin: 0;
+}
+
+.packet-capture-save input,
+.packet-capture-save select {
+  min-height: 40px;
+  width: 100%;
+}
+
+.pcap-viewer-scrim {
+  background: rgb(7 18 14 / 22%);
+  inset: 0;
+  position: fixed;
+  z-index: 890;
+}
+
+.pcap-floating-window {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 28%);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  height: min(720px, calc(100vh - 120px));
+  left: 50%;
+  overflow: hidden;
+  position: fixed;
+  top: 94px;
+  transform: translateX(-50%);
+  width: min(1120px, calc(100vw - 32px));
+  z-index: 900;
+}
+
+.pcap-floating-titlebar {
+  align-items: center;
+  background: var(--action-secondary);
+  color: #fff;
+  cursor: move;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  touch-action: none;
+  user-select: none;
+}
+
+.pcap-floating-titlebar > div {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.pcap-floating-titlebar strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcap-window-controls button {
+  align-items: center;
+  background: transparent;
+  border-radius: 5px;
+  display: inline-flex;
+  font-size: 1.25rem;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  width: 38px;
+}
+
+.pcap-window-controls button:hover {
+  background: rgb(255 255 255 / 14%);
+}
+
+.pcap-live-dot {
+  animation: pcap-live-pulse 1.4s ease-in-out infinite;
+  background: var(--brand-green);
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgb(78 203 88 / 45%);
+  height: 0.65rem;
+  width: 0.65rem;
+}
+
+@keyframes pcap-live-pulse {
+  70% { box-shadow: 0 0 0 7px rgb(78 203 88 / 0%); }
+  100% { box-shadow: 0 0 0 0 rgb(78 203 88 / 0%); }
+}
+
+.pcap-floating-statusbar {
+  align-items: center;
+  background: var(--card-tint);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+}
+
+.pcap-floating-statusbar > div,
+.pcap-auto-scroll {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pcap-auto-scroll {
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pcap-auto-scroll input {
+  min-height: auto;
+  width: auto;
+}
+
+.pcap-packet-count {
+  align-items: center;
+  background: var(--action-secondary);
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 800;
+  justify-content: center;
+  min-width: 1.8rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.pcap-floating-table-wrap {
+  background: color-mix(in srgb, var(--panel), var(--nav) 2%);
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.pcap-floating-table {
+  min-width: 860px;
+}
+
+.pcap-floating-table thead th {
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.pcap-floating-table tbody tr {
+  cursor: pointer;
+}
+
+.pcap-floating-table tbody tr:hover {
+  background: color-mix(in srgb, var(--brand-green), transparent 92%);
+}
+
+.pcap-floating-table tbody tr.is-selected {
+  background: color-mix(in srgb, var(--accent), transparent 82%);
+}
+
+.pcap-floating-table td strong,
+.pcap-floating-table td small {
+  display: block;
+}
+
+.pcap-floating-table td small {
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+.pcap-floating-table th:first-child,
+.pcap-floating-table td:first-child,
+.pcap-floating-table th:last-child,
+.pcap-floating-table td:last-child {
+  white-space: nowrap;
+}
+
+.pcap-floating-empty {
+  color: var(--muted);
+  inset: 50% auto auto 50%;
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.pcap-floating-footer {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  min-height: 60px;
+  padding: 0.65rem 1rem;
+}
+
+.pcap-floating-footer > span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.pcap-floating-window.is-minimized {
+  bottom: 16px !important;
+  height: auto;
+  left: auto !important;
+  right: 16px !important;
+  top: auto !important;
+  transform: none !important;
+  width: min(380px, calc(100vw - 32px));
+}
+
+.pcap-floating-window.is-minimized > :not(.pcap-floating-titlebar) {
+  display: none;
+}
+
+.pcap-floating-window.is-minimized .pcap-floating-titlebar {
+  cursor: pointer;
 }
 
 @media (max-width: 720px) {
   .packet-capture-primary-grid,
   .packet-capture-stats {
     grid-template-columns: 1fr;
+  }
+
+  .packet-capture-row > summary {
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .packet-capture-row > summary > div:first-child {
+    order: 1;
+  }
+
+  .packet-capture-row > summary::after {
+    margin-left: auto;
+    order: 2;
+  }
+
+  .packet-capture-row-summary-meta {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    margin-left: 0;
+    order: 3;
+  }
+
+  .packet-capture-save,
+  .packet-capture-save input,
+  .packet-capture-save select {
+    width: 100%;
+  }
+
+  .packet-capture-save {
+    grid-template-columns: 1fr;
+  }
+
+  .pcap-floating-window {
+    height: calc(100vh - 20px);
+    left: 10px !important;
+    top: 10px !important;
+    transform: none !important;
+    width: calc(100vw - 20px);
+  }
+
+  .pcap-floating-titlebar {
+    cursor: default;
+  }
+
+  .pcap-floating-statusbar,
+  .pcap-floating-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pcap-floating-footer .button-row {
+    width: 100%;
   }
 }
 

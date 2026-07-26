@@ -29,6 +29,24 @@ The first reached limit stops a capture. Only one capture may own an interface
 at a time, including across standalone and automation captures. Standalone
 captures run in a dedicated process and continue through browser navigation.
 
+## Packet viewer
+
+Open the viewer on a running or completed capture to review a bounded table of
+capture time, source and destination MAC/IP/port, protocol, VLAN identifiers,
+and captured/wire length. The floating window can be moved or minimized and
+restores across toolkit navigation. Running viewers poll for new complete
+packet records and auto-scroll by default; scrolling upward or turning off the
+toggle pauses that behavior. The viewer retains at most 1,000 rendered rows
+while its packet count continues forward. It deliberately does not render
+payload contents or attempt full protocol dissection.
+
+Local Datastore places **Inspect PCAP** in the file actions for `.pcap`,
+`.pcapng`, and `.cap` files. Datastore users can invoke the same floating viewer without
+navigating to Packet Capture. Save to datastore from capture history still
+requires access to both tools. Large files are read in bounded pages; use
+Wireshark or another dedicated analyzer for filtering, streams, payloads, and
+deep decoding.
+
 ## Permissions
 
 `tcpdump` must be installed and available on the toolkit service `PATH`. The
@@ -45,9 +63,22 @@ permissions automatically.
 ## Storage and security
 
 Standalone PCAPs live beneath `instance/packet_captures/`. Automation PCAPs
-move into the existing `instance/automation_artifacts/` run directory.
-Together they use the automation-artifact quota and minimum free-disk reserve.
-Neither form is included in profile backups.
+can move into the existing `instance/automation_artifacts/` run directory or
+be saved directly to a selected datastore folder. Standalone and run-retained
+captures use the automation-artifact quota and minimum free-disk reserve;
+datastore captures use the datastore quota. Neither form is included in profile
+backups.
+
+**Save to datastore** copies a completed standalone PCAP into the selected
+datastore folder using an editable filename. Automation capture names support
+`{timestamp}`, `{action}`, and `{interface}` pattern tokens. The `.pcap`
+extension is added when omitted, and duplicate names receive a numeric suffix
+instead of overwriting. Datastore copies follow the datastore quota and
+lifecycle and are independent of capture-history deletion.
+
+Recent standalone captures are collapsed by default to keep longer histories
+compact. Their summaries retain the interface, timestamp, size, packet count,
+and status; active or explicitly focused captures open automatically.
 
 Packet captures can contain credentials, session tokens, personal data, and
 application payloads. Grant the tool only to authorized operators and delete

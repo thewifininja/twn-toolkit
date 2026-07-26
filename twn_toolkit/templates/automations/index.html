@@ -274,7 +274,7 @@
                             {% if result.output.get('interface') and result.output.get('size_bytes') %}
                               <article class="automation-destination-result">
                                 <span class="pill success">pcap</span>
-                                <span><strong>{{ result.output.interface }}</strong><small>{{ result.output.packet_count }} packet{{ '' if result.output.packet_count == 1 else 's' }} · {{ result.output.size_bytes }} bytes · {{ result.output.elapsed_seconds }}s · {{ result.output.termination_reason }}</small></span>
+                                <span><strong>{{ result.output.interface }}</strong><small>{{ result.output.packet_count }} packet{{ '' if result.output.packet_count == 1 else 's' }} · {{ result.output.size_bytes }} bytes · {{ result.output.elapsed_seconds }}s · {{ result.output.termination_reason }}{% if result.output.get('stored_path') %} · saved to {{ result.output.stored_path }}{% endif %}</small></span>
                               </article>
                             {% endif %}
                           </div>

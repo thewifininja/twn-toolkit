@@ -13,6 +13,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from string import Formatter
 from typing import Any, Callable, Iterator
 
 from .network_tools import ToolInputError
@@ -30,7 +31,71 @@ DEFAULT_DURATION_SECONDS = 60
 DEFAULT_PACKET_COUNT = 0
 DEFAULT_SIZE_MIB = 100
 DEFAULT_SNAP_LENGTH = 0
+DEFAULT_CAPTURE_FILENAME_PATTERN = "{timestamp}-{action}-{interface}.pcap"
+CAPTURE_FILENAME_TOKENS = {"timestamp", "action", "interface"}
 ACTIVE_STATUSES = {"queued", "running", "stopping"}
+
+
+def validate_capture_filename_pattern(value: str) -> str:
+    pattern = str(value or "").strip() or DEFAULT_CAPTURE_FILENAME_PATTERN
+    if len(pattern) > 240 or "/" in pattern or "\\" in pattern or "\x00" in pattern:
+        raise ToolInputError(
+            "Capture filename patterns must be 240 characters or fewer without slashes."
+        )
+    try:
+        parsed = list(Formatter().parse(pattern))
+        fields = {
+            field_name
+            for _literal, field_name, format_spec, conversion in parsed
+            if field_name and not format_spec and not conversion
+        }
+        if any(field not in CAPTURE_FILENAME_TOKENS for field in fields):
+            raise ValueError
+        if any(
+            format_spec or conversion
+            for _literal, _field, format_spec, conversion in parsed
+        ):
+            raise ValueError
+        format_capture_filename(
+            pattern,
+            timestamp="20260725193422",
+            action="WAN Degradation",
+            interface="en7",
+        )
+    except (IndexError, KeyError, ValueError):
+        raise ToolInputError(
+            "Capture filename pattern tokens are {timestamp}, {action}, and {interface}."
+        ) from None
+    return pattern
+
+
+def format_capture_filename(
+    pattern: str, *, timestamp: str, action: str, interface: str
+) -> str:
+    values = {
+        "timestamp": _safe_filename_component(timestamp, "timestamp"),
+        "action": _safe_filename_component(action, "packet-capture"),
+        "interface": _safe_filename_component(interface, "interface"),
+    }
+    return normalize_capture_filename(pattern.format(**values))
+
+
+def normalize_capture_filename(value: str) -> str:
+    filename = str(value or "").strip()
+    if not filename:
+        raise ToolInputError("Enter a packet capture filename.")
+    if "/" in filename or "\\" in filename or "\x00" in filename:
+        raise ToolInputError("Packet capture filenames cannot contain slashes.")
+    if not filename.casefold().endswith(".pcap"):
+        filename = f"{filename}.pcap"
+    if filename in {".", ".."} or len(filename) > 255:
+        raise ToolInputError("Packet capture filenames must be 255 characters or fewer.")
+    return filename
+
+
+def _safe_filename_component(value: str, fallback: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value)).strip(".-_")
+    return (cleaned or fallback)[:120]
 
 
 def capture_capability() -> dict[str, Any]:
@@ -606,6 +671,7 @@ class PacketCaptureStore:
         item["downloadable"] = (
             item["status"] in {"completed", "stopped"} and item["size_bytes"] >= 24
         )
+        item["viewable"] = item["active"] or item["size_bytes"] >= 24
         item["created_display"] = datetime.fromtimestamp(
             float(item["created_at"])
         ).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")

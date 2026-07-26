@@ -7,11 +7,13 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, url_for
+from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
 
 from .activity_context import record_current_activity
 from .audit import annotate_audit_event
 from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES, format_bytes
+from .network_tools import ToolInputError
+from .pcap_viewer import SUPPORTED_CAPTURE_SUFFIXES, inspect_packet_capture
 from .tftp import TFTPHistoryStore, TFTPSettingsStore, tftp_process_status
 from .ssh_transfer_server import (
     SSHTransferHistoryStore, SSHTransferSettingsStore, ssh_transfer_process_status,
@@ -180,6 +182,11 @@ def register_datastore_routes(
             entry["size_display"] = "Folder" if entry["is_dir"] else format_bytes(entry["size"])
             entry["modified_display"] = datetime.fromtimestamp(entry["modified_at"]).astimezone().strftime(
                 "%b %-d, %Y %-I:%M %p"
+            )
+            entry["pcap_viewable"] = (
+                not entry["is_dir"]
+                and Path(str(entry["name"])).suffix.casefold()
+                in SUPPORTED_CAPTURE_SUFFIXES
             )
         usage = store.usage()
         usage["size_display"] = format_bytes(usage["bytes"])
@@ -510,6 +517,36 @@ def register_datastore_routes(
         )
         record_current_activity("Local storage", "Downloaded datastore file", file_path.name)
         return send_file(file_path, as_attachment=True, download_name=file_path.name)
+
+    @app.get("/local/datastore/view-pcap")
+    def view_datastore_pcap():
+        relative_path = request.args.get("path", "")
+        try:
+            file_path = store.file(relative_path)
+            if file_path.suffix.casefold() not in SUPPORTED_CAPTURE_SUFFIXES:
+                raise DatastoreError("Choose a .pcap, .pcapng, or .cap file.")
+            result = inspect_packet_capture(
+                file_path,
+                start=request.args.get("start", 0),
+                cursor=request.args.get("cursor"),
+            )
+        except (DatastoreError, ToolInputError) as exc:
+            return jsonify({"error": str(exc)}), 422
+        if str(request.args.get("start", "0")) == "0":
+            item = store.describe(relative_path)
+            annotate_audit_event(
+                category="Local storage",
+                action="datastore.pcap_inspected",
+                summary=f"Inspected packet headers in datastore file {item['name']}.",
+                resource_type="datastore_file",
+                resource_id=str(item["path"]),
+                resource_name=str(item["name"]),
+                details=item,
+            )
+            record_current_activity(
+                "Local storage", "Inspected datastore PCAP", str(item["name"])
+            )
+        return jsonify(result)
 
     @app.get("/local/datastore/view-text")
     def view_datastore_file_as_text():
