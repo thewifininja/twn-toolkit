@@ -168,6 +168,10 @@ class SSHCommandletRouteTests(unittest.TestCase):
                 "port": "22",
             }
             initial_page = client.get("/tools/multi-ssh?mode=advanced")
+            self.assertIn(b"Table editor", initial_page.data)
+            self.assertIn(b"Raw matrix", initial_page.data)
+            self.assertIn(b"Add target", initial_page.data)
+            self.assertIn(b"Add variable", initial_page.data)
             self.assertNotIn(b'name="username"', initial_page.data)
             self.assertNotIn(b'name="password"', initial_page.data)
 

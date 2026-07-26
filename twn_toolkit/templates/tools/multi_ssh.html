@@ -68,14 +68,41 @@
             <span>1</span>
             <div>
               <h2>Build the target matrix</h2>
-              <p>Use pipe, tab, or comma-separated columns. <code>Host</code> or <code>IP/FQDN</code> is required.</p>
+              <p>Edit targets as a table, or switch to Raw Matrix for fast spreadsheet and CSV pasting.</p>
             </div>
           </div>
-          <label>
-            Targets and variables
-            <textarea class="command-input multi-ssh-matrix" name="matrix" rows="10" placeholder="Name | IP/FQDN | VLAN ID | IP Address&#10;Switch 1 | 10.103.255.2 | 4 | 10.103.255.1&#10;Switch 2 | 10.103.255.3 | 8 | 10.103.255.17" required data-ssh-matrix>{{ form.matrix }}</textarea>
-          </label>
-          <small class="field-note">Headings become lowercase variables with separators converted to underscores. Each value must fit on one line. Built-ins: <code>name</code>, <code>host</code>, and <code>row_number</code>.</small>
+          <div class="multi-ssh-matrix-mode" role="tablist" aria-label="Target matrix editor mode">
+            <button class="secondary" type="button" role="tab" aria-selected="false" data-ssh-matrix-mode="grid">Table editor</button>
+            <button type="button" role="tab" aria-selected="true" data-ssh-matrix-mode="raw">Raw matrix</button>
+          </div>
+          <div class="message error" role="alert" data-ssh-matrix-error hidden></div>
+          <div class="multi-ssh-matrix-grid" data-ssh-matrix-grid hidden>
+            <div class="multi-ssh-matrix-toolbar">
+              <button class="secondary" type="button" data-ssh-add-target>Add target</button>
+              <label>
+                New variable column
+                <div class="button-row">
+                  <input maxlength="80" placeholder="VLAN ID" data-ssh-new-variable>
+                  <button class="secondary" type="button" data-ssh-add-variable>Add variable</button>
+                </div>
+              </label>
+            </div>
+            <div class="table-wrap multi-ssh-matrix-table-wrap">
+              <table class="multi-ssh-matrix-table" aria-label="Target matrix table">
+                <thead data-ssh-matrix-head></thead>
+                <tbody data-ssh-matrix-body></tbody>
+              </table>
+            </div>
+            <div class="multi-ssh-matrix-summary" data-ssh-matrix-summary></div>
+          </div>
+          <div data-ssh-matrix-raw>
+            <label>
+              Raw matrix
+              <textarea class="command-input multi-ssh-matrix" name="matrix" rows="10" placeholder="Name | IP/FQDN | VLAN ID | IP Address&#10;Switch 1 | 10.103.255.2 | 4 | 10.103.255.1&#10;Switch 2 | 10.103.255.3 | 8 | 10.103.255.17" data-ssh-matrix>{{ form.matrix }}</textarea>
+            </label>
+            <small class="field-note">Paste pipe-, tab-, or comma-separated data here. Return to Table editor for row and cell editing.</small>
+          </div>
+          <small class="field-note">Name and IP/FQDN stay fixed. Custom headings become lowercase variables with separators converted to underscores. Built-ins: <code>name</code>, <code>host</code>, and <code>row_number</code>.</small>
         </section>
 
         <section class="multi-ssh-workspace-card">

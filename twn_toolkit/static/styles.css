@@ -4608,6 +4608,100 @@ button.compact,
   white-space: pre;
 }
 
+.multi-ssh-matrix-mode {
+  display: flex;
+  gap: 8px;
+}
+
+.multi-ssh-matrix-mode button {
+  flex: 1 1 0;
+}
+
+.multi-ssh-matrix-grid {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.multi-ssh-matrix-toolbar {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(240px, 1fr);
+}
+
+.multi-ssh-matrix-toolbar > label .button-row {
+  flex-wrap: nowrap;
+}
+
+.multi-ssh-matrix-toolbar > label button {
+  white-space: nowrap;
+}
+
+.multi-ssh-matrix-table-wrap {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  max-height: 430px;
+}
+
+.multi-ssh-matrix-table {
+  min-width: max-content;
+}
+
+.multi-ssh-matrix-table th,
+.multi-ssh-matrix-table td {
+  min-width: 180px;
+  padding: 8px;
+  vertical-align: top;
+}
+
+.multi-ssh-matrix-table th {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 5%);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.multi-ssh-matrix-table th:last-child,
+.multi-ssh-matrix-table td:last-child {
+  min-width: 150px;
+  width: 150px;
+}
+
+.multi-ssh-matrix-table input {
+  min-width: 165px;
+}
+
+.multi-ssh-variable-heading,
+.multi-ssh-matrix-row-actions {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.multi-ssh-variable-heading input {
+  min-width: 120px;
+}
+
+.multi-ssh-variable-heading button,
+.multi-ssh-matrix-row-actions button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 5px 7px;
+}
+
+.multi-ssh-matrix-table input[aria-invalid="true"] {
+  border-color: var(--bad);
+  outline: 2px solid color-mix(in srgb, var(--bad), transparent 75%);
+}
+
+.multi-ssh-matrix-summary {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .multi-ssh-variable-picker,
 .multi-ssh-commandlet-variables {
   align-items: center;
@@ -8748,6 +8842,11 @@ th {
 @media (max-width: 760px) {
   .multi-ssh-authoring-grid,
   .multi-ssh-commandlet-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multi-ssh-matrix-toolbar {
+    align-items: stretch;
     grid-template-columns: minmax(0, 1fr);
   }
 
