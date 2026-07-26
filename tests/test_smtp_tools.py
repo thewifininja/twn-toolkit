@@ -89,7 +89,15 @@ class SMTPSettingsTests(unittest.TestCase):
                 return {"bad@example.com": (550, b"Mailbox unavailable")}
 
         settings = {**SMTP_VALUES, "password": "smtp-secret"}
-        with patch("twn_toolkit.smtp_tools.smtplib.SMTP", FakeSMTP):
+        # The transport is fully faked, so loading the hosted macOS runner's
+        # system trust store would add tens of seconds without testing anything.
+        with (
+            patch("twn_toolkit.smtp_tools.smtplib.SMTP", FakeSMTP),
+            patch(
+                "twn_toolkit.smtp_tools.ssl.create_default_context",
+                return_value=object(),
+            ),
+        ):
             result = send_smtp_message(
                 settings,
                 to=parse_email_recipients("good@example.com, bad@example.com"),
