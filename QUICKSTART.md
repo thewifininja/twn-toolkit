@@ -328,6 +328,7 @@ collected output, transfer history, or Datastore files.
 ./twn start             Start the toolkit
 ./twn stop              Stop the toolkit
 ./twn restart           Restart the toolkit
+./twn recover           Repair an orphaned/sudo-started server and start normally
 ./twn status            Show process state and access URLs
 ./twn logs              Show recent errors
 ./twn enable-https ...  Generate or regenerate managed HTTPS
@@ -344,8 +345,9 @@ Use another port for one launch:
 TWN_TOOLKIT_PORT=8443 ./twn start
 ```
 
-If a privileged run leaves root-owned instance files, stop the toolkit and run
-`./twn fix-permissions` before returning to a normal user account.
+If a privileged run leaves a root-owned server or instance files, run
+`./twn recover`. It safely identifies this installation's server, requests sudo
+when needed, repairs ownership, and starts the toolkit as the invoking user.
 
 ## Privileged tools
 

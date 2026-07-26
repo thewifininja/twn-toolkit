@@ -90,6 +90,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Automations, schedules, conditions, and actions", response.data)
         self.assertIn(b"Home FortiGate = gate.example.com | 8443", response.data)
         self.assertIn(b"Syslog notification action", response.data)
+        self.assertIn(b"./twn recover", response.data)
         self.assertIn(b"./twn fix-permissions", response.data)
         self.assertIn(b"Dashboard and metrics", response.data)
         self.assertIn(b"Operators can use every tool granted", response.data)

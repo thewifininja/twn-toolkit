@@ -5,6 +5,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 GUNICORN="$ROOT/.venv/bin/gunicorn"
 PYTHON="$ROOT/.venv/bin/python"
+RECOVERY_HELPER="$ROOT/twn_toolkit/recovery.py"
 REQUIREMENTS="$ROOT/requirements.txt"
 INSTANCE="$ROOT/instance"
 REQUIREMENTS_STAMP="$INSTANCE/requirements.sha256"
@@ -457,6 +458,41 @@ with socket.socket(family, socket.SOCK_STREAM) as listener:
 ' "$HOST" "$PORT" >/dev/null 2>&1
 }
 
+recovery_server_pids() {
+  "$PYTHON" "$RECOVERY_HELPER" find \
+    --port "$PORT" \
+    --root "$ROOT" \
+    --gunicorn "$GUNICORN"
+}
+
+recovery_listener_pids() {
+  "$PYTHON" "$RECOVERY_HELPER" find-listener \
+    --port "$PORT" \
+    --root "$ROOT" \
+    --gunicorn "$GUNICORN"
+}
+
+stop_recovery_servers() {
+  "$PYTHON" "$RECOVERY_HELPER" stop \
+    --port "$PORT" \
+    --root "$ROOT" \
+    --gunicorn "$GUNICORN"
+}
+
+show_recovery_listeners() {
+  "$PYTHON" "$RECOVERY_HELPER" describe --port "$PORT" >&2
+}
+
+elevate_recovery() {
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "Recovery needs elevated access, but sudo is unavailable." >&2
+    echo "Run this command as root: $0 recover" >&2
+    exit 1
+  fi
+  echo "Recovery needs elevated access to inspect or stop root-owned processes."
+  exec sudo "$ROOT/twn" recover
+}
+
 has_instance_permission_issues() {
   [ -d "$INSTANCE" ] || return 1
   if [ ! -r "$INSTANCE" ] || [ ! -w "$INSTANCE" ]; then
@@ -827,6 +863,77 @@ automation_restart() {
   start_automation
 }
 
+recover() {
+  if [ ! -x "$PYTHON" ]; then
+    echo "Python virtual environment is missing. Run: ./install.sh" >&2
+    exit 1
+  fi
+
+  load_running_endpoint
+  host_os=$(uname -s 2>/dev/null || echo unknown)
+  echo "Recovering The WiFi Ninja's Toolkit on $host_os..."
+
+  server_pids=$(recovery_server_pids)
+  listener_pids=$(recovery_listener_pids)
+  if [ "$(id -u)" -ne 0 ]; then
+    if has_instance_permission_issues; then
+      elevate_recovery
+    fi
+    for server_pid in $server_pids; do
+      if ! kill -0 "$server_pid" 2>/dev/null; then
+        elevate_recovery
+      fi
+    done
+    if [ -z "$listener_pids" ] && ! port_available; then
+      elevate_recovery
+    fi
+  fi
+
+  if [ -z "$listener_pids" ] && ! port_available; then
+    echo "Cannot recover safely: $HOST:$PORT is in use by another application." >&2
+    show_recovery_listeners
+    echo "No unrelated process was stopped." >&2
+    exit 1
+  fi
+
+  if [ -f "$PIDFILE" ]; then
+    recorded_pid=$(cat "$PIDFILE" 2>/dev/null || true)
+    pidfile_verified=0
+    for server_pid in $server_pids; do
+      if [ "$server_pid" = "$recorded_pid" ]; then
+        pidfile_verified=1
+      fi
+    done
+    if [ "$pidfile_verified" -eq 0 ]; then
+      echo "Discarding a stale server PID file."
+      rm -f "$PIDFILE"
+    fi
+  fi
+
+  stop
+  server_pids=$(recovery_server_pids)
+  if [ -n "$server_pids" ]; then
+    stop_recovery_servers
+  fi
+  if [ -n "$(recovery_server_pids)" ]; then
+    echo "The orphaned toolkit server could not be stopped." >&2
+    exit 1
+  fi
+  if ! port_available; then
+    echo "Cannot recover: $HOST:$PORT is still in use." >&2
+    show_recovery_listeners
+    exit 1
+  fi
+
+  if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    fix_permissions
+    echo "Starting the toolkit as $SUDO_USER..."
+    sudo -u "$SUDO_USER" -- "$ROOT/twn" start
+    return
+  fi
+  start
+}
+
 fix_permissions() {
   if is_running; then
     echo "Stop the toolkit before repairing instance permissions: ./twn stop" >&2
@@ -910,6 +1017,9 @@ case "${1:-}" in
     stop
     start
     ;;
+  recover)
+    recover
+    ;;
   status)
     status
     ;;
@@ -968,7 +1078,7 @@ case "${1:-}" in
     disable_https
     ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|status|logs|upgrade|backup|rollback|upgrade-status|enable-https|disable-https|fix-permissions|adminreset|reset-data|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
+    echo "Usage: ./twn {start|stop|restart|recover|status|logs|upgrade|backup|rollback|upgrade-status|enable-https|disable-https|fix-permissions|adminreset|reset-data|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
     exit 2
     ;;
 esac

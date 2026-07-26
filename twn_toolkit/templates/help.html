@@ -289,6 +289,7 @@ sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
     <pre><code>./twn start            Start web service and scheduler
 ./twn stop             Stop both processes
 ./twn restart          Restart both processes
+./twn recover          Recover an orphaned or sudo-started server
 ./twn status           Show process status
 ./twn logs             Show recent errors
 ./twn enable-https     Generate and enable local HTTPS
@@ -310,8 +311,8 @@ sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
     <p>Use <code>./twn upgrade</code>, <code>./twn backup</code>, <code>./twn upgrade-status</code>, or <code>./twn rollback RECOVERY_POINT_ID</code> when the web interface is unavailable. Rollback replaces both code and instance data; the toolkit never runs older code against post-upgrade data. Five recovery points are retained beneath owner-only <code>.twn-upgrades/backups/</code>.</p>
   </div></details>
   <details class="help-topic"><summary>Port conflicts and sudo ownership</summary><div class="help-topic-body">
-    <p>Find a Linux listener with <code>sudo ss -lptn 'sport = :5050'</code> or <code>sudo lsof -nP -iTCP:5050 -sTCP:LISTEN</code>. On macOS use <code>lsof -nP -iTCP:5050 -sTCP:LISTEN</code>.</p>
-    <p>A sudo launch can create root-owned <code>instance/</code> files. Run <code>./twn fix-permissions</code> before returning to normal-user operation.</p>
+    <p>Run <code>./twn recover</code> when a failed restart leaves the configured port occupied or a sudo launch leaves a root-owned server. Recovery detects Linux or macOS, verifies the listener belongs to this installation, requests elevated access only when needed, repairs <code>instance/</code> ownership, and starts normally. It will not terminate an unrelated listener.</p>
+    <p>Use <code>./twn fix-permissions</code> when only the instance ownership needs repair.</p>
   </div></details>
   <details class="help-topic"><summary>Common checks</summary><div class="help-topic-body">
     <ul><li>Restart after code/dependency updates.</li><li>Verify both web and scheduler with <code>./twn status</code>.</li><li>Inspect <code>./twn logs</code>.</li><li>Test saved Fortinet profiles.</li><li>Check target, interface, firewall, remote permissions, and timeout.</li><li>Hard-refresh if browser assets look stale.</li></ul>
