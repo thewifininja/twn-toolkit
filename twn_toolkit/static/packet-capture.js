@@ -8,7 +8,11 @@
     row.querySelector("[data-capture-elapsed]").textContent =
       `${Number(payload.elapsed_seconds || 0).toFixed(1)}s`;
     row.querySelector("[data-capture-size]").textContent = payload.size_display;
+    row.querySelector("[data-capture-summary-size]").textContent =
+      payload.size_display;
     row.querySelector("[data-capture-packets]").textContent =
+      payload.packet_count || "—";
+    row.querySelector("[data-capture-summary-packets]").textContent =
       payload.packet_count || "—";
     row.querySelector("[data-capture-reason]").textContent =
       payload.termination_reason || (payload.active ? "In progress" : "—");

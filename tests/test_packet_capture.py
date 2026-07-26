@@ -378,6 +378,8 @@ class PacketCaptureTests(unittest.TestCase):
             self.assertIn(b'class="button-link secondary"', completed_page.data)
             self.assertNotIn(b"Stored packet captures", completed_page.data)
             self.assertIn(b"data-pcap-viewer-open", completed_page.data)
+            self.assertIn(b'class="packet-capture-row"', completed_page.data)
+            self.assertIn(b"packet-capture-row-summary-meta", completed_page.data)
             self.assertIn(b'id="pcap-floating-window"', completed_page.data)
             self.assertIn(b"Inspect PCAP", datastore_page.data)
             self.assertIn(b"/local/datastore/view-pcap", datastore_page.data)

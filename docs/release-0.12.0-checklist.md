@@ -20,6 +20,8 @@
   the retained copy to capture-history deletion. Standalone saves accept custom
   filenames, while automation patterns support timestamp, action, and interface
   tokens; collisions never overwrite existing captures.
+- [x] Recent standalone captures use collapsed summary cards by default while
+  active and explicitly focused captures remain open.
 
 ## Product and compatibility
 

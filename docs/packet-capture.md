@@ -76,6 +76,10 @@ extension is added when omitted, and duplicate names receive a numeric suffix
 instead of overwriting. Datastore copies follow the datastore quota and
 lifecycle and are independent of capture-history deletion.
 
+Recent standalone captures are collapsed by default to keep longer histories
+compact. Their summaries retain the interface, timestamp, size, packet count,
+and status; active or explicitly focused captures open automatically.
+
 Packet captures can contain credentials, session tokens, personal data, and
 application payloads. Grant the tool only to authorized operators and delete
 captures when they are no longer required.
