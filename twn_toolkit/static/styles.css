@@ -6533,6 +6533,13 @@ button.compact,
   grid-template-columns: minmax(0, 2fr) minmax(12rem, 1fr);
 }
 
+.packet-capture-limits-grid {
+  grid-template-columns:
+    minmax(14rem, 1fr)
+    minmax(10rem, 0.5fr)
+    minmax(18rem, 0.85fr);
+}
+
 .packet-capture-history-head,
 .packet-capture-row-head {
   display: flex;

@@ -32,7 +32,7 @@
       <small class="field-note">Standard tcpdump/BPF syntax. The filter is compiled and validated before a capture starts.</small>
     </label>
 
-    <div class="form-grid">
+    <div class="form-grid packet-capture-limits-grid">
       <label>Packet limit
         <input name="packet_count" type="number" min="0" max="1000000" value="{{ form.packet_count }}" required {% if not capability.available %}disabled{% endif %}>
         <small class="field-note">Use 0 for no packet-count limit.</small>

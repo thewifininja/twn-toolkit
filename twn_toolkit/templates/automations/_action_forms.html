@@ -216,7 +216,7 @@
         <input name="capture_action_filter" maxlength="1000" value="{{ config.get('capture_filter', config.get('capture_action_filter', '')) }}" placeholder="host 10.0.0.1 and port 443">
         <small class="field-note">Standard tcpdump/BPF syntax. The filter is validated again when the action runs.</small>
       </label>
-      <div class="form-grid">
+      <div class="form-grid packet-capture-limits-grid">
         <label>Packet limit
           <input name="capture_action_packet_count" type="number" min="0" max="1000000" value="{{ config.get('packet_count', config.get('capture_action_packet_count', '0')) }}" required>
           <small class="field-note">Use 0 for no packet-count limit.</small>
