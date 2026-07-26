@@ -110,6 +110,7 @@ class SMTPSettingsTests(unittest.TestCase):
         self.assertEqual(connection.logged_in, ("toolkit", "smtp-secret"))
         self.assertFalse(connection.message.is_multipart())
         self.assertEqual(connection.message.get_content().strip(), "Metadata only")
+        self.assertTrue(connection.message["Message-ID"].endswith("@example.com>"))
         self.assertEqual(result["accepted"], 1)
         self.assertEqual(result["deliveries"][1]["status"], "error")
 
