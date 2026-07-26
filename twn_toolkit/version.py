@@ -1,6 +1,42 @@
-APP_VERSION = "0.13.2"
+APP_VERSION = "0.13.3"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.13.3",
+        "date": "2026-07-26",
+        "title": "Faster macOS CI and SMTP hostname handling",
+        "summary": (
+            "Removes unnecessary host-name resolution from SMTP Message-ID "
+            "generation and isolates host-sensitive tests from transient CI "
+            "runner names, cutting the macOS validation job from more than "
+            "four minutes to under one minute."
+        ),
+        "groups": (
+            {
+                "title": "SMTP delivery reliability",
+                "items": (
+                    "Generates each SMTP Message-ID with the already validated sender-address domain instead of resolving the toolkit host's fully qualified domain name.",
+                    "Avoids long DNS timeouts on macOS and other hosts whose local or transient hostname is intentionally absent from DNS.",
+                    "Preserves the configured recipients, sender, authentication, encryption policy, message body, and per-recipient delivery reporting.",
+                ),
+            },
+            {
+                "title": "Faster, observable validation",
+                "items": (
+                    "Isolates managed-certificate route validation from the GitHub macOS runner's transient hostname while continuing to exercise real certificate generation and signing.",
+                    "Avoids loading the macOS system trust store in the fully mocked SMTP transport test, where no real TLS connection is made.",
+                    "Reports the 50 slowest tests in every CI job so future platform-specific performance regressions are visible in the job log.",
+                ),
+            },
+            {
+                "title": "Compatibility and scope",
+                "items": (
+                    "Introduces no application-database, profile, configuration, command-line, or dependency migration.",
+                    "Retains safe CLI server recovery, guided ACME issuance, durable automation, packet capture, verified upgrades, and the existing pre-1.0 compatibility policy from v0.13.2.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.13.2",
         "date": "2026-07-26",
