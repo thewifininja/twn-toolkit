@@ -10,7 +10,6 @@
   const status = form.querySelector("[data-ssh-preview-status]");
   const confirmation = form.querySelector("[data-ssh-run-confirmation]");
   const preview = form.querySelector("[data-ssh-preview]");
-  const runButton = form.querySelector("[data-ssh-run-button]");
 
   const normalize = (value) => {
     const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -55,8 +54,13 @@
   const markPreviewStale = () => {
     if (!token.value && !preview) return;
     token.value = "";
-    if (confirmation) confirmation.hidden = true;
-    if (runButton) runButton.disabled = true;
+    if (confirmation) {
+      confirmation.hidden = true;
+      confirmation.querySelectorAll("input, button").forEach((control) => {
+        if (control.type === "password") control.value = "";
+        control.disabled = true;
+      });
+    }
     if (preview) preview.classList.add("is-stale");
     status.hidden = false;
     status.textContent = "Targets or commands changed — preview again.";
@@ -77,6 +81,11 @@
     if (action === "run") {
       form.dataset.loadingMessage = "Running previewed SSH commands…";
     } else {
+      if (confirmation) {
+        confirmation.querySelectorAll('[name="username"], [name="password"]').forEach((control) => {
+          control.disabled = true;
+        });
+      }
       delete form.dataset.loadingMessage;
     }
   });

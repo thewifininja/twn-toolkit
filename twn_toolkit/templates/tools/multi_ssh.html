@@ -131,29 +131,14 @@
         <div class="multi-ssh-step-head">
           <span>3</span>
           <div>
-            <h2>Preview, then run</h2>
-            <p>The preview shows the exact commands that will be sent to every host.</p>
+            <h2>Preview commands</h2>
+            <p>Render every host first. No credentials are needed and no SSH connections are opened.</p>
           </div>
-        </div>
-        <div class="form-grid">
-          <label>
-            Username
-            <input name="username" value="{{ form.username }}" autocomplete="username">
-          </label>
-          <label>
-            Password
-            <input name="password" type="password" autocomplete="current-password">
-          </label>
-          <label>
-            SSH port
-            <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required>
-          </label>
         </div>
         <label>Default command timeout
           <div class="input-suffix"><input name="command_timeout" type="number" min="1" max="3600" value="{{ form.command_timeout }}" required data-ssh-timeout><span>seconds</span></div>
           <small class="field-note">Override one line with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
         </label>
-        {% include "tools/_multi_ssh_run_options.html" %}
 
         <div class="button-row multi-ssh-preview-actions">
           <button class="secondary" name="action" type="submit" value="preview" formnovalidate data-ssh-preview-button>Preview commands</button>
@@ -183,16 +168,42 @@
           </section>
         {% endif %}
 
-        <div class="multi-ssh-run-confirmation" {% if not preview_token %}hidden{% endif %} data-ssh-run-confirmation>
-          <label class="check execution-confirm">
-            <input name="confirm_execution" type="checkbox">
-            I reviewed the per-host preview and intend to execute these commands
-          </label>
-          <div class="button-row">
-            <button name="action" type="submit" value="run" data-ssh-run-button>Run previewed commands</button>
-          </div>
-        </div>
-        <p class="field-note">Credentials are used only for this request and are not stored. Previewing does not connect to any host.</p>
+        {% if preview_token %}
+          <section class="multi-ssh-run-confirmation" data-ssh-run-confirmation>
+            <div class="multi-ssh-step-head">
+              <span>4</span>
+              <div>
+                <h2>Connect and run</h2>
+                <p>Your preview is locked. Enter credentials only when you are ready to connect.</p>
+              </div>
+            </div>
+            <div class="form-grid">
+              <label>
+                Username
+                <input name="username" value="{{ form.username }}" autocomplete="username" required>
+              </label>
+              <label>
+                Password
+                <input name="password" type="password" autocomplete="current-password" required>
+              </label>
+              <label>
+                SSH port
+                <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required>
+              </label>
+            </div>
+            {% include "tools/_multi_ssh_run_options.html" %}
+            <label class="check execution-confirm">
+              <input name="confirm_execution" type="checkbox" required>
+              I reviewed the per-host preview and intend to execute these commands
+            </label>
+            <div class="button-row">
+              <button name="action" type="submit" value="run" data-ssh-run-button>Run previewed commands</button>
+            </div>
+            <p class="field-note">Credentials are used only for this execution request and are never stored.</p>
+          </section>
+        {% else %}
+          <p class="field-note">Previewing does not connect to any host. Credentials and connection options appear only after a successful preview.</p>
+        {% endif %}
       </section>
     </form>
   {% endif %}

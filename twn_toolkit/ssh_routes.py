@@ -106,6 +106,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                             request.form.get("preview_token", ""),
                             preview["plans"],
                         )
+                        preview_token = request.form.get("preview_token", "")
                         if request.form.get("confirm_execution") != "on":
                             raise ToolInputError(
                                 "Confirm that you intend to execute the previewed commands."

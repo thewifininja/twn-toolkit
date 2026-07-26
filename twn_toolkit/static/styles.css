@@ -4704,8 +4704,8 @@ button.compact,
   border: 1px solid color-mix(in srgb, var(--line), var(--accent) 35%);
   border-radius: 8px;
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 14px;
+  padding: 16px;
 }
 
 .multi-ssh-run-confirmation[hidden] {

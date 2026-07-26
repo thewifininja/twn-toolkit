@@ -161,6 +161,9 @@ class SSHCommandletRouteTests(unittest.TestCase):
                 "command_timeout": "300",
                 "port": "22",
             }
+            initial_page = client.get("/tools/multi-ssh?mode=advanced")
+            self.assertNotIn(b'name="username"', initial_page.data)
+            self.assertNotIn(b'name="password"', initial_page.data)
 
             with patch("twn_toolkit.ssh_routes.run_ssh_host_plans") as run:
                 missing_preview = client.post(
@@ -184,12 +187,31 @@ class SSHCommandletRouteTests(unittest.TestCase):
             run.assert_not_called()
             self.assertIn(b"interface vlan 4", preview.data)
             self.assertIn(b"interface vlan 8", preview.data)
+            self.assertIn(b"Connect and run", preview.data)
+            self.assertIn(b'name="username"', preview.data)
+            self.assertIn(b'name="password"', preview.data)
             token_match = re.search(
                 rb'name="preview_token" type="hidden" value="([^"]+)"',
                 preview.data,
             )
             self.assertIsNotNone(token_match)
             token = token_match.group(1).decode()
+
+            missing_credentials = client.post(
+                "/tools/multi-ssh",
+                data={
+                    **form,
+                    "action": "run",
+                    "preview_token": token,
+                    "confirm_execution": "on",
+                },
+            )
+            self.assertIn(b"Enter an SSH username", missing_credentials.data)
+            self.assertIn(b"Connect and run", missing_credentials.data)
+            self.assertIn(
+                f'name="preview_token" type="hidden" value="{token}"'.encode(),
+                missing_credentials.data,
+            )
 
             result = {
                 "host": "switch-1",
