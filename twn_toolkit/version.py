@@ -1,6 +1,43 @@
-APP_VERSION = "0.14.0"
+APP_VERSION = "0.14.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.14.1",
+        "date": "2026-07-26",
+        "title": "Unified Multi-SSH workflow and compact host import",
+        "summary": (
+            "Streamlines Multi-SSH into one preview-first target-matrix "
+            "workflow while retaining friendly host lists and inclusive IP "
+            "ranges through a compact importer that stays out of the way until "
+            "needed."
+        ),
+        "groups": (
+            {
+                "title": "One clear Multi-SSH workflow",
+                "items": (
+                    "Removes the separate Basic and Advanced page modes so every run follows the same target-matrix, command-template, signed-preview, and credential-entry sequence.",
+                    "Keeps the spreadsheet-style table, Raw Matrix editor, per-host variables, Stored Commandlets, result exports, and prompt-aware execution available without first choosing or loading a mode.",
+                    "Continues supporting as many as 5,000 targets, submitted in batches of 50 with no more than 10 simultaneous SSH connections and bounded output capture.",
+                ),
+            },
+            {
+                "title": "Compact host and range import",
+                "items": (
+                    "Adds a deliberately understated host importer beneath the target table that expands friendly `Name = host` entries plus inclusive IPv4 and IPv6 ranges into editable matrix rows.",
+                    "Lets an operator append imported targets or replace the current rows while preserving custom variable columns for the resulting matrix.",
+                    "Reuses the existing validated host and range parser, reports malformed or descending ranges inline, and keeps importer requests out of the audit trail because they do not connect to or modify a target.",
+                ),
+            },
+            {
+                "title": "Safe compatibility",
+                "items": (
+                    "Redirects older Basic and Advanced mode links to the unified page while preserving requested Commandlet load and duplication parameters.",
+                    "Converts a legacy Basic form submission into a signed command preview instead of executing immediately; its submitted password is neither retained nor rendered.",
+                    "Introduces no application-database schema, dependency, profile, configuration, command-line, or automation migration and remains a direct upgrade from v0.14.0.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.14.0",
         "date": "2026-07-26",
