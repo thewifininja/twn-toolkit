@@ -35,15 +35,15 @@
         </label>
         <label>
           SSH port
-          <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required>
+          <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required>
         </label>
       </div>
       <label>
         Commands
-        <textarea class="command-input" name="commands" rows="8" placeholder="show version&#10;[timeout=600] diag debug report" required>{{ form.commands }}</textarea>
+        <textarea class="command-input" name="commands" rows="8" placeholder="show version&#10;[timeout=600] diag debug report" data-1p-ignore required>{{ form.commands }}</textarea>
       </label>
       <label>Default command timeout
-        <div class="input-suffix"><input name="command_timeout" type="number" min="1" max="3600" value="{{ form.command_timeout }}" required><span>seconds</span></div>
+        <div class="input-suffix"><input name="command_timeout" type="number" min="1" max="3600" value="{{ form.command_timeout }}" data-1p-ignore required><span>seconds</span></div>
         <small class="field-note">Commands finish as soon as the device prompt returns. Override one line with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
       </label>
       {% include "tools/_multi_ssh_run_options.html" %}
@@ -116,7 +116,8 @@
           </div>
           <label>
             Commands
-            <textarea class="command-input" name="commands" rows="10" placeholder="configure vlan {{ '{{ vlan_id }}' }}&#10;ip address {{ '{{ ip_address }}' }}" required data-ssh-commands>{{ form.commands }}</textarea>
+            <textarea class="command-input" name="commands" rows="10" placeholder="configure vlan {{ '{{ vlan_id }}' }}&#10;ip address {{ '{{ ip_address }}' }}" required data-ssh-commands data-1p-ignore>{{ form.commands }}</textarea>
+            <small class="field-note">Need more time for one command? Prefix it with <code>[timeout=600]</code>.</small>
           </label>
           <div class="multi-ssh-variable-picker" data-ssh-variable-picker aria-label="Available command variables">
             <span>Insert variable</span>
@@ -134,16 +135,16 @@
           <div class="multi-ssh-commandlet-meta">
             <label>
               Commandlet name
-              <input name="commandlet_name" maxlength="100" value="{{ form.commandlet_name }}" placeholder="Configure access VLAN">
+              <input name="commandlet_name" maxlength="100" value="{{ form.commandlet_name }}" placeholder="Configure access VLAN" data-1p-ignore>
             </label>
             <label>
               Platform / family
-              <input name="commandlet_platform" maxlength="80" value="{{ form.commandlet_platform }}" placeholder="FortiSwitch, Cisco IOS, Linux…">
+              <input name="commandlet_platform" maxlength="80" value="{{ form.commandlet_platform }}" placeholder="FortiSwitch, Cisco IOS, Linux…" data-1p-ignore>
             </label>
           </div>
           <label>
             Description
-            <textarea name="commandlet_description" rows="2" maxlength="500" placeholder="What this template changes and when to use it.">{{ form.commandlet_description }}</textarea>
+            <textarea name="commandlet_description" rows="2" maxlength="500" placeholder="What this template changes and when to use it." data-1p-ignore>{{ form.commandlet_description }}</textarea>
           </label>
           <label class="check">
             <input name="commandlet_save_matrix" type="checkbox" {% if form.commandlet_save_matrix %}checked{% endif %}>
@@ -168,8 +169,8 @@
           </div>
         </div>
         <label>Default command timeout
-          <div class="input-suffix"><input name="command_timeout" type="number" min="1" max="3600" value="{{ form.command_timeout }}" required data-ssh-timeout><span>seconds</span></div>
-          <small class="field-note">Override one line with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
+          <div class="input-suffix"><input name="command_timeout" type="number" min="1" max="3600" value="{{ form.command_timeout }}" required data-ssh-timeout data-1p-ignore><span>seconds</span></div>
+          <small class="field-note">Combined timeout budget: 3600 seconds per host.</small>
         </label>
 
         <div class="button-row multi-ssh-preview-actions">
@@ -220,7 +221,7 @@
               </label>
               <label>
                 SSH port
-                <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required>
+                <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required>
               </label>
             </div>
             {% include "tools/_multi_ssh_run_options.html" %}

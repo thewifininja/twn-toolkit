@@ -176,6 +176,31 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertNotIn(b"Name and IP/FQDN stay fixed", initial_page.data)
             self.assertIn(b"data-ssh-new-variable data-1p-ignore", initial_page.data)
             self.assertIn(b"data-ssh-matrix data-1p-ignore", initial_page.data)
+            self.assertIn(b"data-ssh-commands data-1p-ignore", initial_page.data)
+            self.assertIn(
+                b'name="commandlet_name" maxlength="100"',
+                initial_page.data,
+            )
+            self.assertIn(
+                b'placeholder="Configure access VLAN" data-1p-ignore',
+                initial_page.data,
+            )
+            self.assertIn(
+                b'placeholder="FortiSwitch, Cisco IOS, Linux\xe2\x80\xa6" data-1p-ignore',
+                initial_page.data,
+            )
+            self.assertIn(
+                b'placeholder="What this template changes and when to use it." data-1p-ignore',
+                initial_page.data,
+            )
+            self.assertIn(
+                b"Need more time for one command? Prefix it with",
+                initial_page.data,
+            )
+            self.assertNotIn(
+                b"Override one line with <code>[timeout=600] command</code>.",
+                initial_page.data,
+            )
             self.assertNotIn(b'name="username"', initial_page.data)
             self.assertNotIn(b'name="password"', initial_page.data)
 
