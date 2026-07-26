@@ -4603,18 +4603,39 @@ button.compact,
   margin-top: 4px;
 }
 
+.multi-ssh-matrix-step-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.multi-ssh-matrix-step-head .multi-ssh-step-copy {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
 .multi-ssh-matrix {
   overflow-x: auto;
   white-space: pre;
 }
 
 .multi-ssh-matrix-mode {
-  display: flex;
-  gap: 8px;
+  align-self: center;
+  background: color-mix(in srgb, var(--panel), var(--nav) 4%);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  margin-left: auto;
+  padding: 3px;
 }
 
 .multi-ssh-matrix-mode button {
-  flex: 1 1 0;
+  border: 0;
+  border-radius: 5px;
+  font-size: 0.76rem;
+  min-height: 29px;
+  padding: 5px 9px;
 }
 
 .multi-ssh-matrix-grid {
@@ -8994,6 +9015,14 @@ th {
 
   .multi-ssh-step-head {
     gap: 9px;
+  }
+
+  .multi-ssh-matrix-step-head .multi-ssh-step-copy {
+    flex-basis: calc(100% - 39px);
+  }
+
+  .multi-ssh-matrix-step-head .multi-ssh-matrix-mode {
+    margin-left: 39px;
   }
 
   .multi-ssh-preview-grid {

@@ -15,6 +15,7 @@
   const matrixHead = form.querySelector("[data-ssh-matrix-head]");
   const matrixBody = form.querySelector("[data-ssh-matrix-body]");
   const matrixError = form.querySelector("[data-ssh-matrix-error]");
+  const matrixNotice = form.querySelector("[data-ssh-matrix-notice]");
   const matrixSummary = form.querySelector("[data-ssh-matrix-summary]");
   const newVariable = form.querySelector("[data-ssh-new-variable]");
   const modeButtons = [...form.querySelectorAll("[data-ssh-matrix-mode]")];
@@ -26,6 +27,7 @@
   let headers = fixedHeaders.map((header) => ({ ...header }));
   let rows = [["", ""]];
   let matrixMode = "grid";
+  let rawDraftDirty = false;
 
   const normalize = (value) => {
     const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -98,13 +100,17 @@
       })),
     ];
     const nextRows = parsed.slice(1).map((sourceRow, rowIndex) => {
-      if (sourceRow.length !== sourceHeaders.length) {
+      if (sourceRow.length > sourceHeaders.length) {
         throw new Error(`Matrix row ${rowIndex + 2} has ${sourceRow.length} values; expected ${sourceHeaders.length}.`);
       }
+      const paddedRow = [
+        ...sourceRow,
+        ...Array.from({ length: sourceHeaders.length - sourceRow.length }, () => ""),
+      ];
       return [
-        nameIndex >= 0 ? sourceRow[nameIndex] : "",
-        sourceRow[hostIndex],
-        ...customIndexes.map((index) => sourceRow[index]),
+        nameIndex >= 0 ? paddedRow[nameIndex] : "",
+        paddedRow[hostIndex],
+        ...customIndexes.map((index) => paddedRow[index]),
       ];
     });
     if (nextRows.length > 50) throw new Error("A maximum of 50 targets is allowed.");
@@ -142,6 +148,11 @@
   const setMatrixError = (message = "") => {
     matrixError.textContent = message;
     matrixError.hidden = !message;
+  };
+
+  const setMatrixNotice = (message = "") => {
+    matrixNotice.textContent = message;
+    matrixNotice.hidden = !message;
   };
 
   const validateGrid = ({ focus = false, requireTargets = false } = {}) => {
@@ -415,6 +426,8 @@
   };
 
   const matrixChanged = () => {
+    rawDraftDirty = false;
+    setMatrixNotice();
     syncRawMatrix();
     matrixSummary.textContent = `${rows.filter((row) => row.some((value) => String(value).trim())).length} target(s) · ${Math.max(0, headers.length - 2)} custom variable column(s)`;
     updateVariablePicker();
@@ -428,20 +441,29 @@
         const parsed = parseMatrix(matrix.value);
         headers = parsed.headers;
         rows = parsed.rows;
+        rawDraftDirty = false;
+        setMatrixNotice();
         renderGrid();
       } catch (error) {
-        setMatrixError(error.message);
-        return false;
+        if (matrixMode !== "raw") {
+          setMatrixError(error.message);
+          return false;
+        }
+        setMatrixError();
+        setMatrixNotice("Raw Matrix is incomplete, so Table Editor is showing the last valid table. Switch back to Raw Matrix to continue the draft; editing or previewing the table will replace it.");
       }
-    } else if (sync) {
+    } else if (sync && !rawDraftDirty) {
       syncRawMatrix();
+      setMatrixNotice();
+    } else if (mode === "raw") {
+      setMatrixNotice();
     }
     matrixMode = mode;
     gridPanel.hidden = mode !== "grid";
     rawPanel.hidden = mode !== "raw";
     modeButtons.forEach((button) => {
       const selected = button.dataset.sshMatrixMode === mode;
-      button.setAttribute("aria-selected", String(selected));
+      button.setAttribute("aria-pressed", String(selected));
       button.classList.toggle("secondary", !selected);
     });
     updateVariablePicker();
@@ -575,6 +597,8 @@
     matrixChanged();
   });
   matrix.addEventListener("input", () => {
+    rawDraftDirty = true;
+    setMatrixNotice();
     updateVariablePicker();
     markPreviewStale();
   });

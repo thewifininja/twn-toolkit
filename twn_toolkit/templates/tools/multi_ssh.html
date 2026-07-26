@@ -64,18 +64,19 @@
 
       <div class="multi-ssh-authoring-grid">
         <section class="multi-ssh-workspace-card">
-          <div class="multi-ssh-step-head">
+          <div class="multi-ssh-step-head multi-ssh-matrix-step-head">
             <span>1</span>
-            <div>
+            <div class="multi-ssh-step-copy">
               <h2>Build the target matrix</h2>
               <p>Edit targets as a table, or switch to Raw Matrix for fast spreadsheet and CSV pasting.</p>
             </div>
-          </div>
-          <div class="multi-ssh-matrix-mode" role="tablist" aria-label="Target matrix editor mode">
-            <button class="secondary" type="button" role="tab" aria-selected="false" data-ssh-matrix-mode="grid">Table editor</button>
-            <button type="button" role="tab" aria-selected="true" data-ssh-matrix-mode="raw">Raw matrix</button>
+            <div class="multi-ssh-matrix-mode" role="group" aria-label="Target editor mode">
+              <button class="compact" type="button" aria-pressed="true" data-ssh-matrix-mode="grid">Table editor</button>
+              <button class="secondary compact" type="button" aria-pressed="false" data-ssh-matrix-mode="raw">Raw matrix</button>
+            </div>
           </div>
           <div class="message error" role="alert" data-ssh-matrix-error hidden></div>
+          <div class="message info compact-message" data-ssh-matrix-notice hidden></div>
           <div class="multi-ssh-matrix-grid" data-ssh-matrix-grid hidden>
             <div class="multi-ssh-matrix-toolbar">
               <button class="secondary" type="button" data-ssh-add-target>Add target</button>

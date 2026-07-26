@@ -170,6 +170,12 @@ class SSHCommandletRouteTests(unittest.TestCase):
             initial_page = client.get("/tools/multi-ssh?mode=advanced")
             self.assertIn(b"Table editor", initial_page.data)
             self.assertIn(b"Raw matrix", initial_page.data)
+            self.assertIn(
+                b'role="group" aria-label="Target editor mode"',
+                initial_page.data,
+            )
+            self.assertIn(b'aria-pressed="true"', initial_page.data)
+            self.assertNotIn(b'role="tablist"', initial_page.data)
             self.assertIn(b"Add target", initial_page.data)
             self.assertIn(b"Add variable", initial_page.data)
             self.assertIn(b"Name and Host stay fixed", initial_page.data)
