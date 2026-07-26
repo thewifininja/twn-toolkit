@@ -108,9 +108,10 @@ The sidebar and Network Tools page use the same functional organization.
   `ping` compatibility engine remains available. Multi-Ping exposes separate
   round-interval and per-target probe-timeout controls; accelerated mode accepts
   sub-second timeouts for dense groups of known-local targets.
-- **Multi-SSH** — run prompt-aware command sequences concurrently, with friendly
-  host names, per-command timeouts, downloadable results, and a scoped legacy
-  algorithm exception for trusted older devices.
+- **Multi-SSH** — run prompt-aware command sequences concurrently in Basic mode,
+  or build a per-host target matrix in Advanced mode and substitute literal
+  `{{ variable }}` values into reusable Stored Commandlets. Signed previews
+  show every rendered command before execution; credentials are never stored.
 - **Multi-Transfer** — fetch files concurrently over SFTP, SCP, or FTP into the
   Datastore or a one-shot ZIP, using collision-safe filename templates and the
   same explicit legacy SSH exception for SFTP/SCP.

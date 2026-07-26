@@ -4542,6 +4542,213 @@ button.compact,
   max-width: none;
 }
 
+.shell.multi-ssh-shell > * {
+  max-width: none;
+}
+
+.multi-ssh-panel {
+  max-width: none;
+}
+
+.multi-ssh-mode-nav {
+  margin: 18px 0;
+}
+
+.multi-ssh-authoring-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.multi-ssh-workspace-card,
+.multi-ssh-commandlet-editor {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.multi-ssh-workspace-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.multi-ssh-step-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+}
+
+.multi-ssh-step-head > span {
+  align-items: center;
+  background: var(--action-primary);
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  flex: 0 0 30px;
+  font-size: 0.9rem;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+}
+
+.multi-ssh-step-head h2,
+.multi-ssh-commandlet-card h3 {
+  margin: 0;
+}
+
+.multi-ssh-step-head p {
+  font-size: 0.88rem;
+  margin-top: 4px;
+}
+
+.multi-ssh-matrix {
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.multi-ssh-variable-picker,
+.multi-ssh-commandlet-variables {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.multi-ssh-variable-picker > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.ssh-variable-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  min-height: 30px;
+  padding: 5px 9px;
+}
+
+.multi-ssh-commandlet-editor > summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.multi-ssh-commandlet-editor[open] > summary {
+  margin-bottom: 16px;
+}
+
+.multi-ssh-commandlet-meta {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.multi-ssh-run-card {
+  background: transparent;
+}
+
+.multi-ssh-preview-actions {
+  align-items: center;
+}
+
+.multi-ssh-preview {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.multi-ssh-preview.is-stale {
+  opacity: 0.58;
+}
+
+.multi-ssh-preview.is-stale::before {
+  color: var(--bad);
+  content: "Preview is stale";
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.multi-ssh-preview-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+
+.multi-ssh-preview-card {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.multi-ssh-preview-card header {
+  display: grid;
+  gap: 2px;
+}
+
+.multi-ssh-preview-card header small {
+  color: var(--muted);
+}
+
+.multi-ssh-preview-card .result-output {
+  max-height: 260px;
+}
+
+.multi-ssh-run-confirmation {
+  background: color-mix(in srgb, var(--panel), var(--accent) 8%);
+  border: 1px solid color-mix(in srgb, var(--line), var(--accent) 35%);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.multi-ssh-run-confirmation[hidden] {
+  display: none;
+}
+
+.multi-ssh-commandlet-library {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  margin-top: 16px;
+}
+
+.multi-ssh-commandlet-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 15px;
+}
+
+.multi-ssh-commandlet-card > div:first-child {
+  display: grid;
+  gap: 7px;
+}
+
+.multi-ssh-commandlet-card p {
+  margin: 0;
+}
+
+.multi-ssh-commandlet-card small {
+  color: var(--muted);
+}
+
+.multi-ssh-commandlet-variables code {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 0.74rem;
+  padding: 4px 7px;
+}
+
 .speed-test-panel {
   max-width: 760px;
 }
@@ -8539,6 +8746,24 @@ th {
 }
 
 @media (max-width: 760px) {
+  .multi-ssh-authoring-grid,
+  .multi-ssh-commandlet-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multi-ssh-workspace-card,
+  .multi-ssh-commandlet-editor {
+    padding: 13px;
+  }
+
+  .multi-ssh-step-head {
+    gap: 9px;
+  }
+
+  .multi-ssh-preview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .automation-threshold-grid > label {
     grid-template-rows: auto;
   }

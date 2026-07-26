@@ -15,6 +15,7 @@ from twn_toolkit.profiles import (
     WOLTargetProfileStore,
 )
 from twn_toolkit.tool_catalog import ToolLink, ToolRegistry
+from twn_toolkit.ssh_commandlets import SSHCommandletStore
 
 
 def backup_items(instance_path: str) -> list[dict[str, Any]]:
@@ -117,6 +118,13 @@ def backup_items(instance_path: str) -> list[dict[str, Any]]:
             "store": WOLTargetProfileStore(instance_path),
             "sensitive": False,
         },
+        {
+            "id": "ssh_commandlets",
+            "label": "SSH Commandlets",
+            "description": "Saved Multi-SSH command templates and metadata.",
+            "store": SSHCommandletStore(instance_path),
+            "sensitive": True,
+        },
     ]
 
 
@@ -156,7 +164,7 @@ def register_tools(registry: ToolRegistry) -> None:
             ToolLink(
                 "tools.multi_ssh",
                 "Multi-SSH",
-                "Run the same command sequence across multiple SSH hosts.",
+                "Run shared or variable-aware Commandlets across multiple SSH hosts.",
                 "tools.multi_ssh",
                 "network",
                 "Network Tools",
@@ -429,6 +437,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "tools.save_radius_profile": "tools.radius_test",
             "tools.delete_radius_profile": "tools.radius_test",
             "tools.multi_ssh": "tools.multi_ssh",
+            "tools.delete_ssh_commandlet": "tools.multi_ssh",
             "tools.multi_transfer": "tools.multi_sftp",
             "tools.multi_sftp": "tools.multi_sftp",
         }
