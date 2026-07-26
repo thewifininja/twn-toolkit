@@ -218,8 +218,8 @@ def register_tools(registry: ToolRegistry) -> None:
             ),
             ToolLink(
                 "tools.certificate_automation",
-                "Certificate Automation · Beta",
-                "Beta: guide Let's Encrypt DNS validation or enroll, protect, rotate, and export certificates through internal PKI profiles.",
+                "Certificate Automation",
+                "Guide Let's Encrypt DNS validation or enroll, protect, rotate, and export certificates through internal Microsoft AD CS profiles (Beta).",
                 "tools.certificate_automation",
                 "network",
                 "Network Tools",

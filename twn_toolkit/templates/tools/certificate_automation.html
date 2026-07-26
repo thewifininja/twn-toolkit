@@ -8,7 +8,7 @@
   <div class="panel-head certificate-automation-title">
     <div>
       <span class="eyebrow">Certificate lifecycle</span>
-      <h1>Certificate Automation <span class="pill planned certificate-beta-pill">Beta</span></h1>
+      <h1>Certificate Automation</h1>
       <p>
         {% if certificate_section == 'acme' %}
           Guide public ACME DNS validation without racing a terminal session or manually relocating certificate files.
@@ -19,17 +19,15 @@
     </div>
     <span class="certificate-automation-mark" aria-hidden="true">◇</span>
   </div>
+  {% if certificate_section == 'adcs' %}
   <div class="message warning certificate-beta-note" role="note">
-    <strong>Beta workflow</strong>
+    <strong>Microsoft AD CS is in beta</strong>
     <p>
-      {% if certificate_section == 'acme' %}
-        Certificate Automation has not completed broad production validation. Use Let’s Encrypt staging first, then verify issuance, exported keys, and the complete certificate chain against your target platform before deployment.
-      {% else %}
-        Certificate Automation has not completed broad production validation. Test against a non-production template or CA first, then verify enrollment, renewal, exported keys, and the complete certificate chain against your PKI and target platform before deployment.
-      {% endif %}
+      The AD CS workflow has not completed broad production validation. Test against a non-production template or CA first, then verify enrollment, renewal, exported keys, and the complete certificate chain against your PKI and target platform before deployment.
       Keep your established certificate workflow available until the result is verified end to end.
     </p>
   </div>
+  {% endif %}
   <div class="certificate-automation-stats" aria-label="Certificate automation summary">
     {% if certificate_section == 'acme' %}
       <article><strong>{{ acme_summary.total }}</strong><span>ACME requests</span></article>
@@ -55,7 +53,7 @@
 
 <nav class="admin-page-nav certificate-page-nav" aria-label="Certificate authority">
   <a class="button-link {{ 'secondary' if certificate_section != 'acme' }}" href="{{ url_for('tools.certificate_automation', section='acme') }}" {% if certificate_section == 'acme' %}aria-current="page"{% endif %}>ACME / Let’s Encrypt</a>
-  <a class="button-link {{ 'secondary' if certificate_section != 'adcs' }}" href="{{ url_for('tools.certificate_automation', section='adcs') }}" {% if certificate_section == 'adcs' %}aria-current="page"{% endif %}>Microsoft AD CS</a>
+  <a class="button-link {{ 'secondary' if certificate_section != 'adcs' }}" href="{{ url_for('tools.certificate_automation', section='adcs') }}" {% if certificate_section == 'adcs' %}aria-current="page"{% endif %}>Microsoft AD CS <span class="pill planned certificate-beta-pill">Beta</span></a>
 </nav>
 
 {% if certificate_section == 'acme' %}

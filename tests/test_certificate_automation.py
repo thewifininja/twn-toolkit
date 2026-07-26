@@ -545,8 +545,12 @@ class CertificateAutomationRouteTests(unittest.TestCase):
         response = self.client.get("/tools/certificate-automation")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Certificate Automation", response.data)
-        self.assertIn(b"Beta workflow", response.data)
-        self.assertIn(b"complete certificate chain", response.data)
+        self.assertNotIn(b"Beta workflow", response.data)
+        self.assertNotIn(b"Microsoft AD CS is in beta", response.data)
+        adcs_response = self.client.get("/tools/certificate-automation?section=adcs")
+        self.assertEqual(adcs_response.status_code, 200)
+        self.assertIn(b"Microsoft AD CS is in beta", adcs_response.data)
+        self.assertIn(b"complete certificate chain", adcs_response.data)
         response = self.client.post(
             "/tools/certificate-automation/credentials",
             data={
