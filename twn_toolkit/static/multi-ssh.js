@@ -21,7 +21,7 @@
 
   const fixedHeaders = [
     { label: "Name", key: "name", locked: true },
-    { label: "IP/FQDN", key: "host", locked: true },
+    { label: "Host", key: "host", locked: true },
   ];
   let headers = fixedHeaders.map((header) => ({ ...header }));
   let rows = [["", ""]];
@@ -83,7 +83,7 @@
       throw new Error("Matrix headings must be unique after normalization.");
     }
     const hostIndex = keys.indexOf("host");
-    if (hostIndex < 0) throw new Error("The matrix needs an IP/FQDN or Host column.");
+    if (hostIndex < 0) throw new Error("The matrix needs a Host column.");
     const nameIndex = keys.indexOf("name");
     if (keys.includes("row_number")) throw new Error("row_number is built in and cannot be a matrix column.");
     const customIndexes = keys
@@ -180,7 +180,7 @@
         if (invalid && !firstInvalid) {
           firstInvalid = input;
           message = key === "host"
-            ? `Target row ${rowIndex + 1} needs a valid IP/FQDN without spaces.`
+            ? `Target row ${rowIndex + 1} needs a valid host without spaces.`
             : `Target row ${rowIndex + 1} needs a value for {{ ${key} }}.`;
         }
       });
@@ -197,10 +197,17 @@
     matrixHead.replaceChildren();
     matrixBody.replaceChildren();
     const headerRow = document.createElement("tr");
+    const rowNumberHeader = document.createElement("th");
+    rowNumberHeader.className = "multi-ssh-row-number multi-ssh-grid-corner";
+    rowNumberHeader.scope = "col";
+    rowNumberHeader.textContent = "#";
+    headerRow.append(rowNumberHeader);
     headers.forEach((header, columnIndex) => {
       const cell = document.createElement("th");
+      cell.scope = "col";
       if (header.locked) {
         const label = document.createElement("span");
+        label.className = "multi-ssh-fixed-heading";
         label.textContent = header.label;
         cell.append(label);
       } else {
@@ -214,7 +221,9 @@
         const remove = document.createElement("button");
         remove.className = "link-button subtle";
         remove.type = "button";
-        remove.textContent = "Remove";
+        remove.textContent = "×";
+        remove.title = `Remove ${header.label} column`;
+        remove.setAttribute("aria-label", `Remove ${header.label} variable column`);
         remove.dataset.sshRemoveColumn = String(columnIndex);
         editor.append(input, remove);
         cell.append(editor);
@@ -222,13 +231,20 @@
       headerRow.append(cell);
     });
     const actionsHeader = document.createElement("th");
-    actionsHeader.textContent = "Row actions";
+    actionsHeader.className = "multi-ssh-actions-cell";
+    actionsHeader.scope = "col";
+    actionsHeader.textContent = "Actions";
     headerRow.append(actionsHeader);
     matrixHead.append(headerRow);
 
     rows.forEach((row, rowIndex) => {
       const rowElement = document.createElement("tr");
       rowElement.dataset.sshRowIndex = String(rowIndex);
+      const rowNumber = document.createElement("th");
+      rowNumber.className = "multi-ssh-row-number";
+      rowNumber.scope = "row";
+      rowNumber.textContent = String(rowIndex + 1);
+      rowElement.append(rowNumber);
       headers.forEach((header, columnIndex) => {
         const cell = document.createElement("td");
         const input = document.createElement("input");
@@ -241,16 +257,19 @@
         rowElement.append(cell);
       });
       const actions = document.createElement("td");
-      actions.className = "multi-ssh-matrix-row-actions";
+      actions.className = "multi-ssh-matrix-row-actions multi-ssh-actions-cell";
       const duplicate = document.createElement("button");
       duplicate.className = "link-button subtle";
       duplicate.type = "button";
-      duplicate.textContent = "Duplicate";
+      duplicate.textContent = "Copy";
+      duplicate.title = `Duplicate row ${rowIndex + 1}`;
+      duplicate.setAttribute("aria-label", `Duplicate row ${rowIndex + 1}`);
       duplicate.dataset.sshDuplicateRow = String(rowIndex);
       const remove = document.createElement("button");
       remove.className = "link-button text-danger";
       remove.type = "button";
       remove.textContent = "Delete";
+      remove.setAttribute("aria-label", `Delete row ${rowIndex + 1}`);
       remove.dataset.sshDeleteRow = String(rowIndex);
       actions.append(duplicate, remove);
       rowElement.append(actions);
@@ -258,6 +277,87 @@
     });
     matrixSummary.textContent = `${rows.filter((row) => row.some((value) => String(value).trim())).length} target(s) · ${Math.max(0, headers.length - 2)} custom variable column(s)`;
     validateGrid();
+  };
+
+  const focusCell = (rowIndex, columnIndex) => {
+    const rowElement = matrixBody.querySelector(`[data-ssh-row-index="${rowIndex}"]`);
+    const input = rowElement?.querySelector(`[data-ssh-cell-index="${columnIndex}"]`);
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  };
+
+  const addBlankRow = () => {
+    if (rows.length >= 50) {
+      setMatrixError("A maximum of 50 targets is allowed.");
+      return false;
+    }
+    rows.push(headers.map(() => ""));
+    return true;
+  };
+
+  const nextVariableLabel = () => {
+    const existing = new Set(headers.map((header) => normalize(header.label)));
+    let number = 1;
+    while (existing.has(`variable_${number}`)) number += 1;
+    return `Variable ${number}`;
+  };
+
+  const pasteSpreadsheetBlock = (event, input, rowElement) => {
+    const clipboard = event.clipboardData?.getData("text/plain") || "";
+    if (!clipboard.includes("\t") && !/[\r\n]/.test(clipboard)) return;
+
+    event.preventDefault();
+    const startRow = Number(rowElement.dataset.sshRowIndex);
+    const startColumn = Number(input.dataset.sshCellIndex);
+    const lines = clipboard.replace(/\r\n?/g, "\n").split("\n");
+    if (lines.at(-1) === "") lines.pop();
+    const pastedRows = lines.map((line) => line.split("\t"));
+    const pastedHeaderKeys = (pastedRows[0] || []).map(normalize);
+
+    if (startRow === 0 && startColumn === 0 && pastedHeaderKeys.includes("host")) {
+      try {
+        const parsed = parseMatrix(clipboard);
+        headers = parsed.headers;
+        rows = parsed.rows;
+        renderGrid();
+        matrixChanged();
+        focusCell(0, 0);
+      } catch (error) {
+        setMatrixError(error.message);
+      }
+      return;
+    }
+
+    const width = Math.max(...pastedRows.map((row) => row.length));
+    const requiredColumns = startColumn + width;
+    const requiredRows = startRow + pastedRows.length;
+    if (requiredColumns > 20) {
+      setMatrixError("A maximum of 20 matrix columns is allowed.");
+      return;
+    }
+    if (requiredRows > 50) {
+      setMatrixError("A maximum of 50 targets is allowed.");
+      return;
+    }
+    while (headers.length < requiredColumns) {
+      const label = nextVariableLabel();
+      headers.push({ label, key: normalize(label), locked: false });
+      rows = rows.map((row) => [...row, ""]);
+    }
+    while (rows.length < requiredRows) rows.push(headers.map(() => ""));
+    pastedRows.forEach((pastedRow, rowOffset) => {
+      pastedRow.forEach((value, columnOffset) => {
+        rows[startRow + rowOffset][startColumn + columnOffset] = value;
+      });
+    });
+    renderGrid();
+    matrixChanged();
+    focusCell(
+      Math.min(requiredRows - 1, rows.length - 1),
+      Math.min(requiredColumns - 1, headers.length - 1),
+    );
   };
 
   const headerVariables = () => {
@@ -351,13 +451,10 @@
     button.addEventListener("click", () => setMatrixMode(button.dataset.sshMatrixMode));
   });
   form.querySelector("[data-ssh-add-target]").addEventListener("click", () => {
-    if (rows.length >= 50) {
-      setMatrixError("A maximum of 50 targets is allowed.");
-      return;
-    }
-    rows.push(headers.map(() => ""));
+    if (!addBlankRow()) return;
     renderGrid();
     matrixChanged();
+    focusCell(rows.length - 1, 0);
   });
   form.querySelector("[data-ssh-add-variable]").addEventListener("click", () => {
     const label = newVariable.value.trim();
@@ -412,6 +509,46 @@
     if (!input || !rowElement) return;
     rows[Number(rowElement.dataset.sshRowIndex)][Number(input.dataset.sshCellIndex)] = input.value;
     matrixChanged();
+  });
+  matrixBody.addEventListener("keydown", (event) => {
+    const input = event.target.closest("[data-ssh-cell-index]");
+    const rowElement = event.target.closest("[data-ssh-row-index]");
+    if (!input || !rowElement) return;
+    const rowIndex = Number(rowElement.dataset.sshRowIndex);
+    const columnIndex = Number(input.dataset.sshCellIndex);
+    let nextRow = rowIndex;
+    let nextColumn = columnIndex;
+
+    if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      nextRow += event.shiftKey ? -1 : 1;
+      if (nextRow >= rows.length && !addBlankRow()) return;
+      if (nextRow < 0) return;
+    } else if (event.key === "Tab") {
+      nextColumn += event.shiftKey ? -1 : 1;
+      if (nextColumn >= headers.length) {
+        nextColumn = 0;
+        nextRow += 1;
+      } else if (nextColumn < 0) {
+        nextColumn = headers.length - 1;
+        nextRow -= 1;
+      }
+      if (nextRow >= rows.length && !addBlankRow()) return;
+      if (nextRow < 0) return;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    if (rows.length !== matrixBody.querySelectorAll("[data-ssh-row-index]").length) {
+      renderGrid();
+      matrixChanged();
+    }
+    focusCell(nextRow, nextColumn);
+  });
+  matrixBody.addEventListener("paste", (event) => {
+    const input = event.target.closest("[data-ssh-cell-index]");
+    const rowElement = event.target.closest("[data-ssh-row-index]");
+    if (input && rowElement) pasteSpreadsheetBlock(event, input, rowElement);
   });
   matrixBody.addEventListener("click", (event) => {
     const duplicate = event.target.closest("[data-ssh-duplicate-row]");

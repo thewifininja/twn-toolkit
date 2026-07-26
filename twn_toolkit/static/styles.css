@@ -4557,7 +4557,7 @@ button.compact,
 .multi-ssh-authoring-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .multi-ssh-workspace-card,
@@ -4641,36 +4641,64 @@ button.compact,
 .multi-ssh-matrix-table-wrap {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 7px;
-  max-height: 430px;
+  border-radius: 5px;
+  max-height: 480px;
 }
 
 .multi-ssh-matrix-table {
+  border-collapse: separate;
+  border-spacing: 0;
   min-width: max-content;
 }
 
 .multi-ssh-matrix-table th,
 .multi-ssh-matrix-table td {
-  min-width: 180px;
-  padding: 8px;
-  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  min-width: 190px;
+  padding: 0;
+  vertical-align: middle;
 }
 
 .multi-ssh-matrix-table th {
   background: color-mix(in srgb, var(--panel), var(--brand-green) 5%);
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
   position: sticky;
+  text-transform: uppercase;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
-.multi-ssh-matrix-table th:last-child,
-.multi-ssh-matrix-table td:last-child {
-  min-width: 150px;
-  width: 150px;
+.multi-ssh-matrix-table tr:last-child > * {
+  border-bottom: 0;
+}
+
+.multi-ssh-matrix-table tr > *:last-child {
+  border-right: 0;
+}
+
+.multi-ssh-fixed-heading {
+  display: block;
+  padding: 10px;
 }
 
 .multi-ssh-matrix-table input {
-  min-width: 165px;
+  background: var(--panel);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 40px;
+  min-width: 190px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.multi-ssh-matrix-table td input:focus {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 5%);
+  box-shadow: inset 0 0 0 2px var(--action-primary);
+  outline: 0;
 }
 
 .multi-ssh-variable-heading,
@@ -4681,19 +4709,85 @@ button.compact,
 }
 
 .multi-ssh-variable-heading input {
-  min-width: 120px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 800;
+  min-width: 145px;
+  text-transform: none;
 }
 
 .multi-ssh-variable-heading button,
 .multi-ssh-matrix-row-actions button {
   flex: 0 0 auto;
-  min-height: 32px;
-  padding: 5px 7px;
+  min-height: 28px;
+  padding: 4px 6px;
+}
+
+.multi-ssh-variable-heading {
+  gap: 2px;
+  padding-right: 4px;
+}
+
+.multi-ssh-variable-heading button {
+  border-radius: 50%;
+  font-size: 1.05rem;
+  line-height: 1;
+  min-width: 26px;
+}
+
+.multi-ssh-matrix-table .multi-ssh-row-number {
+  background: color-mix(in srgb, var(--panel), var(--nav) 4%);
+  color: var(--muted);
+  font-size: 0.75rem;
+  left: 0;
+  min-width: 42px;
+  padding: 0 8px;
+  position: sticky;
+  text-align: center;
+  width: 42px;
+  z-index: 1;
+}
+
+.multi-ssh-matrix-table .multi-ssh-grid-corner {
+  z-index: 4;
+}
+
+.multi-ssh-matrix-table .multi-ssh-actions-cell {
+  background: color-mix(in srgb, var(--panel), var(--nav) 2%);
+  min-width: 118px;
+  width: 118px;
+}
+
+.multi-ssh-matrix-table thead .multi-ssh-actions-cell {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 5%);
+  padding: 0 8px;
+}
+
+.multi-ssh-matrix-row-actions {
+  gap: 2px;
+  justify-content: center;
 }
 
 .multi-ssh-matrix-table input[aria-invalid="true"] {
-  border-color: var(--bad);
-  outline: 2px solid color-mix(in srgb, var(--bad), transparent 75%);
+  box-shadow: inset 0 0 0 2px var(--bad);
+  outline: 0;
+}
+
+.multi-ssh-grid-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: -4px 0 0;
+}
+
+.multi-ssh-grid-hint kbd {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--ink);
+  font: inherit;
+  padding: 1px 5px;
 }
 
 .multi-ssh-matrix-summary {

@@ -93,9 +93,7 @@ def parse_ssh_target_matrix(
         seen.add(key)
         headers.append({"label": raw_header.strip(), "key": key})
     if "host" not in seen:
-        raise ToolInputError(
-            "The target matrix needs a Host or IP/FQDN column."
-        )
+        raise ToolInputError("The target matrix needs a Host column.")
 
     data_rows = rows[1:]
     if len(data_rows) > row_limit:

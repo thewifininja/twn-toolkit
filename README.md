@@ -109,8 +109,10 @@ The sidebar and Network Tools page use the same functional organization.
   round-interval and per-target probe-timeout controls; accelerated mode accepts
   sub-second timeouts for dense groups of known-local targets.
 - **Multi-SSH** — run prompt-aware command sequences concurrently in Basic mode,
-  or use the visual target table and Raw Matrix editor in Advanced mode to
-  substitute literal `{{ variable }}` values into reusable Stored Commandlets.
+  or use the spreadsheet-style target table and Raw Matrix editor in Advanced
+  mode to substitute literal `{{ variable }}` values into reusable Stored
+  Commandlets. The fixed `Host` column maps directly to `{{ host }}`; older
+  `IP/FQDN` headings remain accepted when importing saved matrices.
   Commandlets can optionally retain their target matrix and per-host values,
   while credentials remain per-run only. Signed previews show every rendered
   command before execution.

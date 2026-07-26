@@ -57,7 +57,7 @@ class SSHCommandletParserTests(unittest.TestCase):
         )
 
     def test_matrix_rejects_missing_host_duplicate_headers_and_bad_rows(self) -> None:
-        with self.assertRaisesRegex(ToolInputError, "Host or IP/FQDN"):
+        with self.assertRaisesRegex(ToolInputError, "Host column"):
             parse_ssh_target_matrix("Name | VLAN\nSwitch 1 | 4")
         with self.assertRaisesRegex(ToolInputError, "unique after normalization"):
             parse_ssh_target_matrix(
@@ -172,6 +172,8 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b"Raw matrix", initial_page.data)
             self.assertIn(b"Add target", initial_page.data)
             self.assertIn(b"Add variable", initial_page.data)
+            self.assertIn(b"Name and Host stay fixed", initial_page.data)
+            self.assertNotIn(b"Name and IP/FQDN stay fixed", initial_page.data)
             self.assertNotIn(b'name="username"', initial_page.data)
             self.assertNotIn(b'name="password"', initial_page.data)
 
