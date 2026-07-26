@@ -156,7 +156,7 @@
     <p>Uploads are committed atomically after the final block. Existing files are rejected unless the administrator explicitly enables overwrite. Up to 20 transfers run concurrently. The latest 1,000 successful and failed transfers are visible in the datastore and can be cleared by an administrator.</p>
   </div></details>
   <details class="help-topic"><summary>Operational limits, diagnostics, and audit history</summary><div class="help-topic-body">
-    <p><strong>Administration → Settings</strong> groups system controls before account controls. Operational limits bound concurrent and queued automation runs, skip overlapping checks, cap datastore and automation-artifact usage, and preserve a configured amount of free disk.</p>
+    <p><strong>Administration → System Settings</strong> separates System, Email, Operations, and Accounts &amp; access. Operational limits bound concurrent and queued automation runs, skip overlapping checks, cap datastore and automation-artifact usage, and preserve a configured amount of free disk.</p>
     <p><strong>Administration → System Diagnostics</strong> reports web, supervisor, scheduler, and transfer-listener health; scheduler heartbeat age; disk and quota use; SQLite quick-check results; optional command dependencies; numbered migrations; reclaimable orphan artifacts; and the newest toolkit audit events.</p>
     <p>The audit trail is role-neutral: meaningful, explicitly curated actions are recorded for operators and system administrators alike. It includes setup and sign-in outcomes, sign-out, saved-profile and credential lifecycle, connection tests, backups and exports, external device changes, operator-initiated tool runs, and administrative changes. High-frequency polling, raw speed-test transfer traffic, read-only discovery previews, theme changes, favorites, and other interface noise are omitted.</p>
     <p>The audit ledger records the user, source address, endpoint, HTTP method, path, result code, and time. Expand a row to see the affected resource, selected event metadata, and before/after values. Profile events show whether sensitive configuration is present or was replaced without revealing its value. Tool runs retain bounded modes, counts, and outcomes rather than submitted targets, commands, payloads, packet bytes, captured messages, or returned data.</p>
@@ -171,10 +171,10 @@
 </section>
 
 <section class="home-section help-section" id="automations">
-  <div class="section-head"><div><span class="eyebrow">Background work</span><h2>Conditions, actions, and automations</h2></div><a href="#help-contents">Back to contents</a></div>
-  <details class="help-topic" open><summary>The reusable three-part model</summary><div class="help-topic-body">
-    <ol><li>A <strong>condition</strong> observes something or supplies a manual/calendar trigger.</li><li>An <strong>action</strong> defines a trusted response.</li><li>An <strong>automation</strong> connects one condition to actions and adds policy.</li></ol>
-    <p>Use <strong>Automation → Conditions</strong> and <strong>Automation → Actions</strong> to maintain the reusable libraries. Use <strong>Automation → Automations</strong> to connect them, arm schedules, inspect checks, and manage retained runs.</p>
+  <div class="section-head"><div><span class="eyebrow">Background work</span><h2>Automations, schedules, conditions, and actions</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>The reusable four-part model</summary><div class="help-topic-body">
+    <ol><li>An <strong>automation</strong> chooses manual, condition, or schedule run mode and connects definitions to state policy and retained history.</li><li>A <strong>schedule</strong> describes reusable calendar timing.</li><li>A <strong>condition</strong> observes health and can participate in an ALL or ANY group.</li><li>An <strong>action</strong> defines a trusted response in an ordered stage.</li></ol>
+    <p>Use <strong>Automation → Schedules</strong>, <strong>Conditions</strong>, and <strong>Actions</strong> to maintain the reusable libraries. Use <strong>Automation → Automations</strong> to connect them, arm scheduled or monitored work, inspect checks, and manage retained runs.</p>
     <p>Definitions may be shared by many automations. Editing a shared definition pauses every dependent automation for review.</p>
   </div></details>
   <details class="help-topic"><summary>Monitoring policy and states</summary><div class="help-topic-body">
@@ -187,8 +187,8 @@
     <p>Webhook actions in later stages can use bounded, non-secret results from earlier stages through <code>{{ '{{actions.results}}' }}</code>, <code>{{ '{{actions.successful}}' }}</code>, <code>{{ '{{actions.partial}}' }}</code>, and <code>{{ '{{actions.failed}}' }}</code>. Raw SSH command output is retained for download but is not automatically exposed to notifications.</p>
   </div></details>
   <details class="help-topic"><summary>ICMP, DNS, and TCP conditions</summary><div class="help-topic-body">
-    <p><strong>Ping</strong> treats every target as a check. Test displays reachability, RTT, timeout elapsed time, and friendly name/address.</p>
-    <p><strong>DNS</strong> queries each name through each resolver, supports A/AAAA/CNAME/MX/NS/PTR/TXT, and optionally requires any/all expected answers. Test shows every resolver path and timing.</p>
+    <p><strong>Ping</strong> treats every target as a check. Add one to ten probes per evaluation to apply packet-loss, average-latency, and jitter limits; existing reachability-only conditions remain compatible. Test displays every target's reachability, quality metrics, elapsed time, and policy outcome.</p>
+    <p><strong>DNS Lookup</strong> queries each name through each resolver, supports A/AAAA/CNAME/MX/NS/PTR/TXT, and optionally requires any/all expected answers. <strong>DNS Performance</strong> uses the same matrix to trigger on failures or response-time thresholds. Tests show every resolver path and timing.</p>
     <p><strong>TCP</strong> assigns ports per host:</p>
     <pre><code>Home FortiGate = gate.example.com | 8443
 Google = google.com | 443
@@ -213,8 +213,8 @@ Public Portal = portal.example.com | 443</code></pre>
     <p>Connection failures, expired certificates, and not-yet-valid certificates always fail. Configure an expiration warning from 0 to 3650 days, and optionally require hostname/IP SAN matching, validation through the toolkit server’s system trust store, and a correctly ordered chain with no likely missing intermediate.</p>
     <p>Disable the optional trust, name, or chain policies when monitoring intentional private/self-signed infrastructure. Test results show the endpoint, common name, expiration horizon, TLS version, timing, and every policy failure reason.</p>
   </div></details>
-  <details class="help-topic"><summary>Manual and calendar conditions</summary><div class="help-topic-body">
-    <p>Manual triggers run only when an administrator selects Run now. Calendar conditions contain up to 50 one-time, daily, weekday, every-N-weeks, monthly-date, or ordinal-weekday rules with an explicit timezone.</p>
+  <details class="help-topic"><summary>Manual and scheduled automations</summary><div class="help-topic-body">
+    <p>Manual mode runs only when an administrator selects Run now. Reusable Calendar schedules contain up to 50 one-time, daily, weekday, every-N-weeks, monthly-date, or ordinal-weekday rules with an explicit timezone.</p>
     <p>Missed occurrences may run late, run only within a grace period, or skip. Refresh next run time is read-only. Simultaneous rules collapse into one occurrence.</p>
   </div></details>
   <details class="help-topic"><summary>SSH collection action</summary><div class="help-topic-body">
@@ -239,7 +239,7 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
     <p>Authorization/API-key headers are encrypted, never rendered back into the editor, and never copied into retained run output. Leave the field blank to keep saved headers, or select Remove all saved headers while updating.</p>
   </div></details>
   <details class="help-topic"><summary>Email notification action</summary><div class="help-topic-body">
-    <p>Sends a plain-text message through the installation-wide SMTP service configured under Administration → Settings → Email delivery. Configure To, optional Cc/Bcc recipients, a subject, and a message template using the same trigger and prior-action variables available to webhooks.</p>
+    <p>Sends a plain-text message through the installation-wide SMTP service configured under Administration → System Settings → Email. Configure To, optional Cc/Bcc recipients, a subject, and a message template using the same trigger and prior-action variables available to webhooks.</p>
     <p>SMTP supports STARTTLS, implicit TLS, or explicit plaintext delivery, with certificate verification enabled by default. The optional SMTP password is encrypted and write-only. Use the settings-page test before arming an email automation.</p>
     <p>Email is metadata-only: the toolkit never adds collected files or PCAP attachments. Retained results contain per-recipient delivery status, subject, and message ID, but not the rendered message body.</p>
   </div></details>
@@ -249,7 +249,7 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
   </div></details>
   <details class="help-topic"><summary>History, downloads, cleanup, and scheduler</summary><div class="help-topic-body">
     <p>Checks, triggers, action status, and structured retained output live in <code>instance/automations.sqlite3</code>; run-retained binary artifacts live in <code>instance/automation_artifacts/</code>. SSH ZIPs contain timestamped host files, SFTP/SCP ZIPs include retained fetched files, and notification ZIPs contain delivery JSON. Delete run removes one result and its run artifacts but does not delete files saved to Local Datastore; Clear collected data removes action runs but preserves condition history.</p>
-    <p>Administration → Settings controls global retention. Check records default to 7 days; collected action runs default to never expire. Use 0 for indefinite retention. The card previews eligible records, supports an immediate policy-based prune, and reports database size and oldest records.</p>
+    <p>Administration → System Settings → Operations controls global retention. Check records default to 7 days; collected action runs default to never expire. Use 0 for indefinite retention. The card previews eligible records, supports an immediate policy-based prune, and reports database size and oldest records.</p>
     <p>The scheduler prunes at most once daily. Optimize database is a separate manual action that reclaims unused SQLite file space and may briefly pause automation writes.</p>
     <p><code>./twn start</code> launches one scheduler beside the web service. Work continues without a browser. Imported automations remain paused.</p>
   </div></details>
@@ -301,7 +301,7 @@ sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
     <p>Fresh installations use HTTPS by default; upgrades preserve their existing protocol. Run <code>./twn enable-https</code> to migrate an older HTTP installation and safely restart the toolkit. Add stable names or addresses when needed: <code>./twn enable-https toolkit.local 192.0.2.25</code>.</p>
     <p>The certificate includes localhost, loopback, and detected machine names. Browsers warn until the certificate is trusted. HTTPS enables secure session cookies, and <code>./twn status</code> prints the active HTTPS URL.</p>
     <p>The owner-only private key lives at <code>instance/tls/key.pem</code> and is not included in profile backups. Run <code>./twn disable-https</code> to restart over HTTP without deleting the certificate. Externally managed PEM files may be supplied with both <code>TWN_TOOLKIT_CERTFILE</code> and <code>TWN_TOOLKIT_KEYFILE</code>.</p>
-    <p>Administration → Settings can define a short instance name and preferred FQDN. Validation checks DNS-name structure but never performs a lookup. The short name appears in browser titles and the sidebar; the FQDN is used in launcher URLs. Explicitly select certificate regeneration while saving when the toolkit-managed certificate should include the new identity.</p>
+    <p>Administration → System Settings → System can define a short instance name and preferred FQDN. Validation checks DNS-name structure but never performs a lookup. The short name appears in browser titles and the sidebar; the FQDN is used in launcher URLs. Explicitly select certificate regeneration while saving when the toolkit-managed certificate should include the new identity.</p>
   </div></details>
   <details class="help-topic"><summary>Upgrade, verify, and roll back</summary><div class="help-topic-body">
     <p><strong>Administration → Updates &amp; Recovery</strong> checks the official stable release channel without requiring Git, the GitHub CLI, or manual tags. It downloads only releases carrying the toolkit ZIP and SHA-256 assets, then validates the whole bundle and every internally manifested file. An official bundle may also be uploaded manually when the release API is unavailable.</p>

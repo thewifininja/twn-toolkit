@@ -63,7 +63,7 @@ self-signed certificate, so the browser will display a certificate warning.
 There is no default account.
 
 1. Create the first administrator.
-2. Sign in and open **Administration → Settings**.
+2. Sign in and open **Administration → System Settings**.
 3. Review the short instance name, preferred FQDN, client allowlist, password
    policy, idle timeout, operational limits, and retention settings.
 4. Open **Administration → System Diagnostics** and confirm that the web,
@@ -78,7 +78,8 @@ The persistent sidebar is the primary navigation:
 - **Network Tools** is divided into Addressing & Reachability, Multi-Host
   Tools, Services & Protocols, and Traffic & Interfaces.
 - **Local Tools** contains the Datastore and managed File Transfers.
-- **Automation** contains reusable Conditions, Actions, and Automations.
+- **Automation** contains reusable Automations, Schedules, Conditions, and
+  Actions.
 - **Administration** contains server-wide configuration and diagnostics.
 
 Hover or focus a tool in the sidebar and select its star to add or remove a
@@ -196,9 +197,9 @@ For a simple outage condition:
 Testing a condition is read-only. It reports current evidence without running
 an action or arming an automation.
 
-Other reusable conditions include DNS lookup health, per-host TCP services,
-SNMP value rules and calculations, certificate health, calendar schedules, and
-a Manual trigger.
+Other reusable conditions include DNS lookup health, Ping Quality, DNS
+Performance, per-host TCP services, SNMP value rules and calculations,
+and certificate health.
 
 ### 2. Create an action
 
@@ -216,35 +217,39 @@ one long-running command by prefixing it, for example:
 [timeout=600] diag debug report
 ```
 
-Other actions can collect files over SFTP/SCP/FTP, send RFC 5424 Syslog, or
-send templated Webhook/API notifications. Saved action credentials are
-write-only in the UI and encrypted at rest.
+Other actions can collect files over SFTP/SCP/FTP, run a bounded Packet
+Capture, send RFC 5424 Syslog, deliver metadata-only email through the saved
+SMTP service, or send templated Webhook/API notifications. Saved action
+credentials are write-only in the UI and encrypted at rest.
 
 ### 3. Connect them
 
 Open **Automation → Automations** and expand **New automation**:
 
 1. Name the automation.
-2. Select the reusable condition.
-3. Select one or more actions in Stage 1.
-4. For a monitored condition, set **Check every**, **Trigger after**,
-   **Recover after**, and **Cooldown**.
-5. Add stages when later actions should wait for earlier ones. Actions in one
+2. Choose **Condition**, **Schedule**, or **Manual** run mode.
+3. For Condition mode, select one or more reusable conditions, choose whether
+   **ALL** or **ANY** must be met, and set the check interval. For Schedule
+   mode, select a reusable calendar schedule.
+4. Select one or more actions in Stage 1.
+5. For a monitored condition, set **Trigger after**, **Recover after**, and
+   **Cooldown**.
+6. Add stages when later actions should wait for earlier ones. Actions in one
    stage run in parallel; stages run sequentially.
-6. Save the automation.
+7. Save the automation.
 
-New monitored or calendar automations remain paused until you select **Arm**.
+New condition or schedule automations remain paused until you select **Arm**.
 Use **Test condition** before arming. Editing a referenced condition or action
 pauses dependent automations so changes can be reviewed safely.
 
 ### Manual and calendar automations
 
-- A **Manual trigger** produces an on-demand automation with a **Run now**
+- **Manual mode** produces an on-demand automation with a **Run now**
   button and no polling interval.
-- A **Calendar schedule** can contain multiple one-time, daily, weekday,
-  alternating-week, monthly-date, or ordinal-weekday rules in one reusable
-  condition. Set an IANA timezone and missed-occurrence policy, then use
-  **Refresh next run times** to preview without arming or executing anything.
+- A reusable **Calendar schedule** can contain multiple one-time, daily,
+  weekday, alternating-week, monthly-date, or ordinal-weekday rules. Set an
+  IANA timezone and missed-occurrence policy, then use **Refresh next run
+  times** to preview without arming or executing anything.
 
 ### Review output
 
@@ -291,7 +296,7 @@ Prefer SFTP/SCP whenever the client supports it.
 
 ## Add users and access profiles
 
-Open **Administration → Settings**:
+Open **Administration → System Settings → Accounts & access**:
 
 1. Create one or more custom access profiles.
 2. Select exactly which individual tools each profile may use.

@@ -160,17 +160,17 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.12.0: bounded local and routed Wake-on-LAN, persistent
-  owner-scoped Ping and SNMP interface-monitor sessions, worker-side cadence,
-  the compact Live tools footer dock, restored graph selection, and a wider
-  responsive page shell are implemented. Real Linux validation confirmed the
-  standard system-ping fallback without fping and automatic high-capacity
-  availability after fping installation and a toolkit restart. Real-device SNMP
-  monitor validation is complete. Certificate Automation remains the only
-  explicitly labeled Beta workflow. The audit policy has no pending mutating
-  endpoints. This remains a pre-1.0 release; broader real-world upgrade history,
-  packaging, and an explicit supported 1.0 compatibility contract still need
-  deliberate hardening. The 0.10.1 hotfix
+- Current milestone is 0.13.0: durable automation claims and renewable leases,
+  explicit check-interval and schedule run modes, reusable ALL/ANY condition
+  groups, Ping Quality and DNS Performance conditions, standalone and automated
+  Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
+  saves, metadata-only SMTP email actions, and the reorganized Administration
+  interface are implemented. Packet capture retains the host's existing
+  permission boundary and never installs software or invokes sudo. Certificate
+  Automation remains the only explicitly labeled Beta workflow. This remains a
+  pre-1.0 release; broader real-world upgrade history, packaging, and an explicit
+  supported 1.0 compatibility contract still need deliberate hardening. The
+  0.10.1 hotfix
   makes browser-verified same-origin mutation metadata authoritative before the
   backend Host fallback, preserving logins through aliases and proxies while
   continuing to reject cross-site mutations. The complete test command is
@@ -389,10 +389,12 @@ make state, risk, and the next action obvious.
 
 ## Automation architecture
 
-- Reusable condition definitions and reusable action definitions are separate
-  first-class records. An automation references one condition plus one or more
-  actions and adds trigger/recovery/schedule policy. Conditions observe; the automation state
-  machine decides when to fire; actions respond.
+- Reusable schedules, conditions, and actions are separate first-class records.
+  An automation chooses a manual, condition, or schedule run mode; condition
+  mode combines up to ten definitions with explicit ALL/ANY semantics; every
+  mode connects to one or more staged actions and state policy. Conditions
+  observe, schedules provide calendar timing, the automation state machine
+  decides when to fire, and actions respond.
 - Do not run monitoring loops inside Flask or Gunicorn workers. `./twn` manages
   one separate `twn_toolkit.automation_worker` process beside the web service.
 - `instance/automations.sqlite3` stores definitions, scheduler state, checks,
@@ -401,15 +403,16 @@ make state, risk, and the next action obvious.
 - Current states are disabled, healthy, suspect, triggered, recovering, and
   error. A triggered automation fires once and must recover/rearm before it can
   fire again.
-- Registered condition types are `manual.trigger`, `schedule.calendar`,
-  `ping.multi`, `dns.lookup`, `tcp.reachability`, `snmp.value`, and
-  `certificate.health`. Registered action types are
-  `ssh.collect`, `sftp.fetch`, `syslog.send`, and `webhook.send`. Manual-trigger
-  automations are excluded from due-check claims and expose an explicit Run now
-  action. Calendar schedules are intentionally handled by a small scheduler
-  adapter because occurrence consumption differs from monitoring state. Other
-  future types should register through `twn_toolkit/automation_types/` without
-  adding type-specific branches to routes, persistence, or the scheduler.
+- Registered condition types are `ping.multi`, `dns.lookup`,
+  `dns.performance`, `tcp.reachability`, `snmp.value`, and
+  `certificate.health`; legacy `manual.trigger` and `schedule.calendar` IDs
+  remain compatible through the event-source layer. Registered action types
+  are `ssh.collect`, `sftp.fetch`, `syslog.send`, `webhook.send`, `email.send`,
+  and `packet.capture`. Manual automations are excluded from due-check claims
+  and expose Run now. Reusable Calendar schedules are handled by the scheduler
+  adapter because occurrence consumption differs from monitoring state. Future
+  types should register through `twn_toolkit/automation_types/` without adding
+  type-specific branches to routes, persistence, or the scheduler.
 - `automation_registry.py` is now a small compatibility/dispatch facade. The
   immutable type contracts live in `automation_types/models.py`; condition and
   action implementations own their validation, execution, form parsing, and
@@ -421,16 +424,16 @@ make state, risk, and the next action obvious.
 - The automation page imports condition and action form macros from focused
   partials under `templates/automations/`. Keep new type-specific fields in the
   appropriate partial instead of growing the page-level layout again.
-- A `schedule.calendar` condition contains up to 50 reusable sub-rules. It
+- A Calendar schedule contains up to 50 reusable sub-rules. It
   supports one-time, daily, selected-weekday, every-N-weeks, monthly-date, and
   ordinal-weekday rules in an explicit IANA timezone. Simultaneous sub-rules
   collapse into one occurrence. Each referencing automation tracks its own next
   occurrence and applies run-late, grace-period, or skip missed-run policy.
-- Schedule claims preserve the intended occurrence in `pending_schedule_at`
-  and move `next_check_at` to a five-minute lease. This prevents a second
-  scheduler from claiming the same occurrence while allowing a crashed worker
-  to retry it. After consumption, recurring schedules advance directly to a
-  future occurrence rather than replaying downtime backlog.
+- Condition and schedule claims use durable SQLite rows with renewable leases.
+  A competing scheduler cannot run the same claimed work concurrently; an
+  abandoned claim becomes recoverable after lease expiry. After consumption,
+  recurring schedules advance directly to a future occurrence rather than
+  replaying a downtime backlog.
 - `dns.lookup` reuses the regular DNS tool's concurrent query engine. Each
   hostname/resolver pair is one check. An optional global expected-answer set
   can require any or all values; comparisons ignore case and a final DNS dot.

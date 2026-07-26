@@ -35,8 +35,8 @@ automations load as one-member ALL groups without rewriting their saved rows.
 
 ## Calendar schedules
 
-A reusable Calendar schedule condition can contain up to 50 independent rules,
-so one condition can describe an intentionally complicated operating calendar
+A reusable Calendar schedule can contain up to 50 independent rules,
+so one schedule can describe an intentionally complicated operating calendar
 without creating a matching pile of conditions and automations. Rules support:
 
 - a one-time local date and time;
@@ -118,7 +118,7 @@ to the next future occurrence rather than replaying a backlog.
   previews are capped at 4 KiB per endpoint. JSON templates preserve typed
   boolean/object substitutions for trigger state and evidence.
 - Action: send a plain-text email notification through the installation-wide
-  SMTP service configured under Administration → Settings → Email delivery.
+  SMTP service configured under Administration → System Settings → Email.
   To, Cc, Bcc, subject, and message templates support trigger and prior-action
   metadata. Messages never include file or PCAP attachments, and retained run
   output contains delivery status, subject, and message ID without retaining
@@ -148,7 +148,7 @@ to the next future occurrence rather than replaying a backlog.
   changing the complete retained ZIP output.
 - Cleanup: delete a single collected run or clear all collected action runs for
   an automation without deleting its condition-check history. Global retention
-  is managed in Administration → Settings. Check history defaults to 7 days;
+  is managed in Administration → System Settings → Operations. Check history defaults to 7 days;
   collected action runs default to indefinite retention. Setting either policy
   to 0 disables automatic deletion for that record type.
 

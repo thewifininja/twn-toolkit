@@ -1,28 +1,5 @@
 # v0.12.0 release checklist
 
-## Packet Capture
-
-- [x] Standalone captures run outside the web request, survive navigation, and
-  expose live status, stop, download, and delete controls.
-- [x] Interface ownership, BPF validation, duration, packet, size, snapshot,
-  and promiscuous-mode limits are enforced server-side.
-- [x] Packet Capture is reusable as an automation action; captures can
-  participate in run ZIP download, deletion, and retention or save directly
-  beneath a selected datastore folder.
-- [x] Standalone and automated PCAP storage shares the artifact quota and
-  minimum free-space reserve.
-- [x] Live, completed, and datastore PCAP inspection uses a floating,
-  minimizable, auto-scrolling window and exposes bounded header summaries
-  without rendering packet payloads.
-- [x] Local Datastore invokes PCAP inspection directly without requiring
-  navigation through Packet Capture.
-- [x] Completed captures copy into a selected datastore folder without tying
-  the retained copy to capture-history deletion. Standalone saves accept custom
-  filenames, while automation patterns support timestamp, action, and interface
-  tokens; collisions never overwrite existing captures.
-- [x] Recent standalone captures use collapsed summary cards by default while
-  active and explicitly focused captures remain open.
-
 ## Product and compatibility
 
 - [x] Wake-on-LAN packets, target parsing, interface selection, bounded repeats,
