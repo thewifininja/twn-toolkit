@@ -56,7 +56,7 @@
 - [x] Build the v0.13.1 bundle from the release-preparation source and verify
   its internal manifest and external SHA-256 checksum.
 - [x] Pass the complete local pytest suite and release-specific metadata tests.
-- [ ] Pass pull-request CI on Ubuntu 3.10, Ubuntu 3.13, macOS 3.13, repository
+- [x] Pass pull-request CI on Ubuntu 3.10, Ubuntu 3.13, macOS 3.13, repository
   checks, and the dependency audit.
 - [ ] After approval and squash merge, pass merged-main CI before creating the
   tag.
