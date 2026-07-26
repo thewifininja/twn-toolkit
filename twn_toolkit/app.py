@@ -24,6 +24,7 @@ from flask import (
 from .activity import ActivityStore
 from .automation import AutomationStore
 from .automation_routes import register_automation_routes
+from .acme_dns import AcmeDnsManager
 from .certificate_automation import CertificateAutomationStore
 from .datastore import LocalDatastore, MAX_UPLOAD_BYTES
 from .datastore_routes import register_datastore_routes
@@ -78,6 +79,7 @@ def create_app(instance_path: str | None = None) -> Flask:
     certificate_automation_store = CertificateAutomationStore(
         app.instance_path, app.config["SECRET_KEY"]
     )
+    acme_dns_manager = AcmeDnsManager(app.instance_path)
     datastore_store = LocalDatastore(app.instance_path)
     tftp_runtime_store = LocalDatastore(app.instance_path, "tftp_runtime")
     tftp_settings_store = TFTPSettingsStore(app.instance_path)
@@ -177,6 +179,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             "download_automation_artifact",
             "download_automation_run",
             "download_datastore_file",
+            "tools.download_acme_dns_certificate",
             "tools.download_managed_certificate",
             "view_datastore_file_as_text",
             "view_datastore_pcap",
@@ -659,6 +662,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         for profile_store in build_reset_stores(app.instance_path):
             profile_store.clear()
         certificate_automation_store.clear()
+        acme_dns_manager.clear()
         click.echo("The WiFi Ninja's Toolkit local profile data has been reset.")
 
     @app.get("/")

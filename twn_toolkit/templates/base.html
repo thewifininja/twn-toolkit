@@ -201,7 +201,7 @@
           </nav>
         </aside>
       {% endif %}
-      <main class="shell">
+      <main class="shell{% block shell_classes %}{% endblock %}">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             <section class="messages">

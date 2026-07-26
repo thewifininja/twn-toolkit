@@ -123,12 +123,16 @@ The sidebar and Network Tools page use the same functional organization.
   attributes; optional `eapol_test` support adds PEAP/MSCHAPv2 and EAP-TLS.
 - **Certificate Chain Inspector** — inspect the exact TLS chain presented by a
   server and validate dates, hostname, order, intermediates, and local trust.
-- **Certificate Automation (Beta)** — enroll and rotate TLS server certificates
-  through reusable Microsoft AD CS Web Enrollment profiles. Credentials and
-  managed private keys are encrypted locally; downloads include leaf, chain,
-  full-chain, key, and combined PEM formats. Validate enrollment, renewal,
-  exported keys, and the complete chain against the target PKI and RADIUS
-  platform before production deployment.
+- **Certificate Automation** — use a guided Certbot DNS-01 workflow for
+  Let's Encrypt certificates, or enroll and rotate certificates through reusable
+  Microsoft AD CS Web Enrollment profiles (Beta). The ACME wizard runs in the
+  background, waits for each TXT record, compares the toolkit resolver with
+  authoritative DNS during propagation checks, and provides a
+  ready-to-use archive without requiring access to `/etc/letsencrypt`. AD CS
+  managed private keys are encrypted locally; Certbot material is retained in
+  owner-only toolkit storage. Downloads include leaf, chain, full-chain, key,
+  and combined PEM formats. Generic DNS-01 renewals remain guided unless a DNS
+  provider API is configured outside this workflow.
 - **SNMP Tester** — manage reusable SNMPv2c/SNMPv3 credentials, hosts, and OID
   collections for GET and subtree-walk tests; build a live monitor set of up
   to 20 IF-MIB interfaces across saved hosts. Compact filled graphs place

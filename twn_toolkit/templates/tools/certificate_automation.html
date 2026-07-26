@@ -1,38 +1,218 @@
 {% extends "base.html" %}
 {% from "components/ui.html" import action_row, empty_state, profile_card, profile_create, profile_section %}
 
+{% block shell_classes %} certificate-shell{% endblock %}
+
 {% block content %}
 <section class="panel tool-panel certificate-automation-hero">
   <div class="panel-head certificate-automation-title">
     <div>
       <span class="eyebrow">Certificate lifecycle</span>
-      <h1>Certificate Automation <span class="pill planned certificate-beta-pill">Beta</span></h1>
-      <p>Enroll and rotate TLS server certificates without moving private keys through a Windows workstation.</p>
+      <h1>Certificate Automation</h1>
+      <p>
+        {% if certificate_section == 'acme' %}
+          Guide public ACME DNS validation without racing a terminal session or manually relocating certificate files.
+        {% else %}
+          Enroll directly from Microsoft AD CS and keep internal certificate history and key material under toolkit management.
+        {% endif %}
+      </p>
     </div>
     <span class="certificate-automation-mark" aria-hidden="true">◇</span>
   </div>
+  {% if certificate_section == 'adcs' %}
   <div class="message warning certificate-beta-note" role="note">
-    <strong>Beta workflow</strong>
-    <p>Certificate Automation has not completed broad production validation. Test enrollment, pending-request collection, renewal, exported keys, and the complete certificate chain against your PKI and RADIUS platform before deployment. Keep your established certificate workflow available until the result is verified end to end.</p>
+    <strong>Microsoft AD CS is in beta</strong>
+    <p>
+      The AD CS workflow has not completed broad production validation. Test against a non-production template or CA first, then verify enrollment, renewal, exported keys, and the complete certificate chain against your PKI and target platform before deployment.
+      Keep your established certificate workflow available until the result is verified end to end.
+    </p>
   </div>
+  {% endif %}
   <div class="certificate-automation-stats" aria-label="Certificate automation summary">
-    <article><strong>{{ managed|length }}</strong><span>Managed</span></article>
-    <article><strong>{{ summary.issued }}</strong><span>Issued</span></article>
-    <article><strong>{{ summary.pending }}</strong><span>Pending</span></article>
-    <article class="{{ 'attention' if summary.expiring else '' }}"><strong>{{ summary.expiring }}</strong><span>Renewal window</span></article>
+    {% if certificate_section == 'acme' %}
+      <article><strong>{{ acme_summary.total }}</strong><span>ACME requests</span></article>
+      <article><strong>{{ acme_summary.issued }}</strong><span>Issued</span></article>
+      <article><strong>{{ acme_summary.active }}</strong><span>In progress</span></article>
+      <article class="{{ 'attention' if acme_summary.attention else '' }}"><strong>{{ acme_summary.attention }}</strong><span>Needs attention</span></article>
+    {% else %}
+      <article><strong>{{ managed|length }}</strong><span>AD CS managed</span></article>
+      <article><strong>{{ summary.issued }}</strong><span>AD CS issued</span></article>
+      <article><strong>{{ summary.pending }}</strong><span>AD CS pending</span></article>
+      <article class="{{ 'attention' if summary.expiring else '' }}"><strong>{{ summary.expiring }}</strong><span>AD CS renewal window</span></article>
+    {% endif %}
   </div>
   <div class="certificate-security-note">
     <span aria-hidden="true">▣</span>
-    <p><strong>Keys stay protected.</strong> Saved passwords and private keys are encrypted locally and never rendered back into this page. Downloaded archives contain unencrypted key material and should be handled carefully.</p>
+    {% if certificate_section == 'acme' %}
+      <p><strong>Keys stay protected.</strong> Certbot files are kept in owner-only toolkit storage, with private keys set to mode 0600. Downloaded archives contain unencrypted key material and should be handled carefully.</p>
+    {% else %}
+      <p><strong>Keys stay protected.</strong> AD CS managed keys are encrypted locally. Downloaded archives contain unencrypted key material and should be handled carefully.</p>
+    {% endif %}
   </div>
 </section>
 
+<nav class="admin-page-nav certificate-page-nav" aria-label="Certificate authority">
+  <a class="button-link {{ 'secondary' if certificate_section != 'acme' }}" href="{{ url_for('tools.certificate_automation', section='acme') }}" {% if certificate_section == 'acme' %}aria-current="page"{% endif %}>ACME / Let’s Encrypt</a>
+  <a class="button-link {{ 'secondary' if certificate_section != 'adcs' }}" href="{{ url_for('tools.certificate_automation', section='adcs') }}" {% if certificate_section == 'adcs' %}aria-current="page"{% endif %}>Microsoft AD CS <span class="pill planned certificate-beta-pill">Beta</span></a>
+</nav>
+
+{% if certificate_section == 'acme' %}
+<section class="panel tool-panel certificate-acme-panel" id="acme-issuance">
+  <div class="panel-head certificate-section-head">
+    <div>
+      <span class="section-kicker">Public certificates</span>
+      <h2>ACME / Let’s Encrypt DNS wizard</h2>
+      <p>Run Certbot in the background, copy each TXT challenge at your own pace, compare the toolkit resolver with authoritative nameservers, and download files with useful permissions.</p>
+    </div>
+    {% if acme_runtime.available %}
+      <span class="pill success">{{ acme_runtime.version or 'Certbot ready' }}</span>
+    {% else %}
+      <span class="pill error">Certbot unavailable</span>
+    {% endif %}
+  </div>
+
+  {% if not acme_runtime.available %}
+    <div class="message error" role="alert">
+      <strong>Certbot is not available in the toolkit runtime.</strong>
+      <p>Install the toolkit dependencies and restart the service. The ACME wizard will enable itself when the <code>certbot</code> command is available.</p>
+    </div>
+  {% endif %}
+
+  <div class="acme-workspace">
+    <form class="form acme-request-form" method="post" action="{{ url_for('tools.start_acme_dns_request') }}" data-loading-message="Starting Certbot…">
+      <div>
+        <span class="section-kicker">Step 1</span>
+        <h3>Describe the certificate</h3>
+      </div>
+      <label>Request name
+        <input name="name" maxlength="100" required placeholder="Public RADIUS certificate" {% if not acme_runtime.available %}disabled{% endif %}>
+        <span class="field-note">Used only to label the request and downloaded files.</span>
+      </label>
+      <label>Let’s Encrypt account email
+        <input name="email" type="email" maxlength="254" required autocomplete="email" placeholder="admin@example.org" {% if not acme_runtime.available %}disabled{% endif %}>
+      </label>
+      <label>DNS names
+        <textarea name="domains" rows="4" required placeholder="radius.example.org&#10;*.guest.example.org" {% if not acme_runtime.available %}disabled{% endif %}></textarea>
+        <span class="field-note">One per line or comma-separated. Wildcards are supported by DNS-01.</span>
+      </label>
+      <div class="certificate-inline-fields">
+        <label>Environment
+          <select name="environment" {% if not acme_runtime.available %}disabled{% endif %}>
+            <option value="staging" selected>Staging · test first</option>
+            <option value="production">Production · trusted certificate</option>
+          </select>
+        </label>
+        <label>Private key
+          <select name="key_type" {% if not acme_runtime.available %}disabled{% endif %}>
+            <option value="ecdsa" selected>ECDSA P-256 · recommended</option>
+            <option value="rsa">RSA 2048 · compatibility</option>
+          </select>
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" name="agree_terms" value="1" required {% if not acme_runtime.available %}disabled{% endif %}><span><strong>I accept the Let’s Encrypt Subscriber Agreement</strong><small>Required by Certbot before registering or using an ACME account.</small></span></label>
+      <div class="message warning acme-staging-note">
+        <strong>Start with staging.</strong>
+        <p>Staging certificates are intentionally untrusted, but let you test the complete DNS workflow without consuming production rate limits.</p>
+      </div>
+      <button type="submit" {% if not acme_runtime.available %}disabled{% endif %}>Start DNS request</button>
+    </form>
+
+    <div class="acme-progress-column">
+      <div class="acme-progress-head">
+        <div>
+          <span class="section-kicker">Steps 2–4</span>
+          <h3>Complete DNS and collect</h3>
+        </div>
+      </div>
+      {% if selected_acme %}
+        <article class="acme-job" data-acme-job>
+          <script type="application/json" class="acme-job-data">{{ selected_acme|tojson }}</script>
+          <div class="acme-job-head">
+            <div>
+              <strong data-acme-name>{{ selected_acme.name }}</strong>
+              <small data-acme-meta>{{ selected_acme.environment|title }} · {{ selected_acme.domains|join(', ') }}</small>
+            </div>
+            <span class="pill" data-acme-status>{{ selected_acme.status|replace('_', ' ')|title }}</span>
+          </div>
+          <p class="acme-job-message" data-acme-message>{{ selected_acme.message }}</p>
+
+          <div class="acme-challenge-panel" data-acme-challenge hidden>
+            <div class="acme-step-number">2</div>
+            <div>
+              <h4>Publish this TXT record</h4>
+              <p>Keep every value published until Certbot reports that issuance is complete.</p>
+              <dl class="acme-record-grid">
+                <div>
+                  <dt>Record name</dt>
+                  <dd><code data-acme-record-name></code><button class="secondary compact" type="button" data-copy-target="record-name">Copy</button></dd>
+                </div>
+                <div>
+                  <dt>TXT value</dt>
+                  <dd><code data-acme-record-value></code><button class="secondary compact" type="button" data-copy-target="record-value">Copy</button></dd>
+                </div>
+              </dl>
+              <p class="field-note" data-acme-remaining></p>
+            </div>
+            <div class="acme-validation-actions">
+              <button class="secondary" type="button" data-acme-dns-check>Check DNS propagation</button>
+              <button type="button" data-acme-continue>Continue validation</button>
+            </div>
+            <p class="field-note acme-dns-check-note">Checks both the toolkit’s configured resolver and the domain’s authoritative nameservers so cached answers are visible.</p>
+            <div class="message acme-dns-result" data-acme-dns-result role="status" aria-live="polite" hidden></div>
+          </div>
+
+          <div class="acme-result-panel" data-acme-result hidden>
+            <div class="acme-step-number">4</div>
+            <div>
+              <h4>Certificate ready</h4>
+              <p data-acme-certificate-summary></p>
+              <p class="field-note">The ZIP contains leaf, chain, full-chain, key, and combined PEM files. Key-bearing entries are marked mode 0600; certificate-only entries are mode 0644.</p>
+            </div>
+            <a class="button-link" data-acme-download>Download certificate ZIP</a>
+          </div>
+
+          <details class="acme-cleanup" data-acme-cleanup hidden>
+            <summary>DNS cleanup values</summary>
+            <p>After issuance finishes, remove these exact TXT values unless another active ACME request still needs them.</p>
+            <div data-acme-cleanup-list></div>
+          </details>
+
+          <div class="button-row acme-job-actions">
+            <button class="danger compact" type="button" data-acme-cancel {% if not selected_acme.cancellable %}hidden{% endif %}>Cancel request</button>
+          </div>
+        </article>
+      {% else %}
+        {{ empty_state("No active ACME request", "Start a request and this workspace will wait for each DNS challenge. You can leave the page and return while Certbot remains paused.", "acme-empty-state") }}
+      {% endif %}
+
+      <div class="acme-history">
+        <h4>Recent ACME requests</h4>
+        <div class="acme-history-list">
+          {% for job in acme_jobs %}
+            <a href="{{ url_for('tools.certificate_automation', section='acme', acme=job.id) }}#acme-issuance" class="{{ 'selected' if selected_acme and selected_acme.id == job.id else '' }}">
+              <span><strong>{{ job.name }}</strong><small>{{ job.created_at_display }} · {{ job.environment|title }}</small></span>
+              <span class="pill {{ 'success' if job.status == 'issued' else 'error' if job.status in ['failed', 'cancelled', 'interrupted'] else 'warning' }}">{{ job.status|replace('_', ' ')|title }}</span>
+            </a>
+          {% else %}
+            <p class="field-note">Issued, failed, and in-progress requests will appear here.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="message acme-renewal-note">
+        <strong>About renewal</strong>
+        <p>This generic DNS wizard keeps credentials out of the toolkit, so renewals require repeating the guided TXT step. Fully unattended renewal can be added later with a DNS-provider API plugin and a least-privilege token.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% else %}
 <section class="panel tool-panel" id="request-certificate">
   <div class="panel-head certificate-section-head">
     <div>
-      <span class="section-kicker">New enrollment</span>
-      <h2>Request a certificate</h2>
-      <p>Choose a reusable template, describe the server identity, and keep the generated key under toolkit management.</p>
+      <span class="section-kicker">Internal PKI enrollment</span>
+      <h2>Request from Microsoft AD CS</h2>
+      <p>Choose a reusable internal template, describe the server identity, and keep the generated key under toolkit management.</p>
     </div>
   </div>
   {% if not servers or not templates %}
@@ -119,7 +299,7 @@
             {% endif %}
           </div>
           <div class="certificate-managed-actions">
-            <a class="button-link secondary compact" href="{{ url_for('tools.certificate_automation', certificate=certificate.id) }}#managed-certificates">Details</a>
+            <a class="button-link secondary compact" href="{{ url_for('tools.certificate_automation', section='adcs', certificate=certificate.id) }}#managed-certificates">Details</a>
             {% if certificate.status == 'issued' %}<a class="button-link compact" href="{{ url_for('tools.download_managed_certificate', managed_id=certificate.id) }}">Download</a>{% endif %}
           </div>
         </div>
@@ -304,5 +484,6 @@
   </div>
 </section>
 
-<script src="{{ url_for('static', filename='certificate-automation.js') }}"></script>
+{% endif %}
+{% if certificate_section == 'acme' %}<script src="{{ url_for('static', filename='certificate-automation.js') }}"></script>{% endif %}
 {% endblock %}
