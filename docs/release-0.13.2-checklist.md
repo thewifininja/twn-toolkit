@@ -46,9 +46,12 @@
 - [ ] On Ubuntu, reproduce a privileged start followed by an unprivileged
   restart; run `./twn recover` and verify ownership repair, port release, and
   normal-user web/scheduler/supervisor health.
-- [ ] From a v0.13.1 installation whose web updater previously ran as root,
+- [x] From a v0.13.1 installation whose web updater previously ran as root,
   repair the legacy root-owned release manifest once, install the candidate
-  bundle, and confirm future recovery repairs updater metadata automatically.
+  bundle, and confirm the upgrade returns the normal-user service to health.
+- [ ] On the upgraded Ubuntu candidate, deliberately create root-owned updater
+  metadata, run `./twn recover`, and confirm ownership is repaired
+  automatically.
 - [ ] Confirm an unrelated TCP listener on the configured port is reported and
   left running.
 - [ ] After approval and squash merge, pass merged-main CI before creating the
