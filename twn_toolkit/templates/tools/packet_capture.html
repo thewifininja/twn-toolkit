@@ -93,7 +93,8 @@
             <div><dt>Stopped by</dt><dd data-capture-reason>{{ capture.termination_reason or 'In progress' }}</dd></div>
           </dl>
           <p class="message error" data-capture-error {% if not capture.error %}hidden{% endif %}>{{ capture.error }}</p>
-          <div class="button-row packet-capture-actions">
+          <div class="packet-capture-actions">
+            <div class="button-row packet-capture-primary-actions">
             <form method="post" action="{{ url_for('tools.stop_packet_capture', capture_id=capture.id) }}" data-capture-stop {% if not capture.active %}hidden{% endif %}>
               <button class="danger secondary" type="submit">Stop capture</button>
             </form>
@@ -111,19 +112,23 @@
               data-capture-viewer
               {% if not capture.viewable %}hidden{% endif %}
             >{{ 'Open live viewer' if capture.active else 'Inspect PCAP' }}</button>
-            {% if can_use_datastore %}
-              <form class="packet-capture-save" method="post" action="{{ url_for('tools.save_packet_capture', capture_id=capture.id) }}" data-capture-save {% if not capture.downloadable %}hidden{% endif %}>
-                <label class="sr-only" for="capture-filename-{{ capture.id }}">Datastore filename</label>
-                <input id="capture-filename-{{ capture.id }}" name="filename" maxlength="255" value="{{ capture.datastore_filename }}">
-                <select id="capture-destination-{{ capture.id }}" name="destination" aria-label="Datastore destination folder">
-                  {% for folder in datastore_folders %}<option value="{{ folder.path }}">{{ folder.name }}</option>{% endfor %}
-                </select>
-                <button class="secondary" type="submit">Save to datastore</button>
-              </form>
-            {% endif %}
             <form method="post" action="{{ url_for('tools.delete_packet_capture', capture_id=capture.id) }}" data-capture-delete {% if capture.active %}hidden{% endif %} onsubmit="return confirm('Delete this retained packet capture?');">
               <button class="danger secondary" type="submit">Delete</button>
             </form>
+            </div>
+            {% if can_use_datastore %}
+              <form class="packet-capture-save" method="post" action="{{ url_for('tools.save_packet_capture', capture_id=capture.id) }}" data-capture-save {% if not capture.downloadable %}hidden{% endif %}>
+                <label for="capture-filename-{{ capture.id }}">Filename
+                  <input id="capture-filename-{{ capture.id }}" name="filename" maxlength="255" value="{{ capture.datastore_filename }}">
+                </label>
+                <label for="capture-destination-{{ capture.id }}">Destination
+                  <select id="capture-destination-{{ capture.id }}" name="destination">
+                    {% for folder in datastore_folders %}<option value="{{ folder.path }}">{{ folder.name }}</option>{% endfor %}
+                  </select>
+                </label>
+                <button class="secondary" type="submit">Save to datastore</button>
+              </form>
+            {% endif %}
           </div>
         </article>
       {% endfor %}
