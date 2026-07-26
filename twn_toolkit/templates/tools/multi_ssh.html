@@ -78,21 +78,21 @@
           <div class="message error" role="alert" data-ssh-matrix-error hidden></div>
           <div class="message info compact-message" data-ssh-matrix-notice hidden></div>
           <div class="multi-ssh-matrix-grid" data-ssh-matrix-grid hidden>
-            <div class="multi-ssh-matrix-toolbar">
-              <button class="secondary" type="button" data-ssh-add-target>Add target</button>
-              <label>
-                New variable column
-                <div class="button-row">
-                  <input maxlength="80" placeholder="VLAN ID" data-ssh-new-variable data-1p-ignore>
-                  <button class="secondary" type="button" data-ssh-add-variable>Add variable</button>
-                </div>
-              </label>
-            </div>
             <div class="table-wrap multi-ssh-matrix-table-wrap">
               <table class="multi-ssh-matrix-table" aria-label="Target matrix table">
                 <thead data-ssh-matrix-head></thead>
                 <tbody data-ssh-matrix-body></tbody>
               </table>
+            </div>
+            <div class="multi-ssh-matrix-sheet-controls">
+              <button class="multi-ssh-sheet-add" type="button" data-ssh-add-target aria-label="Add target row" title="Add target row">
+                <span aria-hidden="true">+</span>
+                Add row
+              </button>
+              <button class="multi-ssh-sheet-add" type="button" data-ssh-add-variable aria-label="Add variable column" title="Add variable column">
+                Add column
+                <span aria-hidden="true">+</span>
+              </button>
             </div>
             <p class="multi-ssh-grid-hint">Paste a spreadsheet block into any cell. <kbd>Enter</kbd> moves down; <kbd>Tab</kbd> moves across.</p>
             <div class="multi-ssh-matrix-summary" data-ssh-matrix-summary></div>

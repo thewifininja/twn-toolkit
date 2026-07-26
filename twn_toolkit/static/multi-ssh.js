@@ -17,7 +17,6 @@
   const matrixError = form.querySelector("[data-ssh-matrix-error]");
   const matrixNotice = form.querySelector("[data-ssh-matrix-notice]");
   const matrixSummary = form.querySelector("[data-ssh-matrix-summary]");
-  const newVariable = form.querySelector("[data-ssh-new-variable]");
   const modeButtons = [...form.querySelectorAll("[data-ssh-matrix-mode]")];
 
   const fixedHeaders = [
@@ -484,34 +483,21 @@
     focusCell(rows.length - 1, 0);
   });
   form.querySelector("[data-ssh-add-variable]").addEventListener("click", () => {
-    const label = newVariable.value.trim();
+    const label = nextVariableLabel();
     const key = normalize(label);
     const existing = headers.map((header) => normalize(header.label));
-    if (!/^[a-z][a-z0-9_]*$/.test(key) || key === "row_number") {
-      setMatrixError("Variable headings must begin with a letter and cannot use row_number.");
-      newVariable.focus();
-      return;
-    }
-    if (existing.includes(key)) {
-      setMatrixError(`The variable {{ ${key} }} already exists.`);
-      newVariable.focus();
-      return;
-    }
     if (headers.length >= 20) {
       setMatrixError("A maximum of 20 matrix columns is allowed.");
       return;
     }
+    if (existing.includes(key)) return;
     headers.push({ label, key, locked: false });
     rows = rows.map((row) => [...row, ""]);
-    newVariable.value = "";
     renderGrid();
     matrixChanged();
-  });
-  newVariable.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      form.querySelector("[data-ssh-add-variable]").click();
-    }
+    const headerInput = matrixHead.querySelector(`[data-ssh-header-index="${headers.length - 1}"]`);
+    headerInput?.focus();
+    headerInput?.select();
   });
   matrixHead.addEventListener("input", (event) => {
     const input = event.target.closest("[data-ssh-header-index]");

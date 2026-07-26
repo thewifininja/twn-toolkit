@@ -4640,23 +4640,8 @@ button.compact,
 
 .multi-ssh-matrix-grid {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
-}
-
-.multi-ssh-matrix-toolbar {
-  align-items: end;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: auto minmax(240px, 1fr);
-}
-
-.multi-ssh-matrix-toolbar > label .button-row {
-  flex-wrap: nowrap;
-}
-
-.multi-ssh-matrix-toolbar > label button {
-  white-space: nowrap;
 }
 
 .multi-ssh-matrix-table-wrap {
@@ -4664,6 +4649,52 @@ button.compact,
   border: 1px solid var(--line);
   border-radius: 5px;
   max-height: 480px;
+}
+
+.multi-ssh-matrix-sheet-controls {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-top: -3px;
+}
+
+.multi-ssh-sheet-add {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 800;
+  gap: 6px;
+  min-height: 30px;
+  padding: 2px 1px;
+}
+
+.multi-ssh-sheet-add:hover {
+  background: transparent;
+  color: var(--action-primary);
+}
+
+.multi-ssh-sheet-add > span {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--control-border);
+  border-radius: 50%;
+  color: var(--action-primary);
+  display: inline-flex;
+  font-size: 1rem;
+  font-weight: 700;
+  height: 25px;
+  justify-content: center;
+  line-height: 1;
+  width: 25px;
+}
+
+.multi-ssh-sheet-add:hover > span,
+.multi-ssh-sheet-add:focus-visible > span {
+  border-color: var(--action-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--action-primary), transparent 82%);
 }
 
 .multi-ssh-matrix-table {
@@ -9000,11 +9031,6 @@ th {
 @media (max-width: 760px) {
   .multi-ssh-authoring-grid,
   .multi-ssh-commandlet-meta {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .multi-ssh-matrix-toolbar {
-    align-items: stretch;
     grid-template-columns: minmax(0, 1fr);
   }
 
