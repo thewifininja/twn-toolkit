@@ -437,6 +437,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "tools.save_radius_profile": "tools.radius_test",
             "tools.delete_radius_profile": "tools.radius_test",
             "tools.multi_ssh": "tools.multi_ssh",
+            "tools.import_ssh_hosts": "tools.multi_ssh",
             "tools.delete_ssh_commandlet": "tools.multi_ssh",
             "tools.multi_transfer": "tools.multi_sftp",
             "tools.multi_sftp": "tools.multi_sftp",

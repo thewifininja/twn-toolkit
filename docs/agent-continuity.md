@@ -177,9 +177,13 @@ accepted replay frames.
   Message-ID generation uses the validated sender domain instead of resolving
   the host FQDN, avoiding platform-specific DNS delays. CI reports slow-test
   timings and keeps host-sensitive certificate tests independent of transient
-  runner names. Multi-SSH now adds reusable Stored Commandlets,
-  spreadsheet-style target matrices with per-host variables, signed previews,
-  and bounded fleet execution for up to 5,000 targets. SSH collection
+  runner names. Multi-SSH now uses one preview-first workflow with reusable
+  Stored Commandlets, spreadsheet-style target matrices, per-host variables,
+  signed previews, and bounded fleet execution for up to 5,000 targets. Its
+  compact host importer retains the earlier friendly-name and inclusive
+  IPv4/IPv6 range syntax without restoring a separate Basic mode; legacy mode
+  URLs redirect to the unified page, and legacy Basic submissions are converted
+  into previews without executing. SSH collection
   automation actions use the same matrix and rendering model while saving
   independent Commandlet snapshots and retaining compatibility with legacy
   host-list configurations. This remains a pre-1.0 release; broader real-world

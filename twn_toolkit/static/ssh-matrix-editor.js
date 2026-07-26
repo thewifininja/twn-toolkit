@@ -388,6 +388,40 @@
       notifyChange();
     };
 
+    const importTargets = (targets, { replace = false } = {}) => {
+      if (!Array.isArray(targets) || !targets.length) {
+        throw new Error("Enter at least one host or IP range to import.");
+      }
+      const existingRows = rows.filter(
+        (row) => row.some((value) => String(value).trim()),
+      );
+      const nextTotal = (replace ? 0 : existingRows.length) + targets.length;
+      if (nextTotal > targetLimit) {
+        throw new Error(
+          `This import would create ${nextTotal} targets; the maximum is ${targetLimit}.`,
+        );
+      }
+      const importedRows = targets.map((target) => headers.map((header) => {
+        if (header.key === "host") return String(target.host || "").trim();
+        if (header.key === "name") {
+          return String(target.label || target.host || "").trim();
+        }
+        return "";
+      }));
+      const firstImportedRow = replace ? 0 : existingRows.length;
+      rows = replace
+        ? importedRows
+        : [...existingRows, ...importedRows];
+      renderGrid();
+      matrixChanged();
+      const targetLabel = targets.length === 1 ? "target" : "targets";
+      setMatrixNotice(
+        `Imported ${targets.length} ${targetLabel}; the matrix now contains ${rows.length}.`,
+      );
+      focusCell(firstImportedRow, 0);
+      return { imported: targets.length, total: rows.length };
+    };
+
     const pasteSpreadsheetBlock = (event, input, rowElement) => {
       const clipboard = event.clipboardData?.getData("text/plain") || "";
       if (!clipboard.includes("\t") && !/[\r\n]/.test(clipboard)) return;
@@ -687,6 +721,7 @@
         notifyChange();
       },
       parse: parseMatrix,
+      importTargets,
       setMode: setMatrixMode,
       sync: syncRawMatrix,
       validate: validateGrid,

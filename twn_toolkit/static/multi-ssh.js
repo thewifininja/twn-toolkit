@@ -1,5 +1,5 @@
 (() => {
-  const form = document.querySelector("[data-multi-ssh-advanced]");
+  const form = document.querySelector("[data-multi-ssh]");
   if (!form || !globalThis.TwnSshMatrixEditor) return;
 
   const matrixRoot = form.querySelector("[data-ssh-matrix-editor]");
@@ -31,6 +31,64 @@
     commands,
     picker,
     onChange: markPreviewStale,
+  });
+
+  const hostImport = form.querySelector("[data-ssh-host-import]");
+  const hostImportInput = hostImport?.querySelector(
+    "[data-ssh-host-import-input]",
+  );
+  const hostImportMode = hostImport?.querySelector(
+    "[data-ssh-host-import-mode]",
+  );
+  const hostImportButton = hostImport?.querySelector(
+    "[data-ssh-host-import-submit]",
+  );
+  const hostImportError = hostImport?.querySelector(
+    "[data-ssh-host-import-error]",
+  );
+  const setHostImportError = (message = "") => {
+    if (!hostImportError) return;
+    hostImportError.textContent = message;
+    hostImportError.hidden = !message;
+  };
+
+  hostImportInput?.addEventListener("input", () => setHostImportError());
+  hostImportButton?.addEventListener("click", async () => {
+    const hosts = hostImportInput.value.trim();
+    if (!hosts) {
+      setHostImportError("Enter at least one host or IP range to import.");
+      hostImportInput.focus();
+      return;
+    }
+    const originalLabel = hostImportButton.textContent;
+    hostImportButton.disabled = true;
+    hostImportButton.textContent = "Importing…";
+    setHostImportError();
+    try {
+      const response = await fetch(hostImport.dataset.sshHostImportUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        },
+        body: new URLSearchParams({ hosts }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "The host list could not be imported.");
+      }
+      editor.importTargets(payload.targets, {
+        replace: hostImportMode.value === "replace",
+      });
+      hostImportInput.value = "";
+      hostImport.open = false;
+    } catch (error) {
+      setHostImportError(
+        error.message || "The host list could not be imported.",
+      );
+    } finally {
+      hostImportButton.disabled = false;
+      hostImportButton.textContent = originalLabel;
+    }
   });
 
   timeout.addEventListener("input", markPreviewStale);

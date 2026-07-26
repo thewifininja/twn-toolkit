@@ -7,59 +7,12 @@
 <section class="panel tool-panel multi-ssh-panel">
   <div class="panel-head">
     <h1>Multi-SSH</h1>
-    <p>Run prompt-aware command sequences across up to {{ ssh_target_limit_label }} SSH hosts. Advanced mode renders per-host variables and supports reusable Commandlets.</p>
+    <p>Build, preview, and run prompt-aware command sequences across up to {{ ssh_target_limit_label }} hosts with optional per-host variables and reusable Commandlets.</p>
   </div>
-  <nav class="admin-page-nav multi-ssh-mode-nav" aria-label="Multi-SSH mode">
-    <a class="button-link {{ 'secondary' if mode != 'basic' }}" href="{{ url_for('tools.multi_ssh', mode='basic') }}" {% if mode == 'basic' %}aria-current="page"{% endif %}>Basic</a>
-    <a class="button-link {{ 'secondary' if mode != 'advanced' }}" href="{{ url_for('tools.multi_ssh', mode='advanced') }}" {% if mode == 'advanced' %}aria-current="page"{% endif %}>Advanced</a>
-  </nav>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {% if success %}<div class="message success">{{ success }}</div>{% endif %}
 
-  {% if mode == 'basic' %}
-    <form class="form" method="post" autocomplete="off" data-loading-message="Running SSH commands…">
-      <input name="mode" type="hidden" value="basic">
-      <label>
-        Hosts
-        <textarea name="hosts" rows="5" placeholder="Basement Switch = 192.0.2.20&#10;Access switches = 10.0.0.1-10.0.0.24&#10;core-switch.example.com" data-1p-ignore required>{{ form.hosts }}</textarea>
-        <small class="field-note">{{ host_range_guidance(ssh_target_limit_label, 'hosts') }}</small>
-        <small class="field-note">Large target lists run in batches of {{ ssh_batch_size }} with at most {{ ssh_execution_workers }} simultaneous SSH connections.</small>
-      </label>
-      <div class="form-grid">
-        <label>
-          Username
-          <input name="username" value="{{ form.username }}" required>
-        </label>
-        <label>
-          Password
-          <input name="password" type="password" required>
-        </label>
-        <label>
-          SSH port
-          <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required>
-        </label>
-      </div>
-      <label>
-        Commands
-        <textarea class="command-input" name="commands" rows="8" placeholder="show version&#10;[timeout=600] diag debug report" data-1p-ignore required>{{ form.commands }}</textarea>
-      </label>
-      <label>Default command timeout
-        <div class="input-suffix"><input name="command_timeout" type="number" min="1" max="3600" value="{{ form.command_timeout }}" data-1p-ignore required><span>seconds</span></div>
-        <small class="field-note">Commands finish as soon as the device prompt returns. Override one line with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
-      </label>
-      {% include "tools/_multi_ssh_run_options.html" %}
-      <label class="check execution-confirm">
-        <input name="confirm_execution" type="checkbox" required>
-        I understand these commands will execute on every listed host
-      </label>
-      <div class="button-row">
-        <button name="action" type="submit" value="run">Run commands</button>
-      </div>
-      <p class="field-note">Credentials are used only for this request and are not stored.</p>
-    </form>
-  {% else %}
-    <form class="form multi-ssh-advanced-form" method="post" autocomplete="off" data-multi-ssh-advanced data-ssh-target-limit="{{ ssh_target_limit }}">
-      <input name="mode" type="hidden" value="advanced">
+    <form class="form multi-ssh-form" method="post" autocomplete="off" data-multi-ssh data-ssh-target-limit="{{ ssh_target_limit }}">
       <input name="preview_token" type="hidden" value="{{ preview_token }}" data-ssh-preview-token>
       <input name="commandlet_original_name" type="hidden" value="{{ form.commandlet_original_name }}">
 
@@ -99,6 +52,27 @@
                 Add variable
               </button>
             </div>
+            <details class="multi-ssh-host-import" data-ssh-host-import data-ssh-host-import-url="{{ url_for('tools.import_ssh_hosts') }}">
+              <summary>Import host list or IP range</summary>
+              <div class="multi-ssh-host-import-body">
+                <label>
+                  Hosts
+                  <textarea rows="4" placeholder="Basement Switch = 192.0.2.20&#10;Access switches = 10.0.0.1-10.0.0.24&#10;core-switch.example.com" data-ssh-host-import-input data-1p-ignore></textarea>
+                  <small class="field-note">{{ host_range_guidance(ssh_target_limit_label, 'hosts') }}</small>
+                </label>
+                <div class="multi-ssh-host-import-actions">
+                  <label>
+                    Add to matrix
+                    <select data-ssh-host-import-mode>
+                      <option value="append">Append imported rows</option>
+                      <option value="replace">Replace current rows</option>
+                    </select>
+                  </label>
+                  <button class="secondary compact" type="button" data-ssh-host-import-submit>Import hosts</button>
+                </div>
+                <div class="message error compact-message" role="alert" data-ssh-host-import-error hidden></div>
+              </div>
+            </details>
             <p class="multi-ssh-grid-hint">Paste a spreadsheet block into any cell. <kbd>Enter</kbd> moves down; <kbd>Tab</kbd> moves across.</p>
             <div class="multi-ssh-matrix-summary" data-ssh-matrix-summary></div>
           </div>
@@ -160,7 +134,7 @@
           <div class="button-row">
             <button class="secondary" name="action" type="submit" value="save_commandlet" formnovalidate>{{ 'Update Commandlet' if form.commandlet_original_name else 'Save Commandlet' }}</button>
             {% if form.commandlet_original_name %}
-              <a class="button-link secondary" href="{{ url_for('tools.multi_ssh', mode='advanced') }}">Clear loaded Commandlet</a>
+              <a class="button-link secondary" href="{{ url_for('tools.multi_ssh') }}">Clear loaded Commandlet</a>
             {% endif %}
           </div>
           <p class="field-note">Credentials are never stored. Saved target matrices contain infrastructure addresses and operator-entered values, so SSH Commandlets are treated as sensitive profile-backup data.</p>
@@ -249,56 +223,53 @@
         {% endif %}
       </section>
     </form>
-  {% endif %}
 </section>
 
-{% if mode == 'advanced' %}
-  <section class="panel tool-panel multi-ssh-panel">
-    <div class="preview-head multi-ssh-commandlet-library-head">
-      <div>
-        <h2>Stored Commandlets</h2>
-        <p>Reusable command templates with optional target matrices. Credentials are always entered per run.</p>
-      </div>
-      <span class="pill">{{ commandlets | length }} saved</span>
+<section class="panel tool-panel multi-ssh-panel">
+  <div class="preview-head multi-ssh-commandlet-library-head">
+    <div>
+      <h2>Stored Commandlets</h2>
+      <p>Reusable command templates with optional target matrices. Credentials are always entered per run.</p>
     </div>
-    {% if commandlets %}
-      <div class="multi-ssh-commandlet-library">
-        {% for commandlet in commandlets %}
-          <article class="multi-ssh-commandlet-card">
-            <div class="multi-ssh-commandlet-summary">
-              <div class="multi-ssh-commandlet-title">
-                <h3>{{ commandlet.name }}</h3>
-                {% if commandlet.platform %}<span class="pill">{{ commandlet.platform }}</span>{% endif %}
-              </div>
-              {% if commandlet.description %}<p title="{{ commandlet.description }}">{{ commandlet.description }}</p>{% endif %}
-              <div class="multi-ssh-commandlet-facts">
-                <small>{{ commandlet.commands.splitlines() | reject('equalto', '') | list | length }} command(s) · {{ commandlet.command_timeout }}s default · {% if commandlet.target_count %}{{ commandlet.target_count }} saved target(s){% else %}No saved targets{% endif %}</small>
-                {% if commandlet.variables %}
-                  <div class="multi-ssh-commandlet-variables">
-                    {% for variable in commandlet.variables %}<code>{{ '{{ ' ~ variable ~ ' }}' }}</code>{% endfor %}
-                  </div>
-                {% endif %}
-              </div>
+    <span class="pill">{{ commandlets | length }} saved</span>
+  </div>
+  {% if commandlets %}
+    <div class="multi-ssh-commandlet-library">
+      {% for commandlet in commandlets %}
+        <article class="multi-ssh-commandlet-card">
+          <div class="multi-ssh-commandlet-summary">
+            <div class="multi-ssh-commandlet-title">
+              <h3>{{ commandlet.name }}</h3>
+              {% if commandlet.platform %}<span class="pill">{{ commandlet.platform }}</span>{% endif %}
             </div>
-            <div class="multi-ssh-commandlet-actions">
-              <a class="button-link compact" href="{{ url_for('tools.multi_ssh', mode='advanced', commandlet=commandlet.name) }}">Load</a>
-              <a class="button-link secondary compact" href="{{ url_for('tools.multi_ssh', mode='advanced', commandlet=commandlet.name, duplicate=1) }}">Duplicate</a>
-              <form method="post" action="{{ url_for('tools.delete_ssh_commandlet') }}" onsubmit="return confirm({{ ('Delete Commandlet “' ~ commandlet.name ~ '”?') | tojson | forceescape }})">
-                <input name="name" type="hidden" value="{{ commandlet.name }}">
-                <button class="danger compact" type="submit">Delete</button>
-              </form>
+            {% if commandlet.description %}<p title="{{ commandlet.description }}">{{ commandlet.description }}</p>{% endif %}
+            <div class="multi-ssh-commandlet-facts">
+              <small>{{ commandlet.commands.splitlines() | reject('equalto', '') | list | length }} command(s) · {{ commandlet.command_timeout }}s default · {% if commandlet.target_count %}{{ commandlet.target_count }} saved target(s){% else %}No saved targets{% endif %}</small>
+              {% if commandlet.variables %}
+                <div class="multi-ssh-commandlet-variables">
+                  {% for variable in commandlet.variables %}<code>{{ '{{ ' ~ variable ~ ' }}' }}</code>{% endfor %}
+                </div>
+              {% endif %}
             </div>
-          </article>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty-state">
-        <strong>No Commandlets saved yet</strong>
-        <span>Write a command template above, then open “Save this template as a Commandlet.”</span>
-      </div>
-    {% endif %}
-  </section>
-{% endif %}
+          </div>
+          <div class="multi-ssh-commandlet-actions">
+            <a class="button-link compact" href="{{ url_for('tools.multi_ssh', commandlet=commandlet.name) }}">Load</a>
+            <a class="button-link secondary compact" href="{{ url_for('tools.multi_ssh', commandlet=commandlet.name, duplicate=1) }}">Duplicate</a>
+            <form method="post" action="{{ url_for('tools.delete_ssh_commandlet') }}" onsubmit="return confirm({{ ('Delete Commandlet “' ~ commandlet.name ~ '”?') | tojson | forceescape }})">
+              <input name="name" type="hidden" value="{{ commandlet.name }}">
+              <button class="danger compact" type="submit">Delete</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <strong>No Commandlets saved yet</strong>
+      <span>Write a command template above, then open “Save this template as a Commandlet.”</span>
+    </div>
+  {% endif %}
+</section>
 
 {% if results is not none %}
   <section class="panel tool-panel multi-ssh-panel">
@@ -322,8 +293,6 @@
   </section>
   <script src="{{ url_for('static', filename='multi-ssh-export.js') }}"></script>
 {% endif %}
-{% if mode == 'advanced' %}
-  <script src="{{ url_for('static', filename='ssh-matrix-editor.js') }}"></script>
-  <script src="{{ url_for('static', filename='multi-ssh.js') }}"></script>
-{% endif %}
+<script src="{{ url_for('static', filename='ssh-matrix-editor.js') }}"></script>
+<script src="{{ url_for('static', filename='multi-ssh.js') }}"></script>
 {% endblock %}

@@ -172,13 +172,12 @@ class SSHCommandletParserTests(unittest.TestCase):
 
 
 class SSHCommandletRouteTests(unittest.TestCase):
-    def test_advanced_preview_is_required_and_run_uses_rendered_plans(self) -> None:
+    def test_preview_is_required_and_run_uses_rendered_plans(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
             client = app.test_client()
             form = {
-                "mode": "advanced",
                 "matrix": (
                     "Name | IP/FQDN | VLAN ID\n"
                     "Closet 1 | switch-1 | 4\n"
@@ -188,7 +187,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
                 "command_timeout": "300",
                 "port": "22",
             }
-            initial_page = client.get("/tools/multi-ssh?mode=advanced")
+            initial_page = client.get("/tools/multi-ssh")
             self.assertIn(b"Table editor", initial_page.data)
             self.assertIn(b"Raw matrix", initial_page.data)
             self.assertEqual(initial_page.data.count(b"data-ssh-matrix-mode="), 1)
@@ -208,6 +207,12 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b"batches of 50", initial_page.data)
             self.assertIn(b"Name and Host stay fixed", initial_page.data)
             self.assertNotIn(b"Name and IP/FQDN stay fixed", initial_page.data)
+            self.assertNotIn(b"Basic", initial_page.data)
+            self.assertNotIn(b"Advanced", initial_page.data)
+            self.assertIn(b"Import host list or IP range", initial_page.data)
+            self.assertIn(b"data-ssh-host-import", initial_page.data)
+            self.assertIn(b"Append imported rows", initial_page.data)
+            self.assertIn(b"Replace current rows", initial_page.data)
             self.assertIn(b"data-ssh-matrix data-1p-ignore", initial_page.data)
             self.assertIn(b"data-ssh-commands data-1p-ignore", initial_page.data)
             self.assertIn(
@@ -313,13 +318,12 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertEqual(plans[0]["commands"], ["interface vlan 4", "show host switch-1"])
             self.assertEqual(plans[1]["commands"], ["interface vlan 8", "show host switch-2"])
 
-    def test_changed_advanced_commands_invalidate_preview(self) -> None:
+    def test_changed_commands_invalidate_preview(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
             client = app.test_client()
             base = {
-                "mode": "advanced",
                 "matrix": "Host | VLAN\nswitch-1 | 4",
                 "commands": "show {{ vlan }}",
                 "command_timeout": "300",
@@ -358,7 +362,6 @@ class SSHCommandletRouteTests(unittest.TestCase):
             response = client.post(
                 "/tools/multi-ssh",
                 data={
-                    "mode": "advanced",
                     "action": "save_commandlet",
                     "commandlet_name": "Access VLAN",
                     "commandlet_description": "Configure a switch port.",
@@ -379,9 +382,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b"multi-ssh-commandlet-actions", response.data)
             self.assertIn(b'class="button-link compact"', response.data)
             self.assertIn(b'class="danger compact"', response.data)
-            loaded = client.get(
-                "/tools/multi-ssh?mode=advanced&commandlet=Access%20VLAN"
-            )
+            loaded = client.get("/tools/multi-ssh?commandlet=Access%20VLAN")
             self.assertIn(b"set private-value {{ vlan_id }}", loaded.data)
             self.assertIn(
                 b"Audit Closet | audit-target.example | 44", loaded.data
@@ -406,6 +407,86 @@ class SSHCommandletRouteTests(unittest.TestCase):
             )
             self.assertIn(b"deleted", deleted.data)
             self.assertIsNone(SSHCommandletStore(instance).get("Access VLAN"))
+
+    def test_compact_importer_parses_friendly_hosts_and_ranges(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+
+            response = client.post(
+                "/tools/multi-ssh/import-hosts",
+                data={
+                    "hosts": (
+                        "Core switch = core.example.com\n"
+                        "Access AP = 192.0.2.10-192.0.2.12"
+                    )
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertEqual(payload["count"], 4)
+            self.assertEqual(
+                payload["targets"],
+                [
+                    {"label": "Core switch", "host": "core.example.com"},
+                    {"label": "Access AP-0001", "host": "192.0.2.10"},
+                    {"label": "Access AP-0002", "host": "192.0.2.11"},
+                    {"label": "Access AP-0003", "host": "192.0.2.12"},
+                ],
+            )
+            self.assertEqual(AuditStore(instance).recent(1), [])
+
+            invalid = client.post(
+                "/tools/multi-ssh/import-hosts",
+                data={"hosts": "192.0.2.20-192.0.2.10"},
+            )
+            self.assertEqual(invalid.status_code, 400)
+            self.assertIn("ascending order", invalid.get_json()["error"])
+
+    def test_legacy_mode_links_redirect_and_basic_posts_become_previews(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+
+            basic = client.get("/tools/multi-ssh?mode=basic")
+            self.assertEqual(basic.status_code, 302)
+            self.assertEqual(basic.headers["Location"], "/tools/multi-ssh")
+            advanced = client.get(
+                "/tools/multi-ssh?mode=advanced&commandlet=Access%20VLAN&duplicate=1"
+            )
+            self.assertEqual(advanced.status_code, 302)
+            self.assertIn("commandlet=Access+VLAN", advanced.headers["Location"])
+            self.assertIn("duplicate=1", advanced.headers["Location"])
+
+            with patch("twn_toolkit.ssh_routes.run_ssh_host_plans") as run:
+                response = client.post(
+                    "/tools/multi-ssh",
+                    data={
+                        "mode": "basic",
+                        "hosts": "Closet Switch = switch-1",
+                        "commands": "show version",
+                        "command_timeout": "300",
+                        "port": "22",
+                        "username": "admin",
+                        "password": "must-not-render",
+                        "confirm_execution": "on",
+                    },
+                )
+
+            run.assert_not_called()
+            self.assertIn(b"The legacy host list was imported", response.data)
+            self.assertIn(b"Closet Switch|switch-1", response.data)
+            self.assertIn(b"Per-host command preview", response.data)
+            self.assertIn(b"Connect and run", response.data)
+            self.assertIn(b'value="admin"', response.data)
+            self.assertNotIn(b"must-not-render", response.data)
+            self.assertRegex(
+                response.data,
+                rb'name="preview_token" type="hidden" value="[^"]+"',
+            )
 
 
 if __name__ == "__main__":
