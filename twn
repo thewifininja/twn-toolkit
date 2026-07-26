@@ -6,6 +6,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 GUNICORN="$ROOT/.venv/bin/gunicorn"
 PYTHON="$ROOT/.venv/bin/python"
 RECOVERY_HELPER="$ROOT/twn_toolkit/recovery.py"
+UPGRADE_WORKSPACE="$ROOT/.twn-upgrades"
+RELEASE_MANIFEST="$ROOT/.twn-release-manifest.json"
 REQUIREMENTS="$ROOT/requirements.txt"
 INSTANCE="$ROOT/instance"
 REQUIREMENTS_STAMP="$INSTANCE/requirements.sha256"
@@ -504,6 +506,27 @@ has_instance_permission_issues() {
       return 0
     fi
   done
+  wrong_owner=$(find "$INSTANCE" ! -user "$(id -un)" -print -quit 2>/dev/null || true)
+  if [ -n "$wrong_owner" ]; then
+    return 0
+  fi
+  return 1
+}
+
+has_runtime_permission_issues() {
+  if has_instance_permission_issues; then
+    return 0
+  fi
+  for runtime_path in "$RELEASE_MANIFEST" "$UPGRADE_WORKSPACE"; do
+    [ -e "$runtime_path" ] || continue
+    if [ ! -r "$runtime_path" ] || [ ! -w "$runtime_path" ]; then
+      return 0
+    fi
+    wrong_owner=$(find "$runtime_path" ! -user "$(id -un)" -print -quit 2>/dev/null || true)
+    if [ -n "$wrong_owner" ]; then
+      return 0
+    fi
+  done
   return 1
 }
 
@@ -876,7 +899,7 @@ recover() {
   server_pids=$(recovery_server_pids)
   listener_pids=$(recovery_listener_pids)
   if [ "$(id -u)" -ne 0 ]; then
-    if has_instance_permission_issues; then
+    if has_runtime_permission_issues; then
       elevate_recovery
     fi
     for server_pid in $server_pids; do
@@ -936,11 +959,11 @@ recover() {
 
 fix_permissions() {
   if is_running; then
-    echo "Stop the toolkit before repairing instance permissions: ./twn stop" >&2
+    echo "Stop the toolkit before repairing runtime permissions: ./twn stop" >&2
     exit 1
   fi
-  if [ ! -d "$INSTANCE" ]; then
-    echo "No instance directory exists yet."
+  if [ ! -d "$INSTANCE" ] && [ ! -e "$UPGRADE_WORKSPACE" ] && [ ! -e "$RELEASE_MANIFEST" ]; then
+    echo "No toolkit runtime files exist yet."
     return
   fi
   owner=$(id -un)
@@ -954,8 +977,16 @@ fix_permissions() {
     owner="$SUDO_USER"
     group=$(id -gn "$SUDO_USER")
   fi
-  chown -R "$owner:$group" "$INSTANCE"
-  echo "Repaired instance permissions for $owner:$group."
+  if [ -d "$INSTANCE" ]; then
+    chown -R "$owner:$group" "$INSTANCE"
+  fi
+  if [ -e "$UPGRADE_WORKSPACE" ]; then
+    chown -R "$owner:$group" "$UPGRADE_WORKSPACE"
+  fi
+  if [ -e "$RELEASE_MANIFEST" ]; then
+    chown "$owner:$group" "$RELEASE_MANIFEST"
+  fi
+  echo "Repaired toolkit runtime permissions for $owner:$group."
 }
 
 reset_auth() {

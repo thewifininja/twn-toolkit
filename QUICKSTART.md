@@ -336,7 +336,7 @@ collected output, transfer history, or Datastore files.
 ./twn upgrade           Install the latest verified stable release
 ./twn backup            Create a matched recovery point
 ./twn rollback ID       Restore a matched recovery point
-./twn fix-permissions   Repair instance ownership after sudo mode
+./twn fix-permissions   Repair runtime ownership after sudo mode
 ```
 
 Use another port for one launch:
@@ -347,7 +347,8 @@ TWN_TOOLKIT_PORT=8443 ./twn start
 
 If a privileged run leaves a root-owned server or instance files, run
 `./twn recover`. It safely identifies this installation's server, requests sudo
-when needed, repairs ownership, and starts the toolkit as the invoking user.
+when needed, repairs instance and updater metadata ownership, and starts the
+toolkit as the invoking user.
 
 ## Privileged tools
 

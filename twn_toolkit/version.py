@@ -24,7 +24,7 @@ RELEASE_NOTES = (
                 "title": "Privilege and process safety",
                 "items": (
                     "Verifies the Gunicorn application marker, installation-specific executable path or working directory, configured-port ownership, and stale PID-file target before sending a signal.",
-                    "Requests sudo only when root-owned processes, hidden listener details, or instance ownership require it; after cleanup it repairs `instance/` ownership and restarts as the invoking user.",
+                    "Requests sudo only when root-owned processes, hidden listener details, or runtime ownership require it; after cleanup it repairs `instance/`, updater workspace, and release-manifest ownership before restarting as the invoking user.",
                     "Refuses to terminate a listener that does not match the current toolkit installation and reports the host operating system plus available process details for manual diagnosis.",
                 ),
             },

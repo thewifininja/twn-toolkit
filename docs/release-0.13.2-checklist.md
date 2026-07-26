@@ -15,9 +15,10 @@
 ## Privilege and process safety
 
 - [x] Recovery requests sudo only when a root-owned process, hidden listener, or
-  root-owned instance file requires elevated access.
-- [x] Elevated recovery stops the verified process, repairs `instance/`
-  ownership, drops back to the invoking user, and starts the toolkit normally.
+  root-owned runtime file requires elevated access.
+- [x] Elevated recovery stops the verified process, repairs `instance/`,
+  `.twn-upgrades/`, and `.twn-release-manifest.json` ownership, drops back to
+  the invoking user, and starts the toolkit normally.
 - [x] A PID file is trusted only when its PID matches a verified toolkit server,
   preventing a recycled stale PID from reaching the existing stop path.
 - [x] A process occupying the configured port is never terminated unless it is
@@ -45,6 +46,9 @@
 - [ ] On Ubuntu, reproduce a privileged start followed by an unprivileged
   restart; run `./twn recover` and verify ownership repair, port release, and
   normal-user web/scheduler/supervisor health.
+- [ ] From a v0.13.1 installation whose web updater previously ran as root,
+  repair the legacy root-owned release manifest once, install the candidate
+  bundle, and confirm future recovery repairs updater metadata automatically.
 - [ ] Confirm an unrelated TCP listener on the configured port is reported and
   left running.
 - [ ] After approval and squash merge, pass merged-main CI before creating the

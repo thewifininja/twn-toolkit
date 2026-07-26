@@ -330,7 +330,7 @@ For more detailed first-run and profile instructions, see
 ./twn upgrade           Find and install the latest verified stable release
 ./twn backup            Create a matched code and instance recovery point
 ./twn rollback ID       Restore a matched recovery point
-./twn fix-permissions   Repair instance ownership after running with sudo
+./twn fix-permissions   Repair runtime ownership after running with sudo
 ./twn adminreset        Remove users and return to first-launch setup
 ./twn reset-data        Remove saved profiles and API keys
 ```
@@ -361,10 +361,10 @@ permission:
 Starting the whole toolkit with `sudo` can make `instance/` root-owned. Return
 to normal operation with `./twn recover`. The recovery command detects Linux or
 macOS, verifies that a process occupying the configured port belongs to this
-installation, stops orphaned toolkit processes, repairs instance ownership, and
-starts the service as the invoking user. It will not terminate an unrelated
-process that happens to use the same port. Use `./twn fix-permissions` when only
-the instance ownership needs repair.
+installation, stops orphaned toolkit processes, repairs instance and updater
+metadata ownership, and starts the service as the invoking user. It will not
+terminate an unrelated process that happens to use the same port. Use
+`./twn fix-permissions` when only runtime ownership needs repair.
 
 See [Packet Replay setup](docs/packet-replay.md) for platform-specific details.
 
