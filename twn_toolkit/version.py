@@ -1,6 +1,43 @@
-APP_VERSION = "0.13.1"
+APP_VERSION = "0.13.2"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.13.2",
+        "date": "2026-07-26",
+        "title": "Safe CLI recovery for orphaned servers",
+        "summary": (
+            "Adds a guarded `./twn recover` workflow that identifies orphaned "
+            "web processes across Linux and macOS, escalates only when required, "
+            "repairs sudo-created ownership, and restores service without "
+            "terminating unrelated listeners."
+        ),
+        "groups": (
+            {
+                "title": "Server recovery workflow",
+                "items": (
+                    "Added `./twn recover` to restore a correctly running toolkit after a mismatched privileged start and unprivileged restart leaves Gunicorn bound to the configured port without a usable PID file.",
+                    "Detects the saved or configured endpoint, stops managed services cleanly, removes verified orphaned toolkit servers, confirms the port is available, and starts the complete service set again.",
+                    "Recognizes Linux and macOS listener tooling, with Linux `/proc` socket inspection as a fallback when `ss`, `lsof`, or `fuser` cannot provide process details.",
+                ),
+            },
+            {
+                "title": "Privilege and process safety",
+                "items": (
+                    "Verifies the Gunicorn application marker, installation-specific executable path or working directory, configured-port ownership, and stale PID-file target before sending a signal.",
+                    "Requests sudo only when root-owned processes, hidden listener details, or instance ownership require it; after cleanup it repairs `instance/` ownership and restarts as the invoking user.",
+                    "Refuses to terminate a listener that does not match the current toolkit installation and reports the host operating system plus available process details for manual diagnosis.",
+                ),
+            },
+            {
+                "title": "Compatibility and operations",
+                "items": (
+                    "Introduces no application-database, profile, configuration, or dependency migration; the recovery helper uses the Python standard library and host process-inspection facilities.",
+                    "Documents the recovery command in the CLI usage, README, Quick Start, and built-in Help while retaining `./twn fix-permissions` for ownership-only repair.",
+                    "Retains guided ACME issuance, durable automation, packet capture, upgrade recovery points, and the existing pre-1.0 compatibility policy from v0.13.1.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.13.1",
         "date": "2026-07-25",

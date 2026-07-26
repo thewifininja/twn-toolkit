@@ -10,8 +10,8 @@ class VersionMetadataTests(unittest.TestCase):
     def test_current_release_note_matches_application_version(self) -> None:
         self.assertTrue(RELEASE_NOTES)
         self.assertEqual(RELEASE_NOTES[0]["version"], APP_VERSION)
-        self.assertEqual(APP_VERSION, "0.13.1")
-        self.assertIn("Guided ACME", RELEASE_NOTES[0]["title"])
+        self.assertEqual(APP_VERSION, "0.13.2")
+        self.assertIn("Safe CLI recovery", RELEASE_NOTES[0]["title"])
 
     def test_release_versions_are_unique_and_well_formed(self) -> None:
         versions = [release["version"] for release in RELEASE_NOTES]
