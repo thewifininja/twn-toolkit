@@ -160,7 +160,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.13.3: durable automation claims and renewable leases,
+- Current milestone is 0.14.0: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
@@ -177,9 +177,14 @@ accepted replay frames.
   Message-ID generation uses the validated sender domain instead of resolving
   the host FQDN, avoiding platform-specific DNS delays. CI reports slow-test
   timings and keeps host-sensitive certificate tests independent of transient
-  runner names. This remains a pre-1.0 release; broader real-world upgrade
-  history, packaging, and an explicit supported 1.0 compatibility contract
-  still need deliberate hardening. The
+  runner names. Multi-SSH now adds reusable Stored Commandlets,
+  spreadsheet-style target matrices with per-host variables, signed previews,
+  and bounded fleet execution for up to 5,000 targets. SSH collection
+  automation actions use the same matrix and rendering model while saving
+  independent Commandlet snapshots and retaining compatibility with legacy
+  host-list configurations. This remains a pre-1.0 release; broader real-world
+  upgrade history, packaging, and an explicit supported 1.0 compatibility
+  contract still need deliberate hardening. The
   0.10.1 hotfix
   makes browser-verified same-origin mutation metadata authoritative before the
   backend Host fallback, preserving logins through aliases and proxies while
