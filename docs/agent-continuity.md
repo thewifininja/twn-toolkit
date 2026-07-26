@@ -160,7 +160,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.13.1: durable automation claims and renewable leases,
+- Current milestone is 0.13.2: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
@@ -170,9 +170,13 @@ accepted replay frames.
   Automation now includes a tested, guided Let's Encrypt DNS-01 workflow that
   distinguishes configured-resolver caching from authoritative propagation,
   retains protected Certbot material, and no longer carries a Beta label.
-  Microsoft AD CS remains explicitly Beta. This remains a pre-1.0 release;
-  broader real-world upgrade history, packaging, and an explicit supported 1.0
-  compatibility contract still need deliberate hardening. The
+  Microsoft AD CS remains explicitly Beta. CLI operations now include guarded
+  Linux/macOS recovery for orphaned or sudo-started Gunicorn processes, with
+  installation-specific process verification, conservative port-conflict
+  handling, ownership repair, and a return to normal-user operation. This
+  remains a pre-1.0 release; broader real-world upgrade history, packaging, and
+  an explicit supported 1.0 compatibility contract still need deliberate
+  hardening. The
   0.10.1 hotfix
   makes browser-verified same-origin mutation metadata authoritative before the
   backend Host fallback, preserving logins through aliases and proxies while
