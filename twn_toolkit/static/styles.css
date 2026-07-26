@@ -7231,6 +7231,26 @@ button.compact,
   flex-wrap: wrap;
   gap: 5px;
 }
+.email-action-fields {
+  container-name: email-action;
+  container-type: inline-size;
+}
+.email-recipient-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.email-recipient-to {
+  grid-column: 1 / -1;
+}
+@container email-action (max-width: 620px) {
+  .email-recipient-grid {
+    grid-template-columns: 1fr;
+  }
+  .email-recipient-to {
+    grid-column: auto;
+  }
+}
 
 .automation-option-row {
   background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);
