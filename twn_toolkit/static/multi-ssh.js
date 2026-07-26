@@ -17,7 +17,7 @@
   const matrixError = form.querySelector("[data-ssh-matrix-error]");
   const matrixNotice = form.querySelector("[data-ssh-matrix-notice]");
   const matrixSummary = form.querySelector("[data-ssh-matrix-summary]");
-  const modeButtons = [...form.querySelectorAll("[data-ssh-matrix-mode]")];
+  const modeToggle = form.querySelector("[data-ssh-matrix-toggle]");
   const targetLimit = Number(form.dataset.sshTargetLimit) || 5000;
 
   const fixedHeaders = [
@@ -463,11 +463,12 @@
     matrixMode = mode;
     gridPanel.hidden = mode !== "grid";
     rawPanel.hidden = mode !== "raw";
-    modeButtons.forEach((button) => {
-      const selected = button.dataset.sshMatrixMode === mode;
-      button.setAttribute("aria-pressed", String(selected));
-      button.classList.toggle("secondary", !selected);
-    });
+    const nextMode = mode === "grid" ? "raw" : "grid";
+    const nextLabel = nextMode === "raw" ? "Raw matrix" : "Table editor";
+    modeToggle.dataset.sshMatrixMode = nextMode;
+    modeToggle.textContent = nextLabel;
+    modeToggle.setAttribute("aria-label", `Switch to ${nextLabel}`);
+    modeToggle.title = `Switch to ${nextLabel}`;
     updateVariablePicker();
     return true;
   };
@@ -476,8 +477,8 @@
     const button = event.target.closest("[data-ssh-variable]");
     if (button) insertVariable(button.dataset.sshVariable);
   });
-  modeButtons.forEach((button) => {
-    button.addEventListener("click", () => setMatrixMode(button.dataset.sshMatrixMode));
+  modeToggle.addEventListener("click", () => {
+    setMatrixMode(modeToggle.dataset.sshMatrixMode);
   });
   form.querySelector("[data-ssh-add-target]").addEventListener("click", () => {
     if (!addBlankRow()) return;

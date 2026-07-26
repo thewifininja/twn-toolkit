@@ -191,11 +191,14 @@ class SSHCommandletRouteTests(unittest.TestCase):
             initial_page = client.get("/tools/multi-ssh?mode=advanced")
             self.assertIn(b"Table editor", initial_page.data)
             self.assertIn(b"Raw matrix", initial_page.data)
-            self.assertIn(
+            self.assertEqual(initial_page.data.count(b"data-ssh-matrix-mode="), 1)
+            self.assertIn(b'data-ssh-matrix-toggle', initial_page.data)
+            self.assertIn(b'aria-label="Switch to Raw matrix"', initial_page.data)
+            self.assertNotIn(
                 b'role="group" aria-label="Target editor mode"',
                 initial_page.data,
             )
-            self.assertIn(b'aria-pressed="true"', initial_page.data)
+            self.assertNotIn(b'aria-pressed="true"', initial_page.data)
             self.assertNotIn(b'role="tablist"', initial_page.data)
             self.assertIn(b'aria-label="Add target row"', initial_page.data)
             self.assertIn(b'aria-label="Add variable column"', initial_page.data)
