@@ -8944,7 +8944,6 @@ th {
 .settings-profiles-group { order: 60; }
 .settings-users-group { order: 70; }
 .settings-recovery-group { order: 80; }
-.settings-organizer .settings-grid { display: block; }
 .smtp-settings-form {
   margin-top: 1rem;
 }

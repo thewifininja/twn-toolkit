@@ -17,8 +17,7 @@
 <div class="settings-organizer">
 
 {% if current_user.is_admin and settings_section == 'accounts' %}
-  <div class="settings-grid settings-auth-group">
-    <section class="panel auth-settings-panel" id="authentication-policy">
+    <section class="panel auth-settings-panel settings-auth-group" id="authentication-policy">
       <h2>Authentication policy</h2>
       <p>Configure session expiry and the requirements for newly assigned passwords.</p>
       <form method="post" action="{{ url_for('update_session_settings') }}" class="form auth-policy-form">
@@ -56,8 +55,6 @@
         <button type="submit">Save policy</button>
       </form>
     </section>
-
-  </div>
 {% endif %}
 
 {% if current_user.is_admin and settings_section == 'operations' %}
