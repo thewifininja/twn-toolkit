@@ -251,6 +251,7 @@ def normalize_ssh_commandlet(commandlet: dict[str, Any]) -> dict[str, Any]:
     description = str(commandlet.get("description", "")).strip()
     platform = " ".join(str(commandlet.get("platform", "")).split())
     commands = str(commandlet.get("commands", "")).strip()
+    target_matrix = str(commandlet.get("target_matrix", "")).strip()
     if not name:
         raise ToolInputError("Enter a Commandlet name.")
     if len(name) > 100:
@@ -270,7 +271,14 @@ def normalize_ssh_commandlet(commandlet: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError) as exc:
         raise ToolInputError("Default command timeout must be a whole number.") from exc
     command_lines = [line for line in commands.splitlines() if line.strip()]
-    parse_ssh_commands(command_lines, default_timeout)
+    target_count = 0
+    if target_matrix:
+        plans = build_ssh_command_plans(
+            target_matrix, command_lines, default_timeout
+        )
+        target_count = len(plans["targets"])
+    else:
+        parse_ssh_commands(command_lines, default_timeout)
     variables = referenced_ssh_variables(command_lines)
     now = datetime.now(timezone.utc).isoformat()
     created_at = str(commandlet.get("created_at", "")).strip() or now
@@ -280,6 +288,8 @@ def normalize_ssh_commandlet(commandlet: dict[str, Any]) -> dict[str, Any]:
         "platform": platform,
         "commands": commands,
         "command_timeout": default_timeout,
+        "target_matrix": target_matrix,
+        "target_count": target_count,
         "variables": variables,
         "created_at": created_at,
         "updated_at": now,

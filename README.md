@@ -110,8 +110,9 @@ The sidebar and Network Tools page use the same functional organization.
   sub-second timeouts for dense groups of known-local targets.
 - **Multi-SSH** — run prompt-aware command sequences concurrently in Basic mode,
   or build a per-host target matrix in Advanced mode and substitute literal
-  `{{ variable }}` values into reusable Stored Commandlets. Signed previews
-  show every rendered command before execution; credentials are never stored.
+  `{{ variable }}` values into reusable Stored Commandlets. Commandlets can
+  optionally retain their target matrix and per-host values, while credentials
+  remain per-run only. Signed previews show every rendered command before execution.
 - **Multi-Transfer** — fetch files concurrently over SFTP, SCP, or FTP into the
   Datastore or a one-shot ZIP, using collision-safe filename templates and the
   same explicit legacy SSH exception for SFTP/SCP.

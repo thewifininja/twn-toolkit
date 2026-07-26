@@ -117,13 +117,17 @@
             Description
             <textarea name="commandlet_description" rows="2" maxlength="500" placeholder="What this template changes and when to use it.">{{ form.commandlet_description }}</textarea>
           </label>
+          <label class="check">
+            <input name="commandlet_save_matrix" type="checkbox" {% if form.commandlet_save_matrix %}checked{% endif %}>
+            <span><strong>Save the current target matrix with this Commandlet</strong><small>Loading it will restore hosts and custom variable values so they can be reviewed or edited before preview.</small></span>
+          </label>
           <div class="button-row">
             <button class="secondary" name="action" type="submit" value="save_commandlet" formnovalidate>{{ 'Update Commandlet' if form.commandlet_original_name else 'Save Commandlet' }}</button>
             {% if form.commandlet_original_name %}
               <a class="button-link secondary" href="{{ url_for('tools.multi_ssh', mode='advanced') }}">Clear loaded Commandlet</a>
             {% endif %}
           </div>
-          <p class="field-note">Commandlets store only commands, timeout, name, platform, and description. Do not place passwords, tokens, private keys, or target-specific secrets in them.</p>
+          <p class="field-note">Credentials are never stored. Saved target matrices contain infrastructure addresses and operator-entered values, so SSH Commandlets are treated as sensitive profile-backup data.</p>
         </div>
       </details>
 
@@ -214,7 +218,7 @@
     <div class="preview-head">
       <div>
         <h2>Stored Commandlets</h2>
-        <p>Reusable command templates, independent of targets and credentials.</p>
+        <p>Reusable command templates with optional target matrices. Credentials are always entered per run.</p>
       </div>
       <span class="pill">{{ commandlets | length }} saved</span>
     </div>
@@ -226,7 +230,7 @@
               <h3>{{ commandlet.name }}</h3>
               {% if commandlet.platform %}<span class="pill">{{ commandlet.platform }}</span>{% endif %}
               {% if commandlet.description %}<p>{{ commandlet.description }}</p>{% endif %}
-              <small>{{ commandlet.commands.splitlines() | reject('equalto', '') | list | length }} command(s) · {{ commandlet.command_timeout }}s default timeout</small>
+              <small>{{ commandlet.commands.splitlines() | reject('equalto', '') | list | length }} command(s) · {{ commandlet.command_timeout }}s default timeout · {% if commandlet.target_count %}{{ commandlet.target_count }} saved target(s){% else %}No saved targets{% endif %}</small>
             </div>
             {% if commandlet.variables %}
               <div class="multi-ssh-commandlet-variables">

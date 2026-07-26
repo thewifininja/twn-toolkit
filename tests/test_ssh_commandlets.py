@@ -134,11 +134,17 @@ class SSHCommandletParserTests(unittest.TestCase):
                     "platform": "FortiSwitch",
                     "commands": "set vlan {{ vlan_id }}",
                     "command_timeout": 45,
+                    "target_matrix": (
+                        "Name | Host | VLAN ID\n"
+                        "Closet 1 | switch-1 | 4"
+                    ),
                 }
             )
             saved = store.get("Configure VLAN")
 
             self.assertEqual(saved["variables"], ["vlan_id"])
+            self.assertEqual(saved["target_count"], 1)
+            self.assertIn("switch-1", saved["target_matrix"])
             self.assertNotIn("username", saved)
             self.assertNotIn("password", saved)
             self.assertEqual(os.stat(store.path).st_mode & 0o777, 0o600)
@@ -291,21 +297,37 @@ class SSHCommandletRouteTests(unittest.TestCase):
                     "commandlet_name": "Access VLAN",
                     "commandlet_description": "Configure a switch port.",
                     "commandlet_platform": "Switch OS",
+                    "commandlet_save_matrix": "on",
+                    "matrix": (
+                        "Name | Host | VLAN ID\n"
+                        "Audit Closet | audit-target.example | 44"
+                    ),
                     "commands": "set private-value {{ vlan_id }}",
                     "command_timeout": "60",
                 },
             )
 
             self.assertIn(b"Access VLAN", response.data)
+            self.assertIn(b"1 saved target", response.data)
             loaded = client.get(
                 "/tools/multi-ssh?mode=advanced&commandlet=Access%20VLAN"
             )
             self.assertIn(b"set private-value {{ vlan_id }}", loaded.data)
+            self.assertIn(
+                b"Audit Closet | audit-target.example | 44", loaded.data
+            )
+            stored = SSHCommandletStore(instance).get("Access VLAN")
+            self.assertEqual(stored["target_count"], 1)
+            self.assertIn("audit-target.example", stored["target_matrix"])
+            self.assertNotIn("username", stored)
+            self.assertNotIn("password", stored)
             event = AuditStore(instance).recent(1)[0]
             self.assertEqual(event["action"], "ssh.commandlet_created")
             self.assertEqual(event["details"]["variables"], ["vlan_id"])
+            self.assertEqual(event["details"]["saved target count"], 1)
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
             self.assertNotIn(b"set private-value", audit_database)
+            self.assertNotIn(b"audit-target.example", audit_database)
 
             deleted = client.post(
                 "/tools/multi-ssh/commandlets/delete",

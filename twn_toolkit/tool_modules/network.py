@@ -121,7 +121,7 @@ def backup_items(instance_path: str) -> list[dict[str, Any]]:
         {
             "id": "ssh_commandlets",
             "label": "SSH Commandlets",
-            "description": "Saved Multi-SSH command templates and metadata.",
+            "description": "Saved Multi-SSH command templates, optional target matrices, and metadata.",
             "store": SSHCommandletStore(instance_path),
             "sensitive": True,
         },

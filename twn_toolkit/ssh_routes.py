@@ -55,6 +55,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                         {
                             "commands": commandlet["commands"],
                             "command_timeout": str(commandlet["command_timeout"]),
+                            "matrix": commandlet.get("target_matrix", ""),
                             "commandlet_name": (
                                 f"Copy of {commandlet['name']}"
                                 if duplicate
@@ -64,6 +65,9 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                                 "description", ""
                             ),
                             "commandlet_platform": commandlet.get("platform", ""),
+                            "commandlet_save_matrix": bool(
+                                commandlet.get("target_matrix", "")
+                            ),
                             "commandlet_original_name": (
                                 "" if duplicate else commandlet["name"]
                             ),
@@ -181,6 +185,9 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                         ]
                     ),
                     "variables": commandlet.get("variables", []),
+                    "saved target count": int(
+                        commandlet.get("target_count", 0)
+                    ),
                 },
             )
         return redirect(url_for("tools.multi_ssh", mode="advanced"))
@@ -201,6 +208,7 @@ def _default_form(mode: str) -> dict[str, object]:
         "commandlet_name": "",
         "commandlet_description": "",
         "commandlet_platform": "",
+        "commandlet_save_matrix": True,
         "commandlet_original_name": "",
     }
 
@@ -226,6 +234,9 @@ def _posted_form(mode: str) -> dict[str, object]:
         "commandlet_platform": request.form.get(
             "commandlet_platform", ""
         ).strip(),
+        "commandlet_save_matrix": (
+            request.form.get("commandlet_save_matrix") == "on"
+        ),
         "commandlet_original_name": request.form.get(
             "commandlet_original_name", ""
         ).strip(),
@@ -404,6 +415,9 @@ def _save_commandlet(
             "platform": form["commandlet_platform"],
             "commands": form["commands"],
             "command_timeout": form["command_timeout"],
+            "target_matrix": (
+                form["matrix"] if form["commandlet_save_matrix"] else ""
+            ),
             "created_at": (
                 (store.get(original_name) or {}).get("created_at", "")
                 if original_name
@@ -435,6 +449,8 @@ def _annotate_commandlet_save(
                 ]
             ),
             "variables": commandlet["variables"],
+            "target matrix stored": bool(commandlet["target_matrix"]),
+            "saved target count": int(commandlet["target_count"]),
             "platform configured": bool(commandlet["platform"]),
             "description configured": bool(commandlet["description"]),
         },
