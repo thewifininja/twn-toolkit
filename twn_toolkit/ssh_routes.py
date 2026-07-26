@@ -6,6 +6,7 @@ from flask import (
     Blueprint,
     current_app,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -23,7 +24,6 @@ from .network_tools import (
     ToolInputError,
     parse_ssh_targets,
     run_ssh_host_plans,
-    run_ssh_hosts,
 )
 from .ssh_commandlets import (
     SSH_PREVIEW_MAX_AGE_SECONDS,
@@ -31,6 +31,7 @@ from .ssh_commandlets import (
     build_ssh_command_plans,
     normalize_ssh_commandlet,
     ssh_command_plan_digest,
+    ssh_hosts_to_matrix,
 )
 
 
@@ -41,15 +42,23 @@ _PREVIEW_DISPLAY_LIMIT = 100
 def register_ssh_routes(tools_bp: Blueprint) -> None:
     @tools_bp.route("/multi-ssh", methods=["GET", "POST"])
     def multi_ssh():
-        mode = _requested_mode()
-        form = _default_form(mode)
+        legacy_mode = str(request.args.get("mode", "")).strip().lower()
+        if request.method == "GET" and legacy_mode in {"basic", "advanced"}:
+            preserved = {
+                key: request.args[key]
+                for key in ("commandlet", "duplicate")
+                if request.args.get(key)
+            }
+            return redirect(url_for("tools.multi_ssh", **preserved))
+
+        form = _default_form()
         results: list[dict[str, object]] | None = None
         preview: dict[str, object] | None = None
         preview_token = ""
         error = ""
         success = ""
 
-        if request.method == "GET" and mode == "advanced":
+        if request.method == "GET":
             commandlet_name = str(request.args.get("commandlet", "")).strip()
             if commandlet_name:
                 commandlet = _ssh_commandlet_store().get(commandlet_name)
@@ -81,9 +90,28 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     error = "That Commandlet no longer exists."
 
         if request.method == "POST":
-            form = _posted_form(mode)
+            form = _posted_form()
             action = str(request.form.get("action", "run")).strip().lower()
-            if mode == "advanced" and action == "save_commandlet":
+            if _is_legacy_basic_submission():
+                try:
+                    form["matrix"] = ssh_hosts_to_matrix(str(form["hosts"]))
+                    preview = build_ssh_command_plans(
+                        str(form["matrix"]),
+                        str(form["commands"]),
+                        int(str(form["command_timeout"])),
+                    )
+                    _annotate_preview_scale(preview)
+                    preview_token = _preview_serializer().dumps(
+                        {"digest": ssh_command_plan_digest(preview["plans"])}
+                    )
+                    success = (
+                        "The legacy host list was imported. Review the rendered "
+                        "commands, then enter credentials to run them."
+                    )
+                except (ToolInputError, TypeError, ValueError) as exc:
+                    error = str(exc) if str(exc) else "Enter a valid SSH port."
+                suppress_audit_event()
+            elif action == "save_commandlet":
                 try:
                     commandlet, existed = _save_commandlet(form)
                 except (ToolInputError, ValueError) as exc:
@@ -97,7 +125,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     form["commandlet_name"] = commandlet["name"]
                     form["commandlet_original_name"] = commandlet["name"]
                     _annotate_commandlet_save(commandlet, existed)
-            elif mode == "advanced":
+            else:
                 try:
                     preview = build_ssh_command_plans(
                         str(form["matrix"]),
@@ -120,43 +148,24 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                             raise ToolInputError(
                                 "Confirm that you intend to execute the previewed commands."
                             )
-                        results = _run_advanced(form, preview)
+                        results = _run_plans(form, preview)
                     else:
                         raise ToolInputError("Choose Preview commands or Run commands.")
                 except (ToolInputError, TypeError, ValueError) as exc:
                     error = str(exc) if str(exc) else "Enter a valid SSH port."
                     if action == "run":
-                        _record_failed_run("advanced", form, preview)
+                        _record_failed_run(form, preview)
                     else:
                         suppress_audit_event()
                 else:
                     if action == "run":
-                        _record_successful_run("advanced", form, preview, results or [])
-            else:
-                try:
-                    results, host_count, command_count = _run_basic(form)
-                except (ToolInputError, ValueError) as exc:
-                    error = str(exc) if str(exc) else "Enter a valid SSH port."
-                    record_current_activity("Automation", "Ran Multi-SSH", "Request failed")
-                    _annotate_run(
-                        "basic",
-                        form,
-                        outcome="failed",
-                        host_count=0,
-                        command_count=0,
-                        successful_host_count=0,
-                    )
-                else:
-                    _record_basic_success(
-                        form, results, host_count, command_count
-                    )
+                        _record_successful_run(form, preview, results or [])
 
         return render_template(
             "tools/multi_ssh.html",
             error=error,
             success=success,
             form=form,
-            mode=mode,
             results=results,
             preview=preview,
             preview_token=preview_token,
@@ -166,6 +175,19 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             ssh_batch_size=SSH_EXECUTION_BATCH_SIZE,
             ssh_execution_workers=SSH_EXECUTION_WORKERS,
         )
+
+    @tools_bp.post("/multi-ssh/import-hosts")
+    def import_ssh_hosts():
+        try:
+            targets = parse_ssh_targets(
+                str(request.form.get("hosts", "")),
+                limit=SSH_TARGET_LIMIT,
+            )
+        except (ToolInputError, ValueError) as exc:
+            suppress_audit_event()
+            return jsonify({"error": str(exc)}), 400
+        suppress_audit_event()
+        return jsonify({"count": len(targets), "targets": targets})
 
     @tools_bp.post("/multi-ssh/commandlets/delete")
     def delete_ssh_commandlet():
@@ -199,12 +221,11 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     ),
                 },
             )
-        return redirect(url_for("tools.multi_ssh", mode="advanced"))
+        return redirect(url_for("tools.multi_ssh"))
 
 
-def _default_form(mode: str) -> dict[str, object]:
+def _default_form() -> dict[str, object]:
     return {
-        "mode": mode,
         "hosts": "",
         "matrix": "",
         "username": "",
@@ -222,9 +243,8 @@ def _default_form(mode: str) -> dict[str, object]:
     }
 
 
-def _posted_form(mode: str) -> dict[str, object]:
+def _posted_form() -> dict[str, object]:
     return {
-        "mode": mode,
         "hosts": request.form.get("hosts", "").strip(),
         "matrix": request.form.get("matrix", "").strip(),
         "username": request.form.get("username", "").strip(),
@@ -252,39 +272,14 @@ def _posted_form(mode: str) -> dict[str, object]:
     }
 
 
-def _requested_mode() -> str:
-    mode = str(
-        request.form.get("mode", request.args.get("mode", "basic"))
-    ).strip().lower()
-    return mode if mode in {"basic", "advanced"} else "basic"
-
-
-def _run_basic(
-    form: dict[str, object],
-) -> tuple[list[dict[str, object]], int, int]:
-    if request.form.get("confirm_execution") != "on":
-        raise ToolInputError("Confirm that you intend to execute these commands.")
-    hosts = parse_ssh_targets(str(form["hosts"]), limit=SSH_TARGET_LIMIT)
-    commands = [
-        command
-        for command in str(form["commands"]).splitlines()
-        if command.strip()
-    ]
-    results = run_ssh_hosts(
-        hosts=hosts,
-        username=str(form["username"]),
-        password=request.form.get("password", ""),
-        commands=commands,
-        port=int(str(form["port"])),
-        allow_unknown_hosts=bool(form["allow_unknown_hosts"]),
-        allow_legacy_algorithms=bool(form["allow_legacy_algorithms"]),
-        send_ctrl_y=bool(form["send_ctrl_y"]),
-        default_command_timeout=int(str(form["command_timeout"])),
+def _is_legacy_basic_submission() -> bool:
+    requested_mode = str(request.form.get("mode", "")).strip().lower()
+    return requested_mode == "basic" or (
+        "hosts" in request.form and "matrix" not in request.form
     )
-    return results, len(hosts), len(commands)
 
 
-def _run_advanced(
+def _run_plans(
     form: dict[str, object], preview: dict[str, object]
 ) -> list[dict[str, object]]:
     return run_ssh_host_plans(
@@ -309,37 +304,7 @@ def _annotate_preview_scale(preview: dict[str, object]) -> None:
     )
 
 
-def _record_basic_success(
-    form: dict[str, object],
-    results: list[dict[str, object]],
-    host_count: int,
-    command_count: int,
-) -> None:
-    record_current_activity(
-        "Automation",
-        "Ran Multi-SSH",
-        f"{len(results)} host(s), {command_count} command(s)",
-        counters={
-            "ssh": {
-                "hosts": len(results),
-                "commands": len(results) * command_count,
-            }
-        },
-    )
-    _annotate_run(
-        "basic",
-        form,
-        outcome="succeeded",
-        host_count=host_count,
-        command_count=command_count,
-        successful_host_count=sum(
-            1 for result in results if result.get("status") == "success"
-        ),
-    )
-
-
 def _record_successful_run(
-    mode: str,
     form: dict[str, object],
     preview: dict[str, object],
     results: list[dict[str, object]],
@@ -349,7 +314,7 @@ def _record_successful_run(
     record_current_activity(
         "Automation",
         "Ran Multi-SSH",
-        f"{host_count} host(s), {command_count} command(s), Advanced",
+        f"{host_count} host(s), {command_count} command(s)",
         counters={
             "ssh": {
                 "hosts": host_count,
@@ -358,7 +323,7 @@ def _record_successful_run(
         },
     )
     _annotate_run(
-        mode,
+        "matrix",
         form,
         outcome="succeeded",
         host_count=host_count,
@@ -371,7 +336,6 @@ def _record_successful_run(
 
 
 def _record_failed_run(
-    mode: str,
     form: dict[str, object],
     preview: dict[str, object] | None,
 ) -> None:
@@ -381,7 +345,7 @@ def _record_failed_run(
     )
     record_current_activity("Automation", "Ran Multi-SSH", "Request failed")
     _annotate_run(
-        mode,
+        "matrix",
         form,
         outcome="failed",
         host_count=host_count,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tempfile
 import subprocess
 import unittest
@@ -1126,20 +1127,34 @@ class NetworkToolTests(unittest.TestCase):
             self.assertEqual(summary["counters"]["actions"]["total"], 5)
             self.assertEqual(summary["recent"][0]["title"], "Ran RADIUS test")
 
+            ssh_form = {
+                "matrix": "Name | Host\nCloset Switch | switch-1",
+                "port": "22",
+                "commands": "show version",
+                "command_timeout": "300",
+                "allow_legacy_algorithms": "on",
+            }
+            preview = client.post(
+                "/tools/multi-ssh",
+                data={**ssh_form, "action": "preview"},
+            )
+            preview_token = re.search(
+                rb'name="preview_token" type="hidden" value="([^"]+)"',
+                preview.data,
+            ).group(1).decode()
             with patch(
-                "twn_toolkit.ssh_routes.run_ssh_hosts",
+                "twn_toolkit.ssh_routes.run_ssh_host_plans",
                 return_value=[{"host": "switch-1", "host_label": "Closet Switch", "status": "success", "output": "ok"}],
             ) as ssh_run:
                 response = client.post(
                     "/tools/multi-ssh",
                     data={
-                        "hosts": "Closet Switch = switch-1",
+                        **ssh_form,
+                        "action": "run",
+                        "preview_token": preview_token,
                         "username": "admin",
                         "password": "not-rendered",
-                        "port": "22",
-                        "commands": "show version",
                         "confirm_execution": "on",
-                        "allow_legacy_algorithms": "on",
                     },
                 )
             self.assertIn(b"ok", response.data)
@@ -1150,8 +1165,8 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"Download this host", response.data)
             self.assertIn(b"multi-ssh-export.js", response.data)
             self.assertEqual(
-                ssh_run.call_args.kwargs["hosts"],
-                [{"label": "Closet Switch", "host": "switch-1"}],
+                ssh_run.call_args.args[0][0]["host"],
+                "switch-1",
             )
             self.assertTrue(ssh_run.call_args.kwargs["allow_legacy_algorithms"])
             ssh_event = AuditStore(instance).recent(1)[0]
@@ -1160,6 +1175,7 @@ class NetworkToolTests(unittest.TestCase):
                 ssh_event["action"], "ssh.multi_host_execution.run_succeeded"
             )
             self.assertEqual(ssh_event["details"]["host count"], 1)
+            self.assertEqual(ssh_event["details"]["mode"], "matrix")
             self.assertTrue(
                 ssh_event["details"]["legacy SSH compatibility"]
             )

@@ -170,6 +170,7 @@ AUDIT_CONDITIONAL_ENDPOINTS = frozenset(
 
 AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
     {
+        "tools.import_ssh_hosts",
         "tools.ping_run",
         "tools.ping_validate_targets",
         "tools.check_acme_dns_request",
