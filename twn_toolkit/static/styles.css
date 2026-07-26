@@ -8787,6 +8787,7 @@ th {
 .settings-organizer { display: flex; flex-direction: column; gap: 1rem; }
 .settings-organizer > * { margin-block: 0 !important; }
 .settings-server-group { order: 10; }
+.settings-smtp-group { order: 15; }
 .settings-automation-group { order: 20; }
 .settings-operations-group { order: 30; }
 .settings-operations-group > .button-row { margin-top: 1rem; }
@@ -8795,3 +8796,8 @@ th {
 .settings-users-group { order: 70; }
 .settings-recovery-group { order: 80; }
 .settings-organizer .settings-grid { display: block; }
+.smtp-test-form {
+  border-top: 1px solid var(--border);
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+}

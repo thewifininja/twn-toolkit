@@ -9,6 +9,7 @@ import tempfile
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
+from ..auth import load_or_create_secret_key
 from ..diagnostic_tools import parse_http_headers, send_api_request, send_syslog
 from ..network_tools import (
     ToolInputError,
@@ -25,6 +26,12 @@ from ..packet_capture import (
     validate_capture_filename_pattern,
 )
 from ..datastore import DatastoreError, LocalDatastore
+from ..smtp_tools import (
+    MAX_EMAIL_RECIPIENTS,
+    SMTPSettingsStore,
+    parse_email_recipients,
+    send_smtp_message,
+)
 from ..transfer_tools import (
     DEFAULT_TRANSFER_FILENAME_PATTERN as SFTP_DEFAULT_FILENAME_PATTERN,
     fetch_transfer_files as fetch_ssh_files,
@@ -479,6 +486,89 @@ def _render_webhook_body(config: dict[str, Any], trigger: ConditionResult) -> st
     return rendered
 
 
+def _render_text_template(template: str, trigger: ConditionResult) -> str:
+    rendered = template
+    for token, replacement in _webhook_values(trigger).items():
+        value = (
+            json.dumps(replacement, ensure_ascii=False)
+            if isinstance(replacement, (dict, list))
+            else str(replacement).lower()
+            if isinstance(replacement, bool)
+            else str(replacement)
+        )
+        rendered = rendered.replace(token, value)
+    return rendered
+
+
+def _validate_email(config: dict[str, Any]) -> dict[str, Any]:
+    to = parse_email_recipients(str(config.get("to", "")))
+    cc = parse_email_recipients(str(config.get("cc", "")))
+    bcc = parse_email_recipients(str(config.get("bcc", "")))
+    if not to:
+        raise ToolInputError("Enter at least one To recipient.")
+    recipients = [*to, *cc, *bcc]
+    unique_addresses = {item["address"].casefold() for item in recipients}
+    if len(recipients) > MAX_EMAIL_RECIPIENTS:
+        raise ToolInputError(
+            f"A maximum of {MAX_EMAIL_RECIPIENTS} email recipients is allowed."
+        )
+    if len(unique_addresses) != len(recipients):
+        raise ToolInputError("Each email recipient may appear only once.")
+    subject = str(config.get("subject", "")).strip()
+    if not subject:
+        raise ToolInputError("Enter an email subject.")
+    if len(subject) > 300 or any(character in subject for character in "\r\n"):
+        raise ToolInputError("Email subjects must be one line and 300 characters or fewer.")
+    body = str(config.get("body", "")).strip()
+    if not body:
+        raise ToolInputError("Enter an email message.")
+    if len(body.encode("utf-8")) > 65536:
+        raise ToolInputError("Email messages must be 65,536 UTF-8 bytes or fewer.")
+    return {
+        "to": ", ".join(item["display"] for item in to),
+        "cc": ", ".join(item["display"] for item in cc),
+        "bcc": ", ".join(item["display"] for item in bcc),
+        "subject": subject,
+        "body": body,
+    }
+
+
+def _execute_email(config: dict[str, Any], trigger: ConditionResult) -> ActionResult:
+    normalized = _validate_email(config)
+    instance_path = str(config.get("_instance_path", "")).strip()
+    if not instance_path:
+        raise ToolInputError("Automation SMTP context is unavailable.")
+    settings = SMTPSettingsStore(
+        instance_path, load_or_create_secret_key(instance_path)
+    ).get(include_password=True)
+    if not settings["configured"]:
+        raise ToolInputError(
+            "SMTP delivery is not configured. Save it under System Settings first."
+        )
+    subject = _render_text_template(normalized["subject"], trigger)
+    subject = " ".join(subject.splitlines()).strip()[:300]
+    body = _render_text_template(normalized["body"], trigger)
+    to = parse_email_recipients(normalized["to"])
+    cc = parse_email_recipients(normalized["cc"])
+    bcc = parse_email_recipients(normalized["bcc"])
+    result = send_smtp_message(
+        settings, to=to, cc=cc, bcc=bcc, subject=subject, body=body
+    )
+    total = len(to) + len(cc) + len(bcc)
+    accepted = int(result["accepted"])
+    status = "success" if accepted == total else "partial" if accepted else "error"
+    return ActionResult(
+        status=status,
+        summary=f"Email delivered to {accepted} of {total} recipients.",
+        output={
+            "deliveries": result["deliveries"],
+            "message_id": result["message_id"],
+            "subject": subject,
+            "recipient_count": total,
+        },
+    )
+
+
 def _execute_webhook(config: dict[str, Any], trigger: ConditionResult) -> ActionResult:
     normalized = _validate_webhook(config)
     headers = parse_http_headers(normalized["headers"])
@@ -649,6 +739,18 @@ def _parse_webhook_form(form: Mapping[str, Any], existing: dict[str, Any]) -> di
     return {"endpoints": form.get("webhook_endpoints", ""), "method": form.get("webhook_method", "POST"), "headers": headers, "body_format": form.get("webhook_body_format", "json"), "body": form.get("webhook_body", ""), "timeout": form.get("webhook_timeout", "10"), "verify_tls": "webhook_verify_tls" in form, "expected_statuses": form.get("webhook_expected_statuses", "200-299")}
 
 
+def _parse_email_form(
+    form: Mapping[str, Any], _existing: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "to": form.get("email_to", ""),
+        "cc": form.get("email_cc", ""),
+        "bcc": form.get("email_bcc", ""),
+        "subject": form.get("email_subject", ""),
+        "body": form.get("email_body", ""),
+    }
+
+
 def _parse_packet_capture_form(
     form: Mapping[str, Any], _existing: dict[str, Any]
 ) -> dict[str, Any]:
@@ -677,5 +779,6 @@ def registered_actions() -> tuple[ActionType, ...]:
         ActionType("sftp.fetch", "Remote file collection", "Fetch files from multiple hosts over SFTP, SCP, or FTP into retained run output or the datastore.", _validate_sftp, _execute_sftp, _parse_sftp_form, ("password",)),
         ActionType("syslog.send", "Send syslog message", "Send an RFC 5424 message to one or more UDP or TCP collectors.", _validate_syslog, _execute_syslog, _parse_syslog_form),
         ActionType("webhook.send", "Webhook / API notification", "Send a templated HTTP notification to one or more endpoints.", _validate_webhook, _execute_webhook, _parse_webhook_form, ("headers",)),
+        ActionType("email.send", "Email notification", "Send a templated, metadata-only email through the installation-wide SMTP service.", _validate_email, _execute_email, _parse_email_form),
         ActionType("packet.capture", "Packet capture", "Capture a bounded PCAP from a local or SPAN-connected interface when an automation fires.", _validate_packet_capture, _execute_packet_capture, _parse_packet_capture_form),
     )

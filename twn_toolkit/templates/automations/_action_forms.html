@@ -198,6 +198,52 @@
         <p class="field-note automation-security-note">Redirects are reported but not followed. The toolkit retains only a 4 KiB response preview per endpoint.</p>
       </section>
     </div>
+    <div data-action-fields="email.send" hidden>
+      <p class="field-note">Send a plain-text notification through the installation-wide SMTP service. Email includes rendered automation metadata only; files and PCAP attachments are never sent.</p>
+      <div class="form-grid">
+        <label>To
+          <textarea name="email_to" rows="3" placeholder="network-team@example.com" required>{{ config.get('to', config.get('email_to', '')) }}</textarea>
+          <small class="field-note">Separate addresses with commas, semicolons, or new lines.</small>
+        </label>
+        <label>Cc <span class="inline-label-note">(optional)</span>
+          <textarea name="email_cc" rows="3">{{ config.get('cc', config.get('email_cc', '')) }}</textarea>
+        </label>
+        <label>Bcc <span class="inline-label-note">(optional)</span>
+          <textarea name="email_bcc" rows="3">{{ config.get('bcc', config.get('email_bcc', '')) }}</textarea>
+        </label>
+      </div>
+      <label>Subject
+        <input name="email_subject" maxlength="300" value="{{ config.get('subject', config.get('email_subject', 'Toolkit automation: {{trigger.summary}}')) }}" required>
+      </label>
+      <label>Message
+        <textarea class="command-input" name="email_body" rows="10" maxlength="65536" required>{% if config.get('body') %}{{ config.get('body') }}{% elif config.get('email_body') %}{{ config.get('email_body') }}{% else %}Automation status: {{ '{{trigger.status}}' }}
+Summary: {{ '{{trigger.summary}}' }}
+Condition met: {{ '{{trigger.met}}' }}
+Job ID: {{ '{{trigger.job_id}}' }}
+Time: {{ '{{timestamp}}' }}
+
+Earlier action results:
+{{ '{{actions.results}}' }}{% endif %}</textarea>
+      </label>
+      <details class="automation-helper-details">
+        <summary>Available template variables</summary>
+        <div class="automation-helper-body">
+          <div class="automation-variable-list">
+            <code>{{ '{{trigger.status}}' }}</code><span>Condition status.</span>
+            <code>{{ '{{trigger.summary}}' }}</code><span>Human-readable condition summary.</span>
+            <code>{{ '{{trigger.met}}' }}</code><span>Whether the condition was met.</span>
+            <code>{{ '{{trigger.evidence}}' }}</code><span>Bounded evidence captured by the condition.</span>
+            <code>{{ '{{trigger.job_id}}' }}</code><span>Stable automation delivery identifier.</span>
+            <code>{{ '{{actions.results}}' }}</code><span>Bounded, non-secret results from completed earlier stages.</span>
+            <code>{{ '{{actions.successful}}' }}</code><span>Successful earlier-stage actions.</span>
+            <code>{{ '{{actions.partial}}' }}</code><span>Partially successful earlier-stage actions.</span>
+            <code>{{ '{{actions.failed}}' }}</code><span>Failed earlier-stage actions.</span>
+            <code>{{ '{{timestamp}}' }}</code><span>Current automation timestamp.</span>
+          </div>
+        </div>
+      </details>
+      <div class="message warning">SMTP delivery must be configured in <a href="{{ url_for('settings', _anchor='smtp-delivery') }}">System Settings → Email delivery</a>. Notification results retain recipient status, subject, and message ID—not the message body.</div>
+    </div>
     <div data-action-fields="packet.capture" hidden>
       <p class="field-note">Capture a bounded PCAP from a local interface after this action is triggered. A dedicated interface connected to a switch SPAN or mirror port is the intended deployment.</p>
       <div class="form-grid">

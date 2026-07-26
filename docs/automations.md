@@ -117,6 +117,12 @@ to the next future occurrence rather than replaying a backlog.
   verification are explicit, redirects are not followed, and retained response
   previews are capped at 4 KiB per endpoint. JSON templates preserve typed
   boolean/object substitutions for trigger state and evidence.
+- Action: send a plain-text email notification through the installation-wide
+  SMTP service configured under Administration → Settings → Email delivery.
+  To, Cc, Bcc, subject, and message templates support trigger and prior-action
+  metadata. Messages never include file or PCAP attachments, and retained run
+  output contains delivery status, subject, and message ID without retaining
+  the rendered body.
 - Action: fetch regular files concurrently from named hosts over SFTP, SCP, or
   FTP. Results can be written beneath a selected datastore folder (optionally
   grouped per host) or retained as bounded run artifacts for ZIP download.
@@ -134,8 +140,8 @@ to the next future occurrence rather than replaying a backlog.
 - Downloads: each action run can be downloaded as a ZIP containing JSON run
   metadata and one text file per SSH host. Host filenames begin with the run's
   sortable local timestamp, such as `20260710172428-Core-Switch.txt` or
-  `20260710172428-10.0.0.12.txt`. Syslog and webhook runs include per-target
-  result JSON.
+  `20260710172428-10.0.0.12.txt`. Syslog, webhook, and email runs include
+  per-target delivery result JSON.
 - Capture: retain at most 5 MiB per host. A timed-out command keeps its partial
   output, identifies the command and timeout, and stops later commands on that
   host while other hosts continue. Long browser previews are shortened without

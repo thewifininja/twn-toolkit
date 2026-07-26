@@ -42,8 +42,13 @@ from .tls_tools import certificate_status, regenerate_self_signed_certificate
 from .tool_catalog import TOOL_BY_ID, grouped_access_tools
 from .audit import AuditStore, annotate_audit_event, audit_reference
 from .operational import OperationalSettingsStore
+from .smtp_tools import (
+    SMTPSettingsStore,
+    parse_email_recipients,
+    send_smtp_message,
+)
 from .migrations import MigrationManager
-from .network_tools import ping_engine_capability
+from .network_tools import ToolInputError, ping_engine_capability
 from .tftp import tftp_process_status
 from .ssh_transfer_server import ssh_transfer_process_status
 from .ftp_server import ftp_process_status
@@ -201,6 +206,7 @@ def register_admin_routes(
 ) -> None:
     project_root = Path(__file__).resolve().parent.parent
     upgrade_manager = UpgradeManager(project_root, Path(app.instance_path), APP_VERSION)
+    smtp_store = SMTPSettingsStore(app.instance_path, app.config["SECRET_KEY"])
 
     @app.post("/settings/theme")
     def update_theme():
@@ -251,7 +257,83 @@ def register_admin_routes(
             automation_storage=automation_storage,
             operational_settings=operational_store.get(),
             operational_storage=_format_storage_summary(operational_store.storage_summary()),
+            smtp_settings=smtp_store.get(),
         )
+
+    @app.post("/settings/smtp")
+    def update_smtp_settings():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        before = smtp_store.get()
+        try:
+            after = smtp_store.save(
+                {
+                    "host": request.form.get("smtp_host", ""),
+                    "port": request.form.get("smtp_port", "587"),
+                    "security": request.form.get("smtp_security", "starttls"),
+                    "verify_tls": request.form.get("smtp_verify_tls") == "on",
+                    "username": request.form.get("smtp_username", ""),
+                    "from_name": request.form.get("smtp_from_name", ""),
+                    "from_address": request.form.get("smtp_from_address", ""),
+                    "timeout": request.form.get("smtp_timeout", "10"),
+                },
+                password=request.form.get("smtp_password", ""),
+                clear_password=request.form.get("smtp_clear_password") == "on",
+            )
+        except (RuntimeError, ToolInputError) as exc:
+            flash(str(exc), "error")
+        else:
+            annotate_audit_event(
+                category="Administration",
+                action="settings.smtp_updated",
+                summary="Updated SMTP delivery settings.",
+                resource_type="settings",
+                resource_id="smtp-delivery",
+                resource_name="SMTP delivery",
+                before=before,
+                after=after,
+            )
+            flash("SMTP delivery settings saved.", "success")
+        return redirect(url_for("settings", _anchor="smtp-delivery"))
+
+    @app.post("/settings/smtp/test")
+    def test_smtp_settings():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        try:
+            settings_value = smtp_store.get(include_password=True)
+            if not settings_value["configured"]:
+                raise ToolInputError("Save SMTP delivery settings before testing.")
+            recipients = parse_email_recipients(
+                request.form.get("smtp_test_recipient", ""), limit=1
+            )
+            if not recipients:
+                raise ToolInputError("Enter a test email recipient.")
+            result = send_smtp_message(
+                settings_value,
+                to=recipients,
+                subject="TWN Toolkit SMTP test",
+                body=(
+                    "This test message confirms that the toolkit can deliver "
+                    "email through the saved SMTP settings."
+                ),
+            )
+            if not result["accepted"]:
+                raise ToolInputError(result["deliveries"][0]["error"])
+        except (RuntimeError, ToolInputError) as exc:
+            flash(str(exc), "error")
+        else:
+            annotate_audit_event(
+                category="Administration",
+                action="settings.smtp_tested",
+                summary="Sent an SMTP test message.",
+                resource_type="settings",
+                resource_id="smtp-delivery",
+                resource_name="SMTP delivery",
+                details={"recipient count": 1},
+            )
+            flash("SMTP test message sent.", "success")
+        return redirect(url_for("settings", _anchor="smtp-delivery"))
 
     @app.post("/settings/operations")
     def update_operational_settings():
