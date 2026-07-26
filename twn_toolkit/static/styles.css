@@ -4655,6 +4655,7 @@ button.compact,
 .multi-ssh-matrix-table td {
   border-bottom: 1px solid var(--line);
   border-right: 1px solid var(--line);
+  height: 44px;
   min-width: 190px;
   padding: 0;
   vertical-align: middle;
@@ -4680,8 +4681,10 @@ button.compact,
 }
 
 .multi-ssh-fixed-heading {
-  display: block;
-  padding: 10px;
+  align-items: center;
+  display: flex;
+  height: 44px;
+  padding: 0 12px;
 }
 
 .multi-ssh-matrix-table input {
@@ -4689,9 +4692,10 @@ button.compact,
   border: 0;
   border-radius: 0;
   box-shadow: none;
-  min-height: 40px;
+  height: 43px;
+  min-height: 43px;
   min-width: 190px;
-  padding: 8px 10px;
+  padding: 0 12px;
   width: 100%;
 }
 
@@ -4726,6 +4730,7 @@ button.compact,
 
 .multi-ssh-variable-heading {
   gap: 2px;
+  height: 44px;
   padding-right: 4px;
 }
 
@@ -4742,6 +4747,7 @@ button.compact,
   font-size: 0.75rem;
   left: 0;
   min-width: 42px;
+  height: 44px;
   padding: 0 8px;
   position: sticky;
   text-align: center;
@@ -4755,18 +4761,20 @@ button.compact,
 
 .multi-ssh-matrix-table .multi-ssh-actions-cell {
   background: color-mix(in srgb, var(--panel), var(--nav) 2%);
-  min-width: 118px;
-  width: 118px;
+  min-width: 140px;
+  width: 140px;
 }
 
 .multi-ssh-matrix-table thead .multi-ssh-actions-cell {
   background: color-mix(in srgb, var(--panel), var(--brand-green) 5%);
-  padding: 0 8px;
+  padding: 0 12px;
 }
 
 .multi-ssh-matrix-row-actions {
-  gap: 2px;
-  justify-content: center;
+  gap: 8px;
+  height: 43px;
+  justify-content: flex-start;
+  padding: 0 6px;
 }
 
 .multi-ssh-matrix-table input[aria-invalid="true"] {

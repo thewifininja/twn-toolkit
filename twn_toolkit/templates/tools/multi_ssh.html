@@ -21,7 +21,7 @@
       <input name="mode" type="hidden" value="basic">
       <label>
         Hosts
-        <textarea name="hosts" rows="5" placeholder="Basement Switch = 192.0.2.20&#10;Access switches = 10.0.0.1-10.0.0.24&#10;core-switch.example.com" required>{{ form.hosts }}</textarea>
+        <textarea name="hosts" rows="5" placeholder="Basement Switch = 192.0.2.20&#10;Access switches = 10.0.0.1-10.0.0.24&#10;core-switch.example.com" data-1p-ignore required>{{ form.hosts }}</textarea>
         <small class="field-note">{{ host_range_guidance(50, 'hosts') }}</small>
       </label>
       <div class="form-grid">
@@ -82,7 +82,7 @@
               <label>
                 New variable column
                 <div class="button-row">
-                  <input maxlength="80" placeholder="VLAN ID" data-ssh-new-variable>
+                  <input maxlength="80" placeholder="VLAN ID" data-ssh-new-variable data-1p-ignore>
                   <button class="secondary" type="button" data-ssh-add-variable>Add variable</button>
                 </div>
               </label>
@@ -99,7 +99,7 @@
           <div data-ssh-matrix-raw>
             <label>
               Raw matrix
-              <textarea class="command-input multi-ssh-matrix" name="matrix" rows="10" placeholder="Name | Host | VLAN ID | IP Address&#10;Switch 1 | 10.103.255.2 | 4 | 10.103.255.1&#10;Switch 2 | 10.103.255.3 | 8 | 10.103.255.17" data-ssh-matrix>{{ form.matrix }}</textarea>
+              <textarea class="command-input multi-ssh-matrix" name="matrix" rows="10" placeholder="Name | Host | VLAN ID | IP Address&#10;Switch 1 | 10.103.255.2 | 4 | 10.103.255.1&#10;Switch 2 | 10.103.255.3 | 8 | 10.103.255.17" data-ssh-matrix data-1p-ignore>{{ form.matrix }}</textarea>
             </label>
             <small class="field-note">Paste pipe-, tab-, or comma-separated data here. Return to Table editor for row and cell editing.</small>
           </div>

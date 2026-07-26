@@ -174,6 +174,8 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b"Add variable", initial_page.data)
             self.assertIn(b"Name and Host stay fixed", initial_page.data)
             self.assertNotIn(b"Name and IP/FQDN stay fixed", initial_page.data)
+            self.assertIn(b"data-ssh-new-variable data-1p-ignore", initial_page.data)
+            self.assertIn(b"data-ssh-matrix data-1p-ignore", initial_page.data)
             self.assertNotIn(b'name="username"', initial_page.data)
             self.assertNotIn(b'name="password"', initial_page.data)
 

@@ -217,6 +217,7 @@
         input.value = header.label;
         input.maxLength = 80;
         input.dataset.sshHeaderIndex = String(columnIndex);
+        input.setAttribute("data-1p-ignore", "");
         input.setAttribute("aria-label", `Variable column ${columnIndex - 1}`);
         const remove = document.createElement("button");
         remove.className = "link-button subtle";
@@ -251,13 +252,16 @@
         input.value = row[columnIndex] || "";
         input.maxLength = 500;
         input.dataset.sshCellIndex = String(columnIndex);
+        input.setAttribute("data-1p-ignore", "");
         input.setAttribute("aria-label", `${header.label} row ${rowIndex + 1}`);
         input.placeholder = header.key === "name" ? "Closet switch" : header.key === "host" ? "switch.example.com" : header.label;
         cell.append(input);
         rowElement.append(cell);
       });
       const actions = document.createElement("td");
-      actions.className = "multi-ssh-matrix-row-actions multi-ssh-actions-cell";
+      actions.className = "multi-ssh-actions-cell";
+      const actionGroup = document.createElement("div");
+      actionGroup.className = "multi-ssh-matrix-row-actions";
       const duplicate = document.createElement("button");
       duplicate.className = "link-button subtle";
       duplicate.type = "button";
@@ -271,7 +275,8 @@
       remove.textContent = "Delete";
       remove.setAttribute("aria-label", `Delete row ${rowIndex + 1}`);
       remove.dataset.sshDeleteRow = String(rowIndex);
-      actions.append(duplicate, remove);
+      actionGroup.append(duplicate, remove);
+      actions.append(actionGroup);
       rowElement.append(actions);
       matrixBody.append(rowElement);
     });
