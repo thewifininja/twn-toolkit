@@ -142,7 +142,7 @@ class HomePageTests(unittest.TestCase):
         )
         administration = response.data.split(b">Administration</span>", 1)[1]
         self.assertLess(
-            administration.index(b">Settings</span>"),
+            administration.index(b">System Settings</span>"),
             administration.index(b">System Diagnostics</span>"),
         )
         self.assertLess(
@@ -168,8 +168,9 @@ class HomePageTests(unittest.TestCase):
             backup = client.get("/settings/backup")
 
         self.assertNotIn(b">Profile backup</h2>", settings.data)
-        self.assertIn(b">Profile backups</h2>", updates.data)
-        self.assertIn(b"Back to Updates &amp; recovery", backup.data)
+        self.assertIn(b">Profile backups</a>", updates.data)
+        self.assertIn(b"Profile backup and restore", backup.data)
+        self.assertIn(b'aria-current="page">Profile backups</a>', backup.data)
         self.assert_sidebar_section_open(backup.data.decode(), "Administration")
 
     def test_fortinet_pages_show_workflows_without_self_profile_card(self) -> None:

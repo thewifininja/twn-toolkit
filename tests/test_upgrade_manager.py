@@ -288,13 +288,29 @@ class UpgradeRouteTests(unittest.TestCase):
                 page = client.get("/settings/updates")
             self.assertEqual(page.status_code, 200)
             self.assertIn(b"Updates &amp; recovery", page.data)
-            self.assertIn(b"Manual release bundle", page.data)
+            self.assertIn(b"Install from a local bundle", page.data)
             self.assertIn(b"Profile backups", page.data)
-            self.assertIn(b"Export or restore toolkit configuration", page.data)
-            self.assertIn(b"Open backup &amp; restore", page.data)
-            self.assertIn(b"Create a recovery point now", page.data)
-            self.assertIn(b'class="form recovery-point-form"', page.data)
-            self.assertIn(b'class="updates-empty-state"', page.data)
+            self.assertNotIn(b"Create a recovery point now", page.data)
+
+            with patch(
+                "twn_toolkit.upgrade_manager.UpgradeManager.backups",
+                return_value=[],
+            ), patch(
+                "twn_toolkit.upgrade_manager.UpgradeManager.status",
+                return_value=None,
+            ):
+                recovery_page = client.get("/settings/updates?section=recovery")
+            self.assertEqual(recovery_page.status_code, 200)
+            self.assertIn(b"Create a recovery point now", recovery_page.data)
+            self.assertIn(b"recovery-point-form", recovery_page.data)
+            self.assertIn(b"updates-recovery-empty", recovery_page.data)
+            self.assertNotIn(b"Install from a local bundle", recovery_page.data)
+
+            backup_page = client.get("/settings/backup")
+            self.assertEqual(backup_page.status_code, 200)
+            self.assertIn(b"Profile backup and restore", backup_page.data)
+            self.assertIn(b"Export backup", backup_page.data)
+            self.assertIn(b"Import backup", backup_page.data)
 
             rejected = client.post("/settings/updates/backup", data={})
             self.assertEqual(rejected.status_code, 302)

@@ -3,12 +3,20 @@
 {% block content %}
 <div class="page-head auth-settings-head">
   <p class="eyebrow">Administration</p>
-  <h1>Toolkit settings</h1>
+  <h1>{{ 'System settings' if current_user.is_admin else 'Account settings' }}</h1>
+  <p>{{ 'Configure the toolkit host, delivery services, operational limits, and account access.' if current_user.is_admin else 'Change the password for your toolkit account.' }}</p>
 </div>
-<nav class="settings-jump-nav" aria-label="Settings sections"><a href="#server-access">System</a><a href="#smtp-delivery">Email delivery</a><a href="#operational-limits">Operations</a><a href="#authentication-policy">Authentication</a><a href="#access-profiles">Access profiles</a><a href="#users">Users</a></nav>
+{% if current_user.is_admin %}
+<nav class="admin-page-nav" aria-label="Settings categories">
+  <a class="button-link {{ 'secondary' if settings_section != 'system' }}" href="{{ url_for('settings', section='system') }}" {% if settings_section == 'system' %}aria-current="page"{% endif %}>System</a>
+  <a class="button-link {{ 'secondary' if settings_section != 'email' }}" href="{{ url_for('settings', section='email') }}" {% if settings_section == 'email' %}aria-current="page"{% endif %}>Email</a>
+  <a class="button-link {{ 'secondary' if settings_section != 'operations' }}" href="{{ url_for('settings', section='operations') }}" {% if settings_section == 'operations' %}aria-current="page"{% endif %}>Operations</a>
+  <a class="button-link {{ 'secondary' if settings_section != 'accounts' }}" href="{{ url_for('settings', section='accounts') }}" {% if settings_section == 'accounts' %}aria-current="page"{% endif %}>Accounts &amp; access</a>
+</nav>
+{% endif %}
 <div class="settings-organizer">
 
-{% if current_user.is_admin %}
+{% if current_user.is_admin and settings_section == 'accounts' %}
   <div class="settings-grid settings-auth-group">
     <section class="panel auth-settings-panel" id="authentication-policy">
       <h2>Authentication policy</h2>
@@ -52,7 +60,7 @@
   </div>
 {% endif %}
 
-{% if current_user.is_admin %}
+{% if current_user.is_admin and settings_section == 'operations' %}
   <section class="panel server-access-panel settings-automation-group" id="automation-retention">
     {{ section_header("Automation history retention", "Limit routine check history while keeping collected action output for as long as your workflows require.") }}
     <div class="automation-storage-stats">
@@ -98,7 +106,9 @@
     </form>
     <div class="button-row"><a class="button-link secondary" href="{{ url_for('diagnostics') }}">Open system diagnostics</a></div>
   </section>
+{% endif %}
 
+{% if current_user.is_admin and settings_section == 'accounts' %}
   <section class="panel access-profile-panel settings-profiles-group" id="access-profiles">
     {{ section_header(
       "Access profiles",
@@ -201,7 +211,7 @@
   </section>
 {% endif %}
 
-{% if current_user.is_admin %}
+{% if current_user.is_admin and settings_section == 'system' %}
   <section class="panel server-access-panel settings-server-group" id="server-access">
     {{ section_header("Server access", "Choose where the service listens and which client addresses may reach it. Loopback access is always allowed.") }}
     <form method="post" action="{{ url_for('update_server_settings') }}"
@@ -252,6 +262,9 @@
     </form>
   </section>
 
+{% endif %}
+
+{% if current_user.is_admin and settings_section == 'email' %}
   <section class="panel server-access-panel settings-smtp-group" id="smtp-delivery">
     {{ section_header("Email delivery", "Configure the installation-wide SMTP service used by automation notifications.") }}
     {% if smtp_settings.configured %}
@@ -330,6 +343,7 @@
   </section>
 {% endif %}
 
+{% if settings_section == 'accounts' %}
 <section class="panel auth-users-panel settings-users-group" id="users">
   {{ section_header("Users", "Password changes use the currently configured policy.", class_name="profile-manager-head") }}
   {% if current_user.is_admin %}
@@ -438,8 +452,9 @@
     {% endfor %}
   </div>
 </section>
+{% endif %}
 
-{% if current_user.is_admin %}
+{% if current_user.is_admin and settings_section == 'accounts' %}
   <section class="panel recovery-note settings-recovery-group">
     <h2>Lockout recovery</h2>
     <p>On the server, stop the toolkit and delete <code>instance/auth.json</code>, then start it again.

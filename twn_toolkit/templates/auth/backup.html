@@ -1,12 +1,24 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-head auth-settings-head">
-  <p class="eyebrow">Updates &amp; Recovery</p>
-  <h1>Profile backup and restore</h1>
-  <p class="field-note backup-intro-note">
-    Export or import saved toolkit profile lists. Backups that include stored API keys, passwords,
-    shared secrets, SNMP communities, or SNMP keys must be encrypted with a password.
-  </p>
+<div class="updates-page">
+<section class="home-hero updates-hero">
+  <div>
+    <p class="eyebrow">Administration</p>
+    <h1>Updates &amp; recovery</h1>
+    <p>Install verified releases, create matched recovery points, and move selected profile configuration between toolkit installations.</p>
+  </div>
+  <div class="home-hero-card"><span>Installed version</span><strong>v{{ installed_version }}</strong><small>Stable channel</small></div>
+</section>
+
+<nav class="admin-page-nav" aria-label="Updates and recovery categories">
+  <a class="button-link secondary" href="{{ url_for('updates', section='updates') }}">Updates</a>
+  <a class="button-link secondary" href="{{ url_for('updates', section='recovery') }}">Recovery points</a>
+  <a class="button-link" href="{{ url_for('backup_settings') }}" aria-current="page">Profile backups</a>
+</nav>
+
+<div class="page-section-intro">
+  <h2>Profile backup and restore</h2>
+  <p>Export or import selected toolkit profile groups. Files containing stored credentials or secrets require password encryption.</p>
 </div>
 
 <section class="grid two settings-grid">
@@ -94,9 +106,6 @@
     </form>
   </div>
 </section>
-
-<div class="button-row backup-return-actions">
-  <a class="button-link secondary" href="{{ url_for('updates') }}">Back to Updates &amp; recovery</a>
 </div>
 <script>
   (() => {

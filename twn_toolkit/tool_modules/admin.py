@@ -24,8 +24,8 @@ def register_tools(registry: ToolRegistry) -> None:
     registry.add_tool(
         ToolLink(
             "admin.settings",
-            "Settings",
-            "Manage users, password policy, server access, and operational limits.",
+            "System Settings",
+            "Configure server access, email delivery, operational limits, users, and access profiles.",
             "settings",
             "administration",
             "Administration",

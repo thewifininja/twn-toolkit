@@ -253,7 +253,7 @@ Earlier action results:
           </div>
         </details>
       </section>
-      <p class="field-note automation-security-note">Delivery uses <a href="{{ url_for('settings', _anchor='smtp-delivery') }}">System Settings → Email delivery</a>. Retained results include recipient status, subject, and message ID—not the message body.</p>
+      <p class="field-note automation-security-note">Delivery uses <a href="{{ url_for('settings', section='email', _anchor='smtp-delivery') }}">System Settings → Email delivery</a>. Retained results include recipient status, subject, and message ID—not the message body.</p>
     </div>
     <div data-action-fields="packet.capture" hidden>
       <p class="field-note">Capture a bounded PCAP from a local interface after this action is triggered. A dedicated interface connected to a switch SPAN or mirror port is the intended deployment.</p>
