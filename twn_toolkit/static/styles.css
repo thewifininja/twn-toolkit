@@ -8796,8 +8796,84 @@ th {
 .settings-users-group { order: 70; }
 .settings-recovery-group { order: 80; }
 .settings-organizer .settings-grid { display: block; }
+.smtp-settings-form {
+  margin-top: 1rem;
+}
+.smtp-settings-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.smtp-config-card {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+.smtp-config-card-head {
+  display: grid;
+  gap: 3px;
+}
+.smtp-config-card-head h3,
+.smtp-config-card-head p {
+  margin: 0;
+}
+.smtp-config-card-head h3 {
+  font-size: 0.96rem;
+}
+.smtp-config-card-head p {
+  font-size: 0.84rem;
+}
+.smtp-host-grid,
+.smtp-pair-grid {
+  display: grid;
+  gap: 12px;
+}
+.smtp-host-grid {
+  grid-template-columns: minmax(0, 1fr) 110px;
+}
+.smtp-pair-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.smtp-security-options {
+  display: grid;
+  gap: 10px;
+}
+.smtp-security-options > .field-note {
+  line-height: 1.45;
+  margin: 0;
+}
+.smtp-form-actions > button {
+  justify-self: start;
+}
 .smtp-test-form {
   border-top: 1px solid var(--border);
   margin-top: 1.5rem;
   padding-top: 1.5rem;
+}
+.smtp-test-row {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 560px) max-content;
+}
+.smtp-test-row > button {
+  width: auto;
+}
+@media (max-width: 900px) {
+  .smtp-settings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 620px) {
+  .smtp-host-grid,
+  .smtp-pair-grid,
+  .smtp-test-row {
+    grid-template-columns: 1fr;
+  }
+  .smtp-test-row > button {
+    justify-self: start;
+  }
 }

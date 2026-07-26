@@ -259,50 +259,73 @@
     {% else %}
       <div class="message warning">Email actions cannot deliver until these settings are saved.</div>
     {% endif %}
-    <form method="post" action="{{ url_for('update_smtp_settings') }}" class="form">
-      <div class="form-grid">
-        <label>SMTP host
-          <input name="smtp_host" maxlength="253" value="{{ smtp_settings.host }}" placeholder="smtp.example.com" required>
-        </label>
-        <label>Port
-          <input name="smtp_port" type="number" min="1" max="65535" value="{{ smtp_settings.port }}" required>
-        </label>
-        <label>Connection security
-          <select name="smtp_security" required>
-            <option value="starttls" {% if smtp_settings.security == 'starttls' %}selected{% endif %}>STARTTLS</option>
-            <option value="tls" {% if smtp_settings.security == 'tls' %}selected{% endif %}>Implicit TLS</option>
-            <option value="none" {% if smtp_settings.security == 'none' %}selected{% endif %}>Plaintext</option>
-          </select>
-        </label>
-        <label>Timeout
-          <div class="input-suffix"><input name="smtp_timeout" type="number" min="1" max="60" step="0.5" value="{{ smtp_settings.timeout }}" required><span>seconds</span></div>
-        </label>
+    <form method="post" action="{{ url_for('update_smtp_settings') }}" class="form smtp-settings-form">
+      <div class="smtp-settings-grid">
+        <section class="smtp-config-card">
+          <div class="smtp-config-card-head">
+            <h3>Mail server</h3>
+            <p>Connection and transport security.</p>
+          </div>
+          <div class="smtp-host-grid">
+            <label>SMTP host
+              <input name="smtp_host" maxlength="253" value="{{ smtp_settings.host }}" placeholder="smtp.example.com" required>
+            </label>
+            <label>Port
+              <input name="smtp_port" type="number" min="1" max="65535" value="{{ smtp_settings.port }}" required>
+            </label>
+          </div>
+          <div class="smtp-pair-grid">
+            <label>Connection security
+              <select name="smtp_security" required>
+                <option value="starttls" {% if smtp_settings.security == 'starttls' %}selected{% endif %}>STARTTLS</option>
+                <option value="tls" {% if smtp_settings.security == 'tls' %}selected{% endif %}>Implicit TLS</option>
+                <option value="none" {% if smtp_settings.security == 'none' %}selected{% endif %}>Plaintext</option>
+              </select>
+            </label>
+            <label>Timeout
+              <div class="input-suffix"><input name="smtp_timeout" type="number" min="1" max="60" step="0.5" value="{{ smtp_settings.timeout }}" required><span>seconds</span></div>
+            </label>
+          </div>
+        </section>
+        <section class="smtp-config-card">
+          <div class="smtp-config-card-head">
+            <h3>Sender and authentication</h3>
+            <p>The identity recipients see and optional server credentials.</p>
+          </div>
+          <div class="smtp-pair-grid">
+            <label>From name
+              <input name="smtp_from_name" maxlength="120" value="{{ smtp_settings.from_name }}">
+            </label>
+            <label>From address
+              <input name="smtp_from_address" type="email" maxlength="320" value="{{ smtp_settings.from_address }}" placeholder="toolkit@example.com" required>
+            </label>
+            <label>Username <span class="inline-label-note">(optional)</span>
+              <input name="smtp_username" maxlength="320" value="{{ smtp_settings.username }}" autocomplete="off">
+            </label>
+            <label><span>SMTP password <span class="inline-label-note">(write-only)</span></span>
+              <input name="smtp_password" type="password" autocomplete="new-password" {% if smtp_settings.has_password %}placeholder="Leave blank to keep saved password"{% endif %}>
+            </label>
+          </div>
+        </section>
       </div>
-      <div class="form-grid">
-        <label>Username <span class="inline-label-note">(optional)</span>
-          <input name="smtp_username" maxlength="320" value="{{ smtp_settings.username }}" autocomplete="off">
-        </label>
-        <label><span>SMTP password <span class="inline-label-note">(write-only)</span></span>
-          <input name="smtp_password" type="password" autocomplete="new-password" {% if smtp_settings.has_password %}placeholder="Leave blank to keep saved password"{% endif %}>
-        </label>
-        <label>From name
-          <input name="smtp_from_name" maxlength="120" value="{{ smtp_settings.from_name }}">
-        </label>
-        <label>From address
-          <input name="smtp_from_address" type="email" maxlength="320" value="{{ smtp_settings.from_address }}" placeholder="toolkit@example.com" required>
-        </label>
+      <div class="smtp-security-options">
+        <label class="check"><input name="smtp_verify_tls" type="checkbox" {% if smtp_settings.verify_tls %}checked{% endif %}><span><strong>Verify TLS certificates</strong><small>Disable only for a controlled internal mail server.</small></span></label>
+        {% if smtp_settings.has_password %}<label class="check"><input name="smtp_clear_password" type="checkbox"><span>Remove the saved SMTP password</span></label>{% endif %}
+        <p class="field-note">The password is encrypted with this toolkit installation’s secret key and never displayed again. Plaintext SMTP exposes messages and credentials on the network.</p>
       </div>
-      <label class="check"><input name="smtp_verify_tls" type="checkbox" {% if smtp_settings.verify_tls %}checked{% endif %}><span><strong>Verify TLS certificates</strong><small>Disable only for a controlled internal mail server.</small></span></label>
-      {% if smtp_settings.has_password %}<label class="check"><input name="smtp_clear_password" type="checkbox"><span>Remove the saved SMTP password</span></label>{% endif %}
-      <p class="field-note">The password is encrypted with this toolkit installation’s secret key and never displayed again. Plaintext SMTP exposes messages and credentials on the network.</p>
-      <button type="submit">Save email delivery</button>
+      <div class="button-row smtp-form-actions"><button type="submit">Save email delivery</button></div>
     </form>
     <form method="post" action="{{ url_for('test_smtp_settings') }}" class="form smtp-test-form">
-      <label>Test recipient
-        <input name="smtp_test_recipient" type="email" maxlength="320" placeholder="you@example.com" required>
-      </label>
-      <button type="submit" class="secondary" {% if not smtp_settings.configured %}disabled{% endif %}>Send test email</button>
-      <small class="field-note">Sends a short connectivity test. No toolkit data or attachments are included.</small>
+      <div class="smtp-config-card-head">
+        <h3>Test delivery</h3>
+        <p>Send a short connectivity test. No toolkit data or attachments are included.</p>
+      </div>
+      <div class="smtp-test-row">
+        <label>Recipient
+          <input name="smtp_test_recipient" type="email" maxlength="320" placeholder="you@example.com" required>
+        </label>
+        <button type="submit" class="secondary" {% if not smtp_settings.configured %}disabled{% endif %}>Send test email</button>
+      </div>
     </form>
   </section>
 {% endif %}
