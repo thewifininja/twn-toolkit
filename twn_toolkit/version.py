@@ -1,6 +1,51 @@
-APP_VERSION = "0.13.0"
+APP_VERSION = "0.13.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.13.1",
+        "date": "2026-07-25",
+        "title": "Guided ACME certificate automation",
+        "summary": (
+            "Adds a durable, browser-guided Certbot DNS-01 workflow for Let's "
+            "Encrypt, makes resolver caching visible alongside authoritative DNS, "
+            "and delivers protected certificate material without a time-sensitive "
+            "terminal session."
+        ),
+        "groups": (
+            {
+                "title": "Guided Let's Encrypt issuance",
+                "items": (
+                    "Added a background Certbot DNS-01 workflow that pauses for each TXT challenge, survives normal page navigation, and lets operators resume, cancel, inspect, or download a request from retained history.",
+                    "Supports Let's Encrypt staging and production, multiple DNS names and wildcards, ECDSA P-256 or RSA 2048 keys, explicit Subscriber Agreement acceptance, and bounded request validation.",
+                    "Replaced the time-sensitive manual-auth terminal workflow with copy-ready record names and values, deliberate propagation checks, and an explicit continue action for each challenge.",
+                ),
+            },
+            {
+                "title": "DNS propagation clarity",
+                "items": (
+                    "Checks the workstation or server's configured recursive resolver and the domain's public authoritative nameservers separately so stale local cache answers are visible instead of blocking an otherwise propagated challenge.",
+                    "Requires the expected TXT value from every reachable authoritative nameserver before reporting authoritative readiness, while retaining an explicit advisory override for operators who have verified propagation another way.",
+                    "Preserves all displayed TXT challenge values until Certbot completes, including sequential challenges that share the same `_acme-challenge` record.",
+                ),
+            },
+            {
+                "title": "Protected artifacts and focused interface",
+                "items": (
+                    "Keeps Certbot account data, request state, logs, and certificate artifacts in owner-only toolkit storage; private keys use mode 0600 and downloads provide leaf, chain, full-chain, key, and combined PEM files in a ready-to-use ZIP.",
+                    "Separated ACME and Microsoft AD CS into focused tabs, expanded certificate pages to the full application width, and reflowed the request wizard for narrow screens.",
+                    "Graduated the tested ACME workflow from Beta while keeping the Beta label and production-validation guidance scoped to Microsoft AD CS.",
+                ),
+            },
+            {
+                "title": "Compatibility and operational safety",
+                "items": (
+                    "Pins Certbot in the toolkit runtime and invokes noninteractive manual hooks without requiring `/etc/letsencrypt`, sudo, DNS-provider credentials, or changes to operating-system permissions.",
+                    "Introduces no application-database or configuration migration; ACME state remains in separate owner-only instance storage and is excluded from profile backups.",
+                    "Generic DNS-01 renewal remains a guided workflow. Fully unattended renewal still requires a separately configured DNS-provider API integration with least-privilege credentials.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.13.0",
         "date": "2026-07-25",
