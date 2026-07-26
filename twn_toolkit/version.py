@@ -1,6 +1,63 @@
-APP_VERSION = "0.12.0"
+APP_VERSION = "0.13.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.13.0",
+        "date": "2026-07-25",
+        "title": "Reliable automation, packet capture, and email notifications",
+        "summary": (
+            "Strengthens automation scheduling and multi-condition workflows, "
+            "adds bounded standalone and automated packet capture with lightweight "
+            "inspection, and delivers metadata-only email notifications through "
+            "installation-wide SMTP settings."
+        ),
+        "groups": (
+            {
+                "title": "Automation scheduling and conditions",
+                "items": (
+                    "Hardened scheduled execution with durable SQLite claims, renewable leases, expired-claim recovery, bounded infrastructure retries, overlap protection, queue limits, and explicit missed-schedule policy so restarts and competing schedulers do not silently lose or duplicate work.",
+                    "Separated reusable Conditions from Schedules and clarified each automation's run mode, next evaluation, claim state, and scheduler health throughout the interface and documentation.",
+                    "Added ALL and ANY condition groups that evaluate multiple reusable conditions in one claimed worker run, preserve per-condition evidence, and migrate existing automations as compatible one-condition ALL groups.",
+                    "Added Ping Quality conditions for loss, latency, and jitter across multiple targets plus DNS Performance conditions for response time, failures, and answer consistency across hostname-and-resolver matrices.",
+                ),
+            },
+            {
+                "title": "Packet capture and incident evidence",
+                "items": (
+                    "Added a standalone Packet Capture tool for bounded PCAP collection from local or switch SPAN/mirror-connected interfaces, with validated BPF filters, duration, packet-count, file-size, snapshot-length, and promiscuous-mode controls.",
+                    "Runs standalone captures in dedicated background workers that survive browser navigation, enforce one active capture per interface, report live progress, and provide collapsed retained-capture controls.",
+                    "Added a reusable Packet Capture automation action backed by the same capture engine, with retained run artifacts or token-named, collision-safe output beneath a selected datastore folder.",
+                    "Added a floating, minimizable live and retained PCAP header viewer with auto-scroll, showing bounded source/destination MAC and IP addresses, ports, protocols, VLANs, timestamps, and lengths without exposing packet payloads.",
+                    "Added custom Save to datastore controls and direct Inspect PCAP actions beside `.pcap`, `.pcapng`, and `.cap` files in Local Datastore.",
+                    "Counts standalone and automated PCAPs against the configured artifact quota and minimum free-disk reserve without installing tcpdump, invoking sudo, or changing host capture permissions.",
+                ),
+            },
+            {
+                "title": "Email notification actions",
+                "items": (
+                    "Added installation-wide SMTP delivery settings with STARTTLS, implicit TLS, or deliberate plaintext transport; encrypted write-only passwords; certificate verification; sender identity; bounded timeouts; and a metadata-free connection test.",
+                    "Added templated Email Notification automation actions with validated To, Cc, and Bcc recipients plus subject, message, trigger, condition, timestamp, and earlier-action-result variables.",
+                    "Email actions send plain text metadata only and never attach collected files or PCAPs; retained action results record delivery status, subject, recipient counts, and message ID rather than the message body.",
+                ),
+            },
+            {
+                "title": "Administration interface",
+                "items": (
+                    "Split System Settings into focused System, Email, Operations, and Accounts & access views while preserving the correct category after every save or validation error.",
+                    "Reorganized Updates & Recovery into Updates, Recovery points, and Profile backups; moved local bundle installation behind progressive disclosure and collapsed individual recovery-point controls.",
+                    "Polished responsive form sizing, panel spacing, empty states, status summaries, action buttons, and navigation ordering across administration and automation pages.",
+                ),
+            },
+            {
+                "title": "Compatibility and operational safety",
+                "items": (
+                    "Introduces compatible automation schema migrations for scheduling claims, run modes, schedules, and condition groups; existing definitions, actions, history, and profile data remain in place.",
+                    "Packet capture depends on the host's existing packet/BPF access. The toolkit reports permission failures but never installs capture software, invokes sudo, or broadens operating-system privileges.",
+                    "Retains verified release bundles, matched recovery points, automatic failed-upgrade restoration, secret-safe audit handling, and the existing pre-1.0 compatibility policy.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.12.0",
         "date": "2026-07-25",
@@ -11,17 +68,6 @@ RELEASE_NOTES = (
             "navigation, restore cleanly, and use wide screens more effectively."
         ),
         "groups": (
-            {
-                "title": "Packet capture and automated incident evidence",
-                "items": (
-                    "Added a standalone Packet Capture tool for bounded PCAP collection from local or switch SPAN/mirror-connected interfaces, with validated BPF filters, duration, packet-count, file-size, snapshot-length, and promiscuous-mode controls.",
-                    "Runs standalone captures in dedicated background workers that survive browser navigation, enforce one active capture per interface, report live progress, and provide retained PCAP download, stop, and delete controls.",
-                    "Added a reusable Packet Capture automation action backed by the same capture engine; completed PCAPs join the existing run-artifact lifecycle and Download ZIP output.",
-                    "Added a floating, minimizable live and retained PCAP header viewer with auto-scroll, showing bounded source/destination MAC and IP addresses, ports, protocols, VLANs, timestamps, and lengths without exposing payload bodies.",
-                    "Added explicit Save to datastore controls and direct Inspect PCAP actions beside .pcap, .pcapng, and .cap files in Local Datastore.",
-                    "Counts standalone and automated PCAPs against the configured automation-artifact quota and minimum free-disk reserve without installing tcpdump, invoking sudo, or changing host capture permissions.",
-                ),
-            },
             {
                 "title": "Wake-on-LAN",
                 "items": (

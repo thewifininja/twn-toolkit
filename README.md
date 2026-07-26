@@ -13,7 +13,7 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.12.0**
+Current release: **v0.13.0**
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -199,16 +199,19 @@ corresponding service stops. Transfer history remains visible in the web UI.
 
 ### Automation
 
-Automation is built from three reusable layers:
+Automation is built from four reusable layers:
 
+- **Automation → Automations** chooses run mode and connects definitions to
+  state policy, staged action pipelines, and retained run history.
+- **Automation → Schedules** is the reusable calendar timing library.
 - **Automation → Conditions** is the reusable observation and trigger library.
 - **Automation → Actions** is the reusable response library.
-- **Automation → Automations** connects those definitions to schedules, state
-  policy, staged pipelines, and retained run history.
 
-1. **Conditions** describe observations or schedules.
-2. **Actions** describe trusted responses.
-3. **Automations** connect one condition to one or more ordered action stages.
+1. **Automations** choose manual, condition, or schedule run mode.
+2. **Schedules** describe reusable calendar timing.
+3. **Conditions** describe health observations and can be combined with ALL or
+   ANY for condition-mode automations.
+4. **Actions** describe trusted responses arranged into ordered stages.
 
 Actions within a stage run in parallel; stages run sequentially. Continuation
 policy can require full success, allow partial success, or proceed regardless
@@ -217,9 +220,11 @@ later Webhook/API actions.
 
 Available conditions include:
 
-- manual triggers and timezone-aware calendar schedules;
 - multi-host ICMP reachability;
 - DNS answer/availability checks across resolver matrices;
+- multi-target Ping Quality thresholds for loss, latency, and jitter;
+- DNS Performance thresholds for response time, failures, and answer
+  consistency;
 - per-host TCP service-state checks;
 - SNMP rules with per-host AND logic and calculated scalar values; and
 - multi-target TLS certificate health.
@@ -228,13 +233,16 @@ Available actions include:
 
 - prompt-aware multi-host SSH command collection;
 - SFTP, SCP, or FTP file collection to the Datastore or retained artifacts;
-- RFC 5424 Syslog notifications; and
+- bounded packet capture to retained artifacts or the Datastore;
+- RFC 5424 Syslog and metadata-only email notifications; and
 - encrypted-header, templated Webhook/API notifications.
 
-The scheduler runs independently of the browser. Automations support one-second
-minimum check intervals, trigger/recovery debounce, cooldowns, missed-schedule
-policy, downloadable artifacts, retention controls, queue/concurrency limits,
-overlap prevention, and automatic pruning.
+The scheduler runs independently of the browser. Durable SQLite claims and
+renewable leases prevent duplicate work and allow abandoned jobs to be
+recovered after a bounded expiry. Automations support one-second minimum check
+intervals, trigger/recovery debounce, cooldowns, missed-schedule policy,
+downloadable artifacts, retention controls, queue/concurrency limits, overlap
+prevention, and automatic pruning.
 
 See [Automation architecture and operations](docs/automations.md) for the state
 model, pipeline contract, security boundaries, and extension points.
@@ -246,6 +254,7 @@ The built-in system administrator can manage:
 - users, password policy, idle timeout, and password changes;
 - reusable custom access profiles with individual-tool permissions;
 - server bind addresses, client allowlists, instance name, and preferred FQDN;
+- installation-wide SMTP delivery for automation email notifications;
 - selectable profile backup/restore with combine or replace behavior;
 - mandatory encryption whenever an export contains credentials or secrets;
 - automation retention, worker/queue limits, quotas, and free-disk reserve; and
@@ -253,6 +262,11 @@ The built-in system administrator can manage:
   expandable, sanitized audit trail with resource context and curated
   before/after changes. Meaningful annotated actions are attributed to both
   operators and system administrators; routine polling and UI noise are omitted.
+
+System Settings is separated into System, Email, Operations, and Accounts &
+access views. Updates & Recovery is separated into Updates, Recovery points,
+and Profile backups so advanced and destructive controls remain available
+without crowding routine administration.
 
 Operators receive the union of their assigned custom profiles. Unauthorized tools
 are removed from navigation and remain blocked by the server if requested directly.
