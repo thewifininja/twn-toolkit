@@ -244,7 +244,7 @@
 
 {% if mode == 'advanced' %}
   <section class="panel tool-panel multi-ssh-panel">
-    <div class="preview-head">
+    <div class="preview-head multi-ssh-commandlet-library-head">
       <div>
         <h2>Stored Commandlets</h2>
         <p>Reusable command templates with optional target matrices. Credentials are always entered per run.</p>
@@ -255,23 +255,27 @@
       <div class="multi-ssh-commandlet-library">
         {% for commandlet in commandlets %}
           <article class="multi-ssh-commandlet-card">
-            <div>
-              <h3>{{ commandlet.name }}</h3>
-              {% if commandlet.platform %}<span class="pill">{{ commandlet.platform }}</span>{% endif %}
-              {% if commandlet.description %}<p>{{ commandlet.description }}</p>{% endif %}
-              <small>{{ commandlet.commands.splitlines() | reject('equalto', '') | list | length }} command(s) · {{ commandlet.command_timeout }}s default timeout · {% if commandlet.target_count %}{{ commandlet.target_count }} saved target(s){% else %}No saved targets{% endif %}</small>
-            </div>
-            {% if commandlet.variables %}
-              <div class="multi-ssh-commandlet-variables">
-                {% for variable in commandlet.variables %}<code>{{ '{{ ' ~ variable ~ ' }}' }}</code>{% endfor %}
+            <div class="multi-ssh-commandlet-summary">
+              <div class="multi-ssh-commandlet-title">
+                <h3>{{ commandlet.name }}</h3>
+                {% if commandlet.platform %}<span class="pill">{{ commandlet.platform }}</span>{% endif %}
               </div>
-            {% endif %}
-            <div class="button-row">
-              <a class="button-link secondary" href="{{ url_for('tools.multi_ssh', mode='advanced', commandlet=commandlet.name) }}">Load</a>
-              <a class="button-link secondary" href="{{ url_for('tools.multi_ssh', mode='advanced', commandlet=commandlet.name, duplicate=1) }}">Duplicate</a>
+              {% if commandlet.description %}<p title="{{ commandlet.description }}">{{ commandlet.description }}</p>{% endif %}
+              <div class="multi-ssh-commandlet-facts">
+                <small>{{ commandlet.commands.splitlines() | reject('equalto', '') | list | length }} command(s) · {{ commandlet.command_timeout }}s default · {% if commandlet.target_count %}{{ commandlet.target_count }} saved target(s){% else %}No saved targets{% endif %}</small>
+                {% if commandlet.variables %}
+                  <div class="multi-ssh-commandlet-variables">
+                    {% for variable in commandlet.variables %}<code>{{ '{{ ' ~ variable ~ ' }}' }}</code>{% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+            <div class="multi-ssh-commandlet-actions">
+              <a class="button-link compact" href="{{ url_for('tools.multi_ssh', mode='advanced', commandlet=commandlet.name) }}">Load</a>
+              <a class="button-link secondary compact" href="{{ url_for('tools.multi_ssh', mode='advanced', commandlet=commandlet.name, duplicate=1) }}">Duplicate</a>
               <form method="post" action="{{ url_for('tools.delete_ssh_commandlet') }}" onsubmit="return confirm({{ ('Delete Commandlet “' ~ commandlet.name ~ '”?') | tojson | forceescape }})">
                 <input name="name" type="hidden" value="{{ commandlet.name }}">
-                <button class="danger" type="submit">Delete</button>
+                <button class="danger compact" type="submit">Delete</button>
               </form>
             </div>
           </article>

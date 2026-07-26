@@ -4910,39 +4910,74 @@ button.compact,
 
 .multi-ssh-commandlet-library {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
-  margin-top: 16px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .multi-ssh-commandlet-card {
+  align-items: center;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 7px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
-  padding: 15px;
+  padding: 11px 12px;
 }
 
-.multi-ssh-commandlet-card > div:first-child {
+.multi-ssh-commandlet-summary {
   display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.multi-ssh-commandlet-title,
+.multi-ssh-commandlet-facts,
+.multi-ssh-commandlet-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.multi-ssh-commandlet-title {
   gap: 7px;
 }
 
+.multi-ssh-commandlet-card h3 {
+  font-size: 1rem;
+}
+
+.multi-ssh-commandlet-facts {
+  gap: 6px 10px;
+}
+
+.multi-ssh-commandlet-actions {
+  flex-wrap: nowrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .multi-ssh-commandlet-card p {
+  color: var(--muted);
+  display: -webkit-box;
+  font-size: 0.86rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   margin: 0;
+  overflow: hidden;
 }
 
 .multi-ssh-commandlet-card small {
   color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .multi-ssh-commandlet-variables code {
   background: var(--card-tint);
   border: 1px solid var(--line);
   border-radius: 5px;
-  font-size: 0.74rem;
-  padding: 4px 7px;
+  font-size: 0.7rem;
+  padding: 2px 5px;
 }
 
 .speed-test-panel {
@@ -8963,6 +8998,16 @@ th {
 
   .multi-ssh-preview-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multi-ssh-commandlet-card {
+    align-items: stretch;
+    gap: 9px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multi-ssh-commandlet-actions {
+    justify-content: flex-start;
   }
 
   .automation-threshold-grid > label {

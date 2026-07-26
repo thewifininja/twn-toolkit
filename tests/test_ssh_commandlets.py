@@ -342,6 +342,10 @@ class SSHCommandletRouteTests(unittest.TestCase):
 
             self.assertIn(b"Access VLAN", response.data)
             self.assertIn(b"1 saved target", response.data)
+            self.assertIn(b"multi-ssh-commandlet-summary", response.data)
+            self.assertIn(b"multi-ssh-commandlet-actions", response.data)
+            self.assertIn(b'class="button-link compact"', response.data)
+            self.assertIn(b'class="danger compact"', response.data)
             loaded = client.get(
                 "/tools/multi-ssh?mode=advanced&commandlet=Access%20VLAN"
             )
