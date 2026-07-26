@@ -211,7 +211,9 @@ def send_smtp_message(
         message["Cc"] = ", ".join(item["display"] for item in cc)
     message["Subject"] = subject
     message["Date"] = datetime.now(timezone.utc)
-    message["Message-ID"] = make_msgid()
+    message["Message-ID"] = make_msgid(
+        domain=str(settings["from_address"]).rsplit("@", 1)[-1]
+    )
     message.set_content(body)
 
     context = ssl.create_default_context()

@@ -406,22 +406,29 @@ def test_admin_can_save_server_access_and_trigger_restart(tmp_path):
 
 
 def test_admin_can_explicitly_regenerate_managed_certificate_for_fqdn(tmp_path):
-    generate_self_signed_certificate(tmp_path)
-    app = create_app(str(tmp_path))
-    app.config["TESTING"] = True
-    client = app.test_client()
-    with patch("twn_toolkit.admin_routes.subprocess.Popen"):
-        response = client.post(
-            "/settings/server",
-            data={
-                "listen_host": "0.0.0.0",
-                "allowed_networks": "192.0.2.0/24",
-                "instance_name": "branch-tools",
-                "preferred_fqdn": "branch-tools.example.test",
-                "regenerate_tls": "on",
-            },
-            environ_base={"REMOTE_ADDR": "127.0.0.1"},
-        )
+    # Exercise real certificate generation without depending on resolution of a
+    # transient CI runner hostname. GitHub's macOS images can spend minutes in
+    # getaddrinfo() for names that are intentionally irrelevant to this route.
+    with patch(
+        "twn_toolkit.tls_tools.default_certificate_names",
+        return_value=(["localhost"], []),
+    ):
+        generate_self_signed_certificate(tmp_path)
+        app = create_app(str(tmp_path))
+        app.config["TESTING"] = True
+        client = app.test_client()
+        with patch("twn_toolkit.admin_routes.subprocess.Popen"):
+            response = client.post(
+                "/settings/server",
+                data={
+                    "listen_host": "0.0.0.0",
+                    "allowed_networks": "192.0.2.0/24",
+                    "instance_name": "branch-tools",
+                    "preferred_fqdn": "branch-tools.example.test",
+                    "regenerate_tls": "on",
+                },
+                environ_base={"REMOTE_ADDR": "127.0.0.1"},
+            )
     assert response.status_code == 200
     assert certificate_status(tmp_path, "branch-tools.example.test")["fqdn_covered"]
 

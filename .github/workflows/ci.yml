@@ -112,4 +112,4 @@ jobs:
         run: python -m compileall -q twn_toolkit tests
 
       - name: Run test suite
-        run: python -m pytest -q
+        run: python -m pytest -q --durations=50
