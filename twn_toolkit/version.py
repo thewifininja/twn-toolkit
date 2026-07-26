@@ -1,6 +1,51 @@
-APP_VERSION = "0.13.3"
+APP_VERSION = "0.14.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.14.0",
+        "date": "2026-07-26",
+        "title": "Variable-aware Multi-SSH Commandlets and fleet automation",
+        "summary": (
+            "Adds reusable SSH command templates, spreadsheet-style per-host "
+            "variables, signed execution previews, and bounded fleet processing "
+            "for interactive and automated diagnostics across as many as "
+            "5,000 targets."
+        ),
+        "groups": (
+            {
+                "title": "Reusable command authoring",
+                "items": (
+                    "Adds Advanced Multi-SSH with a spreadsheet-style target table, fixed Name and Host columns, operator-defined variable columns, keyboard navigation, multi-cell paste, and a Raw Matrix editor for pipe-, tab-, or comma-separated data.",
+                    "Renders literal `{{ variable }}` references independently for every target, provides built-in name, host, and row_number values, and supports an explicit escape when braces must remain literal.",
+                    "Adds Stored Commandlets with a name, platform, description, commands, default timeout, duplication, and an optional saved target matrix; Commandlets are included in profile backup and restore but never contain credentials.",
+                ),
+            },
+            {
+                "title": "Preview-first fleet execution",
+                "items": (
+                    "Requires a signed per-host preview before Advanced Multi-SSH exposes credentials or permits execution, and invalidates that approval when the target matrix, rendered commands, or timeout changes.",
+                    "Accepts up to 5,000 targets and processes them in batches of 50 with no more than 10 simultaneous SSH connections while preserving target order.",
+                    "Applies bounded aggregate and per-host output capture so large diagnostic fleets cannot produce unbounded retained output; previews summarize oversized fleets without hiding the execution scale.",
+                ),
+            },
+            {
+                "title": "Automation action integration",
+                "items": (
+                    "Extends SSH collection actions with the same target matrix, per-host variable rendering, spreadsheet editor, fleet batching, and output limits used by interactive Multi-SSH.",
+                    "Makes direct target and command authoring the default automation flow while offering Stored Commandlet loading as an explicitly optional shortcut.",
+                    "Copies a loaded Commandlet into the action as an independent snapshot, keeps saved credentials encrypted and write-only, and continues accepting legacy SSH action host lists.",
+                ),
+            },
+            {
+                "title": "Compatibility and scope",
+                "items": (
+                    "Keeps Basic Multi-SSH as the default straightforward host-list workflow, including friendly names, inclusive IP ranges, prompt-aware completion, per-command timeouts, exports, and explicit legacy-algorithm exceptions.",
+                    "Introduces no application-database schema, dependency, command-line, or existing configuration migration; the optional owner-only Commandlet profile file is created only when Commandlets are saved.",
+                    "Retains guided ACME issuance, durable automation scheduling, packet workflows, safe CLI recovery, verified upgrades, and the existing pre-1.0 compatibility policy from v0.13.3.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.13.3",
         "date": "2026-07-26",

@@ -205,10 +205,16 @@ and certificate health.
 
 Open **Automation → Actions** and expand **New action**. A practical first action is **SSH command collection**:
 
-1. Add friendly-named SSH targets.
-2. Enter the username and password.
-3. Add the command sequence.
+1. Add targets to the spreadsheet-style matrix. Name and Host are fixed;
+   additional columns become per-host variables such as `{{ site_id }}`.
+2. Add the command template and insert any matrix variables it needs.
+3. Enter the username and password.
 4. Save the action.
+
+A Stored Commandlet is an optional shortcut, not a requirement. Expanding the
+shortcut copies its commands, timeout, and optional target matrix into the
+action as an independent snapshot. Later Commandlet changes do not silently
+alter an armed automation.
 
 Commands normally use prompt-aware completion with a default ceiling. Override
 one long-running command by prefixing it, for example:
