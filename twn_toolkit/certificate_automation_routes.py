@@ -10,11 +10,17 @@ from flask import (
     Response,
     current_app,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
     send_file,
     url_for,
+)
+from .acme_dns import (
+    AcmeDnsError,
+    AcmeDnsManager,
+    normalize_acme_request,
 )
 
 from .activity_context import record_current_activity
@@ -43,28 +49,222 @@ from .certificate_automation import (
 def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
     @tools_bp.get("/certificate-automation")
     def certificate_automation():
-        store = _store()
         selected_id = request.args.get("certificate", "").strip()
-        selected = store.managed_certificate(selected_id) if selected_id else None
-        managed = store.managed_certificates()
-        summary = {
-            "issued": sum(item.get("status") == "issued" for item in managed),
-            "pending": sum(item.get("status") == "pending" for item in managed),
-            "expiring": sum(
-                item.get("days_remaining") is not None
-                and item["days_remaining"] <= _renewal_days(item, store)
-                for item in managed
-            ),
-        }
+        selected_acme_id = request.args.get("acme", "").strip()
+        requested_section = request.args.get("section", "").strip().lower()
+        if requested_section in {"acme", "adcs"}:
+            certificate_section = requested_section
+        elif selected_id:
+            certificate_section = "adcs"
+        else:
+            certificate_section = "acme"
+
+        credentials: list[dict[str, Any]] = []
+        servers: list[dict[str, Any]] = []
+        templates: list[dict[str, Any]] = []
+        managed: list[dict[str, Any]] = []
+        selected = None
+        summary = {"issued": 0, "pending": 0, "expiring": 0}
+        acme_jobs: list[dict[str, Any]] = []
+        selected_acme = None
+        acme_runtime: dict[str, Any] = {"available": False, "version": ""}
+        acme_summary = {"total": 0, "issued": 0, "active": 0, "attention": 0}
+
+        if certificate_section == "acme":
+            acme_manager = _acme_manager()
+            acme_jobs = acme_manager.jobs()
+            selected_acme = (
+                acme_manager.job(selected_acme_id) if selected_acme_id else None
+            )
+            if not selected_acme:
+                selected_acme = next(
+                    (item for item in acme_jobs if item.get("active")), None
+                )
+            acme_runtime = acme_manager.runtime()
+            acme_summary = {
+                "total": len(acme_jobs),
+                "issued": sum(
+                    item.get("status") == "issued" for item in acme_jobs
+                ),
+                "active": sum(bool(item.get("active")) for item in acme_jobs),
+                "attention": sum(
+                    item.get("status")
+                    in {"failed", "cancelled", "interrupted"}
+                    for item in acme_jobs
+                ),
+            }
+        else:
+            store = _store()
+            credentials = store.credential_profiles()
+            servers = store.server_profiles()
+            templates = store.template_profiles()
+            selected = (
+                store.managed_certificate(selected_id) if selected_id else None
+            )
+            managed = store.managed_certificates()
+            summary = {
+                "issued": sum(item.get("status") == "issued" for item in managed),
+                "pending": sum(item.get("status") == "pending" for item in managed),
+                "expiring": sum(
+                    item.get("days_remaining") is not None
+                    and item["days_remaining"] <= _renewal_days(item, store)
+                    for item in managed
+                ),
+            }
         return render_template(
             "tools/certificate_automation.html",
-            credentials=store.credential_profiles(),
-            servers=store.server_profiles(),
-            templates=store.template_profiles(),
+            certificate_section=certificate_section,
+            credentials=credentials,
+            servers=servers,
+            templates=templates,
             managed=managed,
             selected=selected,
+            acme_jobs=acme_jobs,
+            selected_acme=(
+                _public_acme_job(selected_acme) if selected_acme else None
+            ),
+            acme_runtime=acme_runtime,
+            acme_summary=acme_summary,
             summary=summary,
             valid_key_sizes=sorted(VALID_KEY_SIZES),
+        )
+
+    @tools_bp.post("/certificate-automation/acme")
+    def start_acme_dns_request():
+        manager = _acme_manager()
+        try:
+            if request.form.get("agree_terms") != "1":
+                raise ValueError(
+                    "Confirm that you accept the Let's Encrypt Subscriber Agreement."
+                )
+            values = normalize_acme_request(
+                request.form.get("name", ""),
+                request.form.get("email", ""),
+                request.form.get("domains", ""),
+                environment=request.form.get("environment", "staging"),
+                key_type=request.form.get("key_type", "ecdsa"),
+            )
+            job = manager.start(values)
+        except (AcmeDnsError, ValueError) as exc:
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="certificate_automation.acme",
+                tool_name="ACME DNS certificate request",
+                outcome="failed",
+            )
+            flash(str(exc), "error")
+            return _redirect_home(anchor="acme-issuance", section="acme")
+        annotate_tool_run(
+            category="Network tools",
+            action_namespace="certificate_automation.acme",
+            tool_name="ACME DNS certificate request",
+            outcome="started",
+            details={
+                "environment": values["environment"],
+                "DNS names": values["domains"],
+                "key type": values["key_type"],
+            },
+        )
+        record_current_activity(
+            "TLS",
+            "Started ACME DNS certificate request",
+            f"{values['name']} · {values['environment']}",
+            counters={"certificates": {"enrollments": 1}},
+        )
+        flash(
+            "Certbot started. This page will show the DNS TXT record when it is ready.",
+            "success",
+        )
+        return redirect(
+            url_for(
+                "tools.certificate_automation", section="acme", acme=job["id"]
+            )
+            + "#acme-issuance"
+        )
+
+    @tools_bp.get("/certificate-automation/acme/<job_id>/status")
+    def acme_dns_request_status(job_id: str):
+        try:
+            job = _acme_manager().job(job_id)
+        except AcmeDnsError:
+            job = None
+        if not job:
+            return jsonify({"error": "ACME request not found."}), 404
+        return jsonify({"job": _public_acme_job(job)})
+
+    @tools_bp.post("/certificate-automation/acme/<job_id>/dns-check")
+    def check_acme_dns_request(job_id: str):
+        try:
+            result = _acme_manager().check_dns(
+                job_id, request.form.get("challenge_id", "").strip()
+            )
+        except AcmeDnsError as exc:
+            return jsonify({"error": str(exc)}), 409
+        return jsonify({"result": result})
+
+    @tools_bp.post("/certificate-automation/acme/<job_id>/continue")
+    def continue_acme_dns_request(job_id: str):
+        manager = _acme_manager()
+        try:
+            job = manager.continue_challenge(
+                job_id, request.form.get("challenge_id", "").strip()
+            )
+        except AcmeDnsError as exc:
+            return jsonify({"error": str(exc)}), 409
+        annotate_audit_event(
+            category="Network tools",
+            action="certificate_automation.acme_challenge_continued",
+            summary=f"Continued ACME DNS validation for {job['name']}.",
+            resource_type="acme_certificate_request",
+            resource_id=job_id,
+            resource_name=job["name"],
+            details={"DNS name": job.get("challenge", {}).get("identifier", "")},
+        )
+        return jsonify({"job": _public_acme_job(job)})
+
+    @tools_bp.post("/certificate-automation/acme/<job_id>/cancel")
+    def cancel_acme_dns_request(job_id: str):
+        try:
+            job = _acme_manager().cancel(job_id)
+        except AcmeDnsError as exc:
+            return jsonify({"error": str(exc)}), 409
+        annotate_audit_event(
+            category="Network tools",
+            action="certificate_automation.acme_cancelled",
+            summary=f"Cancelled ACME DNS request {job['name']}.",
+            resource_type="acme_certificate_request",
+            resource_id=job_id,
+            resource_name=job["name"],
+        )
+        return jsonify({"job": _public_acme_job(job)})
+
+    @tools_bp.get("/certificate-automation/acme/<job_id>/download")
+    def download_acme_dns_certificate(job_id: str):
+        manager = _acme_manager()
+        try:
+            job = manager.job(job_id)
+            archive = manager.download_archive(job_id)
+        except AcmeDnsError:
+            return Response("Issued certificate material not found.", status=404)
+        if not job:
+            return Response("Issued certificate material not found.", status=404)
+        annotate_audit_event(
+            category="Network tools",
+            action="certificate_automation.acme_material_downloaded",
+            summary=f"Downloaded Let's Encrypt certificate material for {job['name']}.",
+            resource_type="acme_certificate_request",
+            resource_id=job_id,
+            resource_name=job["name"],
+            details={
+                "environment": job["environment"],
+                "DNS names": job["domains"],
+            },
+        )
+        return send_file(
+            archive,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"{_safe_filename(job['name'])}-letsencrypt.zip",
         )
 
     @tools_bp.post("/certificate-automation/credentials")
@@ -340,7 +540,12 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
             "success" if result.status == "issued" else "warning",
         )
         return redirect(
-            url_for("tools.certificate_automation", certificate=managed["id"]) + "#managed-certificates"
+            url_for(
+                "tools.certificate_automation",
+                section="adcs",
+                certificate=managed["id"],
+            )
+            + "#managed-certificates"
         )
 
     @tools_bp.post("/certificate-automation/managed/<managed_id>/collect")
@@ -376,7 +581,12 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
             )
             flash("The pending certificate has been issued and collected.", "success")
         return redirect(
-            url_for("tools.certificate_automation", certificate=managed_id) + "#managed-certificates"
+            url_for(
+                "tools.certificate_automation",
+                section="adcs",
+                certificate=managed_id,
+            )
+            + "#managed-certificates"
         )
 
     @tools_bp.get("/certificate-automation/managed/<managed_id>/download")
@@ -428,6 +638,27 @@ def _store() -> CertificateAutomationStore:
     return CertificateAutomationStore(
         current_app.instance_path, str(current_app.config["SECRET_KEY"])
     )
+
+
+def _acme_manager() -> AcmeDnsManager:
+    return AcmeDnsManager(current_app.instance_path)
+
+
+def _public_acme_job(job: dict[str, Any]) -> dict[str, Any]:
+    job_id = str(job["id"])
+    return {
+        key: value
+        for key, value in job.items()
+        if key not in {"cert_name", "process_id", "return_code"}
+    } | {
+        "status_url": url_for("tools.acme_dns_request_status", job_id=job_id),
+        "dns_check_url": url_for("tools.check_acme_dns_request", job_id=job_id),
+        "continue_url": url_for("tools.continue_acme_dns_request", job_id=job_id),
+        "cancel_url": url_for("tools.cancel_acme_dns_request", job_id=job_id),
+        "download_url": url_for(
+            "tools.download_acme_dns_certificate", job_id=job_id
+        ),
+    }
 
 
 def _provider(
@@ -528,8 +759,8 @@ def _server_audit_snapshot(profile: dict[str, Any] | None) -> dict[str, Any] | N
     }
 
 
-def _redirect_home(*, anchor: str = ""):
-    target = url_for("tools.certificate_automation")
+def _redirect_home(*, anchor: str = "", section: str = "adcs"):
+    target = url_for("tools.certificate_automation", section=section)
     return redirect(target + (f"#{anchor}" if anchor else ""))
 
 
