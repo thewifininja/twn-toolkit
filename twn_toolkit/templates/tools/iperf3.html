@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel iperf-workspace-panel">
+  <header class="panel-head iperf-workspace-head">
+    <div>
+      <span class="eyebrow">Throughput workspace</span>
+      <h1>iPerf3 Tester</h1>
+      <p>Run an authorized client test or open a bounded one-shot server using the iPerf3 binary already installed on this toolkit host.</p>
+    </div>
+    <span class="iperf-capability {{ 'available' if capability.available else 'missing' }}">
+      {{ capability.version if capability.available and capability.version else ('iPerf3 ready' if capability.available else 'iPerf3 unavailable') }}
+    </span>
+  </header>
+
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  {% if not capability.available %}
+    <div class="message warning">
+      <strong>iPerf3 is required.</strong>
+      {{ capability.detail }} The toolkit never installs packages or invokes elevated package-management commands.
+    </div>
+  {% endif %}
+
+  <div class="iperf-action-grid">
+    <article class="iperf-action-card {{ 'selected' if action == 'client' else '' }}">
+      <header>
+        <div>
+          <span class="eyebrow">Action 1</span>
+          <h2>Run as client</h2>
+          <p>Connect to an existing iPerf3 server and measure forward or reverse throughput.</p>
+        </div>
+        <span class="iperf-action-badge">Outbound</span>
+      </header>
+      <form class="iperf-action-form" method="post" data-loading-message="Running the bounded iPerf3 client test…">
+        <input name="action" type="hidden" value="client">
+        <div class="iperf-fields">
+          <label class="wide">Destination
+            <input name="client_host" value="{{ client_form.host }}" placeholder="iperf.example.net or 192.0.2.10" required>
+          </label>
+          <label>Port
+            <input name="client_port" type="number" min="1024" max="65535" value="{{ client_form.port }}" required>
+          </label>
+          <label>Protocol
+            <select name="client_protocol" data-iperf-protocol>
+              <option value="tcp" {{ 'selected' if client_form.protocol == 'tcp' else '' }}>TCP</option>
+              <option value="udp" {{ 'selected' if client_form.protocol == 'udp' else '' }}>UDP</option>
+            </select>
+          </label>
+          <label>Address family
+            <select name="client_family">
+              <option value="auto" {{ 'selected' if client_form.family == 'auto' else '' }}>Auto</option>
+              <option value="ipv4" {{ 'selected' if client_form.family == 'ipv4' else '' }}>IPv4</option>
+              <option value="ipv6" {{ 'selected' if client_form.family == 'ipv6' else '' }}>IPv6</option>
+            </select>
+          </label>
+          <label>Duration
+            <span class="dns-input-with-unit">
+              <input name="client_duration_seconds" type="number" min="1" max="{{ limits.duration }}" value="{{ client_form.duration_seconds }}" required>
+              <span>seconds</span>
+            </span>
+          </label>
+          <label>Parallel streams
+            <input name="client_parallel_streams" type="number" min="1" max="{{ limits.parallel_streams }}" value="{{ client_form.parallel_streams }}" required>
+          </label>
+          <label data-iperf-udp-field>UDP target rate
+            <span class="dns-input-with-unit">
+              <input name="client_udp_megabits" type="number" min="1" max="{{ limits.udp_megabits }}" value="{{ client_form.udp_megabits }}" required>
+              <span>Mbps</span>
+            </span>
+          </label>
+          <label class="wide">Optional source address
+            <input name="client_bind_address" value="{{ client_form.bind_address }}" placeholder="Leave blank for automatic source selection">
+          </label>
+        </div>
+        <div class="iperf-choice-row">
+          <label class="check">
+            <input name="client_reverse" type="checkbox" {{ 'checked' if client_form.reverse == 'on' else '' }}>
+            <span><strong>Reverse direction</strong><small>The server sends and this toolkit host receives.</small></span>
+          </label>
+          <label class="check authorization">
+            <input name="client_authorized" type="checkbox" required {{ 'checked' if client_form.authorized == 'on' else '' }}>
+            <span><strong>I am authorized to test this destination.</strong><small>iPerf3 intentionally generates sustained network traffic.</small></span>
+          </label>
+        </div>
+        <footer>
+          <span>Maximum {{ limits.duration }} seconds and {{ limits.parallel_streams }} streams per run.</span>
+          <button type="submit" {{ 'disabled' if not capability.available else '' }}>Run client test</button>
+        </footer>
+      </form>
+    </article>
+
+    <article class="iperf-action-card {{ 'selected' if action == 'server' else '' }}">
+      <header>
+        <div>
+          <span class="eyebrow">Action 2</span>
+          <h2>Listen as server</h2>
+          <p>Accept one iPerf3 client, capture that test, then close the listener automatically.</p>
+        </div>
+        <span class="iperf-action-badge">One shot</span>
+      </header>
+      <form class="iperf-action-form" method="post" data-loading-message="Waiting for one authorized iPerf3 client…">
+        <input name="action" type="hidden" value="server">
+        <div class="iperf-server-callout">
+          <strong>Coordinate before starting</strong>
+          <p>The page waits while the listener is open. Start the remote client during the selected window; the first completed test closes the server.</p>
+          <code>iperf3 -c &lt;toolkit-address&gt; -p {{ server_form.port }}</code>
+        </div>
+        <div class="iperf-fields server">
+          <label class="wide">Bind address
+            <input name="server_bind_address" value="{{ server_form.bind_address }}" placeholder="0.0.0.0 or ::" required>
+          </label>
+          <label>Port
+            <input name="server_port" type="number" min="1024" max="65535" value="{{ server_form.port }}" required>
+          </label>
+          <label>Maximum total window
+            <span class="dns-input-with-unit">
+              <input name="server_window_seconds" type="number" min="5" max="{{ limits.server_window }}" value="{{ server_form.window_seconds }}" required>
+              <span>seconds</span>
+            </span>
+          </label>
+        </div>
+        <div class="iperf-server-notes">
+          <p><strong>Listener scope:</strong> <code>0.0.0.0</code> accepts IPv4 clients on every interface; <code>::</code> does the same for IPv6. Use a specific local address to narrow exposure.</p>
+          <p><strong>Lifecycle:</strong> no daemon is retained. The process exits after one test or is terminated when the total window expires.</p>
+        </div>
+        <label class="check authorization">
+          <input name="server_authorized" type="checkbox" required {{ 'checked' if server_form.authorized == 'on' else '' }}>
+          <span><strong>I am authorized to expose this one-shot listener.</strong><small>Confirm local firewall and network policy before listening.</small></span>
+        </label>
+        <footer>
+          <span>Ports below 1024 are intentionally unavailable.</span>
+          <button type="submit" {{ 'disabled' if not capability.available else '' }}>Start one-shot server</button>
+        </footer>
+      </form>
+    </article>
+  </div>
+</section>
+
+{% if result %}
+<section class="panel iperf-results-panel">
+  <header class="panel-head iperf-results-head">
+    <div>
+      <span class="eyebrow">{{ 'Client test complete' if result.mode == 'client' else 'Server test complete' }}</span>
+      <h2>{{ result.protocol }} throughput result</h2>
+      <p>
+        {% if result.connection.local_host %}<code>{{ result.connection.local_host }}:{{ result.connection.local_port }}</code>{% endif %}
+        {% if result.connection.remote_host %} → <code>{{ result.connection.remote_host }}:{{ result.connection.remote_port }}</code>{% endif %}
+      </p>
+    </div>
+    <span class="iperf-action-badge success">{{ result.direction }}</span>
+  </header>
+
+  <div class="iperf-result-summary">
+    <article>
+      <span>Receiver</span>
+      <strong>{{ result.receiver.megabits_per_second if result.receiver and result.receiver.megabits_per_second is not none else '—' }}{% if result.receiver and result.receiver.megabits_per_second is not none %} Mbps{% endif %}</strong>
+      <small>{{ result.receiver.bytes_display if result.receiver else 'No receiver summary' }}</small>
+    </article>
+    <article>
+      <span>Sender</span>
+      <strong>{{ result.sender.megabits_per_second if result.sender and result.sender.megabits_per_second is not none else '—' }}{% if result.sender and result.sender.megabits_per_second is not none %} Mbps{% endif %}</strong>
+      <small>{{ result.sender.bytes_display if result.sender else 'No sender summary' }}</small>
+    </article>
+    <article>
+      <span>Transferred</span>
+      <strong>{{ result.transferred_display }}</strong>
+      <small>{{ result.protocol }} · {{ result.direction }}</small>
+    </article>
+    <article>
+      {% if result.protocol == 'UDP' %}
+        <span>Receiver loss</span>
+        <strong>{{ result.receiver.lost_percent if result.receiver and result.receiver.lost_percent is defined else '—' }}{% if result.receiver and result.receiver.lost_percent is defined %}%{% endif %}</strong>
+        <small>{% if result.receiver and result.receiver.jitter_ms is defined %}{{ result.receiver.jitter_ms }} ms jitter{% else %}No jitter summary{% endif %}</small>
+      {% else %}
+        <span>Retransmits</span>
+        <strong>{{ result.sender.retransmits if result.sender and result.sender.retransmits is defined else '—' }}</strong>
+        <small>Sender TCP summary</small>
+      {% endif %}
+    </article>
+  </div>
+
+  {% if result.intervals %}
+  <h3>Interval timeline</h3>
+  <div class="preview-table-wrap">
+    <table class="iperf-interval-table">
+      <thead><tr><th>Interval</th><th>Throughput</th><th>Transferred</th><th>TCP retransmits</th><th>UDP jitter</th><th>UDP loss</th></tr></thead>
+      <tbody>
+        {% for interval in result.intervals %}
+        <tr>
+          <td><code>{{ interval.start }}–{{ interval.end }}s</code></td>
+          <td><strong>{{ interval.megabits_per_second if interval.megabits_per_second is not none else '—' }}{% if interval.megabits_per_second is not none %} Mbps{% endif %}</strong></td>
+          <td>{{ interval.bytes_display }}</td>
+          <td>{{ interval.retransmits if interval.retransmits is defined else '—' }}</td>
+          <td>{{ interval.jitter_ms ~ ' ms' if interval.jitter_ms is defined else '—' }}</td>
+          <td>{{ interval.lost_percent ~ '%' if interval.lost_percent is defined else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="iperf-result-details">
+    <article>
+      <h3>Endpoint CPU</h3>
+      <dl>
+        <div><dt>Local total</dt><dd>{{ result.cpu.host_total ~ '%' if result.cpu.host_total is defined else '—' }}</dd></div>
+        <div><dt>Remote total</dt><dd>{{ result.cpu.remote_total ~ '%' if result.cpu.remote_total is defined else '—' }}</dd></div>
+      </dl>
+    </article>
+    <article>
+      <h3>Runtime</h3>
+      <dl>
+        <div><dt>iPerf3</dt><dd>{{ result.version or capability.version or 'Detected' }}</dd></div>
+        <div><dt>Mode</dt><dd>{{ result.mode|capitalize }} · {{ result.direction }}</dd></div>
+      </dl>
+    </article>
+  </div>
+
+  <details class="iperf-raw-result">
+    <summary>Raw iPerf3 JSON{% if result.raw_json_truncated %} · truncated{% endif %}</summary>
+    <pre class="result-output">{{ result.raw_json }}</pre>
+  </details>
+</section>
+{% endif %}
+
+<script src="{{ url_for('static', filename='iperf3.js', v=app_version) }}"></script>
+{% endblock %}

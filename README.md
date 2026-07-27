@@ -171,6 +171,10 @@ The sidebar and Network Tools page use the same functional organization.
   storage and direct inspection.
 - **Wi-Fi / LAN Speed Test** — measure browser-to-toolkit latency, jitter,
   download, and upload performance on the local network.
+- **iPerf3 Tester** — use an existing system `iperf3` binary to run bounded,
+  authorization-confirmed TCP or UDP client tests, or accept one client through
+  a time-limited one-shot server; summarize endpoint throughput, transfer,
+  retransmits or loss/jitter, CPU, intervals, and raw JSON.
 - **DHCP Discover** — send a customizable Discover and inspect Offers without
   requesting or accepting a lease.
 - **Packet Replay** — preview, rewrite, VLAN-tag/fan-out, and transmit raw

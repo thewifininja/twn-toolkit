@@ -391,7 +391,7 @@ def register_admin_routes(
             databases.append({"name": path.name, "size": _format_bytes(path.stat().st_size), "status": status})
         dependencies = [
             {"name": name, "available": bool(shutil.which(name)), "detail": ""}
-            for name in ("ping", "traceroute", "tcpdump", "openssl")
+            for name in ("ping", "traceroute", "tcpdump", "iperf3", "openssl")
         ]
         ping_capability = ping_engine_capability()
         dependencies.append(

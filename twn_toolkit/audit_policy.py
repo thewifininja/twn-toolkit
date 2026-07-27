@@ -108,6 +108,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.delete_pki_template",
         "tools.dhcp_discover",
         "tools.dns_response",
+        "tools.iperf3",
         "tools.multi_ssh",
         "tools.multi_transfer",
         "tools.ntp_test",
