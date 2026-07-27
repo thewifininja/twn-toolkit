@@ -59,9 +59,12 @@ precedent.
   response.
 - iPerf3 support uses only an already installed `iperf3` binary and never
   installs packages or invokes a shell. Client traffic requires explicit
-  authorization and fixed duration/stream/rate caps. Server mode is a
-  time-limited one-shot foreground action: it accepts one client, returns that
-  test, and exits instead of creating a persistent unmanaged daemon.
+  authorization and fixed duration/stream/rate caps. Server mode runs in a
+  managed worker with explicit Start/Stop controls, an eight-hour maximum
+  runtime, one active listener per user, ports 1024–65535, and sequential
+  single-client cycles. Retain only the newest 50 server results per user;
+  expose source address, normalized metrics, and bounded raw JSON only to that
+  user, and provide an explicit history-clear action.
 - Local operational files live beneath owner-only `instance/datastore/` and are
   managed through the grantable `local.datastore` tool. Keep every future
   transfer integration and cross-tool file picker constrained to this root;

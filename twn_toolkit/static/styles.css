@@ -2194,6 +2194,151 @@ button.danger:hover {
   gap: 9px;
 }
 
+.iperf-server-active {
+  align-content: start;
+}
+
+.iperf-server-live-stats {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.iperf-server-live-stats > div {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 9px 0;
+}
+
+.iperf-server-live-stats dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.iperf-server-live-stats dd {
+  font-weight: 750;
+  margin: 0;
+  text-align: right;
+}
+
+.iperf-server-result-list {
+  display: grid;
+  gap: 10px;
+}
+
+.iperf-server-result-card {
+  background: color-mix(in srgb, var(--panel), var(--bg) 24%);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+}
+
+.iperf-server-result-card[open] {
+  border-color: color-mix(in srgb, var(--brand-green-dark), var(--line) 48%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-green), transparent 94%);
+}
+
+.iperf-server-result-card > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 14px 16px;
+}
+
+.iperf-server-result-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.iperf-server-result-source {
+  align-items: center;
+  display: flex;
+  gap: 11px;
+  min-width: 0;
+}
+
+.iperf-server-result-source > span:last-child {
+  min-width: 0;
+}
+
+.iperf-server-result-source strong,
+.iperf-server-result-source small {
+  display: block;
+}
+
+.iperf-server-result-source strong {
+  overflow-wrap: anywhere;
+}
+
+.iperf-server-result-source small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  margin-top: 3px;
+}
+
+.iperf-source-mark {
+  align-items: center;
+  background: color-mix(in srgb, var(--brand-green), transparent 88%);
+  border-radius: 9px;
+  color: var(--brand-green-dark);
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 1rem;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.iperf-server-result-glance {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 24px;
+}
+
+.iperf-server-result-glance > span:not(.iperf-result-chevron) {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+.iperf-server-result-glance small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.iperf-result-chevron {
+  color: var(--muted);
+  font-size: 1.1rem;
+  transition: transform 0.15s ease;
+}
+
+.iperf-server-result-card[open] .iperf-result-chevron {
+  transform: rotate(180deg);
+}
+
+.iperf-server-result-body {
+  border-top: 1px solid var(--line);
+  padding: 16px;
+}
+
+.iperf-server-result-body > h3 {
+  margin-top: 18px;
+}
+
+.iperf-server-empty {
+  margin: 0;
+}
+
 .iperf-result-summary {
   display: grid;
   gap: 10px;
@@ -2323,6 +2468,31 @@ button.danger:hover {
 
   .iperf-action-form footer button {
     width: 100%;
+  }
+
+  .iperf-server-result-card > summary {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .iperf-server-result-glance {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  }
+
+  .iperf-server-result-glance > span:not(.iperf-result-chevron) {
+    text-align: left;
+  }
+
+  .iperf-server-live-stats > div {
+    align-items: stretch;
+    display: grid;
+    gap: 4px;
+  }
+
+  .iperf-server-live-stats dd {
+    text-align: left;
   }
 }
 

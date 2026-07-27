@@ -6,7 +6,7 @@
     <div>
       <span class="eyebrow">Throughput workspace</span>
       <h1>iPerf3 Tester</h1>
-      <p>Run an authorized client test or open a bounded one-shot server using the iPerf3 binary already installed on this toolkit host.</p>
+      <p>Run an authorized client test or manage a multi-test iPerf3 listener using the binary already installed on this toolkit host.</p>
     </div>
     <span class="iperf-capability {{ 'available' if capability.available else 'missing' }}">
       {{ capability.version if capability.available and capability.version else ('iPerf3 ready' if capability.available else 'iPerf3 unavailable') }}
@@ -22,7 +22,7 @@
   {% endif %}
 
   <div class="iperf-action-grid">
-    <article class="iperf-action-card {{ 'selected' if action == 'client' else '' }}">
+    <article class="iperf-action-card selected">
       <header>
         <div>
           <span class="eyebrow">Action 1</span>
@@ -32,7 +32,6 @@
         <span class="iperf-action-badge">Outbound</span>
       </header>
       <form class="iperf-action-form" method="post" data-loading-message="Running the bounded iPerf3 client test…">
-        <input name="action" type="hidden" value="client">
         <div class="iperf-fields">
           <label class="wide">Destination
             <input name="client_host" value="{{ client_form.host }}" placeholder="iperf.example.net or 192.0.2.10" required>
@@ -89,49 +88,78 @@
       </form>
     </article>
 
-    <article class="iperf-action-card {{ 'selected' if action == 'server' else '' }}">
+    <article
+      class="iperf-action-card {{ 'selected' if active_server else '' }}"
+      {% if active_server %}
+        data-iperf-server-workspace
+        data-status-url="{{ url_for('tools.iperf3_server_status', session_id=active_server.id) }}"
+      {% endif %}
+    >
       <header>
         <div>
           <span class="eyebrow">Action 2</span>
-          <h2>Listen as server</h2>
-          <p>Accept one iPerf3 client, capture that test, then close the listener automatically.</p>
+          <h2>Manage server</h2>
+          <p>Keep one managed listener available for multiple sequential tests and retain each completed result.</p>
         </div>
-        <span class="iperf-action-badge">One shot</span>
+        <span class="iperf-action-badge {{ 'success' if active_server and active_server.status == 'running' else '' }}" data-iperf-server-status>
+          {{ active_server.status if active_server else 'Off' }}
+        </span>
       </header>
-      <form class="iperf-action-form" method="post" data-loading-message="Waiting for one authorized iPerf3 client…">
-        <input name="action" type="hidden" value="server">
-        <div class="iperf-server-callout">
-          <strong>Coordinate before starting</strong>
-          <p>The page waits while the listener is open. Start the remote client during the selected window; the first completed test closes the server.</p>
-          <code>iperf3 -c &lt;toolkit-address&gt; -p {{ server_form.port }}</code>
+
+      {% if active_server %}
+        <div class="iperf-action-form iperf-server-active">
+          <div class="iperf-server-callout">
+            <strong>Listening for sequential tests</strong>
+            <p>Run this command from each authorized client. Every completed test appears below without stopping the listener.</p>
+            <code>iperf3 -c &lt;toolkit-address&gt; -p {{ active_server.port }}</code>
+          </div>
+          <dl class="iperf-server-live-stats">
+            <div><dt>Binding</dt><dd><code>{{ active_server.bind_address }}:{{ active_server.port }}</code></dd></div>
+            <div><dt>Started</dt><dd data-iperf-server-started>{{ active_server.started_at_display or 'Starting…' }}</dd></div>
+            <div><dt>Completed tests</dt><dd data-iperf-server-test-count>{{ active_server.test_count }}</dd></div>
+            <div><dt>Last result</dt><dd data-iperf-server-last-test>{{ active_server.last_test_at_display or 'Waiting for a client' }}</dd></div>
+          </dl>
+          <p class="message error" data-iperf-server-error {% if not active_server.error and not active_server.last_error %}hidden{% endif %}>{{ active_server.error or active_server.last_error }}</p>
+          <div class="iperf-server-notes">
+            <p><strong>Lifecycle:</strong> the listener runs in a managed worker, survives navigation, and automatically stops after {{ limits.server_runtime_hours }} hours if it is not stopped first.</p>
+            <p><strong>History:</strong> the newest {{ limits.server_history }} completed server tests are retained for this user, including source IP and bounded raw JSON.</p>
+          </div>
+          <footer>
+            <span data-iperf-server-state-note>{{ 'Stop requested; closing the listener…' if active_server.status == 'stopping' else 'The listener accepts one test at a time.' }}</span>
+            <form method="post" action="{{ url_for('tools.stop_iperf3_server', session_id=active_server.id) }}" data-loading-message="Requesting iPerf3 server stop…">
+              <button class="danger" type="submit" {{ 'disabled' if active_server.status == 'stopping' else '' }}>Stop server</button>
+            </form>
+          </footer>
         </div>
-        <div class="iperf-fields server">
-          <label class="wide">Bind address
-            <input name="server_bind_address" value="{{ server_form.bind_address }}" placeholder="0.0.0.0 or ::" required>
+      {% else %}
+        <form class="iperf-action-form" method="post" action="{{ url_for('tools.start_iperf3_server') }}" data-loading-message="Starting the managed iPerf3 server…">
+          <div class="iperf-server-callout">
+            <strong>Start once, test repeatedly</strong>
+            <p>The managed listener stays on across page navigation. Completed tests are collected below as collapsed result cards.</p>
+            <code>iperf3 -c &lt;toolkit-address&gt; -p {{ server_form.port }}</code>
+          </div>
+          <div class="iperf-fields server">
+            <label class="wide">Bind address
+              <input name="server_bind_address" value="{{ server_form.bind_address }}" placeholder="0.0.0.0 or ::" required>
+            </label>
+            <label>Port
+              <input name="server_port" type="number" min="1024" max="65535" value="{{ server_form.port }}" required>
+            </label>
+          </div>
+          <div class="iperf-server-notes">
+            <p><strong>Listener scope:</strong> <code>0.0.0.0</code> accepts IPv4 clients on every interface; <code>::</code> does the same for IPv6. Use a specific local address to narrow exposure.</p>
+            <p><strong>Safety:</strong> only one managed server is allowed per user, ports below 1024 are unavailable, and the listener automatically stops after {{ limits.server_runtime_hours }} hours.</p>
+          </div>
+          <label class="check authorization">
+            <input name="server_authorized" type="checkbox" required>
+            <span><strong>I am authorized to expose this managed listener.</strong><small>Confirm local firewall and network policy before starting it.</small></span>
           </label>
-          <label>Port
-            <input name="server_port" type="number" min="1024" max="65535" value="{{ server_form.port }}" required>
-          </label>
-          <label>Maximum total window
-            <span class="dns-input-with-unit">
-              <input name="server_window_seconds" type="number" min="5" max="{{ limits.server_window }}" value="{{ server_form.window_seconds }}" required>
-              <span>seconds</span>
-            </span>
-          </label>
-        </div>
-        <div class="iperf-server-notes">
-          <p><strong>Listener scope:</strong> <code>0.0.0.0</code> accepts IPv4 clients on every interface; <code>::</code> does the same for IPv6. Use a specific local address to narrow exposure.</p>
-          <p><strong>Lifecycle:</strong> no daemon is retained. The process exits after one test or is terminated when the total window expires.</p>
-        </div>
-        <label class="check authorization">
-          <input name="server_authorized" type="checkbox" required {{ 'checked' if server_form.authorized == 'on' else '' }}>
-          <span><strong>I am authorized to expose this one-shot listener.</strong><small>Confirm local firewall and network policy before listening.</small></span>
-        </label>
-        <footer>
-          <span>Ports below 1024 are intentionally unavailable.</span>
-          <button type="submit" {{ 'disabled' if not capability.available else '' }}>Start one-shot server</button>
-        </footer>
-      </form>
+          <footer>
+            <span>Results are private to this toolkit user.</span>
+            <button type="submit" {{ 'disabled' if not capability.available else '' }}>Start server</button>
+          </footer>
+        </form>
+      {% endif %}
     </article>
   </div>
 </section>
@@ -140,7 +168,7 @@
 <section class="panel iperf-results-panel">
   <header class="panel-head iperf-results-head">
     <div>
-      <span class="eyebrow">{{ 'Client test complete' if result.mode == 'client' else 'Server test complete' }}</span>
+      <span class="eyebrow">Client test complete</span>
       <h2>{{ result.protocol }} throughput result</h2>
       <p>
         {% if result.connection.local_host %}<code>{{ result.connection.local_host }}:{{ result.connection.local_port }}</code>{% endif %}
@@ -212,7 +240,7 @@
       <h3>Runtime</h3>
       <dl>
         <div><dt>iPerf3</dt><dd>{{ result.version or capability.version or 'Detected' }}</dd></div>
-        <div><dt>Mode</dt><dd>{{ result.mode|capitalize }} · {{ result.direction }}</dd></div>
+        <div><dt>Mode</dt><dd>Client · {{ result.direction }}</dd></div>
       </dl>
     </article>
   </div>
@@ -223,6 +251,32 @@
   </details>
 </section>
 {% endif %}
+
+<section
+  class="panel iperf-results-panel"
+  data-iperf-server-history
+  data-result-revision="{{ server_result_revision }}"
+>
+  <header class="panel-head iperf-results-head">
+    <div>
+      <span class="eyebrow">Managed listener</span>
+      <h2>Server test history</h2>
+      <p>Newest first. Open any source card for endpoint metrics, interval detail, CPU usage, and the full bounded iPerf3 result.</p>
+    </div>
+    <form
+      method="post"
+      action="{{ url_for('tools.clear_iperf3_server_results') }}"
+      data-iperf-clear-history
+      {% if not server_results %}hidden{% endif %}
+      onsubmit="return confirm('Clear your retained iPerf3 server results?');"
+    >
+      <button class="secondary danger" type="submit">Clear history</button>
+    </form>
+  </header>
+  <div data-iperf-server-results>
+    {% include "tools/_iperf_server_results.html" %}
+  </div>
+</section>
 
 <script src="{{ url_for('static', filename='iperf3.js', v=app_version) }}"></script>
 {% endblock %}

@@ -13,7 +13,6 @@ from .network_tools import ToolInputError, validate_hosts
 IPERF_DEFAULT_PORT = 5201
 IPERF_MAX_DURATION_SECONDS = 60
 IPERF_MAX_PARALLEL_STREAMS = 20
-IPERF_MAX_SERVER_WINDOW_SECONDS = 180
 IPERF_MAX_UDP_MEGABITS = 100_000
 IPERF_RAW_JSON_LIMIT = 1024 * 1024
 
@@ -105,59 +104,9 @@ def run_iperf3_client(config: dict[str, Any]) -> dict[str, Any]:
         completed.stderr,
         completed.returncode,
     )
-    return _normalized_iperf3_result(
+    return normalize_iperf3_result(
         payload,
         mode="client",
-        config=normalized,
-        command=command,
-    )
-
-
-def run_iperf3_server(config: dict[str, Any]) -> dict[str, Any]:
-    normalized = validate_iperf3_server_config(config)
-    executable = _iperf3_executable()
-    command = [
-        executable,
-        "-s",
-        "-1",
-        "-J",
-        "-p",
-        str(normalized["port"]),
-        "-B",
-        normalized["bind_address"],
-    ]
-    bind_family = ipaddress.ip_address(
-        normalized["bind_address"].split("%", 1)[0]
-    ).version
-    command.append("-4" if bind_family == 4 else "-6")
-    try:
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            start_new_session=True,
-        )
-    except OSError as exc:
-        raise ToolInputError(f"Could not start the iPerf3 server: {exc}") from exc
-    try:
-        stdout, stderr = process.communicate(
-            timeout=normalized["window_seconds"]
-        )
-    except subprocess.TimeoutExpired as exc:
-        process.terminate()
-        try:
-            process.communicate(timeout=2)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.communicate(timeout=2)
-        raise ToolInputError(
-            "No iPerf3 client completed before the server window closed."
-        ) from exc
-    payload = _iperf3_payload(stdout, stderr, process.returncode or 0)
-    return _normalized_iperf3_result(
-        payload,
-        mode="server",
         config=normalized,
         command=command,
     )
@@ -233,20 +182,11 @@ def validate_iperf3_server_config(config: dict[str, Any]) -> dict[str, Any]:
             "The server bind address must be an IPv4 or IPv6 address."
         ) from exc
     port = _whole_number(config.get("port"), "Port")
-    window_seconds = _whole_number(
-        config.get("window_seconds"), "Server window"
-    )
     if not 1024 <= port <= 65535:
         raise ToolInputError("iPerf3 ports must be between 1024 and 65535.")
-    if not 5 <= window_seconds <= IPERF_MAX_SERVER_WINDOW_SECONDS:
-        raise ToolInputError(
-            f"Server window must be between 5 and "
-            f"{IPERF_MAX_SERVER_WINDOW_SECONDS} seconds."
-        )
     return {
         "bind_address": bind_address,
         "port": port,
-        "window_seconds": window_seconds,
     }
 
 
@@ -285,7 +225,7 @@ def _iperf3_payload(stdout: str, stderr: str, returncode: int) -> dict[str, Any]
     return payload
 
 
-def _normalized_iperf3_result(
+def normalize_iperf3_result(
     payload: dict[str, Any],
     *,
     mode: str,

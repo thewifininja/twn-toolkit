@@ -306,7 +306,7 @@ class UIComponentTests(unittest.TestCase):
             stylesheet,
         )
 
-    def test_iperf_workspace_has_bounded_client_and_one_shot_server(self) -> None:
+    def test_iperf_workspace_has_client_and_managed_server_history(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
         )
@@ -317,9 +317,14 @@ class UIComponentTests(unittest.TestCase):
         self.assertEqual(template.count('class="iperf-action-card'), 2)
         self.assertIn('name="client_authorized"', template)
         self.assertIn('name="server_authorized"', template)
-        self.assertIn("Start one-shot server", template)
+        self.assertIn("Start server", template)
+        self.assertIn("Stop server", template)
+        self.assertIn("Server test history", template)
+        self.assertIn("data-iperf-server-started", template)
+        self.assertIn('data-iperf-server-results', template)
         self.assertIn("The toolkit never installs", template)
         self.assertIn(".iperf-action-grid {", stylesheet)
+        self.assertIn(".iperf-server-result-card {", stylesheet)
         self.assertIn(
             "grid-template-columns: repeat(2, minmax(0, 1fr));",
             stylesheet,

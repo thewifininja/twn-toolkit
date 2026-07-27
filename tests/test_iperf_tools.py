@@ -11,10 +11,14 @@ from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
 from twn_toolkit.audit import AuditStore
 from twn_toolkit.auth import AuthStore
+from twn_toolkit.iperf_server import (
+    IperfJsonStreamCollector,
+    IperfServerStore,
+    run_managed_iperf3_server,
+)
 from twn_toolkit.iperf_tools import (
     iperf3_capability,
     run_iperf3_client,
-    run_iperf3_server,
     validate_iperf3_client_config,
     validate_iperf3_server_config,
 )
@@ -222,78 +226,187 @@ class IperfToolTests(unittest.TestCase):
         self.assertEqual(result["receiver"]["lost_percent"], 1.0)
         self.assertEqual(result["receiver"]["jitter_ms"], 0.42)
 
-    def test_server_is_one_shot_and_normalizes_result(self) -> None:
-        class FakeProcess:
-            returncode = 0
-
-            def communicate(self, timeout=None):
-                return json.dumps(TCP_PAYLOAD), ""
-
-        with (
-            patch(
-                "twn_toolkit.iperf_tools._iperf3_executable",
-                return_value="/usr/bin/iperf3",
+    def test_json_stream_collector_builds_independent_server_result(self) -> None:
+        collector = IperfJsonStreamCollector(
+            config={"bind_address": "0.0.0.0", "port": 5201},
+            command=["/usr/bin/iperf3", "-s", "--json-stream"],
+        )
+        self.assertEqual(
+            collector.feed(
+                json.dumps({"event": "start", "data": TCP_PAYLOAD["start"]})
             ),
-            patch(
-                "twn_toolkit.iperf_tools.subprocess.Popen",
-                return_value=FakeProcess(),
-            ) as popen,
-        ):
-            result = run_iperf3_server(
+            (None, ""),
+        )
+        collector.feed(
+            json.dumps(
                 {
-                    "bind_address": "0.0.0.0",
-                    "port": 5201,
-                    "window_seconds": 30,
+                    "event": "interval",
+                    "data": TCP_PAYLOAD["intervals"][0],
                 }
             )
-
-        command = popen.call_args.args[0]
-        self.assertIn("-s", command)
-        self.assertIn("-1", command)
-        self.assertIn("-J", command)
-        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        )
+        result, error = collector.feed(
+            json.dumps({"event": "end", "data": TCP_PAYLOAD["end"]})
+        )
+        self.assertEqual(error, "")
+        self.assertIsNotNone(result)
         self.assertEqual(result["mode"], "server")
         self.assertEqual(result["receiver"]["megabits_per_second"], 980.0)
+        self.assertIsNone(collector.test_started_monotonic)
 
-    def test_server_timeout_terminates_listener(self) -> None:
-        class TimeoutProcess:
+    def test_managed_server_store_retains_newest_source_results(self) -> None:
+        result = {
+            **_route_result("server"),
+            "raw_json": json.dumps(TCP_PAYLOAD),
+        }
+        second = {
+            **result,
+            "connection": {
+                **result["connection"],
+                "remote_host": "198.51.100.24",
+                "remote_port": 50124,
+            },
+        }
+        with tempfile.TemporaryDirectory() as instance:
+            store = IperfServerStore(instance)
+            with patch(
+                "twn_toolkit.iperf_server._iperf3_executable",
+                return_value="/usr/bin/iperf3",
+            ):
+                session_id = store.create(
+                    {"bind_address": "0.0.0.0", "port": 5201},
+                    created_by="user-1",
+                    created_by_username="operator",
+                )
+            session = store.begin(session_id)
+            self.assertTrue(session["active"])
+            self.assertTrue(store.record_result(session_id, result))
+            self.assertTrue(store.record_result(session_id, second))
+
+            results = store.recent_results("user-1")
+            self.assertEqual(len(results), 2)
+            self.assertEqual(results[0]["source_ip"], "198.51.100.24")
+            self.assertEqual(results[1]["source_ip"], "192.0.2.20")
+            self.assertEqual(results[0]["summary_megabits_per_second"], 1000.0)
+            self.assertEqual(store.recent_results("another-user"), [])
+
+            stopping = store.request_stop(session_id, user_id="user-1")
+            self.assertEqual(stopping["status"], "stopping")
+            self.assertTrue(store.stop_requested(session_id))
+            self.assertEqual(store.clear_results("user-1"), 2)
+            self.assertEqual(store.recent_results("user-1"), [])
+
+    def test_managed_server_history_is_bounded_per_user(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = IperfServerStore(instance)
+            with patch(
+                "twn_toolkit.iperf_server._iperf3_executable",
+                return_value="/usr/bin/iperf3",
+            ):
+                session_id = store.create(
+                    {"bind_address": "127.0.0.1", "port": 5201},
+                    created_by="user-1",
+                    created_by_username="operator",
+                )
+            store.begin(session_id)
+            with patch(
+                "twn_toolkit.iperf_server.IPERF_SERVER_RESULT_LIMIT",
+                2,
+            ):
+                for source_port in (50001, 50002, 50003):
+                    result = {
+                        **_route_result("server"),
+                        "connection": {
+                            **_route_result("server")["connection"],
+                            "remote_port": source_port,
+                        },
+                        "raw_json": json.dumps(TCP_PAYLOAD),
+                    }
+                    store.record_result(session_id, result)
+            results = store.recent_results("user-1")
+            self.assertEqual(
+                [result["source_port"] for result in results],
+                [50003, 50002],
+            )
+
+    def test_managed_server_store_allows_only_one_active_server_per_user(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = IperfServerStore(instance)
+            with patch(
+                "twn_toolkit.iperf_server._iperf3_executable",
+                return_value="/usr/bin/iperf3",
+            ):
+                store.create(
+                    {"bind_address": "127.0.0.1", "port": 5201},
+                    created_by="user-1",
+                    created_by_username="operator",
+                )
+                with self.assertRaisesRegex(
+                    ToolInputError, "Stop your active"
+                ):
+                    store.create(
+                        {"bind_address": "127.0.0.1", "port": 5202},
+                        created_by="user-1",
+                        created_by_username="operator",
+                    )
+
+    def test_managed_server_uses_streaming_process_and_stops_on_request(self) -> None:
+        class RunningProcess:
+            pid = 102
             returncode = None
+            stdout = object()
 
             def __init__(self):
-                self.calls = 0
                 self.terminated = False
 
-            def communicate(self, timeout=None):
-                self.calls += 1
-                if self.calls == 1:
-                    raise subprocess.TimeoutExpired(["iperf3"], timeout)
-                return "", ""
+            def poll(self):
+                return None if not self.terminated else -15
 
-            def terminate(self):
+            def send_signal(self, _signal):
                 self.terminated = True
+                self.returncode = -15
 
-            def kill(self):
-                raise AssertionError("clean termination should not require kill")
+            def wait(self, timeout=None):
+                return self.returncode
 
-        process = TimeoutProcess()
+        class FakeSelector:
+            def register(self, _stream, _event):
+                return None
+
+            def select(self, timeout=None):
+                return []
+
+            def close(self):
+                return None
+
+        process = RunningProcess()
         with (
             patch(
-                "twn_toolkit.iperf_tools._iperf3_executable",
+                "twn_toolkit.iperf_server._iperf3_executable",
                 return_value="/usr/bin/iperf3",
             ),
             patch(
-                "twn_toolkit.iperf_tools.subprocess.Popen",
+                "twn_toolkit.iperf_server.subprocess.Popen",
                 return_value=process,
+            ) as popen,
+            patch(
+                "twn_toolkit.iperf_server.selectors.DefaultSelector",
+                return_value=FakeSelector(),
             ),
-            self.assertRaisesRegex(ToolInputError, "server window closed"),
         ):
-            run_iperf3_server(
+            outcome = run_managed_iperf3_server(
                 {
                     "bind_address": "127.0.0.1",
                     "port": 5201,
-                    "window_seconds": 5,
-                }
+                },
+                should_stop=lambda: True,
+                result_completed=lambda _result: None,
             )
+        command = popen.call_args.args[0]
+        self.assertIn("--json-stream", command)
+        self.assertIn("--forceflush", command)
+        self.assertNotIn("shell", popen.call_args.kwargs)
+        self.assertEqual(outcome, "stopped")
         self.assertTrue(process.terminated)
 
     def test_rejects_unbounded_or_invalid_settings(self) -> None:
@@ -306,7 +419,9 @@ class IperfToolTests(unittest.TestCase):
             "parallel_streams": 1,
             "udp_megabits": 100,
         }
-        with self.assertRaisesRegex(ToolInputError, "between 1 and 60"):
+        with (
+            self.assertRaisesRegex(ToolInputError, "between 1 and 60")
+        ):
             validate_iperf3_client_config(
                 {**valid_client, "duration_seconds": 61}
             )
@@ -319,15 +434,22 @@ class IperfToolTests(unittest.TestCase):
                 {
                     "bind_address": "all-interfaces",
                     "port": 5201,
-                    "window_seconds": 30,
                 }
             )
 
-    def test_routes_require_authorization_and_record_both_modes(self) -> None:
+    def test_routes_manage_server_lifecycle_and_private_result_cards(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
             client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
             capability = {
                 "available": True,
                 "executable": "/usr/bin/iperf3",
@@ -340,8 +462,9 @@ class IperfToolTests(unittest.TestCase):
             ):
                 page = client.get("/tools/iperf3")
             self.assertIn(b"Run as client", page.data)
-            self.assertIn(b"Listen as server", page.data)
-            self.assertIn(b"one-shot", page.data)
+            self.assertIn(b"Manage server", page.data)
+            self.assertIn(b"Start server", page.data)
+            self.assertIn(b"collapsed result cards", page.data)
 
             with (
                 patch(
@@ -386,40 +509,79 @@ class IperfToolTests(unittest.TestCase):
 
             with (
                 patch(
-                    "twn_toolkit.iperf_routes.iperf3_capability",
-                    return_value=capability,
+                    "twn_toolkit.iperf_server._iperf3_executable",
+                    return_value="/usr/bin/iperf3",
                 ),
                 patch(
-                    "twn_toolkit.iperf_routes.run_iperf3_server",
-                    return_value={
-                        **_route_result("server"),
-                        "raw_json": json.dumps(TCP_PAYLOAD),
-                    },
-                ) as server_run,
+                    "twn_toolkit.iperf_server.IperfServerStore.launch"
+                ) as launch,
             ):
-                response = client.post(
-                    "/tools/iperf3",
+                unauthorized_server = client.post(
+                    "/tools/iperf3/server/start",
                     data={
-                        "action": "server",
                         "server_bind_address": "0.0.0.0",
                         "server_port": "5201",
-                        "server_window_seconds": "90",
+                    },
+                )
+                started = client.post(
+                    "/tools/iperf3/server/start",
+                    data={
+                        "server_bind_address": "0.0.0.0",
+                        "server_port": "5201",
                         "server_authorized": "on",
                     },
                 )
-            self.assertIn(b"Server test complete", response.data)
-            server_run.assert_called_once()
+            self.assertEqual(unauthorized_server.status_code, 302)
+            self.assertEqual(started.status_code, 302)
+            launch.assert_called_once()
+
+            user_id = "test-user"
+            managed_store = IperfServerStore(instance)
+            active = managed_store.active_for_user(user_id)
+            self.assertIsNotNone(active)
+            active = managed_store.begin(active["id"])
+            managed_store.record_result(
+                active["id"],
+                {
+                    **_route_result("server"),
+                    "raw_json": json.dumps(TCP_PAYLOAD),
+                },
+            )
+
+            status = client.get(
+                f"/tools/iperf3/server/{active['id']}/status"
+            )
+            self.assertEqual(status.status_code, 200)
+            self.assertEqual(status.get_json()["result_count"], 1)
+            self.assertIn("192.0.2.20", status.get_json()["results_html"])
+            self.assertIn("Full iPerf3 JSON", status.get_json()["results_html"])
+
+            stopped = client.post(
+                f"/tools/iperf3/server/{active['id']}/stop"
+            )
+            self.assertEqual(stopped.status_code, 302)
+            self.assertTrue(managed_store.stop_requested(active["id"]))
+            cleared = client.post("/tools/iperf3/server/results/clear")
+            self.assertEqual(cleared.status_code, 302)
+            self.assertEqual(managed_store.recent_results(user_id), [])
 
             summary = ActivityStore(instance).summary()
-            self.assertEqual(summary["counters"]["speedtest"]["runs"], 2)
+            self.assertEqual(summary["counters"]["speedtest"]["runs"], 1)
             self.assertEqual(
                 summary["counters"]["speedtest"]["bytes_transferred"],
-                2_500_000_000,
+                1_250_000_000,
             )
             event = AuditStore(instance).recent(1)[0]
-            self.assertEqual(event["action"], "iperf3.server.run_succeeded")
+            self.assertEqual(
+                event["action"],
+                "iperf3.server.run_history cleared",
+            )
             self.assertNotIn(
                 b"iperf.example.test",
+                Path(instance, "audit.sqlite3").read_bytes(),
+            )
+            self.assertNotIn(
+                b"192.0.2.20",
                 Path(instance, "audit.sqlite3").read_bytes(),
             )
 
@@ -459,6 +621,10 @@ class IperfToolTests(unittest.TestCase):
                 },
             )
             self.assertEqual(client.get("/tools/iperf3").status_code, 200)
+            self.assertEqual(
+                client.post("/tools/iperf3/server/start").status_code,
+                302,
+            )
 
             client.post("/logout")
             client.post(
@@ -469,6 +635,10 @@ class IperfToolTests(unittest.TestCase):
                 },
             )
             self.assertEqual(client.get("/tools/iperf3").status_code, 403)
+            self.assertEqual(
+                client.post("/tools/iperf3/server/start").status_code,
+                403,
+            )
 
 
 def _route_result(mode: str) -> dict:
