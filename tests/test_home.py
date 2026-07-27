@@ -48,7 +48,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
-        self.assertIn(b"v0.14.2", response.data)
+        self.assertIn(b"v0.14.3", response.data)
         self.assertIn(b'href="/help"', response.data)
         self.assertIn(b'<header class="topbar with-sidebar">', response.data)
         self.assertIn(b'id="side-nav-search-input"', response.data)
@@ -108,7 +108,11 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Updates &amp; Recovery", response.data)
         self.assertIn(b"./twn upgrade", response.data)
         self.assertIn(b"never runs older code against post-upgrade data", response.data)
-        self.assertIn(b"v0.14.2", response.data)
+        self.assertIn(b"v0.14.3", response.data)
+        self.assertIn(
+            b"Ordered Favorites and DNS performance testing",
+            response.data,
+        )
         self.assertIn(
             b"Unified Multi-SSH workflow and compact host import",
             response.data,
@@ -410,7 +414,7 @@ class HomePageTests(unittest.TestCase):
         )
         self.assertLess(
             favorites_html.index(b"Multi-Host Ping"),
-            favorites_html.index(b"DNS Lookup Tester"),
+            favorites_html.index(b"DNS Tester"),
         )
         quick_launch_html = page.data.split(b"workspace-quick-grid", 1)[1].split(
             b"</div>", 1
