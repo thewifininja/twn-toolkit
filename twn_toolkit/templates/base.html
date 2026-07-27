@@ -107,16 +107,41 @@
                 <span class="side-nav-label">Dashboard</span>
               </a>
 
-              <details class="side-nav-section" {{ 'open' if sidebar_favorites or sidebar_favorites_active else '' }}>
+              <details
+                class="side-nav-section side-nav-favorites"
+                data-favorites-editor
+                {{ 'open' if sidebar_favorites or sidebar_favorites_active else '' }}
+              >
                 <summary title="Favorites">
                   <span class="side-nav-section-title"><span class="side-nav-icon" aria-hidden="true">★</span><span class="side-nav-label">Favorites</span></span>
                   <small>{{ sidebar_favorites|length }}</small>
                 </summary>
                 {% if sidebar_favorites %}
-                  <ul>
+                  {% if sidebar_favorites|length > 1 %}
+                    <div class="side-nav-favorites-toolbar">
+                      <button class="link-button subtle" type="button" data-favorites-edit>Reorder</button>
+                      <div data-favorites-edit-controls hidden>
+                        <form id="favorites-order-form" method="post" action="{{ url_for('reorder_tool_favorites') }}">
+                          <input type="hidden" name="order">
+                          <input type="hidden" name="next" value="{{ request.full_path }}">
+                        </form>
+                        <button class="link-button subtle" type="submit" form="favorites-order-form">Save</button>
+                        <button class="link-button subtle" type="button" data-favorites-cancel>Cancel</button>
+                      </div>
+                      <span class="sr-only" aria-live="polite" data-favorites-status></span>
+                    </div>
+                  {% endif %}
+                  <ul data-favorites-list>
                     {% for tool in sidebar_favorites %}
-                      <li>
-                        {{ sidebar_tool_row(tool) }}
+                      <li class="side-nav-favorite-entry" data-favorite-id="{{ tool.id }}">
+                        <button
+                          class="side-nav-favorite-drag-handle"
+                          type="button"
+                          aria-label="Move {{ tool.label }}"
+                          title="Drag or use the arrow keys to move {{ tool.label }}"
+                          hidden
+                        >⠿</button>
+                        <div>{{ sidebar_tool_row(tool) }}</div>
                       </li>
                     {% endfor %}
                   </ul>
@@ -298,6 +323,7 @@
     <script src="{{ url_for('static', filename='loading.js') }}"></script>
     <script src="{{ url_for('static', filename='sidebar.js') }}"></script>
     {% if current_user %}
+      <script src="{{ url_for('static', filename='favorites-order.js', v=app_version) }}"></script>
       <script src="{{ url_for('static', filename='pcap-viewer.js', v=app_version) }}"></script>
     {% endif %}
     {% if current_user and (current_user.is_admin or allowed_tool_ids is none or 'tools.ping' in allowed_tool_ids) %}

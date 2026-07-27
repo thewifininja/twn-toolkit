@@ -195,6 +195,7 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
 # not operational work. Public authentication lifecycle routes remain pending
 # until they receive a deliberate security-audit design.
 AUDIT_EXCLUDED_ENDPOINTS = {
+    "reorder_tool_favorites": "Personal navigation preference with no operational effect.",
     "toggle_tool_favorite": "Personal navigation preference with no operational effect.",
     "update_theme": "Personal presentation preference with no operational effect.",
 }

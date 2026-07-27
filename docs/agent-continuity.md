@@ -45,8 +45,8 @@ precedent.
   surface. Its primary hierarchy is quick launch, items needing attention, and
   recent activity. Full metrics and team comparison are secondary expandable
   views.
-- Tools live in the persistent left navigation. Favorites are user-specific and
-  appear there as well.
+- Tools live in the persistent left navigation. Favorites are user-specific,
+  preserve the operator's saved order, and appear there as well.
 - Fortinet leaf workflows remain on the FortiGate and FortiAuthenticator pages;
   the sidebar links to those parent areas instead of listing every workflow.
 - Navigation and page visibility follow effective access-profile permissions.
@@ -82,6 +82,9 @@ precedent.
 - Quick launch uses the current user's permitted Favorites first and fills any
   remaining slots from a short list of common diagnostics. Dashboard search
   must use the same permission-filtered destination set as sidebar search.
+- Favorite ordering is user-specific and controls both the sidebar list and
+  Quick launch. Reordering a currently visible subset must preserve Favorites
+  hidden by access-profile changes so later access restoration is non-destructive.
 - Workspace status summarizes the current user's live-tool sessions and, for
   administrators, enabled automation health. Team activity stays collapsed and
   is omitted entirely when there is only one operator and contributor.

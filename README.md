@@ -45,8 +45,8 @@ Current release: **v0.14.2**
 The landing page is an operator workspace organized around three questions:
 what can I run, what needs attention, and what happened recently. It provides:
 
-- dashboard search plus quick launch cards drawn from personal Favorites or
-  common diagnostics;
+- dashboard search plus quick launch cards drawn in personal Favorites order or
+  from common diagnostics;
 - at-a-glance live-monitoring, automation, and activity status;
 - recent activity and a four-metric snapshot for the selected time range;
 - an expandable full metrics view with administrator-managed widget visibility

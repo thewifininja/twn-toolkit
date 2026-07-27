@@ -666,6 +666,7 @@ body {
   .side-nav-favorite-button.active {
     opacity: 1;
   }
+
 }
 
 .side-nav-home {
@@ -766,6 +767,102 @@ body {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.side-nav-favorites-toolbar {
+  align-items: center;
+  display: flex;
+  min-height: 26px;
+  padding: 0 10px;
+}
+
+.side-nav-favorites-toolbar [data-favorites-edit-controls]:not([hidden]) {
+  display: flex;
+  gap: 10px;
+}
+
+.side-nav-favorites-toolbar .link-button {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 850;
+  min-height: 24px;
+  padding: 0;
+}
+
+.side-nav-favorites-toolbar .link-button:hover,
+.side-nav-favorites-toolbar .link-button:focus {
+  color: var(--ink);
+}
+
+.side-nav-favorite-entry {
+  min-width: 0;
+}
+
+.side-nav-favorite-entry > div {
+  min-width: 0;
+}
+
+.side-nav-favorites.is-editing .side-nav-favorite-entry {
+  align-items: center;
+  border-radius: 9px;
+  display: grid;
+  gap: 2px;
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+
+.side-nav-favorites.is-editing .side-nav-favorite-entry:hover,
+.side-nav-favorites.is-editing .side-nav-favorite-entry:focus-within {
+  background: color-mix(in srgb, var(--brand-green), transparent 90%);
+}
+
+.side-nav-favorites.is-editing .side-nav-favorite-form {
+  display: none;
+}
+
+.side-nav-favorite-drag-handle:not([hidden]) {
+  align-items: center;
+  align-self: stretch;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: grab;
+  display: flex;
+  font-size: 0.92rem;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0;
+  touch-action: none;
+  width: 28px;
+}
+
+.side-nav-favorite-drag-handle:hover,
+.side-nav-favorite-drag-handle:focus {
+  background: transparent;
+  color: var(--brand-green-dark);
+}
+
+.side-nav-favorite-entry.is-dragging {
+  opacity: 0.55;
+}
+
+.side-nav-favorite-entry.is-dragging .side-nav-favorite-drag-handle {
+  cursor: grabbing;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .side-nav-favorites.is-editing .side-nav-favorite-entry {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .side-nav-favorite-drag-handle:not([hidden]) {
+    min-height: 44px;
+    width: 36px;
+  }
+
+  .side-nav-favorites-toolbar .link-button {
+    min-height: 36px;
+    padding: 0 2px;
+  }
 }
 
 .side-nav-section a {
