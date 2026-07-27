@@ -30,6 +30,7 @@ SSH_TRANSFER_LOG="$INSTANCE/twn-ssh-transfer.log"
 SSH_TRANSFER_SETTINGS="$INSTANCE/ssh_transfer_settings.json"
 FTP_LOG="$INSTANCE/twn-ftp.log"
 FTP_SETTINGS="$INSTANCE/ftp_settings.json"
+IPERF_LOG="$INSTANCE/twn-iperf3.log"
 SERVER_SETTINGS="$INSTANCE/server_settings.json"
 PREVIOUS_SERVER_SETTINGS="$INSTANCE/server_settings.previous.json"
 TLS_DIR="$INSTANCE/tls"
@@ -370,6 +371,22 @@ stop_packet_captures() {
   cleanup_daemon_processes "twn_toolkit.packet_capture_worker" 0
 }
 
+start_iperf_servers() {
+  clear_managed_runtime "twn_toolkit.iperf_server:resume_iperf_server_workers"
+}
+
+stop_iperf_servers() {
+  clear_managed_runtime "twn_toolkit.iperf_server:stop_iperf_server_workers"
+}
+
+iperf_server_count() {
+  if [ ! -x "$PYTHON" ] || [ ! -f "$INSTANCE/iperf_servers.sqlite3" ]; then
+    echo 0
+    return
+  fi
+  "$PYTHON" -c 'from twn_toolkit.iperf_server import IperfServerStore; import sys; print(IperfServerStore(sys.argv[1]).active_count())' "$INSTANCE"
+}
+
 start_supervisor() {
   if supervisor_is_running; then
     supervisor_pid=$(cat "$SUPERVISOR_PIDFILE")
@@ -638,6 +655,9 @@ start() {
       if start_ssh_transfer; then ssh_transfer_started=1; fi
       ftp_started=0
       if start_ftp; then ftp_started=1; fi
+      if ! start_iperf_servers; then
+        echo "Warning: enabled iPerf3 listeners could not be restored. Check: $IPERF_LOG" >&2
+      fi
       start_supervisor || true
       echo "Started The WiFi Ninja's Toolkit (PID $(cat "$PIDFILE"))."
       echo "Started automation scheduler (PID $(cat "$AUTOMATION_PIDFILE"))."
@@ -680,6 +700,7 @@ stop() {
     rm -f "$SCHEME_FILE"
     stop_supervisor
     stop_packet_captures
+    stop_iperf_servers
     stop_automation
     stop_tftp
     stop_ssh_transfer
@@ -690,6 +711,7 @@ stop() {
 
   stop_supervisor
   stop_packet_captures
+  stop_iperf_servers
   stop_automation
   stop_tftp
   stop_ssh_transfer
@@ -765,6 +787,12 @@ status() {
       echo "FTP service is enabled but not running." >&2
     else
       echo "FTP service is disabled."
+    fi
+    active_iperf_servers=$(iperf_server_count 2>/dev/null || echo 0)
+    if [ "$active_iperf_servers" -gt 0 ]; then
+      echo "Managed iPerf3 has $active_iperf_servers active background listener$([ "$active_iperf_servers" -eq 1 ] || echo s)."
+    else
+      echo "Managed iPerf3 has no active background listeners."
     fi
     show_access_urls
   else
@@ -863,6 +891,10 @@ logs() {
   if [ -f "$FTP_LOG" ]; then
     echo "FTP service log:"
     tail -n 100 "$FTP_LOG"
+  fi
+  if [ -f "$IPERF_LOG" ]; then
+    echo "Managed iPerf3 log:"
+    tail -n 100 "$IPERF_LOG"
   fi
 }
 

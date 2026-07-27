@@ -27,6 +27,7 @@ from twn_toolkit.pidfiles import (
 )
 from twn_toolkit.supervisor_worker import (
     _heartbeat_fresh,
+    _restore_iperf_listeners,
     matching_supervisor_pids,
 )
 
@@ -77,6 +78,20 @@ class OperationalHardeningTests(unittest.TestCase):
             ),
             [201],
         )
+
+    def test_supervisor_restores_enabled_iperf_listeners(self) -> None:
+        instance = Path("/srv/twn/instance")
+        store = mock.Mock()
+        store.ensure_workers.return_value = 2
+        with patch(
+            "twn_toolkit.iperf_server.IperfServerStore",
+            return_value=store,
+        ) as store_class:
+            restored = _restore_iperf_listeners(instance)
+
+        self.assertEqual(restored, 2)
+        store_class.assert_called_once_with(instance)
+        store.ensure_workers.assert_called_once_with()
 
     @mock.patch("twn_toolkit.pidfiles.time.sleep")
     @mock.patch("twn_toolkit.pidfiles.os.kill")

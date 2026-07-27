@@ -234,7 +234,13 @@
         {% block content %}{% endblock %}
       </main>
     </div>
-    {% if current_user and (current_user.is_admin or allowed_tool_ids is none or 'tools.ping' in allowed_tool_ids) %}
+    {% if current_user and (
+      current_user.is_admin
+      or allowed_tool_ids is none
+      or 'tools.ping' in allowed_tool_ids
+      or 'tools.snmp_test' in allowed_tool_ids
+      or 'tools.iperf3' in allowed_tool_ids
+    ) %}
       <aside
         class="live-tool-tray"
         id="live-tool-tray"
@@ -256,7 +262,7 @@
         </button>
         <div class="live-tool-tray-body" id="live-tool-tray-body">
           <div class="live-tool-list" id="live-tool-list"></div>
-          <p class="live-tool-tray-note">Monitoring continues while this toolkit is open.</p>
+          <p class="live-tool-tray-note">Background tools continue independently of this page.</p>
         </div>
       </aside>
     {% endif %}

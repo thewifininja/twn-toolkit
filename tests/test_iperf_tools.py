@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
@@ -14,7 +14,11 @@ from twn_toolkit.auth import AuthStore
 from twn_toolkit.iperf_server import (
     IperfJsonStreamCollector,
     IperfServerStore,
+    _iperf_command_matches,
+    _worker_command_matches,
+    assert_iperf3_listener_available,
     run_managed_iperf3_server,
+    stop_iperf_server_workers,
 )
 from twn_toolkit.iperf_tools import (
     iperf3_capability,
@@ -269,9 +273,14 @@ class IperfToolTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as instance:
             store = IperfServerStore(instance)
-            with patch(
-                "twn_toolkit.iperf_server._iperf3_executable",
-                return_value="/usr/bin/iperf3",
+            with (
+                patch(
+                    "twn_toolkit.iperf_server._iperf3_executable",
+                    return_value="/usr/bin/iperf3",
+                ),
+                patch(
+                    "twn_toolkit.iperf_server.assert_iperf3_listener_available"
+                ),
             ):
                 session_id = store.create(
                     {"bind_address": "0.0.0.0", "port": 5201},
@@ -299,9 +308,14 @@ class IperfToolTests(unittest.TestCase):
     def test_managed_server_history_is_bounded_per_user(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             store = IperfServerStore(instance)
-            with patch(
-                "twn_toolkit.iperf_server._iperf3_executable",
-                return_value="/usr/bin/iperf3",
+            with (
+                patch(
+                    "twn_toolkit.iperf_server._iperf3_executable",
+                    return_value="/usr/bin/iperf3",
+                ),
+                patch(
+                    "twn_toolkit.iperf_server.assert_iperf3_listener_available"
+                ),
             ):
                 session_id = store.create(
                     {"bind_address": "127.0.0.1", "port": 5201},
@@ -332,9 +346,14 @@ class IperfToolTests(unittest.TestCase):
     def test_managed_server_store_allows_only_one_active_server_per_user(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             store = IperfServerStore(instance)
-            with patch(
-                "twn_toolkit.iperf_server._iperf3_executable",
-                return_value="/usr/bin/iperf3",
+            with (
+                patch(
+                    "twn_toolkit.iperf_server._iperf3_executable",
+                    return_value="/usr/bin/iperf3",
+                ),
+                patch(
+                    "twn_toolkit.iperf_server.assert_iperf3_listener_available"
+                ),
             ):
                 store.create(
                     {"bind_address": "127.0.0.1", "port": 5201},
@@ -349,6 +368,232 @@ class IperfToolTests(unittest.TestCase):
                         created_by="user-1",
                         created_by_username="operator",
                     )
+
+    def test_enabled_listener_pauses_and_is_restored_by_supervision(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = IperfServerStore(instance)
+            with (
+                patch(
+                    "twn_toolkit.iperf_server._iperf3_executable",
+                    return_value="/usr/bin/iperf3",
+                ),
+                patch(
+                    "twn_toolkit.iperf_server.assert_iperf3_listener_available"
+                ),
+            ):
+                session_id = store.create(
+                    {"bind_address": "127.0.0.1", "port": 5201},
+                    created_by="user-1",
+                    created_by_username="operator",
+                )
+            store.begin(session_id)
+            store.pause(
+                session_id,
+                reason="Toolkit service stopped; waiting to resume.",
+            )
+            paused = store.active_for_user("user-1")
+            self.assertEqual(paused["status"], "queued")
+            self.assertTrue(paused["desired_active"])
+
+            with patch.object(store, "launch") as launch:
+                self.assertEqual(store.ensure_workers(), 1)
+            launch.assert_called_once_with(session_id)
+
+            stopped = store.request_stop(session_id, user_id="user-1")
+            self.assertFalse(stopped["desired_active"])
+            with patch.object(store, "launch") as launch:
+                self.assertEqual(store.ensure_workers(), 0)
+            launch.assert_not_called()
+
+    def test_supervision_cleans_recorded_orphan_before_restore(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = IperfServerStore(instance)
+            with (
+                patch(
+                    "twn_toolkit.iperf_server._iperf3_executable",
+                    return_value="/usr/bin/iperf3",
+                ),
+                patch(
+                    "twn_toolkit.iperf_server.assert_iperf3_listener_available"
+                ),
+            ):
+                session_id = store.create(
+                    {"bind_address": "127.0.0.1", "port": 5201},
+                    created_by="user-1",
+                    created_by_username="operator",
+                )
+            with store._connect() as connection:
+                connection.execute(
+                    """
+                    UPDATE iperf_server_sessions
+                    SET status = 'running', worker_pid = 4321,
+                        iperf_pid = 5432
+                    WHERE id = ?
+                    """,
+                    (session_id,),
+                )
+
+            with (
+                patch(
+                    "twn_toolkit.iperf_server._process_alive",
+                    return_value=False,
+                ),
+                patch(
+                    "twn_toolkit.iperf_server._stop_recorded_iperf_process",
+                    return_value=True,
+                ) as stop_orphan,
+                patch.object(store, "launch") as launch,
+            ):
+                self.assertEqual(store.ensure_workers(), 1)
+
+            stop_orphan.assert_called_once_with(5432, "127.0.0.1", 5201)
+            launch.assert_called_once_with(session_id)
+
+    def test_recorded_process_matching_is_exact_and_supports_legacy_workers(
+        self,
+    ) -> None:
+        instance = Path("/tmp/toolkit-instance")
+        worker = (
+            "/usr/bin/python3 -m twn_toolkit.iperf_server_worker "
+            f"--instance {instance.resolve()} --session-id session-1"
+        )
+        self.assertTrue(
+            _worker_command_matches(worker, instance, "session-1")
+        )
+        self.assertFalse(
+            _worker_command_matches(worker, instance, "another-session")
+        )
+        self.assertTrue(
+            _iperf_command_matches(
+                "/usr/bin/iperf3 -s --json-stream -p 5201 "
+                "-B 127.0.0.1 -4",
+                "127.0.0.1",
+                5201,
+            )
+        )
+        self.assertFalse(
+            _iperf_command_matches(
+                "/usr/bin/iperf3 -s --json-stream -p 5202 "
+                "-B 127.0.0.1 -4",
+                "127.0.0.1",
+                5201,
+            )
+        )
+
+    def test_worker_launch_is_detached_logged_and_daemon_identifiable(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = IperfServerStore(instance)
+            with (
+                patch(
+                    "twn_toolkit.iperf_server._iperf3_executable",
+                    return_value="/usr/bin/iperf3",
+                ),
+                patch(
+                    "twn_toolkit.iperf_server.assert_iperf3_listener_available"
+                ),
+            ):
+                session_id = store.create(
+                    {"bind_address": "127.0.0.1", "port": 5201},
+                    created_by="user-1",
+                    created_by_username="operator",
+                )
+            process = MagicMock(pid=4321)
+            with patch(
+                "twn_toolkit.iperf_server.subprocess.Popen",
+                return_value=process,
+            ) as popen:
+                store.launch(session_id)
+
+            command = popen.call_args.args[0]
+            self.assertIn("twn_toolkit.iperf_server_worker", command)
+            self.assertIn("--daemon", command)
+            self.assertTrue(popen.call_args.kwargs["start_new_session"])
+            log_path = Path(instance, "twn-iperf3.log")
+            self.assertTrue(log_path.exists())
+            self.assertEqual(log_path.stat().st_mode & 0o777, 0o600)
+
+    def test_toolkit_shutdown_pauses_exact_managed_workers(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = IperfServerStore(instance)
+            with (
+                patch(
+                    "twn_toolkit.iperf_server._iperf3_executable",
+                    return_value="/usr/bin/iperf3",
+                ),
+                patch(
+                    "twn_toolkit.iperf_server.assert_iperf3_listener_available"
+                ),
+            ):
+                session_id = store.create(
+                    {"bind_address": "127.0.0.1", "port": 5201},
+                    created_by="user-1",
+                    created_by_username="operator",
+                )
+            store.begin(session_id)
+            with patch(
+                "twn_toolkit.iperf_server.stop_matching_daemons",
+                return_value=[1234],
+            ) as stop_matching:
+                self.assertEqual(stop_iperf_server_workers(instance), 1)
+            stop_matching.assert_called_once_with(
+                "twn_toolkit.iperf_server_worker",
+                Path(instance).resolve(),
+                timeout=5,
+            )
+            paused = store.active_for_user("user-1")
+            self.assertEqual(paused["status"], "queued")
+            self.assertTrue(paused["desired_active"])
+
+    def test_toolkit_shutdown_catches_legacy_recorded_worker(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = IperfServerStore(instance)
+            with (
+                patch(
+                    "twn_toolkit.iperf_server._iperf3_executable",
+                    return_value="/usr/bin/iperf3",
+                ),
+                patch(
+                    "twn_toolkit.iperf_server.assert_iperf3_listener_available"
+                ),
+            ):
+                session_id = store.create(
+                    {"bind_address": "127.0.0.1", "port": 5201},
+                    created_by="user-1",
+                    created_by_username="operator",
+                )
+            with store._connect() as connection:
+                connection.execute(
+                    """
+                    UPDATE iperf_server_sessions
+                    SET status = 'running', worker_pid = 4321,
+                        iperf_pid = 5432
+                    WHERE id = ?
+                    """,
+                    (session_id,),
+                )
+
+            with (
+                patch(
+                    "twn_toolkit.iperf_server.stop_matching_daemons",
+                    return_value=[],
+                ),
+                patch(
+                    "twn_toolkit.iperf_server._stop_recorded_worker_process",
+                    return_value=True,
+                ) as stop_worker,
+                patch(
+                    "twn_toolkit.iperf_server._stop_recorded_iperf_process",
+                    return_value=True,
+                ) as stop_iperf,
+            ):
+                self.assertEqual(stop_iperf_server_workers(instance), 1)
+
+            stop_worker.assert_called_once_with(
+                4321,
+                Path(instance).resolve(),
+                session_id,
+            )
+            stop_iperf.assert_called_once_with(5432, "127.0.0.1", 5201)
 
     def test_managed_server_uses_streaming_process_and_stops_on_request(self) -> None:
         class RunningProcess:
@@ -437,6 +682,22 @@ class IperfToolTests(unittest.TestCase):
                 }
             )
 
+    def test_busy_server_port_is_rejected_before_worker_launch(self) -> None:
+        listener = MagicMock()
+        listener.bind.side_effect = OSError(48, "Address already in use")
+        with patch(
+            "twn_toolkit.iperf_server.socket.socket",
+            return_value=listener,
+        ):
+            with self.assertRaisesRegex(
+                ToolInputError,
+                "Stop the existing listener or choose another port",
+            ):
+                assert_iperf3_listener_available(
+                    {"bind_address": "0.0.0.0", "port": 5201}
+                )
+        listener.close.assert_called_once()
+
     def test_routes_manage_server_lifecycle_and_private_result_cards(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
@@ -515,6 +776,9 @@ class IperfToolTests(unittest.TestCase):
                 patch(
                     "twn_toolkit.iperf_server.IperfServerStore.launch"
                 ) as launch,
+                patch(
+                    "twn_toolkit.iperf_server.assert_iperf3_listener_available"
+                ),
             ):
                 unauthorized_server = client.post(
                     "/tools/iperf3/server/start",
@@ -556,10 +820,30 @@ class IperfToolTests(unittest.TestCase):
             self.assertIn("192.0.2.20", status.get_json()["results_html"])
             self.assertIn("Full iPerf3 JSON", status.get_json()["results_html"])
 
-            stopped = client.post(
-                f"/tools/iperf3/server/{active['id']}/stop"
+            live = client.get("/tools/live-sessions")
+            self.assertEqual(live.status_code, 200)
+            self.assertEqual(len(live.get_json()["sessions"]), 1)
+            self.assertEqual(
+                live.get_json()["sessions"][0]["tool_key"],
+                "iperf3_server",
             )
-            self.assertEqual(stopped.status_code, 302)
+            self.assertEqual(
+                live.get_json()["sessions"][0]["listener"],
+                "0.0.0.0:5201",
+            )
+            dashboard = client.get("/")
+            self.assertIn(b"1 active", dashboard.data)
+            self.assertIn(b"data-open-live-tools", dashboard.data)
+
+            stopped = client.post(
+                f"/tools/iperf3/server/{active['id']}/stop",
+                headers={"Accept": "application/json"},
+            )
+            self.assertEqual(stopped.status_code, 200)
+            self.assertEqual(
+                stopped.get_json()["session"]["status"],
+                "stopping",
+            )
             self.assertTrue(managed_store.stop_requested(active["id"]))
             cleared = client.post("/tools/iperf3/server/results/clear")
             self.assertEqual(cleared.status_code, 302)
@@ -621,6 +905,7 @@ class IperfToolTests(unittest.TestCase):
                 },
             )
             self.assertEqual(client.get("/tools/iperf3").status_code, 200)
+            self.assertEqual(client.get("/tools/live-sessions").status_code, 200)
             self.assertEqual(
                 client.post("/tools/iperf3/server/start").status_code,
                 302,
@@ -635,6 +920,7 @@ class IperfToolTests(unittest.TestCase):
                 },
             )
             self.assertEqual(client.get("/tools/iperf3").status_code, 403)
+            self.assertEqual(client.get("/tools/live-sessions").status_code, 200)
             self.assertEqual(
                 client.post("/tools/iperf3/server/start").status_code,
                 403,

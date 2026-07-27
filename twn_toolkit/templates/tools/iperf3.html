@@ -99,7 +99,7 @@
         <div>
           <span class="eyebrow">Action 2</span>
           <h2>Manage server</h2>
-          <p>Keep one managed listener available for multiple sequential tests and retain each completed result.</p>
+          <p>Keep one supervised background listener available for multiple sequential tests and retain each completed result.</p>
         </div>
         <span class="iperf-action-badge {{ 'success' if active_server and active_server.status == 'running' else '' }}" data-iperf-server-status>
           {{ active_server.status if active_server else 'Off' }}
@@ -121,7 +121,7 @@
           </dl>
           <p class="message error" data-iperf-server-error {% if not active_server.error and not active_server.last_error %}hidden{% endif %}>{{ active_server.error or active_server.last_error }}</p>
           <div class="iperf-server-notes">
-            <p><strong>Lifecycle:</strong> the listener runs in a managed worker, survives navigation, and automatically stops after {{ limits.server_runtime_hours }} hours if it is not stopped first.</p>
+            <p><strong>Lifecycle:</strong> the listener stays on in a supervised background worker, appears in Live tools and on the dashboard, and resumes with the toolkit until you stop it.</p>
             <p><strong>History:</strong> the newest {{ limits.server_history }} completed server tests are retained for this user, including source IP and bounded raw JSON.</p>
           </div>
           <footer>
@@ -133,9 +133,15 @@
         </div>
       {% else %}
         <form class="iperf-action-form" method="post" action="{{ url_for('tools.start_iperf3_server') }}" data-loading-message="Starting the managed iPerf3 server…">
+          {% if latest_server and latest_server.status == 'error' %}
+            <p class="message error">
+              <strong>The previous listener could not start.</strong>
+              {{ latest_server.last_error or latest_server.error or 'Check the managed iPerf3 log for details.' }}
+            </p>
+          {% endif %}
           <div class="iperf-server-callout">
             <strong>Start once, test repeatedly</strong>
-            <p>The managed listener stays on across page navigation. Completed tests are collected below as collapsed result cards.</p>
+            <p>The listener runs independently of this page and returns after toolkit restarts. Completed tests are collected below as collapsed result cards.</p>
             <code>iperf3 -c &lt;toolkit-address&gt; -p {{ server_form.port }}</code>
           </div>
           <div class="iperf-fields server">
@@ -148,14 +154,14 @@
           </div>
           <div class="iperf-server-notes">
             <p><strong>Listener scope:</strong> <code>0.0.0.0</code> accepts IPv4 clients on every interface; <code>::</code> does the same for IPv6. Use a specific local address to narrow exposure.</p>
-            <p><strong>Safety:</strong> only one managed server is allowed per user, ports below 1024 are unavailable, and the listener automatically stops after {{ limits.server_runtime_hours }} hours.</p>
+            <p><strong>Safety:</strong> only one managed server is allowed per user, ports below 1024 are unavailable, and a busy bind address or port is rejected before a worker starts.</p>
           </div>
           <label class="check authorization">
             <input name="server_authorized" type="checkbox" required>
             <span><strong>I am authorized to expose this managed listener.</strong><small>Confirm local firewall and network policy before starting it.</small></span>
           </label>
           <footer>
-            <span>Results are private to this toolkit user.</span>
+            <span>Results and dashboard status are private to this toolkit user.</span>
             <button type="submit" {{ 'disabled' if not capability.available else '' }}>Start server</button>
           </footer>
         </form>

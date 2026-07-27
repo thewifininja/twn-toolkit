@@ -319,6 +319,8 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('name="server_authorized"', template)
         self.assertIn("Start server", template)
         self.assertIn("Stop server", template)
+        self.assertIn("appears in Live tools and on the dashboard", template)
+        self.assertIn("busy bind address or port is rejected", template)
         self.assertIn("Server test history", template)
         self.assertIn("data-iperf-server-started", template)
         self.assertIn('data-iperf-server-results', template)

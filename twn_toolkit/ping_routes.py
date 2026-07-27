@@ -11,6 +11,7 @@ from .audit import (
     annotate_profile_saved,
     suppress_audit_event,
 )
+from .iperf_server import IperfServerStore, public_iperf_live_session
 from .network_tools import (
     ToolInputError,
     parse_ping_targets,
@@ -38,9 +39,28 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
     def live_tool_sessions():
         suppress_audit_event()
         user = _current_user()
-        sessions = _live_tool_store().sessions_for_user(user["id"])
+        sessions = [
+            session
+            for session in _live_tool_store().sessions_for_user(user["id"])
+            if _live_session_tool_allowed(session["tool_key"])
+        ]
+        if _tool_allowed("tools.iperf3"):
+            iperf_session = IperfServerStore(
+                current_app.instance_path
+            ).active_for_user(user["id"])
+            if iperf_session:
+                sessions.append(iperf_session)
         return jsonify(
-            {"sessions": [public_live_session(session) for session in sessions]}
+            {
+                "sessions": [
+                    (
+                        public_iperf_live_session(session)
+                        if session.get("status")
+                        else public_live_session(session)
+                    )
+                    for session in sessions
+                ]
+            }
         )
 
     @tools_bp.post("/ping/sessions")
@@ -165,8 +185,16 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
     @tools_bp.post("/live-sessions/<session_id>/stop")
     def stop_live_tool_session(session_id: str):
         user = _current_user()
+        existing = _live_tool_store().get_session(
+            session_id,
+            user_id=user["id"],
+        )
+        if not existing:
+            return jsonify({"error": "Live tool session not found."}), 404
+        if not _live_session_tool_allowed(existing["tool_key"]):
+            return jsonify({"error": "This user cannot stop that live tool."}), 403
         session = _live_tool_store().stop_session(session_id, user_id=user["id"])
-        if not session:
+        if not session:  # pragma: no cover - ownership was checked above
             return jsonify({"error": "Live tool session not found."}), 404
         if not session.get("_was_running", False):
             suppress_audit_event()
@@ -233,6 +261,14 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             return jsonify(
                 {"error": "Live tool names must be 100 characters or fewer."}
             ), 400
+        existing = _live_tool_store().get_session(
+            session_id,
+            user_id=_current_user()["id"],
+        )
+        if not existing:
+            return jsonify({"error": "Live tool session not found."}), 404
+        if not _live_session_tool_allowed(existing["tool_key"]):
+            return jsonify({"error": "This user cannot rename that live tool."}), 403
         session = _live_tool_store().rename_session(
             session_id,
             user_id=_current_user()["id"],
@@ -439,6 +475,21 @@ def _current_user() -> dict[str, str]:
         "id": str(user.get("id", "")),
         "username": str(user.get("username", "")),
     }
+
+
+def _tool_allowed(tool_id: str) -> bool:
+    user = getattr(g, "current_user", {}) or {}
+    if user.get("is_admin"):
+        return True
+    return tool_id in (getattr(g, "allowed_tool_ids", None) or set())
+
+
+def _live_session_tool_allowed(tool_key: str) -> bool:
+    owner = {
+        "ping": "tools.ping",
+        "snmp_interface": "tools.snmp_test",
+    }.get(str(tool_key), "")
+    return bool(owner and _tool_allowed(owner))
 
 
 def _bounded_int(value: object, minimum: int, maximum: int) -> int:

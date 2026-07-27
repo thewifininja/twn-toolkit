@@ -52,6 +52,22 @@ def main() -> None:
             print(f"Supervisor restarting {label}.", flush=True)
             subprocess.run([str(root / "twn"), command], cwd=root, timeout=30, check=False)
             retry_after[pid_name] = time.time() + 30
+        iperf_database = instance / "iperf_servers.sqlite3"
+        if iperf_database.exists():
+            try:
+                restored = _restore_iperf_listeners(instance)
+                if restored:
+                    print(
+                        f"Supervisor restored {restored} managed iPerf3 "
+                        f"listener{'s' if restored != 1 else ''}.",
+                        flush=True,
+                    )
+            except Exception as exc:
+                print(
+                    f"Could not supervise managed iPerf3 listeners: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
     def _stop() -> None:
         nonlocal running; running = False
     heartbeat = instance / "supervisor-heartbeat.json"
@@ -114,6 +130,12 @@ def stop_matching_supervisors(
 def _enabled(path: Path) -> bool:
     try: return bool(json.loads(path.read_text(encoding="utf-8")).get("enabled"))
     except (OSError, ValueError): return False
+
+
+def _restore_iperf_listeners(instance: Path) -> int:
+    from .iperf_server import IperfServerStore
+
+    return IperfServerStore(instance).ensure_workers()
 
 
 def _pid_running(path: Path) -> bool:

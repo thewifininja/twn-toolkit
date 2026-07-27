@@ -52,6 +52,7 @@ from .network_tools import ToolInputError, ping_engine_capability
 from .tftp import tftp_process_status
 from .ssh_transfer_server import ssh_transfer_process_status
 from .ftp_server import ftp_process_status
+from .iperf_server import iperf3_process_status
 from .upgrade_manager import ReleaseClient, UpgradeError, UpgradeManager
 from .version import APP_VERSION
 
@@ -379,6 +380,10 @@ def register_admin_routes(
             {"name": "TFTP service", **tftp_process_status(app.instance_path)},
             {"name": "SFTP / SCP service", **ssh_transfer_process_status(app.instance_path)},
             {"name": "FTP service", **ftp_process_status(app.instance_path)},
+            {
+                "name": "Managed iPerf3 listeners",
+                **iperf3_process_status(app.instance_path),
+            },
         ]
         databases = []
         for path in sorted(instance.glob("*.sqlite3")):

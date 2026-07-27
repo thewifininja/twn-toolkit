@@ -6,7 +6,9 @@ import json
 import os
 from pathlib import Path
 import selectors
+import shlex
 import signal
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -19,11 +21,11 @@ from .iperf_tools import (
     validate_iperf3_server_config,
 )
 from .network_tools import ToolInputError
+from .pidfiles import stop_matching_daemons
 
 
 IPERF_SERVER_ACTIVE_STATUSES = {"queued", "running", "stopping"}
 IPERF_SERVER_CYCLE_SECONDS = 10 * 60
-IPERF_SERVER_MAX_RUNTIME_SECONDS = 8 * 60 * 60
 IPERF_SERVER_OUTPUT_LIMIT = 2 * 1024 * 1024
 IPERF_SERVER_RESULT_LIMIT = 50
 IPERF_SERVER_SESSION_LIMIT = 20
@@ -46,8 +48,9 @@ class IperfServerStore:
         created_by_username: str,
     ) -> str:
         normalized = validate_iperf3_server_config(config)
-        _iperf3_executable()
         self._reconcile_workers()
+        _iperf3_executable()
+        assert_iperf3_listener_available(normalized)
         session_id = os.urandom(12).hex()
         now = time.time()
         with self._connect() as connection:
@@ -56,6 +59,7 @@ class IperfServerStore:
                 """
                 SELECT id FROM iperf_server_sessions
                 WHERE created_by = ?
+                    AND desired_active = 1
                     AND status IN ('queued', 'running', 'stopping')
                 LIMIT 1
                 """,
@@ -69,6 +73,7 @@ class IperfServerStore:
                 """
                 SELECT id FROM iperf_server_sessions
                 WHERE port = ?
+                    AND desired_active = 1
                     AND status IN ('queued', 'running', 'stopping')
                 LIMIT 1
                 """,
@@ -83,8 +88,8 @@ class IperfServerStore:
                 """
                 INSERT INTO iperf_server_sessions (
                     id, status, bind_address, port, created_by,
-                    created_by_username, created_at, updated_at
-                ) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?)
+                    created_by_username, desired_active, created_at, updated_at
+                ) VALUES (?, 'queued', ?, ?, ?, ?, 1, ?, ?)
                 """,
                 (
                     session_id,
@@ -100,21 +105,54 @@ class IperfServerStore:
         return session_id
 
     def launch(self, session_id: str) -> None:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT status, desired_active, worker_pid, updated_at
+                FROM iperf_server_sessions
+                WHERE id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+            if not row or not row["desired_active"]:
+                return
+            worker_pid = int(row["worker_pid"] or 0)
+            if worker_pid > 0 and _process_alive(worker_pid):
+                return
+            if worker_pid == -1 and now - float(row["updated_at"]) < 30:
+                return
+            connection.execute(
+                """
+                UPDATE iperf_server_sessions
+                SET status = 'queued', worker_pid = -1, iperf_pid = NULL,
+                    stop_requested = 0, error = '', stop_reason = '',
+                    updated_at = ?
+                WHERE id = ? AND desired_active = 1
+                """,
+                (now, session_id),
+            )
         command = [
             sys.executable,
             "-m",
             "twn_toolkit.iperf_server_worker",
             "--instance",
             str(self.instance_path),
+            "--daemon",
             "--session-id",
             session_id,
         ]
+        log_path = self.instance_path / "twn-iperf3.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_handle = log_path.open("ab", buffering=0)
+        os.chmod(log_path, 0o600)
         try:
             process = subprocess.Popen(
                 command,
                 cwd=str(Path(__file__).resolve().parent.parent),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
         except OSError as exc:
@@ -127,12 +165,14 @@ class IperfServerStore:
             raise ToolInputError(
                 f"Could not launch the managed iPerf3 server: {exc}"
             ) from exc
+        finally:
+            log_handle.close()
         with self._connect() as connection:
             connection.execute(
                 """
                 UPDATE iperf_server_sessions
                 SET worker_pid = ?, updated_at = ?
-                WHERE id = ? AND status = 'queued'
+                WHERE id = ? AND status = 'queued' AND desired_active = 1
                 """,
                 (process.pid, time.time(), session_id),
             )
@@ -143,9 +183,11 @@ class IperfServerStore:
             connection.execute(
                 """
                 UPDATE iperf_server_sessions
-                SET status = 'running', worker_pid = ?, started_at = ?,
-                    updated_at = ?
-                WHERE id = ? AND status IN ('queued', 'stopping')
+                SET status = 'running', worker_pid = ?,
+                    started_at = COALESCE(started_at, ?),
+                    error = '', stop_reason = '', updated_at = ?
+                WHERE id = ? AND desired_active = 1
+                    AND status IN ('queued', 'running')
                 """,
                 (os.getpid(), now, now, session_id),
             )
@@ -177,6 +219,7 @@ class IperfServerStore:
                 """
                 SELECT * FROM iperf_server_sessions
                 WHERE created_by = ?
+                    AND desired_active = 1
                     AND status IN ('queued', 'running', 'stopping')
                 ORDER BY created_at DESC
                 LIMIT 1
@@ -185,13 +228,29 @@ class IperfServerStore:
             ).fetchone()
         return self._session_from_row(row) if row else None
 
+    def latest_for_user(self, user_id: str) -> dict[str, Any] | None:
+        self._reconcile_workers()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM iperf_server_sessions
+                WHERE created_by = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user_id,),
+            ).fetchone()
+        return self._session_from_row(row) if row else None
+
     def request_stop(self, session_id: str, *, user_id: str) -> dict[str, Any]:
+        self._reconcile_workers()
         now = time.time()
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 UPDATE iperf_server_sessions
-                SET stop_requested = 1, status = 'stopping', updated_at = ?
+                SET desired_active = 0, stop_requested = 1,
+                    status = 'stopping', updated_at = ?
                 WHERE id = ? AND created_by = ?
                     AND status IN ('queued', 'running')
                 """,
@@ -225,6 +284,78 @@ class IperfServerStore:
             or row["stop_requested"]
             or row["status"] not in IPERF_SERVER_ACTIVE_STATUSES
         )
+
+    def desired_active(self, session_id: str) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT desired_active
+                FROM iperf_server_sessions
+                WHERE id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+        return bool(row and row["desired_active"])
+
+    def ensure_workers(self) -> int:
+        """Restore enabled listeners whose managed worker is not running."""
+        self._reconcile_workers()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id FROM iperf_server_sessions
+                WHERE desired_active = 1 AND status = 'queued'
+                    AND (worker_pid IS NULL OR worker_pid = 0)
+                ORDER BY created_at
+                """
+            ).fetchall()
+        for row in rows:
+            self.launch(str(row["id"]))
+        return len(rows)
+
+    def pause(self, session_id: str, *, reason: str) -> None:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE iperf_server_sessions
+                SET status = 'queued', worker_pid = NULL, iperf_pid = NULL,
+                    stop_requested = 0, stop_reason = ?, error = '',
+                    updated_at = ?
+                WHERE id = ? AND desired_active = 1
+                """,
+                (reason[:200], now, session_id),
+            )
+
+    def pause_active_for_toolkit_shutdown(self) -> int:
+        now = time.time()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE iperf_server_sessions
+                SET status = 'queued', worker_pid = NULL, iperf_pid = NULL,
+                    stop_requested = 0,
+                    stop_reason = 'Toolkit service stopped; waiting to resume.',
+                    error = '', updated_at = ?
+                WHERE desired_active = 1
+                    AND status IN ('queued', 'running', 'stopping')
+                """,
+                (now,),
+            )
+        return int(cursor.rowcount)
+
+    def active_count(self) -> int:
+        self._reconcile_workers()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM iperf_server_sessions
+                WHERE desired_active = 1
+                    AND status IN ('queued', 'running', 'stopping')
+                """
+            ).fetchone()
+        return int(row["count"] or 0)
 
     def set_iperf_pid(self, session_id: str, pid: int | None) -> None:
         with self._connect() as connection:
@@ -338,7 +469,8 @@ class IperfServerStore:
             connection.execute(
                 """
                 UPDATE iperf_server_sessions
-                SET status = ?, stop_reason = ?, error = ?, iperf_pid = NULL,
+                SET status = ?, desired_active = 0, stop_reason = ?,
+                    error = ?, worker_pid = NULL, iperf_pid = NULL,
                     stopped_at = ?, updated_at = ?
                 WHERE id = ?
                 """,
@@ -403,40 +535,61 @@ class IperfServerStore:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, worker_pid, updated_at
+                SELECT id, status, desired_active, worker_pid, iperf_pid,
+                    bind_address, port, updated_at
                 FROM iperf_server_sessions
-                WHERE status IN ('queued', 'running', 'stopping')
+                WHERE desired_active = 1
+                    AND status IN ('queued', 'running', 'stopping')
                 """
             ).fetchall()
             now = time.time()
             for row in rows:
-                if row["worker_pid"] is None:
+                if row["worker_pid"] == -1:
                     if now - float(row["updated_at"]) <= 30:
                         continue
                     connection.execute(
                         """
                         UPDATE iperf_server_sessions
-                        SET status = 'error', stopped_at = ?, updated_at = ?,
-                            error = 'The managed iPerf3 worker did not start.'
-                        WHERE id = ? AND status = 'queued'
+                        SET worker_pid = NULL, updated_at = ?
+                        WHERE id = ? AND worker_pid = -1
                         """,
-                        (now, now, row["id"]),
+                        (now, row["id"]),
                     )
                     continue
-                try:
-                    os.kill(int(row["worker_pid"]), 0)
-                except (OSError, ValueError):
+                if row["worker_pid"] is None:
+                    _stop_recorded_iperf_process(
+                        int(row["iperf_pid"] or 0),
+                        str(row["bind_address"]),
+                        int(row["port"]),
+                    )
+                    if row["iperf_pid"] is not None:
+                        connection.execute(
+                            """
+                            UPDATE iperf_server_sessions
+                            SET iperf_pid = NULL, updated_at = ?
+                            WHERE id = ? AND worker_pid IS NULL
+                            """,
+                            (now, row["id"]),
+                        )
+                    continue
+                if not _process_alive(int(row["worker_pid"])):
+                    _stop_recorded_iperf_process(
+                        int(row["iperf_pid"] or 0),
+                        str(row["bind_address"]),
+                        int(row["port"]),
+                    )
                     connection.execute(
                         """
                         UPDATE iperf_server_sessions
-                        SET status = 'error', stopped_at = ?, updated_at = ?,
-                            error = CASE WHEN error = ''
-                                THEN 'The managed iPerf3 worker exited unexpectedly.'
-                                ELSE error END
+                        SET status = 'queued', worker_pid = NULL,
+                            iperf_pid = NULL, updated_at = ?,
+                            last_error = CASE WHEN last_error = ''
+                                THEN 'The listener worker restarted unexpectedly; the supervisor is restoring it.'
+                                ELSE last_error END
                         WHERE id = ?
-                            AND status IN ('queued', 'running', 'stopping')
+                            AND desired_active = 1
                         """,
-                        (now, now, row["id"]),
+                        (now, row["id"]),
                     )
 
     @staticmethod
@@ -469,6 +622,7 @@ class IperfServerStore:
             """
             SELECT id FROM iperf_server_sessions
             WHERE created_by = ?
+                AND desired_active = 0
                 AND status NOT IN ('queued', 'running', 'stopping')
             ORDER BY created_at DESC
             LIMIT -1 OFFSET ?
@@ -507,6 +661,7 @@ class IperfServerStore:
                     error TEXT NOT NULL DEFAULT '',
                     created_by TEXT NOT NULL,
                     created_by_username TEXT NOT NULL DEFAULT '',
+                    desired_active INTEGER NOT NULL DEFAULT 0,
                     created_at REAL NOT NULL,
                     started_at REAL,
                     stopped_at REAL,
@@ -533,6 +688,26 @@ class IperfServerStore:
                     ON iperf_server_results(id DESC);
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(iperf_server_sessions)"
+                ).fetchall()
+            }
+            if "desired_active" not in columns:
+                connection.execute(
+                    """
+                    ALTER TABLE iperf_server_sessions
+                    ADD COLUMN desired_active INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+                connection.execute(
+                    """
+                    UPDATE iperf_server_sessions
+                    SET desired_active = 1
+                    WHERE status IN ('queued', 'running', 'stopping')
+                    """
+                )
             yield connection
             connection.commit()
         except Exception:
@@ -557,7 +732,11 @@ class IperfServerStore:
     def _session_from_row(row: sqlite3.Row) -> dict[str, Any]:
         item = dict(row)
         item["stop_requested"] = bool(item["stop_requested"])
-        item["active"] = item["status"] in IPERF_SERVER_ACTIVE_STATUSES
+        item["desired_active"] = bool(item.get("desired_active"))
+        item["active"] = bool(
+            item["desired_active"]
+            and item["status"] in IPERF_SERVER_ACTIVE_STATUSES
+        )
         for field in ("created_at", "started_at", "stopped_at", "last_test_at"):
             value = item.get(field)
             item[f"{field}_display"] = (
@@ -590,6 +769,127 @@ class IperfServerStore:
             }
         )
         return result
+
+
+def assert_iperf3_listener_available(config: dict[str, Any]) -> None:
+    """Fail before launching a worker when the requested local socket is busy."""
+    normalized = validate_iperf3_server_config(config)
+    family = socket.AF_INET6 if ":" in normalized["bind_address"] else socket.AF_INET
+    listener = socket.socket(family, socket.SOCK_STREAM)
+    try:
+        listener.bind((normalized["bind_address"], normalized["port"]))
+        listener.listen(1)
+    except OSError as exc:
+        raise ToolInputError(
+            f"Cannot start iPerf3 on {normalized['bind_address']}:"
+            f"{normalized['port']}: {exc.strerror or exc}. "
+            "Stop the existing listener or choose another port."
+        ) from exc
+    finally:
+        listener.close()
+
+
+def resume_iperf_server_workers(instance_path: str | Path) -> int:
+    """Restore listeners that were enabled when the toolkit last stopped."""
+    return IperfServerStore(instance_path).ensure_workers()
+
+
+def stop_iperf_server_workers(instance_path: str | Path) -> int:
+    """Stop exact toolkit-owned listener workers and retain their On state."""
+    instance = Path(instance_path).resolve()
+    store = IperfServerStore(instance)
+    with store._connect() as connection:
+        rows = [
+            dict(row)
+            for row in connection.execute(
+                """
+                SELECT id, worker_pid, iperf_pid, bind_address, port
+                FROM iperf_server_sessions
+                WHERE desired_active = 1
+                    AND status IN ('queued', 'running', 'stopping')
+                """
+            ).fetchall()
+        ]
+    stopped = stop_matching_daemons(
+        "twn_toolkit.iperf_server_worker",
+        instance,
+        timeout=5,
+    )
+    stopped_workers = set(stopped)
+    for row in rows:
+        worker_pid = int(row["worker_pid"] or 0)
+        if worker_pid not in stopped_workers and _stop_recorded_worker_process(
+            worker_pid,
+            instance,
+            str(row["id"]),
+        ):
+            stopped_workers.add(worker_pid)
+        _stop_recorded_iperf_process(
+            int(row["iperf_pid"] or 0),
+            str(row["bind_address"]),
+            int(row["port"]),
+        )
+    store.pause_active_for_toolkit_shutdown()
+    return len(stopped_workers)
+
+
+def public_iperf_live_session(session: dict[str, Any]) -> dict[str, Any]:
+    """Expose an active listener through the shared live-tools tray contract."""
+    from flask import url_for
+
+    session_id = str(session["id"])
+    test_count = int(session.get("test_count") or 0)
+    return {
+        "id": session_id,
+        "tool_key": "iperf3_server",
+        "title": f"iPerf3 Server · {session['port']}",
+        "state": (
+            "error" if session.get("status") == "error" else "running"
+        ),
+        "listener": f"{session['bind_address']}:{session['port']}",
+        "listener_status": session.get("status", ""),
+        "rounds_completed": test_count,
+        "last_round_at": (
+            session.get("last_test_at")
+            or session.get("started_at")
+            or session.get("created_at")
+        ),
+        "last_error": session.get("error") or session.get("last_error") or "",
+        "restore_url": url_for("tools.iperf3"),
+        "stop_url": url_for(
+            "tools.stop_iperf3_server",
+            session_id=session_id,
+        ),
+        "rename_url": "",
+        "can_stop": session.get("status") != "stopping",
+    }
+
+
+def iperf3_process_status(instance_path: str | Path) -> dict[str, Any]:
+    """Summarize toolkit-owned listener workers for diagnostics."""
+    store = IperfServerStore(instance_path)
+    store._reconcile_workers()
+    with store._connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT worker_pid
+            FROM iperf_server_sessions
+            WHERE desired_active = 1
+                AND status IN ('queued', 'running', 'stopping')
+            ORDER BY created_at
+            """
+        ).fetchall()
+    pids = [
+        int(row["worker_pid"])
+        for row in rows
+        if int(row["worker_pid"] or 0) > 0
+        and _process_alive(int(row["worker_pid"]))
+    ]
+    return {
+        "running": bool(rows) and len(pids) == len(rows),
+        "pid": pids[0] if pids else None,
+        "count": len(rows),
+    }
 
 
 def run_managed_iperf3_server(
@@ -760,3 +1060,134 @@ def _terminate_process(process: subprocess.Popen[Any]) -> None:
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=2)
+
+
+def _process_alive(process_id: int) -> bool:
+    if process_id <= 0:
+        return False
+    try:
+        os.kill(process_id, 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _stop_recorded_worker_process(
+    process_id: int,
+    instance: Path,
+    session_id: str,
+) -> bool:
+    return _stop_process_if_command_matches(
+        process_id,
+        lambda command: _worker_command_matches(
+            command,
+            instance,
+            session_id,
+        ),
+    )
+
+
+def _stop_recorded_iperf_process(
+    process_id: int,
+    bind_address: str,
+    port: int,
+) -> bool:
+    return _stop_process_if_command_matches(
+        process_id,
+        lambda command: _iperf_command_matches(
+            command,
+            bind_address,
+            port,
+        ),
+    )
+
+
+def _stop_process_if_command_matches(
+    process_id: int,
+    matches: Callable[[str], bool],
+    *,
+    timeout: float = 3,
+) -> bool:
+    if process_id <= 0 or not _process_alive(process_id):
+        return False
+    command = _process_command(process_id)
+    if not command or not matches(command):
+        return False
+    try:
+        os.kill(process_id, signal.SIGTERM)
+    except OSError:
+        return False
+    deadline = time.time() + timeout
+    while _process_alive(process_id) and time.time() < deadline:
+        time.sleep(0.1)
+    if _process_alive(process_id):
+        current_command = _process_command(process_id)
+        if current_command and matches(current_command):
+            try:
+                os.kill(process_id, signal.SIGKILL)
+            except OSError:
+                pass
+    return True
+
+
+def _process_command(process_id: int) -> str:
+    try:
+        result = subprocess.run(
+            [
+                "ps",
+                "-ww",
+                "-p",
+                str(process_id),
+                "-o",
+                "command=",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _worker_command_matches(
+    command: str,
+    instance: Path,
+    session_id: str,
+) -> bool:
+    arguments = _split_process_command(command)
+    return bool(
+        _option_value(arguments, "-m") == "twn_toolkit.iperf_server_worker"
+        and _option_value(arguments, "--instance") == str(instance.resolve())
+        and _option_value(arguments, "--session-id") == session_id
+    )
+
+
+def _iperf_command_matches(
+    command: str,
+    bind_address: str,
+    port: int,
+) -> bool:
+    arguments = _split_process_command(command)
+    if not arguments or Path(arguments[0]).name != "iperf3":
+        return False
+    return bool(
+        any(argument in {"-s", "--server"} for argument in arguments)
+        and _option_value(arguments, "-p", "--port") == str(port)
+        and _option_value(arguments, "-B", "--bind") == bind_address
+    )
+
+
+def _split_process_command(command: str) -> list[str]:
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return []
+
+
+def _option_value(arguments: list[str], *names: str) -> str:
+    for index, argument in enumerate(arguments[:-1]):
+        if argument in names:
+            return arguments[index + 1]
+    return ""

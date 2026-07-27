@@ -16,7 +16,6 @@ from flask import (
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run
 from .iperf_server import (
-    IPERF_SERVER_MAX_RUNTIME_SECONDS,
     IPERF_SERVER_RESULT_LIMIT,
     IperfServerStore,
 )
@@ -82,6 +81,7 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
         user_id = str(g.current_user["id"])
         managed_store = server_store()
         active_server = managed_store.active_for_user(user_id)
+        latest_server = managed_store.latest_for_user(user_id)
         server_form = {
             "bind_address": str(
                 (active_server or {}).get("bind_address") or "0.0.0.0"
@@ -102,10 +102,8 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
                 "parallel_streams": IPERF_MAX_PARALLEL_STREAMS,
                 "udp_megabits": IPERF_MAX_UDP_MEGABITS,
                 "server_history": IPERF_SERVER_RESULT_LIMIT,
-                "server_runtime_hours": (
-                    IPERF_SERVER_MAX_RUNTIME_SECONDS // (60 * 60)
-                ),
             },
+            latest_server=latest_server,
             result=result,
             server_form=server_form,
             server_result_revision=managed_store.result_revision(user_id),
@@ -172,8 +170,8 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
             f"Listening on port {(session or {}).get('port', config['port'])}",
         )
         flash(
-            "Managed iPerf3 server started. It will remain available until "
-            "stopped or the maximum runtime is reached.",
+            "Managed iPerf3 server started. It will remain available in the "
+            "background until you stop it.",
             "success",
         )
         return redirect(url_for("tools.iperf3"))
@@ -181,12 +179,15 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
     @tools_bp.post("/iperf3/server/<session_id>/stop")
     def stop_iperf3_server(session_id: str):
         user_id = str(g.current_user["id"])
+        wants_json = request.accept_mimetypes.best == "application/json"
         try:
             session = server_store().request_stop(
                 session_id,
                 user_id=user_id,
             )
         except ToolInputError as exc:
+            if wants_json:
+                return jsonify({"error": str(exc)}), 400
             flash(str(exc), "error")
         else:
             annotate_tool_run(
@@ -206,6 +207,10 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
                 f"{session['test_count']} completed test"
                 f"{'' if session['test_count'] == 1 else 's'}",
             )
+            if wants_json:
+                return jsonify(
+                    {"session": _public_server_session(session)}
+                )
             flash("Managed iPerf3 server is stopping.", "success")
         return redirect(url_for("tools.iperf3"))
 
@@ -318,6 +323,7 @@ def _public_server_session(session: dict) -> dict:
             "id",
             "status",
             "active",
+            "desired_active",
             "bind_address",
             "port",
             "test_count",
