@@ -1,6 +1,43 @@
-APP_VERSION = "0.14.1"
+APP_VERSION = "0.14.2"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.14.2",
+        "date": "2026-07-26",
+        "title": "Operator workspace dashboard",
+        "summary": (
+            "Refocuses the dashboard into a calmer daily workspace for "
+            "launching permitted tools, spotting work that needs attention, "
+            "and reviewing recent activity without making team scores the "
+            "center of the experience."
+        ),
+        "groups": (
+            {
+                "title": "A clearer daily starting point",
+                "items": (
+                    "Replaces the former command-center presentation with a compact operator workspace organized around quick launch, workspace health, and recent work.",
+                    "Adds permission-aware dashboard search and a four-card quick launch that uses the current operator's Favorites first, then offers common diagnostics when no Favorites are set.",
+                    "Summarizes the current operator's persistent live tools plus administrator-visible automation state and selected-range activity in one restrained status strip.",
+                ),
+            },
+            {
+                "title": "Activity without the leaderboard feel",
+                "items": (
+                    "Pairs a readable recent-activity timeline with a four-metric snapshot so the most useful operational context remains visible without presenting the full counter wall up front.",
+                    "Keeps every existing metric, reset control, time range, and administrator-managed drag-and-drop layout in an expandable All activity metrics section.",
+                    "Moves team comparison into an optional collapsed section that appears only when multiple operators or contributors make it relevant.",
+                ),
+            },
+            {
+                "title": "Responsive, compatible polish",
+                "items": (
+                    "Adds cohesive light and dark styling across desktop, narrow, and phone layouts, improves activity timestamps, and lets workspace status open the persistent live-tools tray directly.",
+                    "Preserves permission filtering, personal Favorites, activity attribution, custom ranges, metric visibility, ranking choices, and existing dashboard backup behavior.",
+                    "Introduces no application-database schema, dependency, profile, configuration, command-line, or automation migration and remains a direct upgrade from v0.14.1.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.14.1",
         "date": "2026-07-26",
