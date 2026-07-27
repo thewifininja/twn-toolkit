@@ -39,8 +39,8 @@
   upgrade from v0.14.3.
 - [x] iPerf3 feature PR #80 passed complete feature-branch CI before being
   squash-merged into `main`.
-- [x] `APP_VERSION`, README, built-in Help, structured release notes, tests,
-  and continuity guidance describe the v0.14.4 behavior.
+- [x] `APP_VERSION`, README, Quick Start, built-in Help, structured release
+  notes, tests, and continuity guidance describe the v0.14.4 behavior.
 - [x] Build the v0.14.4 bundle from release-preparation source and verify its
   internal manifest and external SHA-256 checksum.
 - [x] Pass the complete local pytest suite and release-specific metadata tests.

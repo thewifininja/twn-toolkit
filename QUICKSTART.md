@@ -12,12 +12,14 @@ the full field guide and release notes.
 - Network access from the toolkit host to the systems being tested
 - A modern browser
 
-Optional workflows need their own remote permissions:
+Optional workflows need their own system commands or remote permissions:
 
 - FortiGate workflows use a REST API administrator and token.
 - FortiAuthenticator workflows use an administrator with **Web service
   access** and its Web Service API Access Key.
 - PEAP/MSCHAPv2 and EAP-TLS tests require `eapol_test`.
+- iPerf3 client and server tests require an existing system `iperf3` command;
+  the toolkit does not install it.
 - DHCP Discover and Packet Replay may require elevated network permissions.
 
 ## Install or upgrade
@@ -121,8 +123,8 @@ The other Network Tools follow the same category layout shown in the sidebar:
 - **Multi-Host Tools:** Ping, Multi-SSH, Multi-Transfer, and TCP Port Scanner
 - **Services & Protocols:** RADIUS, certificate inspection and AD CS enrollment,
   SNMP, Wake-on-LAN, Webhook/API, and Syslog
-- **Traffic & Interfaces:** Packet Capture, Wi-Fi/LAN Speed Test, DHCP Discover,
-  and Packet Replay
+- **Traffic & Interfaces:** Packet Capture, Wi-Fi/LAN Speed Test, iPerf3 Tester,
+  DHCP Discover, and Packet Replay
 
 Packet Capture includes a floating, minimizable header viewer for live
 captures. Auto-scroll follows incoming packets by default. Local Datastore adds
