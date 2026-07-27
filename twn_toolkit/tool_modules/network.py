@@ -185,8 +185,8 @@ def register_tools(registry: ToolRegistry) -> None:
             ),
             ToolLink(
                 "tools.dns_response",
-                "DNS Lookup Tester",
-                "Compare DNS answers and lookup latency across multiple resolvers.",
+                "DNS Tester",
+                "Compare DNS answers and latency or run a controlled resolver load test.",
                 "tools.dns_response",
                 "network",
                 "Network Tools",

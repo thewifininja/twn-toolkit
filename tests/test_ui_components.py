@@ -262,6 +262,25 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("grid-template-rows: auto auto minmax(3.6em, auto) auto;", stylesheet)
         self.assertIn("grid-template-columns: minmax(0, 1fr) auto auto;", stylesheet)
 
+    def test_dns_workspace_aligns_inputs_and_bounds_load_testing(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        template = (TEMPLATE_ROOT / "tools" / "dns_response.html").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual(template.count('class="dns-input-card"'), 2)
+        self.assertIn('class="dns-input-grid"', template)
+        self.assertIn("data-dns-load-only", template)
+        self.assertIn('name="authorized"', template)
+        self.assertIn("I am authorized to load test these DNS servers", template)
+        self.assertIn(".dns-input-card {", stylesheet)
+        self.assertIn(
+            "grid-template-rows: auto auto minmax(0, 1fr) minmax(68px, auto) auto;",
+            stylesheet,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -88,8 +88,9 @@ The sidebar and Network Tools page use the same functional organization.
   toolkit server’s public address, and the browser client’s public address.
 - **Subnet Excluder** — subtract IPv4 or IPv6 CIDRs from one or more parent
   networks.
-- **DNS Lookup Tester** — compare record values and response times across
-  multiple resolvers.
+- **DNS Tester** — compare record values and response times across multiple
+  resolvers, or run an authorization-gated, bounded load test with per-resolver
+  throughput, success rate, and latency percentiles.
 - **NTP Tester** — inspect offset, delay, jitter, stratum, reference identity,
   and synchronization health.
 - **Path MTU Tester** — find the largest unfragmented IPv4 or IPv6 ICMP packet
