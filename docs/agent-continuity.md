@@ -179,7 +179,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.14.2: durable automation claims and renewable leases,
+- Current milestone is 0.14.3: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
@@ -209,8 +209,14 @@ accepted replay frames.
   permission-aware quick launch and search lead into live-tool and automation
   status, recent work, and a four-metric snapshot. Full metrics and optional
   team comparison remain available as secondary expandable views without
-  changing existing activity data or layout persistence. This remains a
-  pre-1.0 release; broader real-world
+  changing existing activity data or layout persistence. Personal Favorites
+  can now be reordered directly through persistent pointer and keyboard drag
+  handles, and dashboard Quick launch follows the same user-specific order.
+  DNS testing now uses matched query and resolver cards, clearer comparison
+  summaries, and an explicitly authorized load-test mode with fixed rate,
+  duration, concurrency, resolver-count, and total-query caps plus aggregate
+  throughput, status, and latency-percentile reporting. This remains a pre-1.0
+  release; broader real-world
   upgrade history, packaging, and an explicit supported 1.0 compatibility
   contract still need deliberate hardening. The
   0.10.1 hotfix

@@ -1,6 +1,42 @@
-APP_VERSION = "0.14.2"
+APP_VERSION = "0.14.3"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.14.3",
+        "date": "2026-07-27",
+        "title": "Ordered Favorites and DNS performance testing",
+        "summary": (
+            "Makes personal Favorites directly reorderable and rebuilds DNS "
+            "testing as a clear comparison workspace with an explicitly "
+            "authorized, bounded resolver load-test mode."
+        ),
+        "groups": (
+            {
+                "title": "Favorites in your preferred order",
+                "items": (
+                    "Adds always-available drag handles whenever two or more Favorites are visible, with automatic saving instead of a separate reorder mode or text link.",
+                    "Supports pointer dragging plus keyboard up/down arrows on the same focused handles, while keeping each star action vertically aligned with its tool label.",
+                    "Preserves user-specific and permission-filtered Favorites, safely retains temporarily hidden entries, and applies the saved order to dashboard Quick launch.",
+                ),
+            },
+            {
+                "title": "A clearer DNS testing workspace",
+                "items": (
+                    "Reorganizes DNS testing into matched query and resolver cards plus a full-width run configuration, eliminating the mismatched fields and action rows from the earlier page.",
+                    "Keeps multi-resolver answer comparison while adding at-a-glance query, success, average-response, and slowest-response summaries before the detailed result table.",
+                    "Moves saved-list management into compact expandable controls and carries profile selections, validation messages, and submitted values cleanly across each workflow.",
+                ),
+            },
+            {
+                "title": "Bounded DNS load diagnostics",
+                "items": (
+                    "Adds an authorization-gated load-test mode with per-resolver target rate, duration, global concurrency, and a live total-query estimate.",
+                    "Caps each run at 500 QPS per resolver, 30 seconds, five resolvers, 100 concurrent queries, and 50,000 planned queries; saturated runs stop submitting at the requested deadline rather than creating a catch-up burst.",
+                    "Reports achieved throughput, success rate, response statuses, and successful-query average, p50, p95, p99, and maximum latency without introducing an application-database, dependency, profile, configuration, command-line, or automation migration.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.14.2",
         "date": "2026-07-26",
