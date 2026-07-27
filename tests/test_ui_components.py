@@ -116,6 +116,18 @@ class UIComponentTests(unittest.TestCase):
         )[0]
         self.assertNotIn("overflow-wrap: anywhere;", dashboard_stat_rule)
 
+    def test_dashboard_quick_launch_favorite_is_vertically_centered(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        favorite_form_rule = stylesheet.split(".workspace-tool-card form {", 1)[
+            1
+        ].split("}", 1)[0]
+        self.assertIn("top: 50%;", favorite_form_rule)
+        self.assertIn("transform: translateY(-50%);", favorite_form_rule)
+        self.assertNotIn("top: 8px;", favorite_form_rule)
+
     def test_automation_threshold_rows_share_aligned_label_space(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
