@@ -1,6 +1,42 @@
-APP_VERSION = "0.14.3"
+APP_VERSION = "0.14.4"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.14.4",
+        "date": "2026-07-27",
+        "title": "iPerf3 diagnostics and supervised listeners",
+        "summary": (
+            "Adds bounded iPerf3 client testing plus a supervised background "
+            "listener that survives navigation and toolkit restarts while "
+            "collecting private, detailed results from sequential clients."
+        ),
+        "groups": (
+            {
+                "title": "Flexible, bounded client diagnostics",
+                "items": (
+                    "Adds authorization-confirmed TCP and UDP client tests using only an iPerf3 binary already installed on the toolkit host; the toolkit never installs the dependency.",
+                    "Supports forward or reverse direction, IPv4 or IPv6 selection, an optional source address, as many as 20 parallel streams, and an explicit bounded UDP target rate.",
+                    "Caps each client run at 60 seconds and presents normalized connection, throughput, transfer, retransmit or loss/jitter, interval, CPU, command, and bounded raw-JSON details.",
+                ),
+            },
+            {
+                "title": "A supervised background listener",
+                "items": (
+                    "Replaces one-shot server behavior with explicit On/Off management for a listener that accepts multiple sequential tests independently of the page.",
+                    "Shows the owner’s active listener and completed-test count in Live tools, dashboard status, system diagnostics, toolkit status, and managed logs.",
+                    "Restores enabled listeners after toolkit restarts and safely verifies and removes exact recorded worker or native iPerf3 processes before recovering from a crash or legacy orphan.",
+                ),
+            },
+            {
+                "title": "Private retained server results",
+                "items": (
+                    "Retains the newest 50 completed server tests per user as collapsed source-address cards with expandable endpoints, sender and receiver metrics, intervals, CPU use, and bounded full JSON.",
+                    "Rejects busy bind addresses or ports synchronously, limits listener ports to 1024–65535, permits one managed listener per user, and caps each accepted server test at ten minutes.",
+                    "Adds an owner-only iPerf3 SQLite database on first use without changing existing application databases, dependencies, profiles, configuration, or automation data, and supports direct upgrade from v0.14.3.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.14.3",
         "date": "2026-07-27",
