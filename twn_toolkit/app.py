@@ -855,6 +855,31 @@ def create_app(instance_path: str | None = None) -> Flask:
         auth_store.toggle_favorite_tool(g.current_user["id"], tool_id)
         return redirect(_validated_next_url(request.form.get("next", "")))
 
+    @app.post("/favorites/order")
+    def reorder_tool_favorites():
+        current_ids = auth_store.favorite_tool_ids(g.current_user["id"])
+        visible_ids = [
+            tool.id
+            for tool in favorite_tools(
+                current_ids,
+                is_admin=bool(g.current_user.get("is_admin")),
+                allowed_tool_ids=getattr(g, "allowed_tool_ids", None),
+            )
+        ]
+        ordered_ids = [
+            tool_id.strip()
+            for tool_id in request.form.get("order", "").split(",")
+            if tool_id.strip()
+        ]
+        if len(ordered_ids) != len(set(ordered_ids)):
+            abort(400)
+        if set(ordered_ids) != set(visible_ids):
+            abort(400)
+        auth_store.reorder_favorite_tools(g.current_user["id"], ordered_ids)
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return "", 204
+        return redirect(_validated_next_url(request.form.get("next", "")))
+
 
     @app.get("/favicon.ico")
     def favicon():

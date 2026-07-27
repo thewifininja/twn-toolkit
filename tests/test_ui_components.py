@@ -116,6 +116,31 @@ class UIComponentTests(unittest.TestCase):
         )[0]
         self.assertNotIn("overflow-wrap: anywhere;", dashboard_stat_rule)
 
+    def test_dashboard_quick_launch_favorite_is_vertically_centered(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        favorite_form_rule = stylesheet.split(".workspace-tool-card form {", 1)[
+            1
+        ].split("}", 1)[0]
+        self.assertIn("top: 50%;", favorite_form_rule)
+        self.assertIn("transform: translateY(-50%);", favorite_form_rule)
+        self.assertNotIn("top: 8px;", favorite_form_rule)
+
+    def test_sidebar_favorite_star_and_drag_handle_are_centered(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        favorite_button_rule = stylesheet.split(".side-nav-favorite-button {", 1)[
+            1
+        ].split("}", 1)[0]
+        self.assertIn("align-items: center;", favorite_button_rule)
+        self.assertIn(".side-nav-favorite-star {", stylesheet)
+        self.assertIn(".side-nav-favorite-drag-handle {", stylesheet)
+        self.assertIn("grid-template-columns: 24px minmax(0, 1fr);", stylesheet)
+
     def test_automation_threshold_rows_share_aligned_label_space(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"

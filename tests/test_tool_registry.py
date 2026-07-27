@@ -105,6 +105,7 @@ class ToolRegistryTests(unittest.TestCase):
             "reset_activity_metric",
             "reset_activity_scoreboard",
             "reset_activity_user_score",
+            "reorder_tool_favorites",
             "settings",
             "setup",
             "static",

@@ -113,6 +113,30 @@ class AuthStore:
         self._write(data)
         return enabled
 
+    def reorder_favorite_tools(
+        self, user_id: str, ordered_tool_ids: list[str]
+    ) -> None:
+        data = self._read()
+        user = _find_user(data, user_id)
+        favorites = list(
+            dict.fromkeys(
+                str(item)
+                for item in user.get("favorite_tools", [])
+                if isinstance(item, str)
+            )
+        )
+        ordered = [str(tool_id).strip() for tool_id in ordered_tool_ids]
+        if any(not tool_id for tool_id in ordered):
+            raise ValueError("Favorite order contains an empty tool.")
+        if len(ordered) != len(set(ordered)):
+            raise ValueError("Favorite order contains a duplicate tool.")
+        if any(tool_id not in favorites for tool_id in ordered):
+            raise ValueError("Favorite order contains an unknown tool.")
+        user["favorite_tools"] = ordered + [
+            tool_id for tool_id in favorites if tool_id not in ordered
+        ]
+        self._write(data)
+
     def update_password(self, user_id: str, password: str) -> None:
         validate_password(password, self.password_policy())
         data = self._read()

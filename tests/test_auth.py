@@ -337,6 +337,24 @@ def test_same_origin_fetch_metadata_allows_login_through_a_host_alias(tmp_path):
     assert response.headers["Location"].endswith("/")
 
 
+def test_favorite_reordering_preserves_unsubmitted_favorites(tmp_path):
+    store = AuthStore(str(tmp_path))
+    user = store.create_user("admin", "correct horse battery staple")
+    store.toggle_favorite_tool(user["id"], "tools.ping")
+    store.toggle_favorite_tool(user["id"], "tools.dns_response")
+    store.toggle_favorite_tool(user["id"], "tools.packet_capture")
+
+    store.reorder_favorite_tools(
+        user["id"], ["tools.packet_capture", "tools.ping"]
+    )
+
+    assert store.favorite_tool_ids(user["id"]) == [
+        "tools.packet_capture",
+        "tools.ping",
+        "tools.dns_response",
+    ]
+
+
 def test_same_origin_mutations_and_security_headers_are_preserved(tmp_path):
     app = create_app(str(tmp_path))
     app.config["TESTING"] = True

@@ -339,6 +339,92 @@ class HomePageTests(unittest.TestCase):
         self.assertNotIn("tools.packet_replay", updated_user["favorite_tools"])
         self.assertIn(b"Add Packet Replay to favorites", updated_page.data)
 
+    def test_user_can_reorder_favorites_for_sidebar_and_quick_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+            for tool_id in (
+                "tools.ping",
+                "tools.dns_response",
+                "tools.packet_capture",
+            ):
+                client.post(f"/favorites/tools/{tool_id}", data={"next": "/"})
+
+            response = client.post(
+                "/favorites/order",
+                data={
+                    "order": (
+                        "tools.packet_capture,tools.ping,tools.dns_response"
+                    ),
+                    "next": "/",
+                },
+            )
+            user = AuthStore(instance).get_user("admin")
+            page = client.get("/")
+            invalid = client.post(
+                "/favorites/order",
+                data={"order": "tools.ping", "next": "/"},
+            )
+            autosaved = client.post(
+                "/favorites/order",
+                data={
+                    "order": (
+                        "tools.packet_capture,tools.ping,tools.dns_response"
+                    ),
+                    "next": "/",
+                },
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
+            script = client.get("/static/favorites-order.js")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            user["favorite_tools"],
+            ["tools.packet_capture", "tools.ping", "tools.dns_response"],
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(autosaved.status_code, 204)
+        self.assertNotIn(b">Reorder</button>", page.data)
+        self.assertNotIn(b"data-favorites-editor", page.data)
+        self.assertIn(b"data-favorites-reorder", page.data)
+        self.assertIn(b'data-favorites-order-form', page.data)
+        favorites_html = page.data.split(b"data-favorites-list", 1)[1].split(
+            b"</ul>", 1
+        )[0]
+        self.assertIn(b'draggable="true"', favorites_html)
+        self.assertIn(
+            b"Reorder Packet Capture; use Up and Down arrow keys",
+            favorites_html,
+        )
+        self.assertLess(
+            favorites_html.index(b"Packet Capture"),
+            favorites_html.index(b"Multi-Host Ping"),
+        )
+        self.assertLess(
+            favorites_html.index(b"Multi-Host Ping"),
+            favorites_html.index(b"DNS Lookup Tester"),
+        )
+        quick_launch_html = page.data.split(b"workspace-quick-grid", 1)[1].split(
+            b"</div>", 1
+        )[0]
+        self.assertLess(
+            quick_launch_html.index(b"Packet Capture"),
+            quick_launch_html.index(b"Multi-Host Ping"),
+        )
+        self.assertEqual(script.status_code, 200)
+        self.assertIn(b"ArrowDown", script.data)
+        self.assertIn(b"fetch(form.action", script.data)
+        self.assertIn(b"DOMParser", script.data)
+        self.assertNotIn(b"setEditing", script.data)
+
     def test_dashboard_surfaces_live_tool_attention(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
