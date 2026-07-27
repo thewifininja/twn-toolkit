@@ -158,7 +158,7 @@ class AccessProfileTests(unittest.TestCase):
             self.assertIn(b'href="/fortigate"', home.data)
             self.assertNotIn(b'href="/fortiauthenticator"', home.data)
             self.assertNotIn(b'href="/tools/"', home.data)
-            self.assertIn(b"Command center", home.data)
+            self.assertIn(b"Operator workspace", home.data)
             self.assertNotIn(b'/favorites/tools/fortigate.home', home.data)
             self.assertEqual(fortigate.status_code, 200)
             self.assertIn(b"Find Wireless Client History", fortigate.data)

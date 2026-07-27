@@ -23,7 +23,7 @@ Current release: **v0.14.1**
 
 ## Navigation at a glance
 
-- **Dashboard** — metrics, activity, scoreboard, Favorites, and widget layout
+- **Dashboard** — quick launch, workspace status, recent activity, and metrics
 - **Fortinet Tools**
   - FortiGate, FortiAP, and FortiSwitch workflows
   - FortiAuthenticator workflows
@@ -42,14 +42,16 @@ Current release: **v0.14.1**
 
 ### Dashboard
 
-The landing page is an operational dashboard rather than a directory of links.
-It provides:
+The landing page is an operator workspace organized around three questions:
+what can I run, what needs attention, and what happened recently. It provides:
 
-- time-filtered counters for pings, DNS, SNMP, API calls, traceroutes, speed
-  tests, Syslog, and other toolkit activity;
-- recent activity and a per-user scoreboard;
-- administrator-managed widget visibility and drag-and-drop ordering; and
-- personal Favorites and compact tool search in the persistent sidebar.
+- dashboard search plus quick launch cards drawn from personal Favorites or
+  common diagnostics;
+- at-a-glance live-monitoring, automation, and activity status;
+- recent activity and a four-metric snapshot for the selected time range;
+- an expandable full metrics view with administrator-managed widget visibility
+  and drag-and-drop ordering; and
+- an optional team activity view when more than one operator contributes.
 
 Dashboard layout can be included in profile backups. Activity history and
 counters are intentionally excluded.

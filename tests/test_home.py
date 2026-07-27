@@ -7,6 +7,7 @@ from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.dashboard_layout import DashboardLayoutStore
+from twn_toolkit.live_tools import LiveToolStore
 from twn_toolkit.version import RELEASE_NOTES
 
 
@@ -34,12 +35,16 @@ class HomePageTests(unittest.TestCase):
             response = client.get("/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Command center", response.data)
-        self.assertIn(b"A live-ish pulse", response.data)
-        self.assertIn(b"System administrator", response.data)
+        self.assertIn(b"Operator workspace", response.data)
+        self.assertIn(b"Ready when you are, admin", response.data)
+        self.assertIn(b"Quick launch", response.data)
+        self.assertIn(b'id="dashboard-tool-search-input"', response.data)
+        self.assertIn(b"Everything looks clear", response.data)
+        self.assertIn(b"Activity snapshot", response.data)
+        self.assertIn(b"All activity metrics", response.data)
         self.assertIn(b"Recent activity", response.data)
         self.assertIn(b"Favorites", response.data)
-        self.assertIn(b"User scoreboard", response.data)
+        self.assertNotIn(b"Team activity", response.data)
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
@@ -66,6 +71,7 @@ class HomePageTests(unittest.TestCase):
         self.assertEqual(sidebar_script.status_code, 200)
         self.assertIn(b'category === "Favorites"', sidebar_script.data)
         self.assertIn(b'scroll.classList.toggle("searching"', sidebar_script.data)
+        self.assertIn(b"renderDashboardSearch", sidebar_script.data)
         sidebar_script.close()
 
     def test_help_page_renders_user_guidance(self) -> None:
@@ -93,7 +99,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"./twn recover", response.data)
         self.assertIn(b"./twn fix-permissions", response.data)
         self.assertIn(b"updater metadata ownership", response.data)
-        self.assertIn(b"Dashboard and metrics", response.data)
+        self.assertIn(b"Dashboard and activity", response.data)
         self.assertIn(b"Operators can use every tool granted", response.data)
         self.assertIn(b"audit trail is role-neutral", response.data)
         self.assertIn(b"saved-profile and credential lifecycle", response.data)
@@ -333,6 +339,41 @@ class HomePageTests(unittest.TestCase):
         self.assertNotIn("tools.packet_replay", updated_user["favorite_tools"])
         self.assertIn(b"Add Packet Replay to favorites", updated_page.data)
 
+    def test_dashboard_surfaces_live_tool_attention(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+            user = AuthStore(instance).get_user("admin")
+            live_store = LiveToolStore(instance)
+            live_session = live_store.create_ping_session(
+                user_id=user["id"],
+                username=user["username"],
+                title="Branch reachability",
+                targets=[{"host": "192.0.2.1", "label": "Branch"}],
+                interval=2,
+                timeout=1,
+            )
+            live_store.record_error(
+                live_session["id"],
+                revision=live_session["revision"],
+                message="The branch stopped responding.",
+            )
+
+            page = client.get("/")
+
+        self.assertIn(b"1 item needs attention", page.data)
+        self.assertIn(b"1 active", page.data)
+        self.assertIn(b"1 stopped with an error", page.data)
+        self.assertIn(b"data-open-live-tools", page.data)
+
     def test_dashboard_renders_activity_and_admin_can_reset_metric(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
@@ -364,9 +405,8 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"5 probes sent", page.data)
         self.assertIn(b"admin", page.data)
         self.assertIn(b"1 action", page.data)
-        self.assertIn(b"Rank by", page.data)
-        self.assertIn(b"Ping probes sent", page.data)
-        self.assertIn(b"5 sent", page.data)
+        self.assertIn(b"<strong>5</strong>", page.data)
+        self.assertIn(b"<span>sent</span>", page.data)
         self.assertIn(b"4 replies", page.data)
         self.assertEqual(reset.status_code, 302)
         self.assertIn(b">0</span>", reset_page.data)
@@ -414,9 +454,9 @@ class HomePageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(saved["hidden"], [metric_ids[0]])
         self.assertEqual(saved["order"][-1], metric_ids[0])
-        self.assertIn(b"Edit dashboard", page.data)
+        self.assertIn(b"Customize activity", page.data)
         self.assertIn(b"Save layout", page.data)
-        self.assertIn(b"Hidden widgets", page.data)
+        self.assertIn(b"Hidden metrics", page.data)
         self.assertIn(
             f'data-widget-id="{metric_ids[0]}" data-widget-hidden="true" hidden'.encode(),
             page.data,
@@ -424,7 +464,7 @@ class HomePageTests(unittest.TestCase):
         self.assertNotIn(
             f'data-widget-id="{metric_ids[0]}"'.encode(), operator_page.data
         )
-        self.assertNotIn(b"Edit dashboard", operator_page.data)
+        self.assertNotIn(b"Customize activity", operator_page.data)
         self.assertEqual(forbidden.status_code, 403)
 
     def test_dashboard_layout_store_appends_new_widgets_and_reset_restores_defaults(self) -> None:
@@ -510,7 +550,8 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"admin", after_one.data)
         self.assertNotIn(b"tech</strong>", after_one.data)
         self.assertEqual(clear_all.status_code, 302)
-        self.assertIn(b"No user activity yet", after_all.data)
+        self.assertNotIn(b"Team activity", after_all.data)
+        self.assertNotIn(b'class="scoreboard-entry"', after_all.data)
 
     def test_dashboard_recent_activity_display_is_capped(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -530,7 +571,8 @@ class HomePageTests(unittest.TestCase):
 
             page = client.get("/")
 
-        self.assertIn(b"Showing the latest 8 of 10 events from lifetime", page.data)
+        self.assertIn(b"Latest 8 of 10", page.data)
+        self.assertIn(b"events from lifetime", page.data)
         self.assertIn(b"Activity 9", page.data)
         self.assertIn(b"Activity 2", page.data)
         self.assertNotIn(b"Activity 1", page.data)
@@ -561,8 +603,10 @@ class HomePageTests(unittest.TestCase):
             )
 
         self.assertIn(b'<option value="hour" selected', page.data)
-        self.assertIn(b'name="activity_window" value="hour"', page.data)
-        self.assertIn(b"Metrics, scoreboard, and recent activity", page.data)
+        self.assertIn(
+            b'name="scoreboard_rank" value="ping.probes_sent"', page.data
+        )
+        self.assertIn(b"Your first four visible metrics for last hour", page.data)
 
     def test_dashboard_custom_range_renders_and_is_preserved_for_ranking(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

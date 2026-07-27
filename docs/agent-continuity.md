@@ -41,7 +41,10 @@ precedent.
 
 ## Product direction
 
-- The home page is an operational dashboard, not a launch grid.
+- The home page is an operator workspace, not a launch grid or a gamification
+  surface. Its primary hierarchy is quick launch, items needing attention, and
+  recent activity. Full metrics and team comparison are secondary expandable
+  views.
 - Tools live in the persistent left navigation. Favorites are user-specific and
   appear there as well.
 - Fortinet leaf workflows remain on the FortiGate and FortiAuthenticator pages;
@@ -76,6 +79,12 @@ precedent.
   lifetime presets plus a user-selected custom local start/end range. The
   selected interval applies consistently to metric cards, the scoreboard, and
   recent activity, and must survive scoreboard rank changes.
+- Quick launch uses the current user's permitted Favorites first and fills any
+  remaining slots from a short list of common diagnostics. Dashboard search
+  must use the same permission-filtered destination set as sidebar search.
+- Workspace status summarizes the current user's live-tool sessions and, for
+  administrators, enabled automation health. Team activity stays collapsed and
+  is omitted entirely when there is only one operator and contributor.
 - Raw metrics represent work performed: probes, replies, API calls, frames,
   queries, and similar units.
 - The activity score represents a deliberate user-initiated execution. Helper
