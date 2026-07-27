@@ -48,7 +48,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
-        self.assertIn(b"v0.14.3", response.data)
+        self.assertIn(b"v0.14.4", response.data)
         self.assertIn(b'href="/help"', response.data)
         self.assertIn(b'<header class="topbar with-sidebar">', response.data)
         self.assertIn(b'id="side-nav-search-input"', response.data)
@@ -108,7 +108,11 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Updates &amp; Recovery", response.data)
         self.assertIn(b"./twn upgrade", response.data)
         self.assertIn(b"never runs older code against post-upgrade data", response.data)
-        self.assertIn(b"v0.14.3", response.data)
+        self.assertIn(b"v0.14.4", response.data)
+        self.assertIn(
+            b"iPerf3 diagnostics and supervised listeners",
+            response.data,
+        )
         self.assertIn(
             b"Ordered Favorites and DNS performance testing",
             response.data,

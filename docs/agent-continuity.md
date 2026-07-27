@@ -189,7 +189,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.14.3: durable automation claims and renewable leases,
+- Current milestone is 0.14.4: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
@@ -225,8 +225,13 @@ accepted replay frames.
   DNS testing now uses matched query and resolver cards, clearer comparison
   summaries, and an explicitly authorized load-test mode with fixed rate,
   duration, concurrency, resolver-count, and total-query caps plus aggregate
-  throughput, status, and latency-percentile reporting. This remains a pre-1.0
-  release; broader real-world
+  throughput, status, and latency-percentile reporting. iPerf3 diagnostics use
+  only an existing system binary and now include bounded client tests plus an
+  authorization-gated, supervised On/Off listener. Enabled listeners resume
+  with the toolkit, surface in the owner’s dashboard and Live tools tray, clean
+  up exact recorded orphan processes before crash recovery, and retain the
+  newest 50 private server results in an owner-only SQLite database. This
+  remains a pre-1.0 release; broader real-world
   upgrade history, packaging, and an explicit supported 1.0 compatibility
   contract still need deliberate hardening. The
   0.10.1 hotfix
