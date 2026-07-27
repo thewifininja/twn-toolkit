@@ -255,7 +255,7 @@ def test_admin_can_create_custom_access_profile_and_assign_to_user(tmp_path):
     assert client.get("/tools/dns-response").status_code == 403
     home = client.get("/")
     assert b"Multi-Host Ping" in home.data
-    assert b"DNS Lookup Tester" not in home.data
+    assert b"DNS Tester" not in home.data
 
 
 def test_access_profile_can_grant_high_risk_tool_without_admin_status(tmp_path):

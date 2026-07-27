@@ -2,16 +2,57 @@
 {% from "components/ui.html" import host_range_guidance %}
 
 {% block content %}
-<section class="panel tool-panel">
-  <div class="panel-head">
-    <h1>DNS Lookup Tester</h1>
-    <p>Query each hostname through every selected resolver and compare answers and lookup latency.</p>
-  </div>
+<section class="panel dns-workspace-panel">
+  <header class="panel-head dns-workspace-head">
+    <div>
+      <span class="eyebrow">Resolution workspace</span>
+      <h1>DNS Tester</h1>
+      <p>Compare answers and latency across resolvers, or apply a controlled query load to DNS servers you are authorized to test.</p>
+    </div>
+    <span class="dns-workspace-badge">Compare · Load test</span>
+  </header>
+
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form" method="post" id="dns-form" data-loading-message="Running DNS tests…">
-    <div class="grid two">
-      <div class="form">
-        <label>Host profile
+
+  <form
+    class="dns-workspace-form"
+    method="post"
+    id="dns-form"
+    data-dns-max-load-queries="{{ load_limits.queries }}"
+    data-dns-max-load-servers="{{ load_limits.servers }}"
+    data-loading-message="{{ 'Running controlled DNS load test…' if form.mode == 'load' else 'Comparing DNS responses…' }}"
+  >
+    <fieldset class="dns-mode-picker">
+      <legend class="sr-only">DNS test mode</legend>
+      <label class="dns-mode-option">
+        <input type="radio" name="mode" value="compare" {% if form.mode != "load" %}checked{% endif %}>
+        <span>
+          <strong>Compare answers</strong>
+          <small>Query every name through every resolver and inspect differences.</small>
+        </span>
+      </label>
+      <label class="dns-mode-option">
+        <input type="radio" name="mode" value="load" {% if form.mode == "load" %}checked{% endif %}>
+        <span>
+          <strong>Load test</strong>
+          <small>Send an evenly paced, bounded query load and measure capacity.</small>
+        </span>
+      </label>
+    </fieldset>
+
+    <div class="dns-input-grid">
+      <article class="dns-input-card">
+        <header>
+          <div>
+            <span class="eyebrow">Step 1</span>
+            <h2>Query names</h2>
+            <p>Names are distributed across every selected resolver.</p>
+          </div>
+          <span class="dns-card-limit">Up to 100</span>
+        </header>
+
+        <label class="dns-profile-picker">
+          <span>Saved query list</span>
           <select class="dns-profile-select" data-kind="hosts">
             <option value="">New / unsaved list</option>
             {% for profile in host_profiles %}
@@ -19,18 +60,36 @@
             {% endfor %}
           </select>
         </label>
-        <label>Hosts
-          <textarea name="hosts" id="dns-hosts" rows="7" placeholder="Website = example.com&#10;Gateways = 192.0.2.1-192.0.2.4&#10;gateway.example.net" required>{{ form.hosts }}</textarea>
+
+        <label class="dns-source-field">
+          <span>Hostnames, addresses, or ranges</span>
+          <textarea name="hosts" id="dns-hosts" rows="8" placeholder="Website = example.com&#10;Gateways = 192.0.2.1-192.0.2.4&#10;gateway.example.net" required>{{ form.hosts }}</textarea>
         </label>
-        <span class="field-note">{{ host_range_guidance(100, 'hosts') }}</span>
-        <div class="button-row">
-          <input class="profile-name-input" data-kind="hosts" placeholder="Host profile name" maxlength="100">
-          <button class="secondary dns-save-profile" data-kind="hosts" type="button">Save hosts</button>
-          <button class="danger dns-delete-profile" data-kind="hosts" type="button">Delete</button>
-        </div>
-      </div>
-      <div class="form">
-        <label>DNS server profile
+
+        <p class="field-note dns-card-note">{{ host_range_guidance(100, 'hosts') }}</p>
+
+        <details class="dns-profile-manager">
+          <summary>Save or manage query profiles</summary>
+          <div class="dns-profile-actions">
+            <input class="profile-name-input" data-kind="hosts" aria-label="Query profile name" placeholder="Query profile name" maxlength="100">
+            <button class="secondary dns-save-profile" data-kind="hosts" type="button">Save profile</button>
+            <button class="danger dns-delete-profile" data-kind="hosts" type="button" disabled>Delete</button>
+          </div>
+        </details>
+      </article>
+
+      <article class="dns-input-card">
+        <header>
+          <div>
+            <span class="eyebrow">Step 2</span>
+            <h2>Resolvers</h2>
+            <p>Use IP addresses so each query follows the intended path.</p>
+          </div>
+          <span class="dns-card-limit">20 compare · {{ load_limits.servers }} load</span>
+        </header>
+
+        <label class="dns-profile-picker">
+          <span>Saved resolver list</span>
           <select class="dns-profile-select" data-kind="servers">
             <option value="">New / unsaved list</option>
             {% for profile in server_profiles %}
@@ -38,42 +97,107 @@
             {% endfor %}
           </select>
         </label>
-        <label>DNS servers
-          <textarea name="servers" id="dns-servers" rows="7" placeholder="Cloudflare = 1.1.1.1&#10;Google = 8.8.8.8" required>{{ form.servers }}</textarea>
+
+        <label class="dns-source-field">
+          <span>DNS server addresses</span>
+          <textarea name="servers" id="dns-servers" rows="8" placeholder="Cloudflare = 1.1.1.1&#10;Google = 8.8.8.8" required>{{ form.servers }}</textarea>
         </label>
-        <span class="field-note">IPv4 or IPv6 addresses only. Optional labels use <code>Name = address</code>.</span>
-        <div class="button-row">
-          <input class="profile-name-input" data-kind="servers" placeholder="Server profile name" maxlength="100">
-          <button class="secondary dns-save-profile" data-kind="servers" type="button">Save servers</button>
-          <button class="danger dns-delete-profile" data-kind="servers" type="button">Delete</button>
+
+        <p class="field-note dns-card-note">Enter one IPv4 or IPv6 address per line. Optional labels use <code>Name = address</code>.</p>
+
+        <details class="dns-profile-manager">
+          <summary>Save or manage resolver profiles</summary>
+          <div class="dns-profile-actions">
+            <input class="profile-name-input" data-kind="servers" aria-label="Resolver profile name" placeholder="Resolver profile name" maxlength="100">
+            <button class="secondary dns-save-profile" data-kind="servers" type="button">Save profile</button>
+            <button class="danger dns-delete-profile" data-kind="servers" type="button" disabled>Delete</button>
+          </div>
+        </details>
+      </article>
+    </div>
+
+    <section class="dns-run-card" aria-labelledby="dns-run-title">
+      <header>
+        <div>
+          <span class="eyebrow">Step 3</span>
+          <h2 id="dns-run-title">Run configuration</h2>
+          <p data-dns-mode-description>Choose the record type and how long each lookup may wait.</p>
         </div>
+        <span class="dns-run-mode" data-dns-mode-label>Comparison</span>
+      </header>
+
+      <div class="dns-run-options">
+        <label>Record type
+          <select name="record_type">
+            {% for type in ("A", "AAAA", "CNAME", "MX", "NS", "PTR", "TXT") %}
+              <option value="{{ type }}" {% if form.record_type == type %}selected{% endif %}>{{ type }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Timeout
+          <span class="dns-input-with-unit">
+            <input name="timeout" type="number" min="0.2" max="30" step="0.1" value="{{ form.timeout }}" required>
+            <span>seconds</span>
+          </span>
+        </label>
+        <label data-dns-load-only {% if form.mode != "load" %}hidden{% endif %}>Duration
+          <span class="dns-input-with-unit">
+            <input name="duration" type="number" min="1" max="{{ load_limits.duration }}" step="1" value="{{ form.duration }}" required>
+            <span>seconds</span>
+          </span>
+        </label>
+        <label data-dns-load-only {% if form.mode != "load" %}hidden{% endif %}>Rate per resolver
+          <span class="dns-input-with-unit">
+            <input name="qps" type="number" min="1" max="{{ load_limits.qps }}" step="1" value="{{ form.qps }}" required>
+            <span>QPS</span>
+          </span>
+        </label>
+        <label data-dns-load-only {% if form.mode != "load" %}hidden{% endif %}>Concurrency
+          <input name="concurrency" type="number" min="1" max="{{ load_limits.concurrency }}" step="1" value="{{ form.concurrency }}" required>
+        </label>
       </div>
-    </div>
-    <div class="dns-options">
-      <label>Record type
-        <select name="record_type">
-          {% for type in ("A", "AAAA", "CNAME", "MX", "NS", "PTR", "TXT") %}
-            <option value="{{ type }}" {% if form.record_type == type %}selected{% endif %}>{{ type }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Timeout (seconds)
-        <input name="timeout" type="number" min="0.2" max="30" step="0.1" value="{{ form.timeout }}">
-      </label>
-    </div>
-    <div class="button-row">
-      <button type="submit">Run DNS tests</button>
-    </div>
-    <span class="tool-status" id="dns-profile-status"></span>
+
+      <div class="dns-load-safety" data-dns-load-only {% if form.mode != "load" %}hidden{% endif %}>
+        <div>
+          <strong>Controlled and bounded</strong>
+          <p>Up to {{ load_limits.qps }} QPS per resolver for {{ load_limits.duration }} seconds, {{ load_limits.servers }} resolvers, and {{ "{:,}".format(load_limits.queries) }} total queries. The achieved rate may be lower when responses are slow.</p>
+        </div>
+        <label class="check">
+          <input name="authorized" type="checkbox" {% if form.authorized == "on" %}checked{% endif %}>
+          <span>
+            <strong>I am authorized to load test these DNS servers.</strong>
+            <small>Use this only on infrastructure you own or have explicit permission to test.</small>
+          </span>
+        </label>
+        <p class="dns-load-estimate" data-dns-load-estimate>Enter resolvers, duration, and rate to estimate the query count.</p>
+      </div>
+
+      <footer class="dns-run-footer">
+        <span class="tool-status" id="dns-profile-status" role="status" aria-live="polite"></span>
+        <button type="submit" data-dns-submit>Run comparison</button>
+      </footer>
+    </section>
   </form>
 </section>
 
 {% if results is not none %}
-<section class="panel tool-panel">
-  <div class="panel-head"><h2>{{ results|length }} lookup results</h2></div>
+<section class="panel dns-results-panel">
+  <header class="panel-head dns-results-head">
+    <div>
+      <span class="eyebrow">Comparison complete</span>
+      <h2>{{ results|length }} lookup result{{ '' if results|length == 1 else 's' }}</h2>
+      <p>Review resolver paths, returned answers, and response time.</p>
+    </div>
+  </header>
+  <div class="dns-result-summary">
+    <article><span>Queries</span><strong>{{ lookup_summary.queries }}</strong><small>{{ lookup_summary.failed }} failed</small></article>
+    <article><span>Success rate</span><strong>{{ ((lookup_summary.successful / lookup_summary.queries * 100)|round(1)) if lookup_summary.queries else 0 }}%</strong><small>{{ lookup_summary.successful }} successful</small></article>
+    <article><span>Average response</span><strong>{{ lookup_summary.average_ms if lookup_summary.average_ms is not none else '—' }}{% if lookup_summary.average_ms is not none %} ms{% endif %}</strong><small>Successful lookups</small></article>
+    <article><span>Slowest response</span><strong>{{ lookup_summary.slowest_ms if lookup_summary.slowest_ms is not none else '—' }}{% if lookup_summary.slowest_ms is not none %} ms{% endif %}</strong><small>Successful lookups</small></article>
+  </div>
   <div class="preview-table-wrap">
     <table>
-      <thead><tr><th>Host</th><th>DNS server</th><th>Type</th><th>Status</th><th>Answers</th><th>Response</th></tr></thead>
+      <thead><tr><th>Query</th><th>Resolver</th><th>Type</th><th>Status</th><th>Answers</th><th>Response</th></tr></thead>
       <tbody>
         {% for result in results %}
         <tr>
@@ -90,5 +214,52 @@
   </div>
 </section>
 {% endif %}
-<script src="{{ url_for('static', filename='dns-response.js') }}"></script>
+
+{% if load_result is not none %}
+<section class="panel dns-results-panel">
+  <header class="panel-head dns-results-head">
+    <div>
+      <span class="eyebrow">Load test complete</span>
+      <h2>{{ load_result.completed_queries }} DNS quer{{ "y" if load_result.completed_queries == 1 else "ies" }} completed</h2>
+      <p>{{ load_result.record_type }} lookups over {{ load_result.elapsed_seconds }} seconds with concurrency {{ load_result.concurrency }}.</p>
+    </div>
+    <span class="dns-workspace-badge">{{ load_result.success_rate }}% successful</span>
+  </header>
+  <div class="dns-result-summary">
+    <article><span>Target load</span><strong>{{ load_result.target_qps_total }} QPS</strong><small>{{ load_result.qps_per_server }} per resolver</small></article>
+    <article><span>Achieved load</span><strong>{{ load_result.achieved_qps }} QPS</strong><small>Across all resolvers</small></article>
+    <article><span>Success rate</span><strong>{{ load_result.success_rate }}%</strong><small>{{ load_result.failed_queries }} failed</small></article>
+    <article><span>Completed</span><strong>{{ load_result.completed_queries }}</strong><small>{{ load_result.planned_queries }} planned</small></article>
+  </div>
+  <div class="preview-table-wrap">
+    <table class="dns-load-results-table">
+      <thead>
+        <tr><th>Resolver</th><th>Queries</th><th>Success</th><th>Achieved</th><th>Average</th><th>p50</th><th>p95</th><th>p99</th><th>Max</th><th>Responses</th></tr>
+      </thead>
+      <tbody>
+        {% for resolver in load_result.resolvers %}
+        <tr>
+          <td>{% if resolver.server_label %}<strong>{{ resolver.server_label }}</strong><br>{% endif %}<code>{{ resolver.server }}</code></td>
+          <td><strong>{{ resolver.completed_queries }}</strong></td>
+          <td><strong>{{ resolver.success_rate }}%</strong><br><small>{{ resolver.failed_queries }} failed</small></td>
+          <td><strong>{{ resolver.achieved_qps }} QPS</strong></td>
+          {% for metric in (resolver.average_ms, resolver.p50_ms, resolver.p95_ms, resolver.p99_ms, resolver.max_ms) %}
+            <td>{% if metric is not none %}<strong>{{ metric }} ms</strong>{% else %}—{% endif %}</td>
+          {% endfor %}
+          <td>
+            <div class="dns-status-counts">
+              {% for status, count in resolver.statuses|dictsort %}
+                <span class="{{ 'success' if status == 'success' else 'error' }}">{{ status }} · {{ count }}</span>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<script src="{{ url_for('static', filename='dns-response.js', v=app_version) }}"></script>
 {% endblock %}

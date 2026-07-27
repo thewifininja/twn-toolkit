@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import ipaddress
 import hashlib
+import math
 import platform
 import re
 import socket
 import shutil
 import subprocess
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from functools import lru_cache
 from typing import Any
 
@@ -25,6 +26,11 @@ FPING_RESULT_PATTERN = re.compile(r"^(.*?)\s+:\s+(-|<?[\d.]+)$")
 PING_COMPATIBILITY_LIMIT = 100
 PING_ACCELERATED_LIMIT = 250
 FPING_PACKET_INTERVAL_MS = 2
+DNS_LOAD_MAX_CONCURRENCY = 100
+DNS_LOAD_MAX_DURATION_SECONDS = 30
+DNS_LOAD_MAX_QPS_PER_SERVER = 500
+DNS_LOAD_MAX_QUERIES = 50_000
+DNS_LOAD_MAX_SERVERS = 5
 SSH_TIMEOUT_PREFIX = re.compile(r"^\[timeout=(\d+)\]\s+(.+)$", re.IGNORECASE)
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 SSH_DEFAULT_COMMAND_TIMEOUT = 300
@@ -365,12 +371,7 @@ def dns_lookup_matrix(
     record_type: str = "A",
     timeout: float = 3.0,
 ) -> list[dict[str, Any]]:
-    allowed_types = {"A", "AAAA", "CNAME", "MX", "NS", "PTR", "TXT"}
-    record_type = record_type.upper()
-    if record_type not in allowed_types:
-        raise ToolInputError("Select a supported DNS record type.")
-    if not 0.2 <= timeout <= 30:
-        raise ToolInputError("DNS timeout must be between 0.2 and 30 seconds.")
+    record_type = _validated_dns_query_settings(record_type, timeout)
 
     jobs = [(host, server) for host in hosts for server in servers]
     workers = min(20, len(jobs))
@@ -381,6 +382,197 @@ def dns_lookup_matrix(
         }
         indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
     return [result for _index, result in sorted(indexed_results)]
+
+
+def dns_load_test(
+    hosts: list[dict[str, str]],
+    servers: list[dict[str, str]],
+    record_type: str = "A",
+    timeout: float = 1.0,
+    *,
+    duration_seconds: int = 10,
+    qps_per_server: int = 50,
+    concurrency: int = 40,
+    clock: Any | None = None,
+    sleeper: Any | None = None,
+) -> dict[str, Any]:
+    """Run a deliberately bounded, evenly paced DNS load test."""
+    record_type = _validated_dns_query_settings(record_type, timeout)
+    if not hosts:
+        raise ToolInputError("Enter at least one DNS query name.")
+    if not servers:
+        raise ToolInputError("Enter at least one DNS server.")
+    if len(servers) > DNS_LOAD_MAX_SERVERS:
+        raise ToolInputError(
+            f"Load tests support a maximum of {DNS_LOAD_MAX_SERVERS} DNS servers."
+        )
+    if not 1 <= duration_seconds <= DNS_LOAD_MAX_DURATION_SECONDS:
+        raise ToolInputError(
+            "Load-test duration must be between 1 and "
+            f"{DNS_LOAD_MAX_DURATION_SECONDS} seconds."
+        )
+    if not 1 <= qps_per_server <= DNS_LOAD_MAX_QPS_PER_SERVER:
+        raise ToolInputError(
+            "Load-test rate must be between 1 and "
+            f"{DNS_LOAD_MAX_QPS_PER_SERVER} queries per second per resolver."
+        )
+    if not 1 <= concurrency <= DNS_LOAD_MAX_CONCURRENCY:
+        raise ToolInputError(
+            "Load-test concurrency must be between 1 and "
+            f"{DNS_LOAD_MAX_CONCURRENCY}."
+        )
+
+    queries_per_server = duration_seconds * qps_per_server
+    planned_queries = queries_per_server * len(servers)
+    if planned_queries > DNS_LOAD_MAX_QUERIES:
+        raise ToolInputError(
+            f"This load test would send {planned_queries:,} queries; reduce the "
+            f"duration, rate, or resolver count to stay at or below "
+            f"{DNS_LOAD_MAX_QUERIES:,}."
+        )
+
+    read_clock = clock or time.monotonic
+    sleep = sleeper or time.sleep
+    started = read_clock()
+    deadline = started + duration_seconds
+    completed: list[tuple[int, dict[str, Any]]] = []
+    pending: dict[Any, int] = {}
+
+    def collect(futures: set[Any]) -> None:
+        for future in futures:
+            server_index = pending.pop(future)
+            try:
+                result = future.result()
+            except Exception as exc:
+                server = servers[server_index]
+                result = {
+                    "server": server["address"],
+                    "server_label": server["label"],
+                    "status": "error",
+                    "answers": [],
+                    "response_ms": 0.0,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            completed.append((server_index, result))
+
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        deadline_reached = False
+        for query_index in range(queries_per_server):
+            scheduled_at = started + (query_index / qps_per_server)
+            delay = scheduled_at - read_clock()
+            if delay > 0:
+                sleep(delay)
+            if read_clock() >= deadline:
+                break
+            for server_index, server in enumerate(servers):
+                while len(pending) >= concurrency:
+                    done, _remaining = wait(
+                        pending,
+                        return_when=FIRST_COMPLETED,
+                    )
+                    collect(done)
+                if read_clock() >= deadline:
+                    deadline_reached = True
+                    break
+                host = hosts[(query_index + server_index) % len(hosts)]
+                future = executor.submit(
+                    _dns_lookup,
+                    host,
+                    server,
+                    record_type,
+                    timeout,
+                )
+                pending[future] = server_index
+            if deadline_reached:
+                break
+        for future in as_completed(list(pending)):
+            collect({future})
+
+    elapsed_seconds = max(float(duration_seconds), read_clock() - started)
+    resolver_results: list[dict[str, Any]] = []
+    total_successful = 0
+    for server_index, server in enumerate(servers):
+        results = [
+            result
+            for result_server_index, result in completed
+            if result_server_index == server_index
+        ]
+        successful = [
+            result for result in results if result.get("status") == "success"
+        ]
+        latencies = sorted(
+            float(result["response_ms"])
+            for result in successful
+            if result.get("response_ms") is not None
+        )
+        statuses: dict[str, int] = {}
+        for result in results:
+            status = str(result.get("status") or "error")
+            statuses[status] = statuses.get(status, 0) + 1
+        total_successful += len(successful)
+        resolver_results.append(
+            {
+                "server": server["address"],
+                "server_label": server["label"],
+                "completed_queries": len(results),
+                "successful_queries": len(successful),
+                "failed_queries": len(results) - len(successful),
+                "success_rate": round(
+                    (len(successful) / len(results) * 100) if results else 0,
+                    1,
+                ),
+                "achieved_qps": round(len(results) / elapsed_seconds, 1),
+                "average_ms": (
+                    round(sum(latencies) / len(latencies), 1)
+                    if latencies
+                    else None
+                ),
+                "p50_ms": _dns_percentile(latencies, 0.50),
+                "p95_ms": _dns_percentile(latencies, 0.95),
+                "p99_ms": _dns_percentile(latencies, 0.99),
+                "max_ms": round(max(latencies), 1) if latencies else None,
+                "statuses": statuses,
+            }
+        )
+
+    completed_queries = len(completed)
+    return {
+        "record_type": record_type,
+        "requested_duration_seconds": duration_seconds,
+        "elapsed_seconds": round(elapsed_seconds, 2),
+        "qps_per_server": qps_per_server,
+        "target_qps_total": qps_per_server * len(servers),
+        "achieved_qps": round(completed_queries / elapsed_seconds, 1),
+        "concurrency": concurrency,
+        "planned_queries": planned_queries,
+        "completed_queries": completed_queries,
+        "successful_queries": total_successful,
+        "failed_queries": completed_queries - total_successful,
+        "success_rate": round(
+            (total_successful / completed_queries * 100)
+            if completed_queries
+            else 0,
+            1,
+        ),
+        "resolvers": resolver_results,
+    }
+
+
+def _validated_dns_query_settings(record_type: str, timeout: float) -> str:
+    allowed_types = {"A", "AAAA", "CNAME", "MX", "NS", "PTR", "TXT"}
+    record_type = record_type.upper()
+    if record_type not in allowed_types:
+        raise ToolInputError("Select a supported DNS record type.")
+    if not 0.2 <= timeout <= 30:
+        raise ToolInputError("DNS timeout must be between 0.2 and 30 seconds.")
+    return record_type
+
+
+def _dns_percentile(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    index = max(0, math.ceil(len(values) * percentile) - 1)
+    return round(values[index], 1)
 
 
 def radius_authenticate(

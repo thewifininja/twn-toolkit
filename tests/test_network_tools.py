@@ -25,6 +25,7 @@ from twn_toolkit.network_tools import (
     SSH_EXECUTION_WORKERS,
     SSH_FLEET_OUTPUT_BUDGET,
     ToolInputError,
+    dns_load_test,
     parse_dns_servers,
     parse_ping_targets,
     parse_ping_targets_with_errors,
@@ -734,6 +735,103 @@ class NetworkToolTests(unittest.TestCase):
         with self.assertRaises(ToolInputError):
             parse_dns_servers("resolver.example.com")
 
+    def test_dns_load_test_paces_queries_and_reports_resolver_metrics(self) -> None:
+        now = [0.0]
+
+        def clock() -> float:
+            return now[0]
+
+        def sleeper(delay: float) -> None:
+            now[0] += delay
+
+        def lookup(host, server, record_type, timeout):
+            failed = server["address"] == "8.8.8.8" and host["host"] == "two.example"
+            return {
+                "host": host["host"],
+                "host_label": host["label"],
+                "server": server["address"],
+                "server_label": server["label"],
+                "record_type": record_type,
+                "status": "Timeout" if failed else "success",
+                "answers": [] if failed else ["192.0.2.10"],
+                "response_ms": 20.0 if host["host"] == "two.example" else 10.0,
+            }
+
+        with patch("twn_toolkit.network_tools._dns_lookup", side_effect=lookup):
+            result = dns_load_test(
+                [
+                    {"label": "One", "host": "one.example"},
+                    {"label": "Two", "host": "two.example"},
+                ],
+                [
+                    {"label": "Cloudflare", "address": "1.1.1.1"},
+                    {"label": "Google", "address": "8.8.8.8"},
+                ],
+                duration_seconds=2,
+                qps_per_server=2,
+                concurrency=2,
+                clock=clock,
+                sleeper=sleeper,
+            )
+
+        self.assertEqual(result["planned_queries"], 8)
+        self.assertEqual(result["completed_queries"], 8)
+        self.assertEqual(result["target_qps_total"], 4)
+        self.assertEqual(result["achieved_qps"], 4.0)
+        self.assertEqual(result["successful_queries"], 6)
+        self.assertEqual(result["resolvers"][0]["p95_ms"], 20.0)
+        self.assertEqual(result["resolvers"][1]["failed_queries"], 2)
+        self.assertEqual(result["resolvers"][1]["statuses"]["Timeout"], 2)
+
+    def test_dns_load_test_stops_submitting_when_saturated_past_deadline(self) -> None:
+        now = [0.0]
+
+        def clock() -> float:
+            return now[0]
+
+        def sleeper(delay: float) -> None:
+            now[0] += delay
+
+        def slow_lookup(host, server, record_type, timeout):
+            now[0] += 2.1
+            return {
+                "server": server["address"],
+                "server_label": server["label"],
+                "status": "success",
+                "response_ms": 10.0,
+            }
+
+        with patch("twn_toolkit.network_tools._dns_lookup", side_effect=slow_lookup):
+            result = dns_load_test(
+                [{"label": "", "host": "example.com"}],
+                [{"label": "", "address": "192.0.2.53"}],
+                duration_seconds=2,
+                qps_per_server=2,
+                concurrency=1,
+                clock=clock,
+                sleeper=sleeper,
+            )
+
+        self.assertEqual(result["planned_queries"], 4)
+        self.assertEqual(result["completed_queries"], 1)
+        self.assertGreaterEqual(result["elapsed_seconds"], 2.1)
+
+    def test_dns_load_test_rejects_unbounded_settings(self) -> None:
+        hosts = [{"label": "", "host": "example.com"}]
+        servers = [{"label": "", "address": "192.0.2.53"}]
+
+        with self.assertRaisesRegex(ToolInputError, "between 1 and 30"):
+            dns_load_test(hosts, servers, duration_seconds=31)
+        with self.assertRaisesRegex(ToolInputError, "between 1 and 500"):
+            dns_load_test(hosts, servers, qps_per_server=501)
+        with self.assertRaisesRegex(ToolInputError, "50,000"):
+            dns_load_test(
+                hosts,
+                servers * 5,
+                duration_seconds=30,
+                qps_per_server=500,
+            )
+
     def test_parses_named_and_raw_radius_attributes(self) -> None:
         attributes = parse_radius_attributes(
             "NAS-Identifier = HQ-WLC\nNAS-IP-Address = 192.0.2.10\n#9:1 = 010203"
@@ -828,7 +926,7 @@ class NetworkToolTests(unittest.TestCase):
             app.config["TESTING"] = True
             client = app.test_client()
 
-            self.assertIn(b"DNS Lookup Tester", client.get("/").data)
+            self.assertIn(b"DNS Tester", client.get("/").data)
             home_page = client.get("/")
             self.assertIn(b"brand/dragon-mark-128.png", home_page.data)
             self.assertIn(b"brand/favicon-32.png", home_page.data)
@@ -1040,6 +1138,65 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"192.0.2.10", response.data)
             self.assertIn(b"12.3 ms", response.data)
 
+            load_result = {
+                "record_type": "A",
+                "requested_duration_seconds": 10,
+                "elapsed_seconds": 10.2,
+                "qps_per_server": 50,
+                "target_qps_total": 50,
+                "achieved_qps": 48.8,
+                "concurrency": 20,
+                "planned_queries": 500,
+                "completed_queries": 498,
+                "successful_queries": 473,
+                "failed_queries": 25,
+                "success_rate": 95.0,
+                "resolvers": [
+                    {
+                        "server": "1.1.1.1",
+                        "server_label": "Cloudflare",
+                        "completed_queries": 498,
+                        "successful_queries": 473,
+                        "failed_queries": 25,
+                        "success_rate": 95.0,
+                        "achieved_qps": 48.8,
+                        "average_ms": 14.2,
+                        "p50_ms": 11.0,
+                        "p95_ms": 29.0,
+                        "p99_ms": 45.0,
+                        "max_ms": 71.0,
+                        "statuses": {"Timeout": 25, "success": 473},
+                    }
+                ],
+            }
+            load_form = {
+                "mode": "load",
+                "hosts": "Example = example.com",
+                "servers": "Cloudflare = 1.1.1.1",
+                "record_type": "A",
+                "timeout": "1",
+                "duration": "10",
+                "qps": "50",
+                "concurrency": "20",
+            }
+            with patch(
+                "twn_toolkit.dns_routes.dns_load_test",
+                return_value=load_result,
+            ) as load_test:
+                unauthorized = client.post(
+                    "/tools/dns-response",
+                    data=load_form,
+                )
+                response = client.post(
+                    "/tools/dns-response",
+                    data={**load_form, "authorized": "on"},
+                )
+            self.assertIn(b"Confirm that you are authorized", unauthorized.data)
+            self.assertIn(b"Load test complete", response.data)
+            self.assertIn(b"48.8 QPS", response.data)
+            self.assertIn(b"p95", response.data)
+            load_test.assert_called_once()
+
             response = client.post(
                 "/tools/radius-test/profiles/servers",
                 data={
@@ -1124,7 +1281,7 @@ class NetworkToolTests(unittest.TestCase):
             auth.assert_called_once()
             summary = ActivityStore(instance).summary()
             self.assertEqual(summary["counters"]["radius"]["attempts"], 1)
-            self.assertEqual(summary["counters"]["actions"]["total"], 5)
+            self.assertEqual(summary["counters"]["actions"]["total"], 7)
             self.assertEqual(summary["recent"][0]["title"], "Ran RADIUS test")
 
             ssh_form = {
@@ -1188,11 +1345,11 @@ class NetworkToolTests(unittest.TestCase):
             self.assertEqual(summary["counters"]["speedtest"]["bytes_transferred"], 5122)
             self.assertEqual(summary["counters"]["subnet"]["calculations"], 1)
             self.assertEqual(summary["counters"]["subnet"]["networks"], 2)
-            self.assertEqual(summary["counters"]["dns"]["queries"], 1)
+            self.assertEqual(summary["counters"]["dns"]["queries"], 499)
             self.assertEqual(summary["counters"]["radius"]["attempts"], 1)
             self.assertEqual(summary["counters"]["ssh"]["hosts"], 1)
             self.assertEqual(summary["counters"]["ssh"]["commands"], 1)
-            self.assertEqual(summary["counters"]["actions"]["total"], 6)
+            self.assertEqual(summary["counters"]["actions"]["total"], 8)
             self.assertEqual(summary["recent"][0]["title"], "Ran Multi-SSH")
 
 

@@ -53,6 +53,10 @@ precedent.
 - Prefer reusable, systematic UI patterns over tool-specific CSS or markup.
 - Slow server-side actions should use the shared loading presentation and a
   task-specific loading message.
+- DNS load testing remains an explicitly authorized, evenly paced diagnostic:
+  cap duration, per-resolver QPS, resolver count, concurrency, and total queries;
+  retain only aggregate results and latency percentiles rather than every
+  response.
 - Local operational files live beneath owner-only `instance/datastore/` and are
   managed through the grantable `local.datastore` tool. Keep every future
   transfer integration and cross-tool file picker constrained to this root;
