@@ -169,7 +169,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.14.1: durable automation claims and renewable leases,
+- Current milestone is 0.14.2: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
@@ -195,7 +195,12 @@ accepted replay frames.
   into previews without executing. SSH collection
   automation actions use the same matrix and rendering model while saving
   independent Commandlet snapshots and retaining compatibility with legacy
-  host-list configurations. This remains a pre-1.0 release; broader real-world
+  host-list configurations. The dashboard is now a calmer operator workspace:
+  permission-aware quick launch and search lead into live-tool and automation
+  status, recent work, and a four-metric snapshot. Full metrics and optional
+  team comparison remain available as secondary expandable views without
+  changing existing activity data or layout persistence. This remains a
+  pre-1.0 release; broader real-world
   upgrade history, packaging, and an explicit supported 1.0 compatibility
   contract still need deliberate hardening. The
   0.10.1 hotfix
