@@ -8,6 +8,21 @@ from pathlib import Path
 
 
 class TwnScriptTests(unittest.TestCase):
+    def test_managed_iperf_workers_follow_toolkit_lifecycle(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1] / "twn"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "twn_toolkit.iperf_server:resume_iperf_server_workers",
+            source,
+        )
+        self.assertIn(
+            "twn_toolkit.iperf_server:stop_iperf_server_workers",
+            source,
+        )
+        self.assertIn('IPERF_LOG="$INSTANCE/twn-iperf3.log"', source)
+
     def test_fix_permissions_repairs_all_runtime_locations(self) -> None:
         source = Path(__file__).resolve().parents[1] / "twn"
         with tempfile.TemporaryDirectory() as temporary:

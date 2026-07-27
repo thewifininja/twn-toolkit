@@ -8,6 +8,7 @@ from .certificate_automation_routes import register_certificate_automation_route
 from .dhcp_routes import register_dhcp_routes
 from .dns_routes import register_dns_routes
 from .ip_info_routes import register_ip_info_routes
+from .iperf_routes import register_iperf_routes
 from .ntp_routes import register_ntp_routes
 from .packet_replay_routes import register_packet_replay_routes
 from .packet_capture_routes import register_packet_capture_routes
@@ -32,6 +33,7 @@ register_certificate_automation_routes(tools_bp)
 register_dhcp_routes(tools_bp)
 register_dns_routes(tools_bp)
 register_ip_info_routes(tools_bp)
+register_iperf_routes(tools_bp)
 register_ntp_routes(tools_bp)
 register_packet_capture_routes(tools_bp)
 register_packet_replay_routes(tools_bp)

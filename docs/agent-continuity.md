@@ -57,6 +57,16 @@ precedent.
   cap duration, per-resolver QPS, resolver count, concurrency, and total queries;
   retain only aggregate results and latency percentiles rather than every
   response.
+- iPerf3 support uses only an already installed `iperf3` binary and never
+  installs packages or invokes a shell. Client traffic requires explicit
+  authorization and fixed duration/stream/rate caps. Server mode runs in a
+  supervised background worker with explicit Start/Stop controls, one active
+  listener per user, ports 1024–65535, synchronous port-availability checks,
+  toolkit restart recovery, and sequential single-client cycles. Active
+  listeners must appear in the owner’s dashboard and Live tools tray. Retain
+  only the newest 50 server results per user; expose source address, normalized
+  metrics, and bounded raw JSON only to that user, and provide an explicit
+  history-clear action.
 - Local operational files live beneath owner-only `instance/datastore/` and are
   managed through the grantable `local.datastore` tool. Keep every future
   transfer integration and cross-tool file picker constrained to this root;

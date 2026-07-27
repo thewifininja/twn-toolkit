@@ -1,0 +1,100 @@
+{% if server_results %}
+  <div class="iperf-server-result-list">
+    {% for server_result in server_results %}
+      <details class="iperf-server-result-card" id="iperf-server-result-{{ server_result.id }}">
+        <summary>
+          <div class="iperf-server-result-source">
+            <span class="iperf-source-mark">⇢</span>
+            <span>
+              <strong>{{ server_result.source_ip }}{% if server_result.source_port %}:{{ server_result.source_port }}{% endif %}</strong>
+              <small>{{ server_result.completed_display }} · {{ server_result.protocol }} · {{ server_result.direction }}</small>
+            </span>
+          </div>
+          <div class="iperf-server-result-glance">
+            <span><strong>{{ server_result.summary_megabits_per_second }} Mbps</strong><small>Throughput</small></span>
+            <span><strong>{{ server_result.transferred_display }}</strong><small>Transferred</small></span>
+            <span class="iperf-result-chevron">⌄</span>
+          </div>
+        </summary>
+        <div class="iperf-server-result-body">
+          <div class="iperf-result-summary">
+            <article>
+              <span>Receiver</span>
+              <strong>{{ server_result.receiver.megabits_per_second if server_result.receiver and server_result.receiver.megabits_per_second is not none else '—' }}{% if server_result.receiver and server_result.receiver.megabits_per_second is not none %} Mbps{% endif %}</strong>
+              <small>{{ server_result.receiver.bytes_display if server_result.receiver else 'No receiver summary' }}</small>
+            </article>
+            <article>
+              <span>Sender</span>
+              <strong>{{ server_result.sender.megabits_per_second if server_result.sender and server_result.sender.megabits_per_second is not none else '—' }}{% if server_result.sender and server_result.sender.megabits_per_second is not none %} Mbps{% endif %}</strong>
+              <small>{{ server_result.sender.bytes_display if server_result.sender else 'No sender summary' }}</small>
+            </article>
+            <article>
+              <span>Transferred</span>
+              <strong>{{ server_result.transferred_display }}</strong>
+              <small>{{ server_result.protocol }} · {{ server_result.direction }}</small>
+            </article>
+            <article>
+              {% if server_result.protocol == 'UDP' %}
+                <span>Receiver loss</span>
+                <strong>{{ server_result.receiver.lost_percent if server_result.receiver and server_result.receiver.lost_percent is defined else '—' }}{% if server_result.receiver and server_result.receiver.lost_percent is defined %}%{% endif %}</strong>
+                <small>{% if server_result.receiver and server_result.receiver.jitter_ms is defined %}{{ server_result.receiver.jitter_ms }} ms jitter{% else %}No jitter summary{% endif %}</small>
+              {% else %}
+                <span>Retransmits</span>
+                <strong>{{ server_result.sender.retransmits if server_result.sender and server_result.sender.retransmits is defined else '—' }}</strong>
+                <small>Sender TCP summary</small>
+              {% endif %}
+            </article>
+          </div>
+
+          <div class="iperf-result-details">
+            <article>
+              <h3>Endpoints</h3>
+              <dl>
+                <div><dt>Client source</dt><dd><code>{{ server_result.source_ip }}{% if server_result.source_port %}:{{ server_result.source_port }}{% endif %}</code></dd></div>
+                <div><dt>Listener</dt><dd><code>{{ server_result.connection.local_host }}:{{ server_result.connection.local_port }}</code></dd></div>
+              </dl>
+            </article>
+            <article>
+              <h3>Endpoint CPU</h3>
+              <dl>
+                <div><dt>Server total</dt><dd>{{ server_result.cpu.host_total ~ '%' if server_result.cpu.host_total is defined else '—' }}</dd></div>
+                <div><dt>Client total</dt><dd>{{ server_result.cpu.remote_total ~ '%' if server_result.cpu.remote_total is defined else '—' }}</dd></div>
+              </dl>
+            </article>
+          </div>
+
+          {% if server_result.intervals %}
+            <h3>Interval timeline</h3>
+            <div class="preview-table-wrap">
+              <table class="iperf-interval-table">
+                <thead><tr><th>Interval</th><th>Throughput</th><th>Transferred</th><th>TCP retransmits</th><th>UDP jitter</th><th>UDP loss</th></tr></thead>
+                <tbody>
+                  {% for interval in server_result.intervals %}
+                    <tr>
+                      <td><code>{{ interval.start }}–{{ interval.end }}s</code></td>
+                      <td><strong>{{ interval.megabits_per_second if interval.megabits_per_second is not none else '—' }}{% if interval.megabits_per_second is not none %} Mbps{% endif %}</strong></td>
+                      <td>{{ interval.bytes_display }}</td>
+                      <td>{{ interval.retransmits if interval.retransmits is defined else '—' }}</td>
+                      <td>{{ interval.jitter_ms ~ ' ms' if interval.jitter_ms is defined else '—' }}</td>
+                      <td>{{ interval.lost_percent ~ '%' if interval.lost_percent is defined else '—' }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+
+          <details class="iperf-raw-result">
+            <summary>Full iPerf3 JSON{% if server_result.raw_json_truncated %} · truncated{% endif %}</summary>
+            <pre class="result-output">{{ server_result.raw_json }}</pre>
+          </details>
+        </div>
+      </details>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty-state iperf-server-empty">
+    <h3>No server tests collected yet</h3>
+    <p>Start the managed server, connect from an authorized iPerf3 client, and each completed test will appear here automatically.</p>
+  </div>
+{% endif %}

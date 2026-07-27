@@ -95,9 +95,12 @@
     titleRow.className = "live-tool-card-title-row";
     const title = document.createElement("strong");
     title.textContent = session.title || "Live tool";
-    const rename = iconButton("✎", `Rename ${title.textContent}`, "live-tool-rename");
-    rename.addEventListener("click", () => beginRename(session, identity, titleRow));
-    titleRow.append(title, rename);
+    titleRow.append(title);
+    if (session.rename_url) {
+      const rename = iconButton("✎", `Rename ${title.textContent}`, "live-tool-rename");
+      rename.addEventListener("click", () => beginRename(session, identity, titleRow));
+      titleRow.append(rename);
+    }
     const summary = document.createElement("small");
     summary.textContent = sessionSummary(session);
     identity.append(titleRow, summary);
@@ -110,6 +113,7 @@
     restore.title = `Restore ${title.textContent}`;
     restore.setAttribute("aria-label", `Restore ${title.textContent}`);
     const stop = iconButton("×", `Stop ${title.textContent}`, "live-tool-stop");
+    stop.disabled = session.can_stop === false;
     stop.addEventListener("click", () => stopSession(session, stop));
     actions.append(stop);
     card.append(restore, identity, actions);
@@ -207,6 +211,17 @@
   function sessionSummary(session) {
     if (session.state === "error") {
       return session.last_error || "The live tool stopped with an error.";
+    }
+    if (session.tool_key === "iperf3_server") {
+      const tests = Number(session.rounds_completed || 0);
+      const status = session.listener_status === "stopping"
+        ? "stopping…"
+        : tests
+          ? `${tests} test${tests === 1 ? "" : "s"} · ${relativeAge(
+              Math.max(0, Date.now() - Number(session.last_round_at || 0) * 1000)
+            )}`
+          : "listening for a client";
+      return `${session.listener} · ${status}`;
     }
     if (!session.rounds_completed) {
       const noun = session.tool_key === "snmp_interface" ? "interface" : "target";

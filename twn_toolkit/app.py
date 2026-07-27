@@ -36,6 +36,7 @@ from .admin_routes import register_admin_routes
 from .dashboard_layout import DashboardLayoutStore
 from .fortiauthenticator_routes import register_fortiauthenticator_routes
 from .fortigate_routes import register_fortigate_routes
+from .iperf_server import IperfServerStore
 from .live_tools import LiveToolStore
 from .profiles import (
     FortiAuthenticatorProfileStore,
@@ -706,6 +707,23 @@ def create_app(instance_path: str | None = None) -> Flask:
         live_sessions = LiveToolStore(app.instance_path).sessions_for_user(
             g.current_user["id"], renew_lease=False
         )
+        if is_admin or (
+            allowed_tool_ids is not None
+            and "tools.iperf3" in allowed_tool_ids
+        ):
+            active_iperf = IperfServerStore(
+                app.instance_path
+            ).active_for_user(g.current_user["id"])
+            if active_iperf:
+                live_sessions.append(
+                    {
+                        "state": (
+                            "error"
+                            if active_iperf["status"] == "error"
+                            else "running"
+                        )
+                    }
+                )
         live_errors = sum(
             1 for live_session in live_sessions if live_session["state"] == "error"
         )

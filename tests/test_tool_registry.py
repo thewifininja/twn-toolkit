@@ -20,7 +20,9 @@ class ToolRegistryTests(unittest.TestCase):
     def test_registry_builds_existing_lookup_maps(self) -> None:
         self.assertIn("tools.packet_replay", TOOL_BY_ID)
         self.assertIn("tools.packet_capture", TOOL_BY_ID)
+        self.assertIn("tools.iperf3", TOOL_BY_ID)
         self.assertIn("tools.wake_on_lan", TOOL_BY_ID)
+        self.assertEqual(TOOL_BY_ID["tools.iperf3"].nav_group, "traffic")
         self.assertEqual(TOOL_BY_ID["tools.wake_on_lan"].nav_group, "services")
         self.assertEqual(TASK_TOOL_IDS["rename-aps"], "fortigate.rename_aps")
         self.assertEqual(
@@ -110,6 +112,9 @@ class ToolRegistryTests(unittest.TestCase):
             "setup",
             "static",
             "tools.index",
+            "tools.live_tool_sessions",
+            "tools.rename_live_tool_session",
+            "tools.stop_live_tool_session",
             "update_theme",
             "change_user_password",
             "toggle_tool_favorite",

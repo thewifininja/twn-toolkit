@@ -1999,6 +1999,503 @@ button.danger:hover {
   }
 }
 
+.iperf-workspace-panel,
+.iperf-results-panel {
+  max-width: 1180px;
+}
+
+.iperf-workspace-head,
+.iperf-results-head {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.iperf-workspace-head > div,
+.iperf-results-head > div {
+  display: grid;
+  gap: 6px;
+}
+
+.iperf-workspace-head h1,
+.iperf-workspace-head p,
+.iperf-results-head h2,
+.iperf-results-head p {
+  margin: 0;
+}
+
+.iperf-capability,
+.iperf-action-badge {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 850;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+.iperf-capability.available,
+.iperf-action-badge.success {
+  background: color-mix(in srgb, var(--brand-green), transparent 86%);
+  color: var(--brand-green-dark);
+}
+
+.iperf-capability.missing {
+  background: color-mix(in srgb, var(--action-danger), transparent 88%);
+  color: var(--action-danger);
+}
+
+.iperf-action-badge {
+  background: color-mix(in srgb, var(--muted), transparent 88%);
+  color: var(--muted);
+}
+
+.iperf-action-grid {
+  align-items: stretch;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.iperf-action-card {
+  background: color-mix(in srgb, var(--panel), var(--bg) 30%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.iperf-action-card.selected {
+  border-color: color-mix(in srgb, var(--brand-green-dark), var(--line) 50%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-green), transparent 92%);
+}
+
+.iperf-action-card > header {
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.iperf-action-card > header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.iperf-action-card h2,
+.iperf-action-card p {
+  margin: 0;
+}
+
+.iperf-action-card h2 {
+  font-size: 1.08rem;
+}
+
+.iperf-action-card > header p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.iperf-action-form {
+  display: grid;
+  gap: 14px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  padding: 18px;
+}
+
+.iperf-fields {
+  align-content: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.iperf-fields .wide {
+  grid-column: 1 / -1;
+}
+
+.iperf-fields [hidden] {
+  display: none;
+}
+
+.iperf-choice-row {
+  display: grid;
+  gap: 10px;
+}
+
+.iperf-action-form .check {
+  align-items: start;
+  background: color-mix(in srgb, var(--panel), transparent 14%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.iperf-action-form .check.authorization {
+  background: color-mix(in srgb, #d9a515, transparent 93%);
+  border-color: color-mix(in srgb, #d9a515, var(--line) 66%);
+}
+
+.iperf-action-form footer {
+  align-items: center;
+  align-self: end;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding-top: 14px;
+}
+
+.iperf-action-form footer > span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.iperf-action-form footer button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.iperf-server-callout {
+  background: color-mix(in srgb, var(--brand-green), transparent 93%);
+  border: 1px solid color-mix(in srgb, var(--brand-green-dark), var(--line) 68%);
+  border-radius: 12px;
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+}
+
+.iperf-server-callout p,
+.iperf-server-notes p {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.iperf-server-callout code {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+}
+
+.iperf-server-notes {
+  align-content: start;
+  display: grid;
+  gap: 9px;
+}
+
+.iperf-server-active {
+  align-content: start;
+}
+
+.iperf-server-live-stats {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.iperf-server-live-stats > div {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 9px 0;
+}
+
+.iperf-server-live-stats dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.iperf-server-live-stats dd {
+  font-weight: 750;
+  margin: 0;
+  text-align: right;
+}
+
+.iperf-server-result-list {
+  display: grid;
+  gap: 10px;
+}
+
+.iperf-server-result-card {
+  background: color-mix(in srgb, var(--panel), var(--bg) 24%);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+}
+
+.iperf-server-result-card[open] {
+  border-color: color-mix(in srgb, var(--brand-green-dark), var(--line) 48%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-green), transparent 94%);
+}
+
+.iperf-server-result-card > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 14px 16px;
+}
+
+.iperf-server-result-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.iperf-server-result-source {
+  align-items: center;
+  display: flex;
+  gap: 11px;
+  min-width: 0;
+}
+
+.iperf-server-result-source > span:last-child {
+  min-width: 0;
+}
+
+.iperf-server-result-source strong,
+.iperf-server-result-source small {
+  display: block;
+}
+
+.iperf-server-result-source strong {
+  overflow-wrap: anywhere;
+}
+
+.iperf-server-result-source small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  margin-top: 3px;
+}
+
+.iperf-source-mark {
+  align-items: center;
+  background: color-mix(in srgb, var(--brand-green), transparent 88%);
+  border-radius: 9px;
+  color: var(--brand-green-dark);
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 1rem;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.iperf-server-result-glance {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 24px;
+}
+
+.iperf-server-result-glance > span:not(.iperf-result-chevron) {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+.iperf-server-result-glance small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.iperf-result-chevron {
+  color: var(--muted);
+  font-size: 1.1rem;
+  transition: transform 0.15s ease;
+}
+
+.iperf-server-result-card[open] .iperf-result-chevron {
+  transform: rotate(180deg);
+}
+
+.iperf-server-result-body {
+  border-top: 1px solid var(--line);
+  padding: 16px;
+}
+
+.iperf-server-result-body > h3 {
+  margin-top: 18px;
+}
+
+.iperf-server-empty {
+  margin: 0;
+}
+
+.iperf-result-summary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.iperf-result-summary article {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 3px;
+  padding: 14px;
+}
+
+.iperf-result-summary span,
+.iperf-result-summary small {
+  color: var(--muted);
+}
+
+.iperf-result-summary span {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.iperf-result-summary strong {
+  font-size: 1.18rem;
+}
+
+.iperf-interval-table th,
+.iperf-interval-table td {
+  white-space: nowrap;
+}
+
+.iperf-result-details {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.iperf-result-details article {
+  background: color-mix(in srgb, var(--panel), var(--bg) 24%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.iperf-result-details h3 {
+  margin: 0 0 10px;
+}
+
+.iperf-result-details dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.iperf-result-details dl > div {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.iperf-result-details dt {
+  color: var(--muted);
+}
+
+.iperf-result-details dd {
+  font-weight: 750;
+  margin: 0;
+  text-align: right;
+}
+
+.iperf-raw-result {
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding-top: 12px;
+}
+
+.iperf-raw-result summary {
+  color: var(--brand-green-dark);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.iperf-raw-result pre {
+  margin-top: 12px;
+  max-height: 520px;
+}
+
+@media (max-width: 980px) {
+  .iperf-action-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .iperf-action-form {
+    grid-template-rows: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .iperf-workspace-head,
+  .iperf-results-head,
+  .iperf-action-form footer {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .iperf-capability,
+  .iperf-action-badge {
+    justify-self: start;
+  }
+
+  .iperf-fields,
+  .iperf-result-summary,
+  .iperf-result-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .iperf-fields .wide {
+    grid-column: auto;
+  }
+
+  .iperf-action-form footer button {
+    width: 100%;
+  }
+
+  .iperf-server-result-card > summary {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .iperf-server-result-glance {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  }
+
+  .iperf-server-result-glance > span:not(.iperf-result-chevron) {
+    text-align: left;
+  }
+
+  .iperf-server-live-stats > div {
+    align-items: stretch;
+    display: grid;
+    gap: 4px;
+  }
+
+  .iperf-server-live-stats dd {
+    text-align: left;
+  }
+}
+
 .certificate-options {
   display: grid;
   gap: 14px;
