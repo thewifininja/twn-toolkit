@@ -18,6 +18,14 @@
     setExpanded(expanded);
   });
 
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-open-live-tools]")) return;
+    tray.hidden = false;
+    setExpanded(true);
+    toggle.focus();
+    refresh();
+  });
+
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refresh();
   });
@@ -237,6 +245,11 @@
   window.TwnLiveTools = {
     refresh,
     collapse: () => setExpanded(false),
+    expand: () => {
+      tray.hidden = false;
+      setExpanded(true);
+      refresh();
+    },
   };
   refresh();
 })();

@@ -36,6 +36,7 @@ from .admin_routes import register_admin_routes
 from .dashboard_layout import DashboardLayoutStore
 from .fortiauthenticator_routes import register_fortiauthenticator_routes
 from .fortigate_routes import register_fortigate_routes
+from .live_tools import LiveToolStore
 from .profiles import (
     FortiAuthenticatorProfileStore,
     ProfileStore,
@@ -670,10 +671,26 @@ def create_app(instance_path: str | None = None) -> Flask:
         is_admin = bool(g.current_user.get("is_admin"))
         allowed_tool_ids = getattr(g, "allowed_tool_ids", None)
         favorite_ids = auth_store.favorite_tool_ids(g.current_user["id"])
-        visible_category_ids = {
-            tool.category
-            for tool in visible_tools(is_admin=is_admin, allowed_tool_ids=allowed_tool_ids)
-        }
+        visible = visible_tools(
+            is_admin=is_admin, allowed_tool_ids=allowed_tool_ids
+        )
+        visible_by_id = {tool.id: tool for tool in visible}
+        visible_category_ids = {tool.category for tool in visible}
+        favorites = favorite_tools(
+            favorite_ids, is_admin=is_admin, allowed_tool_ids=allowed_tool_ids
+        )
+        suggested_tools = [
+            visible_by_id[tool_id]
+            for tool_id in (
+                "tools.ping",
+                "tools.dns_response",
+                "tools.multi_ssh",
+                "tools.packet_capture",
+            )
+            if tool_id in visible_by_id
+        ]
+        quick_tools = favorites[:4] or suggested_tools[:4]
+
         dashboard = activity_store.summary(
             request.args.get("scoreboard_rank", "actions.total"),
             request.args.get("activity_window", "lifetime"),
@@ -681,13 +698,62 @@ def create_app(instance_path: str | None = None) -> Flask:
             request.args.get("activity_end", ""),
         )
         dashboard["cards"] = dashboard_layout_store.arrange(dashboard["cards"])
+        visible_cards = [
+            card for card in dashboard["cards"] if not card["dashboard_hidden"]
+        ]
+        dashboard["snapshot_cards"] = visible_cards[:4]
+
+        live_sessions = LiveToolStore(app.instance_path).sessions_for_user(
+            g.current_user["id"], renew_lease=False
+        )
+        live_errors = sum(
+            1 for live_session in live_sessions if live_session["state"] == "error"
+        )
+        automation_stats = {
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "failed_jobs": 0,
+            "enabled": 0,
+            "attention": 0,
+        }
+        if is_admin:
+            automation_stats.update(automation_store.job_stats())
+            automations = automation_store.all()
+            automation_stats["enabled"] = sum(
+                1 for automation in automations if automation["enabled"]
+            )
+            automation_stats["attention"] = sum(
+                1
+                for automation in automations
+                if automation["state"]
+                in {"error", "recovering", "suspect", "triggered"}
+            )
+        workspace_status = {
+            "live_count": len(live_sessions),
+            "live_errors": live_errors,
+            "automation": automation_stats,
+            "attention_count": (
+                live_errors
+                + automation_stats["failed_jobs"]
+                + automation_stats["attention"]
+            ),
+        }
+        enabled_user_count = sum(
+            1 for user in auth_store.users() if user.get("enabled", True)
+        )
+        show_team_activity = (
+            enabled_user_count > 1 or len(dashboard["scoreboard"]) > 1
+        )
+
         return render_template(
             "home.html",
             favorite_ids=favorite_ids,
             dashboard=dashboard,
-            favorites=favorite_tools(
-                favorite_ids, is_admin=is_admin, allowed_tool_ids=allowed_tool_ids
-            ),
+            favorites=favorites,
+            quick_tools=quick_tools,
+            quick_tools_are_suggestions=not favorites,
+            workspace_status=workspace_status,
+            show_team_activity=show_team_activity,
             tool_categories=[
                 category for category in TOOL_CATEGORIES if category["id"] in visible_category_ids
             ],

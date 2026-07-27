@@ -2,188 +2,378 @@
 {% from "components/ui.html" import empty_state %}
 
 {% block content %}
-<section class="dashboard-hero">
-  <div>
-    <span class="eyebrow">Toolkit dashboard</span>
-    <h1>Command center</h1>
-    <p>
-      A live-ish pulse of what the toolkit has been doing: probes sent, paths traced,
-      APIs touched, packets replayed, and the tiny victories earned along the way.
-    </p>
-  </div>
-  <div class="home-hero-card">
-    <span>Signed in as</span>
-    <strong>{{ current_user.username }}</strong>
-    <small>{{ 'System administrator' if current_user.is_admin else 'Operator' }}</small>
-  </div>
-</section>
-
-<section class="dashboard-toolbar" aria-label="Dashboard time window">
-  <div>
-    <strong>{{ dashboard.window.range_label }}</strong>
-    <span>Metrics, scoreboard, and recent activity</span>
-  </div>
-  <form class="dashboard-window-form" method="get" action="{{ url_for('index') }}">
-    <input type="hidden" name="scoreboard_rank" value="{{ dashboard.scoreboard_rank.key }}">
-    <div class="dashboard-window-preset">
-      <label for="activity-window">Time window</label>
-      <select id="activity-window" name="activity_window" onchange="this.form.submit()">
-        {% for option in dashboard.window_options %}
-          <option value="{{ option.key }}" {% if option.key == dashboard.window.key %}selected{% endif %}>{{ option.label }}</option>
-        {% endfor %}
-      </select>
+<div class="workspace-dashboard">
+  <header class="workspace-dashboard-header">
+    <div class="workspace-dashboard-title">
+      <span class="eyebrow">Operator workspace</span>
+      <h1>Ready when you are, {{ current_user.username }}</h1>
+      <p>Launch a tool, check what is still running, or pick up where the team left off.</p>
     </div>
-    {% if dashboard.window.key == 'custom' %}
-      <div class="dashboard-custom-range">
-        <label for="activity-start">Start</label>
-        <input id="activity-start" type="datetime-local" step="1" name="activity_start" value="{{ dashboard.window.range_start }}" required>
-        <label for="activity-end">End</label>
-        <input id="activity-end" type="datetime-local" step="1" name="activity_end" value="{{ dashboard.window.range_end }}" required>
-        <button class="button-link secondary" type="submit">Apply range</button>
+    <form class="workspace-window-form" method="get" action="{{ url_for('index') }}">
+      <input type="hidden" name="scoreboard_rank" value="{{ dashboard.scoreboard_rank.key }}">
+      <div class="workspace-window-preset">
+        <label for="activity-window">Activity range</label>
+        <select id="activity-window" name="activity_window" onchange="this.form.submit()">
+          {% for option in dashboard.window_options %}
+            <option value="{{ option.key }}" {% if option.key == dashboard.window.key %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
       </div>
-      {% if dashboard.window.error %}
-        <span class="field-error">{{ dashboard.window.error }}</span>
+      {% if dashboard.window.key == 'custom' %}
+        <div class="workspace-custom-range">
+          <label for="activity-start">Start</label>
+          <input id="activity-start" type="datetime-local" step="1" name="activity_start" value="{{ dashboard.window.range_start }}" required>
+          <label for="activity-end">End</label>
+          <input id="activity-end" type="datetime-local" step="1" name="activity_end" value="{{ dashboard.window.range_end }}" required>
+          <button class="button-link secondary" type="submit">Apply range</button>
+        </div>
+        {% if dashboard.window.error %}
+          <span class="field-error">{{ dashboard.window.error }}</span>
+        {% endif %}
       {% endif %}
-    {% endif %}
-  </form>
-</section>
+    </form>
+  </header>
 
-<section class="dashboard-metrics" data-dashboard-editor>
-  <div class="dashboard-metrics-head">
-    <div><h2>Toolkit activity</h2><p>Operational totals for {{ dashboard.window.range_label|lower }}.</p></div>
-    {% if current_user.is_admin %}
-      <div class="dashboard-edit-actions">
-        <button class="secondary" type="button" data-dashboard-edit>Edit dashboard</button>
-        <div class="button-row" data-dashboard-edit-controls hidden>
-          <form id="dashboard-layout-form" method="post" action="{{ url_for('save_dashboard_layout') }}"><input type="hidden" name="order"><input type="hidden" name="hidden"></form>
-          <button type="submit" form="dashboard-layout-form">Save layout</button>
-          <button class="secondary" type="button" data-dashboard-cancel>Cancel</button>
-          <form method="post" action="{{ url_for('reset_dashboard_layout') }}" onsubmit="return confirm('Restore every dashboard widget and its default order?')"><button class="link-button subtle" type="submit">Restore defaults</button></form>
+  <section class="workspace-launch-panel" aria-labelledby="quick-launch-title">
+    <div class="workspace-section-head">
+      <div>
+        <span class="eyebrow">Start here</span>
+        <h2 id="quick-launch-title">Quick launch</h2>
+        <p>
+          {% if quick_tools_are_suggestions %}
+            A few useful starting points. Star any tool to make this space yours.
+          {% else %}
+            Your favorite tools, ready without another trip through navigation.
+          {% endif %}
+        </p>
+      </div>
+      {% if quick_tools_are_suggestions %}
+        <span class="workspace-context-label">Suggested</span>
+      {% else %}
+        <span class="workspace-context-label">{{ favorites|length }} favorite{{ '' if favorites|length == 1 else 's' }}</span>
+      {% endif %}
+    </div>
+
+    <div class="workspace-tool-search" role="search">
+      <label for="dashboard-tool-search-input">
+        <span class="workspace-tool-search-icon" aria-hidden="true">⌕</span>
+        <span class="sr-only">Find a toolkit tool</span>
+        <input
+          id="dashboard-tool-search-input"
+          type="search"
+          placeholder="Find any tool or workflow…"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Find any tool or workflow"
+          aria-controls="dashboard-tool-search-results"
+        >
+        <span class="workspace-search-hint" aria-hidden="true">Search all tools</span>
+      </label>
+      <div class="workspace-tool-search-results" id="dashboard-tool-search-results" hidden></div>
+      <p class="workspace-tool-search-empty" id="dashboard-tool-search-empty" hidden>No matching tools.</p>
+    </div>
+
+    {% if quick_tools %}
+      <div class="workspace-quick-grid">
+        {% for tool in quick_tools %}
+          <article class="workspace-tool-card">
+            <a href="{{ url_for(tool.endpoint, **tool.endpoint_values) }}">
+              <span class="workspace-tool-card-icon" aria-hidden="true">{{ tool.nav_icon }}</span>
+              <span class="workspace-tool-card-copy">
+                <strong>{{ tool.label }}</strong>
+                <small>{{ tool.category_label }}</small>
+              </span>
+              <span class="workspace-tool-card-arrow" aria-hidden="true">→</span>
+            </a>
+            <form method="post" action="{{ url_for('toggle_tool_favorite', tool_id=tool.id) }}">
+              <input type="hidden" name="next" value="{{ request.full_path }}">
+              <button
+                class="workspace-tool-favorite {{ 'active' if tool.id in favorite_ids else '' }}"
+                type="submit"
+                title="{{ 'Remove from favorites' if tool.id in favorite_ids else 'Add to favorites' }}"
+                aria-label="{{ 'Remove ' ~ tool.label ~ ' from favorites' if tool.id in favorite_ids else 'Add ' ~ tool.label ~ ' to favorites' }}"
+              >★</button>
+            </form>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      {{ empty_state("No tools are available for quick launch.", "Ask an administrator to review this account’s tool access.") }}
+    {% endif %}
+  </section>
+
+  <section
+    class="workspace-status-panel {{ 'needs-attention' if workspace_status.attention_count else 'all-clear' }}"
+    aria-labelledby="workspace-status-title"
+  >
+    <div class="workspace-status-summary">
+      <span class="workspace-status-indicator" aria-hidden="true"></span>
+      <div>
+        <span class="eyebrow">Workspace status</span>
+        <h2 id="workspace-status-title">
+          {% if workspace_status.attention_count %}
+            {{ workspace_status.attention_count }} item{{ '' if workspace_status.attention_count == 1 else 's' }} {{ 'needs' if workspace_status.attention_count == 1 else 'need' }} attention
+          {% else %}
+            Everything looks clear
+          {% endif %}
+        </h2>
+        <p>
+          {% if workspace_status.attention_count %}
+            Check live monitoring and automation before starting the next workflow.
+          {% else %}
+            No live-tool or automation errors are waiting on you.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+    <div class="workspace-status-grid">
+      <article class="{{ 'has-warning' if workspace_status.live_errors else '' }}">
+        <span>Live monitoring</span>
+        <strong>{{ workspace_status.live_count }} active</strong>
+        <small>
+          {% if workspace_status.live_errors %}
+            {{ workspace_status.live_errors }} stopped with an error
+          {% elif workspace_status.live_count %}
+            Monitoring continues in the live-tools tray
+          {% else %}
+            No persistent tools are running
+          {% endif %}
+        </small>
+        {% if workspace_status.live_count %}
+          <button class="link-button subtle" type="button" data-open-live-tools>Open live tools</button>
+        {% endif %}
+      </article>
+      {% if current_user.is_admin %}
+        <article class="{{ 'has-warning' if workspace_status.automation.failed_jobs or workspace_status.automation.attention else '' }}">
+          <span>Automations</span>
+          <strong>{{ workspace_status.automation.enabled }} enabled</strong>
+          <small>
+            {% if workspace_status.automation.failed_jobs %}
+              {{ workspace_status.automation.failed_jobs }} failed job{{ '' if workspace_status.automation.failed_jobs == 1 else 's' }}
+            {% elif workspace_status.automation.attention %}
+              {{ workspace_status.automation.attention }} workflow{{ '' if workspace_status.automation.attention == 1 else 's' }} needs review
+            {% elif workspace_status.automation.running_jobs or workspace_status.automation.queued_jobs %}
+              {{ workspace_status.automation.running_jobs }} running · {{ workspace_status.automation.queued_jobs }} queued
+            {% else %}
+              No queued or failed jobs
+            {% endif %}
+          </small>
+          <a class="link-button subtle" href="{{ url_for('automations') }}">Open automations</a>
+        </article>
+      {% endif %}
+      <article>
+        <span>{{ dashboard.window.range_label }}</span>
+        <strong>{{ dashboard.counters.actions.total }} action{{ '' if dashboard.counters.actions.total == 1 else 's' }}</strong>
+        <small>Intentional toolkit runs in this activity range</small>
+      </article>
+    </div>
+  </section>
+
+  <div class="workspace-overview-grid">
+    <section class="workspace-overview-panel workspace-recent-panel" aria-labelledby="recent-activity-title">
+      <div class="workspace-section-head">
+        <div>
+          <span class="eyebrow">Pick up where you left off</span>
+          <h2 id="recent-activity-title">Recent activity</h2>
+          <p>
+            Latest {{ [dashboard.recent|length, 8]|min }} of {{ dashboard.recent|length }}
+            event{{ '' if dashboard.recent|length == 1 else 's' }} from {{ dashboard.window.range_label|lower }}.
+          </p>
         </div>
       </div>
-    {% endif %}
-  </div>
-  <div class="dashboard-grid" data-dashboard-grid>
-  {% for card in dashboard.cards %}
-    {% if current_user.is_admin or not card.dashboard_hidden %}
-    <article class="dashboard-card{% if card.dashboard_hidden %} dashboard-card-hidden{% endif %}" data-widget-id="{{ card.metric }}" data-widget-hidden="{{ 'true' if card.dashboard_hidden else 'false' }}" {% if card.dashboard_hidden %}hidden{% endif %}>
-      {% if current_user.is_admin %}<div class="dashboard-card-editor" hidden><button class="dashboard-drag-handle" type="button" aria-label="Move {{ card.title }}" title="Drag to reorder">⠿</button><button class="dashboard-visibility-toggle" type="button" aria-pressed="{{ 'false' if card.dashboard_hidden else 'true' }}">{{ 'Show' if card.dashboard_hidden else 'Hide' }}</button></div>{% endif %}
-      <div>
-        <span class="dashboard-kicker">{{ card.kicker }}</span>
-        <strong>{{ card.title }}</strong>
-      </div>
-      <div class="dashboard-stat">
-        <span>{{ card.primary }}</span>
-        <small>{{ card.primary_label }}</small>
-      </div>
-      <p>{{ card.secondary }}</p>
-      {% if current_user.is_admin %}
-        <form method="post" action="{{ url_for('reset_activity_metric', metric=card.metric) }}">
-          <input type="hidden" name="next" value="{{ request.full_path }}">
-          <button class="link-button subtle" type="submit">Reset</button>
-        </form>
-      {% endif %}
-    </article>
-    {% endif %}
-  {% endfor %}
-  {% if current_user.is_admin %}<div class="dashboard-hidden-divider" data-dashboard-hidden-divider hidden><span>Hidden widgets</span><small>These will not appear outside edit mode.</small></div>{% endif %}
-  </div>
-</section>
-
-<section class="home-section dashboard-section">
-  <div class="section-head">
-    <div>
-      <h2>User scoreboard</h2>
-      <p>Ranks intentional user actions. Raw probes, replies, and other technical counters stay in the metric cards.</p>
-    </div>
-    <div class="section-actions">
-      {% if dashboard.scoreboard %}
-        <form class="scoreboard-rank-form" method="get" action="{{ url_for('index') }}">
-          <input type="hidden" name="activity_window" value="{{ dashboard.window.key }}">
-          {% if dashboard.window.key == 'custom' %}
-            <input type="hidden" name="activity_start" value="{{ dashboard.window.range_start }}">
-            <input type="hidden" name="activity_end" value="{{ dashboard.window.range_end }}">
-          {% endif %}
-          <label for="scoreboard-rank">Rank by</label>
-          <select id="scoreboard-rank" name="scoreboard_rank" onchange="this.form.submit()">
-            {% for option in dashboard.scoreboard_rank_options %}
-              <option value="{{ option.key }}" {% if option.key == dashboard.scoreboard_rank.key %}selected{% endif %}>{{ option.label }}</option>
-            {% endfor %}
-          </select>
-        </form>
-      {% endif %}
-      {% if current_user.is_admin and dashboard.scoreboard %}
-        <form method="post" action="{{ url_for('reset_activity_scoreboard') }}">
-          <input type="hidden" name="next" value="{{ request.full_path }}">
-          <button class="button-link secondary" type="submit">Clear all scores</button>
-        </form>
-      {% endif %}
-    </div>
-  </div>
-  {% if dashboard.scoreboard %}
-    <div class="scoreboard-list">
-      {% for user in dashboard.scoreboard[:5] %}
-        <details class="scoreboard-entry">
-          <summary>
-            <div class="scoreboard-entry-user">
-              <strong>{{ user.username }}</strong>
-              <small>{{ dashboard.scoreboard_rank.label }}</small>
-            </div>
-            <div class="scoreboard-rank-value">
-              <strong>{{ user.rank_value }}</strong>
-              <small>{{ dashboard.scoreboard_rank.unit }}</small>
-            </div>
-            <span class="scoreboard-entry-toggle" aria-hidden="true">+</span>
-          </summary>
-          <div class="scoreboard-entry-body">
-            <dl class="scoreboard-metrics" aria-label="{{ user.username }} metrics">
+      {% if dashboard.recent %}
+        <ol class="workspace-activity-list">
+          {% for event in dashboard.recent[:8] %}
+            <li>
+              <span class="workspace-activity-mark" aria-hidden="true"></span>
               <div>
-                <dt>Activity score</dt>
-                <dd>{{ user.actions }} action{{ '' if user.actions == 1 else 's' }}</dd>
+                <span>{{ event.category }}</span>
+                <strong>{{ event.title }}</strong>
+                {% if event.detail %}<p>{{ event.detail }}</p>{% endif %}
               </div>
-              {% if user.metrics %}
-                {% for metric in user.metrics %}
-                  <div>
-                    <dt>{{ metric.label }}</dt>
-                    <dd>{{ metric.value }} {{ metric.unit }}</dd>
-                  </div>
-                {% endfor %}
-              {% endif %}
-            </dl>
+              <small>{{ event.timestamp_display }}{% if event.username %}<br>{{ event.username }}{% endif %}</small>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        {{ empty_state("Nothing here yet.", "Completed tool runs will collect here so the next step is easy to find.") }}
+      {% endif %}
+    </section>
+
+    <section class="workspace-overview-panel workspace-snapshot-panel" aria-labelledby="activity-snapshot-title">
+      <div class="workspace-section-head">
+        <div>
+          <span class="eyebrow">At a glance</span>
+          <h2 id="activity-snapshot-title">Activity snapshot</h2>
+          <p>Your first four visible metrics for {{ dashboard.window.range_label|lower }}.</p>
+        </div>
+      </div>
+      {% if dashboard.snapshot_cards %}
+        <dl class="workspace-snapshot-list">
+          {% for card in dashboard.snapshot_cards %}
+            <div>
+              <dt>
+                <span>{{ card.kicker }}</span>
+                <strong>{{ card.title }}</strong>
+              </dt>
+              <dd>
+                <strong>{{ card.primary }}</strong>
+                <span>{{ card.primary_label }}</span>
+              </dd>
+            </div>
+          {% endfor %}
+        </dl>
+      {% else %}
+        {{ empty_state("No snapshot metrics are visible.", "An administrator can restore activity metrics below.") }}
+      {% endif %}
+    </section>
+  </div>
+
+  <details class="workspace-secondary-panel workspace-activity-details">
+    <summary>
+      <span>
+        <strong>All activity metrics</strong>
+        <small>Review every operational counter or customize the four-metric snapshot.</small>
+      </span>
+      <span class="workspace-secondary-meta">{{ dashboard.cards|length }} metrics</span>
+      <span class="workspace-secondary-toggle" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="workspace-secondary-body">
+      <section class="dashboard-metrics" data-dashboard-editor>
+        <div class="dashboard-metrics-head">
+          <div>
+            <h2>Toolkit activity</h2>
+            <p>Operational totals for {{ dashboard.window.range_label|lower }}. The first four visible metrics appear in the snapshot above.</p>
+          </div>
+          {% if current_user.is_admin %}
+            <div class="dashboard-edit-actions">
+              <button class="secondary" type="button" data-dashboard-edit>Customize activity</button>
+              <div class="button-row" data-dashboard-edit-controls hidden>
+                <form id="dashboard-layout-form" method="post" action="{{ url_for('save_dashboard_layout') }}"><input type="hidden" name="order"><input type="hidden" name="hidden"></form>
+                <button type="submit" form="dashboard-layout-form">Save layout</button>
+                <button class="secondary" type="button" data-dashboard-cancel>Cancel</button>
+                <form method="post" action="{{ url_for('reset_dashboard_layout') }}" onsubmit="return confirm('Restore every dashboard widget and its default order?')"><button class="link-button subtle" type="submit">Restore defaults</button></form>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+        <div class="dashboard-grid" data-dashboard-grid>
+        {% for card in dashboard.cards %}
+          {% if current_user.is_admin or not card.dashboard_hidden %}
+          <article class="dashboard-card{% if card.dashboard_hidden %} dashboard-card-hidden{% endif %}" data-widget-id="{{ card.metric }}" data-widget-hidden="{{ 'true' if card.dashboard_hidden else 'false' }}" {% if card.dashboard_hidden %}hidden{% endif %}>
+            {% if current_user.is_admin %}<div class="dashboard-card-editor" hidden><button class="dashboard-drag-handle" type="button" aria-label="Move {{ card.title }}" title="Drag to reorder">⠿</button><button class="dashboard-visibility-toggle" type="button" aria-pressed="{{ 'false' if card.dashboard_hidden else 'true' }}">{{ 'Show' if card.dashboard_hidden else 'Hide' }}</button></div>{% endif %}
+            <div>
+              <span class="dashboard-kicker">{{ card.kicker }}</span>
+              <strong>{{ card.title }}</strong>
+            </div>
+            <div class="dashboard-stat">
+              <span>{{ card.primary }}</span>
+              <small>{{ card.primary_label }}</small>
+            </div>
+            <p>{{ card.secondary }}</p>
             {% if current_user.is_admin %}
-              <form method="post" action="{{ url_for('reset_activity_user_score', user_id=user.user_id) }}">
+              <form method="post" action="{{ url_for('reset_activity_metric', metric=card.metric) }}">
                 <input type="hidden" name="next" value="{{ request.full_path }}">
-                <button class="link-button subtle" type="submit">Clear score</button>
+                <button class="link-button subtle" type="submit">Reset</button>
               </form>
             {% endif %}
-          </div>
-        </details>
-      {% endfor %}
+          </article>
+          {% endif %}
+        {% endfor %}
+        {% if current_user.is_admin %}<div class="dashboard-hidden-divider" data-dashboard-hidden-divider hidden><span>Hidden metrics</span><small>These will not appear outside edit mode.</small></div>{% endif %}
+        </div>
+      </section>
     </div>
-  {% else %}
-    {{ empty_state("No user activity yet.", "Once tools record intentional actions, the most active users will appear here.") }}
-  {% endif %}
-</section>
+  </details>
 
-<section class="home-section dashboard-section">
-  <div class="section-head">
-    <h2>Recent activity</h2>
-    <p>Showing the latest {{ [dashboard.recent|length, 8]|min }} of {{ dashboard.recent|length }} events from {{ dashboard.window.range_label|lower }}.</p>
-  </div>
-  {% if dashboard.recent %}
-    <div class="activity-list">
-      {% for event in dashboard.recent[:8] %}
-        <article>
-          <span>{{ event.category }}</span>
-          <strong>{{ event.title }}</strong>
-          <small>{{ event.timestamp }}{% if event.username %} · {{ event.username }}{% endif %}</small>
-          {% if event.detail %}<p>{{ event.detail }}</p>{% endif %}
-        </article>
-      {% endfor %}
-    </div>
-  {% else %}
-    {{ empty_state("No activity history is being recorded yet.", "The activity store is ready; individual tools can now be wired into it.") }}
+  {% if show_team_activity %}
+    <details class="workspace-secondary-panel workspace-team-details">
+      <summary>
+        <span>
+          <strong>Team activity</strong>
+          <small>Compare intentional tool runs without turning the workspace into a leaderboard.</small>
+        </span>
+        <span class="workspace-secondary-meta">{{ dashboard.scoreboard|length }} contributor{{ '' if dashboard.scoreboard|length == 1 else 's' }}</span>
+        <span class="workspace-secondary-toggle" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="workspace-secondary-body">
+        <section class="dashboard-team-section">
+          <div class="section-head">
+            <div>
+              <h2>Team activity</h2>
+              <p>Raw probes, replies, and technical counters remain separate from intentional activity scores.</p>
+            </div>
+            <div class="section-actions">
+              {% if dashboard.scoreboard %}
+                <form class="scoreboard-rank-form" method="get" action="{{ url_for('index') }}">
+                  <input type="hidden" name="activity_window" value="{{ dashboard.window.key }}">
+                  {% if dashboard.window.key == 'custom' %}
+                    <input type="hidden" name="activity_start" value="{{ dashboard.window.range_start }}">
+                    <input type="hidden" name="activity_end" value="{{ dashboard.window.range_end }}">
+                  {% endif %}
+                  <label for="scoreboard-rank">Compare by</label>
+                  <select id="scoreboard-rank" name="scoreboard_rank" onchange="this.form.submit()">
+                    {% for option in dashboard.scoreboard_rank_options %}
+                      <option value="{{ option.key }}" {% if option.key == dashboard.scoreboard_rank.key %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                  </select>
+                </form>
+              {% endif %}
+              {% if current_user.is_admin and dashboard.scoreboard %}
+                <form method="post" action="{{ url_for('reset_activity_scoreboard') }}">
+                  <input type="hidden" name="next" value="{{ request.full_path }}">
+                  <button class="button-link secondary" type="submit">Clear all scores</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+          {% if dashboard.scoreboard %}
+            <div class="scoreboard-list">
+              {% for user in dashboard.scoreboard[:5] %}
+                <details class="scoreboard-entry">
+                  <summary>
+                    <div class="scoreboard-entry-user">
+                      <strong>{{ user.username }}</strong>
+                      <small>{{ dashboard.scoreboard_rank.label }}</small>
+                    </div>
+                    <div class="scoreboard-rank-value">
+                      <strong>{{ user.rank_value }}</strong>
+                      <small>{{ dashboard.scoreboard_rank.unit }}</small>
+                    </div>
+                    <span class="scoreboard-entry-toggle" aria-hidden="true">+</span>
+                  </summary>
+                  <div class="scoreboard-entry-body">
+                    <dl class="scoreboard-metrics" aria-label="{{ user.username }} metrics">
+                      <div>
+                        <dt>Activity score</dt>
+                        <dd>{{ user.actions }} action{{ '' if user.actions == 1 else 's' }}</dd>
+                      </div>
+                      {% if user.metrics %}
+                        {% for metric in user.metrics %}
+                          <div>
+                            <dt>{{ metric.label }}</dt>
+                            <dd>{{ metric.value }} {{ metric.unit }}</dd>
+                          </div>
+                        {% endfor %}
+                      {% endif %}
+                    </dl>
+                    {% if current_user.is_admin %}
+                      <form method="post" action="{{ url_for('reset_activity_user_score', user_id=user.user_id) }}">
+                        <input type="hidden" name="next" value="{{ request.full_path }}">
+                        <button class="link-button subtle" type="submit">Clear score</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </details>
+              {% endfor %}
+            </div>
+          {% else %}
+            {{ empty_state("No team activity yet.", "Contributors will appear here after they intentionally run tools.") }}
+          {% endif %}
+        </section>
+      </div>
+    </details>
   {% endif %}
-</section>
+</div>
 {% if current_user.is_admin %}<script src="{{ url_for('static', filename='dashboard-layout.js') }}"></script>{% endif %}
 {% endblock %}

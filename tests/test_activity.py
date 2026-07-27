@@ -79,6 +79,7 @@ class ActivityStoreTests(unittest.TestCase):
         self.assertEqual(summary["scoreboard"][0]["actions"], 1)
         self.assertEqual(summary["recent"][0]["title"], "Tested FortiGate profile")
         self.assertEqual(summary["recent"][0]["username"], "admin")
+        self.assertIn(" · ", summary["recent"][0]["timestamp_display"])
 
     def test_scoreboard_can_rank_by_raw_metric(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

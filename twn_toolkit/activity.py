@@ -626,9 +626,12 @@ class ActivityStore:
         ).fetchall()
         return [
             {
-                "timestamp": datetime.fromtimestamp(row["recorded_at"]).isoformat(
-                    timespec="seconds"
-                ),
+                "timestamp": datetime.fromtimestamp(
+                    row["recorded_at"]
+                ).isoformat(timespec="seconds"),
+                "timestamp_display": datetime.fromtimestamp(
+                    row["recorded_at"]
+                ).strftime("%b %d · %I:%M %p").replace(" 0", " "),
                 "category": row["category"],
                 "title": row["title"],
                 "detail": row["detail"],

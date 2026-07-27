@@ -6,6 +6,9 @@
   const searchInput = document.getElementById("side-nav-search-input");
   const searchResults = document.getElementById("side-nav-search-results");
   const searchEmpty = document.getElementById("side-nav-search-empty");
+  const dashboardSearchInput = document.getElementById("dashboard-tool-search-input");
+  const dashboardSearchResults = document.getElementById("dashboard-tool-search-results");
+  const dashboardSearchEmpty = document.getElementById("dashboard-tool-search-empty");
   const desktopQuery = window.matchMedia("(min-width: 901px)");
 
   if (!button || !sidebar) return;
@@ -19,7 +22,9 @@
       const section = link.closest(".side-nav-section");
       const category = section?.querySelector(":scope > summary .side-nav-label")?.textContent?.trim() || "Tools";
       if (!label || category === "Favorites" || tools.has(link.href)) return;
-      const subsection = link.closest(".side-nav-subsection")?.querySelector(":scope > summary")?.textContent?.trim().replace(/\s+\d+$/, "") || "";
+      const subsection = link.closest(".side-nav-subsection")
+        ?.querySelector(":scope > summary .side-nav-subsection-title > span:last-child")
+        ?.textContent?.trim() || "";
       const parent = link.closest(".side-nav-tree > li")?.querySelector(":scope > .side-nav-parent-row .side-nav-label")?.textContent?.trim() || "";
       const path = [category, parent, subsection].filter((part, index, values) => part && values.indexOf(part) === index).join(" › ");
       tools.set(link.href, {
@@ -34,35 +39,61 @@
     return [...tools.values()];
   })();
 
+  const searchMatches = (value) => {
+    const query = normalizeSearch(value.trim());
+    if (!query) return [];
+    return searchableTools.filter((tool) => tool.search.includes(query));
+  };
+
+  const searchResult = (tool, className) => {
+    const link = document.createElement("a");
+    link.className = `${className}${tool.active ? " active" : ""}`;
+    link.href = tool.href;
+    link.title = `${tool.label} — ${tool.path}`;
+
+    const icon = document.createElement("span");
+    icon.className = "side-nav-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = tool.icon;
+    const label = document.createElement("strong");
+    label.textContent = tool.label;
+    const path = document.createElement("small");
+    path.textContent = tool.path;
+    link.append(icon, label, path);
+    return link;
+  };
+
   const renderSearch = () => {
     if (!scroll || !searchInput || !searchResults || !searchEmpty) return;
-    const query = normalizeSearch(searchInput.value.trim());
-    const searching = Boolean(query);
+    const searching = Boolean(searchInput.value.trim());
     scroll.classList.toggle("searching", searching);
     searchResults.replaceChildren();
     searchResults.hidden = !searching;
     searchEmpty.hidden = true;
     if (!searching) return;
 
-    const matches = searchableTools.filter((tool) => tool.search.includes(query));
-    matches.forEach((tool) => {
-      const link = document.createElement("a");
-      link.className = `side-nav-search-result${tool.active ? " active" : ""}`;
-      link.href = tool.href;
-      link.title = `${tool.label} — ${tool.path}`;
-
-      const icon = document.createElement("span");
-      icon.className = "side-nav-icon";
-      icon.setAttribute("aria-hidden", "true");
-      icon.textContent = tool.icon;
-      const label = document.createElement("strong");
-      label.textContent = tool.label;
-      const path = document.createElement("small");
-      path.textContent = tool.path;
-      link.append(icon, label, path);
-      searchResults.append(link);
-    });
+    const matches = searchMatches(searchInput.value);
+    searchResults.hidden = matches.length === 0;
+    searchResults.replaceChildren(
+      ...matches.map((tool) => searchResult(tool, "side-nav-search-result")),
+    );
     searchEmpty.hidden = matches.length > 0;
+  };
+
+  const renderDashboardSearch = () => {
+    if (!dashboardSearchInput || !dashboardSearchResults || !dashboardSearchEmpty) return;
+    const searching = Boolean(dashboardSearchInput.value.trim());
+    dashboardSearchResults.replaceChildren();
+    dashboardSearchResults.hidden = !searching;
+    dashboardSearchEmpty.hidden = true;
+    if (!searching) return;
+
+    const matches = searchMatches(dashboardSearchInput.value).slice(0, 10);
+    dashboardSearchResults.hidden = matches.length === 0;
+    dashboardSearchResults.replaceChildren(
+      ...matches.map((tool) => searchResult(tool, "workspace-tool-search-result")),
+    );
+    dashboardSearchEmpty.hidden = matches.length > 0;
   };
 
   searchInput?.addEventListener("input", renderSearch);
@@ -71,6 +102,14 @@
       event.stopPropagation();
       searchInput.value = "";
       renderSearch();
+    }
+  });
+  dashboardSearchInput?.addEventListener("input", renderDashboardSearch);
+  dashboardSearchInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && dashboardSearchInput.value) {
+      event.stopPropagation();
+      dashboardSearchInput.value = "";
+      renderDashboardSearch();
     }
   });
 
