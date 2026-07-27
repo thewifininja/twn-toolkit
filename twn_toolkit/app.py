@@ -876,6 +876,8 @@ def create_app(instance_path: str | None = None) -> Flask:
         if set(ordered_ids) != set(visible_ids):
             abort(400)
         auth_store.reorder_favorite_tools(g.current_user["id"], ordered_ids)
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return "", 204
         return redirect(_validated_next_url(request.form.get("next", "")))
 
 

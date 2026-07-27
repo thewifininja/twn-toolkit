@@ -85,6 +85,9 @@ precedent.
 - Favorite ordering is user-specific and controls both the sidebar list and
   Quick launch. Reordering a currently visible subset must preserve Favorites
   hidden by access-profile changes so later access restoration is non-destructive.
+  When two or more Favorites are visible, their sidebar drag handles remain
+  available without entering an edit mode; pointer and keyboard moves save
+  automatically.
 - Workspace status summarizes the current user's live-tool sessions and, for
   administrators, enabled automation health. Team activity stays collapsed and
   is omitted entirely when there is only one operator and contributor.

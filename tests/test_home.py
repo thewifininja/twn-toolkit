@@ -373,6 +373,16 @@ class HomePageTests(unittest.TestCase):
                 "/favorites/order",
                 data={"order": "tools.ping", "next": "/"},
             )
+            autosaved = client.post(
+                "/favorites/order",
+                data={
+                    "order": (
+                        "tools.packet_capture,tools.ping,tools.dns_response"
+                    ),
+                    "next": "/",
+                },
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
             script = client.get("/static/favorites-order.js")
 
         self.assertEqual(response.status_code, 302)
@@ -381,11 +391,19 @@ class HomePageTests(unittest.TestCase):
             ["tools.packet_capture", "tools.ping", "tools.dns_response"],
         )
         self.assertEqual(invalid.status_code, 400)
-        self.assertIn(b'data-favorites-edit', page.data)
-        self.assertIn(b'id="favorites-order-form"', page.data)
+        self.assertEqual(autosaved.status_code, 204)
+        self.assertNotIn(b">Reorder</button>", page.data)
+        self.assertNotIn(b"data-favorites-editor", page.data)
+        self.assertIn(b"data-favorites-reorder", page.data)
+        self.assertIn(b'data-favorites-order-form', page.data)
         favorites_html = page.data.split(b"data-favorites-list", 1)[1].split(
             b"</ul>", 1
         )[0]
+        self.assertIn(b'draggable="true"', favorites_html)
+        self.assertIn(
+            b"Reorder Packet Capture; use Up and Down arrow keys",
+            favorites_html,
+        )
         self.assertLess(
             favorites_html.index(b"Packet Capture"),
             favorites_html.index(b"Multi-Host Ping"),
@@ -403,6 +421,9 @@ class HomePageTests(unittest.TestCase):
         )
         self.assertEqual(script.status_code, 200)
         self.assertIn(b"ArrowDown", script.data)
+        self.assertIn(b"fetch(form.action", script.data)
+        self.assertIn(b"DOMParser", script.data)
+        self.assertNotIn(b"setEditing", script.data)
 
     def test_dashboard_surfaces_live_tool_attention(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
