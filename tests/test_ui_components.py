@@ -348,12 +348,14 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("Source-specific multicast (SSM)", template)
         self.assertIn("RTP version 2", template)
         self.assertIn("mDNS · 224.0.0.251:5353", template)
+        self.assertIn("multicast-mode-icon", template)
         self.assertIn("multicast-live-panel", template)
         self.assertIn("multicast-live-timeline", template)
         self.assertIn("multicast-cancel", template)
         self.assertIn("Download JSON", template)
         self.assertIn("one million packets per run", template)
         self.assertIn(".multicast-mode-picker {", stylesheet)
+        self.assertIn(".multicast-mode-card:has(input:focus-visible)", stylesheet)
         script = (TEMPLATE_ROOT.parent / "static" / "multicast.js").read_text(
             encoding="utf-8"
         )

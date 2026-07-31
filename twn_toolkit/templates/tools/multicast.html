@@ -21,15 +21,24 @@
       <legend>Test mode</legend>
       <label class="multicast-mode-card">
         <input type="radio" name="mode" value="listen" {{ 'checked' if form.mode == 'listen' else '' }}>
-        <span><strong>Listen</strong><small>Join a group and inspect an existing stream.</small></span>
+        <span class="multicast-mode-card-body">
+          <span class="multicast-mode-title"><span class="multicast-mode-icon" aria-hidden="true">↓</span><strong>Listen</strong></span>
+          <small>Join a group and inspect an existing stream.</small>
+        </span>
       </label>
       <label class="multicast-mode-card">
         <input type="radio" name="mode" value="send" {{ 'checked' if form.mode == 'send' else '' }}>
-        <span><strong>Send</strong><small>Generate a bounded, sequenced TWN test stream.</small></span>
+        <span class="multicast-mode-card-body">
+          <span class="multicast-mode-title"><span class="multicast-mode-icon" aria-hidden="true">↑</span><strong>Send</strong></span>
+          <small>Generate a bounded, sequenced TWN test stream.</small>
+        </span>
       </label>
       <label class="multicast-mode-card">
         <input type="radio" name="mode" value="path" {{ 'checked' if form.mode == 'path' else '' }}>
-        <span><strong>End-to-end</strong><small>Send on one interface and receive on another.</small></span>
+        <span class="multicast-mode-card-body">
+          <span class="multicast-mode-title"><span class="multicast-mode-icon" aria-hidden="true">⇄</span><strong>End-to-end</strong></span>
+          <small>Send on one interface and receive on another.</small>
+        </span>
       </label>
     </fieldset>
 
