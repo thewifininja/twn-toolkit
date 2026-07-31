@@ -14,7 +14,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 from .network_tools import ToolInputError
 from .wol_tools import available_wol_interfaces
@@ -29,10 +29,17 @@ MULTICAST_MAX_MEGABITS = 200
 MULTICAST_MAX_SEND_PACKETS = 1_000_000
 MULTICAST_MAX_SOURCES = 100
 MULTICAST_RECEIVE_BUFFER_BYTES = 4 * 1024 * 1024
+MULTICAST_PROGRESS_INTERVAL_SECONDS = 0.25
 
 TEST_PACKET_MAGIC = b"TWNMCST1"
 TEST_PACKET_VERSION = 1
 TEST_PACKET_HEADER = struct.Struct("!8sB7x8sQQ")
+
+MulticastProgressCallback = Callable[[dict[str, Any]], None]
+
+
+class MulticastTestCancelled(Exception):
+    """Raised internally when a streamed multicast run is cancelled."""
 
 
 @dataclass
@@ -304,13 +311,27 @@ def run_multicast_test(
     config: dict[str, Any],
     *,
     interfaces: list[dict[str, Any]] | None = None,
+    progress: MulticastProgressCallback | None = None,
+    cancelled: threading.Event | None = None,
 ) -> dict[str, Any]:
     normalized = normalize_multicast_config(config, interfaces=interfaces)
     if normalized["mode"] == "listen":
-        return receive_multicast(normalized)
+        return receive_multicast(
+            normalized,
+            progress=progress,
+            cancelled=cancelled,
+        )
     if normalized["mode"] == "send":
-        return send_multicast(normalized)
-    return run_multicast_path_test(normalized)
+        return send_multicast(
+            normalized,
+            progress=progress,
+            cancelled=cancelled,
+        )
+    return run_multicast_path_test(
+        normalized,
+        progress=progress,
+        cancelled=cancelled,
+    )
 
 
 def build_test_packet(session_id: str, sequence: int, sent_ns: int, size: int) -> bytes:
@@ -371,13 +392,30 @@ def receive_multicast(
     *,
     ready: threading.Event | None = None,
     readiness: dict[str, str] | None = None,
+    progress: MulticastProgressCallback | None = None,
+    cancelled: threading.Event | None = None,
 ) -> dict[str, Any]:
     interface = config["receive_interface"]
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     started_wall = time.time()
     started = time.monotonic()
     try:
+        _emit_progress(
+            progress,
+            phase="joining",
+            elapsed_seconds=0.0,
+            remaining_seconds=float(config["duration"]),
+            packets_received=0,
+            bytes_received=0,
+            sources=0,
+        )
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        reuse_port = getattr(socket, "SO_REUSEPORT", None)
+        if reuse_port is not None:
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, reuse_port, 1)
+            except OSError:
+                pass
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, MULTICAST_RECEIVE_BUFFER_BYTES)
         sock.bind(("", config["port"]))
         group = socket.inet_aton(config["group"])
@@ -398,7 +436,24 @@ def receive_multicast(
             readiness["status"] = "joined"
         if ready is not None:
             ready.set()
-        return _collect_multicast(sock, config, started=started, started_wall=started_wall)
+        if progress is not None:
+            _emit_progress(
+                progress,
+                phase="joined",
+                elapsed_seconds=round(time.monotonic() - started, 3),
+                remaining_seconds=float(config["duration"]),
+                packets_received=0,
+                bytes_received=0,
+                sources=0,
+            )
+        return _collect_multicast(
+            sock,
+            config,
+            started=started,
+            started_wall=started_wall,
+            progress=progress,
+            cancelled=cancelled,
+        )
     except PermissionError as exc:
         raise ToolInputError(
             "The toolkit does not have permission to bind this UDP port or join on the selected interface."
@@ -419,6 +474,8 @@ def _collect_multicast(
     *,
     started: float,
     started_wall: float,
+    progress: MulticastProgressCallback | None = None,
+    cancelled: threading.Event | None = None,
 ) -> dict[str, Any]:
     interface = config["receive_interface"]
     deadline = started + config["duration"]
@@ -438,8 +495,56 @@ def _collect_multicast(
     test_sessions: dict[str, _SequenceTracker] = {}
     test_packets = 0
     rtp_streams: dict[int, dict[str, Any]] = {}
+    last_progress_at = started - MULTICAST_PROGRESS_INTERVAL_SECONDS
+
+    def emit_progress(now: float, *, force: bool = False) -> None:
+        nonlocal last_progress_at
+        if progress is None:
+            return
+        if not force and now - last_progress_at < MULTICAST_PROGRESS_INTERVAL_SECONDS:
+            return
+        last_progress_at = now
+        elapsed = max(0.0, now - started)
+        visible_sources = sorted(
+            sources.values(),
+            key=lambda item: (-item["packets"], item["address"], item["port"]),
+        )[:5]
+        _emit_progress(
+            progress,
+            phase="receiving",
+            elapsed_seconds=round(elapsed, 3),
+            remaining_seconds=round(max(0.0, config["duration"] - elapsed), 3),
+            packets_received=packet_count,
+            bytes_received=byte_count,
+            packets_per_second=round(packet_count / max(0.001, elapsed), 2),
+            megabits_per_second=round(
+                byte_count * 8 / max(0.001, elapsed) / 1_000_000,
+                4,
+            ),
+            sources=len(sources),
+            unexpected_source_packets=ignored_sources,
+            top_sources=[
+                {
+                    "address": item["address"],
+                    "port": item["port"],
+                    "packets": item["packets"],
+                }
+                for item in visible_sources
+            ],
+            timeline=[
+                {
+                    "second": second,
+                    "packets": timeline.get(second, {}).get("packets", 0),
+                    "bytes": timeline.get(second, {}).get("bytes", 0),
+                }
+                for second in range(max(1, min(config["duration"], int(elapsed) + 1)))
+            ],
+        )
+
+    emit_progress(started, force=True)
 
     while True:
+        _raise_if_cancelled(cancelled)
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
@@ -447,6 +552,8 @@ def _collect_multicast(
         try:
             payload, source_address = sock.recvfrom(65535)
         except socket.timeout:
+            if progress is not None:
+                emit_progress(time.monotonic())
             continue
         now = time.monotonic()
         source_ip, source_port = source_address[:2]
@@ -527,8 +634,10 @@ def _collect_multicast(
                     difference = abs(transit - stream["previous_transit"])
                     stream["jitter_ticks"] += (difference - stream["jitter_ticks"]) / 16
                 stream["previous_transit"] = transit
+        emit_progress(now)
 
     elapsed = max(0.001, time.monotonic() - started)
+    emit_progress(started + elapsed, force=True)
     result = {
         "mode": config["mode"],
         "status": "success" if packet_count else "no_data",
@@ -580,7 +689,13 @@ def _collect_multicast(
     return result
 
 
-def send_multicast(config: dict[str, Any], *, session_id: str | None = None) -> dict[str, Any]:
+def send_multicast(
+    config: dict[str, Any],
+    *,
+    session_id: str | None = None,
+    progress: MulticastProgressCallback | None = None,
+    cancelled: threading.Event | None = None,
+) -> dict[str, Any]:
     interface = config["send_interface"]
     session_id = session_id or secrets.token_hex(8)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -589,6 +704,31 @@ def send_multicast(config: dict[str, Any], *, session_id: str | None = None) -> 
     started_wall = time.time()
     started = time.monotonic()
     warning = ""
+    last_progress_at = started - MULTICAST_PROGRESS_INTERVAL_SECONDS
+
+    def emit_progress(now: float, *, force: bool = False) -> None:
+        nonlocal last_progress_at
+        if progress is None:
+            return
+        if not force and now - last_progress_at < MULTICAST_PROGRESS_INTERVAL_SECONDS:
+            return
+        last_progress_at = now
+        elapsed = max(0.0, now - started)
+        _emit_progress(
+            progress,
+            phase="sending",
+            elapsed_seconds=round(elapsed, 3),
+            remaining_seconds=round(max(0.0, config["duration"] - elapsed), 3),
+            packets_sent=sent,
+            packets_requested=int(config["requested_packets"]),
+            bytes_sent=sent_bytes,
+            packets_per_second=round(sent / max(0.001, elapsed), 2),
+            megabits_per_second=round(
+                sent_bytes * 8 / max(0.001, elapsed) / 1_000_000,
+                4,
+            ),
+        )
+
     try:
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(interface["address"]))
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, int(config["ttl"]))
@@ -599,11 +739,17 @@ def send_multicast(config: dict[str, Any], *, session_id: str | None = None) -> 
         packets_per_second = float(config["packets_per_second"])
         interval = 1.0 / packets_per_second
         deadline = started + config["duration"]
+        emit_progress(started, force=True)
         for sequence in range(int(config["requested_packets"])):
+            _raise_if_cancelled(cancelled)
             scheduled = started + sequence * interval
             remaining = scheduled - time.monotonic()
             if remaining > 0:
-                time.sleep(remaining)
+                if cancelled is not None:
+                    if cancelled.wait(timeout=remaining):
+                        raise MulticastTestCancelled
+                else:
+                    time.sleep(remaining)
             if time.monotonic() > deadline + interval:
                 break
             packet = build_test_packet(
@@ -621,10 +767,16 @@ def send_multicast(config: dict[str, Any], *, session_id: str | None = None) -> 
                 break
             sent += 1
             sent_bytes += delivered
+            if progress is not None:
+                emit_progress(time.monotonic())
         if not warning:
             remaining = deadline - time.monotonic()
             if remaining > 0:
-                time.sleep(remaining)
+                if cancelled is not None:
+                    if cancelled.wait(timeout=remaining):
+                        raise MulticastTestCancelled
+                else:
+                    time.sleep(remaining)
     except PermissionError as exc:
         raise ToolInputError(
             "The toolkit does not have permission to bind the selected source address or port."
@@ -634,6 +786,7 @@ def send_multicast(config: dict[str, Any], *, session_id: str | None = None) -> 
     finally:
         sock.close()
     elapsed = max(0.001, time.monotonic() - started)
+    emit_progress(started + elapsed, force=True)
     warnings = list(config.get("warnings", []))
     if warning:
         warnings.append(warning)
@@ -670,7 +823,12 @@ def send_multicast(config: dict[str, Any], *, session_id: str | None = None) -> 
     }
 
 
-def run_multicast_path_test(config: dict[str, Any]) -> dict[str, Any]:
+def run_multicast_path_test(
+    config: dict[str, Any],
+    *,
+    progress: MulticastProgressCallback | None = None,
+    cancelled: threading.Event | None = None,
+) -> dict[str, Any]:
     session_id = secrets.token_hex(8)
     receive_config = {
         **config,
@@ -681,19 +839,39 @@ def run_multicast_path_test(config: dict[str, Any]) -> dict[str, Any]:
     }
     ready = threading.Event()
     readiness: dict[str, str] = {}
+
+    def receiver_progress(event: dict[str, Any]) -> None:
+        if progress is not None:
+            progress({**event, "lane": "receive"})
+
+    def sender_progress(event: dict[str, Any]) -> None:
+        if progress is not None:
+            progress({**event, "lane": "send"})
+
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="twn-multicast") as executor:
         future = executor.submit(
             receive_multicast,
             receive_config,
             ready=ready,
             readiness=readiness,
+            progress=receiver_progress,
+            cancelled=cancelled,
         )
         if not ready.wait(timeout=3):
             raise ToolInputError("The multicast receiver did not become ready within three seconds.")
         if readiness.get("status") != "joined":
             return future.result()
-        time.sleep(0.2)
-        send_result = send_multicast({**config, "loopback": False}, session_id=session_id)
+        if cancelled is not None:
+            if cancelled.wait(timeout=0.2):
+                raise MulticastTestCancelled
+        else:
+            time.sleep(0.2)
+        send_result = send_multicast(
+            {**config, "loopback": False},
+            session_id=session_id,
+            progress=sender_progress,
+            cancelled=cancelled,
+        )
         receive_result = future.result()
 
     tracker_summary = next(
@@ -894,3 +1072,16 @@ def _receive_limitations(config: dict[str, Any], packet_count: int) -> list[str]
 
 def _iso_timestamp(value: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(value))
+
+
+def _emit_progress(
+    callback: MulticastProgressCallback | None,
+    **event: Any,
+) -> None:
+    if callback is not None:
+        callback({"type": "progress", **event})
+
+
+def _raise_if_cancelled(cancelled: threading.Event | None) -> None:
+    if cancelled is not None and cancelled.is_set():
+        raise MulticastTestCancelled

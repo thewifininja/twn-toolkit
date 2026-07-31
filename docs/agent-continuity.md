@@ -77,7 +77,12 @@ precedent.
   routing/filtering effects, and recommend separate toolkit hosts for
   independent endpoint proof. Reports may include aggregate/source/sequence
   metadata and JSON export, but audit records must omit group addresses,
-  source addresses, and payloads.
+  source addresses, and payloads. The browser-facing run endpoint streams
+  bounded NDJSON progress at a coarse interval so packet/byte/source/rate and
+  timeline telemetry remains live without per-packet persistence. Client
+  cancellation must close the socket promptly. Receivers set reusable address
+  and, when host-supported, reusable port options before binding so standard
+  listeners such as mDNS on UDP 5353 can coexist with the toolkit.
 - Local operational files live beneath owner-only `instance/datastore/` and are
   managed through the grantable `local.datastore` tool. Keep every future
   transfer integration and cross-tool file picker constrained to this root;

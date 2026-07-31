@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import socket
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -11,6 +13,7 @@ from twn_toolkit.audit import AuditStore
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.multicast_tools import (
     TEST_PACKET_HEADER,
+    MulticastTestCancelled,
     _collect_multicast,
     build_test_packet,
     decode_test_packet,
@@ -168,6 +171,30 @@ class MulticastToolTests(unittest.TestCase):
         self.assertEqual(result["minimum_packet_bytes"], 100)
         self.assertEqual(result["maximum_packet_bytes"], 100)
 
+    def test_collector_emits_live_receive_progress(self) -> None:
+        packet = build_test_packet("0011223344556677", 4, 123, 100)
+        receiver = Mock()
+        receiver.recvfrom.return_value = (packet, ("192.0.2.50", 4000))
+        config = normalize_multicast_config(
+            _base_config(duration=1, stream_format="twn"), interfaces=INTERFACES
+        )
+        events = []
+        with patch(
+            "twn_toolkit.multicast_tools.time.monotonic",
+            side_effect=[0.0, 0.1, 1.1, 1.1],
+        ):
+            _collect_multicast(
+                receiver,
+                config,
+                started=0.0,
+                started_wall=0.0,
+                progress=events.append,
+            )
+        self.assertEqual(events[-1]["phase"], "receiving")
+        self.assertEqual(events[-1]["packets_received"], 1)
+        self.assertEqual(events[-1]["top_sources"][0]["address"], "192.0.2.50")
+        self.assertEqual(events[-1]["timeline"][0]["packets"], 1)
+
     def test_sender_sets_interface_ttl_dscp_and_emits_test_packet(self) -> None:
         fake_socket = Mock()
         fake_socket.getsockname.return_value = ("192.0.2.10", 42000)
@@ -214,6 +241,52 @@ class MulticastToolTests(unittest.TestCase):
         source = socket.inet_aton("192.0.2.50")
         local = socket.inet_aton("198.51.100.10")
         self.assertEqual(request, group + source + local if __import__("sys").platform == "darwin" else group + local + source)
+
+    def test_receiver_allows_shared_multicast_ports(self) -> None:
+        fake_socket = Mock()
+        config = normalize_multicast_config(
+            _base_config(group="224.0.0.251", port=5353, duration=1),
+            interfaces=INTERFACES,
+        )
+        with (
+            patch("twn_toolkit.multicast_tools.socket.socket", return_value=fake_socket),
+            patch(
+                "twn_toolkit.multicast_tools._collect_multicast",
+                return_value={"status": "success"},
+            ),
+        ):
+            receive_multicast(config)
+        fake_socket.setsockopt.assert_any_call(
+            socket.SOL_SOCKET,
+            socket.SO_REUSEADDR,
+            1,
+        )
+        if hasattr(socket, "SO_REUSEPORT"):
+            fake_socket.setsockopt.assert_any_call(
+                socket.SOL_SOCKET,
+                socket.SO_REUSEPORT,
+                1,
+            )
+        fake_socket.bind.assert_called_once_with(("", 5353))
+
+    def test_sender_honors_stream_cancellation(self) -> None:
+        fake_socket = Mock()
+        fake_socket.getsockname.return_value = ("192.0.2.10", 42000)
+        config = normalize_multicast_config(
+            _base_config(mode="send", duration=1, rate=1, rate_unit="pps"),
+            interfaces=INTERFACES,
+        )
+        cancelled = threading.Event()
+        cancelled.set()
+        with (
+            patch("twn_toolkit.multicast_tools.socket.socket", return_value=fake_socket),
+            patch(
+                "twn_toolkit.multicast_tools.time.monotonic",
+                side_effect=[0.0],
+            ),
+            self.assertRaises(MulticastTestCancelled),
+        ):
+            send_multicast(config, cancelled=cancelled)
 
     def test_route_renders_report_records_bounded_activity_and_is_grantable(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -267,6 +340,78 @@ class MulticastToolTests(unittest.TestCase):
 
         self.assertIn("tools.multicast", TOOL_BY_ID)
         self.assertEqual(tool_id_for_endpoint("tools.multicast"), "tools.multicast")
+
+    def test_live_route_streams_progress_and_completed_report(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+            capability = {
+                "available": True,
+                "interfaces": INTERFACES,
+                "asm": True,
+                "ssm": True,
+                "detail": "2 interfaces",
+            }
+
+            def run_live(_config, *, interfaces, progress, cancelled):
+                self.assertEqual(interfaces, INTERFACES)
+                self.assertFalse(cancelled.is_set())
+                progress(
+                    {
+                        "type": "progress",
+                        "phase": "receiving",
+                        "elapsed_seconds": 0.5,
+                        "remaining_seconds": 0.5,
+                        "packets_received": 10,
+                        "bytes_received": 12000,
+                        "sources": 1,
+                        "timeline": [{"second": 0, "packets": 10, "bytes": 12000}],
+                    }
+                )
+                return _listen_result()
+
+            with (
+                patch(
+                    "twn_toolkit.multicast_routes.multicast_capability",
+                    return_value=capability,
+                ),
+                patch(
+                    "twn_toolkit.multicast_routes.run_multicast_test",
+                    side_effect=run_live,
+                ),
+            ):
+                response = client.post(
+                    "/tools/multicast/live",
+                    json={**_base_config(duration=1), "authorized": True},
+                )
+                events = [
+                    json.loads(line)
+                    for line in response.data.decode().splitlines()
+                ]
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                [event["type"] for event in events],
+                ["progress", "complete"],
+            )
+            self.assertIn("Received 20 multicast packets", events[-1]["html"])
+            summary = ActivityStore(instance).summary()
+            self.assertEqual(summary["counters"]["multicast"]["tests"], 1)
+            self.assertEqual(
+                summary["counters"]["multicast"]["packets_received"],
+                20,
+            )
+            audit = AuditStore(instance).recent(1)[0]
+            self.assertEqual(audit["action"], "multicast.stream.run_started")
+            self.assertNotIn("239.192.10.20", str(audit["details"]))
 
 
 if __name__ == "__main__":

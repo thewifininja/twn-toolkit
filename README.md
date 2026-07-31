@@ -179,9 +179,10 @@ The sidebar and Network Tools page use the same functional organization.
   endpoint throughput, transfer, retransmits or loss/jitter, CPU, intervals,
   and bounded raw JSON.
 - **Multicast Tester** — join IPv4 ASM or SSM groups on a selected interface,
-  inspect sources and per-second delivery, analyze RTP sequence/jitter data,
-  generate bounded sequenced UDP streams, or measure loss and ordering between
-  two host interfaces. Reports make the limits of same-host and generic UDP
+  watch live packet, byte, source, rate, and timeline telemetry; analyze RTP
+  sequence/jitter data; generate bounded sequenced UDP streams; or measure loss
+  and ordering between two host interfaces. Quick setups cover mDNS, LLMNR,
+  SSDP, and WS-Discovery. Reports make the limits of same-host and generic UDP
   evidence explicit and can be downloaded as JSON.
 - **DHCP Discover** — send a customizable Discover and inspect Offers without
   requesting or accepting a lease.

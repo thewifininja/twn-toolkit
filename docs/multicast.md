@@ -25,7 +25,18 @@ joins a specific `(source, group)` channel when the operating system supports
 The receiver reports packet and byte totals, payload throughput, first-packet
 delay, average and maximum interarrival gaps, interarrival standard deviation,
 packet sizes, up to 100 source address/port pairs, and one-second traffic
-buckets. It does not retain packet payloads.
+buckets. While the socket is open, the page updates elapsed time, packet and
+byte counts, achieved rate, observed sources, and the receive timeline without
+blocking behind a loading screen. The run can be cancelled at any time. It does
+not retain packet payloads.
+
+The Quick setup list fills the standard IPv4 group and UDP port for mDNS,
+LLMNR, SSDP/UPnP, and WS-Discovery. Both values matter: mDNS uses
+`224.0.0.251:5353`, so listening to that group on the generic default port
+will not receive mDNS datagrams. The selected receive interface must also match
+the interface where a packet capture sees the traffic. The receiver enables
+the platform's reusable-port socket option when available so it can coexist
+with system services such as macOS `mDNSResponder`.
 
 Choose the stream format that matches the traffic:
 
@@ -80,7 +91,9 @@ path forwarding, TTL boundaries, ACLs, or multicast routing are correct.
 
 When no data arrives, check:
 
-1. The group, port, receiving interface, and SSM source.
+1. The group, destination port, receiving interface, and SSM source. A packet
+   capture should be filtered by all three destination fields, not only the
+   multicast address.
 2. Whether the source is actually sending and its multicast TTL reaches the
    receiver subnet.
 3. Host firewall rules and local routes on both endpoints.

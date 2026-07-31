@@ -440,6 +440,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "tools.speed_test_activity": "tools.speed_test",
             "tools.iperf3": "tools.iperf3",
             "tools.multicast": "tools.multicast",
+            "tools.multicast_live": "tools.multicast",
             "tools.start_iperf3_server": "tools.iperf3",
             "tools.stop_iperf3_server": "tools.iperf3",
             "tools.iperf3_server_status": "tools.iperf3",

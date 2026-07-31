@@ -10,7 +10,13 @@
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {% if not capability.available %}<div class="message warning">{{ capability.detail }}</div>{% endif %}
 
-  <form class="form" method="post" id="multicast-form" data-loading-message="Running multicast test…">
+  <form
+    class="form"
+    method="post"
+    id="multicast-form"
+    data-loading-message="Running multicast test…"
+    data-run-url="{{ url_for('tools.multicast_live') }}"
+  >
     <fieldset class="multicast-mode-picker">
       <legend>Test mode</legend>
       <label class="multicast-mode-card">
@@ -32,17 +38,26 @@
         <div><span class="eyebrow">Stream</span><h2>Destination and observation window</h2></div>
       </div>
       <div class="ntp-options multicast-common-grid">
+        <label>Quick setup
+          <select id="multicast-preset">
+            <option value="custom">Custom group and port</option>
+            <option value="mdns">mDNS · 224.0.0.251:5353</option>
+            <option value="llmnr">LLMNR · 224.0.0.252:5355</option>
+            <option value="ssdp">SSDP / UPnP · 239.255.255.250:1900</option>
+            <option value="ws-discovery">WS-Discovery · 239.255.255.250:3702</option>
+          </select>
+        </label>
         <label>IPv4 multicast group
-          <input name="group" value="{{ form.group }}" placeholder="239.192.10.20" required>
+          <input name="group" id="multicast-group" value="{{ form.group }}" placeholder="239.192.10.20" required>
         </label>
         <label>UDP destination port
-          <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required>
+          <input name="port" id="multicast-port" type="number" min="1" max="65535" value="{{ form.port }}" required>
         </label>
         <label>Duration (seconds)
           <input name="duration" type="number" min="1" max="{{ limits.duration }}" value="{{ form.duration }}" required>
         </label>
       </div>
-      <span class="field-note">Use an assigned group for existing services. Generated tests default to administratively scoped <code>239.0.0.0/8</code>.</span>
+      <span class="field-note">Use an assigned group and its matching UDP port. For example, mDNS is <code>224.0.0.251:5353</code>; a packet capture showing the group on another port or interface will not reach this socket.</span>
     </div>
 
     <div class="multicast-section" data-mode-section="listen path">
@@ -129,12 +144,52 @@
       I am authorized to join or generate multicast traffic on the selected network.
     </label>
     <div class="button-row">
-      <button type="submit" {% if not capability.available %}disabled{% endif %}>Run multicast test</button>
+      <button type="submit" id="multicast-run" {% if not capability.available %}disabled{% endif %}>Run multicast test</button>
+      <button type="button" class="secondary" id="multicast-cancel" hidden>Cancel test</button>
     </div>
     <span class="tool-status">{{ capability.detail }}{% if capability.available and not capability.ssm %} Source-specific joins are unavailable on this host.{% endif %}</span>
   </form>
 </section>
 
+<section class="panel multicast-live-panel" id="multicast-live-panel" aria-live="polite" hidden>
+  <div class="certificate-result-head">
+    <div>
+      <span class="eyebrow">Live multicast</span>
+      <h2 id="multicast-live-title">Preparing test</h2>
+      <p id="multicast-live-meta">Validating the group, port, and selected interfaces.</p>
+    </div>
+    <span class="pill planned" id="multicast-live-state">starting</span>
+  </div>
+  <div class="multicast-live-progress">
+    <div>
+      <span id="multicast-live-elapsed">0.0s elapsed</span>
+      <span id="multicast-live-remaining">— remaining</span>
+    </div>
+    <progress id="multicast-live-progress-bar" max="100" value="0" aria-label="Multicast test progress">0%</progress>
+  </div>
+  <div class="ntp-summary multicast-live-summary">
+    <article><span>Packets received</span><strong id="multicast-live-received">0</strong><small id="multicast-live-received-bytes">0 bytes</small></article>
+    <article><span>Packets sent</span><strong id="multicast-live-sent">0</strong><small id="multicast-live-sent-bytes">0 bytes</small></article>
+    <article><span>Live average rate</span><strong id="multicast-live-rate">0 Mbps</strong><small id="multicast-live-pps">0 packets/second</small></article>
+    <article><span>Observed sources</span><strong id="multicast-live-sources">0</strong><small id="multicast-live-unexpected">0 unexpected packets</small></article>
+  </div>
+  <div class="multicast-live-body">
+    <div>
+      <h3>Packets per second</h3>
+      <div class="multicast-chart-wrap multicast-live-chart-wrap">
+        <canvas id="multicast-live-timeline" height="190" aria-label="Live multicast packets per second"></canvas>
+      </div>
+    </div>
+    <div>
+      <h3>Top sources</h3>
+      <div class="multicast-live-sources" id="multicast-live-source-list">
+        <p class="field-note">Waiting for multicast traffic.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="multicast-results">
 {% if result %}
   {% set receive = result.receive if result.mode == 'path' else result if result.mode == 'listen' else none %}
   {% set send = result.send if result.mode == 'path' else result if result.mode == 'send' else none %}
@@ -251,6 +306,7 @@
     <script type="application/json" id="multicast-result-data">{{ result | tojson }}</script>
   </section>
 {% endif %}
+</div>
 
 <script src="{{ url_for('static', filename='multicast.js', v=app_version) }}"></script>
 {% endblock %}
