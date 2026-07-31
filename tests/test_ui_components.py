@@ -332,6 +332,30 @@ class UIComponentTests(unittest.TestCase):
             stylesheet,
         )
 
+    def test_multicast_workspace_exposes_bounded_modes_and_reports(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        template = (TEMPLATE_ROOT / "tools" / "multicast.html").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual(template.count('class="multicast-mode-card"'), 3)
+        self.assertIn('value="listen"', template)
+        self.assertIn('value="send"', template)
+        self.assertIn('value="path"', template)
+        self.assertIn('name="authorized"', template)
+        self.assertIn("Source-specific multicast (SSM)", template)
+        self.assertIn("RTP version 2", template)
+        self.assertIn("Download JSON", template)
+        self.assertIn("one million packets per run", template)
+        self.assertIn(".multicast-mode-picker {", stylesheet)
+        script = (TEMPLATE_ROOT.parent / "static" / "multicast.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('mode === "path"', script)
+        self.assertIn("receiveInterface.options", script)
+
 
 if __name__ == "__main__":
     unittest.main()

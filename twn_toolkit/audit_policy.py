@@ -114,6 +114,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.stop_iperf3_server",
         "tools.multi_ssh",
         "tools.multi_transfer",
+        "tools.multicast",
         "tools.ntp_test",
         "tools.path_mtu",
         "tools.start_packet_capture",

@@ -20,6 +20,8 @@ Optional workflows need their own system commands or remote permissions:
 - PEAP/MSCHAPv2 and EAP-TLS tests require `eapol_test`.
 - iPerf3 client and server tests require an existing system `iperf3` command;
   the toolkit does not install it.
+- Multicast tests use the host's IPv4 socket support and require at least one
+  multicast-capable interface. No extra package is installed.
 - DHCP Discover and Packet Replay may require elevated network permissions.
 
 ## Install or upgrade
@@ -124,7 +126,7 @@ The other Network Tools follow the same category layout shown in the sidebar:
 - **Services & Protocols:** RADIUS, certificate inspection and AD CS enrollment,
   SNMP, Wake-on-LAN, Webhook/API, and Syslog
 - **Traffic & Interfaces:** Packet Capture, Wi-Fi/LAN Speed Test, iPerf3 Tester,
-  DHCP Discover, and Packet Replay
+  Multicast Tester, DHCP Discover, and Packet Replay
 
 Packet Capture includes a floating, minimizable header viewer for live
 captures. Auto-scroll follows incoming packets by default. Local Datastore adds
@@ -405,3 +407,4 @@ For complete feature guidance, open **Help** in the toolkit or continue with:
 - [README](README.md)
 - [Automation architecture and operations](docs/automations.md)
 - [Packet Replay setup](docs/packet-replay.md)
+- [Multicast Tester guide](docs/multicast.md)

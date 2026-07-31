@@ -67,6 +67,17 @@ precedent.
   only the newest 50 server results per user; expose source address, normalized
   metrics, and bounded raw JSON only to that user, and provide an explicit
   history-clear action.
+- Multicast testing uses native IPv4 UDP sockets and never installs packet
+  generators. Keep listen, send, and dual-interface path runs explicitly
+  authorized and bounded to 300 seconds, 200 Mbps, 50,000 packets/second, and
+  one million generated packets. Support ASM and host-available SSM joins on a
+  selected interface; analyze generic UDP, RTP v2, and TWN sequenced payloads
+  without retaining payload bytes. Treat same-host path evidence carefully:
+  disable sender loopback, require different interfaces, disclose local
+  routing/filtering effects, and recommend separate toolkit hosts for
+  independent endpoint proof. Reports may include aggregate/source/sequence
+  metadata and JSON export, but audit records must omit group addresses,
+  source addresses, and payloads.
 - Local operational files live beneath owner-only `instance/datastore/` and are
   managed through the grantable `local.datastore` tool. Keep every future
   transfer integration and cross-tool file picker constrained to this root;
@@ -148,7 +159,7 @@ Activity instrumentation now covers every registered diagnostic/workflow tool:
 ping, FortiGate/FortiAuthenticator API work, traceroute, SNMP, RADIUS, DNS,
 syslog send/receive, packet replay sends, completed speed tests, TCP scans, NTP,
 DHCP Discover, certificate inspection, manual API requests, Path MTU, Multi-SSH, Multi-Transfer,
-Subnet Excluder, and What's My IP.
+Subnet Excluder, What's My IP, and multicast listen/send/path tests.
 
 Speed-test helper requests are a special case: latency/download/upload endpoints
 do not award action points. The browser reports one completion after all phases
