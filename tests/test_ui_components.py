@@ -332,6 +332,39 @@ class UIComponentTests(unittest.TestCase):
             stylesheet,
         )
 
+    def test_multicast_workspace_exposes_bounded_modes_and_reports(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        template = (TEMPLATE_ROOT / "tools" / "multicast.html").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual(template.count('class="multicast-mode-card"'), 3)
+        self.assertIn('value="listen"', template)
+        self.assertIn('value="send"', template)
+        self.assertIn('value="path"', template)
+        self.assertIn('name="authorized"', template)
+        self.assertIn("Source-specific multicast (SSM)", template)
+        self.assertIn("RTP version 2", template)
+        self.assertIn("mDNS · 224.0.0.251:5353", template)
+        self.assertIn("multicast-mode-icon", template)
+        self.assertIn("multicast-live-panel", template)
+        self.assertIn("multicast-live-timeline", template)
+        self.assertIn("multicast-cancel", template)
+        self.assertIn("Download JSON", template)
+        self.assertIn("one million packets per run", template)
+        self.assertIn(".multicast-mode-picker {", stylesheet)
+        self.assertIn(".multicast-mode-card:has(input:focus-visible)", stylesheet)
+        script = (TEMPLATE_ROOT.parent / "static" / "multicast.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('mode === "path"', script)
+        self.assertIn("receiveInterface.options", script)
+        self.assertIn("response.body.getReader()", script)
+        self.assertIn("handleProgress", script)
+        self.assertIn("activeController?.abort()", script)
+
 
 if __name__ == "__main__":
     unittest.main()

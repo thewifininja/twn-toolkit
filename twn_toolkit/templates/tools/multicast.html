@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel multicast-workspace">
+  <div class="panel-head">
+    <h1>Multicast Tester</h1>
+    <p>Join and inspect an existing IPv4 multicast stream, generate a bounded sequenced stream, or measure delivery between two toolkit-host interfaces.</p>
+  </div>
+
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  {% if not capability.available %}<div class="message warning">{{ capability.detail }}</div>{% endif %}
+  {% if macos_pf.applicable and macos_pf.attention %}
+    <div class="message warning platform-warning multicast-pf-warning" role="note">
+      <strong>macOS multicast firewall compatibility</strong>
+      <p>{{ macos_pf.detail }} When PF is enabled by VPN or security software, it can silently block the Router Alert option used by IGMP even though the socket join succeeds.</p>
+      {% if macos_pf.missing_interfaces %}
+        <p>Not covered: <code>{{ macos_pf.missing_interfaces | join(', ') }}</code></p>
+      {% endif %}
+      <details>
+        <summary>Installation, verification, and removal</summary>
+        <p>Run these commands in Terminal from the toolkit directory. Installation changes only TWN’s dedicated PF anchor and requires a restart; the web page never requests administrator privileges.</p>
+        <span>Install or update</span>
+        <pre><code>{{ macos_pf.install_command }}</code></pre>
+        <span>Verify the active rule after restart</span>
+        <pre><code>{{ macos_pf.status_command }}</code></pre>
+        <span>Uninstall</span>
+        <pre><code>{{ macos_pf.uninstall_command }}</code></pre>
+      </details>
+    </div>
+  {% endif %}
+
+  <form
+    class="form"
+    method="post"
+    id="multicast-form"
+    data-loading-message="Running multicast test…"
+    data-run-url="{{ url_for('tools.multicast_live') }}"
+  >
+    <fieldset class="multicast-mode-picker">
+      <legend>Test mode</legend>
+      <label class="multicast-mode-card">
+        <input type="radio" name="mode" value="listen" {{ 'checked' if form.mode == 'listen' else '' }}>
+        <span class="multicast-mode-card-body">
+          <span class="multicast-mode-title"><span class="multicast-mode-icon" aria-hidden="true">↓</span><strong>Listen</strong></span>
+          <small>Join a group and inspect an existing stream.</small>
+        </span>
+      </label>
+      <label class="multicast-mode-card">
+        <input type="radio" name="mode" value="send" {{ 'checked' if form.mode == 'send' else '' }}>
+        <span class="multicast-mode-card-body">
+          <span class="multicast-mode-title"><span class="multicast-mode-icon" aria-hidden="true">↑</span><strong>Send</strong></span>
+          <small>Generate a bounded, sequenced TWN test stream.</small>
+        </span>
+      </label>
+      <label class="multicast-mode-card">
+        <input type="radio" name="mode" value="path" {{ 'checked' if form.mode == 'path' else '' }}>
+        <span class="multicast-mode-card-body">
+          <span class="multicast-mode-title"><span class="multicast-mode-icon" aria-hidden="true">⇄</span><strong>End-to-end</strong></span>
+          <small>Send on one interface and receive on another.</small>
+        </span>
+      </label>
+    </fieldset>
+
+    <div class="multicast-section">
+      <div class="section-head compact">
+        <div><span class="eyebrow">Stream</span><h2>Destination and observation window</h2></div>
+      </div>
+      <div class="ntp-options multicast-common-grid">
+        <label>Quick setup
+          <select id="multicast-preset">
+            <option value="custom">Custom group and port</option>
+            <option value="mdns">mDNS · 224.0.0.251:5353</option>
+            <option value="llmnr">LLMNR · 224.0.0.252:5355</option>
+            <option value="ssdp">SSDP / UPnP · 239.255.255.250:1900</option>
+            <option value="ws-discovery">WS-Discovery · 239.255.255.250:3702</option>
+          </select>
+        </label>
+        <label>IPv4 multicast group
+          <input name="group" id="multicast-group" value="{{ form.group }}" placeholder="239.192.10.20" required>
+        </label>
+        <label>UDP destination port
+          <input name="port" id="multicast-port" type="number" min="1" max="65535" value="{{ form.port }}" required>
+        </label>
+        <label>Duration (seconds)
+          <input name="duration" type="number" min="1" max="{{ limits.duration }}" value="{{ form.duration }}" required>
+        </label>
+      </div>
+      <span class="field-note">Use an assigned group and its matching UDP port. For example, mDNS is <code>224.0.0.251:5353</code>; a packet capture showing the group on another port or interface will not reach this socket.</span>
+    </div>
+
+    <div class="multicast-section" data-mode-section="listen path">
+      <div class="section-head compact">
+        <div><span class="eyebrow">Receiver</span><h2>Join and inspect</h2></div>
+      </div>
+      <div class="ntp-options multicast-receiver-grid">
+        <label>Receive interface
+          <select name="receive_interface" required>
+            {% for interface in interfaces %}
+              <option value="{{ interface.name }}" {{ 'selected' if form.receive_interface == interface.name else '' }}>{{ interface.name }} · {{ interface.address }}{% if interface.point_to_point %} · point-to-point{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Membership type
+          <select name="membership" id="multicast-membership">
+            <option value="asm" {{ 'selected' if form.membership == 'asm' else '' }}>Any-source multicast (ASM)</option>
+            <option value="ssm" {{ 'selected' if form.membership == 'ssm' else '' }} {{ 'disabled' if not capability.ssm else '' }}>Source-specific multicast (SSM)</option>
+          </select>
+        </label>
+        <label>Expected/source IPv4
+          <input name="source" id="multicast-source" value="{{ form.source }}" placeholder="Optional for ASM">
+        </label>
+        <label data-listen-only>Stream format
+          <select name="stream_format" id="multicast-stream-format">
+            <option value="generic" {{ 'selected' if form.stream_format == 'generic' else '' }}>Generic UDP</option>
+            <option value="rtp" {{ 'selected' if form.stream_format == 'rtp' else '' }}>RTP version 2</option>
+            <option value="twn" {{ 'selected' if form.stream_format == 'twn' else '' }}>TWN sequenced payload</option>
+          </select>
+        </label>
+        <label id="multicast-rtp-clock" data-listen-only>RTP clock rate (Hz)
+          <input name="rtp_clock_rate" type="number" min="1000" max="1000000000" value="{{ form.rtp_clock_rate }}">
+        </label>
+      </div>
+      <span class="field-note">ASM accepts any sender; an expected source highlights other senders. SSM asks the host to join only the selected <code>(source, group)</code> channel.</span>
+    </div>
+
+    <div class="multicast-section" data-mode-section="send path">
+      <div class="section-head compact">
+        <div><span class="eyebrow">Generator</span><h2>Sequenced test stream</h2></div>
+      </div>
+      <div class="ntp-options multicast-sender-grid">
+        <label>Send interface
+          <select name="send_interface" required>
+            {% for interface in interfaces %}
+              <option value="{{ interface.name }}" {{ 'selected' if form.send_interface == interface.name else '' }}>{{ interface.name }} · {{ interface.address }}{% if interface.point_to_point %} · point-to-point{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>UDP payload size
+          <input name="packet_size" type="number" min="{{ limits.packet_size_min }}" max="{{ limits.packet_size_max }}" value="{{ form.packet_size }}" required>
+        </label>
+        <label>Target rate
+          <input name="rate" type="number" min="0.01" step="0.01" value="{{ form.rate }}" required>
+        </label>
+        <label>Rate unit
+          <select name="rate_unit">
+            <option value="mbps" {{ 'selected' if form.rate_unit == 'mbps' else '' }}>Mbps of UDP payload</option>
+            <option value="pps" {{ 'selected' if form.rate_unit == 'pps' else '' }}>Packets per second</option>
+          </select>
+        </label>
+        <label>Multicast TTL
+          <input name="ttl" type="number" min="1" max="255" value="{{ form.ttl }}" required>
+        </label>
+        <label>DSCP
+          <input name="dscp" type="number" min="0" max="63" value="{{ form.dscp }}" required>
+        </label>
+        <label>Source UDP port
+          <input name="source_port" type="number" min="0" max="65535" value="{{ form.source_port }}" required>
+        </label>
+      </div>
+      <label class="check" data-mode-section="send">
+        <input name="loopback" type="checkbox" {{ 'checked' if form.loopback else '' }}>
+        Deliver a local loopback copy to receivers on this host
+      </label>
+      <span class="field-note">Generator limits: {{ limits.megabits }} Mbps, {{ '{:,}'.format(limits.packets_per_second) }} packets/second, {{ limits.duration }} seconds, and one million packets per run. Payloads carry a session ID, sequence number, and timestamp.</span>
+    </div>
+
+    <div class="message warning">
+      Multicast joins affect switch snooping state, and generated streams consume network bandwidth. Use only on networks where you are authorized to test. End-to-end mode disables local loopback and requires two different interfaces.
+    </div>
+    <label class="check risk-confirmation">
+      <input name="authorized" type="checkbox" required {{ 'checked' if form.authorized else '' }}>
+      I am authorized to join or generate multicast traffic on the selected network.
+    </label>
+    <div class="button-row">
+      <button type="submit" id="multicast-run" {% if not capability.available %}disabled{% endif %}>Run multicast test</button>
+      <button type="button" class="secondary" id="multicast-cancel" hidden>Cancel test</button>
+    </div>
+    <span class="tool-status">{{ capability.detail }}{% if capability.available and not capability.ssm %} Source-specific joins are unavailable on this host.{% endif %}{% if macos_pf.applicable and macos_pf.ready %} macOS PF compatibility is configured.{% endif %}</span>
+  </form>
+</section>
+
+<section class="panel multicast-live-panel" id="multicast-live-panel" aria-live="polite" hidden>
+  <div class="certificate-result-head">
+    <div>
+      <span class="eyebrow">Live multicast</span>
+      <h2 id="multicast-live-title">Preparing test</h2>
+      <p id="multicast-live-meta">Validating the group, port, and selected interfaces.</p>
+    </div>
+    <span class="pill planned" id="multicast-live-state">starting</span>
+  </div>
+  <div class="multicast-live-progress">
+    <div>
+      <span id="multicast-live-elapsed">0.0s elapsed</span>
+      <span id="multicast-live-remaining">— remaining</span>
+    </div>
+    <progress id="multicast-live-progress-bar" max="100" value="0" aria-label="Multicast test progress">0%</progress>
+  </div>
+  <div class="ntp-summary multicast-live-summary">
+    <article><span>Packets received</span><strong id="multicast-live-received">0</strong><small id="multicast-live-received-bytes">0 bytes</small></article>
+    <article><span>Packets sent</span><strong id="multicast-live-sent">0</strong><small id="multicast-live-sent-bytes">0 bytes</small></article>
+    <article><span>Live average rate</span><strong id="multicast-live-rate">0 Mbps</strong><small id="multicast-live-pps">0 packets/second</small></article>
+    <article><span>Observed sources</span><strong id="multicast-live-sources">0</strong><small id="multicast-live-unexpected">0 unexpected packets</small></article>
+  </div>
+  <div class="multicast-live-body">
+    <div>
+      <h3>Packets per second</h3>
+      <div class="multicast-chart-wrap multicast-live-chart-wrap">
+        <canvas id="multicast-live-timeline" height="190" aria-label="Live multicast packets per second"></canvas>
+      </div>
+    </div>
+    <div>
+      <h3>Top sources</h3>
+      <div class="multicast-live-sources" id="multicast-live-source-list">
+        <p class="field-note">Waiting for multicast traffic.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="multicast-results">
+{% if result %}
+  {% set receive = result.receive if result.mode == 'path' else result if result.mode == 'listen' else none %}
+  {% set send = result.send if result.mode == 'path' else result if result.mode == 'send' else none %}
+  <section class="panel multicast-report">
+    <div class="certificate-result-head">
+      <div>
+        <span class="eyebrow">Multicast report</span>
+        <h2>{{ result.summary }}</h2>
+        <p><code>{{ result.group }}:{{ result.port }}</code> · {{ result.group_scope }}{% if result.membership %} · {{ result.membership }}{% endif %}</p>
+      </div>
+      {% set status_class = 'success' if result.status == 'success' else 'planned' if result.status == 'degraded' else 'error' %}
+      <span class="pill {{ status_class }}">{{ result.status | replace('_', ' ') }}</span>
+    </div>
+
+    {% for warning in result.warnings %}<div class="message warning">{{ warning }}</div>{% endfor %}
+
+    {% if result.mode == 'path' %}
+      <div class="multicast-path-line" aria-label="Test path">
+        <article><span>Sender</span><strong>{{ result.send_interface.name }}</strong><small>{{ result.send_interface.address }}</small></article>
+        <div aria-hidden="true"><span>→</span><small>{{ result.group }}:{{ result.port }}</small></div>
+        <article><span>Receiver</span><strong>{{ result.receive_interface.name }}</strong><small>{{ result.receive_interface.address }}</small></article>
+      </div>
+      <div class="ntp-summary">
+        <article><span>Packets sent</span><strong>{{ '{:,}'.format(result.packets_sent) }}</strong><small>Sequenced payloads</small></article>
+        <article><span>Packets received</span><strong>{{ '{:,}'.format(result.packets_received) }}</strong><small>Matching session ID</small></article>
+        <article><span>Packet loss</span><strong>{{ result.loss_percent }}%</strong><small>{{ '{:,}'.format(result.packets_lost) }} missing</small></article>
+        <article><span>Ordering</span><strong>{{ result.out_of_order }}</strong><small>{{ result.duplicates }} duplicate packets</small></article>
+      </div>
+    {% elif result.mode == 'listen' %}
+      <div class="ntp-summary">
+        <article><span>Packets received</span><strong>{{ '{:,}'.format(result.packets_received) }}</strong><small>{{ result.average_packets_per_second }} packets/second</small></article>
+        <article><span>Payload rate</span><strong>{{ result.average_megabits_per_second }} Mbps</strong><small>{{ '{:,}'.format(result.bytes_received) }} bytes</small></article>
+        <article><span>Sources</span><strong>{{ result.sources | length }}</strong><small>{{ result.ignored_source_packets }} unexpected packets</small></article>
+        <article><span>Longest gap</span><strong>{{ result.maximum_gap_ms }} ms</strong><small>Observed between packets</small></article>
+      </div>
+    {% else %}
+      <div class="ntp-summary">
+        <article><span>Packets sent</span><strong>{{ '{:,}'.format(result.packets_sent) }}</strong><small>Of {{ '{:,}'.format(result.packets_requested) }} scheduled</small></article>
+        <article><span>Payload rate</span><strong>{{ result.average_megabits_per_second }} Mbps</strong><small>{{ result.average_packets_per_second }} packets/second</small></article>
+        <article><span>Payload size</span><strong>{{ result.packet_size }} bytes</strong><small>TTL {{ result.ttl }} · DSCP {{ result.dscp }}</small></article>
+        <article><span>Source port</span><strong>{{ result.source_port }}</strong><small>Session {{ result.session_id }}</small></article>
+      </div>
+    {% endif %}
+
+    {% if receive and receive.timeline %}
+      <section class="multicast-report-section">
+        <div class="section-head compact"><div><span class="eyebrow">Traffic</span><h3>Packets per second</h3></div></div>
+        <div class="multicast-chart-wrap">
+          <canvas id="multicast-timeline" height="220" aria-label="Received multicast packets per second"></canvas>
+        </div>
+        <p class="field-note">The graph uses one-second receive buckets. Empty buckets show periods where no packets arrived.</p>
+      </section>
+    {% endif %}
+
+    {% if receive and receive.sources %}
+      <section class="multicast-report-section">
+        <div class="section-head compact"><div><span class="eyebrow">Observed endpoints</span><h3>Multicast sources</h3></div></div>
+        <div class="preview-table-wrap"><table>
+          <thead><tr><th>Source</th><th>Packets</th><th>Bytes</th><th>First seen</th><th>Last seen</th><th>Expectation</th></tr></thead>
+          <tbody>{% for source in receive.sources %}<tr>
+            <td><code>{{ source.address }}:{{ source.port }}</code></td>
+            <td>{{ '{:,}'.format(source.packets) }}</td><td>{{ '{:,}'.format(source.bytes) }}</td>
+            <td>{{ source.first_seen_seconds }}s</td><td>{{ source.last_seen_seconds }}s</td>
+            <td><span class="pill {{ 'success' if source.expected else 'error' }}">{{ 'expected' if source.expected else 'unexpected' }}</span></td>
+          </tr>{% endfor %}</tbody>
+        </table></div>
+        {% if receive.source_limit_reached %}<div class="message warning">More than 100 sources were observed; the report retained only the first 100.</div>{% endif %}
+      </section>
+    {% endif %}
+
+    {% if receive and receive.test_payload.detected %}
+      <section class="multicast-report-section">
+        <div class="section-head compact"><div><span class="eyebrow">Sequenced payload</span><h3>TWN test sessions</h3></div></div>
+        <div class="preview-table-wrap"><table>
+          <thead><tr><th>Session</th><th>Unique packets</th><th>Observed gaps</th><th>Duplicates</th><th>Out of order</th><th>Sequence range</th></tr></thead>
+          <tbody>{% for session in receive.test_payload.sessions %}<tr>
+            <td><code>{{ session.session_id }}</code></td><td>{{ '{:,}'.format(session.unique_packets) }}</td>
+            <td>{{ session.observed_missing }}</td><td>{{ session.duplicates }}</td><td>{{ session.out_of_order }}</td>
+            <td>{{ session.first_sequence }}–{{ session.last_sequence }}</td>
+          </tr>{% endfor %}</tbody>
+        </table></div>
+      </section>
+    {% endif %}
+
+    {% if receive and receive.rtp_streams %}
+      <section class="multicast-report-section">
+        <div class="section-head compact"><div><span class="eyebrow">RTP analysis</span><h3>Detected streams</h3></div></div>
+        <div class="preview-table-wrap"><table>
+          <thead><tr><th>SSRC</th><th>Payload types</th><th>Packets</th><th>Observed gaps</th><th>Duplicates</th><th>Out of order</th><th>RFC jitter</th></tr></thead>
+          <tbody>{% for stream in receive.rtp_streams %}<tr>
+            <td><code>{{ stream.ssrc }}</code></td><td>{{ stream.payload_types | join(', ') }}</td>
+            <td>{{ '{:,}'.format(stream.packets) }}</td><td>{{ stream.observed_missing }}</td>
+            <td>{{ stream.duplicates }}</td><td>{{ stream.out_of_order }}</td><td>{{ stream.interarrival_jitter_ms }} ms</td>
+          </tr>{% endfor %}</tbody>
+        </table></div>
+      </section>
+    {% endif %}
+
+    <section class="multicast-report-section">
+      <div class="section-head compact">
+        <div><span class="eyebrow">Interpretation</span><h3>What this result proves</h3></div>
+        <div class="section-actions"><button class="secondary" type="button" id="multicast-download-report">Download JSON</button></div>
+      </div>
+      {% for limitation in result.limitations %}<div class="message info">{{ limitation }}</div>{% endfor %}
+      {% if receive and receive.timeline %}
+        <details><summary>Per-second receive data</summary>
+          <div class="preview-table-wrap"><table>
+            <thead><tr><th>Second</th><th>Packets</th><th>Bytes</th><th>Payload rate</th></tr></thead>
+            <tbody>{% for bucket in receive.timeline %}<tr><td>{{ bucket.second }}</td><td>{{ bucket.packets }}</td><td>{{ bucket.bytes }}</td><td>{{ (bucket.bytes * 8 / 1000000) | round(4) }} Mbps</td></tr>{% endfor %}</tbody>
+          </table></div>
+        </details>
+      {% endif %}
+    </section>
+    <script type="application/json" id="multicast-result-data">{{ result | tojson }}</script>
+  </section>
+{% endif %}
+</div>
+
+<script src="{{ url_for('static', filename='multicast.js', v=app_version) }}"></script>
+{% endblock %}

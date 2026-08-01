@@ -1118,6 +1118,15 @@ case "${1:-}" in
     ensure_requirements
     "$PYTHON" -m twn_toolkit.upgrade_cli --root "$ROOT" --instance "$INSTANCE" status
     ;;
+  multicast-pf)
+    shift
+    if [ ! -x "$PYTHON" ]; then
+      echo "Python virtual environment is missing. Run: ./install.sh" >&2
+      exit 1
+    fi
+    cd "$ROOT"
+    "$PYTHON" -m twn_toolkit.macos_multicast_pf_cli "$@"
+    ;;
   web-restart)
     web_restart
     ;;
@@ -1141,7 +1150,7 @@ case "${1:-}" in
     disable_https
     ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|recover|status|logs|upgrade|backup|rollback|upgrade-status|enable-https|disable-https|fix-permissions|adminreset|reset-data|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
+    echo "Usage: ./twn {start|stop|restart|recover|status|logs|upgrade|backup|rollback|upgrade-status|multicast-pf|enable-https|disable-https|fix-permissions|adminreset|reset-data|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
     exit 2
     ;;
 esac

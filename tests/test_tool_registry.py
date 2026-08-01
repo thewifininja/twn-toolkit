@@ -21,8 +21,10 @@ class ToolRegistryTests(unittest.TestCase):
         self.assertIn("tools.packet_replay", TOOL_BY_ID)
         self.assertIn("tools.packet_capture", TOOL_BY_ID)
         self.assertIn("tools.iperf3", TOOL_BY_ID)
+        self.assertIn("tools.multicast", TOOL_BY_ID)
         self.assertIn("tools.wake_on_lan", TOOL_BY_ID)
         self.assertEqual(TOOL_BY_ID["tools.iperf3"].nav_group, "traffic")
+        self.assertEqual(TOOL_BY_ID["tools.multicast"].nav_group, "traffic")
         self.assertEqual(TOOL_BY_ID["tools.wake_on_lan"].nav_group, "services")
         self.assertEqual(TASK_TOOL_IDS["rename-aps"], "fortigate.rename_aps")
         self.assertEqual(
@@ -82,6 +84,7 @@ class ToolRegistryTests(unittest.TestCase):
         }
         self.assertIn("tools.packet_replay", access_tool_ids)
         self.assertIn("tools.packet_capture", access_tool_ids)
+        self.assertIn("tools.multicast", access_tool_ids)
         self.assertNotIn("admin.settings", access_tool_ids)
 
     def test_logged_in_routes_are_mapped_or_intentionally_self_service(self) -> None:

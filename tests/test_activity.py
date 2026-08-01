@@ -48,6 +48,7 @@ class ActivityStoreTests(unittest.TestCase):
         self.assertEqual(summary["counters"]["ping"]["replies_received"], 4)
         self.assertIn("dns", summary["counters"])
         self.assertIn("speedtest", summary["counters"])
+        self.assertIn("multicast", summary["counters"])
         self.assertEqual(summary["cards"][0]["primary"], 5)
         self.assertTrue(any(card["metric"] == "dns" for card in summary["cards"]))
         self.assertTrue(any(card["metric"] == "speedtest" for card in summary["cards"]))

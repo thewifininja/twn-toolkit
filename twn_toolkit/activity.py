@@ -92,6 +92,19 @@ METRIC_DEFINITIONS: tuple[MetricDefinition, ...] = (
         "{offers} offers received", (RankDefinition("discovers", "DHCP discovers", "discovers"),),
     ),
     MetricDefinition(
+        "multicast",
+        ("tests", "packets_sent", "packets_received", "bytes_sent", "bytes_received"),
+        "Traffic",
+        "Multicast tests",
+        "tests",
+        "tests",
+        "{packets_received} received · {packets_sent} sent",
+        (
+            RankDefinition("tests", "Multicast tests", "tests"),
+            RankDefinition("packets_received", "Multicast packets received", "packets"),
+        ),
+    ),
+    MetricDefinition(
         "certificates", ("inspections",), "TLS", "Certificates", "inspections", "checks",
         "Certificate chains inspected",
         (RankDefinition("inspections", "Certificate inspections", "inspections"),),

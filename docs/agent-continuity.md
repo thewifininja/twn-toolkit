@@ -67,6 +67,32 @@ precedent.
   only the newest 50 server results per user; expose source address, normalized
   metrics, and bounded raw JSON only to that user, and provide an explicit
   history-clear action.
+- Multicast testing uses native IPv4 UDP sockets and never installs packet
+  generators. Keep listen, send, and dual-interface path runs explicitly
+  authorized and bounded to 300 seconds, 200 Mbps, 50,000 packets/second, and
+  one million generated packets. Support ASM and host-available SSM joins on a
+  selected interface; analyze generic UDP, RTP v2, and TWN sequenced payloads
+  without retaining payload bytes. Treat same-host path evidence carefully:
+  disable sender loopback, require different interfaces, disclose local
+  routing/filtering effects, and recommend separate toolkit hosts for
+  independent endpoint proof. Reports may include aggregate/source/sequence
+  metadata and JSON export, but audit records must omit group addresses,
+  source addresses, and payloads. The browser-facing run endpoint streams
+  bounded NDJSON progress at a coarse interval so packet/byte/source/rate and
+  timeline telemetry remains live without per-packet persistence. Client
+  cancellation must close the socket promptly. Receivers set reusable address
+  and, when host-supported, reusable port options before binding so standard
+  listeners such as mDNS on UDP 5353 can coexist with the toolkit.
+  On macOS, PF enabled by third-party software may block the Router Alert IP
+  option used by IGMP while still accepting the socket membership. Keep the
+  workaround optional and CLI-administered: `./twn multicast-pf` owns a
+  dedicated, explicitly invoked PF anchor with status/install/uninstall
+  commands, backups, syntax validation, drift refusal, interface scoping, and
+  restart-based activation. Never mutate PF from the web UI, the general
+  installer, or a vendor-owned anchor. The multicast page may inspect readable
+  persistent files and warn about missing, incomplete, stale, or insufficient
+  interface coverage, but it must not claim active-rule verification without
+  privileged `pfctl` access.
 - Local operational files live beneath owner-only `instance/datastore/` and are
   managed through the grantable `local.datastore` tool. Keep every future
   transfer integration and cross-tool file picker constrained to this root;
@@ -148,7 +174,7 @@ Activity instrumentation now covers every registered diagnostic/workflow tool:
 ping, FortiGate/FortiAuthenticator API work, traceroute, SNMP, RADIUS, DNS,
 syslog send/receive, packet replay sends, completed speed tests, TCP scans, NTP,
 DHCP Discover, certificate inspection, manual API requests, Path MTU, Multi-SSH, Multi-Transfer,
-Subnet Excluder, and What's My IP.
+Subnet Excluder, What's My IP, and multicast listen/send/path tests.
 
 Speed-test helper requests are a special case: latency/download/upload endpoints
 do not award action points. The browser reports one completion after all phases
