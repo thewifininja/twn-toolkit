@@ -16,6 +16,7 @@ from flask import (
 
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run
+from .macos_multicast_pf import multicast_pf_status
 from .multicast_tools import (
     MULTICAST_MAX_DURATION_SECONDS,
     MULTICAST_MAX_MEGABITS,
@@ -35,6 +36,7 @@ def register_multicast_routes(tools_bp: Blueprint) -> None:
     def multicast():
         capability = multicast_capability()
         interfaces = capability["interfaces"]
+        pf_status = _multicast_pf_status(interfaces)
         first_interface = str(interfaces[0]["name"]) if interfaces else ""
         form: dict[str, object] = {
             "mode": "listen",
@@ -80,6 +82,7 @@ def register_multicast_routes(tools_bp: Blueprint) -> None:
             error=error,
             form=form,
             interfaces=interfaces,
+            macos_pf=pf_status,
             limits={
                 "duration": MULTICAST_MAX_DURATION_SECONDS,
                 "packet_size_min": MULTICAST_MIN_PACKET_SIZE,
@@ -174,6 +177,7 @@ def register_multicast_routes(tools_bp: Blueprint) -> None:
                         event["html"] = _render_multicast_page(
                             capability=capability,
                             form=payload,
+                            macos_pf=_multicast_pf_status(interfaces),
                             result=result,
                         )
                     elif event["type"] == "error":
@@ -260,6 +264,7 @@ def _render_multicast_page(
     *,
     capability: dict,
     form: dict,
+    macos_pf: dict,
     result: dict,
 ) -> str:
     return render_template(
@@ -272,6 +277,7 @@ def _render_multicast_page(
             "loopback": _checked(form.get("loopback")),
         },
         interfaces=capability["interfaces"],
+        macos_pf=macos_pf,
         limits={
             "duration": MULTICAST_MAX_DURATION_SECONDS,
             "packet_size_min": MULTICAST_MIN_PACKET_SIZE,
@@ -280,4 +286,14 @@ def _render_multicast_page(
             "packets_per_second": MULTICAST_MAX_PACKETS_PER_SECOND,
         },
         result=result,
+    )
+
+
+def _multicast_pf_status(interfaces: list[dict]) -> dict[str, object]:
+    return multicast_pf_status(
+        [
+            str(interface["name"])
+            for interface in interfaces
+            if not interface.get("point_to_point")
+        ]
     )

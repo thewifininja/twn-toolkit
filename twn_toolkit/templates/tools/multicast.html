@@ -9,6 +9,25 @@
 
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {% if not capability.available %}<div class="message warning">{{ capability.detail }}</div>{% endif %}
+  {% if macos_pf.applicable and macos_pf.attention %}
+    <div class="message warning platform-warning multicast-pf-warning" role="note">
+      <strong>macOS multicast firewall compatibility</strong>
+      <p>{{ macos_pf.detail }} When PF is enabled by VPN or security software, it can silently block the Router Alert option used by IGMP even though the socket join succeeds.</p>
+      {% if macos_pf.missing_interfaces %}
+        <p>Not covered: <code>{{ macos_pf.missing_interfaces | join(', ') }}</code></p>
+      {% endif %}
+      <details>
+        <summary>Installation, verification, and removal</summary>
+        <p>Run these commands in Terminal from the toolkit directory. Installation changes only TWN’s dedicated PF anchor and requires a restart; the web page never requests administrator privileges.</p>
+        <span>Install or update</span>
+        <pre><code>{{ macos_pf.install_command }}</code></pre>
+        <span>Verify the active rule after restart</span>
+        <pre><code>{{ macos_pf.status_command }}</code></pre>
+        <span>Uninstall</span>
+        <pre><code>{{ macos_pf.uninstall_command }}</code></pre>
+      </details>
+    </div>
+  {% endif %}
 
   <form
     class="form"
@@ -156,7 +175,7 @@
       <button type="submit" id="multicast-run" {% if not capability.available %}disabled{% endif %}>Run multicast test</button>
       <button type="button" class="secondary" id="multicast-cancel" hidden>Cancel test</button>
     </div>
-    <span class="tool-status">{{ capability.detail }}{% if capability.available and not capability.ssm %} Source-specific joins are unavailable on this host.{% endif %}</span>
+    <span class="tool-status">{{ capability.detail }}{% if capability.available and not capability.ssm %} Source-specific joins are unavailable on this host.{% endif %}{% if macos_pf.applicable and macos_pf.ready %} macOS PF compatibility is configured.{% endif %}</span>
   </form>
 </section>
 

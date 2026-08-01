@@ -4205,6 +4205,33 @@ button.compact,
   margin: 0;
 }
 
+.multicast-pf-warning p + p,
+.multicast-pf-warning details {
+  margin-top: 10px;
+}
+
+.multicast-pf-warning summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.multicast-pf-warning details > span {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 800;
+  margin-top: 10px;
+}
+
+.multicast-pf-warning pre {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(91, 69, 10, 0.2);
+  border-radius: 6px;
+  margin: 5px 0 0;
+  overflow-x: auto;
+  padding: 9px 11px;
+  white-space: pre-wrap;
+}
+
 .result-actions {
   margin-top: 16px;
 }

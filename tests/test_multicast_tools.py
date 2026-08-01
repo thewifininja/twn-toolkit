@@ -341,6 +341,56 @@ class MulticastToolTests(unittest.TestCase):
         self.assertIn("tools.multicast", TOOL_BY_ID)
         self.assertEqual(tool_id_for_endpoint("tools.multicast"), "tools.multicast")
 
+    def test_route_warns_when_macos_pf_compatibility_is_missing(self) -> None:
+        capability = {
+            "available": True,
+            "interfaces": INTERFACES,
+            "asm": True,
+            "ssm": True,
+            "detail": "2 interfaces",
+        }
+        pf_status = {
+            "applicable": True,
+            "state": "missing",
+            "ready": False,
+            "attention": True,
+            "detail": "The optional macOS PF compatibility rule is not installed.",
+            "configured_interfaces": [],
+            "missing_interfaces": [],
+            "install_command": "sudo ./twn multicast-pf install --interfaces en0 en1",
+            "status_command": "sudo ./twn multicast-pf status",
+            "uninstall_command": "sudo ./twn multicast-pf uninstall",
+        }
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+            with (
+                patch(
+                    "twn_toolkit.multicast_routes.multicast_capability",
+                    return_value=capability,
+                ),
+                patch(
+                    "twn_toolkit.multicast_routes.multicast_pf_status",
+                    return_value=pf_status,
+                ),
+            ):
+                page = client.get("/tools/multicast")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"macOS multicast firewall compatibility", page.data)
+        self.assertIn(
+            b"sudo ./twn multicast-pf install --interfaces en0 en1",
+            page.data,
+        )
+
     def test_live_route_streams_progress_and_completed_report(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)

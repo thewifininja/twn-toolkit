@@ -83,6 +83,41 @@ Send on one toolkit host and Listen in TWN mode on a separate toolkit host.
 Neither arrangement identifies the exact switch or router where a stream was
 dropped.
 
+## macOS Packet Filter compatibility
+
+Linux advertises a receiver membership as soon as the multicast socket joins
+the selected interface. On macOS, PF can silently block IGMP when it is enabled
+by VPN or security software because IGMP queries and membership reports use the
+IPv4 Router Alert option. The socket join still succeeds, so the application may
+appear ready even though an IGMP-snooping switch never learns the receiver port.
+Groups in `224.0.0.0/24` can hide this problem because switches normally flood
+that link-local control range without ordinary learned membership.
+
+The toolkit does not change a host firewall from the web interface or the
+general installer. On affected macOS hosts, use the separately authorized CLI
+helper from the toolkit directory:
+
+```bash
+./twn multicast-pf status
+sudo ./twn multicast-pf install --interfaces en0 en6
+sudo ./twn multicast-pf status
+sudo ./twn multicast-pf uninstall
+```
+
+Replace the example interface names with the interfaces offered by the tool.
+Install creates `/etc/pf.anchors/twn_toolkit` and an explicitly marked hook in
+`/etc/pf.conf`; it never reuses Cisco, FortiClient, or Apple anchors. Proposed
+rules are syntax-checked before installation, the original PF configuration is
+backed up, and repeated installation updates the managed rule without adding a
+second hook. Restart macOS after installation or removal so vendor-managed PF
+anchors can return through their normal startup lifecycle without a disruptive
+live ruleset reload.
+
+Status without `sudo` verifies the readable persistent configuration. Status
+with `sudo` also checks whether the rule is present in the active PF ruleset.
+Uninstall removes only the exact TWN-managed block and anchor, and refuses to
+alter unexpected or manually changed content.
+
 ## Interpreting failures
 
 A successful socket join proves that the host asked the operating system to
@@ -96,7 +131,8 @@ When no data arrives, check:
    multicast address.
 2. Whether the source is actually sending and its multicast TTL reaches the
    receiver subnet.
-3. Host firewall rules and local routes on both endpoints.
+3. Host firewall rules and local routes on both endpoints. On macOS, review the
+   compatibility warning and run `sudo ./twn multicast-pf status`.
 4. IGMP membership and snooping state on the access switches.
 5. Querier, PIM neighbor, multicast route, RPF, ACL, and boundary state along
    the routed path.

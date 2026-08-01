@@ -83,6 +83,16 @@ precedent.
   cancellation must close the socket promptly. Receivers set reusable address
   and, when host-supported, reusable port options before binding so standard
   listeners such as mDNS on UDP 5353 can coexist with the toolkit.
+  On macOS, PF enabled by third-party software may block the Router Alert IP
+  option used by IGMP while still accepting the socket membership. Keep the
+  workaround optional and CLI-administered: `./twn multicast-pf` owns a
+  dedicated, explicitly invoked PF anchor with status/install/uninstall
+  commands, backups, syntax validation, drift refusal, interface scoping, and
+  restart-based activation. Never mutate PF from the web UI, the general
+  installer, or a vendor-owned anchor. The multicast page may inspect readable
+  persistent files and warn about missing, incomplete, stale, or insufficient
+  interface coverage, but it must not claim active-rule verification without
+  privileged `pfctl` access.
 - Local operational files live beneath owner-only `instance/datastore/` and are
   managed through the grantable `local.datastore` tool. Keep every future
   transfer integration and cross-tool file picker constrained to this root;

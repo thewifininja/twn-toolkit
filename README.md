@@ -183,7 +183,10 @@ The sidebar and Network Tools page use the same functional organization.
   sequence/jitter data; generate bounded sequenced UDP streams; or measure loss
   and ordering between two host interfaces. Quick setups cover mDNS, LLMNR,
   SSDP, and WS-Discovery. Reports make the limits of same-host and generic UDP
-  evidence explicit and can be downloaded as JSON.
+  evidence explicit and can be downloaded as JSON. On macOS hosts where PF is
+  enabled, the page detects the optional dedicated compatibility configuration
+  and provides `./twn multicast-pf` status, install, and uninstall guidance for
+  IGMP Router Alert handling.
 - **DHCP Discover** — send a customizable Discover and inspect Offers without
   requesting or accepting a lease.
 - **Packet Replay** — preview, rewrite, VLAN-tag/fan-out, and transmit raw
