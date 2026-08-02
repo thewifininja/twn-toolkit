@@ -12,6 +12,7 @@ from pathlib import Path
 from .pidfiles import (
     acquire_singleton_lock,
     matching_daemon_pids,
+    pid_is_running,
     process_marker_ready,
     record_lock_owner,
     remove_own_pid_file,
@@ -85,9 +86,9 @@ def main() -> None:
             supervise()
             heartbeat.write_text(json.dumps({"updated_at": time.time(), "pid": os.getpid()}), encoding="utf-8")
             os.chmod(heartbeat, 0o600)
-            for _ in range(10):
+            for _ in range(50):
                 if not running: break
-                time.sleep(0.5)
+                time.sleep(0.1)
     finally:
         remove_own_pid_file(args.pid_file)
         _remove_own_heartbeat(heartbeat)
@@ -155,7 +156,7 @@ def _restore_iperf_listeners(instance: Path) -> int:
 
 
 def _pid_running(path: Path) -> bool:
-    try: os.kill(int(path.read_text(encoding="utf-8").strip()), 0); return True
+    try: return pid_is_running(int(path.read_text(encoding="utf-8").strip()))
     except (OSError, ValueError): return False
 
 

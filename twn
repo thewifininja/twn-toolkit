@@ -163,27 +163,39 @@ configure_tls() {
   fi
 }
 
+pid_is_running() {
+  [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null || return 1
+  if [ -r "/proc/$1/stat" ]; then
+    pid_state=$(cat "/proc/$1/stat" 2>/dev/null || true)
+    pid_state=${pid_state##*) }
+    case "$pid_state" in
+      Z\ *|X\ *) return 1 ;;
+    esac
+  fi
+  return 0
+}
+
 is_running() {
-  [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+  [ -f "$PIDFILE" ] && pid_is_running "$(cat "$PIDFILE")"
 }
 
 automation_is_running() {
-  [ -f "$AUTOMATION_PIDFILE" ] && kill -0 "$(cat "$AUTOMATION_PIDFILE")" 2>/dev/null
+  [ -f "$AUTOMATION_PIDFILE" ] && pid_is_running "$(cat "$AUTOMATION_PIDFILE")"
 }
 
 supervisor_is_running() {
-  [ -f "$SUPERVISOR_PIDFILE" ] && kill -0 "$(cat "$SUPERVISOR_PIDFILE")" 2>/dev/null
+  [ -f "$SUPERVISOR_PIDFILE" ] && pid_is_running "$(cat "$SUPERVISOR_PIDFILE")"
 }
 
 managed_worker_is_running() {
-  [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null
+  [ -f "$1" ] && pid_is_running "$(cat "$1")"
 }
 
 managed_worker_is_ready() {
   [ -f "$1" ] && [ -f "$2" ] || return 1
   worker_pid=$(cat "$1" 2>/dev/null || true)
   ready_pid=$(cat "$2" 2>/dev/null || true)
-  [ -n "$worker_pid" ] && [ "$worker_pid" = "$ready_pid" ] && kill -0 "$worker_pid" 2>/dev/null
+  [ -n "$worker_pid" ] && [ "$worker_pid" = "$ready_pid" ] && pid_is_running "$worker_pid"
 }
 
 managed_worker_enabled() {
@@ -197,7 +209,7 @@ acquire_managed_worker_lock() {
   while ! mkdir "$worker_lock" 2>/dev/null; do
     lock_owner=""
     if [ -f "$worker_lock/owner" ]; then lock_owner=$(cat "$worker_lock/owner" 2>/dev/null || true); fi
-    if [ -n "$lock_owner" ] && ! kill -0 "$lock_owner" 2>/dev/null; then
+    if [ -n "$lock_owner" ] && ! pid_is_running "$lock_owner"; then
       rm -f "$worker_lock/owner"
       rmdir "$worker_lock" 2>/dev/null || true
       continue
@@ -241,8 +253,8 @@ stop_managed_worker_unlocked() {
   worker_pid=$(cat "$worker_pidfile")
   kill "$worker_pid"
   attempts=0
-  while kill -0 "$worker_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do attempts=$((attempts + 1)); sleep 0.1; done
-  if kill -0 "$worker_pid" 2>/dev/null; then kill -KILL "$worker_pid" 2>/dev/null || true; fi
+  while pid_is_running "$worker_pid" && [ "$attempts" -lt 50 ]; do attempts=$((attempts + 1)); sleep 0.1; done
+  if pid_is_running "$worker_pid"; then kill -KILL "$worker_pid" 2>/dev/null || true; fi
   rm -f "$worker_pidfile"
   rm -f "$worker_readyfile"
   clear_managed_runtime "$cleanup"
@@ -282,10 +294,13 @@ start_managed_worker_unlocked() {
   cd "$ROOT"
   worker_log_start=0
   if [ -f "$worker_log" ]; then worker_log_start=$(wc -l < "$worker_log" | tr -d ' '); fi
-  "$PYTHON" -m "$worker_module" --instance "$INSTANCE" --daemon --pid-file "$worker_pidfile" --ready-file "$worker_readyfile" --log-file "$worker_log"
+  if ! "$PYTHON" -m "$worker_module" --instance "$INSTANCE" --daemon --pid-file "$worker_pidfile" --ready-file "$worker_readyfile" --log-file "$worker_log"; then
+    echo "The $worker_label service launcher failed before daemon startup." >&2
+    return 1
+  fi
   attempts=0
   while [ "$attempts" -lt 100 ]; do
-    if managed_worker_is_ready "$worker_pidfile" "$worker_readyfile"; then sleep 0.2; if managed_worker_is_ready "$worker_pidfile" "$worker_readyfile"; then return 0; fi; fi
+    if managed_worker_is_ready "$worker_pidfile" "$worker_readyfile"; then return 0; fi
     if [ -f "$worker_pidfile" ] && ! managed_worker_is_running "$worker_pidfile"; then break; fi
     attempts=$((attempts + 1)); sleep 0.1
   done
@@ -354,6 +369,36 @@ ftp_enabled() { managed_worker_enabled "$FTP_SETTINGS"; }
 start_ftp() { start_managed_worker "$FTP_SETTINGS" "$FTP_PIDFILE" "$FTP_READYFILE" "$FTP_LOG" "twn_toolkit.ftp_worker" "FTP" "twn_toolkit.ftp_server:clear_ftp_runtime"; }
 stop_ftp() { stop_managed_worker "$FTP_PIDFILE" "$FTP_READYFILE" "twn_toolkit.ftp_server:clear_ftp_runtime" "twn_toolkit.ftp_worker"; }
 
+start_transfer_services() {
+  tftp_started=0
+  ssh_transfer_started=0
+  ftp_started=0
+  start_tftp &
+  tftp_start_job=$!
+  start_ssh_transfer &
+  ssh_transfer_start_job=$!
+  start_ftp &
+  ftp_start_job=$!
+  if wait "$tftp_start_job"; then tftp_started=1; fi
+  if wait "$ssh_transfer_start_job"; then ssh_transfer_started=1; fi
+  if wait "$ftp_start_job"; then ftp_started=1; fi
+  return 0
+}
+
+stop_transfer_services() {
+  transfer_stop_status=0
+  stop_tftp &
+  tftp_stop_job=$!
+  stop_ssh_transfer &
+  ssh_transfer_stop_job=$!
+  stop_ftp &
+  ftp_stop_job=$!
+  wait "$tftp_stop_job" || transfer_stop_status=$?
+  wait "$ssh_transfer_stop_job" || transfer_stop_status=$?
+  wait "$ftp_stop_job" || transfer_stop_status=$?
+  return "$transfer_stop_status"
+}
+
 cleanup_daemon_processes() {
   daemon_module=$1
   daemon_keep_pid=$2
@@ -408,11 +453,11 @@ stop_automation() {
   automation_pid=$(cat "$AUTOMATION_PIDFILE")
   kill "$automation_pid" 2>/dev/null || true
   attempts=0
-  while kill -0 "$automation_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
+  while pid_is_running "$automation_pid" && [ "$attempts" -lt 50 ]; do
     attempts=$((attempts + 1))
     sleep 0.1
   done
-  if kill -0 "$automation_pid" 2>/dev/null; then
+  if pid_is_running "$automation_pid"; then
     kill -KILL "$automation_pid" 2>/dev/null || true
   fi
   rm -f "$AUTOMATION_PIDFILE"
@@ -463,11 +508,11 @@ stop_supervisor() {
     supervisor_pid=$(cat "$SUPERVISOR_PIDFILE")
     kill "$supervisor_pid" 2>/dev/null || true
     attempts=0
-    while kill -0 "$supervisor_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
+    while pid_is_running "$supervisor_pid" && [ "$attempts" -lt 50 ]; do
       attempts=$((attempts + 1))
       sleep 0.1
     done
-    if kill -0 "$supervisor_pid" 2>/dev/null; then kill -KILL "$supervisor_pid" 2>/dev/null || true; fi
+    if pid_is_running "$supervisor_pid"; then kill -KILL "$supervisor_pid" 2>/dev/null || true; fi
   fi
   cleanup_duplicate_supervisors 0
   rm -f "$SUPERVISOR_PIDFILE"
@@ -640,9 +685,7 @@ start() {
       SCHEME=$(cat "$SCHEME_FILE")
     fi
     start_automation
-    start_tftp || true
-    start_ssh_transfer || true
-    start_ftp || true
+    start_transfer_services
     start_supervisor || true
     echo "The WiFi Ninja's Toolkit is already running (PID $(cat "$PIDFILE"))."
     echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
@@ -701,12 +744,7 @@ start() {
   while [ "$attempts" -lt 30 ]; do
     if is_running; then
       start_automation
-      tftp_started=0
-      if start_tftp; then tftp_started=1; fi
-      ssh_transfer_started=0
-      if start_ssh_transfer; then ssh_transfer_started=1; fi
-      ftp_started=0
-      if start_ftp; then ftp_started=1; fi
+      start_transfer_services
       if ! start_iperf_servers; then
         echo "Warning: enabled iPerf3 listeners could not be restored. Check: $IPERF_LOG" >&2
       fi
@@ -754,9 +792,7 @@ stop() {
     stop_packet_captures
     stop_iperf_servers
     stop_automation
-    stop_tftp
-    stop_ssh_transfer
-    stop_ftp
+    stop_transfer_services
     echo "The WiFi Ninja's Toolkit is not running."
     return
   fi
@@ -765,18 +801,16 @@ stop() {
   stop_packet_captures
   stop_iperf_servers
   stop_automation
-  stop_tftp
-  stop_ssh_transfer
-  stop_ftp
+  stop_transfer_services
   pid=$(cat "$PIDFILE")
   kill "$pid"
   attempts=0
   max_attempts=$((STOP_TIMEOUT * 10))
-  while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt "$max_attempts" ]; do
+  while pid_is_running "$pid" && [ "$attempts" -lt "$max_attempts" ]; do
     attempts=$((attempts + 1))
     sleep 0.1
   done
-  if kill -0 "$pid" 2>/dev/null; then
+  if pid_is_running "$pid"; then
     echo "Graceful stop timed out after ${STOP_TIMEOUT}s; forcing shutdown (PID $pid)." >&2
     children=$(pgrep -P "$pid" 2>/dev/null || true)
     if [ -n "$children" ]; then
@@ -785,11 +819,11 @@ stop() {
       kill -KILL "$pid" 2>/dev/null || true
     fi
     attempts=0
-    while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
+    while pid_is_running "$pid" && [ "$attempts" -lt 50 ]; do
       attempts=$((attempts + 1))
       sleep 0.1
     done
-    if kill -0 "$pid" 2>/dev/null; then
+    if pid_is_running "$pid"; then
       echo "The server could not be stopped (PID $pid)." >&2
       echo "Its PID file was retained; inspect the process manually." >&2
       return 1
@@ -984,7 +1018,7 @@ recover() {
       elevate_recovery
     fi
     for server_pid in $server_pids; do
-      if ! kill -0 "$server_pid" 2>/dev/null; then
+      if ! pid_is_running "$server_pid"; then
         elevate_recovery
       fi
     done

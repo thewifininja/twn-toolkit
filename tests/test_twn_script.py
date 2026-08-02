@@ -56,6 +56,42 @@ class TwnScriptTests(unittest.TestCase):
         )
         self.assertIn('IPERF_LOG="$INSTANCE/twn-iperf3.log"', source)
 
+    def test_transfer_services_start_and_stop_concurrently(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+        start_function = re.search(
+            r"start_transfer_services\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        stop_function = re.search(
+            r"stop_transfer_services\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(start_function)
+        self.assertIsNotNone(stop_function)
+        start_body = start_function.group("body")
+        stop_body = stop_function.group("body")
+        for service in ("tftp", "ssh_transfer", "ftp"):
+            self.assertIn(f"start_{service} &", start_body)
+            self.assertIn(f"stop_{service} &", stop_body)
+        self.assertIn('wait "$tftp_start_job"', start_body)
+        self.assertIn('wait "$ssh_transfer_start_job"', start_body)
+        self.assertIn('wait "$ftp_start_job"', start_body)
+        self.assertIn('wait "$tftp_stop_job"', stop_body)
+        self.assertIn('wait "$ssh_transfer_stop_job"', stop_body)
+        self.assertIn('wait "$ftp_stop_job"', stop_body)
+
+    def test_process_checks_reject_linux_zombies(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('[ -r "/proc/$1/stat" ]', source)
+        self.assertIn(r"Z\ *|X\ *) return 1", source)
+
     def test_fix_permissions_repairs_all_runtime_locations(self) -> None:
         source = Path(__file__).resolve().parents[1] / "twn"
         with tempfile.TemporaryDirectory() as temporary:

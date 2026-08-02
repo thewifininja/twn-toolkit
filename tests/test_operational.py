@@ -22,6 +22,7 @@ from twn_toolkit.operational import OperationalSettingsStore
 from twn_toolkit.pidfiles import (
     acquire_singleton_lock,
     matching_daemon_pids,
+    pid_is_running,
     process_marker_ready,
     remove_own_pid_file,
     stop_matching_daemons,
@@ -127,6 +128,28 @@ class OperationalHardeningTests(unittest.TestCase):
             ),
             [201],
         )
+
+    @mock.patch("twn_toolkit.pidfiles.Path.read_text")
+    @mock.patch("twn_toolkit.pidfiles.os.kill")
+    def test_linux_zombie_is_not_treated_as_running(
+        self, kill: mock.Mock, read_text: mock.Mock,
+    ) -> None:
+        read_text.return_value = "4321 (python worker) Z 1 2 3"
+
+        self.assertFalse(pid_is_running(4321))
+
+        kill.assert_called_once_with(4321, 0)
+
+    @mock.patch("twn_toolkit.pidfiles.Path.read_text")
+    @mock.patch("twn_toolkit.pidfiles.os.kill")
+    def test_linux_sleeping_process_is_treated_as_running(
+        self, kill: mock.Mock, read_text: mock.Mock,
+    ) -> None:
+        read_text.return_value = "4321 (python worker) S 1 2 3"
+
+        self.assertTrue(pid_is_running(4321))
+
+        kill.assert_called_once_with(4321, 0)
 
     def test_supervisor_restores_enabled_iperf_listeners(self) -> None:
         instance = Path("/srv/twn/instance")
