@@ -131,6 +131,63 @@ class AutomationStoreTests(unittest.TestCase):
             (1, "condition", "test.condition"),
         )
 
+    def test_interval_deadlines_stay_anchored_and_exclude_active_checks(self) -> None:
+        automation_id = self.store.save(
+            name="One second cadence",
+            interval_seconds=1,
+            trigger_after=2,
+            recover_after=2,
+            cooldown_seconds=0,
+            condition={"type": "test.condition", "config": {}},
+            actions=[{"type": "test.action", "config": {}}],
+            created_by="user-1",
+        )
+        with patch("twn_toolkit.automation.time.time", return_value=1_000.0):
+            self.store.set_enabled(automation_id, True)
+        with patch("twn_toolkit.automation.time.time", return_value=1_000.2):
+            first = self.store.claim_due()[0]
+        self.assertEqual(first["next_check_at"], 1_000.0)
+        self.assertEqual(self.store.get(automation_id)["next_check_at"], 1_001.0)
+
+        with patch("twn_toolkit.automation.time.time", return_value=1_001.2):
+            self.assertEqual(
+                self.store.claim_due(exclude_automation_ids={automation_id}),
+                [],
+            )
+        self.assertEqual(self.store.get(automation_id)["next_check_at"], 1_001.0)
+
+        with patch("twn_toolkit.automation.time.time", return_value=1_001.2):
+            self.assertEqual(self.store.claim_due()[0]["id"], automation_id)
+        self.assertEqual(self.store.get(automation_id)["next_check_at"], 1_002.0)
+
+        with patch("twn_toolkit.automation.time.time", return_value=1_004.5):
+            self.assertEqual(self.store.claim_due()[0]["id"], automation_id)
+        self.assertEqual(self.store.get(automation_id)["next_check_at"], 1_005.5)
+
+    def test_engine_records_condition_observation_at_round_start(self) -> None:
+        automation_id = self.save()
+        registry = AutomationRegistry()
+        registry.add_condition(
+            ConditionType(
+                "test.condition",
+                "Test condition",
+                "",
+                lambda config: config,
+                lambda _config: ConditionResult(False, "clear", "healthy", {}),
+            )
+        )
+        automation = self.store.get(automation_id, include_secrets=True)
+        observed_times = iter([1_000.0])
+        with patch(
+            "twn_toolkit.automation.time.time",
+            side_effect=lambda: next(observed_times, 1_001.2),
+        ):
+            AutomationEngine(self.store, registry).process_automation(automation)
+
+        check = self.store.recent_checks(automation_id)[0]
+        self.assertEqual(check["checked_at"], 1_000.0)
+        self.assertEqual(check["evidence"]["evaluation"]["observed_at"], 1_000.0)
+
     def test_condition_groups_evaluate_all_and_any_as_one_check(self) -> None:
         condition_ids = [
             self.store.save_condition_definition(
@@ -1267,6 +1324,41 @@ class AutomationStoreTests(unittest.TestCase):
 
 
 class AutomationRouteTests(unittest.TestCase):
+    def test_ping_condition_form_matches_active_ping_timeout_capability(self) -> None:
+        accelerated = {
+            "engine": "fping",
+            "accelerated": True,
+            "target_limit": 250,
+            "detail": "Batched high-capacity ICMP is available.",
+            "path": "/usr/bin/fping",
+        }
+        compatibility = {
+            "engine": "ping",
+            "accelerated": False,
+            "target_limit": 100,
+            "detail": "fping is unavailable.",
+        }
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            with patch(
+                "twn_toolkit.automation_routes.ping_engine_capability",
+                return_value=accelerated,
+            ):
+                accelerated_page = client.get("/automations/conditions")
+            with patch(
+                "twn_toolkit.automation_routes.ping_engine_capability",
+                return_value=compatibility,
+            ):
+                compatibility_page = client.get("/automations/conditions")
+
+        self.assertIn(b'name="condition_timeout" type="number" min="0.1"', accelerated_page.data)
+        self.assertIn(b'step="0.1"', accelerated_page.data)
+        self.assertIn(b"Sub-second timeouts are available", accelerated_page.data)
+        self.assertIn(b'name="condition_timeout" type="number" min="1"', compatibility_page.data)
+        self.assertIn(b"Install and authorize fping", compatibility_page.data)
+
     def test_ssh_action_uses_target_matrix_and_exposes_commandlets(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
             SSHCommandletStore(instance_path).upsert(
@@ -2623,6 +2715,56 @@ class AutomationRegistryTests(unittest.TestCase):
         self.assertFalse(all_result.met)
         self.assertTrue(one_result.met)
         self.assertEqual(one_result.evidence["failed"], 1)
+
+    def test_ping_condition_accepts_subsecond_timeout_only_with_fping(self) -> None:
+        condition = AUTOMATION_REGISTRY.conditions["ping.multi"]
+        accelerated = {
+            "engine": "fping",
+            "accelerated": True,
+            "target_limit": 250,
+            "detail": "Batched high-capacity ICMP is available.",
+            "path": "/usr/bin/fping",
+        }
+        compatibility = {
+            "engine": "ping",
+            "accelerated": False,
+            "target_limit": 100,
+            "detail": "fping is unavailable.",
+        }
+        ping_result = [{
+            "host": "192.0.2.1",
+            "reachable": True,
+            "latency_ms": 1.0,
+        }]
+        with (
+            patch(
+                "twn_toolkit.automation_types.condition_types.network_triggers.ping_engine_capability",
+                return_value=accelerated,
+            ),
+            patch(
+                "twn_toolkit.automation_types.condition_types.network_triggers.ping_hosts",
+                return_value=ping_result,
+            ) as ping,
+        ):
+            result = condition.evaluate({
+                "targets": "192.0.2.1",
+                "timeout": "0.9",
+                "failure_mode": "all",
+                "failure_count": 1,
+            })
+        self.assertFalse(result.met)
+        ping.assert_called_once_with(["192.0.2.1"], timeout=0.9)
+
+        with patch(
+            "twn_toolkit.automation_types.condition_types.network_triggers.ping_engine_capability",
+            return_value=compatibility,
+        ), self.assertRaisesRegex(ToolInputError, "between 1 and 10"):
+            condition.validate({
+                "targets": "192.0.2.1",
+                "timeout": "0.9",
+                "failure_mode": "all",
+                "failure_count": 1,
+            })
 
     def test_ping_health_combines_loss_latency_and_jitter_thresholds(self) -> None:
         condition = AUTOMATION_REGISTRY.conditions["ping.multi"]

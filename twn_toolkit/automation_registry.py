@@ -60,12 +60,17 @@ class AutomationRegistry:
         return trigger.validate(config)
 
     def evaluate_condition(
-        self, type_id: str, config: dict[str, Any]
+        self,
+        type_id: str,
+        config: dict[str, Any],
+        *,
+        observed_at: float | None = None,
     ) -> ConditionResult:
         return evaluation_result(
             self.conditions[type_id].evaluate(config),
             kind="condition",
             type_id=type_id,
+            observed_at=observed_at,
         )
 
     def evaluate_trigger(

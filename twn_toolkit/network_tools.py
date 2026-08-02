@@ -857,6 +857,25 @@ def ping_engine_capability() -> dict[str, Any]:
     }
 
 
+def validate_ping_timeout(
+    value: object,
+    capability: dict[str, Any] | None = None,
+) -> float:
+    """Validate a timeout against what the active ping engine can honor."""
+    active_capability = capability or ping_engine_capability()
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError("Probe timeout must be a number.") from exc
+    minimum = 0.1 if active_capability.get("accelerated") else 1.0
+    if not minimum <= timeout <= 10:
+        raise ToolInputError(
+            f"Probe timeout must be between {minimum:g} and 10 seconds for the "
+            f"{active_capability.get('engine', 'active')} ping engine."
+        )
+    return timeout
+
+
 def ping_hosts(hosts: list[str], timeout: float = 1) -> list[dict[str, Any]]:
     capability = ping_engine_capability()
     if capability["accelerated"]:

@@ -13,20 +13,20 @@ from ...network_tools import (
     parse_dns_servers,
     parse_ping_targets,
     parse_tcp_ports,
+    ping_engine_capability,
     ping_hosts,
     scan_tcp_checks,
+    validate_ping_timeout,
 )
 from ...schedule_tools import schedule_occurrence, validate_schedule_config
 from ..models import ConditionResult
 
 def _validate_ping(config: dict[str, Any]) -> dict[str, Any]:
     targets = parse_ping_targets(str(config.get("targets", "")), limit=100)
-    try:
-        timeout = int(config.get("timeout", 1))
-    except (TypeError, ValueError) as exc:
-        raise ToolInputError("Ping timeout must be a whole number.") from exc
-    if not 1 <= timeout <= 10:
-        raise ToolInputError("Ping timeout must be between 1 and 10 seconds.")
+    timeout = validate_ping_timeout(
+        config.get("timeout", 1),
+        ping_engine_capability(),
+    )
     try:
         probe_count = int(config.get("probe_count", 1))
     except (TypeError, ValueError) as exc:

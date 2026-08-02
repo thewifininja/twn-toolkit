@@ -32,6 +32,7 @@ from .network_tools import (
     SSH_EXECUTION_WORKERS,
     SSH_TARGET_LIMIT,
     ToolInputError,
+    ping_engine_capability,
 )
 from .packet_capture import capture_interfaces
 from .schedule_tools import describe_schedule_rule, local_timezone_name, schedule_preview
@@ -188,6 +189,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             ssh_target_limit_label=f"{SSH_TARGET_LIMIT:,}",
             ssh_batch_size=SSH_EXECUTION_BATCH_SIZE,
             ssh_execution_workers=SSH_EXECUTION_WORKERS,
+            automation_ping_capability=ping_engine_capability(),
             page_section=page_section,
         )
 

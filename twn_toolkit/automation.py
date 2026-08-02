@@ -552,13 +552,23 @@ class AutomationStore:
             if not cursor.rowcount:
                 raise ValueError("Automation not found.")
 
-    def claim_due(self, limit: int = 10) -> list[dict[str, Any]]:
+    def claim_due(
+        self,
+        limit: int = 10,
+        *,
+        exclude_automation_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
         now = time.time()
+        excluded_ids = sorted(set(exclude_automation_ids or set()))
+        exclusion_sql = ""
+        if excluded_ids:
+            placeholders = ", ".join("?" for _item in excluded_ids)
+            exclusion_sql = f"AND automations.id NOT IN ({placeholders})"
         claimed: list[sqlite3.Row] = []
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
-                """
+                f"""
                 SELECT automations.*,
                     COALESCE(automation_conditions.type, automations.condition_type)
                         AS effective_condition_type
@@ -567,6 +577,7 @@ class AutomationStore:
                     ON automation_conditions.id = automations.condition_definition_id
                 WHERE enabled = 1
                     AND COALESCE(automation_conditions.type, automations.condition_type) != 'manual.trigger'
+                    {exclusion_sql}
                     AND (
                         (COALESCE(automation_conditions.type, automations.condition_type) = 'schedule.calendar'
                             AND next_check_at IS NOT NULL AND next_check_at <= ?)
@@ -577,7 +588,7 @@ class AutomationStore:
                 ORDER BY COALESCE(next_check_at, 0), automations.name COLLATE NOCASE
                 LIMIT ?
                 """,
-                (now, now, limit),
+                (*excluded_ids, now, now, limit),
             ).fetchall()
             for row in rows:
                 if row["effective_condition_type"] == "schedule.calendar":
@@ -591,9 +602,13 @@ class AutomationStore:
                         (now + 300, row["id"]),
                     )
                 else:
+                    next_check_at = self._next_interval_check_at(
+                        row,
+                        claimed_at=now,
+                    )
                     connection.execute(
                         "UPDATE automations SET next_check_at = ? WHERE id = ?",
-                        (now + int(row["interval_seconds"]), row["id"]),
+                        (next_check_at, row["id"]),
                     )
                 claimed.append(row)
         return [self._automation_from_row(row, True) for row in claimed]
@@ -704,8 +719,10 @@ class AutomationStore:
         result: ConditionResult,
         *,
         scheduled_at: float | None = None,
+        observed_at: float | None = None,
     ) -> tuple[dict[str, Any], bool]:
         now = time.time()
+        checked_at = now if observed_at is None else float(observed_at)
         should_fire = False
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -728,7 +745,20 @@ class AutomationStore:
                     result,
                     kind="condition",
                     type_id=str(row["effective_condition_type"]),
-                    observed_at=now,
+                    observed_at=checked_at,
+                )
+            elif observed_at is not None:
+                result = ConditionResult(
+                    met=result.met,
+                    status=result.status,
+                    summary=result.summary,
+                    evidence={
+                        **result.evidence,
+                        "evaluation": {
+                            **result.evidence["evaluation"],
+                            "observed_at": checked_at,
+                        },
+                    },
                 )
             state = str(row["state"])
             met_count = int(row["consecutive_met"])
@@ -775,7 +805,7 @@ class AutomationStore:
                     state,
                     met_count,
                     clear_count,
-                    now,
+                    checked_at,
                     result.summary,
                     int(should_fire),
                     now,
@@ -791,7 +821,7 @@ class AutomationStore:
                 """,
                 (
                     automation_id,
-                    now,
+                    checked_at,
                     int(result.met),
                     result.status,
                     result.summary,
@@ -802,6 +832,23 @@ class AutomationStore:
         if updated is None:
             raise ValueError("Automation not found.")
         return updated, should_fire
+
+    @staticmethod
+    def _next_interval_check_at(
+        row: sqlite3.Row,
+        *,
+        claimed_at: float,
+    ) -> float:
+        """Keep a stable cadence without replaying a long backlog of missed checks."""
+        interval = max(1, int(row["interval_seconds"]))
+        scheduled_at = (
+            float(row["next_check_at"])
+            if row["next_check_at"] is not None
+            else claimed_at
+        )
+        if claimed_at - scheduled_at >= interval:
+            scheduled_at = claimed_at
+        return scheduled_at + interval
 
     def enqueue_manual_job(
         self,
@@ -2166,12 +2213,18 @@ class AutomationEngine:
         self.store = store
         self.registry = registry
 
-    def test_condition(self, automation: dict[str, Any]) -> ConditionResult:
+    def test_condition(
+        self,
+        automation: dict[str, Any],
+        *,
+        observed_at: float | None = None,
+    ) -> ConditionResult:
         conditions = automation.get("conditions") or [automation["condition"]]
         if len(conditions) == 1:
             return self.registry.evaluate_condition(
                 conditions[0]["type"],
                 conditions[0]["config"],
+                observed_at=observed_at,
             )
         evaluated = []
         for condition in conditions:
@@ -2179,6 +2232,7 @@ class AutomationEngine:
                 result = self.registry.evaluate_condition(
                     condition["type"],
                     condition["config"],
+                    observed_at=observed_at,
                 )
             except Exception as exc:
                 raise RuntimeError(
@@ -2219,6 +2273,7 @@ class AutomationEngine:
             ),
             kind="condition",
             type_id="condition.group",
+            observed_at=observed_at,
         )
 
     def run_once(self) -> int:
@@ -2242,8 +2297,9 @@ class AutomationEngine:
                 )
                 return
             return
+        observed_at = time.time()
         try:
-            result = self.test_condition(automation)
+            result = self.test_condition(automation, observed_at=observed_at)
         except Exception as exc:
             self.store.record_error(
                 automation["id"], f"{type(exc).__name__}: {exc}"
@@ -2253,6 +2309,7 @@ class AutomationEngine:
             automation["id"],
             result,
             scheduled_at=automation.get("next_check_at"),
+            observed_at=observed_at,
         )
 
     def process_job(self, job: dict[str, Any]) -> str | None:
