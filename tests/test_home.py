@@ -54,7 +54,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
-        self.assertIn(b"v0.16.0", response.data)
+        self.assertIn(b"v0.16.1", response.data)
         self.assertIn(b'href="/help"', response.data)
         self.assertIn(b"Help &amp; release notes", response.data)
         self.assertIn(
@@ -126,7 +126,11 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Updates &amp; Recovery", response.data)
         self.assertIn(b"./twn upgrade", response.data)
         self.assertIn(b"never runs older code against post-upgrade data", response.data)
-        self.assertIn(b"v0.16.0", response.data)
+        self.assertIn(b"v0.16.1", response.data)
+        self.assertIn(
+            b"Startup announcements and system identity",
+            response.data,
+        )
         self.assertIn(
             b"Boot-managed service and macOS network-tool parity",
             response.data,

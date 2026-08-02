@@ -273,7 +273,7 @@ credentials are write-only in the UI and encrypted at rest.
 Open **Automation → Automations** and expand **New automation**:
 
 1. Name the automation.
-2. Choose **Condition**, **Schedule**, or **Manual** run mode.
+2. Choose **Condition**, **Schedule**, **Startup**, or **Manual** run mode.
 3. For Condition mode, select one or more reusable conditions, choose whether
    **ALL** or **ANY** must be met, and set the check interval. For Schedule
    mode, select a reusable calendar schedule.
@@ -293,14 +293,20 @@ starts. Automation Ping also accepts sub-second per-target timeouts such as
 `0.9` seconds when the verified accelerated `fping` engine is active. The
 standard compatibility engine retains a one-second minimum.
 
-New condition or schedule automations remain paused until you select **Arm**.
+New condition, schedule, or startup automations remain paused until you select **Arm**.
 Use **Test condition** before arming. Editing a referenced condition or action
 pauses dependent automations so changes can be reviewed safely.
 
-### Manual and calendar automations
+### Manual, startup, and calendar automations
 
 - **Manual mode** produces an on-demand automation with a **Run now**
   button and no polling interval.
+- **Startup mode** can run once per operating-system boot or after every
+  complete toolkit start. Arming records the current startup as its baseline;
+  the next matching event waits briefly for a usable address and then runs
+  exactly once. Use **Test now** to verify the pipeline without consuming that
+  baseline. Webhook/API, Email, and Syslog templates can include the configured
+  instance name, hostname, toolkit version, current addresses, and access URLs.
 - A reusable **Calendar schedule** can contain multiple one-time, daily,
   weekday, alternating-week, monthly-date, or ordinal-weekday rules. Set an
   IANA timezone and missed-occurrence policy, then use **Refresh next run
