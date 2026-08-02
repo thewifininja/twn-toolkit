@@ -282,7 +282,7 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
 <section class="home-section help-section" id="packet-replay">
   <div class="section-head"><div><span class="eyebrow">High impact</span><h2>Packet Replay</h2></div><a href="#help-contents">Back to contents</a></div>
   <details class="help-topic" open><summary>Inputs, rewrites, VLANs, and sending</summary><div class="help-topic-body">
-    <p>Transmit raw Ethernet frames from hex or classic Ethernet PCAP. Select the wired interface, review decoded fields and the rewrite plan, then explicitly confirm authorization before sending from Preview. A replay is limited to 10,000 emitted frames and five minutes of scheduled duration. Multiple source packets, repeat, interval, and MAC/IP/port rewrites are supported.</p>
+    <p>Transmit raw Ethernet frames from hex, a local classic-PCAP upload, or a compatible <code>.pcap</code>/<code>.cap</code> file selected directly from Local Datastore. Stored capture selection requires both Packet Replay and Datastore access; administrators have both automatically. Select the wired interface, review decoded fields and the rewrite plan, then explicitly confirm authorization before sending from Preview. A replay is limited to a 256 KiB source capture, 10,000 emitted frames, and five minutes of scheduled duration. Multiple source packets, repeat, interval, and MAC/IP/port rewrites are supported.</p>
     <p>VLAN fanout accepts IDs, ranges, and <code>untagged</code>: <code>untagged,10-12,20</code>. VLAN 0 is priority-tagged, not untagged.</p>
   </div></details>
   <details class="help-topic"><summary>Permissions and capture verification</summary><div class="help-topic-body">

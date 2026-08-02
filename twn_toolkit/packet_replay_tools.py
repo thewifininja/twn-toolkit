@@ -34,7 +34,7 @@ class ReplayPlan:
 def parse_hex_packet(value: str) -> bytes:
     cleaned = re.sub(r"[^0-9A-Fa-f]", "", value or "")
     if not cleaned:
-        raise ToolInputError("Paste packet hex or upload a packet capture.")
+        raise ToolInputError("Paste packet hex or choose a packet capture.")
     if len(cleaned) % 2:
         raise ToolInputError("Packet hex must contain an even number of hex digits.")
     try:
@@ -47,15 +47,15 @@ def parse_hex_packet(value: str) -> bytes:
 def parse_single_packet_capture(data: bytes) -> bytes:
     packets = parse_packet_capture(data)
     if len(packets) != 1:
-        raise ToolInputError("Upload a PCAP containing exactly one packet.")
+        raise ToolInputError("Choose a PCAP containing exactly one packet.")
     return packets[0]
 
 
 def parse_packet_capture(data: bytes) -> list[bytes]:
     if len(data) > MAX_UPLOAD_BYTES:
-        raise ToolInputError("Capture upload is too large. Upload a smaller packet capture.")
+        raise ToolInputError("Packet replay captures may not exceed 256 KiB.")
     if len(data) < 24:
-        raise ToolInputError("Upload a classic PCAP or paste raw packet hex.")
+        raise ToolInputError("Choose a classic PCAP or paste raw packet hex.")
 
     magic = data[:4]
     if magic in {b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1"}:
@@ -63,13 +63,13 @@ def parse_packet_capture(data: bytes) -> list[bytes]:
     elif magic in {b"\xa1\xb2\xc3\xd4", b"\xa1\xb2\x3c\x4d"}:
         endian = ">"
     else:
-        raise ToolInputError("Only classic PCAP uploads are supported right now.")
+        raise ToolInputError("Only classic PCAP captures are supported right now.")
 
     _magic, _major, _minor, _thiszone, _sigfigs, _snaplen, linktype = struct.unpack_from(
         f"{endian}IHHIIII", data, 0
     )
     if linktype != 1:
-        raise ToolInputError("Packet replay PCAP uploads must use Ethernet link type.")
+        raise ToolInputError("Packet replay PCAPs must use Ethernet link type.")
 
     if len(data) < 40:
         raise ToolInputError("The PCAP does not contain a packet record.")
@@ -108,7 +108,7 @@ def parse_prepared_packets(value: str) -> list[bytes]:
         if packet_hex.strip():
             packets.append(parse_hex_packet(packet_hex))
     if not packets:
-        raise ToolInputError("Paste packet hex or upload a packet capture.")
+        raise ToolInputError("Paste packet hex or choose a packet capture.")
     return packets
 
 
