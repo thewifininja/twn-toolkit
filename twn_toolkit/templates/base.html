@@ -152,7 +152,7 @@
                     <small>{{ group.count|default((group.tools|default([])|length) + (group.children|default([])|length)) }}</small>
                   </summary>
                   {% if group.tools %}
-                    <ul>
+                    <ul class="side-nav-tool-list">
                       {% for tool in group.tools %}
                         <li>
                           {{ sidebar_tool_row(tool) }}
@@ -214,8 +214,8 @@
                 </details>
               {% endfor %}
             </div>
-            <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}" title="Help">
-              <span class="side-nav-help-title"><span class="side-nav-icon" aria-hidden="true">?</span><span class="side-nav-label">Help{% if instance_name %}<small class="side-nav-instance">{{ instance_name }}</small>{% endif %}</span></span>
+            <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}" title="Help &amp; release notes">
+              <span class="side-nav-help-title"><span class="side-nav-icon" aria-hidden="true">?</span><span class="side-nav-label">Help &amp; release notes{% if instance_name %}<small class="side-nav-instance">{{ instance_name }}</small>{% endif %}</span></span>
               <span class="side-nav-version">v{{ app_version }}</span>
             </a>
           </nav>
@@ -322,7 +322,7 @@
     <script src="{{ url_for('static', filename='theme.js') }}"></script>
     <script src="{{ url_for('static', filename='checkbox-actions.js') }}"></script>
     <script src="{{ url_for('static', filename='loading.js') }}"></script>
-    <script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+    <script src="{{ url_for('static', filename='sidebar.js', v=app_version) }}"></script>
     {% if current_user %}
       <script src="{{ url_for('static', filename='favorites-order.js', v=app_version) }}"></script>
       <script src="{{ url_for('static', filename='pcap-viewer.js', v=app_version) }}"></script>

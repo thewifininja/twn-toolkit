@@ -8,6 +8,7 @@ from twn_toolkit.activity import ActivityStore
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.dashboard_layout import DashboardLayoutStore
 from twn_toolkit.live_tools import LiveToolStore
+from twn_toolkit.server_settings import ServerSettingsStore
 from twn_toolkit.version import RELEASE_NOTES
 
 
@@ -31,6 +32,11 @@ class HomePageTests(unittest.TestCase):
                     "confirm_password": "correct horse battery staple",
                 },
             )
+            ServerSettingsStore(instance).save(
+                "0.0.0.0",
+                ["10.0.0.0/8"],
+                instance_name="branch-tools",
+            )
 
             response = client.get("/")
 
@@ -50,6 +56,11 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Syslog", response.data)
         self.assertIn(b"v0.15.1", response.data)
         self.assertIn(b'href="/help"', response.data)
+        self.assertIn(b"Help &amp; release notes", response.data)
+        self.assertIn(
+            b'<small class="side-nav-instance">branch-tools</small>',
+            response.data,
+        )
         self.assertIn(b'<header class="topbar with-sidebar">', response.data)
         self.assertIn(b'id="side-nav-search-input"', response.data)
         self.assertLess(

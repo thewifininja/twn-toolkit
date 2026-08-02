@@ -141,6 +141,64 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(".side-nav-favorite-drag-handle {", stylesheet)
         self.assertIn("grid-template-columns: 24px minmax(0, 1fr);", stylesheet)
 
+    def test_sidebar_footer_survives_mobile_browser_chrome_and_desktop_is_compact(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+        sidebar_script = (
+            TEMPLATE_ROOT.parent / "static" / "sidebar.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("align-content: start;", stylesheet)
+        self.assertIn("flex: 1 1 0;", stylesheet)
+        self.assertIn("overscroll-behavior: contain;", stylesheet)
+        self.assertIn("scrollbar-gutter: stable;", stylesheet)
+        self.assertIn(
+            "@media (min-width: 901px) and (hover: hover) and (pointer: fine) {",
+            stylesheet,
+        )
+        self.assertIn(
+            "@media (max-width: 900px), (hover: none) and (pointer: coarse) {",
+            stylesheet,
+        )
+        self.assertIn(
+            "var(--mobile-visual-viewport-height, 100dvh)",
+            stylesheet,
+        )
+        self.assertIn(
+            "window.visualViewport?.height || window.innerHeight",
+            sidebar_script,
+        )
+        self.assertIn(
+            'window.visualViewport?.addEventListener("resize", updateSidebarGeometry);',
+            sidebar_script,
+        )
+        self.assertIn(
+            '"(min-width: 901px) and (hover: hover) and (pointer: fine)"',
+            sidebar_script,
+        )
+        self.assertIn("env(safe-area-inset-bottom)", stylesheet)
+        self.assertIn("overflow-wrap: anywhere;", stylesheet)
+        self.assertIn("Help &amp; release notes", template)
+        self.assertIn("filename='sidebar.js', v=app_version", template)
+
+    def test_sidebar_direct_tools_and_nested_groups_share_one_level_indent(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+
+        self.assertIn('<ul class="side-nav-tool-list">', template)
+        self.assertIn(
+            ".side-nav-tool-list,\n.side-nav-tree {",
+            stylesheet,
+        )
+        self.assertIn("margin-left: 12px !important;", stylesheet)
+        self.assertIn("padding-left: 8px !important;", stylesheet)
+        self.assertIn(".side-nav-tool-list .side-nav-item > a {", stylesheet)
+        self.assertIn("gap: 8px;", stylesheet)
+
     def test_automation_threshold_rows_share_aligned_label_space(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
