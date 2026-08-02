@@ -1,6 +1,42 @@
-APP_VERSION = "0.16.1"
+APP_VERSION = "0.16.2"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.16.2",
+        "date": "2026-08-02",
+        "title": "Reliable service-managed upgrades",
+        "summary": (
+            "Reloads the boot-managed launcher after application upgrades so "
+            "systemd and launchd installations run the newly installed lifecycle "
+            "code without a separate administrator service restart."
+        ),
+        "groups": (
+            {
+                "title": "Automatic launcher replacement",
+                "items": (
+                    "Marks installer-driven starts as code-changing restarts, while preserving the lightweight pause-and-resume behavior of an ordinary ./twn restart.",
+                    "Makes a paused boot-service launcher exit deliberately after an upgrade so systemd or launchd starts a fresh copy of the newly installed twn script from disk.",
+                    "Leaves manual installations on their existing lifecycle and does not install, remove, or rewrite an optional OS service definition.",
+                ),
+            },
+            {
+                "title": "Verified service continuity",
+                "items": (
+                    "Waits for the service launcher PID to change and for the web process, automation scheduler, worker supervisor, and endpoint metadata to become ready before installation succeeds.",
+                    "Returns through the OS service manager with the configured normal account and existing Linux capability or macOS BPF policy instead of prompting for another administrator operation.",
+                    "Bounds launcher-reload waiting and points failed upgrades to the existing service status and service logs commands for actionable diagnosis.",
+                ),
+            },
+            {
+                "title": "Compatible maintenance upgrade",
+                "items": (
+                    "Introduces no Python dependency, database migration, profile-format, server-setting, permission-policy, or command-line incompatibility and supports direct upgrade from v0.16.1.",
+                    "Preserves startup automations, managed listeners, service ownership, optional network capabilities, instance data, and the verified matched recovery-point workflow.",
+                    "Updates installer regression coverage, launcher lifecycle assertions, built-in Help, Quick Start, and service and upgrade documentation around the corrected behavior.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.1",
         "date": "2026-08-02",
