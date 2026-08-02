@@ -118,9 +118,9 @@ def _daemonize(pid_file: str, log_file: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--daemon", action="store_true"); parser.add_argument("--pid-file", required=True); parser.add_argument("--log-file", required=True)
+    parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--daemon", action="store_true"); parser.add_argument("--pid-file", required=True); parser.add_argument("--ready-file", default=""); parser.add_argument("--log-file", required=True)
     args = parser.parse_args()
-    singleton = acquire_singleton_lock(Path(args.instance).resolve().parent, "ftp")
+    singleton = acquire_singleton_lock(Path(args.instance).resolve(), "ftp")
     if singleton is None:
         return
     if args.daemon: _daemonize(args.pid_file, args.log_file)
@@ -129,17 +129,27 @@ def main():
     # import time. Import it only after detaching so its resource tracker and
     # macOS kqueue belong to the final daemon, not the launcher or updater.
     from pyftpdlib.servers import FTPServer
-    settings = FTPSettingsStore(args.instance).get()
-    if not settings["enabled"]: raise SystemExit("FTP is disabled.")
     write_pid_file(args.pid_file)
-    server = FTPServer((settings["bind_host"], settings["port"]), build_handler(args.instance, settings))
-    server.max_cons = settings["max_connections"]
-    server.max_cons_per_ip = settings["max_connections_per_ip"]
-    signal.signal(signal.SIGTERM, lambda *_: server.close_all()); signal.signal(signal.SIGINT, lambda *_: server.close_all())
-    try: server.serve_forever(timeout=1, blocking=True, handle_exit=False)
+    settings = None
+    server = None
+    try:
+        settings = FTPSettingsStore(args.instance).get()
+        if not settings["enabled"]: raise SystemExit("FTP is disabled.")
+        server = FTPServer((settings["bind_host"], settings["port"]), build_handler(args.instance, settings))
+        server.max_cons = settings["max_connections"]
+        server.max_cons_per_ip = settings["max_connections_per_ip"]
+        signal.signal(signal.SIGTERM, lambda *_: server.close_all()); signal.signal(signal.SIGINT, lambda *_: server.close_all())
+        write_pid_file(args.ready_file)
+        server.serve_forever(timeout=1, blocking=True, handle_exit=False)
     finally:
+        if server is not None:
+            server.close_all()
+        remove_own_pid_file(args.ready_file)
         remove_own_pid_file(args.pid_file)
-        if settings["root_mode"] == "temporary": clear_ftp_runtime(args.instance)
+        try:
+            if settings is not None and settings["root_mode"] == "temporary": clear_ftp_runtime(args.instance)
+        finally:
+            singleton.close()
 
 
 if __name__ == "__main__": main()

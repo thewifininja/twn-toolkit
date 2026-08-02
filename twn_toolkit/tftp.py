@@ -14,9 +14,10 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from string import Formatter
-from typing import Any
+from typing import Any, Callable
 
 from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES
+from .pidfiles import process_marker_ready
 
 
 DEFAULT_SETTINGS = {
@@ -206,13 +207,15 @@ class TFTPServer:
         self.socket: socket.socket | None = None
         self.transfer_slots = threading.BoundedSemaphore(20)
 
-    def serve_forever(self) -> None:
+    def serve_forever(self, on_ready: Callable[[], None] | None = None) -> None:
         bind_ip = ipaddress.ip_address(self.settings["bind_host"])
         family = socket.AF_INET6 if bind_ip.version == 6 else socket.AF_INET
         with socket.socket(family, socket.SOCK_DGRAM) as listener:
             listener.bind((self.settings["bind_host"], self.settings["port"]))
             listener.settimeout(1.0)
             self.socket = listener
+            if on_ready is not None:
+                on_ready()
             while self.running:
                 try:
                     packet, client = listener.recvfrom(65535)
@@ -489,11 +492,12 @@ class TFTPServer:
 
 def tftp_process_status(instance_path: str) -> dict[str, Any]:
     pid_path = Path(instance_path) / "twn-tftp.pid"
-    pid = 0
+    ready_path = Path(instance_path) / "twn-tftp.ready"
+    if not process_marker_ready(pid_path, ready_path):
+        return {"running": False, "pid": None}
     try:
         pid = int(pid_path.read_text(encoding="utf-8").strip())
-        os.kill(pid, 0)
-    except (FileNotFoundError, OSError, ValueError):
+    except (OSError, ValueError):
         return {"running": False, "pid": None}
     return {"running": True, "pid": pid}
 

@@ -4,6 +4,7 @@ import tempfile
 import ftplib
 import io
 import socket
+import sys
 import threading
 from pathlib import Path
 from unittest.mock import patch
@@ -13,13 +14,42 @@ from werkzeug.security import check_password_hash
 
 from twn_toolkit import create_app
 from twn_toolkit.ftp_server import FTPSettingsStore
-from twn_toolkit.ftp_worker import build_handler
+from twn_toolkit.ftp_worker import build_handler, main as ftp_worker_main
 from pyftpdlib.servers import FTPServer
 from twn_toolkit.ssh_transfer_server import SSHTransferHistoryStore
 from twn_toolkit.ssh_transfer_worker import AtomicWriteHandle, TransferContext
 
 
 class FTPServerTests(unittest.TestCase):
+    def test_worker_clears_pid_markers_when_socket_bind_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            instance = Path(root) / "instance"
+            instance.mkdir()
+            with socket.socket() as occupied:
+                try:
+                    occupied.bind(("127.0.0.1", 0))
+                    occupied.listen(1)
+                except PermissionError as exc:
+                    self.skipTest(f"Local listeners unavailable in sandbox: {exc}")
+                port = int(occupied.getsockname()[1])
+                FTPSettingsStore(str(instance)).save({
+                    "enabled": True, "bind_host": "127.0.0.1", "port": port,
+                    "username": "toolkit", "allowed_networks": "127.0.0.1",
+                }, "correct horse battery")
+                pid_path = instance / "worker.pid"
+                ready_path = instance / "worker.ready"
+                with patch.object(sys, "argv", [
+                    "ftp-worker", "--instance", str(instance),
+                    "--pid-file", str(pid_path),
+                    "--ready-file", str(ready_path),
+                    "--log-file", str(instance / "worker.log"),
+                ]):
+                    with self.assertRaises(OSError):
+                        ftp_worker_main()
+
+            self.assertFalse(pid_path.exists())
+            self.assertFalse(ready_path.exists())
+
     def test_settings_hash_password_and_validate_passive_range(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             store = FTPSettingsStore(instance)

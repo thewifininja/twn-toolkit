@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 import sqlite3
 import subprocess
@@ -21,18 +22,84 @@ from twn_toolkit.operational import OperationalSettingsStore
 from twn_toolkit.pidfiles import (
     acquire_singleton_lock,
     matching_daemon_pids,
+    pid_is_running,
+    process_marker_ready,
     remove_own_pid_file,
     stop_matching_daemons,
     write_pid_file,
 )
 from twn_toolkit.supervisor_worker import (
     _heartbeat_fresh,
+    _operation_active,
     _restore_iperf_listeners,
     matching_supervisor_pids,
 )
 
 
 class OperationalHardeningTests(unittest.TestCase):
+    def test_package_import_does_not_eagerly_load_the_flask_application(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from twn_toolkit import create_app; "
+                "assert callable(create_app); "
+                "assert 'twn_toolkit.app' not in sys.modules",
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_daemon_singleton_locks_live_in_the_instance_directory(self) -> None:
+        toolkit = Path(__file__).resolve().parents[1] / "twn_toolkit"
+        transfer_workers = (
+            "tftp_worker.py", "ssh_transfer_worker.py", "ftp_worker.py",
+        )
+        for filename in transfer_workers:
+            source = (toolkit / filename).read_text(encoding="utf-8")
+            normalized = " ".join(source.split())
+            self.assertIn(
+                "Path(args.instance).resolve(),",
+                normalized,
+                filename,
+            )
+            self.assertNotIn(
+                "Path(args.instance).resolve().parent", source, filename,
+            )
+
+        automation = (toolkit / "automation_worker.py").read_text(encoding="utf-8")
+        supervisor = (toolkit / "supervisor_worker.py").read_text(encoding="utf-8")
+        self.assertIn("Path(args.instance).resolve()", automation)
+        self.assertIn("acquire_singleton_lock(instance_directory", automation)
+        self.assertIn("acquire_singleton_lock(instance", supervisor)
+
+    def test_supervisor_defers_to_an_active_service_operation(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            lock_path = Path(instance) / "worker.pid.lock"
+            lock_path.mkdir()
+            (lock_path / "owner").write_text(
+                f"{os.getpid()}\n", encoding="utf-8"
+            )
+            self.assertTrue(_operation_active(lock_path))
+            (lock_path / "owner").write_text("not-a-pid\n", encoding="utf-8")
+            self.assertFalse(_operation_active(lock_path))
+
+    def test_process_readiness_requires_matching_live_pid_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            pid_path = Path(instance) / "worker.pid"
+            ready_path = Path(instance) / "worker.ready"
+            pid_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
+
+            self.assertFalse(process_marker_ready(pid_path, ready_path))
+            ready_path.write_text(f"{os.getpid() + 1}\n", encoding="utf-8")
+            self.assertFalse(process_marker_ready(pid_path, ready_path))
+            ready_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
+            self.assertTrue(process_marker_ready(pid_path, ready_path))
+
     def test_ftp_worker_import_does_not_start_resource_tracker(self) -> None:
         probe = subprocess.run([
             sys.executable, "-c",
@@ -78,6 +145,28 @@ class OperationalHardeningTests(unittest.TestCase):
             ),
             [201],
         )
+
+    @mock.patch("twn_toolkit.pidfiles.Path.read_text")
+    @mock.patch("twn_toolkit.pidfiles.os.kill")
+    def test_linux_zombie_is_not_treated_as_running(
+        self, kill: mock.Mock, read_text: mock.Mock,
+    ) -> None:
+        read_text.return_value = "4321 (python worker) Z 1 2 3"
+
+        self.assertFalse(pid_is_running(4321))
+
+        kill.assert_called_once_with(4321, 0)
+
+    @mock.patch("twn_toolkit.pidfiles.Path.read_text")
+    @mock.patch("twn_toolkit.pidfiles.os.kill")
+    def test_linux_sleeping_process_is_treated_as_running(
+        self, kill: mock.Mock, read_text: mock.Mock,
+    ) -> None:
+        read_text.return_value = "4321 (python worker) S 1 2 3"
+
+        self.assertTrue(pid_is_running(4321))
+
+        kill.assert_called_once_with(4321, 0)
 
     def test_supervisor_restores_enabled_iperf_listeners(self) -> None:
         instance = Path("/srv/twn/instance")

@@ -17,6 +17,7 @@ from typing import Any
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES
+from .pidfiles import process_marker_ready
 from .tftp import format_incoming_filename, validate_incoming_filename_pattern
 
 
@@ -161,9 +162,12 @@ class SSHTransferHistoryStore:
 
 def ssh_transfer_process_status(instance_path: str) -> dict[str, Any]:
     pid_path = Path(instance_path) / "twn-ssh-transfer.pid"
+    ready_path = Path(instance_path) / "twn-ssh-transfer.ready"
+    if not process_marker_ready(pid_path, ready_path):
+        return {"running": False, "pid": None}
     try:
-        pid = int(pid_path.read_text().strip()); os.kill(pid, 0)
-    except (FileNotFoundError, OSError, ValueError): return {"running": False, "pid": None}
+        pid = int(pid_path.read_text().strip())
+    except (OSError, ValueError): return {"running": False, "pid": None}
     return {"running": True, "pid": pid}
 
 

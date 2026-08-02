@@ -30,14 +30,14 @@ def main() -> None:
     parser.add_argument("--pid-file", default="")
     parser.add_argument("--log-file", default="")
     args = parser.parse_args()
-    instance_root = Path(args.instance).resolve().parent
-    singleton = acquire_singleton_lock(instance_root, "automation")
+    instance_directory = Path(args.instance).resolve()
+    singleton = acquire_singleton_lock(instance_directory, "automation")
     if singleton is None:
         return
     if args.daemon:
         _daemonize(args.pid_file, args.log_file)
     record_lock_owner(singleton)
-    instance_path = str(Path(args.instance).resolve())
+    instance_path = str(instance_directory)
     os.environ["TWN_TOOLKIT_INSTANCE_PATH"] = instance_path
     store = AutomationStore(
         instance_path,

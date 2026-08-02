@@ -12,6 +12,8 @@ from pathlib import Path
 from .pidfiles import (
     acquire_singleton_lock,
     matching_daemon_pids,
+    pid_is_running,
+    process_marker_ready,
     record_lock_owner,
     remove_own_pid_file,
     stop_matching_daemons,
@@ -23,25 +25,31 @@ def main() -> None:
     parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--root", required=True); parser.add_argument("--pid-file", required=True); parser.add_argument("--log-file", required=True); parser.add_argument("--daemon", action="store_true")
     args = parser.parse_args()
     root = Path(args.root).resolve()
-    singleton = acquire_singleton_lock(root, "supervisor")
+    instance = Path(args.instance).resolve()
+    singleton = acquire_singleton_lock(instance, "supervisor")
     if singleton is None:
         return
     if args.daemon: _daemonize(args.pid_file, args.log_file)
     record_lock_owner(singleton)
-    instance = Path(args.instance).resolve()
     running = True
     retry_after: dict[str, float] = {}
     signal.signal(signal.SIGTERM, lambda *_: _stop()); signal.signal(signal.SIGINT, lambda *_: _stop())
     def supervise() -> None:
         services = [
-            ("automation", True, "twn-automation.pid", "automation-restart", "automation-heartbeat.json"),
-            ("TFTP", _enabled(instance / "tftp_settings.json"), "twn-tftp.pid", "tftp-restart", ""),
-            ("SFTP/SCP", _enabled(instance / "ssh_transfer_settings.json"), "twn-ssh-transfer.pid", "ssh-transfer-restart", ""),
-            ("FTP", _enabled(instance / "ftp_settings.json"), "twn-ftp.pid", "ftp-restart", ""),
+            ("automation", True, "twn-automation.pid", "", "automation-restart", "automation-heartbeat.json"),
+            ("TFTP", _enabled(instance / "tftp_settings.json"), "twn-tftp.pid", "twn-tftp.ready", "tftp-restart", ""),
+            ("SFTP/SCP", _enabled(instance / "ssh_transfer_settings.json"), "twn-ssh-transfer.pid", "twn-ssh-transfer.ready", "ssh-transfer-restart", ""),
+            ("FTP", _enabled(instance / "ftp_settings.json"), "twn-ftp.pid", "twn-ftp.ready", "ftp-restart", ""),
         ]
-        for label, enabled, pid_name, command, heartbeat_name in services:
+        for label, enabled, pid_name, ready_name, command, heartbeat_name in services:
             if not enabled: continue
-            healthy = _pid_running(instance / pid_name)
+            if _operation_active(instance / f"{pid_name}.lock"):
+                continue
+            healthy = (
+                process_marker_ready(instance / pid_name, instance / ready_name)
+                if ready_name
+                else _pid_running(instance / pid_name)
+            )
             if healthy and heartbeat_name:
                 healthy = _heartbeat_fresh(instance / heartbeat_name, 20)
             if healthy:
@@ -78,9 +86,9 @@ def main() -> None:
             supervise()
             heartbeat.write_text(json.dumps({"updated_at": time.time(), "pid": os.getpid()}), encoding="utf-8")
             os.chmod(heartbeat, 0o600)
-            for _ in range(10):
+            for _ in range(50):
                 if not running: break
-                time.sleep(0.5)
+                time.sleep(0.1)
     finally:
         remove_own_pid_file(args.pid_file)
         _remove_own_heartbeat(heartbeat)
@@ -91,6 +99,15 @@ def _owns_pid_file(path: Path) -> bool:
         return int(path.read_text(encoding="utf-8").strip()) == os.getpid()
     except (OSError, ValueError):
         return False
+
+
+def _operation_active(lock_path: Path) -> bool:
+    try:
+        owner = int((lock_path / "owner").read_text(encoding="utf-8").strip())
+        os.kill(owner, 0)
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    return True
 
 
 def _remove_own_heartbeat(path: Path) -> None:
@@ -139,7 +156,7 @@ def _restore_iperf_listeners(instance: Path) -> int:
 
 
 def _pid_running(path: Path) -> bool:
-    try: os.kill(int(path.read_text(encoding="utf-8").strip()), 0); return True
+    try: return pid_is_running(int(path.read_text(encoding="utf-8").strip()))
     except (OSError, ValueError): return False
 
 

@@ -31,6 +31,34 @@ def remove_own_pid_file(path_value: str) -> None:
         path.unlink(missing_ok=True)
 
 
+def process_marker_ready(pid_path: Path, ready_path: Path) -> bool:
+    """Return true only when both markers name the same live process."""
+    try:
+        pid = int(pid_path.read_text(encoding="utf-8").strip())
+        ready_pid = int(ready_path.read_text(encoding="utf-8").strip())
+        if pid != ready_pid:
+            return False
+        if not pid_is_running(pid):
+            return False
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    return True
+
+
+def pid_is_running(pid: int) -> bool:
+    """Return false for missing processes and Linux zombies."""
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        state = stat.rsplit(") ", 1)[1].split(maxsplit=1)[0]
+    except (FileNotFoundError, IndexError, OSError):
+        return True
+    return state not in {"X", "Z"}
+
+
 def acquire_singleton_lock(root: Path, name: str) -> IO[str] | None:
     path = root.resolve() / f".twn-{name}.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -111,9 +139,7 @@ def stop_matching_daemons(
     remaining = set(matched)
     while remaining and time.time() < deadline:
         for pid in tuple(remaining):
-            try:
-                os.kill(pid, 0)
-            except OSError:
+            if not pid_is_running(pid):
                 remaining.discard(pid)
         if remaining:
             time.sleep(0.1)

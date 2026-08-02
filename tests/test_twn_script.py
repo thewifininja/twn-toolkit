@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -8,6 +9,38 @@ from pathlib import Path
 
 
 class TwnScriptTests(unittest.TestCase):
+    def test_transfer_service_cleanup_and_restart_share_the_service_lock(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+        start_function = re.search(
+            r"start_managed_worker\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        restart_function = re.search(
+            r"restart_managed_worker\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        self.assertIsNotNone(start_function)
+        self.assertIsNotNone(restart_function)
+        start_body = start_function.group("body")
+        restart_body = restart_function.group("body")
+        self.assertLess(
+            start_body.index("acquire_managed_worker_lock"),
+            start_body.index("cleanup_managed_daemon"),
+        )
+        self.assertLess(
+            start_body.index("cleanup_managed_daemon"),
+            start_body.index("release_managed_worker_lock"),
+        )
+        self.assertLess(
+            restart_body.index("acquire_managed_worker_lock"),
+            restart_body.index("stop_managed_worker_unlocked"),
+        )
+        self.assertLess(
+            restart_body.index("start_managed_worker_unlocked"),
+            restart_body.index("release_managed_worker_lock"),
+        )
+        self.assertIn('--ready-file "$worker_readyfile"', source)
+
     def test_managed_iperf_workers_follow_toolkit_lifecycle(self) -> None:
         source = (
             Path(__file__).resolve().parents[1] / "twn"
@@ -22,6 +55,42 @@ class TwnScriptTests(unittest.TestCase):
             source,
         )
         self.assertIn('IPERF_LOG="$INSTANCE/twn-iperf3.log"', source)
+
+    def test_transfer_services_start_and_stop_concurrently(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+        start_function = re.search(
+            r"start_transfer_services\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        stop_function = re.search(
+            r"stop_transfer_services\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(start_function)
+        self.assertIsNotNone(stop_function)
+        start_body = start_function.group("body")
+        stop_body = stop_function.group("body")
+        for service in ("tftp", "ssh_transfer", "ftp"):
+            self.assertIn(f"start_{service} &", start_body)
+            self.assertIn(f"stop_{service} &", stop_body)
+        self.assertIn('wait "$tftp_start_job"', start_body)
+        self.assertIn('wait "$ssh_transfer_start_job"', start_body)
+        self.assertIn('wait "$ftp_start_job"', start_body)
+        self.assertIn('wait "$tftp_stop_job"', stop_body)
+        self.assertIn('wait "$ssh_transfer_stop_job"', stop_body)
+        self.assertIn('wait "$ftp_stop_job"', stop_body)
+
+    def test_process_checks_reject_linux_zombies(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('[ -r "/proc/$1/stat" ]', source)
+        self.assertIn(r"Z\ *|X\ *) return 1", source)
 
     def test_fix_permissions_repairs_all_runtime_locations(self) -> None:
         source = Path(__file__).resolve().parents[1] / "twn"

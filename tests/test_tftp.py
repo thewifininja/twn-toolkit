@@ -112,11 +112,14 @@ class TFTPTransferTests(unittest.TestCase):
         self.server = TFTPServer(
             self.datastore, self.history, self.settings, root_prefix="selected-root"
         )
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.ready = threading.Event()
+        self.thread = threading.Thread(
+            target=self.server.serve_forever,
+            args=(self.ready.set,),
+            daemon=True,
+        )
         self.thread.start()
-        deadline = time.time() + 2
-        while self.server.socket is None and time.time() < deadline:
-            time.sleep(0.01)
+        self.assertTrue(self.ready.wait(2), "TFTP listener did not become ready")
 
     def tearDown(self) -> None:
         self.server.stop()
