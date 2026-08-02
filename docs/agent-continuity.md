@@ -215,7 +215,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.16.3: durable automation claims and renewable leases,
+- Current milestone is 0.16.4: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
@@ -272,7 +272,10 @@ accepted replay frames.
   TWN-managed IGMP rules; the web application and installer never change the
   host firewall. Automation pipelines now support durable zero-to-24-hour
   delays after eligible stages, persisting encrypted progress in a waiting job
-  without occupying a worker and resuming after restart. Webhook/API actions
+  without occupying a worker and resuming after restart. Stage continuation can
+  now route when any action fails or only when every action fails, keeping
+  partial work distinct from errors and enabling backup notification paths.
+  Webhook/API actions
   validate configured success statuses and may use explicit bounded retries
   for network failures or selected HTTP responses while retaining per-endpoint
   attempt evidence. Multi-Ping graph canvases and card headers remain contained
@@ -290,7 +293,11 @@ accepted replay frames.
   Discover/Offer exchange and never binds port 68 or sends a DHCP Request.
   Installed service lifecycle, ordinary launcher commands, upgrades, rollback,
   and recovery coordinate through the same supervisor context. Service removal
-  retains toolkit data. Boot-managed upgrades now keep the original launcher
+  retains toolkit data. System Diagnostics now separates manual or
+  boot-managed mode, OS service-manager state, live managed processes, external
+  command integrations, and native macOS BPF or effective Linux network
+  capabilities without changing host permissions. Boot-managed upgrades now
+  keep the original launcher
   paused while a temporary process set is validated, finalize status, audit,
   staged-input cleanup, and the external operation lock before asking systemd
   or launchd to reload, and withhold launcher discovery across matched instance
