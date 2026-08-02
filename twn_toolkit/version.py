@@ -1,6 +1,50 @@
-APP_VERSION = "0.14.4"
+APP_VERSION = "0.15.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.15.0",
+        "date": "2026-08-01",
+        "title": "Multicast diagnostics and durable automation orchestration",
+        "summary": (
+            "Adds a purpose-built live multicast testing workspace and durable "
+            "delayed automation stages, with bounded webhook retries plus "
+            "stronger responsive and background-service behavior."
+        ),
+        "groups": (
+            {
+                "title": "Purpose-built multicast diagnostics",
+                "items": (
+                    "Adds authorized IPv4 ASM and SSM listening on an explicit interface with live packet, byte, rate, source, elapsed-time, and one-second timeline telemetry instead of a blocking loading screen.",
+                    "Adds bounded Send and dual-interface End-to-end modes with controllable rate, payload, TTL, DSCP, and source port; TWN sequence reports expose loss, duplication, and reordering, while RTP inspection adds SSRC, payload-type, gap, ordering, and jitter evidence.",
+                    "Provides protocol quick setups, reusable-port support, cancelable runs, bounded JSON reports, detailed interpretation guidance, and a separately authorized macOS PF helper that can detect, install, verify, update, and uninstall only TWN-managed IGMP compatibility rules.",
+                ),
+            },
+            {
+                "title": "Durable automation pacing and delivery evidence",
+                "items": (
+                    "Lets every automation stage after the first wait from zero seconds through 24 hours after its continuation policy succeeds, making planned recovery windows part of the saved pipeline.",
+                    "Persists encrypted completed-stage progress, moves delayed jobs into a visible waiting state, releases the worker and lease instead of sleeping, and resumes the correct next stage after its due time or a toolkit restart.",
+                    "Validates Webhook/API success statuses and adds optional bounded exponential-backoff retries for network failures or selected HTTP responses, retaining each endpoint's delivery attempts while keeping one attempt as the default.",
+                ),
+            },
+            {
+                "title": "Responsive diagnostics and reliable local services",
+                "items": (
+                    "Keeps Multi-Ping response graphs, statistics, status controls, and close actions inside their cards and redraws each canvas when its workspace changes width across wide, narrow, and phone layouts.",
+                    "Adds exact readiness markers for TFTP, FTP, and SFTP/SCP workers so status and supervision distinguish a bound listener from a process that merely started, while stale and zombie processes no longer appear healthy.",
+                    "Starts and stops independent transfer services concurrently, scopes daemon locks to the installation instance, avoids unnecessary Flask application imports in command-line workers, and coordinates supervisor recovery with active service operations.",
+                ),
+            },
+            {
+                "title": "Compatible, explicit upgrade behavior",
+                "items": (
+                    "Adds transactional automation migration 6 and toolkit migration 2 for encrypted delayed-stage progress, including the existing pre-change SQLite snapshot path and compatibility for older single-stage or staged definitions.",
+                    "Uses native multicast sockets without adding a dependency and never changes the host firewall from the web interface or general installer; macOS PF changes occur only through the explicit privileged helper and remain independently removable.",
+                    "Introduces no destructive profile or configuration conversion, preserves existing iPerf3, automation, transfer, dashboard, and diagnostic data, and supports direct upgrade from v0.14.4 through the verified release-bundle and rollback workflow.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.14.4",
         "date": "2026-07-27",
