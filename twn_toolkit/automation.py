@@ -27,6 +27,44 @@ from .system_identity import collect_system_identity, startup_event
 
 
 AUTOMATION_MAX_STAGE_DELAY_SECONDS = 86400
+STAGE_CONTINUATION_POLICIES = {
+    "all_completed",
+    "success_or_partial",
+    "all_success",
+    "any_failed",
+    "all_failed",
+}
+STAGE_CONTINUATION_LABELS = {
+    "all_completed": "Always",
+    "success_or_partial": "On success or partial success",
+    "all_success": "On full success",
+    "any_failed": "If any action errors",
+    "all_failed": "If every action errors",
+}
+
+
+def stage_should_continue(policy: str, statuses: list[str]) -> bool:
+    """Evaluate one completed stage against its configured routing policy."""
+    failure_flags = [
+        status not in {"success", "partial"} for status in statuses
+    ]
+    return (
+        policy == "all_completed"
+        or (
+            policy == "success_or_partial"
+            and not any(failure_flags)
+        )
+        or (
+            policy == "all_success"
+            and all(status == "success" for status in statuses)
+        )
+        or (policy == "any_failed" and any(failure_flags))
+        or (
+            policy == "all_failed"
+            and bool(failure_flags)
+            and all(failure_flags)
+        )
+    )
 
 
 class AutomationStore:
@@ -263,7 +301,7 @@ class AutomationStore:
             if len(name) > 100:
                 raise ValueError("Stage names must be 100 characters or fewer.")
             policy = str(raw.get("continue_policy", "all_completed"))
-            if policy not in {"all_completed", "success_or_partial", "all_success"}:
+            if policy not in STAGE_CONTINUATION_POLICIES:
                 raise ValueError("Select a valid stage continuation policy.")
             try:
                 delay_seconds = int(raw.get("delay_seconds", 0))
@@ -2785,19 +2823,7 @@ class AutomationEngine:
             delay_completed_stage_id = ""
             policy = stage["continue_policy"]
             statuses = [result.status for result in stage_results]
-            should_continue = (
-                policy == "all_completed"
-                or (
-                    policy == "success_or_partial"
-                    and all(
-                        status in {"success", "partial"} for status in statuses
-                    )
-                )
-                or (
-                    policy == "all_success"
-                    and all(status == "success" for status in statuses)
-                )
-            )
+            should_continue = stage_should_continue(policy, statuses)
             next_stage_index = (
                 stage_offset + 1
                 if should_continue

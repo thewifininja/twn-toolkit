@@ -13,7 +13,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from twn_toolkit import create_app
-from twn_toolkit.automation import AutomationBackupStore, AutomationEngine, AutomationStore
+from twn_toolkit.automation import (
+    AutomationBackupStore,
+    AutomationEngine,
+    AutomationStore,
+    stage_should_continue,
+)
 from twn_toolkit.automation_registry import (
     AUTOMATION_REGISTRY,
     ActionResult,
@@ -1032,6 +1037,97 @@ class AutomationStoreTests(unittest.TestCase):
         )
         self.assertEqual(calls, ["error"])
         self.assertEqual(self.store.recent_runs(automation_id)[0]["status"], "error")
+
+    def test_stage_continuation_policies_distinguish_partial_and_failure_paths(self) -> None:
+        cases = (
+            ("all_completed", ["success", "error"], True),
+            ("success_or_partial", ["success", "partial"], True),
+            ("success_or_partial", ["success", "error"], False),
+            ("all_success", ["success", "success"], True),
+            ("all_success", ["success", "partial"], False),
+            ("any_failed", ["success", "error"], True),
+            ("any_failed", ["success", "partial"], False),
+            ("all_failed", ["error", "error"], True),
+            ("all_failed", ["error", "success"], False),
+        )
+        for policy, statuses, expected in cases:
+            with self.subTest(policy=policy, statuses=statuses):
+                self.assertEqual(
+                    stage_should_continue(policy, statuses), expected
+                )
+
+    def test_any_failed_stage_routes_to_backup_action_with_failure_context(self) -> None:
+        condition_id = self.store.save_condition_definition(
+            name="Startup", type_id="test.condition", config={}
+        )
+        primary_id = self.store.save_action_definition(
+            name="Discord alert",
+            type_id="test.action",
+            config={"name": "Discord alert", "status": "error"},
+        )
+        backup_id = self.store.save_action_definition(
+            name="Email fallback",
+            type_id="test.action",
+            config={"name": "Email fallback", "status": "success"},
+        )
+        automation_id = self.store.save(
+            name="Startup notification fallback",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_id=condition_id,
+            action_stages=[
+                {
+                    "id": "discord",
+                    "name": "Try Discord",
+                    "continue_policy": "any_failed",
+                    "action_definition_ids": [primary_id],
+                },
+                {
+                    "id": "email",
+                    "name": "Send backup email",
+                    "continue_policy": "all_completed",
+                    "action_definition_ids": [backup_id],
+                },
+            ],
+            created_by="user-1",
+        )
+        calls: list[tuple[str, list[str]]] = []
+        registry = AutomationRegistry()
+        registry.add_action(
+            ActionType(
+                "test.action",
+                "Test",
+                "",
+                lambda value: value,
+                lambda config, trigger: (
+                    calls.append(
+                        (
+                            config["name"],
+                            list(
+                                trigger.evidence.get("actions", {}).get(
+                                    "failed", []
+                                )
+                            ),
+                        )
+                    )
+                    or ActionResult(config["status"], config["status"], {})
+                ),
+            )
+        )
+
+        AutomationEngine(self.store, registry).execute_actions(
+            self.store.get(automation_id, include_secrets=True),
+            ConditionResult(True, "met", "toolkit started", {}),
+        )
+
+        self.assertEqual(calls[0], ("Discord alert", []))
+        self.assertEqual(calls[1], ("Email fallback", ["Discord alert"]))
+        self.assertEqual(
+            [result["status"] for result in self.store.recent_runs(automation_id)[0]["results"]],
+            ["error", "success"],
+        )
 
     def test_manual_trigger_is_separate_and_never_claimed_by_scheduler(self) -> None:
         condition_id = self.store.save_condition_definition(
@@ -2280,6 +2376,7 @@ class AutomationRouteTests(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             self.assertIn(b"waiting between stages", response.data)
+            self.assertIn(b"On full success", response.data)
             self.assertEqual(sender.call_count, 1)
             self.assertEqual(store.job_stats()["waiting_jobs"], 1)
             self.assertEqual(store.recent_runs(automation_id), [])

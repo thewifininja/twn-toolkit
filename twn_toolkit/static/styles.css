@@ -10622,9 +10622,22 @@ button.compact,
 }
 
 .automation-pipeline-arrow {
+  align-items: center;
   align-self: center;
+  display: grid;
   flex: 0 0 auto;
+  gap: 2px;
   font-weight: 900;
+  justify-items: center;
+  max-width: 112px;
+  text-align: center;
+}
+
+.automation-pipeline-arrow small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  line-height: 1.2;
 }
 
 .automation-action-choices small {

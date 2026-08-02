@@ -246,10 +246,11 @@ Automation is built from four reusable layers:
 4. **Actions** describe trusted responses arranged into ordered stages.
 
 Actions within a stage run in parallel; stages run sequentially. Continuation
-policy can require full success, allow partial success, or proceed regardless
-of result. Later stages can add a durable zero-to-24-hour delay without holding
-a scheduler worker, and resume after a toolkit restart. Bounded, non-secret
-summaries from earlier stages can be passed to later Webhook/API actions.
+policy can require full success, allow partial success, proceed regardless of
+result, or route to a fallback when any or every action fails. Later stages can
+add a durable zero-to-24-hour delay without holding a scheduler worker, and
+resume after a toolkit restart. Bounded, non-secret summaries from earlier
+stages can be passed to later Webhook/API actions.
 
 Startup automations can run once per host boot or after every complete toolkit
 start. They wait briefly for DHCP, deduplicate events durably across scheduler

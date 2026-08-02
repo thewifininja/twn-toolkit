@@ -647,7 +647,8 @@ make state, risk, and the next action obvious.
   backed up, and imported definitions remain paused.
 - Automations use ordered action stages. Actions inside a stage run concurrently;
   stages run sequentially. Each stage has a stable ID, display name, and
-  continuation policy (`all_completed`, `success_or_partial`, or `all_success`).
+  continuation policy (`all_completed`, `success_or_partial`, `all_success`,
+  `any_failed`, or `all_failed`).
   Every stage after the first may define `delay_seconds` from 0 through 86400.
   Evaluate continuation before scheduling the next delay. A delay must persist
   encrypted progress in `automation_jobs`, move the job to `waiting`, release

@@ -125,6 +125,13 @@
       let stages = [];
       try { choices = JSON.parse(stageBuilder.dataset.actionChoices || "[]"); } catch (_error) { choices = []; }
       try { stages = JSON.parse(hidden?.value || "[]"); } catch (_error) { stages = []; }
+      const policyNotes = {
+        all_completed: "The next stage runs after every action finishes, regardless of result.",
+        success_or_partial: "The next stage runs when every action reports success or partial success; an error stops it.",
+        all_success: "The next stage runs only when every action reports full success; partial results stop it.",
+        any_failed: "Failure path: the next stage runs when one or more actions report an error.",
+        all_failed: "Failure path: the next stage runs only when every action reports an error.",
+      };
       const stageId = () => globalThis.crypto?.randomUUID?.() || `stage-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       if (!stages.length) stages = [{id:stageId(), name:"Stage 1", continue_policy:"all_completed", delay_seconds:0, action_definition_ids:[]}];
       const syncStages = () => { if (hidden) hidden.value = JSON.stringify(stages); };
@@ -177,10 +184,16 @@
             <div class="automation-stage-settings">
               <label>Name<input data-stage-name maxlength="100" value="${escapeHtml(stageName)}" required></label>
               <label>Continue when<select data-stage-policy>
-                <option value="all_completed" ${stage.continue_policy === "all_completed" ? "selected" : ""}>Always — after this stage finishes</option>
-                <option value="success_or_partial" ${stage.continue_policy === "success_or_partial" ? "selected" : ""}>Only if no action fails</option>
-                <option value="all_success" ${stage.continue_policy === "all_success" ? "selected" : ""}>Only if every action succeeds</option>
-              </select></label>
+                <optgroup label="Normal paths">
+                  <option value="all_completed" ${stage.continue_policy === "all_completed" ? "selected" : ""}>Always — regardless of result</option>
+                  <option value="success_or_partial" ${stage.continue_policy === "success_or_partial" ? "selected" : ""}>Success or partial — no action errors</option>
+                  <option value="all_success" ${stage.continue_policy === "all_success" ? "selected" : ""}>Full success — every action succeeds</option>
+                </optgroup>
+                <optgroup label="Failure paths">
+                  <option value="any_failed" ${stage.continue_policy === "any_failed" ? "selected" : ""}>One or more actions fail</option>
+                  <option value="all_failed" ${stage.continue_policy === "all_failed" ? "selected" : ""}>Every action fails</option>
+                </optgroup>
+              </select><small class="field-note" data-stage-policy-note>${escapeHtml(policyNotes[stage.continue_policy] || policyNotes.all_completed)}</small></label>
               ${delayControl}
             </div>
             <section class="automation-stage-action-section">
@@ -194,7 +207,11 @@
             card.querySelector("[data-stage-title]").textContent = event.target.value.trim() || `Stage ${index + 1}`;
             syncStages();
           });
-          card.querySelector("[data-stage-policy]").addEventListener("change", (event) => { stage.continue_policy = event.target.value; syncStages(); });
+          card.querySelector("[data-stage-policy]").addEventListener("change", (event) => {
+            stage.continue_policy = event.target.value;
+            card.querySelector("[data-stage-policy-note]").textContent = policyNotes[stage.continue_policy] || "";
+            syncStages();
+          });
           const delayValueInput = card.querySelector("[data-stage-delay-value]");
           const delayUnitInput = card.querySelector("[data-stage-delay-unit]");
           const syncDelay = () => {
