@@ -40,10 +40,12 @@ and starts the toolkit. Running it again refreshes dependencies while
 preserving `instance/` data and an existing HTTP/HTTPS choice. If an existing
 toolkit is active, the installer restarts its managed processes after refreshing
 dependencies so the service cannot continue on stale code or libraries. When
-boot-time management is active, the installer also makes systemd or launchd
-reload the launcher from the updated `twn` script, retains the configured
-service account and permission context, and waits for the complete process set
-instead of requiring a separate `./twn service restart`.
+boot-time management is active during a supported upgrade, the updater starts
+and validates the refreshed process set before it finalizes the operation. Only
+then does systemd or launchd reload the launcher from the updated `twn` script,
+retaining the configured service account and permission context. This ordering
+keeps the detached updater alive through its final status and cleanup writes and
+does not require a separate `./twn service restart`.
 
 After the initial installation, use **Administration → Updates & Recovery** or
 `./twn upgrade`. Routine upgrades do not require Git, the GitHub CLI, or manual

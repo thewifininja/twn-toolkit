@@ -126,6 +126,11 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Updates &amp; Recovery", response.data)
         self.assertIn(b"./twn upgrade", response.data)
         self.assertIn(b"never runs older code against post-upgrade data", response.data)
+        self.assertIn(
+            b"updater first validates the replacement process set and finalizes",
+            response.data,
+        )
+        self.assertIn(b"exactly one toolkit-start automation event", response.data)
         self.assertIn(b"v0.16.2", response.data)
         self.assertIn(
             b"Reliable service-managed upgrades",

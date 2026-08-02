@@ -16,6 +16,9 @@ from twn_toolkit.upgrade_manager import (
     ReleaseClient,
     UpgradeError,
     UpgradeManager,
+    _install_and_validate,
+    _prepare_service_reload,
+    _preserve_prepared_service_reload,
     _run,
     _create_backup,
     _restore_backup,
@@ -58,6 +61,76 @@ class UpgradeBundleTests(unittest.TestCase):
             ["installer"], cwd=Path("/srv/twn"), text=True, timeout=1200,
             check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
+
+    def test_install_passes_upgrade_context_without_capturing_installer_output(self) -> None:
+        completed = [
+            subprocess.CompletedProcess(["install"], 0, "", ""),
+            subprocess.CompletedProcess(["version"], 0, "0.10.3\n", ""),
+            subprocess.CompletedProcess(
+                ["status"], 0,
+                "Toolkit is running\nAutomation scheduler is running\nWorker supervisor is running\n",
+                "",
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as temporary, patch(
+            "twn_toolkit.upgrade_manager._run", side_effect=completed,
+        ) as run:
+            root = Path(temporary)
+            instance = root / "instance"
+            instance.mkdir()
+            _install_and_validate(
+                root,
+                instance,
+                "0.10.3",
+                upgrade_request_id="upgrade-1",
+                suppress_start_event=True,
+            )
+
+        installer_call = run.call_args_list[0]
+        self.assertEqual(installer_call.args[0], [str(root / "install.sh")])
+        self.assertFalse(installer_call.kwargs["retain_output"])
+        self.assertEqual(
+            installer_call.kwargs["environment"]["TWN_TOOLKIT_UPGRADE_REQUEST_ID"],
+            "upgrade-1",
+        )
+        self.assertEqual(
+            installer_call.kwargs["environment"]["TWN_TOOLKIT_SUPPRESS_START_EVENT"],
+            "1",
+        )
+
+    def test_service_reload_preparation_is_request_scoped_and_optional(self) -> None:
+        root = Path("/srv/twn")
+        with patch(
+            "twn_toolkit.upgrade_manager._run",
+            return_value=subprocess.CompletedProcess(["prepare"], 0, "prepared", ""),
+        ) as run:
+            self.assertTrue(_prepare_service_reload(root, "upgrade-1"))
+        self.assertEqual(
+            run.call_args.kwargs["environment"]["TWN_TOOLKIT_UPGRADE_REQUEST_ID"],
+            "upgrade-1",
+        )
+        self.assertEqual(
+            run.call_args.args[0],
+            ["/srv/twn/twn", "prepare-upgrade-service-reload"],
+        )
+
+        with patch(
+            "twn_toolkit.upgrade_manager._run",
+            return_value=subprocess.CompletedProcess(["prepare"], 3, "not managed", ""),
+        ):
+            self.assertFalse(_prepare_service_reload(root, "upgrade-2"))
+
+    def test_restored_instance_cannot_rediscover_prepared_launcher(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            instance = Path(temporary)
+            (instance / "twn-service-launcher.pid").write_text("123\n")
+            (instance / "twn-service-resume").touch()
+
+            _preserve_prepared_service_reload(instance, True)
+
+            self.assertTrue((instance / "twn-service-paused").is_file())
+            self.assertFalse((instance / "twn-service-launcher.pid").exists())
+            self.assertFalse((instance / "twn-service-resume").exists())
 
     def test_build_and_validate_verified_release_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -149,8 +222,16 @@ class UpgradeRecoveryTests(unittest.TestCase):
                 "instance": str(instance), "from_version": "0.10.2",
                 "target_version": "0.10.3", "bundle": str(bundle), "actor": {},
             }), encoding="utf-8")
-            with patch("twn_toolkit.upgrade_manager._install_and_validate"):
+            with patch(
+                "twn_toolkit.upgrade_manager._prepare_service_reload",
+                return_value=True,
+            ), patch("twn_toolkit.upgrade_manager._install_and_validate") as install:
                 execute_request(upgrade_request, delay=0)
+            install.assert_called_once_with(
+                root.resolve(), instance.resolve(), "0.10.3",
+                upgrade_request_id="upgrade-1",
+                suppress_start_event=True,
+            )
             status = json.loads((workspace / "status.json").read_text())
             self.assertEqual(status["state"], "succeeded")
             self.assertIn("new", (root / "twn_toolkit" / "version.py").read_text())
@@ -163,8 +244,16 @@ class UpgradeRecoveryTests(unittest.TestCase):
                 "instance": str(instance), "from_version": "0.10.3",
                 "target_version": "0.10.2", "backup_id": backup_id, "actor": {},
             }), encoding="utf-8")
-            with patch("twn_toolkit.upgrade_manager._install_and_validate"):
+            with patch(
+                "twn_toolkit.upgrade_manager._prepare_service_reload",
+                return_value=True,
+            ), patch("twn_toolkit.upgrade_manager._install_and_validate") as install:
                 execute_request(rollback_request, delay=0)
+            install.assert_called_once_with(
+                root.resolve(), instance.resolve(), "0.10.2",
+                upgrade_request_id="rollback-1",
+                suppress_start_event=True,
+            )
             status = json.loads((workspace / "status.json").read_text())
             self.assertEqual(status["state"], "rolled_back")
             self.assertIn("old", (root / "twn_toolkit" / "version.py").read_text())
@@ -207,6 +296,9 @@ class UpgradeRecoveryTests(unittest.TestCase):
             with patch(
                 "twn_toolkit.upgrade_manager._install_and_validate",
                 side_effect=fail_then_validate,
+            ), patch(
+                "twn_toolkit.upgrade_manager._prepare_service_reload",
+                return_value=True,
             ):
                 execute_request(request, delay=0)
             status = json.loads((workspace / "status.json").read_text())
@@ -214,6 +306,14 @@ class UpgradeRecoveryTests(unittest.TestCase):
             self.assertIn("simulated startup failure", status["error"])
             self.assertIn("old", (root / "twn_toolkit" / "version.py").read_text())
             self.assertEqual((instance / "saved.txt").read_text(), "before")
+            self.assertEqual(
+                [kwargs["upgrade_request_id"] for _, kwargs in calls],
+                ["upgrade-failure", "upgrade-failure"],
+            )
+            self.assertEqual(
+                [kwargs["suppress_start_event"] for _, kwargs in calls],
+                [True, True],
+            )
 
     def test_failed_backup_restarts_untouched_installation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -233,7 +333,9 @@ class UpgradeRecoveryTests(unittest.TestCase):
             ), patch("twn_toolkit.upgrade_manager._install_and_validate") as restart:
                 execute_request(request, delay=0)
             restart.assert_called_once_with(
-                root.resolve(), instance.resolve(), "0.10.2", install_dependencies=False,
+                root.resolve(), instance.resolve(), "0.10.2",
+                install_dependencies=False,
+                suppress_start_event=False,
             )
             status = json.loads((workspace / "status.json").read_text())
             self.assertEqual(status["state"], "failed")
@@ -259,6 +361,7 @@ class UpgradeRecoveryTests(unittest.TestCase):
             restart.assert_called_once_with(
                 root.resolve(), instance.resolve(), "0.10.2",
                 install_dependencies=False,
+                suppress_start_event=False,
             )
             status = json.loads((workspace / "status.json").read_text())
             self.assertEqual(status["state"], "failed")

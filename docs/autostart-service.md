@@ -157,8 +157,8 @@ administrator access:
   security context; and
 - `./twn restart` uses the same pause/resume handshake; and
 - an installer, upgrade, rollback, or recovery that replaces application code
-  asks the OS manager to reload the launcher itself, then waits for a new
-  launcher PID and the complete managed process set.
+  starts and validates the replacement process set before asking the OS manager
+  to reload the launcher itself from the finalized files on disk.
 
 The pause is intentionally cleared by a service-manager restart or reboot, so
 an installed autostart service always returns after the host starts.
@@ -184,12 +184,24 @@ supervisor; `./twn start` clears that pause. A reboot or explicit
 
 Supported `./twn upgrade`, in-app upgrades, rollback, and recovery temporarily
 pause the loaded service and update or restore the matched code-and-instance
-pair. The installer then makes the old launcher exit deliberately so systemd or
-launchd reloads `twn` from disk through the original service context. Completion
-waits for the launcher PID to change and for the web process, automation
-scheduler, and worker supervisor to become healthy. This does not need another
-administrator prompt. The service definition is not part of the release bundle
-and remains installed.
+pair. The installer starts a validation-only process set directly through the
+same service account and security context while the original launcher remains
+paused. The updater verifies the version, managed processes, enabled listeners,
+and databases, records its terminal result, cleans the request, and removes the
+operation lock last. A small deferred handoff then stops the temporary process
+set and lets systemd or launchd load the finalized `twn` from disk. The final
+OS-managed start records the normal toolkit-start automation event exactly once.
+
+If automatic rollback restores the version that the original in-memory launcher
+already represents, that launcher adopts the validated restored process set
+instead of forcing another restart. If the handoff cannot observe updater
+finalization within its bounded wait, it restores the original launcher and
+retains the healthy validated process set rather than leaving the service
+stranded. Handoff diagnostics are written to
+`.twn-upgrades/service-reload.log`. This does not need another administrator
+prompt. The service definition is not part of the release bundle and remains
+installed. Running `./install.sh` outside an active supported upgrade still uses
+the normal synchronous service reload.
 
 To relocate an installation:
 

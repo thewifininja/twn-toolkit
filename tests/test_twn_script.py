@@ -75,6 +75,7 @@ class TwnScriptTests(unittest.TestCase):
         success_path = body.index('if is_running; then', body.index('attempts=0'))
         self.assertLess(body.index('printf "%s\\n" "$SCHEME"', success_path), body.index(marker))
         self.assertLess(body.index(marker), body.index("start_automation", success_path))
+        self.assertIn('if [ "$SUPPRESS_TOOLKIT_START_EVENT" != "1" ]; then', body)
 
     def test_transfer_services_start_and_stop_concurrently(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "twn").read_text(
@@ -183,8 +184,22 @@ class TwnScriptTests(unittest.TestCase):
         self.assertIn('SERVICE_RESUME_FILE="$INSTANCE/twn-service-resume"', source)
         self.assertIn("request_service_start() {", source)
         self.assertIn("request_service_reload() {", source)
+        self.assertIn("request_deferred_service_reload() {", source)
+        self.assertIn("deferred_service_reload() {", source)
+        self.assertIn("prepare_upgrade_service_reload() {", source)
+        self.assertIn("arm_deferred_service_reload() {", source)
+        self.assertIn("withhold_deferred_service_launcher() {", source)
+        self.assertIn("upgrade_reload_should_be_deferred() {", source)
         self.assertIn(
             "SERVICE_RELOAD_REQUESTED=${TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER:-0}",
+            source,
+        )
+        self.assertIn(
+            "UPGRADE_REQUEST_ID=${TWN_TOOLKIT_UPGRADE_REQUEST_ID:-}",
+            source,
+        )
+        self.assertIn(
+            "SUPPRESS_TOOLKIT_START_EVENT=${TWN_TOOLKIT_SUPPRESS_START_EVENT:-0}",
             source,
         )
         self.assertIn('[ "$current_launcher_pid" != "$previous_launcher_pid" ]', source)
@@ -202,6 +217,51 @@ class TwnScriptTests(unittest.TestCase):
         self.assertIn("twn_toolkit.service_cli --root \"$ROOT\"", source)
         self.assertIn('install --validate-only "$@"', source)
         self.assertIn("service-run)", source)
+
+        deferred = re.search(
+            r"deferred_service_reload\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        request = re.search(
+            r"request_deferred_service_reload\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        arm = re.search(
+            r"arm_deferred_service_reload\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(deferred)
+        self.assertIsNotNone(request)
+        self.assertIsNotNone(arm)
+        deferred_body = deferred.group("body")
+        request_body = request.group("body")
+        arm_body = arm.group("body")
+        self.assertLess(
+            deferred_body.index('while [ -f "$UPGRADE_OPERATION_LOCK" ]'),
+            deferred_body.index('"$ROOT/twn" stop'),
+        )
+        self.assertLess(
+            deferred_body.index('deferred_installed_version=$(installed_source_version'),
+            deferred_body.index('"$ROOT/twn" stop'),
+        )
+        self.assertIn(
+            'restore_deferred_service_launcher "$deferred_launcher_pid"',
+            deferred_body,
+        )
+        self.assertLess(
+            request_body.index("arm_deferred_service_reload"),
+            request_body.index("TWN_TOOLKIT_SUPPRESS_START_EVENT=1"),
+        )
+        self.assertLess(
+            arm_body.index("withhold_deferred_service_launcher"),
+            arm_body.index("schedule_deferred_service_reload"),
+        )
+        self.assertIn("withhold_deferred_service_launcher", deferred_body)
+        self.assertIn(
+            'SERVICE_RELOAD_LOG="$UPGRADE_WORKSPACE/service-reload.log"', source
+        )
+        self.assertIn("prepare-upgrade-service-reload)", source)
 
 
 if __name__ == "__main__":

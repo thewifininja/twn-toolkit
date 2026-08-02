@@ -474,21 +474,40 @@ def _restore_backup(root: Path, instance: Path, backup: Path) -> None:
 
 def _run(
     command: list[str], *, cwd: Path, timeout: int = 900, retain_output: bool = True,
+    environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     options: dict[str, Any] = {"capture_output": True} if retain_output else {
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
     }
+    if environment is not None:
+        options["env"] = environment
     return subprocess.run(
         command, cwd=cwd, text=True, timeout=timeout, check=False, **options,
     )
 
 
 def _install_and_validate(
-    root: Path, instance: Path, expected_version: str, *, install_dependencies: bool = True
+    root: Path,
+    instance: Path,
+    expected_version: str,
+    *,
+    install_dependencies: bool = True,
+    upgrade_request_id: str = "",
+    suppress_start_event: bool = False,
 ) -> None:
     command = [str(root / "install.sh")] if install_dependencies else [str(root / "twn"), "start"]
-    install = _run(command, cwd=root, timeout=1200, retain_output=False)
+    environment = None
+    if upgrade_request_id or suppress_start_event:
+        environment = os.environ.copy()
+        if upgrade_request_id:
+            environment["TWN_TOOLKIT_UPGRADE_REQUEST_ID"] = upgrade_request_id
+        if suppress_start_event:
+            environment["TWN_TOOLKIT_SUPPRESS_START_EVENT"] = "1"
+    install = _run(
+        command, cwd=root, timeout=1200, retain_output=False,
+        environment=environment,
+    )
     if install.returncode:
         raise UpgradeError(
             f"Installer exited with status {install.returncode}; output was not retained because package-manager logs may contain repository credentials."
@@ -510,6 +529,33 @@ def _install_and_validate(
                 raise UpgradeError(f"Database integrity check failed: {database.name}")
         finally:
             connection.close()
+
+
+def _prepare_service_reload(root: Path, request_id: str) -> bool:
+    environment = os.environ.copy()
+    environment["TWN_TOOLKIT_UPGRADE_REQUEST_ID"] = request_id
+    prepared = _run(
+        [str(root / "twn"), "prepare-upgrade-service-reload"],
+        cwd=root,
+        timeout=30,
+        environment=environment,
+    )
+    if prepared.returncode == 0:
+        return True
+    if prepared.returncode == 3:
+        return False
+    detail = (prepared.stderr or prepared.stdout).strip()[-2000:]
+    raise UpgradeError(
+        f"The boot-managed upgrade handoff could not be prepared: {detail or 'unknown error'}"
+    )
+
+
+def _preserve_prepared_service_reload(instance: Path, prepared: bool) -> None:
+    if not prepared:
+        return
+    (instance / "twn-service-paused").touch(mode=0o600, exist_ok=True)
+    (instance / "twn-service-launcher.pid").unlink(missing_ok=True)
+    (instance / "twn-service-resume").unlink(missing_ok=True)
 
 
 def _record_result(
@@ -550,6 +596,7 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
     manifest: dict[str, Any] | None = None
     lock_path = workspace / "operation.lock"
     services_stopped = False
+    service_reload_prepared = False
 
     def status(state: str, message: str, **extra: Any) -> None:
         _atomic_json(status_path, {
@@ -560,17 +607,20 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
         })
 
     def finish() -> None:
-        lock_path.unlink(missing_ok=True)
-        request_path.unlink(missing_ok=True)
-        bundle_value = request.get("bundle")
-        if not bundle_value:
-            return
         try:
-            bundle_path = Path(str(bundle_value)).resolve()
-            if bundle_path.parent == (workspace / "incoming").resolve():
-                bundle_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+            request_path.unlink(missing_ok=True)
+            bundle_value = request.get("bundle")
+            if bundle_value:
+                try:
+                    bundle_path = Path(str(bundle_value)).resolve()
+                    if bundle_path.parent == (workspace / "incoming").resolve():
+                        bundle_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        finally:
+            # A boot-service reload helper treats lock removal as the durable
+            # signal that all status, audit, request, and bundle work is done.
+            lock_path.unlink(missing_ok=True)
 
     time.sleep(max(0, delay))
     try:
@@ -582,9 +632,17 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
             if stopped.returncode:
                 raise UpgradeError(f"Toolkit services could not be stopped: {(stopped.stderr or stopped.stdout)[-2000:]}")
             services_stopped = True
+            service_reload_prepared = _prepare_service_reload(
+                root, str(request["id"]),
+            )
             status("rolling_back", "Restoring the matched toolkit code and instance data.")
             _restore_backup(root, instance, backup)
-            _install_and_validate(root, instance, str(request["target_version"]))
+            _preserve_prepared_service_reload(instance, service_reload_prepared)
+            _install_and_validate(
+                root, instance, str(request["target_version"]),
+                upgrade_request_id=str(request["id"]),
+                suppress_start_event=service_reload_prepared,
+            )
             message = f"Restored recovery point for v{request['target_version']}."
             status("rolled_back", message, backup_id=backup.name)
             _record_result(instance, request, "rolled_back", message, backup.name)
@@ -612,10 +670,17 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
         manifest = validate_release_bundle(
             bundle, current_version=str(request["from_version"]), require_newer=True
         )
+        service_reload_prepared = _prepare_service_reload(
+            root, str(request["id"]),
+        )
         status("installing", f"Installing toolkit v{manifest['version']}.", backup_id=backup.name)
         _extract_and_apply(root, bundle, manifest, workspace)
         status("validating", "Restarting and validating processes, version, and databases.", backup_id=backup.name)
-        _install_and_validate(root, instance, str(manifest["version"]))
+        _install_and_validate(
+            root, instance, str(manifest["version"]),
+            upgrade_request_id=str(request["id"]),
+            suppress_start_event=service_reload_prepared,
+        )
         message = f"Toolkit upgraded successfully to v{manifest['version']}."
         status("succeeded", message, backup_id=backup.name)
         _record_result(instance, request, "succeeded", message, backup.name)
@@ -638,7 +703,12 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
                 )
                 _run([str(root / "twn"), "stop"], cwd=root, timeout=120)
                 _restore_backup(root, instance, backup)
-                _install_and_validate(root, instance, str(request["from_version"]))
+                _preserve_prepared_service_reload(instance, service_reload_prepared)
+                _install_and_validate(
+                    root, instance, str(request["from_version"]),
+                    upgrade_request_id=str(request["id"]),
+                    suppress_start_event=service_reload_prepared,
+                )
                 message = "Upgrade failed and the previous version was restored automatically."
                 status("rolled_back", message, error=failure, backup_id=backup.name)
                 _record_result(
@@ -654,6 +724,7 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
                 _install_and_validate(
                     root, instance, str(request["from_version"]),
                     install_dependencies=False,
+                    suppress_start_event=service_reload_prepared,
                 )
             except Exception as restart_exc:
                 failure = f"{failure}; restart failed: {type(restart_exc).__name__}: {restart_exc}"
