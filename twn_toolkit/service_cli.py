@@ -420,7 +420,10 @@ def install_service(
         )
     print(f"Installed and started {LAUNCHD_LABEL} as {user.name}:{user.group}.")
     print("macOS does not provide systemd-style scoped network capabilities.")
-    print("Packet capture/replay still requires administrator-managed BPF access; multicast PF remains separately installed.")
+    print(
+        "Packet capture/replay and DHCP Discover require administrator-managed BPF access; "
+        "multicast PF remains separately installed."
+    )
 
 
 def uninstall_service(*, system: str) -> None:

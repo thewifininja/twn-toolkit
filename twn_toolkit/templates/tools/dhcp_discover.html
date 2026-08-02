@@ -51,7 +51,7 @@
     <div class="button-row">
       <button type="submit">Send discover</button>
     </div>
-    <span class="tool-status">The probe uses UDP ports 68 → 67 on the selected local interface. Running the toolkit requires permission to bind the privileged client port.</span>
+    <span class="tool-status">The probe uses DHCP ports 68 → 67 on the selected local interface. Linux binds client port 68; macOS sends and captures the bounded exchange through BPF so the normal-user service needs BPF read/write access.</span>
   </form>
 </section>
 
