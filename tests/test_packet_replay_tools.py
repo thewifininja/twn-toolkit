@@ -10,8 +10,10 @@ from unittest.mock import patch
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
 from twn_toolkit.audit import AuditStore
+from twn_toolkit.datastore import LocalDatastore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.packet_replay_tools import (
+    MAX_UPLOAD_BYTES,
     parse_hex_packet,
     parse_packet_capture,
     parse_single_packet_capture,
@@ -334,6 +336,78 @@ class PacketReplayToolTests(unittest.TestCase):
         self.assertEqual(preview_summary["counters"]["actions"]["total"], 0)
         self.assertEqual(preview_summary["counters"]["packet_replay"]["frames"], 0)
         self.assertEqual(preview_events, [])
+
+    def test_route_lists_and_previews_datastore_capture(self) -> None:
+        second = IPV4_UDP_FRAME.replace(b"test", b"next")
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            store = LocalDatastore(instance)
+            store.create_folder("", "captures")
+            store.save_upload(
+                "captures",
+                "two packets.pcap",
+                BytesIO(multi_packet_pcap(IPV4_UDP_FRAME, second)),
+            )
+            store.save_upload("captures", "notes.txt", BytesIO(b"not a capture"))
+            store.save_upload(
+                "captures",
+                "oversized.pcap",
+                BytesIO(b"\0" * (MAX_UPLOAD_BYTES + 1)),
+            )
+            client = app.test_client()
+            with patch(
+                "twn_toolkit.packet_replay_routes.available_interfaces",
+                return_value=[{"name": "eth0", "mac": "02:00:00:00:00:01"}],
+            ):
+                page = client.get("/tools/packet-replay")
+                preview = client.post(
+                    "/tools/packet-replay",
+                    data={
+                        "interface": "eth0",
+                        "datastore_capture": "captures/two packets.pcap",
+                        "vlan_action": "keep",
+                        "repeat_count": "1",
+                        "interval_seconds": "1",
+                        "action": "preview",
+                    },
+                )
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"captures/two packets.pcap", page.data)
+        self.assertIn(b"captures/oversized.pcap", page.data)
+        self.assertIn(b"exceeds 256 KiB limit", page.data)
+        self.assertIn(b"1 replayable capture available", page.data)
+        self.assertNotIn(b"notes.txt", page.data)
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn(b"2 source packets", preview.data)
+        self.assertIn(b'value="captures/two packets.pcap" selected', preview.data)
+
+    def test_route_rejects_datastore_path_outside_contained_root(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            outside = Path(instance).with_name(f"{Path(instance).name}-outside.pcap")
+            outside.write_bytes(one_packet_pcap(IPV4_UDP_FRAME))
+            try:
+                with patch(
+                    "twn_toolkit.packet_replay_routes.available_interfaces",
+                    return_value=[{"name": "eth0", "mac": "02:00:00:00:00:01"}],
+                ):
+                    response = app.test_client().post(
+                        "/tools/packet-replay",
+                        data={
+                            "interface": "eth0",
+                            "datastore_capture": f"../{outside.name}",
+                            "vlan_action": "keep",
+                            "repeat_count": "1",
+                            "interval_seconds": "1",
+                            "action": "preview",
+                        },
+                    )
+            finally:
+                outside.unlink(missing_ok=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"datastore path is invalid or unavailable", response.data)
 
     def test_route_rejects_send_without_preview_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

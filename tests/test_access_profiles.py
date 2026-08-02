@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from io import BytesIO
 
 from twn_toolkit import create_app
 from twn_toolkit.auth import AuthStore
+from twn_toolkit.datastore import LocalDatastore
 
 
 def setup_admin(client) -> None:
@@ -89,6 +91,68 @@ class AccessProfileTests(unittest.TestCase):
 
             self.assertEqual(client.get("/tools/packet-replay").status_code, 200)
             self.assertEqual(client.get("/settings/backup").status_code, 403)
+
+    def test_packet_replay_requires_datastore_access_to_list_stored_captures(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            client = app.test_client()
+            setup_admin(client)
+            LocalDatastore(instance).save_upload(
+                "", "private-capture.pcap", BytesIO(b"pcap contents")
+            )
+            store = AuthStore(instance)
+            profile = store.save_access_profile(
+                name="Packet replay only",
+                tool_ids=["tools.packet_replay"],
+            )
+            store.create_user(
+                "packetuser",
+                "a different long password",
+                access_profile_ids=[profile["id"]],
+            )
+
+            client.post("/logout")
+            client.post(
+                "/login",
+                data={"username": "packetuser", "password": "a different long password"},
+            )
+
+            page = client.get("/tools/packet-replay")
+            crafted_request = client.post(
+                "/tools/packet-replay",
+                data={
+                    "datastore_capture": "private-capture.pcap",
+                    "vlan_action": "keep",
+                    "repeat_count": "1",
+                    "interval_seconds": "1",
+                    "action": "preview",
+                },
+            )
+
+            self.assertEqual(page.status_code, 200)
+            self.assertNotIn(b"private-capture.pcap", page.data)
+            self.assertIn(b"Add Datastore to this account", page.data)
+            self.assertIn(b"Datastore access is required", crafted_request.data)
+
+            datastore_profile = store.save_access_profile(
+                name="Packet replay with datastore",
+                tool_ids=["tools.packet_replay", "local.datastore"],
+            )
+            store.create_user(
+                "replayreader",
+                "another different long password",
+                access_profile_ids=[datastore_profile["id"]],
+            )
+            client.post("/logout")
+            client.post(
+                "/login",
+                data={
+                    "username": "replayreader",
+                    "password": "another different long password",
+                },
+            )
+            authorized_page = client.get("/tools/packet-replay")
+            self.assertIn(b"private-capture.pcap", authorized_page.data)
 
     def test_packet_capture_only_user_cannot_browse_or_save_datastore_pcaps(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

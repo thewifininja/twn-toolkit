@@ -8,7 +8,8 @@ where you are authorized to transmit crafted traffic.
 
 - A wired Ethernet interface selected in the Packet Replay page.
 - One raw Ethernet frame pasted as hex, or a full-packet classic Ethernet PCAP
-  containing one or more packets.
+  containing one or more packets. The PCAP can be selected from Local Datastore
+  or uploaded from the browser.
 - Access to the Packet Replay tool through an assigned toolkit access profile,
   or administrator access.
 - OS permission to open raw packet transmit facilities.
@@ -66,8 +67,9 @@ requirements:
 ## Using the page
 
 1. Select the wired interface.
-2. Paste one raw Ethernet frame as hex or upload a classic Ethernet PCAP with
-   one or more packets.
+2. Choose a compatible `.pcap`/`.cap` file from Local Datastore, upload one from
+   the browser, or paste one raw Ethernet frame as hex. Select exactly one
+   source.
 3. Optionally rewrite source/destination MAC addresses.
 4. Optionally add, replace, or remove VLAN tags.
 5. Preview the plan and review warnings.
@@ -76,10 +78,16 @@ requirements:
 A successful send reports the number of replay frames, interface, elapsed time,
 and sender backend, such as `linux raw socket` or `scapy`.
 
-After previewing an uploaded PCAP, the toolkit preserves the decoded packets for
-the follow-up send action. You do not need to reselect the file before
-pressing **Send Packet Replay**. Repeat count and VLAN fanout apply to every
-source packet in the capture.
+The datastore picker recursively lists classic `.pcap` and `.cap` files beneath
+the contained datastore root; PCAPNG replay is not currently supported. An
+operator needs both Packet Replay and Datastore in their access profile to see
+or select stored captures. Administrators have access automatically. Source
+captures are limited to 256 KiB.
+
+After previewing a stored or uploaded PCAP, the toolkit preserves the decoded
+packets for the follow-up send action. You do not need to reselect the file
+before pressing **Send Packet Replay**. Repeat count and VLAN fanout apply to
+every source packet in the capture.
 
 VLAN fanout accepts individual IDs, ranges, and the `untagged` keyword. For
 example, `untagged,10-12,20` sends one untagged copy plus VLAN 10, 11, 12, and

@@ -31,15 +31,31 @@
       </label>
     </div>
 
-    <label>Raw Ethernet frame hex
-      <textarea name="packet_hex" rows="8" placeholder="ff ff ff ff ff ff 02 00 00 00 00 01 08 00 ...">{{ form.packet_hex }}</textarea>
-    </label>
-    <span class="field-note">Paste a full Ethernet frame, including destination MAC, source MAC, and EtherType. Whitespace, colons, and dashes are ignored.</span>
+    <fieldset class="packet-replay-source-picker">
+      <legend>Packet source</legend>
+      <div class="packet-replay-source-grid">
+        <label>Choose from datastore
+          <select name="datastore_capture" {% if not can_use_datastore %}disabled{% endif %}>
+            <option value="">Select a stored PCAP…</option>
+            {% for capture in datastore_captures %}
+              <option value="{{ capture.path }}" {{ 'selected' if capture.path == form.datastore_capture else '' }} {% if not capture.replayable %}disabled{% endif %}>{{ capture.path }} · {{ capture.size_display }}{% if not capture.replayable %} · exceeds 256 KiB limit{% endif %}</option>
+            {% endfor %}
+          </select>
+          <small>{% if not can_use_datastore %}Add Datastore to this account's access profile to choose stored captures.{% elif datastore_capture_count %}{{ datastore_capture_count }} replayable capture{{ '' if datastore_capture_count == 1 else 's' }} available.{% elif datastore_captures %}Stored captures exceed the 256 KiB replay limit.{% else %}No classic PCAP files are currently stored in the datastore.{% endif %}</small>
+        </label>
 
-    <label>Or upload a classic PCAP
-      <input name="packet_file" type="file" accept=".pcap,.cap,application/vnd.tcpdump.pcap">
-    </label>
-    <span class="field-note">Classic Ethernet PCAP only for now. Multi-packet captures are supported.</span>
+        <label>Upload from this device
+          <input name="packet_file" type="file" accept=".pcap,.cap,application/vnd.tcpdump.pcap">
+          <small>The upload is used for this preview only and is not saved.</small>
+        </label>
+      </div>
+
+      <label>Or paste raw Ethernet frame hex
+        <textarea name="packet_hex" rows="6" placeholder="ff ff ff ff ff ff 02 00 00 00 00 01 08 00 ...">{{ form.packet_hex }}</textarea>
+        <small>Include the destination MAC, source MAC, and EtherType. Whitespace, colons, and dashes are ignored.</small>
+      </label>
+      <span class="field-note">Choose one source. Classic Ethernet PCAP only for now; multi-packet captures are supported.</span>
+    </fieldset>
 
     <div class="ntp-options">
       <label>Rewrite source MAC (optional)
@@ -132,6 +148,7 @@
   <form class="form packet-replay-send-form" method="post" data-loading-message="Sending packet replay…">
     <input name="interface" type="hidden" value="{{ form.interface }}">
     <input name="packet_hex" type="hidden" value="">
+    <input name="datastore_capture" type="hidden" value="">
     <input name="prepared_packet_hex" type="hidden" value="{{ form.prepared_packet_hex }}">
     <input name="source_mac" type="hidden" value="{{ form.source_mac }}">
     <input name="destination_mac" type="hidden" value="{{ form.destination_mac }}">
@@ -149,4 +166,5 @@
   </form>
 </section>
 {% endif %}
+<script src="{{ url_for('static', filename='packet-replay.js', v=app_version) }}"></script>
 {% endblock %}

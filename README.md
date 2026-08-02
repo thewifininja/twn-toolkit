@@ -190,8 +190,9 @@ The sidebar and Network Tools page use the same functional organization.
 - **DHCP Discover** — send a customizable Discover and inspect Offers without
   requesting or accepting a lease.
 - **Packet Replay** — preview, rewrite, VLAN-tag/fan-out, and transmit raw
-  Ethernet frames from hex or classic Ethernet PCAP files after explicit
-  authorization confirmation; each replay is bounded by frame count and
+  Ethernet frames from hex, a local classic-PCAP upload, or a compatible PCAP
+  selected directly from the contained Datastore after explicit authorization
+  confirmation; each replay is bounded by capture size, frame count, and
   scheduled duration.
 
 ### Local Tools
