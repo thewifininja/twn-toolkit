@@ -63,6 +63,12 @@ def _unit_quote(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
 
 
+def _unit_path(value: str) -> str:
+    if value != value.strip() or any(character in value for character in "\0\r\n"):
+        raise ServiceError(f"Unsupported systemd path: {value!r}")
+    return value.replace("%", "%%")
+
+
 def _service_path(root: Path) -> str:
     return os.pathsep.join(
         (
@@ -103,7 +109,7 @@ def render_systemd_unit(
         "Type=simple\n"
         f"User={user.name}\n"
         f"Group={user.group}\n"
-        f"WorkingDirectory={_unit_quote(str(root))}\n"
+        f"WorkingDirectory={_unit_path(str(root))}\n"
         f"ExecStart={_unit_quote(str(root / 'twn'))} service-run\n"
         "Restart=on-failure\n"
         "RestartSec=5\n"
