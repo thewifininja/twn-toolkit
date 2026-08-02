@@ -22,6 +22,7 @@ from twn_toolkit.service_cli import (
     install_service,
     render_launchd_plist,
     render_systemd_unit,
+    service_runtime_status,
     service_user,
     service_status,
     uninstall_service,
@@ -159,6 +160,52 @@ class ServiceCliTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         output.assert_any_call("Autostart service: loaded, active")
+
+    def test_runtime_status_identifies_active_linux_boot_service(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            instance = root / "instance"
+            instance.mkdir()
+            for name in (
+                "twn-service-launcher.pid",
+                "twn-toolkit.pid",
+                "twn-automation.pid",
+                "twn-supervisor.pid",
+            ):
+                (instance / name).write_text("42\n", encoding="utf-8")
+            unit_path = root / "twn-toolkit.service"
+            unit_path.write_text("[Service]\nUser=toolkit\nGroup=toolkit\n", encoding="utf-8")
+            successful = subprocess.CompletedProcess(args=(), returncode=0)
+            with (
+                mock.patch("twn_toolkit.service_cli.SYSTEMD_UNIT_PATH", unit_path),
+                mock.patch("twn_toolkit.service_cli.shutil.which", return_value="/bin/systemctl"),
+                mock.patch("twn_toolkit.service_cli._run_quiet", return_value=successful),
+                mock.patch("twn_toolkit.service_cli.os.kill"),
+            ):
+                status = service_runtime_status(root, system="Linux")
+
+        self.assertEqual(status["mode"], "Boot-managed service")
+        self.assertEqual(status["state"], "Active")
+        self.assertTrue(status["healthy"])
+        self.assertEqual(status["service_user"], "toolkit")
+
+    def test_runtime_status_distinguishes_manual_process_from_installed_service(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            instance = root / "instance"
+            instance.mkdir()
+            for name in ("twn-toolkit.pid", "twn-automation.pid", "twn-supervisor.pid"):
+                (instance / name).write_text("42\n", encoding="utf-8")
+            missing_unit = root / "missing.service"
+            with (
+                mock.patch("twn_toolkit.service_cli.SYSTEMD_UNIT_PATH", missing_unit),
+                mock.patch("twn_toolkit.service_cli.os.kill"),
+            ):
+                status = service_runtime_status(root, system="Linux")
+
+        self.assertEqual(status["mode"], "Manual process")
+        self.assertEqual(status["state"], "Running")
+        self.assertFalse(status["installed"])
 
     def test_macos_install_wait_accepts_active_launchdaemon(self) -> None:
         launchctl = subprocess.CompletedProcess(

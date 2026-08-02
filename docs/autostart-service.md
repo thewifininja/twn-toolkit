@@ -80,6 +80,12 @@ healthy and prints the usable URLs. Reboot validation is intentionally simple:
 reboot the host, sign back in, and run both commands without manually launching
 the toolkit. Raspberry Pi OS uses this same systemd path.
 
+The authenticated **Administration → System Diagnostics** page combines these
+views without conflating them. It identifies manual versus boot-managed mode,
+shows whether the definition belongs to the checkout currently serving the
+page, and reports installed/enabled/active service state alongside the live
+launcher, web process, scheduler, and supervisor.
+
 Linux distributions without systemd are detected and left unchanged. A future
 adapter can add another init system without weakening the systemd path.
 
@@ -129,6 +135,12 @@ narrow `./twn multicast-pf` helper. Do not run the entire web toolkit as root
 merely to obtain BPF access. Low numbered managed-listener ports, such as TFTP
 69 or FTP 21, remain unavailable to the normal-user macOS service; use the
 toolkit's default high ports.
+
+System Diagnostics reports BPF under **Platform capabilities**, not command
+dependencies: BPF is a native macOS kernel facility, while Wireshark's
+ChmodBPF package is one permission policy for it. The readiness check uses the
+effective account and groups of the running toolkit process. Restart the
+service after changing group membership before relying on that result.
 
 `./twn service install` waits for launchd to report the job active and for the
 web process, scheduler, and supervisor to become ready. If the job exits or the

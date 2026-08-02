@@ -300,8 +300,9 @@ The built-in system administrator can manage:
 - selectable profile backup/restore with combine or replace behavior;
 - mandatory encryption whenever an export contains credentials or secrets;
 - automation retention, worker/queue limits, quotas, and free-disk reserve; and
-- System Diagnostics, migrations, worker health, storage, dependencies, and an
-  expandable, sanitized audit trail with resource context and curated
+- System Diagnostics with manual/boot-service mode, service-manager and process
+  health, external command inventory, platform permission capabilities,
+  migrations, storage, and an expandable, sanitized audit trail with curated
   before/after changes. Meaningful annotated actions are attributed to both
   operators and system administrators; routine polling and UI noise are omitted.
 

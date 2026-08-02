@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import sqlite3
 import subprocess
 import time
@@ -48,7 +47,9 @@ from .smtp_tools import (
     send_smtp_message,
 )
 from .migrations import MigrationManager
-from .network_tools import ToolInputError, ping_engine_capability
+from .network_tools import ToolInputError
+from .service_cli import service_runtime_status
+from .system_diagnostics import command_dependencies, platform_capabilities
 from .tftp import tftp_process_status
 from .ssh_transfer_server import ssh_transfer_process_status
 from .ftp_server import ftp_process_status
@@ -394,18 +395,9 @@ def register_admin_routes(
                 finally: connection.close()
             except sqlite3.Error as exc: status = str(exc)
             databases.append({"name": path.name, "size": _format_bytes(path.stat().st_size), "status": status})
-        dependencies = [
-            {"name": name, "available": bool(shutil.which(name)), "detail": ""}
-            for name in ("ping", "traceroute", "tcpdump", "iperf3", "openssl")
-        ]
-        ping_capability = ping_engine_capability()
-        dependencies.append(
-            {
-                "name": "fping high-capacity ICMP",
-                "available": ping_capability["accelerated"],
-                "detail": ping_capability["detail"],
-            }
-        )
+        runtime = service_runtime_status(project_root)
+        dependencies = command_dependencies()
+        capabilities = platform_capabilities()
         audit_query = request.args.get("audit_q", "").strip()[:160]
         try:
             audit_page_number = max(1, int(request.args.get("audit_page", "1")))
@@ -449,7 +441,8 @@ def register_admin_routes(
             ]
         return render_template(
             "auth/diagnostics.html", processes=processes, databases=databases,
-            dependencies=dependencies, audit_events=audit,
+            runtime=runtime, dependencies=dependencies, capabilities=capabilities,
+            audit_events=audit,
             storage=_format_storage_summary(operational_store.storage_summary()),
             migrations=[*MigrationManager(app.instance_path).applied(), *automation_store.migration_status()],
             automation_storage=automation_store.storage_stats(),
