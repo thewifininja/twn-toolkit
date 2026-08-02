@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import ipaddress
 import os
 import re
@@ -16,6 +17,8 @@ from .network_tools import ToolInputError
 DHCP_MAGIC_COOKIE = b"\x63\x82\x53\x63"
 DHCP_CLIENT_PORT = 68
 DHCP_SERVER_PORT = 67
+_ETHERTYPE_IPV4 = 0x0800
+_VLAN_ETHERTYPES = {0x8100, 0x88A8, 0x9100}
 
 DHCP_OPTIONS = {
     1: "Subnet Mask",
@@ -241,6 +244,28 @@ def discover_offers(
         hostname=hostname.strip(),
         vendor_class=vendor_class.strip(),
     )
+    if sys.platform == "darwin":
+        return _discover_offers_macos_bpf(
+            interface,
+            packet,
+            transaction_id,
+            timeout=timeout,
+        )
+    return _discover_offers_udp(
+        interface,
+        packet,
+        transaction_id,
+        timeout=timeout,
+    )
+
+
+def _discover_offers_udp(
+    interface: str,
+    packet: bytes,
+    transaction_id: int,
+    *,
+    timeout: float,
+) -> list[dict[str, Any]]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     try:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -282,6 +307,190 @@ def discover_offers(
         raise ToolInputError(f"DHCP probe failed: {exc}") from exc
     finally:
         sock.close()
+
+
+def _discover_offers_macos_bpf(
+    interface: str,
+    packet: bytes,
+    transaction_id: int,
+    *,
+    timeout: float,
+) -> list[dict[str, Any]]:
+    try:
+        from scapy.all import conf, sniff  # type: ignore[import-not-found]
+        from scapy.error import Scapy_Exception  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise ToolInputError(
+            "macOS DHCP discovery requires Scapy. Run the installer again or install requirements."
+        ) from exc
+
+    listener = None
+    sender = None
+    try:
+        conf.use_pcap = True
+        listener = conf.L2listen(
+            iface=interface,
+            filter=f"udp and src port {DHCP_SERVER_PORT} and dst port {DHCP_CLIENT_PORT}",
+        )
+        sender = conf.L2socket(iface=interface)
+        frame = _build_dhcp_discover_frame(packet, interface_mac(interface))
+        sent = sender.send(frame)
+        if isinstance(sent, int) and sent != len(frame):
+            raise ToolInputError(
+                f"DHCP discovery handed only {sent} of {len(frame)} bytes to BPF on {interface}."
+            )
+        captured = sniff(opened_socket=listener, timeout=timeout, store=True)
+    except PermissionError as exc:
+        raise ToolInputError(_macos_bpf_permission_message()) from exc
+    except OSError as exc:
+        if exc.errno in {errno.EACCES, errno.EPERM}:
+            raise ToolInputError(_macos_bpf_permission_message()) from exc
+        raise ToolInputError(f"DHCP BPF probe failed on interface {interface}: {exc}") from exc
+    except (Scapy_Exception, ValueError) as exc:
+        detail = str(exc).strip()
+        if any(token in detail.lower() for token in ("permission", "permitted", "/dev/bpf")):
+            raise ToolInputError(_macos_bpf_permission_message()) from exc
+        raise ToolInputError(
+            f"DHCP BPF probe failed on interface {interface}: {detail or 'Scapy rejected the request.'}"
+        ) from exc
+    finally:
+        for raw_socket in (sender, listener):
+            if raw_socket is None:
+                continue
+            try:
+                raw_socket.close()
+            except (AttributeError, OSError, Scapy_Exception):
+                pass
+
+    offers = []
+    seen = set()
+    for captured_packet in captured:
+        extracted = _extract_dhcp_udp_payload(bytes(captured_packet))
+        if extracted is None:
+            continue
+        response, source = extracted
+        offer = parse_offer(response, transaction_id, source)
+        if offer:
+            key = (offer["server_address"], offer["offered_address"])
+            if key not in seen:
+                seen.add(key)
+                offers.append(offer)
+    return offers
+
+
+def _macos_bpf_permission_message() -> str:
+    return (
+        "macOS DHCP discovery needs BPF capture and transmit access. Install Wireshark's "
+        "ChmodBPF service or otherwise grant the toolkit service user read/write access to "
+        "/dev/bpf devices; do not run the whole toolkit as root."
+    )
+
+
+def _build_dhcp_discover_frame(packet: bytes, source_mac: str) -> bytes:
+    return _build_ipv4_udp_frame(
+        packet,
+        source_mac=source_mac,
+        destination_mac="ff:ff:ff:ff:ff:ff",
+        source_address="0.0.0.0",
+        destination_address="255.255.255.255",
+        source_port=DHCP_CLIENT_PORT,
+        destination_port=DHCP_SERVER_PORT,
+        packet_id=struct.unpack_from("!I", packet, 4)[0] & 0xFFFF,
+    )
+
+
+def _build_ipv4_udp_frame(
+    payload: bytes,
+    *,
+    source_mac: str,
+    destination_mac: str,
+    source_address: str,
+    destination_address: str,
+    source_port: int,
+    destination_port: int,
+    packet_id: int = 0,
+) -> bytes:
+    source_mac_bytes = bytes.fromhex(normalize_mac(source_mac).replace(":", ""))
+    destination_mac_compact = re.sub(r"[^0-9a-fA-F]", "", destination_mac)
+    if len(destination_mac_compact) != 12:
+        raise ToolInputError("Destination MAC address must contain six hexadecimal octets.")
+    destination_mac_bytes = bytes.fromhex(destination_mac_compact)
+    source_ip = socket.inet_aton(source_address)
+    destination_ip = socket.inet_aton(destination_address)
+    udp_length = 8 + len(payload)
+    ip_length = 20 + udp_length
+    if ip_length > 65535:
+        raise ToolInputError("DHCP packet is too large for IPv4.")
+    ip_header = struct.pack(
+        "!BBHHHBBH4s4s",
+        0x45,
+        0,
+        ip_length,
+        packet_id & 0xFFFF,
+        0,
+        64,
+        socket.IPPROTO_UDP,
+        0,
+        source_ip,
+        destination_ip,
+    )
+    checksum = _internet_checksum(ip_header)
+    ip_header = ip_header[:10] + struct.pack("!H", checksum) + ip_header[12:]
+    udp_header = struct.pack(
+        "!HHHH",
+        source_port,
+        destination_port,
+        udp_length,
+        0,  # An IPv4 UDP checksum of zero explicitly means no checksum.
+    )
+    ethernet_header = destination_mac_bytes + source_mac_bytes + struct.pack("!H", _ETHERTYPE_IPV4)
+    return ethernet_header + ip_header + udp_header + payload
+
+
+def _extract_dhcp_udp_payload(frame: bytes) -> tuple[bytes, tuple[str, int]] | None:
+    if len(frame) < 14:
+        return None
+    ethertype = struct.unpack_from("!H", frame, 12)[0]
+    ip_offset = 14
+    while ethertype in _VLAN_ETHERTYPES:
+        if len(frame) < ip_offset + 4:
+            return None
+        ethertype = struct.unpack_from("!H", frame, ip_offset + 2)[0]
+        ip_offset += 4
+    if ethertype != _ETHERTYPE_IPV4 or len(frame) < ip_offset + 20:
+        return None
+    version_ihl = frame[ip_offset]
+    if version_ihl >> 4 != 4:
+        return None
+    ip_header_length = (version_ihl & 0x0F) * 4
+    if ip_header_length < 20 or len(frame) < ip_offset + ip_header_length + 8:
+        return None
+    if frame[ip_offset + 9] != socket.IPPROTO_UDP:
+        return None
+    fragment = struct.unpack_from("!H", frame, ip_offset + 6)[0]
+    if fragment & 0x3FFF:
+        return None
+    ip_total_length = struct.unpack_from("!H", frame, ip_offset + 2)[0]
+    if ip_total_length < ip_header_length + 8:
+        return None
+    udp_offset = ip_offset + ip_header_length
+    source_port, destination_port, udp_length = struct.unpack_from("!HHH", frame, udp_offset)
+    if source_port != DHCP_SERVER_PORT or destination_port != DHCP_CLIENT_PORT or udp_length < 8:
+        return None
+    payload_end = min(ip_offset + ip_total_length, udp_offset + udp_length, len(frame))
+    if payload_end < udp_offset + 8:
+        return None
+    source_address = socket.inet_ntoa(frame[ip_offset + 12 : ip_offset + 16])
+    return frame[udp_offset + 8 : payload_end], (source_address, source_port)
+
+
+def _internet_checksum(data: bytes) -> int:
+    if len(data) % 2:
+        data += b"\0"
+    total = sum(struct.unpack(f"!{len(data) // 2}H", data))
+    while total >> 16:
+        total = (total & 0xFFFF) + (total >> 16)
+    return (~total) & 0xFFFF
 
 
 def _append_option(options: bytearray, code: int, value: bytes) -> None:

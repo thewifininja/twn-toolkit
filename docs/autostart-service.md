@@ -74,11 +74,30 @@ writing a service definition. For a relocated existing checkout, rebuild its
 ```
 
 macOS has no direct equivalent to systemd's scoped ambient capabilities. The
-service therefore remains unprivileged. Packet capture and replay require an
-administrator-managed BPF access policy when normal-user BPF access is not
-already available. Multicast IGMP compatibility remains separately managed by
-the narrow `./twn multicast-pf` helper. Do not run the entire web toolkit as
-root merely to obtain BPF access.
+service therefore remains unprivileged. Packet capture, packet replay, and DHCP
+Discover require an administrator-managed BPF access policy when normal-user
+BPF access is not already available. The macOS DHCP backend constructs one
+Ethernet/IPv4/UDP Discover through BPF, listens for matching Offers, and never
+binds privileged UDP port 68 or sends a DHCP Request.
+
+The Wireshark macOS package's optional ChmodBPF service is one established way
+to pre-create BPF devices, grant its `access_bpf` group read/write access, and
+preserve that access after reboot. Confirm the account used by the toolkit
+service appears in that group and can read/write the devices:
+
+```bash
+id -Gn
+ls -l /dev/bpf0
+```
+
+Restart the toolkit service after changing group membership so launchd applies
+the updated supplementary groups. The toolkit reports a focused permission
+error when BPF is unavailable and never changes BPF ownership or permissions
+automatically. Multicast IGMP compatibility remains separately managed by the
+narrow `./twn multicast-pf` helper. Do not run the entire web toolkit as root
+merely to obtain BPF access. Low numbered managed-listener ports, such as TFTP
+69 or FTP 21, remain unavailable to the normal-user macOS service; use the
+toolkit's default high ports.
 
 ## Lifecycle commands
 

@@ -395,7 +395,9 @@ Most tools run without elevated privileges. A few operations may require OS
 permission:
 
 - **DHCP Discover** needs access to privileged UDP client port 68 and the
-  selected interface.
+  selected interface on Linux. On macOS it transmits and receives the same
+  bounded Discover/Offer exchange through BPF so a normal-user service can run
+  it when that account has BPF capture/transmit access.
 - **Packet Replay** needs raw Ethernet/BPF access (`CAP_NET_RAW` or root on
   Linux; BPF permission may require `sudo` on macOS).
 - Standard TFTP/FTP ports may require privileged bind permission; the default
@@ -413,7 +415,8 @@ For a persistent Linux installation, prefer the scoped systemd capabilities
 created by `./twn service install --network-capabilities` over running the
 entire toolkit as root or applying capabilities to the shared Python
 interpreter. macOS autostart remains a normal-user service; provision BPF access
-separately when packet capture/replay requires it.
+separately for packet capture, packet replay, and DHCP Discover. The macOS DHCP
+backend does not bind privileged UDP port 68 or send a DHCP Request.
 
 See [Packet Replay setup](docs/packet-replay.md) for platform-specific details.
 
