@@ -1,6 +1,42 @@
-APP_VERSION = "0.16.0"
+APP_VERSION = "0.16.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.16.1",
+        "date": "2026-08-02",
+        "title": "Startup announcements and system identity",
+        "summary": (
+            "Adds durable host-boot and toolkit-start automations with bounded "
+            "system identity, making a boot-managed Raspberry Pi easy to find "
+            "and announce after it receives a DHCP address."
+        ),
+        "groups": (
+            {
+                "title": "Startup-triggered automations",
+                "items": (
+                    "Adds Once per host boot and Every complete toolkit start run modes. Arming records the current startup as a baseline instead of firing immediately, and a scheduler-only restart does not create another startup event.",
+                    "Commits each new startup generation and its execution job atomically, deduplicates delivery across scheduler crashes and restarts, and waits up to 120 seconds for a usable non-loopback address before running even if networking remains unavailable.",
+                    "Adds a baseline-preserving Test now action plus startup-specific status and history, so a notification can be verified without consuming the next real boot or toolkit-start event.",
+                ),
+            },
+            {
+                "title": "Identity-aware notifications",
+                "items": (
+                    "Collects a bounded configured instance name, hostname, toolkit version, current IPv4 and IPv6 addresses, and reachable toolkit URLs without exposing credentials or internal startup generation IDs.",
+                    "Makes toolkit.* and startup.* variables available to Webhook/API, Email, and Syslog templates; exact JSON address and URL tokens remain typed lists while embedded and text substitutions use compact JSON text.",
+                    "Supports DHCP appliance announcements such as a Raspberry Pi posting its current address and access URL to Discord, email, another webhook, or a Syslog collector after boot.",
+                ),
+            },
+            {
+                "title": "Compatible, snapshot-backed upgrade",
+                "items": (
+                    "Adds toolkit migration 3 and automation schema migration 7 for durable startup-event state. The migration creates a pre-change database snapshot before changing the automation schema and preserves existing definitions, pipelines, history, and retained output.",
+                    "Introduces no Python dependency, profile-format, server-setting, or command-line incompatibility and supports direct upgrade from v0.16.0 through the verified release-bundle workflow.",
+                    "Keeps rollback paired with its matched recovery snapshot; do not run older v0.16.0 code directly against an instance after its automation database has migrated.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.0",
         "date": "2026-08-02",
