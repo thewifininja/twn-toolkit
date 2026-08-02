@@ -10320,6 +10320,20 @@ button.compact,
   padding: 0 7px;
 }
 
+.automation-startup-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.automation-startup-note {
+  background: color-mix(in srgb, var(--panel), var(--accent) 5%);
+  border: 1px solid color-mix(in srgb, var(--line), var(--accent) 12%);
+  border-radius: 8px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 10px 12px;
+}
+
 .input-suffix {
   align-items: center;
   display: grid;

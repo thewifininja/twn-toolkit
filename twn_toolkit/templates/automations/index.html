@@ -70,7 +70,7 @@
       <div data-automation-run-fields="manual" hidden>
         <p class="field-note">This automation runs only when an administrator clicks Run now.</p>
       </div>
-      <div data-automation-run-fields="startup" hidden>
+      <div class="automation-startup-fields" data-automation-run-fields="startup" hidden>
         <label>Startup event
           <select name="startup_mode" required>
             <option value="host_boot" {% if selected_startup_mode == 'host_boot' %}selected{% endif %}>Once per host boot (recommended)</option>
@@ -78,7 +78,7 @@
           </select>
         </label>
         <input type="hidden" name="startup_network_wait_seconds" value="{{ startup_network_wait_seconds }}">
-        <p class="field-note">After you arm it, the current startup is recorded as the baseline. The next matching startup waits up to {{ startup_network_wait_seconds }} seconds for a usable address, then runs once—even if the scheduler restarts.</p>
+        <p class="field-note automation-startup-note">After you arm it, the current startup is recorded as the baseline. The next matching startup waits up to {{ startup_network_wait_seconds }} seconds for a usable address, then runs once—even if the scheduler restarts.</p>
       </div>
     </fieldset>
     <fieldset class="automation-builder-block automation-pipeline-builder">

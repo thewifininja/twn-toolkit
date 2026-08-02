@@ -2213,6 +2213,8 @@ class AutomationRouteTests(unittest.TestCase):
             sent = json.loads(sender.call_args.kwargs["body"])
             self.assertEqual(sent, {"host": "branch-pi.local", "ip": "192.0.2.25"})
             page = client.get(f"/automations?focus={automation['id']}")
+            self.assertIn(b'class="automation-startup-fields"', page.data)
+            self.assertIn(b'class="field-note automation-startup-note"', page.data)
             self.assertIn(b"Once per host boot", page.data)
             self.assertIn(b"Test now", page.data)
             self.assertIn(b"Startup notification test", page.data)
