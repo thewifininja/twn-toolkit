@@ -13,7 +13,7 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.16.2**
+Current release: **v0.16.3**
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
