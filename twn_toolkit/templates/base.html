@@ -152,7 +152,7 @@
                     <small>{{ group.count|default((group.tools|default([])|length) + (group.children|default([])|length)) }}</small>
                   </summary>
                   {% if group.tools %}
-                    <ul>
+                    <ul class="side-nav-tool-list">
                       {% for tool in group.tools %}
                         <li>
                           {{ sidebar_tool_row(tool) }}

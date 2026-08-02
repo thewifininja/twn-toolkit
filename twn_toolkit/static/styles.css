@@ -867,11 +867,20 @@ body {
   font-weight: 750;
 }
 
+.side-nav-tool-list,
 .side-nav-tree {
   border-left: 2px solid color-mix(in srgb, var(--brand-green), transparent 72%);
-  gap: 8px;
   margin-left: 12px !important;
   padding-left: 8px !important;
+}
+
+.side-nav-tree {
+  gap: 8px;
+}
+
+.side-nav-tool-list .side-nav-item > a {
+  gap: 8px;
+  padding-left: 8px;
 }
 
 .side-nav-tree > li {
