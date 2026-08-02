@@ -246,8 +246,9 @@ Automation is built from four reusable layers:
 
 Actions within a stage run in parallel; stages run sequentially. Continuation
 policy can require full success, allow partial success, or proceed regardless
-of result. Bounded, non-secret summaries from earlier stages can be passed to
-later Webhook/API actions.
+of result. Later stages can add a durable zero-to-24-hour delay without holding
+a scheduler worker, and resume after a toolkit restart. Bounded, non-secret
+summaries from earlier stages can be passed to later Webhook/API actions.
 
 Available conditions include:
 

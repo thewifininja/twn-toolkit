@@ -729,6 +729,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         )
         automation_stats = {
             "queued_jobs": 0,
+            "waiting_jobs": 0,
             "running_jobs": 0,
             "failed_jobs": 0,
             "enabled": 0,

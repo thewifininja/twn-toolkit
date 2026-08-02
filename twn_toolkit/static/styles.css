@@ -10299,37 +10299,168 @@ button.compact,
 }
 
 .automation-stage-list + .button-row {
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .automation-stage-card {
-  background: color-mix(in srgb, var(--panel), var(--brand-green) 4%);
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 2.5%);
   border: 1px solid var(--line);
-  border-left: 4px solid color-mix(in srgb, var(--brand-green), transparent 25%);
-  border-radius: 10px;
+  border-left: 3px solid color-mix(in srgb, var(--brand-green), transparent 25%);
+  border-radius: 12px;
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 14px;
+  padding: 14px 16px 16px;
 }
 
-.automation-stage-head {
-  display: grid;
+.automation-stage-toolbar {
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--line), transparent 30%);
+  display: flex;
   gap: 12px;
-  grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1.3fr);
+  justify-content: space-between;
+  padding-bottom: 11px;
+}
+
+.automation-stage-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.automation-stage-heading > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.automation-stage-heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automation-stage-heading small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.automation-stage-index {
+  align-items: center;
+  background: color-mix(in srgb, var(--brand-green), transparent 86%);
+  border: 1px solid color-mix(in srgb, var(--brand-green), transparent 64%);
+  border-radius: 999px;
+  color: var(--brand-green-dark);
+  display: inline-flex;
+  flex: 0 0 30px;
+  font-size: 0.8rem;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+}
+
+.automation-stage-settings {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1.3fr) minmax(190px, 0.8fr);
+}
+
+.automation-stage-settings > label,
+.automation-stage-timing {
+  font-size: 0.82rem;
+  gap: 5px;
+}
+
+.automation-stage-settings input,
+.automation-stage-settings select {
+  min-height: 40px;
+  padding-block: 8px;
+}
+
+.automation-duration-input {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(64px, 0.75fr) minmax(96px, 1fr);
+}
+
+.automation-stage-timing {
+  align-content: center;
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 5%);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: grid;
+  min-height: 66px;
+  padding: 8px 10px;
+}
+
+.automation-stage-timing > span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.automation-stage-timing > strong {
+  font-size: 0.9rem;
+}
+
+.automation-stage-timing > small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.automation-stage-action-section {
+  display: grid;
+  gap: 8px;
+}
+
+.automation-stage-action-section > header {
+  align-items: end;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.automation-stage-action-section > header > div {
+  display: grid;
+  gap: 1px;
+}
+
+.automation-stage-action-section > header small,
+.automation-stage-assigned-note {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.automation-stage-action-section > header > span {
+  background: color-mix(in srgb, var(--muted), transparent 88%);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 3px 8px;
+}
+
+.automation-stage-assigned-note strong {
+  color: var(--field-label);
 }
 
 .automation-stage-actions {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .automation-stage-action {
-  align-items: flex-start;
+  align-items: center;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 10px;
+  min-height: 52px;
+  padding: 8px 10px;
 }
 
 .automation-stage-action span,
@@ -10339,15 +10470,39 @@ button.compact,
 
 .automation-stage-action small {
   color: var(--muted);
+  font-size: 0.72rem;
   margin-top: 2px;
 }
 
-.automation-stage-action.is-assigned {
-  opacity: 0.55;
+.automation-stage-empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 8px 2px;
 }
 
 .automation-stage-controls {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
   justify-content: flex-end;
+}
+
+.automation-stage-controls button.secondary {
+  font-size: 1rem;
+  line-height: 1;
+  min-width: 34px;
+  padding-inline: 9px;
+}
+
+.automation-stage-controls button.text-danger {
+  margin-left: 3px;
+}
+
+.automation-add-stage {
+  font-size: 0.82rem;
 }
 
 .automation-pipeline-summary {
@@ -10791,6 +10946,10 @@ th {
 }
 
 @media (max-width: 1050px) {
+  .automation-stage-settings {
+    grid-template-columns: 1fr;
+  }
+
   .workspace-dashboard-header {
     align-items: flex-start;
     flex-direction: column;
@@ -11121,17 +11280,17 @@ th {
     grid-template-columns: 1fr;
   }
 
-  .automation-stage-head,
+  .automation-stage-settings,
   .automation-stage-actions {
     grid-template-columns: 1fr;
   }
 
-  .automation-stage-controls {
-    justify-content: stretch;
+  .automation-stage-toolbar {
+    align-items: flex-start;
   }
 
-  .automation-stage-controls button {
-    flex: 1 1 auto;
+  .automation-stage-controls {
+    justify-content: flex-end;
   }
 
   .automation-history-list article {

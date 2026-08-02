@@ -126,7 +126,7 @@
       try { choices = JSON.parse(stageBuilder.dataset.actionChoices || "[]"); } catch (_error) { choices = []; }
       try { stages = JSON.parse(hidden?.value || "[]"); } catch (_error) { stages = []; }
       const stageId = () => globalThis.crypto?.randomUUID?.() || `stage-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      if (!stages.length) stages = [{id:stageId(), name:"Stage 1", continue_policy:"all_completed", action_definition_ids:[]}];
+      if (!stages.length) stages = [{id:stageId(), name:"Stage 1", continue_policy:"all_completed", delay_seconds:0, action_definition_ids:[]}];
       const syncStages = () => { if (hidden) hidden.value = JSON.stringify(stages); };
       const renderStages = () => {
         list.replaceChildren();
@@ -134,30 +134,82 @@
         stages.forEach((stage, index) => {
           const card = document.createElement("section");
           card.className = "automation-stage-card";
-          const actionRows = choices.map((choice) => {
-            const selected = (stage.action_definition_ids || []).includes(choice.id);
-            const unavailable = !selected && assigned.has(choice.id);
-            return `<label class="check automation-stage-action ${unavailable ? "is-assigned" : ""}"><input type="checkbox" value="${escapeHtml(choice.id)}" ${selected ? "checked" : ""} ${unavailable ? "disabled" : ""}><span><strong>${escapeHtml(choice.name)}</strong><small>${escapeHtml(choice.type)}${unavailable ? " · assigned to another stage" : ""}</small></span></label>`;
+          const stageName = stage.name || `Stage ${index + 1}`;
+          const selectedActionIds = stage.action_definition_ids || [];
+          const delaySeconds = Math.max(0, Number.parseInt(stage.delay_seconds || 0, 10) || 0);
+          const delayUnit = delaySeconds > 0 && delaySeconds % 3600 === 0 ? "hours" : delaySeconds > 0 && delaySeconds % 60 === 0 ? "minutes" : "seconds";
+          const delayDivisor = delayUnit === "hours" ? 3600 : delayUnit === "minutes" ? 60 : 1;
+          const delayValue = delaySeconds / delayDivisor;
+          const delayLabel = delayValue === 1 ? delayUnit.slice(0, -1) : delayUnit;
+          const timingSummary = index === 0 ? "starts immediately" : delaySeconds ? `wait ${delayValue} ${delayLabel}` : "no delay";
+          const delayControl = index === 0 ? `
+            <div class="automation-stage-timing"><span>Delay before stage</span><strong>Immediate</strong><small>Begins as soon as the trigger fires.</small></div>` : `
+            <label class="automation-stage-delay">Delay before stage
+              <div class="automation-duration-input">
+                <input data-stage-delay-value type="number" min="0" max="${delayUnit === "hours" ? 24 : delayUnit === "minutes" ? 1440 : 86400}" step="1" value="${delayValue}" required>
+                <select data-stage-delay-unit aria-label="Stage delay unit">
+                  <option value="seconds" ${delayUnit === "seconds" ? "selected" : ""}>seconds</option>
+                  <option value="minutes" ${delayUnit === "minutes" ? "selected" : ""}>minutes</option>
+                  <option value="hours" ${delayUnit === "hours" ? "selected" : ""}>hours</option>
+                </select>
+              </div>
+              <small class="field-note">Runs in the background and survives restarts.</small>
+            </label>`;
+          const unavailableChoices = choices.filter((choice) => !selectedActionIds.includes(choice.id) && assigned.has(choice.id));
+          const unavailableNames = unavailableChoices.slice(0, 3).map((choice) => escapeHtml(choice.name)).join(", ");
+          const unavailableMore = unavailableChoices.length > 3 ? ` +${unavailableChoices.length - 3} more` : "";
+          const actionRows = choices.filter((choice) => selectedActionIds.includes(choice.id) || !assigned.has(choice.id)).map((choice) => {
+            const selected = selectedActionIds.includes(choice.id);
+            return `<label class="check automation-stage-action"><input type="checkbox" value="${escapeHtml(choice.id)}" ${selected ? "checked" : ""}><span><strong>${escapeHtml(choice.name)}</strong><small>${escapeHtml(choice.type)}</small></span></label>`;
           }).join("");
           card.innerHTML = `
-            <div class="automation-stage-head">
-              <label>Stage name<input data-stage-name maxlength="100" value="${escapeHtml(stage.name || `Stage ${index + 1}`)}" required></label>
-              <label>Continue to next stage when<select data-stage-policy>
-                <option value="all_completed" ${stage.continue_policy === "all_completed" ? "selected" : ""}>This stage completes, regardless of result</option>
-                <option value="success_or_partial" ${stage.continue_policy === "success_or_partial" ? "selected" : ""}>No action completely fails</option>
-                <option value="all_success" ${stage.continue_policy === "all_success" ? "selected" : ""}>Every action succeeds</option>
+            <header class="automation-stage-toolbar">
+              <div class="automation-stage-heading">
+                <span class="automation-stage-index" aria-hidden="true">${index + 1}</span>
+                <div><strong data-stage-title>${escapeHtml(stageName)}</strong><small>${selectedActionIds.length} action${selectedActionIds.length === 1 ? "" : "s"} · <span data-stage-timing-summary>${timingSummary}</span></small></div>
+              </div>
+              <div class="automation-stage-controls" aria-label="Stage ${index + 1} controls">
+                <button class="secondary compact" type="button" data-stage-up aria-label="Move stage ${index + 1} up" title="Move up" ${index === 0 ? "disabled" : ""}>↑</button>
+                <button class="secondary compact" type="button" data-stage-down aria-label="Move stage ${index + 1} down" title="Move down" ${index === stages.length - 1 ? "disabled" : ""}>↓</button>
+                ${stages.length > 1 ? `<button class="text-danger compact" type="button" data-remove-stage aria-label="Remove stage ${index + 1}">Remove</button>` : ""}
+              </div>
+            </header>
+            <div class="automation-stage-settings">
+              <label>Name<input data-stage-name maxlength="100" value="${escapeHtml(stageName)}" required></label>
+              <label>Continue when<select data-stage-policy>
+                <option value="all_completed" ${stage.continue_policy === "all_completed" ? "selected" : ""}>Always — after this stage finishes</option>
+                <option value="success_or_partial" ${stage.continue_policy === "success_or_partial" ? "selected" : ""}>Only if no action fails</option>
+                <option value="all_success" ${stage.continue_policy === "all_success" ? "selected" : ""}>Only if every action succeeds</option>
               </select></label>
+              ${delayControl}
             </div>
-            <p class="field-note">Actions in this stage run in parallel. The next stage waits for all of them to finish.</p>
-            <div class="automation-stage-actions">${actionRows}</div>
-            <div class="button-row automation-stage-controls">
-              <button class="secondary" type="button" data-stage-up ${index === 0 ? "disabled" : ""}>Move up</button>
-              <button class="secondary" type="button" data-stage-down ${index === stages.length - 1 ? "disabled" : ""}>Move down</button>
-              ${stages.length > 1 ? '<button class="text-danger" type="button" data-remove-stage>Remove stage</button>' : ""}
-            </div>`;
+            <section class="automation-stage-action-section">
+              <header><div><strong>Actions</strong><small>Selected actions run in parallel.</small></div><span>${selectedActionIds.length} selected</span></header>
+              <div class="automation-stage-actions">${actionRows || '<p class="automation-stage-empty">No actions are available for this stage.</p>'}</div>
+              ${unavailableChoices.length ? `<small class="automation-stage-assigned-note"><strong>Assigned elsewhere:</strong> ${unavailableNames}${unavailableMore}</small>` : ""}
+            </section>`;
           list.append(card);
-          card.querySelector("[data-stage-name]").addEventListener("input", (event) => { stage.name = event.target.value; syncStages(); });
+          card.querySelector("[data-stage-name]").addEventListener("input", (event) => {
+            stage.name = event.target.value;
+            card.querySelector("[data-stage-title]").textContent = event.target.value.trim() || `Stage ${index + 1}`;
+            syncStages();
+          });
           card.querySelector("[data-stage-policy]").addEventListener("change", (event) => { stage.continue_policy = event.target.value; syncStages(); });
+          const delayValueInput = card.querySelector("[data-stage-delay-value]");
+          const delayUnitInput = card.querySelector("[data-stage-delay-unit]");
+          const syncDelay = () => {
+            if (!delayValueInput || !delayUnitInput) return;
+            const factor = delayUnitInput.value === "hours" ? 3600 : delayUnitInput.value === "minutes" ? 60 : 1;
+            const maximum = delayUnitInput.value === "hours" ? 24 : delayUnitInput.value === "minutes" ? 1440 : 86400;
+            delayValueInput.max = String(maximum);
+            stage.delay_seconds = Math.max(0, Number.parseInt(delayValueInput.value || "0", 10) || 0) * factor;
+            const summaryValue = Number.parseInt(delayValueInput.value || "0", 10) || 0;
+            const summaryUnit = summaryValue === 1 ? delayUnitInput.value.slice(0, -1) : delayUnitInput.value;
+            card.querySelector("[data-stage-timing-summary]").textContent = stage.delay_seconds ? `wait ${summaryValue} ${summaryUnit}` : "no delay";
+            syncStages();
+          };
+          delayValueInput?.addEventListener("input", syncDelay);
+          delayUnitInput?.addEventListener("change", syncDelay);
           card.querySelectorAll(".automation-stage-action input").forEach((input) => input.addEventListener("change", () => {
             stage.action_definition_ids = [...card.querySelectorAll(".automation-stage-action input:checked")].map((item) => item.value);
             syncStages(); renderStages();
@@ -168,7 +220,7 @@
         });
         syncStages();
       };
-      addStage?.addEventListener("click", () => { stages.push({id:stageId(), name:`Stage ${stages.length + 1}`, continue_policy:"all_completed", action_definition_ids:[]}); renderStages(); });
+      addStage?.addEventListener("click", () => { stages.push({id:stageId(), name:`Stage ${stages.length + 1}`, continue_policy:"all_completed", delay_seconds:0, action_definition_ids:[]}); renderStages(); });
       renderStages();
     }
 

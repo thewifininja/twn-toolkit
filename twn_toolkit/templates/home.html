@@ -152,8 +152,8 @@
               {{ workspace_status.automation.failed_jobs }} failed job{{ '' if workspace_status.automation.failed_jobs == 1 else 's' }}
             {% elif workspace_status.automation.attention %}
               {{ workspace_status.automation.attention }} workflow{{ '' if workspace_status.automation.attention == 1 else 's' }} needs review
-            {% elif workspace_status.automation.running_jobs or workspace_status.automation.queued_jobs %}
-              {{ workspace_status.automation.running_jobs }} running · {{ workspace_status.automation.queued_jobs }} queued
+            {% elif workspace_status.automation.running_jobs or workspace_status.automation.queued_jobs or workspace_status.automation.waiting_jobs %}
+              {{ workspace_status.automation.running_jobs }} running · {{ workspace_status.automation.queued_jobs }} queued · {{ workspace_status.automation.waiting_jobs }} waiting
             {% else %}
               No queued or failed jobs
             {% endif %}

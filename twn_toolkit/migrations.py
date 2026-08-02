@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import shutil
@@ -20,6 +21,19 @@ class MigrationManager:
         return value if isinstance(value, list) else []
 
     def run(self, migrations: list[tuple[int, str, Callable[[Path], None]]]) -> list[int]:
+        self.instance.mkdir(parents=True, exist_ok=True)
+        lock_path = self.instance / ".schema-migrations.lock"
+        with lock_path.open("a+", encoding="utf-8") as lock_handle:
+            os.chmod(lock_path, 0o600)
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+            try:
+                return self._run_locked(migrations)
+            finally:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+
+    def _run_locked(
+        self, migrations: list[tuple[int, str, Callable[[Path], None]]]
+    ) -> list[int]:
         records = self.applied(); applied = {int(item["version"]) for item in records}; completed = []
         for version, description, callback in sorted(migrations):
             if version in applied: continue
@@ -76,4 +90,46 @@ class MigrationManager:
 def run_toolkit_migrations(instance_path: str) -> list[int]:
     return MigrationManager(instance_path).run([
         (1, "Establish toolkit-wide migration tracking and operational hardening baseline", lambda _instance: None),
+        (
+            2,
+            "Prepare durable automation delayed-stage progress",
+            _add_automation_job_progress,
+        ),
     ])
+
+
+def _add_automation_job_progress(instance: Path) -> None:
+    database = instance / "automations.sqlite3"
+    if not database.exists():
+        return
+    connection = sqlite3.connect(database, timeout=30)
+    try:
+        table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'automation_jobs'"
+        ).fetchone()
+        if not table:
+            return
+        columns = {
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info(automation_jobs)")
+        }
+        if "progress_encrypted" not in columns:
+            connection.execute(
+                "ALTER TABLE automation_jobs ADD COLUMN progress_encrypted TEXT"
+            )
+        migration_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'automation_schema_migrations'"
+        ).fetchone()
+        if migration_table:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO automation_schema_migrations
+                    (version, applied_at, description)
+                VALUES (6, ?, ?)
+                """,
+                (time.time(), "Add durable delayed-stage pipeline progress"),
+            )
+        connection.commit()
+    finally:
+        connection.close()
+        os.chmod(database, 0o600)

@@ -331,7 +331,7 @@ class AutomationStoreTests(unittest.TestCase):
             automation_id,
             ConditionResult(True, "met", "edge failed", {}),
         )
-        with self.assertRaisesRegex(ValueError, "queued or running"):
+        with self.assertRaisesRegex(ValueError, "queued, waiting, or running"):
             self.store.delete(automation_id)
 
     def test_trigger_state_and_job_enqueue_are_one_transaction(self) -> None:
@@ -390,9 +390,84 @@ class AutomationStoreTests(unittest.TestCase):
         with patch("twn_toolkit.automation.time.time", return_value=retry_at):
             retried = self.store.claim_jobs()[0]
         engine.process_job(retried)
-        self.assertEqual(calls, [job["id"], job["id"]])
-        self.assertEqual(len(self.store.recent_runs(automation_id)), 2)
+        self.assertEqual(calls, [job["id"]])
+        self.assertEqual(len(self.store.recent_runs(automation_id)), 1)
         self.assertEqual(self.store.job_stats()["completed_jobs"], 1)
+
+    def test_failed_continuation_remains_stopped_after_job_recovery(self) -> None:
+        condition_id = self.store.save_condition_definition(
+            name="Recovery condition", type_id="test.condition", config={}
+        )
+        action_ids = [
+            self.store.save_action_definition(
+                name=name, type_id="test.action", config={"name": name}
+            )
+            for name in ("Failing action", "Must not run")
+        ]
+        automation_id = self.store.save(
+            name="Stopped pipeline recovery",
+            interval_seconds=1,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_id=condition_id,
+            action_stages=[
+                {
+                    "id": "first",
+                    "name": "First",
+                    "continue_policy": "all_success",
+                    "action_definition_ids": [action_ids[0]],
+                },
+                {
+                    "id": "second",
+                    "name": "Second",
+                    "continue_policy": "all_completed",
+                    "delay_seconds": 300,
+                    "action_definition_ids": [action_ids[1]],
+                },
+            ],
+            created_by="user-1",
+        )
+        calls: list[str] = []
+        registry = AutomationRegistry()
+        registry.add_action(
+            ActionType(
+                "test.action",
+                "Test",
+                "",
+                lambda value: value,
+                lambda config, _trigger: (
+                    calls.append(config["name"])
+                    or ActionResult("error", "failed", {})
+                ),
+            )
+        )
+        self.store.set_enabled(automation_id, True)
+        self.store.record_condition(
+            automation_id,
+            ConditionResult(True, "met", "triggered", {}),
+        )
+        job = self.store.claim_jobs()[0]
+        engine = AutomationEngine(self.store, registry)
+        with patch.object(
+            self.store,
+            "record_run",
+            side_effect=RuntimeError("simulated persistence interruption"),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "simulated persistence interruption"
+            ):
+                engine.process_job(job)
+
+        retry_at = time.time() + 10
+        with patch("twn_toolkit.automation.time.time", return_value=retry_at):
+            retried = self.store.claim_jobs()[0]
+        run_id = engine.process_job(retried)
+
+        self.assertEqual(calls, ["Failing action"])
+        run = self.store.get_run(str(run_id))
+        self.assertEqual(len(run["results"]), 1)
+        self.assertEqual(run["results"][0]["status"], "error")
 
     def test_editing_an_armed_automation_pauses_and_resets_it(self) -> None:
         automation_id = self.save(trigger_after=1)
@@ -622,6 +697,175 @@ class AutomationStoreTests(unittest.TestCase):
         run = self.store.recent_runs(automation_id)[0]
         self.assertEqual(run["results"][0]["output"]["_pipeline"]["stage_id"], "gather")
         self.assertEqual(run["results"][2]["output"]["_pipeline"]["stage_id"], "notify")
+
+    def test_pipeline_delay_is_durable_and_releases_its_worker(self) -> None:
+        condition_id = self.store.save_condition_definition(
+            name="Delayed trigger", type_id="test.condition", config={}
+        )
+        first_id = self.store.save_action_definition(
+            name="Change network", type_id="test.action", config={"name": "change"}
+        )
+        notify_id = self.store.save_action_definition(
+            name="Notify Discord", type_id="test.action", config={"name": "notify"}
+        )
+        automation_id = self.store.save(
+            name="Delayed notification",
+            interval_seconds=1,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_id=condition_id,
+            action_stages=[
+                {
+                    "id": "change",
+                    "name": "Change network",
+                    "continue_policy": "all_success",
+                    "delay_seconds": 0,
+                    "action_definition_ids": [first_id],
+                },
+                {
+                    "id": "notify",
+                    "name": "Notify Discord",
+                    "continue_policy": "all_completed",
+                    "delay_seconds": 300,
+                    "action_definition_ids": [notify_id],
+                },
+            ],
+            created_by="user-1",
+        )
+        calls: list[tuple[str, list[str]]] = []
+        registry = AutomationRegistry()
+        registry.add_action(
+            ActionType(
+                "test.action",
+                "Test",
+                "",
+                lambda value: value,
+                lambda config, trigger: (
+                    calls.append(
+                        (
+                            config["name"],
+                            list(
+                                trigger.evidence.get("actions", {}).get(
+                                    "successful", []
+                                )
+                            ),
+                        )
+                    )
+                    or ActionResult(
+                        "success",
+                        f"{config['name']} complete",
+                        {"sensitive": "retained only in encrypted progress"},
+                    )
+                ),
+            )
+        )
+        self.store.set_enabled(automation_id, True)
+        engine = AutomationEngine(self.store, registry)
+
+        with patch("twn_toolkit.automation.time.time", return_value=1000.0):
+            self.store.record_condition(
+                automation_id,
+                ConditionResult(True, "met", "targets failed", {}),
+            )
+            first_job = self.store.claim_jobs()[0]
+            self.assertIsNone(engine.process_job(first_job))
+
+        self.assertEqual(calls, [("change", [])])
+        self.assertEqual(self.store.job_stats()["waiting_jobs"], 1)
+        self.assertEqual(self.store.job_stats()["running_jobs"], 0)
+        self.assertNotIn(
+            b"retained only in encrypted progress",
+            Path(self.store.path).read_bytes(),
+        )
+        resumed_store = AutomationStore(self.temp.name, "installation secret")
+        resumed_engine = AutomationEngine(resumed_store, registry)
+        with patch("twn_toolkit.automation.time.time", return_value=1299.0):
+            self.assertEqual(resumed_store.claim_jobs(), [])
+        with patch("twn_toolkit.automation.time.time", return_value=1300.0):
+            resumed = resumed_store.claim_jobs()[0]
+            run_id = resumed_engine.process_job(resumed)
+
+        self.assertIsNotNone(run_id)
+        self.assertEqual(calls, [("change", []), ("notify", ["Change network"])])
+        self.assertEqual(self.store.job_stats()["waiting_jobs"], 0)
+        self.assertEqual(self.store.job_stats()["completed_jobs"], 1)
+        run = self.store.get_run(str(run_id))
+        self.assertEqual(len(run["results"]), 2)
+        self.assertEqual(run["results"][1]["output"]["_pipeline"]["stage_id"], "notify")
+
+    def test_stage_delay_validation_and_migration_are_recorded(self) -> None:
+        condition_id = self.store.save_condition_definition(
+            name="Delay validation trigger", type_id="test.condition", config={}
+        )
+        action_ids = [
+            self.store.save_action_definition(
+                name=f"Delay action {index}", type_id="test.action", config={}
+            )
+            for index in (1, 2)
+        ]
+        automation_id = self.store.save(
+            name="Delay validation",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_id=condition_id,
+            action_stages=[
+                {
+                    "id": "first",
+                    "name": "First",
+                    "continue_policy": "all_completed",
+                    "delay_seconds": 300,
+                    "action_definition_ids": [action_ids[0]],
+                },
+                {
+                    "id": "second",
+                    "name": "Second",
+                    "continue_policy": "all_completed",
+                    "delay_seconds": 86400,
+                    "action_definition_ids": [action_ids[1]],
+                },
+            ],
+            created_by="user-1",
+        )
+        stages = self.store.get(automation_id)["action_stages"]
+        self.assertEqual(stages[0]["delay_seconds"], 0)
+        self.assertEqual(stages[1]["delay_seconds"], 86400)
+        with self.assertRaisesRegex(ValueError, "between 0 seconds and 24 hours"):
+            self.store.save(
+                automation_id=automation_id,
+                name="Delay validation",
+                interval_seconds=30,
+                trigger_after=1,
+                recover_after=1,
+                cooldown_seconds=0,
+                condition_definition_id=condition_id,
+                action_stages=[
+                    {
+                        "id": "first",
+                        "name": "First",
+                        "continue_policy": "all_completed",
+                        "action_definition_ids": [action_ids[0]],
+                    },
+                    {
+                        "id": "second",
+                        "name": "Second",
+                        "continue_policy": "all_completed",
+                        "delay_seconds": 86401,
+                        "action_definition_ids": [action_ids[1]],
+                    },
+                ],
+                created_by="user-1",
+            )
+        connection = sqlite3.connect(self.store.path)
+        try:
+            migration = connection.execute(
+                "SELECT description FROM automation_schema_migrations WHERE version = 6"
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual(migration[0], "Add durable delayed-stage pipeline progress")
 
     def test_pipeline_migration_is_recorded(self) -> None:
         connection = sqlite3.connect(self.store.path)
@@ -952,6 +1196,75 @@ class AutomationStoreTests(unittest.TestCase):
             self.assertEqual(len(restored["conditions"]), 2)
             self.assertEqual(destination_store.recent_checks(restored["id"]), [])
 
+    def test_backup_round_trip_preserves_stage_delays(self) -> None:
+        condition_id = self.store.save_condition_definition(
+            name="Backup delay condition",
+            type_id="ping.multi",
+            config={
+                "targets": "127.0.0.1",
+                "timeout": 1,
+                "failure_mode": "all",
+                "failure_count": 1,
+            },
+        )
+        action_ids = [
+            self.store.save_action_definition(
+                name=name,
+                type_id="syslog.send",
+                config={
+                    "destinations": destination,
+                    "protocol": "udp",
+                    "facility": 16,
+                    "severity": 6,
+                    "hostname": "twn-toolkit",
+                    "app_name": "twn-automation",
+                    "message": name,
+                    "timeout": 3,
+                },
+            )
+            for name, destination in (
+                ("Backup stage one", "192.0.2.10 | 514"),
+                ("Backup stage two", "192.0.2.11 | 514"),
+            )
+        ]
+        self.store.save(
+            name="Backup delayed pipeline",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_id=condition_id,
+            action_stages=[
+                {
+                    "id": "first",
+                    "name": "First",
+                    "continue_policy": "all_success",
+                    "action_definition_ids": [action_ids[0]],
+                },
+                {
+                    "id": "notify",
+                    "name": "Notify",
+                    "continue_policy": "all_completed",
+                    "delay_seconds": 300,
+                    "action_definition_ids": [action_ids[1]],
+                },
+            ],
+            created_by="user-1",
+        )
+
+        exported = AutomationBackupStore(self.store).all()
+        exported_automation = next(
+            item for item in exported if item["kind"] == "automation"
+        )
+        self.assertEqual(
+            exported_automation["action_stages"][1]["delay_seconds"], 300
+        )
+        with tempfile.TemporaryDirectory() as destination:
+            restored_store = AutomationStore(destination, "restored secret")
+            AutomationBackupStore(restored_store).replace_all(exported)
+            restored = restored_store.all()[0]
+        self.assertEqual(restored["action_stages"][1]["delay_seconds"], 300)
+
 
 class AutomationRouteTests(unittest.TestCase):
     def test_ssh_action_uses_target_matrix_and_exposes_commandlets(self) -> None:
@@ -1074,12 +1387,18 @@ class AutomationRouteTests(unittest.TestCase):
         self.assertEqual(update.status_code, 302)
         self.assertEqual(clear.status_code, 302)
         self.assertEqual(definition["type"], "webhook.send")
+        self.assertEqual(definition["config"]["max_attempts"], 1)
+        self.assertEqual(
+            definition["config"]["retry_statuses"],
+            "408,425,429,500-599",
+        )
         self.assertIn("extremely-secret", definition["config"]["headers"])
         self.assertEqual(preserved["config"]["headers"], definition["config"]["headers"])
         self.assertEqual(cleared["config"]["headers"], "")
         self.assertNotIn(b"extremely-secret", page.data)
         self.assertIn(b"Webhook POST", page.data)
         self.assertIn(b"2 endpoints", page.data)
+        self.assertIn(b"1 attempt", page.data)
         self.assertIn(b"headers saved", page.data)
 
     def test_admin_can_create_syslog_action(self) -> None:
@@ -1561,6 +1880,78 @@ class AutomationRouteTests(unittest.TestCase):
             self.assertEqual(cleared.status_code, 302)
             self.assertEqual(store.recent_runs(automation_id), [])
 
+    def test_manual_mode_can_continue_after_a_background_stage_delay(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            store = AutomationStore(
+                instance_path, load_or_create_secret_key(instance_path)
+            )
+            actions = [
+                store.save_action_definition(
+                    name=name,
+                    type_id="syslog.send",
+                    config={
+                        "destinations": "192.0.2.10 | 514",
+                        "protocol": "udp",
+                        "facility": 16,
+                        "severity": 6,
+                        "hostname": "twn-toolkit",
+                        "app_name": "twn-automation",
+                        "message": name,
+                        "timeout": 3,
+                    },
+                )
+                for name in ("Make change", "Notify later")
+            ]
+            automation_id = store.save(
+                name="Delayed manual workflow",
+                interval_seconds=30,
+                trigger_after=1,
+                recover_after=1,
+                cooldown_seconds=0,
+                condition_definition_id=store.ensure_manual_trigger_definition(),
+                action_stages=[
+                    {
+                        "id": "change",
+                        "name": "Make change",
+                        "continue_policy": "all_success",
+                        "action_definition_ids": [actions[0]],
+                    },
+                    {
+                        "id": "notify",
+                        "name": "Notify",
+                        "continue_policy": "all_completed",
+                        "delay_seconds": 300,
+                        "action_definition_ids": [actions[1]],
+                    },
+                ],
+                created_by="admin",
+            )
+
+            with patch(
+                "twn_toolkit.automation_types.actions.send_syslog",
+                return_value={"host": "192.0.2.10", "port": 514},
+            ) as sender:
+                response = client.post(
+                    f"/automations/{automation_id}/run-now",
+                    follow_redirects=True,
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b"waiting between stages", response.data)
+            self.assertEqual(sender.call_count, 1)
+            self.assertEqual(store.job_stats()["waiting_jobs"], 1)
+            self.assertEqual(store.recent_runs(automation_id), [])
+            audit_event = next(
+                event
+                for event in AuditStore(instance_path).recent(20)
+                if event["action"] == "automation.ran_manually"
+            )
+            self.assertEqual(audit_event["details"]["run status"], "waiting")
+            self.assertEqual(audit_event["details"]["run id"], "")
+
 
 class AutomationRegistryTests(unittest.TestCase):
     def test_ssh_action_renders_per_host_commands_for_large_matrices(self) -> None:
@@ -1963,6 +2354,99 @@ class AutomationRegistryTests(unittest.TestCase):
         self.assertEqual(result.output["endpoints"][0]["status"], "success")
         self.assertEqual(result.output["endpoints"][1]["http_status"], 500)
         self.assertNotIn("secret", json.dumps(result.output))
+
+    def test_webhook_retries_transient_statuses_and_records_attempts(self) -> None:
+        action = AUTOMATION_REGISTRY.actions["webhook.send"]
+        trigger = ConditionResult(
+            True,
+            "met",
+            "WAN unavailable",
+            {"execution": {"job_id": "job-retry"}},
+        )
+        failed = {
+            "status": 503,
+            "reason": "Unavailable",
+            "elapsed_ms": 10.0,
+            "resolved_addresses": ["192.0.2.10"],
+            "body": "retry",
+            "truncated": False,
+            "redirect": "",
+        }
+        delivered = {
+            **failed,
+            "status": 204,
+            "reason": "No Content",
+            "body": "",
+        }
+        with (
+            patch(
+                "twn_toolkit.automation_types.actions.send_api_request",
+                side_effect=[failed, delivered],
+            ) as sender,
+            patch("twn_toolkit.automation_types.actions.time.sleep") as sleeper,
+        ):
+            result = action.execute(
+                {
+                    "endpoints": "Discord = https://discord.example.com/webhook",
+                    "method": "POST",
+                    "headers": "",
+                    "body_format": "json",
+                    "body": '{"summary":"{{trigger.summary}}"}',
+                    "timeout": 5,
+                    "verify_tls": True,
+                    "expected_statuses": "200-299",
+                    "max_attempts": 3,
+                    "retry_delay": 2,
+                    "retry_statuses": "429,500-599",
+                },
+                trigger,
+            )
+
+        self.assertEqual(sender.call_count, 2)
+        sleeper.assert_called_once_with(2.0)
+        self.assertEqual(result.status, "success")
+        endpoint = result.output["endpoints"][0]
+        self.assertEqual(endpoint["attempt_count"], 2)
+        self.assertEqual(
+            [attempt.get("http_status") for attempt in endpoint["attempts"]],
+            [503, 204],
+        )
+
+    def test_webhook_does_not_retry_nontransient_failure(self) -> None:
+        action = AUTOMATION_REGISTRY.actions["webhook.send"]
+        response = {
+            "status": 400,
+            "reason": "Bad Request",
+            "elapsed_ms": 4.0,
+            "resolved_addresses": ["192.0.2.10"],
+            "body": "invalid payload",
+            "truncated": False,
+            "redirect": "",
+        }
+        with patch(
+            "twn_toolkit.automation_types.actions.send_api_request",
+            return_value=response,
+        ) as sender:
+            result = action.execute(
+                {
+                    "endpoints": "https://hooks.example.com/events",
+                    "method": "POST",
+                    "headers": "",
+                    "body_format": "json",
+                    "body": "{}",
+                    "timeout": 5,
+                    "verify_tls": True,
+                    "expected_statuses": "200-299",
+                    "max_attempts": 5,
+                    "retry_delay": 0,
+                    "retry_statuses": "429,500-599",
+                },
+                ConditionResult(True, "met", "triggered", {}),
+            )
+
+        self.assertEqual(sender.call_count, 1)
+        self.assertEqual(result.status, "error")
+        self.assertEqual(result.output["endpoints"][0]["attempt_count"], 1)
 
     def test_syslog_action_substitutes_trigger_and_reports_partial_delivery(self) -> None:
         action = AUTOMATION_REGISTRY.actions["syslog.send"]

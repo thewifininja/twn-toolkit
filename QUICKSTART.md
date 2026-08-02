@@ -245,7 +245,9 @@ Open **Automation → Automations** and expand **New automation**:
 5. For a monitored condition, set **Trigger after**, **Recover after**, and
    **Cooldown**.
 6. Add stages when later actions should wait for earlier ones. Actions in one
-   stage run in parallel; stages run sequentially.
+   stage run in parallel; stages run sequentially. A later stage can wait from
+   zero seconds through 24 hours before it starts; the saved countdown continues
+   in the background and survives a toolkit restart.
 7. Save the automation.
 
 New condition or schedule automations remain paused until you select **Arm**.
