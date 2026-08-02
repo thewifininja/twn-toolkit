@@ -1,6 +1,42 @@
-APP_VERSION = "0.16.3"
+APP_VERSION = "0.16.4"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.16.4",
+        "date": "2026-08-02",
+        "title": "Automation fallback routing and runtime diagnostics",
+        "summary": (
+            "Adds failure-aware automation stage routes for backup actions and "
+            "makes the active service mode, command integrations, and platform "
+            "permissions visible in System Diagnostics."
+        ),
+        "groups": (
+            {
+                "title": "Failure-aware continuation",
+                "items": (
+                    "Adds Continue when one or more actions fail and Continue only when every action fails stage policies for deliberate fallback paths such as trying Discord first and sending email if Discord errors.",
+                    "Treats partial action results separately from errors: success-or-partial accepts partial work, full-success rejects it, and failure routes activate only for action errors.",
+                    "Includes uncaught action execution exceptions in failure routing while retaining the existing bounded, non-secret actions.failed context for later Webhook/API actions.",
+                ),
+            },
+            {
+                "title": "Actionable runtime diagnostics",
+                "items": (
+                    "Identifies manual versus boot-managed operation and reports the configured service account, installed definition, service-manager state, and live launcher/process health separately.",
+                    "Inventories the external commands used by supported workflows without treating a found executable as proof of permission, and removes the stale OpenSSL dependency check.",
+                    "Reports native macOS BPF readiness for the effective toolkit account and decodes Linux CAP_NET_RAW, CAP_NET_ADMIN, and CAP_NET_BIND_SERVICE grants as platform capabilities rather than dependencies.",
+                ),
+            },
+            {
+                "title": "Compatible operational update",
+                "items": (
+                    "Preserves the behavior and stored values of every existing automation stage; the two new policies are opt-in selections in the existing stage schema.",
+                    "Introduces no Python dependency, database migration, profile-format, server-setting, capability, BPF-policy, permission-policy, service-lifecycle, or command-line incompatibility.",
+                    "Updates README, Quick Start, built-in Help, automation and autostart documentation, continuity guidance, and regression coverage for the new routing and diagnostics behavior.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.3",
         "date": "2026-08-02",
