@@ -318,18 +318,7 @@ def _validate_syslog(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _render_syslog_message(template: str, trigger: ConditionResult) -> str:
-    execution = trigger.evidence.get("execution", {})
-    replacements = {
-        "{{trigger.status}}": trigger.status,
-        "{{trigger.summary}}": trigger.summary,
-        "{{trigger.met}}": "true" if trigger.met else "false",
-        "{{trigger.job_id}}": execution.get("job_id", ""),
-        "{{timestamp}}": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
-    }
-    rendered = template
-    for token, value in replacements.items():
-        rendered = rendered.replace(token, str(value))
-    return rendered
+    return _render_text_template(template, trigger)
 
 
 def _execute_syslog(config: dict[str, Any], trigger: ConditionResult) -> ActionResult:
@@ -471,6 +460,19 @@ def _validate_webhook(config: dict[str, Any]) -> dict[str, Any]:
 def _webhook_values(trigger: ConditionResult) -> dict[str, Any]:
     actions = trigger.evidence.get("actions", {})
     execution = trigger.evidence.get("execution", {})
+    toolkit = trigger.evidence.get("toolkit", {})
+    startup = trigger.evidence.get("startup", {})
+    occurred_at = startup.get("occurred_at")
+    try:
+        occurred_display = (
+            datetime.fromtimestamp(float(occurred_at), timezone.utc)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+            if occurred_at
+            else ""
+        )
+    except (TypeError, ValueError, OSError):
+        occurred_display = ""
     return {
         "{{trigger.status}}": trigger.status,
         "{{trigger.summary}}": trigger.summary,
@@ -481,6 +483,17 @@ def _webhook_values(trigger: ConditionResult) -> dict[str, Any]:
         "{{actions.successful}}": actions.get("successful", []),
         "{{actions.partial}}": actions.get("partial", []),
         "{{actions.failed}}": actions.get("failed", []),
+        "{{toolkit.instance_name}}": toolkit.get("instance_name", ""),
+        "{{toolkit.hostname}}": toolkit.get("hostname", ""),
+        "{{toolkit.version}}": toolkit.get("version", ""),
+        "{{toolkit.primary_ipv4}}": toolkit.get("primary_ipv4", ""),
+        "{{toolkit.ipv4_addresses}}": toolkit.get("ipv4_addresses", []),
+        "{{toolkit.ipv6_addresses}}": toolkit.get("ipv6_addresses", []),
+        "{{toolkit.primary_url}}": toolkit.get("primary_url", ""),
+        "{{toolkit.urls}}": toolkit.get("urls", []),
+        "{{startup.reason}}": startup.get("reason", ""),
+        "{{startup.mode}}": startup.get("mode", ""),
+        "{{startup.occurred_at}}": occurred_display,
         "{{timestamp}}": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
     }
 

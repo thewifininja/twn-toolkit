@@ -2,8 +2,8 @@
 
 Reusable schedules describe calendar timing, reusable conditions describe
 health observations, and reusable actions describe trusted responses.
-Automations choose one plain-language run mode—condition, schedule, or
-manual—and connect it to an action pipeline with state policy. A single
+Automations choose one plain-language run mode—condition, schedule, startup,
+or manual—and connect it to an action pipeline with state policy. A single
 definition can be referenced by multiple automations. They
 continue running without an open browser because
 `./twn start` launches a single scheduler process beside the Gunicorn web
@@ -13,10 +13,10 @@ The web interface keeps these responsibilities on separate pages under the
 **Automation** sidebar group: **Schedules** for reusable calendars,
 **Conditions** for health observations and tests, **Actions** for responses,
 and **Automations** for run mode, policy, pipelines, scheduler state, checks,
-and retained runs. Manual mode is selected directly on an automation and does
-not require a reusable definition. Existing manual and calendar source IDs
-remain valid; the storage compatibility layer does not rewrite saved
-automations.
+and retained runs. Manual and startup modes are selected directly on an
+automation and do not require a user-managed reusable definition. Existing
+manual and calendar source IDs remain valid; the storage compatibility layer
+does not rewrite saved automations.
 
 Condition-mode automations can select up to 10 reusable conditions and combine
 them with one explicit operator:
@@ -58,6 +58,44 @@ is leased in SQLite so scheduler restarts can retry it without two scheduler
 processes firing it simultaneously. Stale recurring schedules advance directly
 to the next future occurrence rather than replaying a backlog.
 
+## Startup events and system identity
+
+Startup mode provides two event scopes:
+
+- **Once per host boot** is recommended for appliances and Raspberry Pis. It
+  fires once after a new operating-system boot and ignores ordinary toolkit,
+  scheduler, and worker restarts.
+- **Every toolkit start** fires after each complete stopped-to-running toolkit
+  transition. Restarting only the scheduler does not create a toolkit-start
+  event.
+
+Arming stores the current event generation as a baseline; it does not run the
+automation immediately. The next generation and its durable execution job are
+committed in one SQLite transaction. This prevents two schedulers or a crash
+and restart from sending the same startup event twice. **Test now** queues a
+normal startup-shaped test job without advancing that baseline.
+
+At event time, the scheduler waits up to 120 seconds for a usable non-loopback
+IPv4 or IPv6 address. It dispatches as soon as an address is available and
+still dispatches after the bound if networking remains unavailable. This keeps
+a DHCP failure from silently suppressing the notification it was meant to
+provide.
+
+Startup evidence contains bounded, non-secret toolkit identity. Webhook, Email,
+and Syslog templates can use:
+
+- `{{toolkit.instance_name}}`, `{{toolkit.hostname}}`, and
+  `{{toolkit.version}}`;
+- `{{toolkit.primary_ipv4}}`, `{{toolkit.ipv4_addresses}}`, and
+  `{{toolkit.ipv6_addresses}}`;
+- `{{toolkit.primary_url}}` and `{{toolkit.urls}}`; and
+- `{{startup.reason}}`, `{{startup.mode}}`, and
+  `{{startup.occurred_at}}`.
+
+Exact JSON tokens for address and URL lists remain arrays. Text and embedded
+JSON substitutions render those lists as compact JSON text. Internal boot and
+toolkit generation identifiers are deliberately omitted from action evidence.
+
 ## First supported vertical slice
 
 - Condition: multi-host Ping health with reachability plus optional packet
@@ -87,6 +125,8 @@ to the next future occurrence rather than replaying a backlog.
   policy.
 - Run mode: Manual for explicitly started, on-demand automations. Manual
   automations are never claimed by the scheduler.
+- Run mode: Startup for once-per-host-boot or every-complete-toolkit-start
+  execution with durable deduplication and bounded network readiness.
 - Check intervals: 1 second through 24 hours. The scheduler polls due work four
   times per second and anchors each next deadline to the prior cadence rather
   than completion time. A condition round never overlaps another round for the
@@ -207,16 +247,18 @@ identity, and small structured target summaries. It deliberately excludes raw
 SSH command output, secrets, and unbounded payloads. Full captures remain in
 retained runs and ZIP downloads.
 
-Pipeline structure participates in encrypted profile backup/restore. Database
-schema changes are recorded in `automation_schema_migrations`; migration 1
+Pipeline and startup-source structure participate in encrypted profile
+backup/restore. Database schema changes are recorded in
+`automation_schema_migrations`; migration 1
 adds ordered stages and converts existing action lists into a single default
 parallel stage transactionally. Migration 2 converts the first SNMP condition
 format into persisted per-host AND rules and pauses dependent automations for
 review. Migration 3 adds the global retention policy and daily-pruning ledger.
 Migration 4 adds the durable action-execution queue. Migration 5 adds ALL/ANY
 condition groups. Migration 6 adds encrypted in-progress pipeline state for
-durable delayed stages. Toolkit migration 2 snapshots existing SQLite databases
-before preparing that automation-job column.
+durable delayed stages. Migration 7 adds per-automation startup-event
+deduplication state. Toolkit migrations 2 and 3 snapshot existing SQLite
+databases before preparing those schema changes.
 
 ## Durable execution
 
@@ -264,9 +306,13 @@ An armed automation moves through these states:
 An evaluation error produces the separate `error` state; it does not count as
 a met network condition.
 
-Automations using Manual mode do not use this scheduled state cycle. Their
-expanded card exposes `Run now`, and each explicit execution is
+Automations using Manual or Startup mode do not use this monitoring state cycle.
+The Manual card exposes `Run now`, and each explicit execution is
 stored as a normal downloadable action run.
+
+Startup cards expose `Arm`/`Pause` plus `Test now`. Arming waits for the next
+configured event; testing executes the action immediately with current system
+identity and does not consume the next real startup.
 
 ## Security and backups
 
@@ -308,9 +354,9 @@ scheduler log from `instance/twn-automation.log`.
 The current scheduler uses one process with atomic due-check and execution-job
 claiming in SQLite. Its heartbeat separates active condition checks from active
 action jobs. Web workers only configure and display automations; they do not
-run monitoring loops. Manual runs are first written to the same durable
-queue, then claimed and executed synchronously so the browser still receives
-the completed run.
+run monitoring loops. Manual and startup-test runs are first written to the
+same durable queue, then claimed and executed synchronously so the browser
+still receives the completed run.
 
 ## Planned extensions
 

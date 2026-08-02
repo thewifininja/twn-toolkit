@@ -78,7 +78,13 @@ class AutomationRegistry:
     ) -> ConditionResult:
         return evaluation_result(
             self.triggers[type_id].evaluate(config),
-            kind="schedule" if type_id == "schedule.calendar" else "manual",
+            kind=(
+                "schedule"
+                if type_id == "schedule.calendar"
+                else "startup"
+                if type_id == "system.startup"
+                else "manual"
+            ),
             type_id=type_id,
         )
 

@@ -85,6 +85,7 @@ class PriorReleaseUpgradeTests(unittest.TestCase):
                     "automation-4",
                     "automation-5",
                     "automation-6",
+                    "automation-7",
                 ],
             )
             self.assertEqual(
@@ -94,7 +95,7 @@ class PriorReleaseUpgradeTests(unittest.TestCase):
                         (instance / "schema_migrations.json").read_text()
                     )
                 ],
-                [1, 2],
+                [1, 2, 3],
             )
             migration_backups = list(
                 (instance / "migration_backups").glob(
@@ -102,6 +103,12 @@ class PriorReleaseUpgradeTests(unittest.TestCase):
                 )
             )
             self.assertEqual(len(migration_backups), 1)
+            startup_migration_backups = list(
+                (instance / "migration_backups").glob(
+                    "v3-*/automations.sqlite3"
+                )
+            )
+            self.assertEqual(len(startup_migration_backups), 1)
 
             for database in instance.glob("*.sqlite3"):
                 connection = sqlite3.connect(database)

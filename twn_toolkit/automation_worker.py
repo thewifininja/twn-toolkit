@@ -20,6 +20,7 @@ from .pidfiles import (
     remove_own_pid_file,
     write_pid_file,
 )
+from .system_identity import collect_startup_state, collect_system_identity
 
 
 def main() -> None:
@@ -61,6 +62,7 @@ def main() -> None:
     running = True
     next_retention_check = 0.0
     next_lease_renewal = 0.0
+    next_startup_check = 0.0
 
     def stop(_signum: int, _frame: object) -> None:
         nonlocal running
@@ -81,6 +83,20 @@ def main() -> None:
                 except Exception as exc:
                     print(f"Live tool cleanup failed: {exc}", file=sys.stderr)
                 next_retention_check = now + 3600
+            if now >= next_startup_check:
+                try:
+                    startup = collect_startup_state(instance_path)
+                    if store.has_pending_startup_events(startup):
+                        store.enqueue_startup_events(
+                            collect_system_identity(instance_path),
+                            now=now,
+                        )
+                except Exception as exc:
+                    print(
+                        f"Startup automation dispatch failed: {exc}",
+                        file=sys.stderr,
+                    )
+                next_startup_check = now + 1
             for future in list(futures):
                 if future.done():
                     work = futures.pop(future)
