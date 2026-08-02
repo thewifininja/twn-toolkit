@@ -95,6 +95,11 @@ def run_toolkit_migrations(instance_path: str) -> list[int]:
             "Prepare durable automation delayed-stage progress",
             _add_automation_job_progress,
         ),
+        (
+            3,
+            "Prepare durable automation startup-event state",
+            _add_automation_startup_event_state,
+        ),
     ])
 
 
@@ -128,6 +133,48 @@ def _add_automation_job_progress(instance: Path) -> None:
                 VALUES (6, ?, ?)
                 """,
                 (time.time(), "Add durable delayed-stage pipeline progress"),
+            )
+        connection.commit()
+    finally:
+        connection.close()
+        os.chmod(database, 0o600)
+
+
+def _add_automation_startup_event_state(instance: Path) -> None:
+    database = instance / "automations.sqlite3"
+    if not database.exists():
+        return
+    connection = sqlite3.connect(database, timeout=30)
+    try:
+        automations_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'automations'"
+        ).fetchone()
+        if not automations_table:
+            return
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS automation_event_state (
+                automation_id TEXT PRIMARY KEY
+                    REFERENCES automations(id) ON DELETE CASCADE,
+                source_type TEXT NOT NULL,
+                event_key TEXT NOT NULL,
+                event_occurred_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )
+            """
+        )
+        migration_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'automation_schema_migrations'"
+        ).fetchone()
+        if migration_table:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO automation_schema_migrations
+                    (version, applied_at, description)
+                VALUES (7, ?, ?)
+                """,
+                (time.time(), "Add durable startup-event deduplication state"),
             )
         connection.commit()
     finally:

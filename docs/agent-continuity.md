@@ -517,7 +517,7 @@ make state, risk, and the next action obvious.
 ## Automation architecture
 
 - Reusable schedules, conditions, and actions are separate first-class records.
-  An automation chooses a manual, condition, or schedule run mode; condition
+  An automation chooses a manual, startup, condition, or schedule run mode; condition
   mode combines up to ten definitions with explicit ALL/ANY semantics; every
   mode connects to one or more staged actions and state policy. Conditions
   observe, schedules provide calendar timing, the automation state machine
@@ -532,12 +532,13 @@ make state, risk, and the next action obvious.
   fire again.
 - Registered condition types are `ping.multi`, `dns.lookup`,
   `dns.performance`, `tcp.reachability`, `snmp.value`, and
-  `certificate.health`; legacy `manual.trigger` and `schedule.calendar` IDs
-  remain compatible through the event-source layer. Registered action types
+  `certificate.health`; `manual.trigger`, `schedule.calendar`, and
+  `system.startup` use the event-source layer. Registered action types
   are `ssh.collect`, `sftp.fetch`, `syslog.send`, `webhook.send`, `email.send`,
-  and `packet.capture`. Manual automations are excluded from due-check claims
-  and expose Run now. Reusable Calendar schedules are handled by the scheduler
-  adapter because occurrence consumption differs from monitoring state. Future
+  and `packet.capture`. Manual and Startup automations are excluded from
+  due-check claims; Manual exposes Run now, while Startup exposes Arm/Pause and
+  a baseline-preserving Test now. Reusable Calendar schedules are handled by
+  the scheduler adapter because occurrence consumption differs from monitoring state. Future
   types should register through `twn_toolkit/automation_types/` without adding
   type-specific branches to routes, persistence, or the scheduler.
 - `automation_registry.py` is now a small compatibility/dispatch facade. The
@@ -561,6 +562,18 @@ make state, risk, and the next action obvious.
   abandoned claim becomes recoverable after lease expiry. After consumption,
   recurring schedules advance directly to a future occurrence rather than
   replaying a downtime backlog.
+- `system.startup` records either the host boot generation or the complete
+  toolkit-start generation in `automation_event_state`. Arming baselines the
+  current generation. A new event updates that row and creates its durable job
+  in one transaction, so scheduler restarts cannot duplicate it. The launcher
+  writes `instance/twn-toolkit-start.json` only after a stopped web service has
+  become live and before starting the scheduler; never rewrite it during a
+  scheduler-only restart or a redundant `./twn start`. Startup dispatch waits
+  up to 120 seconds for a usable non-loopback address, then runs even without
+  one. Internal generation IDs must not be exposed in notification evidence.
+- `system_identity.py` owns bounded instance name, hostname, version, address,
+  and access-URL discovery. Webhook, Email, and Syslog share its explicit
+  `toolkit.*` and `startup.*` template variables through one replacement map.
 - `dns.lookup` reuses the regular DNS tool's concurrent query engine. Each
   hostname/resolver pair is one check. An optional global expected-answer set
   can require any or all values; comparisons ignore case and a final DNS dot.
@@ -627,11 +640,11 @@ make state, risk, and the next action obvious.
   adds `action_stages`; version 2 persists first-generation SNMP definitions as
   per-host AND rules and pauses dependents; version 3 adds retention; version 4
   adds durable action jobs; version 5 adds ALL/ANY condition groups; version 6
-  adds encrypted delayed-stage progress. Use this runner—not new ad-hoc column
-  checks—for future material schema changes. Toolkit migration 2 performs the
-  pre-change database snapshot, prepares the corresponding job column, and
-  records automation version 6 in the same transaction. The internal runner
-  remains the fresh-database and compatibility fallback.
+  adds encrypted delayed-stage progress; version 7 adds durable startup-event
+  deduplication state. Use this runner—not new ad-hoc column checks—for future
+  material schema changes. Toolkit migrations 2 and 3 perform pre-change
+  database snapshots and prepare the corresponding automation schema. The
+  internal runner remains the fresh-database and compatibility fallback.
 - Editing a shared definition pauses all dependent automations. Deletion is
   blocked while references remain. Existing embedded definitions are migrated
   automatically into reusable records.

@@ -23,6 +23,7 @@ from .automation_registry import (
 )
 from .automation_types.models import evaluation_result
 from .schedule_tools import schedule_occurrence, schedule_should_fire
+from .system_identity import collect_system_identity, startup_event
 
 
 AUTOMATION_MAX_STAGE_DELAY_SECONDS = 86400
@@ -111,7 +112,9 @@ class AutomationStore:
             if definition["type"] in AUTOMATION_REGISTRY.triggers
         ]
         if trigger_sources and len(selected_conditions) != 1:
-            raise ValueError("Schedules and manual mode cannot be combined with conditions.")
+            raise ValueError(
+                "Schedules, startup events, and manual mode cannot be combined with conditions."
+            )
         condition_definition_id = condition_definition_ids[0]
         if not action_definition_ids and not action_stages:
             if not actions:
@@ -194,6 +197,10 @@ class AutomationStore:
                         now,
                         automation_id,
                     ),
+                )
+                connection.execute(
+                    "DELETE FROM automation_event_state WHERE automation_id = ?",
+                    (automation_id,),
                 )
                 return automation_id
 
@@ -405,6 +412,52 @@ class AutomationStore:
             )
         return definition_id
 
+    def ensure_startup_trigger_definition(
+        self,
+        config: dict[str, Any],
+    ) -> str:
+        normalized = AUTOMATION_REGISTRY.validate_trigger("system.startup", config)
+        config_json = json.dumps(normalized, separators=(",", ":"), sort_keys=True)
+        now = time.time()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, config_json FROM automation_conditions
+                WHERE type = 'system.startup'
+                ORDER BY created_at, id
+                """
+            ).fetchall()
+            for row in rows:
+                existing = json.dumps(
+                    AUTOMATION_REGISTRY.validate_trigger(
+                        "system.startup", json.loads(row["config_json"])
+                    ),
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                if existing == config_json:
+                    return str(row["id"])
+            definition_id = secrets.token_hex(12)
+            label = (
+                "Host startup"
+                if normalized["mode"] == "host_boot"
+                else "Toolkit startup"
+            )
+            name = self._unique_definition_name(
+                connection,
+                "automation_conditions",
+                label,
+            )
+            connection.execute(
+                """
+                INSERT INTO automation_conditions
+                    (id, name, type, config_json, created_at, updated_at)
+                VALUES (?, ?, 'system.startup', ?, ?, ?)
+                """,
+                (definition_id, name, config_json, now, now),
+            )
+        return definition_id
+
     def source_definitions(self) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -534,6 +587,34 @@ class AutomationStore:
                 next_check = occurrence["timestamp"] if occurrence else None
                 state = "scheduled" if occurrence else "completed"
                 effective_enabled = occurrence is not None
+            elif enabled and condition_type == "system.startup":
+                config = AUTOMATION_REGISTRY.validate_trigger(
+                    "system.startup",
+                    json.loads(row["definition_config"] or row["condition_config"]),
+                )
+                identity = collect_system_identity(self.instance_path)
+                event = startup_event(identity, str(config["mode"]))
+                connection.execute(
+                    """
+                    INSERT INTO automation_event_state (
+                        automation_id, source_type, event_key,
+                        event_occurred_at, updated_at
+                    ) VALUES (?, 'system.startup', ?, ?, ?)
+                    ON CONFLICT(automation_id) DO UPDATE SET
+                        source_type = excluded.source_type,
+                        event_key = excluded.event_key,
+                        event_occurred_at = excluded.event_occurred_at,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        automation_id,
+                        str(event["key"]),
+                        float(event["occurred_at"]),
+                        now,
+                    ),
+                )
+                next_check = None
+                state = "armed"
             cursor = connection.execute(
                 """
                 UPDATE automations
@@ -576,7 +657,8 @@ class AutomationStore:
                 LEFT JOIN automation_conditions
                     ON automation_conditions.id = automations.condition_definition_id
                 WHERE enabled = 1
-                    AND COALESCE(automation_conditions.type, automations.condition_type) != 'manual.trigger'
+                    AND COALESCE(automation_conditions.type, automations.condition_type)
+                        NOT IN ('manual.trigger', 'system.startup')
                     {exclusion_sql}
                     AND (
                         (COALESCE(automation_conditions.type, automations.condition_type) = 'schedule.calendar'
@@ -712,6 +794,183 @@ class AutomationStore:
         if updated is None:
             raise ValueError("Automation not found.")
         return updated, result, should_fire
+
+    def enqueue_startup_events(
+        self,
+        identity: dict[str, Any],
+        *,
+        now: float | None = None,
+    ) -> list[str]:
+        """Atomically enqueue each newly observed startup event exactly once."""
+        current_time = time.time() if now is None else float(now)
+        queued: list[str] = []
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                """
+                SELECT automations.*,
+                    automation_conditions.config_json AS definition_config
+                FROM automations JOIN automation_conditions
+                    ON automation_conditions.id = automations.condition_definition_id
+                WHERE automations.enabled = 1
+                    AND automation_conditions.type = 'system.startup'
+                ORDER BY automations.name COLLATE NOCASE
+                """
+            ).fetchall()
+            toolkit = dict(identity.get("toolkit", {}))
+            network_ready = bool(
+                toolkit.get("ipv4_addresses") or toolkit.get("ipv6_addresses")
+            )
+            for row in rows:
+                config = AUTOMATION_REGISTRY.validate_trigger(
+                    "system.startup", json.loads(row["definition_config"])
+                )
+                event = startup_event(identity, str(config["mode"]))
+                event_key = str(event["key"])
+                if not event_key:
+                    continue
+                previous = connection.execute(
+                    """
+                    SELECT source_type, event_key
+                    FROM automation_event_state
+                    WHERE automation_id = ?
+                    """,
+                    (row["id"],),
+                ).fetchone()
+                if previous is None or previous["source_type"] != "system.startup":
+                    connection.execute(
+                        """
+                        INSERT INTO automation_event_state (
+                            automation_id, source_type, event_key,
+                            event_occurred_at, updated_at
+                        ) VALUES (?, 'system.startup', ?, ?, ?)
+                        ON CONFLICT(automation_id) DO UPDATE SET
+                            source_type = excluded.source_type,
+                            event_key = excluded.event_key,
+                            event_occurred_at = excluded.event_occurred_at,
+                            updated_at = excluded.updated_at
+                        """,
+                        (
+                            row["id"],
+                            event_key,
+                            float(event["occurred_at"]),
+                            current_time,
+                        ),
+                    )
+                    continue
+                if str(previous["event_key"]) == event_key:
+                    continue
+                event_time = float(event["occurred_at"] or current_time)
+                wait_seconds = int(config["network_wait_seconds"])
+                if not network_ready and current_time < event_time + wait_seconds:
+                    continue
+                waited_seconds = max(0, int(current_time - event_time))
+                primary_address = str(
+                    toolkit.get("primary_ipv4")
+                    or next(iter(toolkit.get("ipv6_addresses") or []), "")
+                )
+                summary = str(event["reason"])
+                if primary_address:
+                    summary += f"; toolkit is available at {primary_address}."
+                else:
+                    summary += (
+                        "; no usable network address was available before the wait expired."
+                    )
+                result = evaluation_result(
+                    ConditionResult(
+                        met=True,
+                        status="started",
+                        summary=summary,
+                        evidence={
+                            "trigger": "startup",
+                            "startup": {
+                                "mode": config["mode"],
+                                "reason": event["reason"],
+                                "occurred_at": event_time,
+                                "network_ready": network_ready,
+                                "waited_seconds": waited_seconds,
+                            },
+                            "toolkit": toolkit,
+                        },
+                    ),
+                    kind="startup",
+                    type_id="system.startup",
+                    observed_at=current_time,
+                )
+                job_id = self._enqueue_execution_job(
+                    connection,
+                    row,
+                    result,
+                    scheduled_at=event_time,
+                    queued_at=current_time,
+                )
+                queued.append(job_id)
+                connection.execute(
+                    """
+                    UPDATE automation_event_state
+                    SET event_key = ?, event_occurred_at = ?, updated_at = ?
+                    WHERE automation_id = ?
+                    """,
+                    (event_key, event_time, current_time, row["id"]),
+                )
+                connection.execute(
+                    """
+                    UPDATE automations
+                    SET state = 'armed', last_check_at = ?, last_triggered_at = ?,
+                        last_summary = ?, last_error = NULL, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        current_time,
+                        current_time,
+                        summary,
+                        current_time,
+                        row["id"],
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO automation_checks
+                        (automation_id, checked_at, met, status, summary, evidence_json)
+                    VALUES (?, ?, 1, 'started', ?, ?)
+                    """,
+                    (
+                        row["id"],
+                        current_time,
+                        summary,
+                        json.dumps(result.evidence, separators=(",", ":")),
+                    ),
+                )
+        return queued
+
+    def has_pending_startup_events(self, startup: dict[str, Any]) -> bool:
+        """Check event generations without performing full interface discovery."""
+        identity = {"startup": startup}
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT automations.id, automation_conditions.config_json,
+                    automation_event_state.source_type,
+                    automation_event_state.event_key
+                FROM automations JOIN automation_conditions
+                    ON automation_conditions.id = automations.condition_definition_id
+                LEFT JOIN automation_event_state
+                    ON automation_event_state.automation_id = automations.id
+                WHERE automations.enabled = 1
+                    AND automation_conditions.type = 'system.startup'
+                """
+            ).fetchall()
+        for row in rows:
+            config = AUTOMATION_REGISTRY.validate_trigger(
+                "system.startup", json.loads(row["config_json"])
+            )
+            event_key = str(startup_event(identity, str(config["mode"]))["key"])
+            if event_key and (
+                row["source_type"] != "system.startup"
+                or str(row["event_key"] or "") != event_key
+            ):
+                return True
+        return False
 
     def record_condition(
         self,
@@ -887,6 +1146,69 @@ class AutomationStore:
                 connection,
                 row,
                 trigger,
+                scheduled_at=now,
+                queued_at=now,
+            )
+
+    def enqueue_startup_test_job(
+        self,
+        automation_id: str,
+        identity: dict[str, Any],
+        *,
+        started_by: str,
+    ) -> str:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT automations.*,
+                    automation_conditions.config_json AS definition_config,
+                    automation_conditions.type AS definition_type
+                FROM automations JOIN automation_conditions
+                    ON automation_conditions.id = automations.condition_definition_id
+                WHERE automations.id = ?
+                """,
+                (automation_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("Automation not found.")
+            if row["definition_type"] != "system.startup":
+                raise ValueError("Only startup automations can queue a startup test.")
+            config = AUTOMATION_REGISTRY.validate_trigger(
+                "system.startup", json.loads(row["definition_config"])
+            )
+            toolkit = dict(identity.get("toolkit", {}))
+            result = evaluation_result(
+                ConditionResult(
+                    met=True,
+                    status="test",
+                    summary="Startup notification test requested by a toolkit user.",
+                    evidence={
+                        "trigger": "startup",
+                        "startup": {
+                            "mode": config["mode"],
+                            "reason": "Startup notification test",
+                            "occurred_at": now,
+                            "network_ready": bool(
+                                toolkit.get("ipv4_addresses")
+                                or toolkit.get("ipv6_addresses")
+                            ),
+                            "waited_seconds": 0,
+                            "test": True,
+                            "started_by": started_by,
+                        },
+                        "toolkit": toolkit,
+                    },
+                ),
+                kind="startup",
+                type_id="system.startup",
+                observed_at=now,
+            )
+            return self._enqueue_execution_job(
+                connection,
+                row,
+                result,
                 scheduled_at=now,
                 queued_at=now,
             )
@@ -1176,6 +1498,8 @@ class AutomationStore:
                     "kind": (
                         "schedule"
                         if condition_type == "schedule.calendar"
+                        else "startup"
+                        if condition_type == "system.startup"
                         else "manual"
                         if condition_type == "manual.trigger"
                         else "condition"
@@ -1945,6 +2269,14 @@ class AutomationStore:
                 ON automation_jobs(status, next_attempt_at, lease_until, queued_at);
             CREATE INDEX IF NOT EXISTS automation_jobs_automation
                 ON automation_jobs(automation_id, queued_at DESC);
+            CREATE TABLE IF NOT EXISTS automation_event_state (
+                automation_id TEXT PRIMARY KEY
+                    REFERENCES automations(id) ON DELETE CASCADE,
+                source_type TEXT NOT NULL,
+                event_key TEXT NOT NULL,
+                event_occurred_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS automation_schema_migrations (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
@@ -2122,6 +2454,27 @@ class AutomationStore:
                 """,
                 (time.time(), "Add durable delayed-stage pipeline progress"),
             )
+        if 7 not in applied:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS automation_event_state (
+                    automation_id TEXT PRIMARY KEY
+                        REFERENCES automations(id) ON DELETE CASCADE,
+                    source_type TEXT NOT NULL,
+                    event_key TEXT NOT NULL,
+                    event_occurred_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO automation_schema_migrations
+                    (version, applied_at, description)
+                VALUES (7, ?, ?)
+                """,
+                (time.time(), "Add durable startup-event deduplication state"),
+            )
 
     def _migrate_reusable_definitions(self, connection: sqlite3.Connection) -> None:
         rows = connection.execute(
@@ -2221,6 +2574,11 @@ class AutomationEngine:
     ) -> ConditionResult:
         conditions = automation.get("conditions") or [automation["condition"]]
         if len(conditions) == 1:
+            if conditions[0]["type"] in self.registry.triggers:
+                return self.registry.evaluate_trigger(
+                    conditions[0]["type"],
+                    conditions[0]["config"],
+                )
             return self.registry.evaluate_condition(
                 conditions[0]["type"],
                 conditions[0]["config"],
@@ -2620,6 +2978,8 @@ class AutomationBackupStore:
                 "name": (
                     f"schedule::{item['name']}"
                     if item["type"] == "schedule.calendar"
+                    else f"startup::{item['name']}"
+                    if item["type"] == "system.startup"
                     else f"manual::{item['name']}"
                     if item["type"] == "manual.trigger"
                     else f"condition::{item['name']}"
@@ -2627,6 +2987,8 @@ class AutomationBackupStore:
                 "kind": (
                     "schedule"
                     if item["type"] == "schedule.calendar"
+                    else "startup"
+                    if item["type"] == "system.startup"
                     else "manual"
                     if item["type"] == "manual.trigger"
                     else "condition"
@@ -2683,7 +3045,7 @@ class AutomationBackupStore:
         automations: list[dict[str, Any]] = []
         for definition in definitions:
             kind = definition.get("kind")
-            if kind in {"condition", "trigger", "schedule", "manual"}:
+            if kind in {"condition", "trigger", "schedule", "manual", "startup"}:
                 name = str(definition.get("definition_name", ""))
                 type_id = str(definition.get("type", ""))
                 conditions[name] = (

@@ -56,6 +56,26 @@ class TwnScriptTests(unittest.TestCase):
         )
         self.assertIn('IPERF_LOG="$INSTANCE/twn-iperf3.log"', source)
 
+    def test_complete_start_records_generation_before_scheduler_starts(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+        start_function = re.search(
+            r"^start\(\) \{(?P<body>.*?)^\}",
+            source,
+            re.DOTALL | re.MULTILINE,
+        )
+        self.assertIsNotNone(start_function)
+        body = start_function.group("body")
+        marker = (
+            '"$PYTHON" -m twn_toolkit.system_identity mark-start '
+            '--instance "$INSTANCE"'
+        )
+        self.assertEqual(body.count(marker), 1)
+        success_path = body.index('if is_running; then', body.index('attempts=0'))
+        self.assertLess(body.index('printf "%s\\n" "$SCHEME"', success_path), body.index(marker))
+        self.assertLess(body.index(marker), body.index("start_automation", success_path))
+
     def test_transfer_services_start_and_stop_concurrently(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "twn").read_text(
             encoding="utf-8"

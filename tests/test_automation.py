@@ -1062,6 +1062,175 @@ class AutomationStoreTests(unittest.TestCase):
             "manual",
         )
 
+    @staticmethod
+    def _startup_identity(
+        *,
+        boot_id: str = "boot-a",
+        toolkit_start_id: str = "start-a",
+        occurred_at: float = 100.0,
+        addresses: bool = True,
+    ) -> dict:
+        return {
+            "startup": {
+                "boot_id": boot_id,
+                "boot_started_at": occurred_at,
+                "toolkit_start_id": toolkit_start_id,
+                "toolkit_started_at": occurred_at,
+            },
+            "toolkit": {
+                "instance_name": "branch-pi",
+                "hostname": "branch-pi.local",
+                "version": "0.16.0",
+                "primary_ipv4": "192.0.2.25" if addresses else "",
+                "ipv4_addresses": ["192.0.2.25"] if addresses else [],
+                "ipv6_addresses": [],
+                "addresses": (
+                    [{"address": "192.0.2.25", "family": "ipv4", "interface": "eth0"}]
+                    if addresses
+                    else []
+                ),
+                "primary_url": "https://192.0.2.25:5050" if addresses else "",
+                "urls": ["https://192.0.2.25:5050"] if addresses else [],
+            },
+        }
+
+    def _save_startup_automation(self, mode: str = "host_boot") -> str:
+        source_id = self.store.ensure_startup_trigger_definition(
+            {"mode": mode, "network_wait_seconds": 120}
+        )
+        action_id = self.store.save_action_definition(
+            name=f"Startup {mode} action",
+            type_id="test.action",
+            config={},
+        )
+        return self.store.save(
+            name=f"Startup {mode} workflow",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_id=source_id,
+            action_definition_ids=[action_id],
+            created_by="user-1",
+        )
+
+    def test_startup_event_is_armed_from_current_boot_and_queued_once(self) -> None:
+        automation_id = self._save_startup_automation()
+        baseline = self._startup_identity()
+        with patch("twn_toolkit.automation.collect_system_identity", return_value=baseline):
+            self.store.set_enabled(automation_id, True)
+        self.assertEqual(self.store.claim_due(), [])
+        self.assertFalse(
+            self.store.has_pending_startup_events(baseline["startup"])
+        )
+
+        next_boot = self._startup_identity(
+            boot_id="boot-b", toolkit_start_id="start-b", occurred_at=200.0
+        )
+        self.assertTrue(
+            self.store.has_pending_startup_events(next_boot["startup"])
+        )
+        queued = self.store.enqueue_startup_events(next_boot, now=201.0)
+        self.assertEqual(len(queued), 1)
+        self.assertEqual(self.store.enqueue_startup_events(next_boot, now=202.0), [])
+        jobs = self.store.claim_jobs()
+        self.assertEqual([job["id"] for job in jobs], queued)
+        self.assertEqual(jobs[0]["trigger"].evidence["evaluation"]["kind"], "startup")
+        self.assertNotIn("boot_id", jobs[0]["trigger"].evidence["startup"])
+        self.assertEqual(
+            jobs[0]["trigger"].evidence["toolkit"]["primary_ipv4"],
+            "192.0.2.25",
+        )
+        checks = self.store.recent_checks(automation_id)
+        self.assertEqual((len(checks), checks[0]["status"]), (1, "started"))
+
+    def test_host_boot_mode_ignores_toolkit_restart(self) -> None:
+        automation_id = self._save_startup_automation()
+        baseline = self._startup_identity()
+        with patch("twn_toolkit.automation.collect_system_identity", return_value=baseline):
+            self.store.set_enabled(automation_id, True)
+        restarted = self._startup_identity(toolkit_start_id="start-b", occurred_at=200.0)
+        self.assertEqual(self.store.enqueue_startup_events(restarted, now=201.0), [])
+
+    def test_toolkit_start_mode_queues_complete_restart(self) -> None:
+        automation_id = self._save_startup_automation("toolkit_start")
+        baseline = self._startup_identity()
+        with patch("twn_toolkit.automation.collect_system_identity", return_value=baseline):
+            self.store.set_enabled(automation_id, True)
+        restarted = self._startup_identity(toolkit_start_id="start-b", occurred_at=200.0)
+        self.assertEqual(len(self.store.enqueue_startup_events(restarted, now=201.0)), 1)
+
+    def test_startup_event_waits_for_network_but_eventually_runs_without_it(self) -> None:
+        automation_id = self._save_startup_automation()
+        baseline = self._startup_identity()
+        with patch("twn_toolkit.automation.collect_system_identity", return_value=baseline):
+            self.store.set_enabled(automation_id, True)
+        next_boot = self._startup_identity(
+            boot_id="boot-b",
+            toolkit_start_id="start-b",
+            occurred_at=200.0,
+            addresses=False,
+        )
+        self.assertEqual(self.store.enqueue_startup_events(next_boot, now=250.0), [])
+        queued = self.store.enqueue_startup_events(next_boot, now=321.0)
+        self.assertEqual(len(queued), 1)
+        trigger = self.store.claim_jobs()[0]["trigger"]
+        self.assertFalse(trigger.evidence["startup"]["network_ready"])
+        self.assertIn("no usable network address", trigger.summary)
+
+    def test_startup_event_migration_is_recorded(self) -> None:
+        connection = sqlite3.connect(self.store.path)
+        try:
+            migration = connection.execute(
+                "SELECT description FROM automation_schema_migrations WHERE version = 7"
+            ).fetchone()
+            table = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'automation_event_state'"
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual(migration[0], "Add durable startup-event deduplication state")
+        self.assertEqual(table[0], "automation_event_state")
+
+    def test_startup_source_survives_encrypted_profile_backup_restore(self) -> None:
+        source_id = self.store.ensure_startup_trigger_definition(
+            {"mode": "host_boot", "network_wait_seconds": 120}
+        )
+        action_id = self.store.save_action_definition(
+            name="Startup syslog",
+            type_id="syslog.send",
+            config={
+                "destinations": "192.0.2.10 | 514",
+                "protocol": "udp",
+                "facility": 16,
+                "severity": 6,
+                "hostname": "twn-toolkit",
+                "app_name": "twn-automation",
+                "message": "{{toolkit.primary_ipv4}}",
+                "timeout": 3,
+            },
+        )
+        self.store.save(
+            name="Portable startup",
+            interval_seconds=30,
+            trigger_after=1,
+            recover_after=1,
+            cooldown_seconds=0,
+            condition_definition_id=source_id,
+            action_definition_ids=[action_id],
+            created_by="user-1",
+        )
+        backup = AutomationBackupStore(self.store)
+        exported = backup.all()
+        source = next(item for item in exported if item["kind"] == "startup")
+        self.assertEqual(source["type"], "system.startup")
+
+        backup.replace_all(exported)
+        restored = self.store.all()[0]
+        self.assertEqual(restored["condition"]["type"], "system.startup")
+        self.assertEqual(restored["condition"]["config"]["mode"], "host_boot")
+        self.assertFalse(restored["enabled"])
+
     def test_engine_executes_calendar_occurrence_without_debounce(self) -> None:
         condition_id = self.store.save_condition_definition(
             name="Calendar",
@@ -1972,6 +2141,82 @@ class AutomationRouteTests(unittest.TestCase):
             self.assertEqual(cleared.status_code, 302)
             self.assertEqual(store.recent_runs(automation_id), [])
 
+    def test_admin_can_create_arm_and_test_startup_automation(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            store = AutomationStore(
+                instance_path, load_or_create_secret_key(instance_path)
+            )
+            action_id = store.save_action_definition(
+                name="Startup webhook",
+                type_id="webhook.send",
+                config={
+                    "endpoints": "Discord = https://hooks.example.com/startup",
+                    "method": "POST",
+                    "headers": "",
+                    "body_format": "json",
+                    "body": '{"host":"{{toolkit.hostname}}","ip":"{{toolkit.primary_ipv4}}"}',
+                    "timeout": 5,
+                    "verify_tls": True,
+                    "expected_statuses": "200-299",
+                    "max_attempts": 1,
+                    "retry_delay": 2,
+                    "retry_statuses": "408,425,429,500-599",
+                },
+            )
+            response = client.post(
+                "/automations/save",
+                data={
+                    "name": "Announce branch Pi",
+                    "interval_seconds": "30",
+                    "trigger_after": "1",
+                    "recover_after": "1",
+                    "cooldown_seconds": "0",
+                    "run_mode": "startup",
+                    "startup_mode": "host_boot",
+                    "startup_network_wait_seconds": "120",
+                    "action_definition_id": action_id,
+                },
+            )
+            self.assertEqual(response.status_code, 302)
+            automation = store.all()[0]
+            self.assertEqual(automation["condition"]["type"], "system.startup")
+            self.assertEqual(automation["condition"]["config"]["mode"], "host_boot")
+            identity = AutomationStoreTests._startup_identity()
+            with patch(
+                "twn_toolkit.automation.collect_system_identity",
+                return_value=identity,
+            ):
+                armed = client.post(f"/automations/{automation['id']}/toggle")
+            self.assertEqual(armed.status_code, 302)
+            self.assertTrue(store.get(automation["id"])["enabled"])
+            delivered = {
+                "status": 204,
+                "reason": "No Content",
+                "elapsed_ms": 2.0,
+                "resolved_addresses": ["192.0.2.40"],
+                "body": "",
+                "truncated": False,
+                "redirect": "",
+            }
+            with patch(
+                "twn_toolkit.automation_routes.collect_system_identity",
+                return_value=identity,
+            ), patch(
+                "twn_toolkit.automation_types.actions.send_api_request",
+                return_value=delivered,
+            ) as sender:
+                tested = client.post(f"/automations/{automation['id']}/run-now")
+            self.assertEqual(tested.status_code, 302)
+            sent = json.loads(sender.call_args.kwargs["body"])
+            self.assertEqual(sent, {"host": "branch-pi.local", "ip": "192.0.2.25"})
+            page = client.get(f"/automations?focus={automation['id']}")
+            self.assertIn(b"Once per host boot", page.data)
+            self.assertIn(b"Test now", page.data)
+            self.assertIn(b"Startup notification test", page.data)
+
     def test_manual_mode_can_continue_after_a_background_stage_delay(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
             app = create_app(instance_path)
@@ -2046,6 +2291,22 @@ class AutomationRouteTests(unittest.TestCase):
 
 
 class AutomationRegistryTests(unittest.TestCase):
+    def test_startup_trigger_validation_and_evaluation_are_explicit(self) -> None:
+        config = AUTOMATION_REGISTRY.validate_trigger(
+            "system.startup", {"mode": "host_boot"}
+        )
+        self.assertEqual(
+            config,
+            {"mode": "host_boot", "network_wait_seconds": 120},
+        )
+        result = AUTOMATION_REGISTRY.evaluate_trigger("system.startup", config)
+        self.assertEqual(result.status, "armed")
+        self.assertEqual(result.evidence["evaluation"]["kind"], "startup")
+        with self.assertRaisesRegex(ToolInputError, "valid startup event"):
+            AUTOMATION_REGISTRY.validate_trigger(
+                "system.startup", {"mode": "process_restart"}
+            )
+
     def test_ssh_action_renders_per_host_commands_for_large_matrices(self) -> None:
         matrix = "Name | Host | Site ID\n" + "\n".join(
             f"AP {index} | ap-{index}.example.com | site-{index}"
@@ -2504,6 +2765,65 @@ class AutomationRegistryTests(unittest.TestCase):
             [503, 204],
         )
 
+    def test_webhook_preserves_startup_address_lists_as_json_arrays(self) -> None:
+        action = AUTOMATION_REGISTRY.actions["webhook.send"]
+        trigger = ConditionResult(
+            True,
+            "started",
+            "Host started",
+            {
+                "toolkit": {
+                    "instance_name": "branch-pi",
+                    "hostname": "branch-pi.local",
+                    "primary_ipv4": "192.0.2.25",
+                    "ipv4_addresses": ["192.0.2.25", "198.51.100.25"],
+                    "ipv6_addresses": ["2001:db8::25"],
+                    "primary_url": "https://192.0.2.25:5050",
+                    "urls": [
+                        "https://192.0.2.25:5050",
+                        "https://[2001:db8::25]:5050",
+                    ],
+                },
+                "startup": {
+                    "reason": "Host started",
+                    "mode": "host_boot",
+                    "occurred_at": 1785686400,
+                },
+            },
+        )
+        delivered = {
+            "status": 204,
+            "reason": "No Content",
+            "elapsed_ms": 2.0,
+            "resolved_addresses": ["192.0.2.40"],
+            "body": "",
+            "truncated": False,
+            "redirect": "",
+        }
+        with patch(
+            "twn_toolkit.automation_types.actions.send_api_request",
+            return_value=delivered,
+        ) as sender:
+            result = action.execute(
+                {
+                    "endpoints": "https://hooks.example.com/startup",
+                    "method": "POST",
+                    "headers": "",
+                    "body_format": "json",
+                    "body": '{"ipv4":"{{toolkit.ipv4_addresses}}","ipv6":"{{toolkit.ipv6_addresses}}","urls":"{{toolkit.urls}}","reason":"{{startup.reason}}"}',
+                    "timeout": 5,
+                    "verify_tls": True,
+                    "expected_statuses": "200-299",
+                },
+                trigger,
+            )
+        body = json.loads(sender.call_args.kwargs["body"])
+        self.assertEqual(body["ipv4"], ["192.0.2.25", "198.51.100.25"])
+        self.assertEqual(body["ipv6"], ["2001:db8::25"])
+        self.assertEqual(body["urls"][1], "https://[2001:db8::25]:5050")
+        self.assertEqual(body["reason"], "Host started")
+        self.assertEqual(result.status, "success")
+
     def test_webhook_does_not_retry_nontransient_failure(self) -> None:
         action = AUTOMATION_REGISTRY.actions["webhook.send"]
         response = {
@@ -2546,7 +2866,16 @@ class AutomationRegistryTests(unittest.TestCase):
             True,
             "met",
             "Two WAN probes failed",
-            {"failed": 2, "execution": {"job_id": "job-456"}},
+            {
+                "failed": 2,
+                "execution": {"job_id": "job-456"},
+                "toolkit": {
+                    "hostname": "branch-pi.local",
+                    "primary_ipv4": "192.0.2.25",
+                    "primary_url": "https://192.0.2.25:5050",
+                },
+                "startup": {"reason": "Host started"},
+            },
         )
         sent_result = {
             "protocol": "UDP", "host": "syslog.example.com", "address": "192.0.2.10",
@@ -2562,7 +2891,7 @@ class AutomationRegistryTests(unittest.TestCase):
                     "destinations": "Primary = syslog.example.com | 514\nBackup = bad.example | 5514",
                     "protocol": "udp", "facility": 16, "severity": 6,
                     "hostname": "toolkit", "app_name": "automation",
-                    "message": "{{trigger.status}}: {{trigger.summary}} [{{trigger.job_id}}] at {{timestamp}}",
+                    "message": "{{trigger.status}}: {{trigger.summary}} [{{trigger.job_id}}] {{startup.reason}} on {{toolkit.hostname}} at {{toolkit.primary_ipv4}} {{toolkit.primary_url}} {{timestamp}}",
                     "timeout": 3,
                 },
                 trigger,
@@ -2572,7 +2901,7 @@ class AutomationRegistryTests(unittest.TestCase):
         self.assertEqual(result.output["destinations"][0]["status"], "success")
         self.assertEqual(result.output["destinations"][1]["status"], "error")
         self.assertIn(
-            "met: Two WAN probes failed [job-456] at ",
+            "met: Two WAN probes failed [job-456] Host started on branch-pi.local at 192.0.2.25 https://192.0.2.25:5050 ",
             result.output["message"],
         )
         self.assertEqual(sender.call_args_list[0].kwargs["message"], result.output["message"])

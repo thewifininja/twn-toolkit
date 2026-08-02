@@ -39,6 +39,7 @@ from .schedule_tools import describe_schedule_rule, local_timezone_name, schedul
 from .profiles import SNMPHostProfileStore, SNMPOidProfileStore
 from .snmp_tools import parse_oid_profile
 from .ssh_commandlets import SSHCommandletStore, ssh_hosts_to_matrix
+from .system_identity import collect_system_identity
 
 
 def _automation_audit_snapshot(automation: dict[str, Any] | None) -> dict[str, Any]:
@@ -100,6 +101,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             automation["run_mode"] = (
                 "manual"
                 if automation["condition"]["type"] == "manual.trigger"
+                else "startup"
+                if automation["condition"]["type"] == "system.startup"
                 else "schedule"
                 if automation["condition"]["type"] == "schedule.calendar"
                 else "condition"
@@ -235,6 +238,14 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             if run_mode:
                 if run_mode == "manual":
                     source_definition_id = store.ensure_manual_trigger_definition()
+                    source_definition_ids = [source_definition_id]
+                elif run_mode == "startup":
+                    startup_config = AUTOMATION_REGISTRY.trigger_config_from_form(
+                        "system.startup", request.form
+                    )
+                    source_definition_id = store.ensure_startup_trigger_definition(
+                        startup_config
+                    )
                     source_definition_ids = [source_definition_id]
                 elif run_mode == "schedule":
                     source_definition_id = request.form.get(
@@ -591,6 +602,12 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 if updated["enabled"]
                 else "Schedule has no future occurrences to arm."
             )
+        elif updated and updated["condition"]["type"] == "system.startup":
+            message = (
+                "Startup automation armed for the next host boot."
+                if updated["condition"]["config"]["mode"] == "host_boot"
+                else "Startup automation armed for the next complete toolkit start."
+            )
         else:
             message = "Automation armed; its first check is due now."
         flash(message, "success")
@@ -602,26 +619,43 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         automation = store.get(automation_id, include_secrets=True)
         if not automation:
             abort(404)
-        if automation["condition"]["type"] != "manual.trigger":
-            flash("Run now is available only for Manual trigger automations.", "error")
+        source_type = automation["condition"]["type"]
+        if source_type not in {"manual.trigger", "system.startup"}:
+            flash(
+                "Run now is available only for Manual and Startup automations.",
+                "error",
+            )
             return redirect(url_for("automations", focus=automation_id))
-        trigger = AUTOMATION_REGISTRY.evaluate_trigger(
-            "manual.trigger", automation["condition"]["config"]
-        )
-        trigger.evidence["started_by"] = str(g.current_user["username"])
-        job_id = store.enqueue_manual_job(automation_id, trigger)
+        is_startup_test = source_type == "system.startup"
+        if is_startup_test:
+            job_id = store.enqueue_startup_test_job(
+                automation_id,
+                collect_system_identity(store.instance_path),
+                started_by=str(g.current_user["username"]),
+            )
+        else:
+            trigger = AUTOMATION_REGISTRY.evaluate_trigger(
+                "manual.trigger", automation["condition"]["config"]
+            )
+            trigger.evidence["started_by"] = str(g.current_user["username"])
+            job_id = store.enqueue_manual_job(automation_id, trigger)
         job = store.claim_job(job_id)
         if not job:
-            raise RuntimeError("Manual automation job could not be claimed.")
+            raise RuntimeError("Automation job could not be claimed.")
         run_id = AutomationEngine(store).process_job(job)
         run = store.get_run(run_id) if run_id else None
         run_status = (run or {}).get("status", "waiting")
         annotate_audit_event(
-            category="Automation", action="automation.ran_manually",
+            category="Automation",
+            action=(
+                "automation.startup_tested"
+                if is_startup_test
+                else "automation.ran_manually"
+            ),
             summary=(
-                f"Ran automation {automation['name']} manually."
+                f"{'Tested startup automation' if is_startup_test else 'Ran automation'} {automation['name']}."
                 if run_id
-                else f"Started automation {automation['name']} manually; it is waiting between stages."
+                else f"Started {'startup test for' if is_startup_test else 'automation'} {automation['name']}; it is waiting between stages."
             ),
             resource_type="automation", resource_id=automation_id,
             resource_name=automation["name"],
@@ -635,16 +669,27 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         )
         record_current_activity(
             "Automation",
-            "Ran automation manually" if run_id else "Started automation manually",
+            (
+                "Tested startup automation"
+                if is_startup_test and run_id
+                else "Started startup automation test"
+                if is_startup_test
+                else "Ran automation manually"
+                if run_id
+                else "Started automation manually"
+            ),
             automation["name"],
         )
         if not run_id:
             flash(
-                "Manual automation started. It is waiting between stages and will continue in the background.",
+                f"{'Startup test' if is_startup_test else 'Manual automation'} started. It is waiting between stages and will continue in the background.",
                 "success",
             )
             return redirect(url_for("automations", focus=automation_id))
-        flash("Manual automation completed. Review or download the collected run.", "success")
+        flash(
+            f"{'Startup notification test' if is_startup_test else 'Manual automation'} completed. Review or download the collected run.",
+            "success",
+        )
         return redirect(url_for("automations", focus=automation_id, focus_run=run_id))
 
     @app.post("/automations/<automation_id>/test-condition")
@@ -840,6 +885,8 @@ def _empty_form() -> dict[str, str]:
         "trigger_after": "3",
         "recover_after": "3",
         "cooldown_seconds": "300",
+        "startup_mode": "host_boot",
+        "startup_network_wait_seconds": "120",
         "condition_timeout": "1",
         "condition_failure_mode": "all",
         "condition_failure_count": "1",

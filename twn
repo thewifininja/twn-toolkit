@@ -781,6 +781,10 @@ start() {
   attempts=0
   while [ "$attempts" -lt 30 ]; do
     if is_running; then
+      printf "%s\n" "$SCHEME" > "$SCHEME_FILE"
+      printf "%s\n" "$HOST" > "$HOST_FILE"
+      printf "%s\n" "$PORT" > "$PORT_FILE"
+      "$PYTHON" -m twn_toolkit.system_identity mark-start --instance "$INSTANCE" >/dev/null
       start_automation
       start_transfer_services
       if ! start_iperf_servers; then
@@ -804,9 +808,6 @@ start() {
       elif ftp_enabled && [ "$ftp_started" -eq 0 ]; then
         echo "Warning: FTP is enabled but did not start. Check: $FTP_LOG" >&2
       fi
-      printf "%s\n" "$SCHEME" > "$SCHEME_FILE"
-      printf "%s\n" "$HOST" > "$HOST_FILE"
-      printf "%s\n" "$PORT" > "$PORT_FILE"
       show_access_urls
       return
     fi

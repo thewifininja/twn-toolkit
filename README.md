@@ -239,7 +239,7 @@ Automation is built from four reusable layers:
 - **Automation → Conditions** is the reusable observation and trigger library.
 - **Automation → Actions** is the reusable response library.
 
-1. **Automations** choose manual, condition, or schedule run mode.
+1. **Automations** choose manual, startup, condition, or schedule run mode.
 2. **Schedules** describe reusable calendar timing.
 3. **Conditions** describe health observations and can be combined with ALL or
    ANY for condition-mode automations.
@@ -250,6 +250,12 @@ policy can require full success, allow partial success, or proceed regardless
 of result. Later stages can add a durable zero-to-24-hour delay without holding
 a scheduler worker, and resume after a toolkit restart. Bounded, non-secret
 summaries from earlier stages can be passed to later Webhook/API actions.
+
+Startup automations can run once per host boot or after every complete toolkit
+start. They wait briefly for DHCP, deduplicate events durably across scheduler
+restarts, and expose the configured instance name, hostname, version, current
+addresses, and access URLs to Webhook/API, Email, and Syslog templates. This is
+useful for announcing a boot-managed Raspberry Pi on a DHCP network.
 
 Available conditions include:
 
