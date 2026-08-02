@@ -215,7 +215,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.15.1: durable automation claims and renewable leases,
+- Current milestone is 0.16.0: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
@@ -279,8 +279,22 @@ accepted replay frames.
   through live workspace resizing. Managed TFTP, FTP, and SFTP/SCP services use
   instance-scoped lifecycle locks plus exact readiness markers, concurrent
   launcher operations, stale/zombie detection, and lazy web-app imports so
-  supervision reflects bound listeners and routine starts complete faster. This
-  remains a pre-1.0 release; broader real-world
+  supervision reflects bound listeners and routine starts complete faster.
+  Cross-platform boot management now uses an opt-in systemd unit on Ubuntu,
+  Raspberry Pi OS, and other systemd Linux hosts or a system LaunchDaemon on
+  macOS. The OS service definition is privileged to install, but the toolkit
+  remains owned and executed by a selected normal account. Linux can opt into a
+  unit-scoped set of `CAP_NET_RAW`, `CAP_NET_ADMIN`, and
+  `CAP_NET_BIND_SERVICE`; macOS instead relies on administrator-managed BPF
+  access for the normal service account. macOS DHCP Discover uses one raw BPF
+  Discover/Offer exchange and never binds port 68 or sends a DHCP Request.
+  Installed service lifecycle, ordinary launcher commands, upgrades, rollback,
+  and recovery coordinate through the same supervisor context. Service removal
+  retains toolkit data. Responsive navigation tracks the browser visual
+  viewport so Help/release notes, configured instance name, and installed
+  version remain reachable under mobile zoom and browser chrome, while direct
+  and nested tool rows use consistent indentation. This remains a pre-1.0
+  release; broader real-world
   upgrade history, packaging, and an explicit supported 1.0 compatibility
   contract still need deliberate hardening. The
   0.10.1 hotfix

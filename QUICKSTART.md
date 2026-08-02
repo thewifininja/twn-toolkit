@@ -22,7 +22,9 @@ Optional workflows need their own system commands or remote permissions:
   the toolkit does not install it.
 - Multicast tests use the host's IPv4 socket support and require at least one
   multicast-capable interface. No extra package is installed.
-- DHCP Discover and Packet Replay may require elevated network permissions.
+- DHCP Discover, Packet Capture, and Packet Replay need platform packet access.
+  A boot-managed Linux installation can opt into scoped capabilities; macOS
+  uses administrator-managed BPF access for the normal service account.
 
 ## Install or upgrade
 
@@ -49,6 +51,34 @@ databases, and restores the previous pair automatically on failure. See
 An installation running v0.10.2 or older needs one final conventional upgrade
 to v0.11.0, the first updater-enabled release. All later upgrades can use the
 built-in workflow.
+
+### Optional boot-time service
+
+Manual `./twn start` remains supported. To start the toolkit automatically at
+boot and restart it after an unexpected process failure, install the optional
+OS service:
+
+```bash
+./twn service install
+./twn service status
+```
+
+The helper requests administrator authorization only to write the systemd unit
+or macOS LaunchDaemon definition. The toolkit and its data remain owned by the
+selected normal account. On a dedicated Ubuntu or Raspberry Pi diagnostic host,
+opt into only the network capabilities needed by capture, replay, DHCP, and
+low-numbered ports:
+
+```bash
+./twn service install --network-capabilities
+```
+
+On macOS, place a service checkout outside `Desktop`, `Documents`, `Downloads`,
+iCloud Drive, and `~/Library/CloudStorage`; `~/twn-toolkit` is suitable. Packet
+Capture, Packet Replay, and DHCP Discover use the service account's BPF access,
+which must be provisioned separately by an administrator. See
+[Autostart Service](docs/autostart-service.md) for the complete installation,
+verification, upgrade, permission, logging, and uninstall procedure.
 
 For a manual Python setup:
 
@@ -356,6 +386,13 @@ collected output, transfer history, or Datastore files.
 ./twn recover           Repair an orphaned/sudo-started server and start normally
 ./twn status            Show process state and access URLs
 ./twn logs              Show recent errors
+./twn service install   Install, enable, and start boot-time autostart
+./twn service status    Show systemd/launchd installation and runtime state
+./twn service logs      Show service-manager wrapper logs
+./twn service start     Start the installed OS service
+./twn service stop      Stop the installed OS service
+./twn service restart   Restart the installed OS service
+./twn service uninstall Remove autostart while retaining toolkit data
 ./twn enable-https ...  Generate or regenerate managed HTTPS
 ./twn disable-https     Return an existing installation to HTTP
 ./twn upgrade           Install the latest verified stable release
@@ -377,15 +414,19 @@ toolkit as the invoking user.
 
 ## Privileged tools
 
-- **DHCP Discover** binds UDP client port 68 and may require root or equivalent
-  Linux capabilities.
-- **Packet Capture** and **Packet Replay** require packet/BPF access. Linux
-  normally needs root
-  or `CAP_NET_RAW`; macOS may require BPF permission.
+- **DHCP Discover** binds UDP client port 68 on Linux and works with the scoped
+  Linux service capabilities. macOS sends one Discover and captures matching
+  Offers through BPF, so it needs persistent BPF read/write access but not a
+  privileged port bind. Neither backend sends a DHCP Request or accepts a lease.
+- **Packet Capture** and **Packet Replay** require packet/BPF access. Prefer
+  scoped Linux service capabilities or administrator-managed macOS BPF access
+  for the normal service account instead of elevating the entire application.
 - Standard TFTP/FTP listener ports may need privileged bind permission. The
   default high ports avoid that requirement.
 
-See [Packet Replay setup](docs/packet-replay.md) for detailed platform steps.
+See [Autostart Service](docs/autostart-service.md),
+[DHCP Discover](docs/dhcp-discover.md), [Packet Capture](docs/packet-capture.md),
+and [Packet Replay setup](docs/packet-replay.md) for detailed platform steps.
 
 ## Recovery and reset
 
@@ -421,5 +462,8 @@ For complete feature guidance, open **Help** in the toolkit or continue with:
 
 - [README](README.md)
 - [Automation architecture and operations](docs/automations.md)
+- [Autostart service](docs/autostart-service.md)
+- [DHCP Discover](docs/dhcp-discover.md)
+- [Packet Capture](docs/packet-capture.md)
 - [Packet Replay setup](docs/packet-replay.md)
 - [Multicast Tester guide](docs/multicast.md)

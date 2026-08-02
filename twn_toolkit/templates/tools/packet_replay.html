@@ -81,7 +81,7 @@
     <span class="field-note">VLAN fanout accepts individual IDs, ranges like <code>10-20</code>, and <code>untagged</code>. VLAN 0 sends a priority-tagged frame; it is not the same as untagged.</span>
 
     <div class="message warning">
-      Use only on networks where you are authorized to transmit test traffic. Raw frame sending usually requires root privileges or packet-capture permissions, and wired Ethernet is the intended target.
+      Use only on networks where you are authorized to transmit test traffic. Raw frame sending needs scoped Linux packet capabilities or administrator-managed macOS BPF access for the toolkit service account. Wired Ethernet is the intended target.
     </div>
 
     <div class="button-row">

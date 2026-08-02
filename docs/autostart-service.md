@@ -12,11 +12,27 @@ process failure.
 Installation requests administrator authorization because it writes an OS
 service definition. The toolkit itself runs as the account that invoked `sudo`,
 not as root. Pass `--user NAME` when installing from a root shell or when a
-different dedicated account should own the service.
+different dedicated account should own the service. A root-owned service is
+refused unless `--allow-root` is explicitly supplied; normal-user ownership is
+the recommended production configuration.
+
+## Before installation
+
+1. Complete a normal `./install.sh` and confirm `./twn status` reports the web
+   process, automation scheduler, and worker supervisor running.
+2. Choose the account that will own `instance/`, Datastore files, certificates,
+   captures, and service logs. The helper refuses an account that does not own
+   existing runtime data instead of silently changing ownership.
+3. Decide whether the host actually needs packet capture, replay, DHCP Discover,
+   promiscuous mode, or ports below 1024. Most toolkit functions do not need
+   additional OS network permission.
+4. On macOS, confirm the checkout location is service-compatible and provision
+   BPF access before expecting packet tools to work.
 
 The service definition stores the installation's absolute path. Move the
 toolkit by uninstalling the service first, moving the directory, and installing
-the service again.
+the service again. Python virtual environments also contain absolute paths, so
+rebuild `.venv` with `./install.sh` after moving an existing checkout.
 
 ## Linux, Ubuntu, and Raspberry Pi OS
 
@@ -26,6 +42,7 @@ the official Raspberry Pi OS images. The helper installs and enables
 
 ```bash
 ./twn service install
+./twn service status
 ```
 
 The default unit is deliberately unprivileged. On a dedicated diagnostic host,
@@ -50,6 +67,19 @@ Service-manager output is available through:
 sudo journalctl -u twn-toolkit.service
 ```
 
+After installation, verify the application as well as systemd:
+
+```bash
+./twn service status
+./twn status
+```
+
+`service status` proves the unit is enabled and active. `./twn status` proves
+the managed web process, scheduler, supervisor, and configured listeners are
+healthy and prints the usable URLs. Reboot validation is intentionally simple:
+reboot the host, sign back in, and run both commands without manually launching
+the toolkit. Raspberry Pi OS uses this same systemd path.
+
 Linux distributions without systemd are detected and left unchanged. A future
 adapter can add another init system without weakening the systemd path.
 
@@ -70,6 +100,7 @@ writing a service definition. For a relocated existing checkout, rebuild its
 
 ```bash
 ./twn service install
+./twn service status
 ./twn service logs
 ```
 
@@ -99,6 +130,12 @@ merely to obtain BPF access. Low numbered managed-listener ports, such as TFTP
 69 or FTP 21, remain unavailable to the normal-user macOS service; use the
 toolkit's default high ports.
 
+`./twn service install` waits for launchd to report the job active and for the
+web process, scheduler, and supervisor to become ready. If the job exits or the
+managed processes never become ready, installation removes the failed property
+list and points to `./twn service logs`; it does not leave a repeatedly failing
+LaunchDaemon installed.
+
 ## Lifecycle commands
 
 ```text
@@ -126,3 +163,61 @@ an installed autostart service always returns after the host starts.
 Uninstallation removes only the systemd unit or launchd property list. It does
 not delete `instance/`, logs, profiles, certificates, captures, or Datastore
 files.
+
+## Managed listeners and crash recovery
+
+The OS service supervises the toolkit launcher. The launcher in turn supervises
+the web process, automation scheduler, worker supervisor, and enabled managed
+listeners such as TFTP, FTP, SFTP/SCP, and iPerf3. Installing the OS service does
+not enable any listener that was disabled in the web application.
+
+On systemd, `Restart=on-failure` returns the launcher after an unexpected exit.
+On macOS, launchd keeps the job alive after an unsuccessful exit. Deliberately
+using `./twn stop` creates a managed pause rather than fighting the OS
+supervisor; `./twn start` clears that pause. A reboot or explicit
+`./twn service restart` clears it as well.
+
+## Upgrade, relocation, and uninstall
+
+Supported `./twn upgrade`, in-app upgrades, rollback, and recovery temporarily
+pause the loaded service, update or restore the matched code-and-instance pair,
+then resume through the original service context. The service definition is not
+part of the release bundle and remains installed.
+
+To relocate an installation:
+
+1. Run `./twn service uninstall` from the old checkout.
+2. Move or freshly clone the toolkit to the final location.
+3. Run `./install.sh` there so `.venv` matches the new absolute path.
+4. Confirm normal startup, then run `./twn service install` again with the
+   intended user and Linux capability option.
+
+To remove only boot-time management:
+
+```bash
+./twn service uninstall
+./twn service status
+```
+
+The second command should report that autostart is not installed. The checkout,
+virtual environment, `instance/`, Datastore, certificates, captures, and service
+log files remain recoverable and can still be started manually with
+`./twn start`.
+
+## Troubleshooting
+
+- **Service is active but the toolkit is not:** run `./twn service logs`, then
+  `./twn status` and `./twn logs`. On macOS, a `spawn scheduled` state with an
+  exit code is not considered active.
+- **macOS reports `EX_CONFIG` or will not stay running:** confirm the checkout
+  is outside protected user folders, the service account owns `instance/`, and
+  `.venv` was created at the checkout's current path.
+- **Capture, replay, or DHCP fails although the web UI works:** the service is
+  correctly unprivileged. Reinstall the Linux unit with
+  `--network-capabilities`, or provision persistent BPF read/write access for
+  the macOS service account and restart the service.
+- **A low listener port fails on macOS:** use the toolkit's default high port.
+  macOS does not provide the systemd-style scoped bind capability.
+- **The wrong account owns runtime files:** uninstall the service, repair the
+  intended normal-user ownership with `./twn recover` or
+  `./twn fix-permissions`, verify normal startup, and reinstall for that user.

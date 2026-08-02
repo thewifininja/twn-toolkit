@@ -66,6 +66,14 @@ managed service process tree `CAP_NET_RAW`, `CAP_NET_ADMIN`, and
 `CAP_NET_BIND_SERVICE` without changing the Python or tcpdump executable.
 macOS LaunchDaemons remain unprivileged and still require an
 administrator-managed BPF access policy when normal-user access is unavailable.
+Wireshark's optional ChmodBPF service is one established way to grant persistent
+read/write access through its `access_bpf` group. Confirm the toolkit service
+account appears in that group, verify `/dev/bpf0` is group-readable and
+group-writable, and restart the service after changing membership. The toolkit
+does not change BPF ownership or permissions automatically.
+
+See [Autostart Service](autostart-service.md) for complete Linux capability,
+macOS service placement, verification, and troubleshooting guidance.
 
 ## Storage and security
 
