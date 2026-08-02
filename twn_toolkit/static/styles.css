@@ -7396,6 +7396,7 @@ button.compact,
 .ping-graph-grid {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 
 .ping-graph-card {
@@ -7410,7 +7411,8 @@ button.compact,
 
 .ping-graph-card > header {
   display: grid;
-  grid-template-columns: fit-content(28%) minmax(300px, 1fr) auto;
+  grid-template-columns: minmax(150px, 28%) minmax(0, 1fr) auto;
+  min-width: 0;
 }
 
 .ping-graph-card > header > div:first-child {
@@ -7420,6 +7422,10 @@ button.compact,
 .ping-graph-card code {
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+.ping-graph-card .ping-host-statistics {
+  min-width: 0;
 }
 
 .ping-graph-card-actions {
@@ -7473,6 +7479,11 @@ button.compact,
 
 .ping-graph-card .ping-history-canvas-wrap {
   margin-top: 2px;
+  min-width: 0;
+}
+
+.ping-graph-card .ping-history-canvas {
+  max-width: 100%;
 }
 
 .ssh-results {

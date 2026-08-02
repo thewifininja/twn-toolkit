@@ -169,9 +169,12 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(".ping-host-statistics .ping-statistics span {", stylesheet)
         self.assertIn("display: inline-flex;", stylesheet)
         self.assertIn(
-            "grid-template-columns: fit-content(28%) minmax(300px, 1fr) auto;",
+            "grid-template-columns: minmax(150px, 28%) minmax(0, 1fr) auto;",
             stylesheet,
         )
+        self.assertIn(".ping-graph-card .ping-host-statistics {", stylesheet)
+        self.assertIn(".ping-graph-card .ping-history-canvas {", stylesheet)
+        self.assertIn("max-width: 100%;", stylesheet)
         self.assertIn("white-space: nowrap;", stylesheet)
         self.assertIn('["Now", current?.reachable', script)
         self.assertIn("header.append(identity, statistics, actions);", script)
@@ -188,6 +191,9 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("grid-template-rows: auto auto auto minmax(0, 1fr) auto;", stylesheet)
         self.assertIn("overflow-y: auto;", stylesheet)
         self.assertIn("scrollbar-gutter: stable;", stylesheet)
+        self.assertIn("new ResizeObserver((entries) => {", script)
+        self.assertIn("const cssWidth = Math.floor(view.chart.clientWidth);", script)
+        self.assertIn("if (cssWidth <= 0) return;", script)
 
     def test_live_tools_use_a_low_profile_footer_dock(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

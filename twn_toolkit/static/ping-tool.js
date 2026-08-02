@@ -56,6 +56,8 @@
   let activeHostsSource = "";
   let activeHosts = new Set();
   let renderFrame = null;
+  let resizeFrame = null;
+  let renderedGraphGridWidth = 0;
   let hasStoredGraphSelection = false;
   const history = new Map();
   const hostViews = new Map();
@@ -71,6 +73,16 @@
   chartTooltip.hidden = true;
   document.body.appendChild(chartTooltip);
   window.addEventListener("themechange", renderAllCharts);
+  if (window.ResizeObserver) {
+    new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width || 0;
+      if (Math.round(width) === renderedGraphGridWidth) return;
+      renderedGraphGridWidth = Math.round(width);
+      scheduleGraphResize();
+    }).observe(graphGrid);
+  } else {
+    window.addEventListener("resize", scheduleGraphResize);
+  }
   hostFilter.addEventListener("input", applyHostFilters);
   hostStatusFilter.addEventListener("change", applyHostFilters);
 
@@ -879,7 +891,8 @@
     const points = historyPoints(series);
     if (!points.length) return;
     const canvas = view.canvas;
-    const cssWidth = Math.max(320, view.chart.clientWidth || 420);
+    const cssWidth = Math.floor(view.chart.clientWidth);
+    if (cssWidth <= 0) return;
     const cssHeight = 240;
     const scale = window.devicePixelRatio || 1;
     canvas.width = Math.round(cssWidth * scale);
@@ -1079,6 +1092,14 @@
       if (series) renderHistoryCanvas(view, series);
     });
     updateHistoryNavigator();
+  }
+
+  function scheduleGraphResize() {
+    if (resizeFrame !== null) return;
+    resizeFrame = window.requestAnimationFrame(() => {
+      resizeFrame = null;
+      renderAllCharts();
+    });
   }
 
   function retainedBounds() {
