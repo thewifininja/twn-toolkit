@@ -289,7 +289,9 @@ Open **Automation → Automations** and expand **New automation**:
 6. Add stages when later actions should wait for earlier ones. Actions in one
    stage run in parallel; stages run sequentially. A later stage can wait from
    zero seconds through 24 hours before it starts; the saved countdown continues
-   in the background and survives a toolkit restart.
+   in the background and survives a toolkit restart. Choose a normal success
+   route or a failure route that continues when any or every action errors. For
+   example, try a Discord webhook first and send email only if Discord fails.
 7. Save the automation.
 
 Condition intervals describe desired start-to-start cadence. Checks for one

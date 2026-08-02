@@ -22,7 +22,11 @@ from flask import (
     url_for,
 )
 
-from .automation import AutomationEngine, AutomationStore
+from .automation import (
+    STAGE_CONTINUATION_LABELS,
+    AutomationEngine,
+    AutomationStore,
+)
 from .automation_registry import AUTOMATION_REGISTRY
 from .audit import annotate_audit_event
 from .activity_context import record_current_activity
@@ -97,6 +101,9 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             for stage in automation["action_stages"]:
                 stage["delay_display"] = _format_duration(
                     int(stage.get("delay_seconds", 0))
+                )
+                stage["continue_label"] = STAGE_CONTINUATION_LABELS.get(
+                    str(stage.get("continue_policy", "")), "Unknown route"
                 )
             automation["run_mode"] = (
                 "manual"

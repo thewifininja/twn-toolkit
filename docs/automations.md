@@ -228,11 +228,20 @@ Each automation contains one or more user-defined stages. Actions within a
 stage run concurrently, while stages run sequentially from top to bottom. A
 new or legacy automation starts with one default stage containing all selected
 actions, preserving the original parallel behavior. Stages have stable IDs,
-editable names, ordering controls, and one of three continuation policies:
+editable names, ordering controls, and one of five continuation policies:
 
 - continue after every action completes, regardless of result;
-- continue only when every result is success or partial; or
-- continue only when every result is success.
+- continue only when every result is success or partial;
+- continue only when every result is success;
+- continue when one or more actions report an error; or
+- continue only when every action reports an error.
+
+An action-level `partial` result is distinct from an error: it means the action
+completed some of its work, such as delivering to two of three endpoints. The
+full-success policy stops on partial results, while the success-or-partial
+policy accepts them. Failure routes react to action errors, including uncaught
+execution exceptions. A common fallback pipeline tries a Discord webhook in
+one stage and sends email in the next stage only if Discord reports an error.
 
 Every stage after the first may also wait from zero seconds through 24 hours
 before it starts. The continuation policy is evaluated first, so a stage that
