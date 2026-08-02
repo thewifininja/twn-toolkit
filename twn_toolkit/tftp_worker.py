@@ -24,7 +24,7 @@ def main() -> None:
     parser.add_argument("--ready-file", default="")
     parser.add_argument("--log-file", default="")
     args = parser.parse_args()
-    singleton = acquire_singleton_lock(Path(args.instance).resolve().parent, "tftp")
+    singleton = acquire_singleton_lock(Path(args.instance).resolve(), "tftp")
     if singleton is None:
         return
     if args.daemon:

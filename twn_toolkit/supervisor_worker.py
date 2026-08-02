@@ -24,12 +24,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--root", required=True); parser.add_argument("--pid-file", required=True); parser.add_argument("--log-file", required=True); parser.add_argument("--daemon", action="store_true")
     args = parser.parse_args()
     root = Path(args.root).resolve()
-    singleton = acquire_singleton_lock(root, "supervisor")
+    instance = Path(args.instance).resolve()
+    singleton = acquire_singleton_lock(instance, "supervisor")
     if singleton is None:
         return
     if args.daemon: _daemonize(args.pid_file, args.log_file)
     record_lock_owner(singleton)
-    instance = Path(args.instance).resolve()
     running = True
     retry_after: dict[str, float] = {}
     signal.signal(signal.SIGTERM, lambda *_: _stop()); signal.signal(signal.SIGINT, lambda *_: _stop())

@@ -258,7 +258,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--pid-file", required=True); parser.add_argument("--ready-file", default=""); parser.add_argument("--log-file", required=True); parser.add_argument("--daemon", action="store_true")
     args = parser.parse_args()
     singleton = acquire_singleton_lock(
-        Path(args.instance).resolve().parent, "ssh-transfer",
+        Path(args.instance).resolve(), "ssh-transfer",
     )
     if singleton is None:
         return 0

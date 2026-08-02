@@ -120,7 +120,7 @@ def _daemonize(pid_file: str, log_file: str):
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--daemon", action="store_true"); parser.add_argument("--pid-file", required=True); parser.add_argument("--ready-file", default=""); parser.add_argument("--log-file", required=True)
     args = parser.parse_args()
-    singleton = acquire_singleton_lock(Path(args.instance).resolve().parent, "ftp")
+    singleton = acquire_singleton_lock(Path(args.instance).resolve(), "ftp")
     if singleton is None:
         return
     if args.daemon: _daemonize(args.pid_file, args.log_file)

@@ -36,6 +36,29 @@ from twn_toolkit.supervisor_worker import (
 
 
 class OperationalHardeningTests(unittest.TestCase):
+    def test_daemon_singleton_locks_live_in_the_instance_directory(self) -> None:
+        toolkit = Path(__file__).resolve().parents[1] / "twn_toolkit"
+        transfer_workers = (
+            "tftp_worker.py", "ssh_transfer_worker.py", "ftp_worker.py",
+        )
+        for filename in transfer_workers:
+            source = (toolkit / filename).read_text(encoding="utf-8")
+            normalized = " ".join(source.split())
+            self.assertIn(
+                "Path(args.instance).resolve(),",
+                normalized,
+                filename,
+            )
+            self.assertNotIn(
+                "Path(args.instance).resolve().parent", source, filename,
+            )
+
+        automation = (toolkit / "automation_worker.py").read_text(encoding="utf-8")
+        supervisor = (toolkit / "supervisor_worker.py").read_text(encoding="utf-8")
+        self.assertIn("Path(args.instance).resolve()", automation)
+        self.assertIn("acquire_singleton_lock(instance_directory", automation)
+        self.assertIn("acquire_singleton_lock(instance", supervisor)
+
     def test_supervisor_defers_to_an_active_service_operation(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             lock_path = Path(instance) / "worker.pid.lock"
