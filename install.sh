@@ -47,9 +47,9 @@ fi
 
 echo "Starting The WiFi Ninja's Toolkit..."
 if [ "$WAS_RUNNING" -eq 1 ]; then
-  "$ROOT/twn" restart
+  TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER=1 "$ROOT/twn" restart
 else
-  "$ROOT/twn" start
+  TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER=1 "$ROOT/twn" start
 fi
 touch "$INSTANCE/installation.initialized"
 TOOLKIT_URL=$("$ROOT/twn" status | tail -n 1)

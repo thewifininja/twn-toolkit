@@ -54,6 +54,7 @@ TLS_CERT=${TWN_TOOLKIT_CERTFILE:-}
 TLS_KEY=${TWN_TOOLKIT_KEYFILE:-}
 SCHEME=http
 SERVICE_RUN_MODE=${TWN_TOOLKIT_SERVICE_RUN:-0}
+SERVICE_RELOAD_REQUESTED=${TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER:-0}
 
 if [ -z "$HOST" ] && [ -f "$SERVER_SETTINGS" ]; then
   HOST=$(python3 -c '
@@ -217,6 +218,40 @@ request_service_start() {
     sleep 0.1
   done
   echo "Timed out waiting for the autostart service to start the toolkit." >&2
+  return 1
+}
+
+request_service_reload() {
+  previous_launcher_pid=$(cat "$SERVICE_LAUNCHER_PIDFILE" 2>/dev/null || true)
+  if [ -z "$previous_launcher_pid" ]; then
+    echo "The autostart service launcher PID could not be read." >&2
+    return 1
+  fi
+
+  # A paused launcher exits unsuccessfully when its pause is cleared while the
+  # managed web process is stopped. systemd/launchd then starts a fresh copy of
+  # this script from disk, which is required after an upgrade replaces `twn`.
+  rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"
+  attempts=0
+  while [ "$attempts" -lt 1800 ]; do
+    if service_launcher_is_running; then
+      current_launcher_pid=$(cat "$SERVICE_LAUNCHER_PIDFILE" 2>/dev/null || true)
+      if [ -n "$current_launcher_pid" ] \
+        && [ "$current_launcher_pid" != "$previous_launcher_pid" ] \
+        && is_running && automation_is_running && supervisor_is_running \
+        && [ -f "$SCHEME_FILE" ] && [ -f "$HOST_FILE" ] && [ -f "$PORT_FILE" ]; then
+        load_running_endpoint
+        if [ -f "$SCHEME_FILE" ]; then SCHEME=$(cat "$SCHEME_FILE"); fi
+        echo "The autostart service reloaded the updated toolkit launcher (PID $current_launcher_pid)."
+        show_access_urls
+        return
+      fi
+    fi
+    attempts=$((attempts + 1))
+    sleep 0.1
+  done
+  echo "Timed out waiting for the OS service manager to reload the toolkit launcher." >&2
+  echo "Inspect: ./twn service status && ./twn service logs" >&2
   return 1
 }
 
@@ -713,7 +748,11 @@ offer_permission_repair() {
 
 start() {
   if [ "$SERVICE_RUN_MODE" != "1" ] && service_launcher_is_running; then
-    request_service_start
+    if [ "$SERVICE_RELOAD_REQUESTED" = "1" ]; then
+      request_service_reload
+    else
+      request_service_start
+    fi
     return
   fi
 

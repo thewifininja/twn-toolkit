@@ -155,7 +155,10 @@ administrator access:
   loaded;
 - `./twn start` asks that supervisor to resume them with the service's original
   security context; and
-- `./twn restart`, upgrades, rollback, and recovery use the same handshake.
+- `./twn restart` uses the same pause/resume handshake; and
+- an installer, upgrade, rollback, or recovery that replaces application code
+  asks the OS manager to reload the launcher itself, then waits for a new
+  launcher PID and the complete managed process set.
 
 The pause is intentionally cleared by a service-manager restart or reboot, so
 an installed autostart service always returns after the host starts.
@@ -180,9 +183,13 @@ supervisor; `./twn start` clears that pause. A reboot or explicit
 ## Upgrade, relocation, and uninstall
 
 Supported `./twn upgrade`, in-app upgrades, rollback, and recovery temporarily
-pause the loaded service, update or restore the matched code-and-instance pair,
-then resume through the original service context. The service definition is not
-part of the release bundle and remains installed.
+pause the loaded service and update or restore the matched code-and-instance
+pair. The installer then makes the old launcher exit deliberately so systemd or
+launchd reloads `twn` from disk through the original service context. Completion
+waits for the launcher PID to change and for the web process, automation
+scheduler, and worker supervisor to become healthy. This does not need another
+administrator prompt. The service definition is not part of the release bundle
+and remains installed.
 
 To relocate an installation:
 

@@ -33,7 +33,7 @@ class InstallerLifecycleTests(unittest.TestCase):
             """#!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-printf '%s\\n' "${1:-}" >> "$TWN_TEST_LOG"
+printf '%s:%s\\n' "${1:-}" "${TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER:-0}" >> "$TWN_TEST_LOG"
 case "${1:-}" in
   status)
     [ -f "$ROOT/running" ] || exit 1
@@ -83,7 +83,9 @@ esac
 
         commands = self._run_installer(sandbox, environment)
 
-        self.assertEqual(commands, ["status", "enable-https", "start", "status"])
+        self.assertEqual(commands, [
+            "status:0", "enable-https:0", "start:1", "status:0",
+        ])
         self.assertTrue((sandbox / "instance" / "installation.initialized").exists())
 
     def test_existing_running_install_restarts_and_preserves_instance_data(self) -> None:
@@ -91,7 +93,7 @@ esac
 
         commands = self._run_installer(sandbox, environment)
 
-        self.assertEqual(commands, ["status", "restart", "status"])
+        self.assertEqual(commands, ["status:0", "restart:1", "status:0"])
         self.assertEqual(
             (sandbox / "instance" / "saved-profile.json").read_text(encoding="utf-8"),
             '{"name": "preserve me"}\n',
