@@ -182,6 +182,14 @@ class TwnScriptTests(unittest.TestCase):
         self.assertIn('SERVICE_PAUSE_FILE="$INSTANCE/twn-service-paused"', source)
         self.assertIn('SERVICE_RESUME_FILE="$INSTANCE/twn-service-resume"', source)
         self.assertIn("request_service_start() {", source)
+        self.assertIn("request_service_reload() {", source)
+        self.assertIn(
+            "SERVICE_RELOAD_REQUESTED=${TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER:-0}",
+            source,
+        )
+        self.assertIn('[ "$current_launcher_pid" != "$previous_launcher_pid" ]', source)
+        self.assertIn("&& is_running && automation_is_running && supervisor_is_running", source)
+        self.assertIn('[ "$SERVICE_RELOAD_REQUESTED" = "1" ]', source)
         self.assertIn(
             '&& [ -f "$SCHEME_FILE" ] && [ -f "$HOST_FILE" ] && [ -f "$PORT_FILE" ]',
             source,

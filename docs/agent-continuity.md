@@ -461,6 +461,13 @@ make state, risk, and the next action obvious.
   null device: package-manager output can contain repository credentials, and a
   daemon helper inheriting a captured pipe can keep an otherwise successful
   upgrade waiting indefinitely.
+- A boot-managed launcher is a long-lived shell and retains the functions it
+  parsed before an upgrade. The installer sets
+  `TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER=1`; an external `twn start` then clears
+  the managed pause without posting a resume request, causing the old launcher
+  to exit unsuccessfully and systemd/launchd to reload the on-disk script. Wait
+  for a different launcher PID plus healthy web, scheduler, and supervisor
+  processes. Ordinary `./twn restart` still uses the lighter pause/resume path.
 - Libraries that create process helpers, synchronization primitives, or event-loop
   descriptors at import time must be imported only after daemonization. This is
   the bootstrap protection for upgrades launched by an older updater that still

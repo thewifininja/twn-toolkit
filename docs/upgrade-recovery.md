@@ -89,9 +89,13 @@ pipes without risking library-owned descriptors such as macOS kqueues.
 ## Installations managed at boot
 
 An installed systemd unit or macOS LaunchDaemon remains outside the release
-bundle. Upgrade, rollback, and recovery detect the loaded OS supervisor, pause
-the managed toolkit through that supervisor, and resume it with the same normal
-service account and security context. The operation does not silently install,
+bundle. Upgrade, rollback, and recovery detect the loaded OS supervisor and
+pause the managed toolkit through it. After application code is replaced, the
+installer deliberately retires the old in-memory launcher; systemd or launchd
+then loads the new `twn` from disk with the same normal service account and
+security context. The updater waits for the launcher PID to change and validates
+the complete managed process set. No separate `./twn service restart` or second
+administrator prompt is required. The operation does not silently install,
 remove, or change the optional Linux network-capability policy.
 
 After an upgrade on a boot-managed host, verify both layers:
