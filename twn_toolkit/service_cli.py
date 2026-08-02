@@ -298,13 +298,17 @@ def _launchd_details() -> tuple[subprocess.CompletedProcess[str], str, str]:
     return result, state, last_exit
 
 
+def _launchd_state_is_active(state: str) -> bool:
+    return state in {"active", "running"}
+
+
 def _wait_for_launchd_running(timeout: float = 10.0) -> tuple[bool, str, str]:
     deadline = time.monotonic() + timeout
     state = "unknown"
     last_exit = ""
     while time.monotonic() < deadline:
         result, state, last_exit = _launchd_details()
-        if result.returncode == 0 and state == "running":
+        if result.returncode == 0 and _launchd_state_is_active(state):
             return True, state, last_exit
         time.sleep(0.25)
     return False, state, last_exit
@@ -417,7 +421,7 @@ def service_status(*, system: str) -> int:
     result, state, last_exit = _launchd_details()
     if result.returncode != 0:
         print("Autostart service: installed but not loaded")
-    elif state == "running":
+    elif _launchd_state_is_active(state):
         print("Autostart service: loaded, active")
     else:
         detail = f"loaded but not running (state: {state}"
@@ -425,7 +429,7 @@ def service_status(*, system: str) -> int:
             detail += f", last exit: {last_exit}"
         print(f"Autostart service: {detail})")
     print(f"Property list: {LAUNCHD_PLIST_PATH}")
-    return 0 if result.returncode == 0 and state == "running" else 1
+    return 0 if result.returncode == 0 and _launchd_state_is_active(state) else 1
 
 
 def service_logs(root: Path, *, system: str) -> int:

@@ -16,6 +16,7 @@ from twn_toolkit.service_cli import (
     ServiceUser,
     _ensure_instance_directory,
     _validate_macos_service_location,
+    _wait_for_launchd_running,
     install_service,
     render_launchd_plist,
     render_systemd_unit,
@@ -136,6 +137,43 @@ class ServiceCliTests(unittest.TestCase):
             "Autostart service: loaded but not running "
             "(state: spawn scheduled, last exit: 78: EX_CONFIG)"
         )
+
+    def test_macos_status_accepts_active_launchdaemon(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            plist_path = Path(temporary) / "toolkit.plist"
+            plist_path.touch()
+            launchctl = subprocess.CompletedProcess(
+                args=("launchctl", "print"),
+                returncode=0,
+                stdout="state = active\n",
+                stderr="",
+            )
+            with (
+                mock.patch("twn_toolkit.service_cli.LAUNCHD_PLIST_PATH", plist_path),
+                mock.patch("twn_toolkit.service_cli.subprocess.run", return_value=launchctl),
+                mock.patch("builtins.print") as output,
+            ):
+                result = service_status(system="Darwin")
+
+        self.assertEqual(result, 0)
+        output.assert_any_call("Autostart service: loaded, active")
+
+    def test_macos_install_wait_accepts_active_launchdaemon(self) -> None:
+        launchctl = subprocess.CompletedProcess(
+            args=("launchctl", "print"),
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+        with mock.patch(
+            "twn_toolkit.service_cli._launchd_details",
+            return_value=(launchctl, "active", ""),
+        ):
+            running, state, last_exit = _wait_for_launchd_running(timeout=0.1)
+
+        self.assertTrue(running)
+        self.assertEqual(state, "active")
+        self.assertEqual(last_exit, "")
 
     def test_install_refuses_runtime_data_owned_by_another_account(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
