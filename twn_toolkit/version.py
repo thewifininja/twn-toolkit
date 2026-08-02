@@ -1,6 +1,42 @@
-APP_VERSION = "0.16.2"
+APP_VERSION = "0.16.3"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.16.3",
+        "date": "2026-08-02",
+        "title": "Safe service-managed upgrade finalization",
+        "summary": (
+            "Finalizes upgrades and recovery before systemd or launchd reloads "
+            "the boot-managed launcher, preventing a successful installation "
+            "from remaining stuck in validating state."
+        ),
+        "groups": (
+            {
+                "title": "Finalization before launcher reload",
+                "items": (
+                    "Keeps the existing boot-managed launcher paused while the replacement web process, automation scheduler, worker supervisor, enabled listeners, installed version, and SQLite databases are validated.",
+                    "Records terminal status and audit evidence, cleans the staged request and bundle, and removes the operation lock before systemd or launchd reloads twn from the finalized files on disk.",
+                    "Prevents systemd KillMode=mixed and equivalent service-job cleanup from terminating the detached updater before its final status and cleanup writes complete.",
+                ),
+            },
+            {
+                "title": "Rollback-safe service handoff",
+                "items": (
+                    "Prepares the deferred handoff before replacing or restoring application files and withholds launcher discovery even when a matched instance recovery point contains an older launcher PID file.",
+                    "Suppresses the validation-only startup generation so the final OS-managed start emits exactly one toolkit-start automation event; a successful automatic rollback can instead let the matching original launcher adopt the validated restored processes.",
+                    "Bounds the finalization wait, retains a healthy validated process set if handoff times out, and writes diagnostics to .twn-upgrades/service-reload.log.",
+                ),
+            },
+            {
+                "title": "Compatible v0.16.2 hotfix",
+                "items": (
+                    "Includes a request-scoped compatibility bridge that recognizes upgrades launched by the already-installed v0.16.2 updater before the new lifecycle code is available to it.",
+                    "Introduces no Python dependency, database migration, profile-format, server-setting, capability, BPF-policy, or command-line incompatibility and supports direct upgrade from v0.16.2.",
+                    "Preserves ordinary ./twn restart pause-and-resume behavior, synchronous manual installer reloads outside an active upgrade, service ownership, managed listeners, instance data, and matched rollback guarantees.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.2",
         "date": "2026-08-02",

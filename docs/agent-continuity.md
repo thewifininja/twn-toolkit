@@ -215,7 +215,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.16.2: durable automation claims and renewable leases,
+- Current milestone is 0.16.3: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
@@ -290,7 +290,13 @@ accepted replay frames.
   Discover/Offer exchange and never binds port 68 or sends a DHCP Request.
   Installed service lifecycle, ordinary launcher commands, upgrades, rollback,
   and recovery coordinate through the same supervisor context. Service removal
-  retains toolkit data. Responsive navigation tracks the browser visual
+  retains toolkit data. Boot-managed upgrades now keep the original launcher
+  paused while a temporary process set is validated, finalize status, audit,
+  staged-input cleanup, and the external operation lock before asking systemd
+  or launchd to reload, and withhold launcher discovery across matched instance
+  restores. This prevents OS cgroup or job cleanup from killing the detached
+  updater while preserving exactly one final toolkit-start event. Responsive
+  navigation tracks the browser visual
   viewport so Help/release notes, configured instance name, and installed
   version remain reachable under mobile zoom and browser chrome, while direct
   and nested tool rows use consistent indentation. This remains a pre-1.0
