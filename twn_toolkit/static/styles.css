@@ -10315,7 +10315,30 @@ button.compact,
 .automation-stage-head {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1.3fr);
+  grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1.3fr) minmax(190px, 0.8fr);
+}
+
+.automation-duration-input {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(80px, 1fr) minmax(100px, auto);
+}
+
+.automation-stage-timing {
+  align-content: start;
+  display: grid;
+  gap: 4px;
+}
+
+.automation-stage-timing > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.automation-stage-timing > small {
+  color: var(--muted);
 }
 
 .automation-stage-actions {
@@ -10791,6 +10814,10 @@ th {
 }
 
 @media (max-width: 1050px) {
+  .automation-stage-head {
+    grid-template-columns: 1fr;
+  }
+
   .workspace-dashboard-header {
     align-items: flex-start;
     flex-direction: column;

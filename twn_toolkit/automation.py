@@ -25,6 +25,9 @@ from .automation_types.models import evaluation_result
 from .schedule_tools import schedule_occurrence, schedule_should_fire
 
 
+AUTOMATION_MAX_STAGE_DELAY_SECONDS = 86400
+
+
 class AutomationStore:
     """SQLite persistence for automation definitions, state, checks, and runs."""
 
@@ -238,6 +241,7 @@ class AutomationStore:
                 "id": "stage-1",
                 "name": "Stage 1",
                 "continue_policy": "all_completed",
+                "delay_seconds": 0,
                 "action_definition_ids": legacy_action_ids,
             }]
         normalized = []
@@ -254,6 +258,16 @@ class AutomationStore:
             policy = str(raw.get("continue_policy", "all_completed"))
             if policy not in {"all_completed", "success_or_partial", "all_success"}:
                 raise ValueError("Select a valid stage continuation policy.")
+            try:
+                delay_seconds = int(raw.get("delay_seconds", 0))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Stage delays must be whole seconds.") from exc
+            if not 0 <= delay_seconds <= AUTOMATION_MAX_STAGE_DELAY_SECONDS:
+                raise ValueError(
+                    "Stage delays must be between 0 seconds and 24 hours."
+                )
+            if index == 1:
+                delay_seconds = 0
             action_ids = [str(value).strip() for value in raw.get("action_definition_ids", []) if str(value).strip()]
             if not action_ids:
                 raise ValueError(f"{name} must contain at least one action.")
@@ -264,6 +278,7 @@ class AutomationStore:
                 "id": stage_id,
                 "name": name,
                 "continue_policy": policy,
+                "delay_seconds": delay_seconds,
                 "action_definition_ids": action_ids,
             })
         if not normalized:
@@ -474,13 +489,13 @@ class AutomationStore:
             if connection.execute(
                 """
                 SELECT 1 FROM automation_jobs
-                WHERE automation_id = ? AND status IN ('queued', 'running')
+                WHERE automation_id = ? AND status IN ('queued', 'waiting', 'running')
                 LIMIT 1
                 """,
                 (automation_id,),
             ).fetchone():
                 raise ValueError(
-                    "That automation still has queued or running action work."
+                    "That automation still has queued, waiting, or running action work."
                 )
             cursor = connection.execute(
                 "DELETE FROM automations WHERE id = ?", (automation_id,)
@@ -852,7 +867,7 @@ class AutomationStore:
                 SELECT id FROM automation_jobs
                 WHERE (
                     (
-                        status = 'queued'
+                        status IN ('queued', 'waiting')
                         AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
                     ) OR (
                         status = 'running'
@@ -910,7 +925,7 @@ class AutomationStore:
                     lease_until = ?,
                     next_attempt_at = NULL,
                     attempt_count = attempt_count + 1
-                WHERE id = ? AND status = 'queued'
+                WHERE id = ? AND status IN ('queued', 'waiting')
                     AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
                 """,
                 (now, now, now + lease_seconds, job_id, now),
@@ -937,6 +952,44 @@ class AutomationStore:
             )
         return bool(cursor.rowcount)
 
+    def save_job_progress(self, job_id: str, progress: dict[str, Any]) -> None:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE automation_jobs
+                SET progress_encrypted = ?
+                WHERE id = ? AND status = 'running'
+                """,
+                (self._encrypt(progress), job_id),
+            )
+        if not cursor.rowcount:
+            raise ValueError("Automation job is not running.")
+
+    def defer_job_for_stage(
+        self,
+        job_id: str,
+        delay_seconds: int,
+        progress: dict[str, Any],
+    ) -> float:
+        delay_seconds = int(delay_seconds)
+        if not 1 <= delay_seconds <= AUTOMATION_MAX_STAGE_DELAY_SECONDS:
+            raise ValueError("The stage delay is outside the supported range.")
+        resume_at = time.time() + delay_seconds
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE automation_jobs
+                SET status = 'waiting', next_attempt_at = ?, lease_until = NULL,
+                    claimed_at = NULL, attempt_count = 0,
+                    progress_encrypted = ?, last_error = NULL
+                WHERE id = ? AND status = 'running'
+                """,
+                (resume_at, self._encrypt(progress), job_id),
+            )
+        if not cursor.rowcount:
+            raise ValueError("Automation job is not running.")
+        return resume_at
+
     def complete_job(self, job_id: str, run_id: str) -> None:
         now = time.time()
         with self._connect() as connection:
@@ -944,13 +997,26 @@ class AutomationStore:
                 """
                 UPDATE automation_jobs
                 SET status = 'completed', finished_at = ?, lease_until = NULL,
-                    run_id = ?, last_error = NULL
+                    run_id = ?, last_error = NULL, progress_encrypted = NULL
                 WHERE id = ? AND status = 'running'
                 """,
                 (now, run_id, job_id),
             )
             if not cursor.rowcount:
                 raise ValueError("Automation job is not running.")
+
+    def link_job_run(self, job_id: str, run_id: str) -> None:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE automation_jobs
+                SET run_id = ?
+                WHERE id = ? AND status = 'running'
+                """,
+                (run_id, job_id),
+            )
+        if not cursor.rowcount:
+            raise ValueError("Automation job is not running.")
 
     def fail_job(
         self,
@@ -1001,11 +1067,12 @@ class AutomationStore:
             oldest = connection.execute(
                 """
                 SELECT MIN(queued_at) FROM automation_jobs
-                WHERE status IN ('queued', 'running')
+                WHERE status IN ('queued', 'waiting', 'running')
                 """
             ).fetchone()[0]
         return {
             "queued_jobs": counts.get("queued", 0),
+            "waiting_jobs": counts.get("waiting", 0),
             "running_jobs": counts.get("running", 0),
             "failed_jobs": counts.get("failed", 0),
             "completed_jobs": counts.get("completed", 0),
@@ -1540,6 +1607,7 @@ class AutomationStore:
 
     def _job_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
         trigger = json.loads(str(row["trigger_json"]))
+        encrypted_progress = row["progress_encrypted"]
         return {
             **dict(row),
             "trigger": ConditionResult(
@@ -1549,6 +1617,11 @@ class AutomationStore:
                 evidence=dict(trigger.get("evidence", {})),
             ),
             "automation": self._decrypt(str(row["execution_plan_encrypted"])),
+            "progress": (
+                self._decrypt(str(encrypted_progress))
+                if encrypted_progress
+                else None
+            ),
         }
 
     def _automation_from_row(
@@ -1817,6 +1890,7 @@ class AutomationStore:
                 attempt_count INTEGER NOT NULL DEFAULT 0,
                 trigger_json TEXT NOT NULL,
                 execution_plan_encrypted TEXT NOT NULL,
+                progress_encrypted TEXT,
                 run_id TEXT REFERENCES automation_runs(id) ON DELETE SET NULL,
                 last_error TEXT
             );
@@ -1887,6 +1961,7 @@ class AutomationStore:
                     "id": "stage-1",
                     "name": "Stage 1",
                     "continue_policy": "all_completed",
+                    "delay_seconds": 0,
                     "action_definition_ids": action_ids,
                 }]
                 connection.execute(
@@ -1981,6 +2056,25 @@ class AutomationStore:
                 """,
                 (time.time(), "Add ALL and ANY condition groups"),
             )
+        if 6 not in applied:
+            job_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(automation_jobs)"
+                )
+            }
+            if "progress_encrypted" not in job_columns:
+                connection.execute(
+                    "ALTER TABLE automation_jobs ADD COLUMN progress_encrypted TEXT"
+                )
+            connection.execute(
+                """
+                INSERT INTO automation_schema_migrations
+                    (version, applied_at, description)
+                VALUES (6, ?, ?)
+                """,
+                (time.time(), "Add durable delayed-stage pipeline progress"),
+            )
 
     def _migrate_reusable_definitions(self, connection: sqlite3.Connection) -> None:
         rows = connection.execute(
@@ -2029,6 +2123,7 @@ class AutomationStore:
                 "id": "stage-1",
                 "name": "Stage 1",
                 "continue_policy": "all_completed",
+                "delay_seconds": 0,
                 "action_definition_ids": action_ids,
             }]
             connection.execute(
@@ -2160,7 +2255,7 @@ class AutomationEngine:
             scheduled_at=automation.get("next_check_at"),
         )
 
-    def process_job(self, job: dict[str, Any]) -> str:
+    def process_job(self, job: dict[str, Any]) -> str | None:
         trigger = ConditionResult(
             met=job["trigger"].met,
             status=job["trigger"].status,
@@ -2176,7 +2271,22 @@ class AutomationEngine:
             },
         )
         try:
-            run_id = self.execute_actions(job["automation"], trigger)
+            if job.get("run_id"):
+                run_id = str(job["run_id"])
+                self.store.complete_job(job["id"], run_id)
+                return run_id
+            action_results = self._execute_pipeline(
+                job["automation"],
+                trigger,
+                progress=job.get("progress"),
+                job_id=job["id"],
+            )
+            if action_results is None:
+                return None
+            run_id = self.store.record_run(
+                job["automation"]["id"], trigger, action_results
+            )
+            self.store.link_job_run(job["id"], run_id)
             self.store.complete_job(job["id"], run_id)
             return run_id
         except Exception as exc:
@@ -2192,39 +2302,153 @@ class AutomationEngine:
     def execute_actions(
         self, automation: dict[str, Any], trigger: ConditionResult
     ) -> str:
-        action_results: list[ActionResult] = []
-        prior_context: dict[str, Any] = {
-            "results": [], "successful": [], "partial": [], "failed": []
-        }
-        for stage_index, stage in enumerate(automation["action_stages"], 1):
+        action_results = self._execute_pipeline(automation, trigger)
+        if action_results is None:
+            raise RuntimeError("A synchronous pipeline cannot be deferred.")
+        return self.store.record_run(automation["id"], trigger, action_results)
+
+    def _execute_pipeline(
+        self,
+        automation: dict[str, Any],
+        trigger: ConditionResult,
+        *,
+        progress: dict[str, Any] | None = None,
+        job_id: str = "",
+    ) -> list[ActionResult] | None:
+        progress = progress or {}
+        start_stage_index = int(progress.get("next_stage_index", 0))
+        delay_completed_stage_id = str(
+            progress.get("delay_completed_stage_id", "")
+        )
+        if not 0 <= start_stage_index <= len(automation["action_stages"]):
+            raise ValueError("Saved automation pipeline progress is invalid.")
+        restored_results = progress.get("action_results", [])
+        action_results = [
+            ActionResult(
+                status=str(item["status"]),
+                summary=str(item["summary"]),
+                output=dict(item.get("output", {})),
+            )
+            for item in restored_results
+        ]
+        prior_context = dict(
+            progress.get("prior_context")
+            or {"results": [], "successful": [], "partial": [], "failed": []}
+        )
+        for stage_offset in range(start_stage_index, len(automation["action_stages"])):
+            stage = automation["action_stages"][stage_offset]
+            stage_index = stage_offset + 1
+            delay_seconds = int(stage.get("delay_seconds", 0))
+            if (
+                stage_offset > 0
+                and delay_seconds > 0
+                and delay_completed_stage_id != stage["id"]
+            ):
+                if job_id:
+                    deferred_progress = self._pipeline_progress(
+                        stage_offset,
+                        stage["id"],
+                        action_results,
+                        prior_context,
+                    )
+                    self.store.defer_job_for_stage(
+                        job_id,
+                        delay_seconds,
+                        deferred_progress,
+                    )
+                    return None
+                time.sleep(delay_seconds)
             stage_results = self._execute_stage(
                 stage, trigger, prior_context, stage_index
             )
             action_results.extend(stage_results)
-            for action_definition, result in zip(stage["actions"], stage_results):
-                item = {
-                    "id": action_definition["id"],
-                    "name": action_definition["name"],
-                    "type": action_definition["type"],
-                    "stage_id": stage["id"],
-                    "stage_name": stage["name"],
-                    "status": result.status,
-                    "summary": result.summary,
-                    "output": self._bounded_action_context(result.output),
-                }
-                prior_context["results"].append(item)
-                bucket = "successful" if result.status == "success" else "partial" if result.status == "partial" else "failed"
-                prior_context[bucket].append(action_definition["name"])
+            self._add_stage_context(
+                prior_context,
+                stage,
+                stage_results,
+            )
+            delay_completed_stage_id = ""
             policy = stage["continue_policy"]
             statuses = [result.status for result in stage_results]
             should_continue = (
                 policy == "all_completed"
-                or (policy == "success_or_partial" and all(status in {"success", "partial"} for status in statuses))
-                or (policy == "all_success" and all(status == "success" for status in statuses))
+                or (
+                    policy == "success_or_partial"
+                    and all(
+                        status in {"success", "partial"} for status in statuses
+                    )
+                )
+                or (
+                    policy == "all_success"
+                    and all(status == "success" for status in statuses)
+                )
             )
+            next_stage_index = (
+                stage_offset + 1
+                if should_continue
+                else len(automation["action_stages"])
+            )
+            if job_id:
+                self.store.save_job_progress(
+                    job_id,
+                    self._pipeline_progress(
+                        next_stage_index,
+                        delay_completed_stage_id,
+                        action_results,
+                        prior_context,
+                    ),
+                )
             if not should_continue:
                 break
-        return self.store.record_run(automation["id"], trigger, action_results)
+        return action_results
+
+    @staticmethod
+    def _pipeline_progress(
+        next_stage_index: int,
+        delay_completed_stage_id: str,
+        action_results: list[ActionResult],
+        prior_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "next_stage_index": next_stage_index,
+            "delay_completed_stage_id": delay_completed_stage_id,
+            "action_results": [
+                {
+                    "status": result.status,
+                    "summary": result.summary,
+                    "output": result.output,
+                }
+                for result in action_results
+            ],
+            "prior_context": prior_context,
+        }
+
+    def _add_stage_context(
+        self,
+        prior_context: dict[str, Any],
+        stage: dict[str, Any],
+        stage_results: list[ActionResult],
+    ) -> None:
+        for action_definition, result in zip(stage["actions"], stage_results):
+            item = {
+                "id": action_definition["id"],
+                "name": action_definition["name"],
+                "type": action_definition["type"],
+                "stage_id": stage["id"],
+                "stage_name": stage["name"],
+                "status": result.status,
+                "summary": result.summary,
+                "output": self._bounded_action_context(result.output),
+            }
+            prior_context["results"].append(item)
+            bucket = (
+                "successful"
+                if result.status == "success"
+                else "partial"
+                if result.status == "partial"
+                else "failed"
+            )
+            prior_context[bucket].append(action_definition["name"])
 
     def _execute_stage(
         self,
@@ -2386,6 +2610,7 @@ class AutomationBackupStore:
                         "id": stage["id"],
                         "name": stage["name"],
                         "continue_policy": stage["continue_policy"],
+                        "delay_seconds": stage["delay_seconds"],
                         "action_names": [action["name"] for action in stage["actions"]],
                     }
                     for stage in item["action_stages"]
@@ -2491,6 +2716,7 @@ class AutomationBackupStore:
             stage_definitions = definition.get("action_stages") or [{
                 "id": "stage-1", "name": "Stage 1",
                 "continue_policy": "all_completed",
+                "delay_seconds": 0,
                 "action_names": selected_action_names,
             }]
             if any(name not in condition_ids for name in condition_names) or any(
@@ -2514,6 +2740,7 @@ class AutomationBackupStore:
                         "id": str(stage.get("id", "")),
                         "name": str(stage.get("name", "")),
                         "continue_policy": str(stage.get("continue_policy", "all_completed")),
+                        "delay_seconds": int(stage.get("delay_seconds", 0)),
                         "action_definition_ids": [
                             action_ids[str(name)] for name in stage.get("action_names", [])
                         ],

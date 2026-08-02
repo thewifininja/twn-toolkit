@@ -126,7 +126,7 @@
       try { choices = JSON.parse(stageBuilder.dataset.actionChoices || "[]"); } catch (_error) { choices = []; }
       try { stages = JSON.parse(hidden?.value || "[]"); } catch (_error) { stages = []; }
       const stageId = () => globalThis.crypto?.randomUUID?.() || `stage-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      if (!stages.length) stages = [{id:stageId(), name:"Stage 1", continue_policy:"all_completed", action_definition_ids:[]}];
+      if (!stages.length) stages = [{id:stageId(), name:"Stage 1", continue_policy:"all_completed", delay_seconds:0, action_definition_ids:[]}];
       const syncStages = () => { if (hidden) hidden.value = JSON.stringify(stages); };
       const renderStages = () => {
         list.replaceChildren();
@@ -134,6 +134,23 @@
         stages.forEach((stage, index) => {
           const card = document.createElement("section");
           card.className = "automation-stage-card";
+          const delaySeconds = Math.max(0, Number.parseInt(stage.delay_seconds || 0, 10) || 0);
+          const delayUnit = delaySeconds > 0 && delaySeconds % 3600 === 0 ? "hours" : delaySeconds > 0 && delaySeconds % 60 === 0 ? "minutes" : "seconds";
+          const delayDivisor = delayUnit === "hours" ? 3600 : delayUnit === "minutes" ? 60 : 1;
+          const delayValue = delaySeconds / delayDivisor;
+          const delayControl = index === 0 ? `
+            <div class="automation-stage-timing"><span>Timing</span><strong>Starts immediately after the trigger</strong><small>Delays apply before later stages.</small></div>` : `
+            <label>Wait before this stage
+              <div class="automation-duration-input">
+                <input data-stage-delay-value type="number" min="0" max="${delayUnit === "hours" ? 24 : delayUnit === "minutes" ? 1440 : 86400}" step="1" value="${delayValue}" required>
+                <select data-stage-delay-unit aria-label="Stage delay unit">
+                  <option value="seconds" ${delayUnit === "seconds" ? "selected" : ""}>seconds</option>
+                  <option value="minutes" ${delayUnit === "minutes" ? "selected" : ""}>minutes</option>
+                  <option value="hours" ${delayUnit === "hours" ? "selected" : ""}>hours</option>
+                </select>
+              </div>
+              <small class="field-note">The pipeline waits durably without occupying a worker.</small>
+            </label>`;
           const actionRows = choices.map((choice) => {
             const selected = (stage.action_definition_ids || []).includes(choice.id);
             const unavailable = !selected && assigned.has(choice.id);
@@ -147,6 +164,7 @@
                 <option value="success_or_partial" ${stage.continue_policy === "success_or_partial" ? "selected" : ""}>No action completely fails</option>
                 <option value="all_success" ${stage.continue_policy === "all_success" ? "selected" : ""}>Every action succeeds</option>
               </select></label>
+              ${delayControl}
             </div>
             <p class="field-note">Actions in this stage run in parallel. The next stage waits for all of them to finish.</p>
             <div class="automation-stage-actions">${actionRows}</div>
@@ -158,6 +176,18 @@
           list.append(card);
           card.querySelector("[data-stage-name]").addEventListener("input", (event) => { stage.name = event.target.value; syncStages(); });
           card.querySelector("[data-stage-policy]").addEventListener("change", (event) => { stage.continue_policy = event.target.value; syncStages(); });
+          const delayValueInput = card.querySelector("[data-stage-delay-value]");
+          const delayUnitInput = card.querySelector("[data-stage-delay-unit]");
+          const syncDelay = () => {
+            if (!delayValueInput || !delayUnitInput) return;
+            const factor = delayUnitInput.value === "hours" ? 3600 : delayUnitInput.value === "minutes" ? 60 : 1;
+            const maximum = delayUnitInput.value === "hours" ? 24 : delayUnitInput.value === "minutes" ? 1440 : 86400;
+            delayValueInput.max = String(maximum);
+            stage.delay_seconds = Math.max(0, Number.parseInt(delayValueInput.value || "0", 10) || 0) * factor;
+            syncStages();
+          };
+          delayValueInput?.addEventListener("input", syncDelay);
+          delayUnitInput?.addEventListener("change", syncDelay);
           card.querySelectorAll(".automation-stage-action input").forEach((input) => input.addEventListener("change", () => {
             stage.action_definition_ids = [...card.querySelectorAll(".automation-stage-action input:checked")].map((item) => item.value);
             syncStages(); renderStages();
@@ -168,7 +198,7 @@
         });
         syncStages();
       };
-      addStage?.addEventListener("click", () => { stages.push({id:stageId(), name:`Stage ${stages.length + 1}`, continue_policy:"all_completed", action_definition_ids:[]}); renderStages(); });
+      addStage?.addEventListener("click", () => { stages.push({id:stageId(), name:`Stage ${stages.length + 1}`, continue_policy:"all_completed", delay_seconds:0, action_definition_ids:[]}); renderStages(); });
       renderStages();
     }
 

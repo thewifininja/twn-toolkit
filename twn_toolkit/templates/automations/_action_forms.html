@@ -212,6 +212,18 @@
           <label>Request timeout
             <div class="input-suffix"><input name="webhook_timeout" type="number" min="0.2" max="30" step="0.1" value="{{ config.get('timeout', config.get('webhook_timeout', '10')) }}" required><span>seconds</span></div>
           </label>
+          <label>Maximum attempts
+            <input name="webhook_max_attempts" type="number" min="1" max="5" step="1" value="{{ config.get('max_attempts', config.get('webhook_max_attempts', '1')) }}" required>
+            <small class="field-note">One preserves single-delivery behavior; higher values retry network errors and selected statuses.</small>
+          </label>
+          <label>Initial retry delay
+            <div class="input-suffix"><input name="webhook_retry_delay" type="number" min="0" max="60" step="0.1" value="{{ config.get('retry_delay', config.get('webhook_retry_delay', '2')) }}" required><span>seconds</span></div>
+            <small class="field-note">Retries use exponential backoff capped at 60 seconds.</small>
+          </label>
+          <label>Retry HTTP statuses
+            <input name="webhook_retry_statuses" value="{{ config.get('retry_statuses', config.get('webhook_retry_statuses', '408,425,429,500-599')) }}" placeholder="408,425,429,500-599" required>
+            <small class="field-note">Unexpected statuses outside this list fail immediately.</small>
+          </label>
         </div>
       </section>
 

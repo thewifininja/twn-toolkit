@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
+import time
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
@@ -433,6 +434,21 @@ def _validate_webhook(config: dict[str, Any]) -> dict[str, Any]:
         raise ToolInputError("Webhook timeout must be between 0.2 and 30 seconds.")
     expected_statuses = str(config.get("expected_statuses", "200-299")).strip()
     _parse_webhook_statuses(expected_statuses)
+    try:
+        max_attempts = int(config.get("max_attempts", 1))
+        retry_delay = float(config.get("retry_delay", 2))
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError(
+            "Webhook attempts and retry delay must be numbers."
+        ) from exc
+    if not 1 <= max_attempts <= 5:
+        raise ToolInputError("Webhook attempts must be between 1 and 5.")
+    if not 0 <= retry_delay <= 60:
+        raise ToolInputError("Webhook retry delay must be between 0 and 60 seconds.")
+    retry_statuses = str(
+        config.get("retry_statuses", "408,425,429,500-599")
+    ).strip()
+    _parse_webhook_statuses(retry_statuses)
     return {
         "endpoints": "\n".join(
             f"{item['label']} = {item['url']}" if item["label"] else item["url"]
@@ -446,6 +462,9 @@ def _validate_webhook(config: dict[str, Any]) -> dict[str, Any]:
         "timeout": timeout,
         "verify_tls": bool(config.get("verify_tls", True)),
         "expected_statuses": expected_statuses,
+        "max_attempts": max_attempts,
+        "retry_delay": retry_delay,
+        "retry_statuses": retry_statuses,
     }
 
 
@@ -586,37 +605,91 @@ def _execute_webhook(config: dict[str, Any], trigger: ConditionResult) -> Action
         headers["Content-Type"] = "application/json"
     body = _render_webhook_body(normalized, trigger)
     accepted = _parse_webhook_statuses(normalized["expected_statuses"])
+    retryable = _parse_webhook_statuses(normalized["retry_statuses"])
     results = []
     for line in normalized["endpoints"].splitlines():
         if "=" in line:
             label, url = (part.strip() for part in line.split("=", 1))
         else:
             label, url = "", line.strip()
-        try:
-            response = send_api_request(
-                normalized["method"], url, headers=headers, body=body,
-                timeout=normalized["timeout"], verify_tls=normalized["verify_tls"],
-            )
-        except ToolInputError as exc:
-            results.append({"status": "error", "label": label, "url": url, "error": str(exc)})
-            continue
-        success = response["status"] in accepted
-        preview = str(response.get("body", ""))[:4096]
-        results.append({
-            "status": "success" if success else "error",
-            "label": label, "url": url, "http_status": response["status"],
-            "reason": response.get("reason", ""), "elapsed_ms": response.get("elapsed_ms"),
-            "resolved_addresses": response.get("resolved_addresses", []),
-            "redirect": response.get("redirect", ""), "response_preview": preview,
-            "response_truncated": bool(response.get("truncated")) or len(str(response.get("body", ""))) > len(preview),
-        })
+        attempts = []
+        endpoint_result: dict[str, Any] | None = None
+        for attempt in range(1, normalized["max_attempts"] + 1):
+            try:
+                response = send_api_request(
+                    normalized["method"], url, headers=headers, body=body,
+                    timeout=normalized["timeout"], verify_tls=normalized["verify_tls"],
+                )
+            except ToolInputError as exc:
+                attempts.append({
+                    "attempt": attempt,
+                    "status": "error",
+                    "error": str(exc),
+                })
+                if attempt < normalized["max_attempts"]:
+                    _wait_for_webhook_retry(normalized["retry_delay"], attempt)
+                    continue
+                endpoint_result = {
+                    "status": "error",
+                    "label": label,
+                    "url": url,
+                    "error": str(exc),
+                }
+                break
+            success = response["status"] in accepted
+            attempts.append({
+                "attempt": attempt,
+                "status": "success" if success else "error",
+                "http_status": response["status"],
+                "reason": response.get("reason", ""),
+                "elapsed_ms": response.get("elapsed_ms"),
+            })
+            if (
+                not success
+                and response["status"] in retryable
+                and attempt < normalized["max_attempts"]
+            ):
+                _wait_for_webhook_retry(normalized["retry_delay"], attempt)
+                continue
+            preview = str(response.get("body", ""))[:4096]
+            endpoint_result = {
+                "status": "success" if success else "error",
+                "label": label, "url": url, "http_status": response["status"],
+                "reason": response.get("reason", ""), "elapsed_ms": response.get("elapsed_ms"),
+                "resolved_addresses": response.get("resolved_addresses", []),
+                "redirect": response.get("redirect", ""), "response_preview": preview,
+                "response_truncated": bool(response.get("truncated")) or len(str(response.get("body", ""))) > len(preview),
+            }
+            break
+        if endpoint_result is None:
+            endpoint_result = {
+                "status": "error",
+                "label": label,
+                "url": url,
+                "error": "Webhook delivery ended without a result.",
+            }
+        endpoint_result["attempt_count"] = len(attempts)
+        endpoint_result["attempts"] = attempts
+        results.append(endpoint_result)
     successes = sum(item["status"] == "success" for item in results)
     status = "success" if successes == len(results) else "partial" if successes else "error"
     return ActionResult(
         status=status,
         summary=f"Webhook delivered successfully to {successes} of {len(results)} endpoints.",
-        output={"endpoints": results, "method": normalized["method"]},
+        output={
+            "endpoints": results,
+            "method": normalized["method"],
+            "expected_statuses": normalized["expected_statuses"],
+            "max_attempts": normalized["max_attempts"],
+            "retry_statuses": normalized["retry_statuses"],
+        },
     )
+
+
+def _wait_for_webhook_retry(base_delay: float, attempt: int) -> None:
+    delay = min(60.0, float(base_delay) * (2 ** max(0, attempt - 1)))
+    if delay > 0:
+        time.sleep(delay)
 
 
 def _packet_capture_destination(config: dict[str, Any]) -> dict[str, str]:
@@ -756,7 +829,7 @@ def _parse_webhook_form(form: Mapping[str, Any], existing: dict[str, Any]) -> di
         headers = ""
     elif not headers.strip():
         headers = str(existing.get("headers", ""))
-    return {"endpoints": form.get("webhook_endpoints", ""), "method": form.get("webhook_method", "POST"), "headers": headers, "body_format": form.get("webhook_body_format", "json"), "body": form.get("webhook_body", ""), "timeout": form.get("webhook_timeout", "10"), "verify_tls": "webhook_verify_tls" in form, "expected_statuses": form.get("webhook_expected_statuses", "200-299")}
+    return {"endpoints": form.get("webhook_endpoints", ""), "method": form.get("webhook_method", "POST"), "headers": headers, "body_format": form.get("webhook_body_format", "json"), "body": form.get("webhook_body", ""), "timeout": form.get("webhook_timeout", "10"), "verify_tls": "webhook_verify_tls" in form, "expected_statuses": form.get("webhook_expected_statuses", "200-299"), "max_attempts": form.get("webhook_max_attempts", "1"), "retry_delay": form.get("webhook_retry_delay", "2"), "retry_statuses": form.get("webhook_retry_statuses", "408,425,429,500-599")}
 
 
 def _parse_email_form(

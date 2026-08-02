@@ -578,13 +578,23 @@ make state, risk, and the next action obvious.
 - Automations use ordered action stages. Actions inside a stage run concurrently;
   stages run sequentially. Each stage has a stable ID, display name, and
   continuation policy (`all_completed`, `success_or_partial`, or `all_success`).
+  Every stage after the first may define `delay_seconds` from 0 through 86400.
+  Evaluate continuation before scheduling the next delay. A delay must persist
+  encrypted progress in `automation_jobs`, move the job to `waiting`, release
+  its worker/lease, and resume through normal claiming; do not sleep inside a
+  scheduler worker for a stage delay. Waiting progress survives restart.
   Existing flat action lists migrate to one default parallel stage. Later stages
   receive bounded, non-secret earlier-action context; raw SSH output is never
   injected automatically.
 - `automation_schema_migrations` is the numbered migration ledger. Version 1
   adds `action_stages`; version 2 persists first-generation SNMP definitions as
-  per-host AND rules and pauses dependents. Use this runner—not new ad-hoc
-  column checks—for future material schema changes.
+  per-host AND rules and pauses dependents; version 3 adds retention; version 4
+  adds durable action jobs; version 5 adds ALL/ANY condition groups; version 6
+  adds encrypted delayed-stage progress. Use this runner—not new ad-hoc column
+  checks—for future material schema changes. Toolkit migration 2 performs the
+  pre-change database snapshot, prepares the corresponding job column, and
+  records automation version 6 in the same transaction. The internal runner
+  remains the fresh-database and compatibility fallback.
 - Editing a shared definition pauses all dependent automations. Deletion is
   blocked while references remain. Existing embedded definitions are migrated
   automatically into reusable records.
@@ -650,8 +660,12 @@ make state, risk, and the next action obvious.
   accepted-status expression, timeout, and TLS policy. Headers are encrypted
   and write-only. JSON templates are parsed then recursively substituted so
   exact boolean/evidence tokens remain typed; text templates use explicit token
-  replacement. Never retain request headers, and retain at most 4 KiB of each
-  response body.
+  replacement. Delivery validates success statuses and supports 1–5 attempts
+  with bounded exponential backoff for network errors and explicitly selected
+  HTTP statuses. Preserve the one-attempt default to avoid surprise duplicate
+  notifications, retain per-attempt outcomes, and keep the same job-derived
+  `Idempotency-Key` across attempts. Never retain request headers, and retain at
+  most 4 KiB of each response body.
 - SSH capture is bounded to 5 MiB per host while reading; prompt detection keeps
   using a small rolling tail after that limit. Automation browser previews are
   shortened to 40,000 characters per host, but ZIP downloads use the complete

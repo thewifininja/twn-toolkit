@@ -117,8 +117,11 @@ to the next future occurrence rather than replaying a backlog.
 - Action: send a POST, PUT, or PATCH Webhook/API notification to up to 10
   endpoints. Headers are encrypted/write-only, accepted HTTP statuses and TLS
   verification are explicit, redirects are not followed, and retained response
-  previews are capped at 4 KiB per endpoint. JSON templates preserve typed
-  boolean/object substitutions for trigger state and evidence.
+  previews are capped at 4 KiB per endpoint. Each endpoint records its delivery
+  attempts. Optional exponential-backoff retries can cover network errors and
+  selected HTTP statuses; one attempt remains the default to avoid surprising
+  duplicate notifications. JSON templates preserve typed boolean/object
+  substitutions for trigger state and evidence.
 - Action: send a plain-text email notification through the installation-wide
   SMTP service configured under Administration → System Settings → Email.
   To, Cc, Bcc, subject, and message templates support trigger and prior-action
@@ -184,6 +187,12 @@ editable names, ordering controls, and one of three continuation policies:
 - continue only when every result is success or partial; or
 - continue only when every result is success.
 
+Every stage after the first may also wait from zero seconds through 24 hours
+before it starts. The continuation policy is evaluated first, so a stage that
+is not eligible does not wait. Delays are durable queue state rather than a
+sleeping worker: completed-stage results are encrypted, the worker is released,
+and the pipeline resumes after its due time even if the toolkit restarts.
+
 Later actions receive a bounded prior-action context. Webhook templates can use
 `{{actions.results}}`, `{{actions.successful}}`, `{{actions.partial}}`, and
 `{{actions.failed}}`. The context includes status, summary, stage/action
@@ -197,7 +206,10 @@ adds ordered stages and converts existing action lists into a single default
 parallel stage transactionally. Migration 2 converts the first SNMP condition
 format into persisted per-host AND rules and pauses dependent automations for
 review. Migration 3 adds the global retention policy and daily-pruning ledger.
-Migration 4 adds the durable action-execution queue.
+Migration 4 adds the durable action-execution queue. Migration 5 adds ALL/ANY
+condition groups. Migration 6 adds encrypted in-progress pipeline state for
+durable delayed stages. Toolkit migration 2 snapshots existing SQLite databases
+before preparing that automation-job column.
 
 ## Durable execution
 
@@ -211,17 +223,23 @@ The scheduler claims jobs with time-limited leases and renews those leases
 while actions run. If the process exits, another scheduler can reclaim the job
 after its lease expires. Infrastructure failures use bounded exponential
 backoff and become visibly failed after three attempts; an administrator can
-requeue failed jobs from the Automations page. The page also reports queued
-and running counts and the age of the oldest unfinished job.
+requeue failed jobs from the Automations page. The page also reports queued,
+waiting, and running counts and the age of the oldest unfinished job. A job in
+the waiting state is intentionally idle until its next stage is due and does
+not consume an automation worker.
 
 Execution is deliberately **at least once**. A process can complete an external
-action and exit before recording job completion, so that action may be repeated
-after recovery. Every retry retains the same execution job ID in
+action and exit before recording that stage's progress, so actions in that
+stage may be repeated after recovery. Once stage progress is recorded, an
+ordinary restart resumes at the next eligible stage instead of replaying prior
+stages. Every retry retains the same execution job ID in
 `trigger.evidence.execution.job_id`; templates can use `{{trigger.job_id}}`.
 Webhook actions automatically send that ID in the `Idempotency-Key` header
 unless the action defines its own header, allowing compatible receivers to
-deduplicate retries. Run history also records the scheduled and queued
-timestamps and the attempt number.
+deduplicate retries. Webhook delivery also validates configured success
+statuses and can retry network failures or selected response statuses up to
+five times with bounded exponential backoff. Run history retains per-endpoint
+attempts plus the scheduled and queued timestamps and execution attempt number.
 
 ## State model
 
@@ -290,7 +308,7 @@ the completed run.
 ## Planned extensions
 
 - HTTP response health, NTP health, and syslog-pattern condition types.
-- Per-action retry policies and optional explicit retry backoff.
+- Broader per-action retry policies beyond Webhook/API delivery.
 - Explicit production and out-of-band source-interface binding.
 - Optional repeated collection during a long-lived incident.
 - Granular permissions for viewing, arming, editing, and downloading output.

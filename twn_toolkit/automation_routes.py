@@ -59,6 +59,7 @@ def _automation_audit_snapshot(automation: dict[str, Any] | None) -> dict[str, A
             {
                 "name": stage.get("name", ""),
                 "continue policy": stage.get("continue_policy", ""),
+                "delay seconds": stage.get("delay_seconds", 0),
                 "actions": [action.get("name", "") for action in stage.get("actions", [])],
             }
             for stage in automation.get("action_stages", [])
@@ -91,6 +92,10 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     ) -> str:
         automations = store.all()
         for automation in automations:
+            for stage in automation["action_stages"]:
+                stage["delay_display"] = _format_duration(
+                    int(stage.get("delay_seconds", 0))
+                )
             automation["run_mode"] = (
                 "manual"
                 if automation["condition"]["type"] == "manual.trigger"
@@ -103,6 +108,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                     "id": stage["id"],
                     "name": stage["name"],
                     "continue_policy": stage["continue_policy"],
+                    "delay_seconds": stage["delay_seconds"],
                     "action_definition_ids": stage["action_definition_ids"],
                 }
                 for stage in automation["action_stages"]
@@ -606,25 +612,36 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         if not job:
             raise RuntimeError("Manual automation job could not be claimed.")
         run_id = AutomationEngine(store).process_job(job)
-        run = store.get_run(run_id)
+        run = store.get_run(run_id) if run_id else None
+        run_status = (run or {}).get("status", "waiting")
         annotate_audit_event(
             category="Automation", action="automation.ran_manually",
-            summary=f"Ran automation {automation['name']} manually.",
+            summary=(
+                f"Ran automation {automation['name']} manually."
+                if run_id
+                else f"Started automation {automation['name']} manually; it is waiting between stages."
+            ),
             resource_type="automation", resource_id=automation_id,
             resource_name=automation["name"],
             details={
                 "job id": job_id,
-                "run id": run_id,
-                "run status": (run or {}).get("status", ""),
+                "run id": run_id or "",
+                "run status": run_status,
                 "action stages": len(automation.get("action_stages", [])),
                 "actions": len(automation.get("actions", [])),
             },
         )
         record_current_activity(
             "Automation",
-            "Ran automation manually",
+            "Ran automation manually" if run_id else "Started automation manually",
             automation["name"],
         )
+        if not run_id:
+            flash(
+                "Manual automation started. It is waiting between stages and will continue in the background.",
+                "success",
+            )
+            return redirect(url_for("automations", focus=automation_id))
         flash("Manual automation completed. Review or download the collected run.", "success")
         return redirect(url_for("automations", focus=automation_id, focus_run=run_id))
 
@@ -851,6 +868,18 @@ def _format_time(value: Any) -> str:
     if not value:
         return "Never"
     return datetime.fromtimestamp(float(value)).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _format_duration(seconds: int) -> str:
+    if seconds <= 0:
+        return ""
+    if seconds % 3600 == 0:
+        value, unit = seconds // 3600, "hour"
+    elif seconds % 60 == 0:
+        value, unit = seconds // 60, "minute"
+    else:
+        value, unit = seconds, "second"
+    return f"{value} {unit}{'' if value == 1 else 's'}"
 
 
 def _filename_timestamp(value: Any) -> str:
