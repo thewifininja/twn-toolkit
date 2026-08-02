@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
-from twn_toolkit import create_app
+from twn_toolkit import acme_dns_hook, create_app
 from twn_toolkit.acme_dns import (
     AcmeDnsManager,
     LETS_ENCRYPT_STAGING_DIRECTORY,
@@ -151,22 +151,52 @@ class AcmeDnsCoreTests(unittest.TestCase):
                 with patch.dict(os.environ, environment, clear=False):
                     result.append(run_hook("auth", str(job_path)))
 
+            original_merge_status = acme_dns_hook._merge_status
+
+            def delayed_merge_status(path: Path, **updates: object) -> None:
+                if updates.get("status") == "awaiting_dns":
+                    time.sleep(0.1)
+                original_merge_status(path, **updates)
+
             thread = threading.Thread(target=invoke)
-            thread.start()
             challenge_path = job_path / "challenge.json"
-            for _ in range(100):
-                if challenge_path.exists():
-                    break
-                time.sleep(0.02)
-            challenge = _read_json(challenge_path)
-            self.assertEqual(challenge["record_name"], "_acme-challenge.guest.example.org")
-            self.assertEqual(challenge["record_value"], "validation-token")
-            self.assertEqual(_read_json(job_path / "status.json")["status"], "awaiting_dns")
-            (job_path / f"continue-{challenge['id']}").touch(mode=0o600)
-            thread.join(timeout=3)
-            self.assertFalse(thread.is_alive())
-            self.assertEqual(result, [0])
-            self.assertEqual(_read_json(job_path / "status.json")["status"], "validating")
+            with patch.object(
+                acme_dns_hook,
+                "_merge_status",
+                side_effect=delayed_merge_status,
+            ):
+                thread.start()
+                try:
+                    challenge: dict[str, object] = {}
+                    observed_status: dict[str, object] = {}
+                    for _ in range(100):
+                        challenge = _read_json(challenge_path)
+                        observed_status = _read_json(job_path / "status.json")
+                        if challenge and observed_status.get("status") == "awaiting_dns":
+                            break
+                        time.sleep(0.02)
+                    else:
+                        self.fail(
+                            "The ACME hook did not publish a complete awaiting-DNS "
+                            "state within two seconds."
+                        )
+                    self.assertEqual(
+                        challenge["record_name"],
+                        "_acme-challenge.guest.example.org",
+                    )
+                    self.assertEqual(challenge["record_value"], "validation-token")
+                    (job_path / f"continue-{challenge['id']}").touch(mode=0o600)
+                    thread.join(timeout=3)
+                    self.assertFalse(thread.is_alive())
+                    self.assertEqual(result, [0])
+                    self.assertEqual(
+                        _read_json(job_path / "status.json")["status"],
+                        "validating",
+                    )
+                finally:
+                    if thread.is_alive():
+                        (job_path / "cancel").touch(mode=0o600)
+                        thread.join(timeout=3)
 
     def test_dns_check_distinguishes_cached_system_answer_from_authority(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
