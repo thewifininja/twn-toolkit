@@ -37,6 +37,23 @@ from twn_toolkit.supervisor_worker import (
 
 
 class OperationalHardeningTests(unittest.TestCase):
+    def test_package_import_does_not_eagerly_load_the_flask_application(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from twn_toolkit import create_app; "
+                "assert callable(create_app); "
+                "assert 'twn_toolkit.app' not in sys.modules",
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_daemon_singleton_locks_live_in_the_instance_directory(self) -> None:
         toolkit = Path(__file__).resolve().parents[1] / "twn_toolkit"
         transfer_workers = (
