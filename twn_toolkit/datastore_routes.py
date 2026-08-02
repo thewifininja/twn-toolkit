@@ -129,7 +129,7 @@ def register_datastore_routes(
         project_root = Path(__file__).resolve().parent.parent
         completed = subprocess.run(
             [str(project_root / "twn"), command], cwd=project_root,
-            capture_output=True, text=True, timeout=15, check=False,
+            capture_output=True, text=True, timeout=30, check=False,
         )
         if completed.returncode:
             raise RuntimeError((completed.stderr or completed.stdout).strip() or failure_message)

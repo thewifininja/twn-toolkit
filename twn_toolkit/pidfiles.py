@@ -31,6 +31,19 @@ def remove_own_pid_file(path_value: str) -> None:
         path.unlink(missing_ok=True)
 
 
+def process_marker_ready(pid_path: Path, ready_path: Path) -> bool:
+    """Return true only when both markers name the same live process."""
+    try:
+        pid = int(pid_path.read_text(encoding="utf-8").strip())
+        ready_pid = int(ready_path.read_text(encoding="utf-8").strip())
+        if pid != ready_pid:
+            return False
+        os.kill(pid, 0)
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    return True
+
+
 def acquire_singleton_lock(root: Path, name: str) -> IO[str] | None:
     path = root.resolve() / f".twn-{name}.lock"
     path.parent.mkdir(parents=True, exist_ok=True)

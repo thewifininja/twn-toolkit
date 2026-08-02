@@ -18,8 +18,11 @@ PORT_FILE="$INSTANCE/twn-toolkit.port"
 AUTOMATION_PIDFILE="$INSTANCE/twn-automation.pid"
 SUPERVISOR_PIDFILE="$INSTANCE/twn-supervisor.pid"
 TFTP_PIDFILE="$INSTANCE/twn-tftp.pid"
+TFTP_READYFILE="$INSTANCE/twn-tftp.ready"
 SSH_TRANSFER_PIDFILE="$INSTANCE/twn-ssh-transfer.pid"
+SSH_TRANSFER_READYFILE="$INSTANCE/twn-ssh-transfer.ready"
 FTP_PIDFILE="$INSTANCE/twn-ftp.pid"
+FTP_READYFILE="$INSTANCE/twn-ftp.ready"
 ACCESS_LOG="$INSTANCE/twn-toolkit-access.log"
 ERROR_LOG="$INSTANCE/twn-toolkit-error.log"
 AUTOMATION_LOG="$INSTANCE/twn-automation.log"
@@ -176,6 +179,13 @@ managed_worker_is_running() {
   [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null
 }
 
+managed_worker_is_ready() {
+  [ -f "$1" ] && [ -f "$2" ] || return 1
+  worker_pid=$(cat "$1" 2>/dev/null || true)
+  ready_pid=$(cat "$2" 2>/dev/null || true)
+  [ -n "$worker_pid" ] && [ "$worker_pid" = "$ready_pid" ] && kill -0 "$worker_pid" 2>/dev/null
+}
+
 managed_worker_enabled() {
   [ -f "$1" ] || return 1
   "$PYTHON" -c 'import json, sys; raise SystemExit(0 if json.load(open(sys.argv[1], encoding="utf-8")).get("enabled") else 1)' "$1" >/dev/null 2>&1
@@ -220,9 +230,11 @@ clear_managed_runtime() {
 
 stop_managed_worker_unlocked() {
   worker_pidfile=$1
-  cleanup=$2
+  worker_readyfile=$2
+  cleanup=$3
   if ! managed_worker_is_running "$worker_pidfile"; then
     rm -f "$worker_pidfile"
+    rm -f "$worker_readyfile"
     clear_managed_runtime "$cleanup"
     return
   fi
@@ -232,15 +244,19 @@ stop_managed_worker_unlocked() {
   while kill -0 "$worker_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do attempts=$((attempts + 1)); sleep 0.1; done
   if kill -0 "$worker_pid" 2>/dev/null; then kill -KILL "$worker_pid" 2>/dev/null || true; fi
   rm -f "$worker_pidfile"
+  rm -f "$worker_readyfile"
   clear_managed_runtime "$cleanup"
 }
 
 stop_managed_worker() {
   worker_pidfile=$1
-  cleanup=$2
+  worker_readyfile=$2
+  cleanup=$3
+  worker_module=$4
   acquire_managed_worker_lock "$worker_pidfile"
   status=0
-  stop_managed_worker_unlocked "$worker_pidfile" "$cleanup" || status=$?
+  stop_managed_worker_unlocked "$worker_pidfile" "$worker_readyfile" "$cleanup" || status=$?
+  if [ "$status" -eq 0 ]; then cleanup_daemon_processes "$worker_module" 0 || status=$?; fi
   release_managed_worker_lock "$worker_pidfile"
   return "$status"
 }
@@ -248,59 +264,95 @@ stop_managed_worker() {
 start_managed_worker_unlocked() {
   settings_file=$1
   worker_pidfile=$2
-  worker_log=$3
-  worker_module=$4
-  worker_label=$5
-  cleanup=$6
+  worker_readyfile=$3
+  worker_log=$4
+  worker_module=$5
+  worker_label=$6
+  cleanup=$7
   if ! managed_worker_enabled "$settings_file"; then
-    stop_managed_worker_unlocked "$worker_pidfile" "$cleanup"
+    stop_managed_worker_unlocked "$worker_pidfile" "$worker_readyfile" "$cleanup"
     return 0
   fi
-  if managed_worker_is_running "$worker_pidfile"; then return 0; fi
+  if managed_worker_is_ready "$worker_pidfile" "$worker_readyfile"; then return 0; fi
+  if managed_worker_is_running "$worker_pidfile"; then
+    stop_managed_worker_unlocked "$worker_pidfile" "$worker_readyfile" "$cleanup"
+  fi
   rm -f "$worker_pidfile"
+  rm -f "$worker_readyfile"
   cd "$ROOT"
   worker_log_start=0
   if [ -f "$worker_log" ]; then worker_log_start=$(wc -l < "$worker_log" | tr -d ' '); fi
-  "$PYTHON" -m "$worker_module" --instance "$INSTANCE" --daemon --pid-file "$worker_pidfile" --log-file "$worker_log"
+  "$PYTHON" -m "$worker_module" --instance "$INSTANCE" --daemon --pid-file "$worker_pidfile" --ready-file "$worker_readyfile" --log-file "$worker_log"
   attempts=0
-  while [ "$attempts" -lt 30 ]; do
-    if managed_worker_is_running "$worker_pidfile"; then sleep 0.2; if managed_worker_is_running "$worker_pidfile"; then return 0; fi; fi
+  while [ "$attempts" -lt 100 ]; do
+    if managed_worker_is_ready "$worker_pidfile" "$worker_readyfile"; then sleep 0.2; if managed_worker_is_ready "$worker_pidfile" "$worker_readyfile"; then return 0; fi; fi
+    if [ -f "$worker_pidfile" ] && ! managed_worker_is_running "$worker_pidfile"; then break; fi
     attempts=$((attempts + 1)); sleep 0.1
   done
   echo "The $worker_label service did not start. Check: $worker_log" >&2
-  worker_error=$(tail -n "+$((worker_log_start + 1))" "$worker_log" 2>/dev/null | awk '/^(OSError|RuntimeError|ValueError):/{message=$0} END{print message}')
-  if [ -n "$worker_error" ]; then echo "$worker_error" >&2; fi
+  worker_error=$(tail -n "+$((worker_log_start + 1))" "$worker_log" 2>/dev/null | awk 'NF {message=$0} END{print message}')
+  if [ -n "$worker_error" ]; then
+    echo "$worker_error" >&2
+  else
+    echo "The worker exited before socket readiness and did not write a startup error." >&2
+  fi
+  if managed_worker_is_running "$worker_pidfile"; then
+    stop_managed_worker_unlocked "$worker_pidfile" "$worker_readyfile" "$cleanup"
+  fi
   return 1
 }
 
 start_managed_worker() {
   settings_file=$1
   worker_pidfile=$2
-  worker_log=$3
-  worker_module=$4
-  worker_label=$5
-  cleanup=$6
+  worker_readyfile=$3
+  worker_log=$4
+  worker_module=$5
+  worker_label=$6
+  cleanup=$7
   acquire_managed_worker_lock "$worker_pidfile"
   status=0
-  start_managed_worker_unlocked "$settings_file" "$worker_pidfile" "$worker_log" "$worker_module" "$worker_label" "$cleanup" || status=$?
+  cleanup_managed_daemon "$worker_module" "$worker_pidfile" || status=$?
+  if [ "$status" -eq 0 ]; then
+    start_managed_worker_unlocked "$settings_file" "$worker_pidfile" "$worker_readyfile" "$worker_log" "$worker_module" "$worker_label" "$cleanup" || status=$?
+  fi
   release_managed_worker_lock "$worker_pidfile"
   return "$status"
 }
 
-tftp_is_running() { managed_worker_is_running "$TFTP_PIDFILE"; }
+restart_managed_worker() {
+  settings_file=$1
+  worker_pidfile=$2
+  worker_readyfile=$3
+  worker_log=$4
+  worker_module=$5
+  worker_label=$6
+  cleanup=$7
+  acquire_managed_worker_lock "$worker_pidfile"
+  status=0
+  stop_managed_worker_unlocked "$worker_pidfile" "$worker_readyfile" "$cleanup" || status=$?
+  if [ "$status" -eq 0 ]; then cleanup_daemon_processes "$worker_module" 0 || status=$?; fi
+  if [ "$status" -eq 0 ]; then
+    start_managed_worker_unlocked "$settings_file" "$worker_pidfile" "$worker_readyfile" "$worker_log" "$worker_module" "$worker_label" "$cleanup" || status=$?
+  fi
+  release_managed_worker_lock "$worker_pidfile"
+  return "$status"
+}
+
+tftp_is_running() { managed_worker_is_ready "$TFTP_PIDFILE" "$TFTP_READYFILE"; }
 tftp_enabled() { managed_worker_enabled "$TFTP_SETTINGS"; }
-start_tftp() { cleanup_managed_daemon "twn_toolkit.tftp_worker" "$TFTP_PIDFILE"; start_managed_worker "$TFTP_SETTINGS" "$TFTP_PIDFILE" "$TFTP_LOG" "twn_toolkit.tftp_worker" "TFTP" "twn_toolkit.tftp:clear_tftp_runtime"; }
-stop_tftp() { status=0; stop_managed_worker "$TFTP_PIDFILE" "twn_toolkit.tftp:clear_tftp_runtime" || status=$?; cleanup_daemon_processes "twn_toolkit.tftp_worker" 0; return "$status"; }
+start_tftp() { start_managed_worker "$TFTP_SETTINGS" "$TFTP_PIDFILE" "$TFTP_READYFILE" "$TFTP_LOG" "twn_toolkit.tftp_worker" "TFTP" "twn_toolkit.tftp:clear_tftp_runtime"; }
+stop_tftp() { stop_managed_worker "$TFTP_PIDFILE" "$TFTP_READYFILE" "twn_toolkit.tftp:clear_tftp_runtime" "twn_toolkit.tftp_worker"; }
 
-ssh_transfer_is_running() { managed_worker_is_running "$SSH_TRANSFER_PIDFILE"; }
+ssh_transfer_is_running() { managed_worker_is_ready "$SSH_TRANSFER_PIDFILE" "$SSH_TRANSFER_READYFILE"; }
 ssh_transfer_enabled() { managed_worker_enabled "$SSH_TRANSFER_SETTINGS"; }
-start_ssh_transfer() { cleanup_managed_daemon "twn_toolkit.ssh_transfer_worker" "$SSH_TRANSFER_PIDFILE"; start_managed_worker "$SSH_TRANSFER_SETTINGS" "$SSH_TRANSFER_PIDFILE" "$SSH_TRANSFER_LOG" "twn_toolkit.ssh_transfer_worker" "SSH transfer" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime"; }
-stop_ssh_transfer() { status=0; stop_managed_worker "$SSH_TRANSFER_PIDFILE" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime" || status=$?; cleanup_daemon_processes "twn_toolkit.ssh_transfer_worker" 0; return "$status"; }
+start_ssh_transfer() { start_managed_worker "$SSH_TRANSFER_SETTINGS" "$SSH_TRANSFER_PIDFILE" "$SSH_TRANSFER_READYFILE" "$SSH_TRANSFER_LOG" "twn_toolkit.ssh_transfer_worker" "SSH transfer" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime"; }
+stop_ssh_transfer() { stop_managed_worker "$SSH_TRANSFER_PIDFILE" "$SSH_TRANSFER_READYFILE" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime" "twn_toolkit.ssh_transfer_worker"; }
 
-ftp_is_running() { managed_worker_is_running "$FTP_PIDFILE"; }
+ftp_is_running() { managed_worker_is_ready "$FTP_PIDFILE" "$FTP_READYFILE"; }
 ftp_enabled() { managed_worker_enabled "$FTP_SETTINGS"; }
-start_ftp() { cleanup_managed_daemon "twn_toolkit.ftp_worker" "$FTP_PIDFILE"; start_managed_worker "$FTP_SETTINGS" "$FTP_PIDFILE" "$FTP_LOG" "twn_toolkit.ftp_worker" "FTP" "twn_toolkit.ftp_server:clear_ftp_runtime"; }
-stop_ftp() { status=0; stop_managed_worker "$FTP_PIDFILE" "twn_toolkit.ftp_server:clear_ftp_runtime" || status=$?; cleanup_daemon_processes "twn_toolkit.ftp_worker" 0; return "$status"; }
+start_ftp() { start_managed_worker "$FTP_SETTINGS" "$FTP_PIDFILE" "$FTP_READYFILE" "$FTP_LOG" "twn_toolkit.ftp_worker" "FTP" "twn_toolkit.ftp_server:clear_ftp_runtime"; }
+stop_ftp() { stop_managed_worker "$FTP_PIDFILE" "$FTP_READYFILE" "twn_toolkit.ftp_server:clear_ftp_runtime" "twn_toolkit.ftp_worker"; }
 
 cleanup_daemon_processes() {
   daemon_module=$1
@@ -899,18 +951,15 @@ logs() {
 }
 
 tftp_restart() {
-  stop_tftp
-  start_tftp
+  restart_managed_worker "$TFTP_SETTINGS" "$TFTP_PIDFILE" "$TFTP_READYFILE" "$TFTP_LOG" "twn_toolkit.tftp_worker" "TFTP" "twn_toolkit.tftp:clear_tftp_runtime"
 }
 
 ssh_transfer_restart() {
-  stop_ssh_transfer
-  start_ssh_transfer
+  restart_managed_worker "$SSH_TRANSFER_SETTINGS" "$SSH_TRANSFER_PIDFILE" "$SSH_TRANSFER_READYFILE" "$SSH_TRANSFER_LOG" "twn_toolkit.ssh_transfer_worker" "SSH transfer" "twn_toolkit.ssh_transfer_server:clear_ssh_transfer_runtime"
 }
 
 ftp_restart() {
-  stop_ftp
-  start_ftp
+  restart_managed_worker "$FTP_SETTINGS" "$FTP_PIDFILE" "$FTP_READYFILE" "$FTP_LOG" "twn_toolkit.ftp_worker" "FTP" "twn_toolkit.ftp_server:clear_ftp_runtime"
 }
 
 automation_restart() {

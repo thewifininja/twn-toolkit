@@ -63,7 +63,12 @@ class SSHTransferServerTests(unittest.TestCase):
                 "root_mode": "datastore", "datastore_root": "",
                 "incoming_filename_pattern": "{filename}", "allowed_networks": ["127.0.0.1/32"],
             }, "a long transfer password")
-            stop = threading.Event(); thread = threading.Thread(target=serve, args=(instance, stop), daemon=True); thread.start()
+            stop = threading.Event(); ready = threading.Event()
+            thread = threading.Thread(
+                target=serve, args=(instance, stop, ready.set), daemon=True,
+            )
+            thread.start()
+            self.assertTrue(ready.wait(5), "SSH transfer listener did not become ready")
             client = paramiko.SSHClient(); client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             try:
                 deadline = time.time() + 5

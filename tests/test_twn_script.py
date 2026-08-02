@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -8,6 +9,38 @@ from pathlib import Path
 
 
 class TwnScriptTests(unittest.TestCase):
+    def test_transfer_service_cleanup_and_restart_share_the_service_lock(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+        start_function = re.search(
+            r"start_managed_worker\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        restart_function = re.search(
+            r"restart_managed_worker\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        self.assertIsNotNone(start_function)
+        self.assertIsNotNone(restart_function)
+        start_body = start_function.group("body")
+        restart_body = restart_function.group("body")
+        self.assertLess(
+            start_body.index("acquire_managed_worker_lock"),
+            start_body.index("cleanup_managed_daemon"),
+        )
+        self.assertLess(
+            start_body.index("cleanup_managed_daemon"),
+            start_body.index("release_managed_worker_lock"),
+        )
+        self.assertLess(
+            restart_body.index("acquire_managed_worker_lock"),
+            restart_body.index("stop_managed_worker_unlocked"),
+        )
+        self.assertLess(
+            restart_body.index("start_managed_worker_unlocked"),
+            restart_body.index("release_managed_worker_lock"),
+        )
+        self.assertIn('--ready-file "$worker_readyfile"', source)
+
     def test_managed_iperf_workers_follow_toolkit_lifecycle(self) -> None:
         source = (
             Path(__file__).resolve().parents[1] / "twn"

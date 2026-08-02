@@ -11,7 +11,7 @@ import threading
 import time
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import paramiko
 
@@ -217,11 +217,17 @@ def _scp_receive(channel, context: TransferContext, requested: str):
         channel.close()
 
 
-def serve(instance: str, stop: threading.Event) -> None:
+def serve(
+    instance: str,
+    stop: threading.Event,
+    on_ready: Callable[[], None] | None = None,
+) -> None:
     settings = SSHTransferSettingsStore(instance).get(); key = ensure_ssh_host_key(instance)
     family = socket.AF_INET6 if ":" in settings["bind_host"] else socket.AF_INET
     listener = socket.socket(family, socket.SOCK_STREAM); listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind((settings["bind_host"], settings["port"])); listener.listen(50); listener.settimeout(1)
+    if on_ready is not None:
+        on_ready()
     trusted = [ipaddress.ip_network(value) for value in settings["allowed_networks"]]
     while not stop.is_set():
         try: client, address = listener.accept()
@@ -249,7 +255,7 @@ def serve(instance: str, stop: threading.Event) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--pid-file", required=True); parser.add_argument("--log-file", required=True); parser.add_argument("--daemon", action="store_true")
+    parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--pid-file", required=True); parser.add_argument("--ready-file", default=""); parser.add_argument("--log-file", required=True); parser.add_argument("--daemon", action="store_true")
     args = parser.parse_args()
     singleton = acquire_singleton_lock(
         Path(args.instance).resolve().parent, "ssh-transfer",
@@ -261,8 +267,11 @@ def main() -> int:
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set()); signal.signal(signal.SIGINT, lambda *_: stop.set())
     write_pid_file(args.pid_file)
-    try: serve(args.instance, stop)
-    finally: remove_own_pid_file(args.pid_file)
+    try: serve(args.instance, stop, lambda: write_pid_file(args.ready_file))
+    finally:
+        remove_own_pid_file(args.ready_file)
+        remove_own_pid_file(args.pid_file)
+        singleton.close()
     return 0
 
 

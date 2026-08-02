@@ -12,6 +12,7 @@ from pathlib import Path
 from .pidfiles import (
     acquire_singleton_lock,
     matching_daemon_pids,
+    process_marker_ready,
     record_lock_owner,
     remove_own_pid_file,
     stop_matching_daemons,
@@ -34,14 +35,20 @@ def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: _stop()); signal.signal(signal.SIGINT, lambda *_: _stop())
     def supervise() -> None:
         services = [
-            ("automation", True, "twn-automation.pid", "automation-restart", "automation-heartbeat.json"),
-            ("TFTP", _enabled(instance / "tftp_settings.json"), "twn-tftp.pid", "tftp-restart", ""),
-            ("SFTP/SCP", _enabled(instance / "ssh_transfer_settings.json"), "twn-ssh-transfer.pid", "ssh-transfer-restart", ""),
-            ("FTP", _enabled(instance / "ftp_settings.json"), "twn-ftp.pid", "ftp-restart", ""),
+            ("automation", True, "twn-automation.pid", "", "automation-restart", "automation-heartbeat.json"),
+            ("TFTP", _enabled(instance / "tftp_settings.json"), "twn-tftp.pid", "twn-tftp.ready", "tftp-restart", ""),
+            ("SFTP/SCP", _enabled(instance / "ssh_transfer_settings.json"), "twn-ssh-transfer.pid", "twn-ssh-transfer.ready", "ssh-transfer-restart", ""),
+            ("FTP", _enabled(instance / "ftp_settings.json"), "twn-ftp.pid", "twn-ftp.ready", "ftp-restart", ""),
         ]
-        for label, enabled, pid_name, command, heartbeat_name in services:
+        for label, enabled, pid_name, ready_name, command, heartbeat_name in services:
             if not enabled: continue
-            healthy = _pid_running(instance / pid_name)
+            if _operation_active(instance / f"{pid_name}.lock"):
+                continue
+            healthy = (
+                process_marker_ready(instance / pid_name, instance / ready_name)
+                if ready_name
+                else _pid_running(instance / pid_name)
+            )
             if healthy and heartbeat_name:
                 healthy = _heartbeat_fresh(instance / heartbeat_name, 20)
             if healthy:
@@ -91,6 +98,15 @@ def _owns_pid_file(path: Path) -> bool:
         return int(path.read_text(encoding="utf-8").strip()) == os.getpid()
     except (OSError, ValueError):
         return False
+
+
+def _operation_active(lock_path: Path) -> bool:
+    try:
+        owner = int((lock_path / "owner").read_text(encoding="utf-8").strip())
+        os.kill(owner, 0)
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    return True
 
 
 def _remove_own_heartbeat(path: Path) -> None:

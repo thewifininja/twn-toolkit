@@ -9,6 +9,7 @@ from typing import Any
 
 from werkzeug.security import generate_password_hash
 
+from .pidfiles import process_marker_ready
 from .tftp import validate_incoming_filename_pattern
 
 
@@ -79,8 +80,11 @@ class FTPSettingsStore:
 
 def ftp_process_status(instance_path: str) -> dict[str, Any]:
     path = Path(instance_path) / "twn-ftp.pid"
-    try: pid = int(path.read_text().strip()); os.kill(pid, 0)
-    except (FileNotFoundError, OSError, ValueError): return {"running": False, "pid": None}
+    ready_path = Path(instance_path) / "twn-ftp.ready"
+    if not process_marker_ready(path, ready_path):
+        return {"running": False, "pid": None}
+    try: pid = int(path.read_text().strip())
+    except (OSError, ValueError): return {"running": False, "pid": None}
     return {"running": True, "pid": pid}
 
 

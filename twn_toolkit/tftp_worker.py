@@ -21,6 +21,7 @@ def main() -> None:
     parser.add_argument("--instance", required=True)
     parser.add_argument("--daemon", action="store_true")
     parser.add_argument("--pid-file", default="")
+    parser.add_argument("--ready-file", default="")
     parser.add_argument("--log-file", default="")
     args = parser.parse_args()
     singleton = acquire_singleton_lock(Path(args.instance).resolve().parent, "tftp")
@@ -29,35 +30,41 @@ def main() -> None:
     if args.daemon:
         _daemonize(args.pid_file, args.log_file)
     record_lock_owner(singleton)
+    write_pid_file(args.pid_file)
     instance = str(Path(args.instance).resolve())
-    settings = TFTPSettingsStore(instance).get()
-    if not settings["enabled"]:
-        raise SystemExit("TFTP is disabled in toolkit settings.")
-    if settings["root_mode"] == "temporary":
-        datastore = LocalDatastore(instance, "tftp_runtime")
-        root_prefix = ""
-    else:
-        datastore = LocalDatastore(instance)
-        root_prefix = settings["datastore_root"]
-        datastore.list(root_prefix)
-    server = TFTPServer(
-        datastore,
-        TFTPHistoryStore(instance),
-        settings,
-        root_prefix=root_prefix,
-    )
-
-    def stop(_signum: int, _frame: object) -> None:
-        server.stop()
-
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
+    settings = None
     try:
-        server.serve_forever()
-    finally:
+        settings = TFTPSettingsStore(instance).get()
+        if not settings["enabled"]:
+            raise SystemExit("TFTP is disabled in toolkit settings.")
         if settings["root_mode"] == "temporary":
-            clear_tftp_runtime(instance)
-        remove_own_pid_file(args.pid_file)
+            datastore = LocalDatastore(instance, "tftp_runtime")
+            root_prefix = ""
+        else:
+            datastore = LocalDatastore(instance)
+            root_prefix = settings["datastore_root"]
+            datastore.list(root_prefix)
+        server = TFTPServer(
+            datastore,
+            TFTPHistoryStore(instance),
+            settings,
+            root_prefix=root_prefix,
+        )
+
+        def stop(_signum: int, _frame: object) -> None:
+            server.stop()
+
+        signal.signal(signal.SIGTERM, stop)
+        signal.signal(signal.SIGINT, stop)
+        server.serve_forever(lambda: write_pid_file(args.ready_file))
+    finally:
+        try:
+            if settings is not None and settings["root_mode"] == "temporary":
+                clear_tftp_runtime(instance)
+        finally:
+            remove_own_pid_file(args.ready_file)
+            remove_own_pid_file(args.pid_file)
+            singleton.close()
 
 
 def _daemonize(pid_file: str, log_file: str) -> None:
@@ -79,7 +86,6 @@ def _daemonize(pid_file: str, log_file: str) -> None:
     os.dup2(log_fd, sys.stderr.fileno())
     os.close(stdin_fd)
     os.close(log_fd)
-    write_pid_file(pid_file)
 
 
 if __name__ == "__main__":

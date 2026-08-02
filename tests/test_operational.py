@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 import sqlite3
 import subprocess
@@ -21,18 +22,43 @@ from twn_toolkit.operational import OperationalSettingsStore
 from twn_toolkit.pidfiles import (
     acquire_singleton_lock,
     matching_daemon_pids,
+    process_marker_ready,
     remove_own_pid_file,
     stop_matching_daemons,
     write_pid_file,
 )
 from twn_toolkit.supervisor_worker import (
     _heartbeat_fresh,
+    _operation_active,
     _restore_iperf_listeners,
     matching_supervisor_pids,
 )
 
 
 class OperationalHardeningTests(unittest.TestCase):
+    def test_supervisor_defers_to_an_active_service_operation(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            lock_path = Path(instance) / "worker.pid.lock"
+            lock_path.mkdir()
+            (lock_path / "owner").write_text(
+                f"{os.getpid()}\n", encoding="utf-8"
+            )
+            self.assertTrue(_operation_active(lock_path))
+            (lock_path / "owner").write_text("not-a-pid\n", encoding="utf-8")
+            self.assertFalse(_operation_active(lock_path))
+
+    def test_process_readiness_requires_matching_live_pid_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            pid_path = Path(instance) / "worker.pid"
+            ready_path = Path(instance) / "worker.ready"
+            pid_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
+
+            self.assertFalse(process_marker_ready(pid_path, ready_path))
+            ready_path.write_text(f"{os.getpid() + 1}\n", encoding="utf-8")
+            self.assertFalse(process_marker_ready(pid_path, ready_path))
+            ready_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
+            self.assertTrue(process_marker_ready(pid_path, ready_path))
+
     def test_ftp_worker_import_does_not_start_resource_tracker(self) -> None:
         probe = subprocess.run([
             sys.executable, "-c",
