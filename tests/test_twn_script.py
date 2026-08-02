@@ -153,6 +153,27 @@ class TwnScriptTests(unittest.TestCase):
                 f"nkarrick:operators {root / '.twn-release-manifest.json'}",
             ])
 
+    def test_autostart_supervisor_preserves_manual_and_upgrade_lifecycle(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('SERVICE_LAUNCHER_PIDFILE="$INSTANCE/twn-service-launcher.pid"', source)
+        self.assertIn('SERVICE_PAUSE_FILE="$INSTANCE/twn-service-paused"', source)
+        self.assertIn('SERVICE_RESUME_FILE="$INSTANCE/twn-service-resume"', source)
+        self.assertIn("request_service_start() {", source)
+        self.assertIn(
+            '&& [ -f "$SCHEME_FILE" ] && [ -f "$HOST_FILE" ] && [ -f "$PORT_FILE" ]',
+            source,
+        )
+        self.assertIn("service_run_cleanup() {", source)
+        self.assertIn("service_run() {", source)
+        self.assertIn("trap service_run_cleanup EXIT", source)
+        self.assertIn("if [ -f \"$SERVICE_PAUSE_FILE\" ]; then", source)
+        self.assertIn("if [ -f \"$SERVICE_RESUME_FILE\" ]; then", source)
+        self.assertIn("twn_toolkit.service_cli --root \"$ROOT\"", source)
+        self.assertIn("service-run)", source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -60,6 +60,13 @@ service account also needs platform capture access:
 The toolkit does not invoke a package manager, run `sudo`, or change capture
 permissions automatically.
 
+For an autostarting Linux toolkit, the recommended scoped approach is
+`./twn service install --network-capabilities`. The systemd unit grants the
+managed service process tree `CAP_NET_RAW`, `CAP_NET_ADMIN`, and
+`CAP_NET_BIND_SERVICE` without changing the Python or tcpdump executable.
+macOS LaunchDaemons remain unprivileged and still require an
+administrator-managed BPF access policy when normal-user access is unavailable.
+
 ## Storage and security
 
 Standalone PCAPs live beneath `instance/packet_captures/`. Automation PCAPs

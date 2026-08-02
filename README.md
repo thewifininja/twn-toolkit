@@ -356,6 +356,10 @@ For more detailed first-run and profile instructions, see
 ./twn recover           Repair an orphaned/sudo-started server and start normally
 ./twn status            Show process state and usable access URLs
 ./twn logs              Show recent web and scheduler errors
+./twn service install   Install, enable, and start boot-time autostart
+./twn service status    Show systemd/launchd installation and runtime state
+./twn service logs      Show service-manager wrapper logs
+./twn service uninstall Remove autostart while retaining toolkit data
 ./twn enable-https ...  Generate or regenerate toolkit-managed HTTPS
 ./twn disable-https     Return an existing installation to HTTP
 ./twn upgrade           Find and install the latest verified stable release
@@ -377,6 +381,14 @@ loopback addresses, the machine hostname, and any additional names supplied to
 `./twn enable-https`. Administration settings can define a short instance name
 and preferred FQDN without requiring that DNS already exist.
 
+`./twn service install` uses systemd on Ubuntu, Raspberry Pi OS, and other
+systemd-based Linux distributions, or a system LaunchDaemon on macOS. It starts
+at boot as the installing user rather than root. On a dedicated Linux
+diagnostic host, `./twn service install --network-capabilities` adds only the
+network capabilities needed for raw capture/replay and privileged ports. See
+[Autostart service](docs/autostart-service.md) for lifecycle, logging, security,
+and macOS BPF guidance.
+
 ## Privileged operations
 
 Most tools run without elevated privileges. A few operations may require OS
@@ -396,6 +408,12 @@ installation, stops orphaned toolkit processes, repairs instance and updater
 metadata ownership, and starts the service as the invoking user. It will not
 terminate an unrelated process that happens to use the same port. Use
 `./twn fix-permissions` when only runtime ownership needs repair.
+
+For a persistent Linux installation, prefer the scoped systemd capabilities
+created by `./twn service install --network-capabilities` over running the
+entire toolkit as root or applying capabilities to the shared Python
+interpreter. macOS autostart remains a normal-user service; provision BPF access
+separately when packet capture/replay requires it.
 
 See [Packet Replay setup](docs/packet-replay.md) for platform-specific details.
 

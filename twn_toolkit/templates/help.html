@@ -56,8 +56,11 @@
     <p>There is no default login. A fresh installation generates a self-signed HTTPS certificate, prints its HTTPS URL, and the first visit creates the initial administrator. Review the browser's certificate warning before continuing. Rerunning the installer preserves an existing installation's protocol choice.</p>
     <pre><code>./install.sh
 ./twn start
-./twn status</code></pre>
+./twn status
+./twn service install
+./twn service status</code></pre>
     <p>The service normally uses port <code>5050</code>. Override one launch with <code>TWN_TOOLKIT_PORT=8000 ./twn start</code>.</p>
+    <p><code>./twn service install</code> configures boot-time autostart through systemd on Ubuntu, Raspberry Pi OS, and other systemd Linux hosts, or through a system LaunchDaemon on macOS. It requests administrator authorization to install the service definition, then runs the toolkit as the installing user rather than root.</p>
   </div></details>
   <details class="help-topic"><summary>Shared interface conventions</summary><div class="help-topic-body">
     <ul><li>Expandable cards contain saved definitions, editors, or result history.</li><li><strong>New</strong> opens a form and changes to <strong>Cancel</strong> while open.</li><li>Secret fields are write-only and are not rendered back into forms.</li><li>Test/preview controls are read-only unless the page explicitly says changes will be applied.</li><li>Loading cards indicate server-side work. Automation workers continue without an open browser.</li></ul>
@@ -302,11 +305,17 @@ sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
 ./twn recover          Recover an orphaned or sudo-started server
 ./twn status           Show process status
 ./twn logs             Show recent errors
+./twn service install  Install and start boot-time autostart
+./twn service status   Show systemd/launchd service state
+./twn service logs     Show service-manager wrapper logs
+./twn service uninstall Remove autostart; retain toolkit data
 ./twn enable-https     Generate and enable local HTTPS
 ./twn disable-https    Return to HTTP; retain certificate files
 ./twn fix-permissions  Repair runtime ownership after sudo
 ./twn adminreset       Reset users only
 ./twn reset-data       Remove saved toolkit data</code></pre>
+    <p>On a dedicated Linux diagnostic host, <code>./twn service install --network-capabilities</code> grants the service only <code>CAP_NET_RAW</code>, <code>CAP_NET_ADMIN</code>, and <code>CAP_NET_BIND_SERVICE</code> for capture, replay, interface access, and low ports. The default service has no added capabilities. macOS has no matching scoped-capability mechanism; keep the LaunchDaemon running as your normal account and provision BPF access separately when required.</p>
+    <p>With autostart installed, ordinary <code>./twn stop</code> and <code>./twn start</code> pause and resume the managed processes through the loaded supervisor. Upgrades and rollback use the same handshake, while a reboot always starts the toolkit again.</p>
   </div></details>
   <details class="help-topic"><summary>HTTPS and self-signed certificates</summary><div class="help-topic-body">
     <p>Fresh installations use HTTPS by default; upgrades preserve their existing protocol. Run <code>./twn enable-https</code> to migrate an older HTTP installation and safely restart the toolkit. Add stable names or addresses when needed: <code>./twn enable-https toolkit.local 192.0.2.25</code>.</p>
