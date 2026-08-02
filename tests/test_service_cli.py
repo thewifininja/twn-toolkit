@@ -18,6 +18,7 @@ from twn_toolkit.service_cli import (
     render_launchd_plist,
     render_systemd_unit,
     service_user,
+    uninstall_service,
 )
 
 
@@ -115,6 +116,33 @@ class ServiceCliTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ServiceError, "Runtime data is not owned"):
                 _ensure_instance_directory(root, other_user)
+
+    def test_linux_uninstall_resets_state_before_removing_unit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            unit_path = Path(temporary) / "twn-toolkit.service"
+            unit_path.touch()
+            with (
+                mock.patch("twn_toolkit.service_cli._require_root"),
+                mock.patch("twn_toolkit.service_cli.SYSTEMD_UNIT_PATH", unit_path),
+                mock.patch("twn_toolkit.service_cli._run") as run,
+            ):
+                uninstall_service(system="Linux")
+
+        self.assertFalse(unit_path.exists())
+        self.assertEqual(
+            run.call_args_list,
+            [
+                mock.call(
+                    ("systemctl", "disable", "--now", "twn-toolkit.service"),
+                    check=False,
+                ),
+                mock.call(
+                    ("systemctl", "reset-failed", "twn-toolkit.service"),
+                    check=False,
+                ),
+                mock.call(("systemctl", "daemon-reload")),
+            ],
+        )
 
     def test_service_identifiers_remain_stable(self) -> None:
         self.assertEqual(SYSTEMD_UNIT_NAME, "twn-toolkit.service")

@@ -279,9 +279,9 @@ def uninstall_service(*, system: str) -> None:
     _require_root()
     if system == "Linux":
         _run(("systemctl", "disable", "--now", SYSTEMD_UNIT_NAME), check=False)
+        _run(("systemctl", "reset-failed", SYSTEMD_UNIT_NAME), check=False)
         SYSTEMD_UNIT_PATH.unlink(missing_ok=True)
         _run(("systemctl", "daemon-reload"))
-        _run(("systemctl", "reset-failed", SYSTEMD_UNIT_NAME), check=False)
         print(f"Removed {SYSTEMD_UNIT_NAME}. Toolkit data was retained.")
         return
     _run(("launchctl", "bootout", f"system/{LAUNCHD_LABEL}"), check=False)
