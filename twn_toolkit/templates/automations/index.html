@@ -74,7 +74,7 @@
         <input type="hidden" name="action_stages_json" value="{{ selected_stages|tojson|forceescape }}" data-action-stages-json>
         <div data-action-stage-builder data-action-choices="{{ action_choices|tojson|forceescape }}">
           <div class="automation-stage-list" data-action-stage-list></div>
-          <div class="button-row"><button class="secondary" type="button" data-add-action-stage>Add stage</button></div>
+          <div class="button-row"><button class="secondary compact automation-add-stage" type="button" data-add-action-stage>+ Add stage</button></div>
         </div>
       {% else %}<p class="empty">Create an action before building an automation.</p>{% endif %}
     </fieldset>
