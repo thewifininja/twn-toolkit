@@ -109,6 +109,8 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Syslog notification action", response.data)
         self.assertIn(b"./twn recover", response.data)
         self.assertIn(b"./twn fix-permissions", response.data)
+        self.assertIn(b"./twn service install", response.data)
+        self.assertIn(b"--network-capabilities", response.data)
         self.assertIn(b"updater metadata ownership", response.data)
         self.assertIn(b"Dashboard and activity", response.data)
         self.assertIn(b"Operators can use every tool granted", response.data)

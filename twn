@@ -17,6 +17,9 @@ HOST_FILE="$INSTANCE/twn-toolkit.host"
 PORT_FILE="$INSTANCE/twn-toolkit.port"
 AUTOMATION_PIDFILE="$INSTANCE/twn-automation.pid"
 SUPERVISOR_PIDFILE="$INSTANCE/twn-supervisor.pid"
+SERVICE_LAUNCHER_PIDFILE="$INSTANCE/twn-service-launcher.pid"
+SERVICE_PAUSE_FILE="$INSTANCE/twn-service-paused"
+SERVICE_RESUME_FILE="$INSTANCE/twn-service-resume"
 TFTP_PIDFILE="$INSTANCE/twn-tftp.pid"
 TFTP_READYFILE="$INSTANCE/twn-tftp.ready"
 SSH_TRANSFER_PIDFILE="$INSTANCE/twn-ssh-transfer.pid"
@@ -50,6 +53,7 @@ STOP_TIMEOUT=${TWN_TOOLKIT_STOP_TIMEOUT:-10}
 TLS_CERT=${TWN_TOOLKIT_CERTFILE:-}
 TLS_KEY=${TWN_TOOLKIT_KEYFILE:-}
 SCHEME=http
+SERVICE_RUN_MODE=${TWN_TOOLKIT_SERVICE_RUN:-0}
 
 if [ -z "$HOST" ] && [ -f "$SERVER_SETTINGS" ]; then
   HOST=$(python3 -c '
@@ -185,6 +189,35 @@ automation_is_running() {
 
 supervisor_is_running() {
   [ -f "$SUPERVISOR_PIDFILE" ] && pid_is_running "$(cat "$SUPERVISOR_PIDFILE")"
+}
+
+service_launcher_is_running() {
+  [ -f "$SERVICE_LAUNCHER_PIDFILE" ] && pid_is_running "$(cat "$SERVICE_LAUNCHER_PIDFILE")"
+}
+
+request_service_start() {
+  rm -f "$SERVICE_PAUSE_FILE"
+  : > "$SERVICE_RESUME_FILE"
+  attempts=0
+  while [ "$attempts" -lt 1800 ]; do
+    if is_running && automation_is_running \
+      && [ -f "$SCHEME_FILE" ] && [ -f "$HOST_FILE" ] && [ -f "$PORT_FILE" ]; then
+      rm -f "$SERVICE_RESUME_FILE"
+      load_running_endpoint
+      if [ -f "$SCHEME_FILE" ]; then SCHEME=$(cat "$SCHEME_FILE"); fi
+      echo "The autostart service started The WiFi Ninja's Toolkit (PID $(cat "$PIDFILE"))."
+      show_access_urls
+      return
+    fi
+    if ! service_launcher_is_running; then
+      echo "The autostart service exited before the toolkit started." >&2
+      return 1
+    fi
+    attempts=$((attempts + 1))
+    sleep 0.1
+  done
+  echo "Timed out waiting for the autostart service to start the toolkit." >&2
+  return 1
 }
 
 managed_worker_is_running() {
@@ -679,6 +712,11 @@ offer_permission_repair() {
 }
 
 start() {
+  if [ "$SERVICE_RUN_MODE" != "1" ] && service_launcher_is_running; then
+    request_service_start
+    return
+  fi
+
   if is_running; then
     load_running_endpoint
     if [ -f "$SCHEME_FILE" ]; then
@@ -785,6 +823,12 @@ start() {
 }
 
 stop() {
+  if [ "$SERVICE_RUN_MODE" != "1" ] && service_launcher_is_running; then
+    mkdir -p "$INSTANCE"
+    : > "$SERVICE_PAUSE_FILE"
+    rm -f "$SERVICE_RESUME_FILE"
+  fi
+
   if ! is_running; then
     rm -f "$PIDFILE"
     rm -f "$SCHEME_FILE"
@@ -882,7 +926,11 @@ status() {
     fi
     show_access_urls
   else
-    echo "The WiFi Ninja's Toolkit is not running."
+    if service_launcher_is_running && [ -f "$SERVICE_PAUSE_FILE" ]; then
+      echo "The WiFi Ninja's Toolkit is stopped; its autostart service remains loaded and paused."
+    else
+      echo "The WiFi Ninja's Toolkit is not running."
+    fi
     exit 1
   fi
 }
@@ -1152,6 +1200,87 @@ web_restart() {
   fi
 }
 
+service_run_cleanup() {
+  service_exit_status=$?
+  trap - EXIT INT TERM
+  SERVICE_RUN_MODE=1
+  stop || true
+  rm -f "$SERVICE_LAUNCHER_PIDFILE" "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"
+  exit "$service_exit_status"
+}
+
+service_run() {
+  if service_launcher_is_running; then
+    recorded_launcher_pid=$(cat "$SERVICE_LAUNCHER_PIDFILE")
+    if [ "$recorded_launcher_pid" != "$$" ]; then
+      echo "The toolkit autostart supervisor is already running (PID $recorded_launcher_pid)." >&2
+      return 1
+    fi
+  fi
+  mkdir -p "$INSTANCE"
+  printf "%s\n" "$$" > "$SERVICE_LAUNCHER_PIDFILE"
+  chmod 600 "$SERVICE_LAUNCHER_PIDFILE"
+  rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"
+  SERVICE_RUN_MODE=1
+  trap service_run_cleanup EXIT
+  trap 'exit 0' INT TERM
+
+  start
+  echo "The toolkit autostart supervisor is monitoring the managed process set."
+  while :; do
+    if [ -f "$SERVICE_PAUSE_FILE" ]; then
+      sleep 1
+      continue
+    fi
+    if [ -f "$SERVICE_RESUME_FILE" ]; then
+      rm -f "$SERVICE_RESUME_FILE"
+      start
+      continue
+    fi
+    if ! is_running; then
+      echo "The toolkit web process exited unexpectedly; requesting a service-manager restart." >&2
+      return 1
+    fi
+    sleep 2
+  done
+}
+
+service_control() {
+  service_action=${1:-status}
+  if [ "$#" -gt 0 ]; then shift; fi
+  case "$service_action" in
+    install)
+      cd "$ROOT"
+      "$PYTHON" -m twn_toolkit.service_cli --root "$ROOT" install --validate-only "$@" || return 1
+      if [ "$(id -u)" -ne 0 ] && has_instance_permission_issues; then
+        offer_permission_repair || return 1
+      fi
+      if is_running && ! service_launcher_is_running; then stop; fi
+      ;;
+    uninstall|start|stop|restart)
+      ;;
+    status|logs)
+      cd "$ROOT"
+      "$PYTHON" -m twn_toolkit.service_cli --root "$ROOT" "$service_action" "$@"
+      return
+      ;;
+    *)
+      echo "Usage: ./twn service {install|uninstall|start|stop|restart|status|logs}" >&2
+      return 2
+      ;;
+  esac
+
+  if [ "$(id -u)" -ne 0 ]; then
+    if ! command -v sudo >/dev/null 2>&1; then
+      echo "This service-manager operation requires root, but sudo is unavailable." >&2
+      return 1
+    fi
+    exec sudo "$PYTHON" -m twn_toolkit.service_cli --root "$ROOT" "$service_action" "$@"
+  fi
+  cd "$ROOT"
+  "$PYTHON" -m twn_toolkit.service_cli --root "$ROOT" "$service_action" "$@"
+}
+
 case "${1:-}" in
   start)
     start
@@ -1225,6 +1354,13 @@ case "${1:-}" in
   automation-restart)
     automation_restart
     ;;
+  service)
+    shift
+    service_control "$@"
+    ;;
+  service-run)
+    service_run
+    ;;
   enable-https)
     shift
     enable_https "$@"
@@ -1233,7 +1369,7 @@ case "${1:-}" in
     disable_https
     ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|recover|status|logs|upgrade|backup|rollback|upgrade-status|multicast-pf|enable-https|disable-https|fix-permissions|adminreset|reset-data|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
+    echo "Usage: ./twn {start|stop|restart|recover|status|logs|service|upgrade|backup|rollback|upgrade-status|multicast-pf|enable-https|disable-https|fix-permissions|adminreset|reset-data|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
     exit 2
     ;;
 esac

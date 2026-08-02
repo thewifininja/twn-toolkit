@@ -20,24 +20,24 @@ control frames.
 
 ## Linux
 
-Linux uses the toolkit's native `AF_PACKET` sender. Start the toolkit with root
-privileges on a dedicated diagnostic host:
+Linux uses the toolkit's native `AF_PACKET` sender. For an autostarting toolkit
+on a dedicated diagnostic host, install the systemd service with scoped network
+capabilities:
+
+```bash
+./twn service install --network-capabilities
+```
+
+This grants `CAP_NET_RAW`, `CAP_NET_ADMIN`, and `CAP_NET_BIND_SERVICE` only to
+the managed service process tree. It is preferable to running the web toolkit
+as root or granting capability to the reusable Python interpreter. For a short,
+isolated lab session without autostart, root launch remains available but can
+create root-owned runtime files:
 
 ```bash
 ./twn stop
 sudo ./twn start
 ```
-
-Alternatively, grant raw-socket capability to the Python interpreter used by the
-toolkit. This is powerful; use it only on a controlled diagnostic host:
-
-```bash
-sudo setcap cap_net_raw+ep "$(readlink -f .venv/bin/python)"
-./twn restart
-```
-
-If the virtual environment is rebuilt or Python is upgraded, reapply the
-capability.
 
 ## macOS
 
@@ -45,7 +45,9 @@ macOS uses Scapy for raw packet transmit. Untagged frames use the libpcap send
 path; VLAN-tagged frames use Scapy's BPF/raw-device path. Some systems allow
 this from a normal user session, while others require permission to open BPF
 packet devices. If the page reports a permission error, stop the normal service
-and start it with `sudo` for lab testing:
+and use an administrator-managed BPF access policy. Starting the whole toolkit
+with `sudo` is reserved for short lab troubleshooting because it also elevates
+the web application and can create root-owned runtime data:
 
 ```bash
 ./twn stop
