@@ -387,7 +387,7 @@ at boot as the installing user rather than root. On a dedicated Linux
 diagnostic host, `./twn service install --network-capabilities` adds only the
 network capabilities needed for raw capture/replay and privileged ports. See
 [Autostart service](docs/autostart-service.md) for lifecycle, logging, security,
-and macOS BPF guidance.
+macOS protected-folder placement, and BPF guidance.
 
 ## Privileged operations
 

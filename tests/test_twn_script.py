@@ -172,6 +172,7 @@ class TwnScriptTests(unittest.TestCase):
         self.assertIn("if [ -f \"$SERVICE_PAUSE_FILE\" ]; then", source)
         self.assertIn("if [ -f \"$SERVICE_RESUME_FILE\" ]; then", source)
         self.assertIn("twn_toolkit.service_cli --root \"$ROOT\"", source)
+        self.assertIn('install --validate-only "$@"', source)
         self.assertIn("service-run)", source)
 
 

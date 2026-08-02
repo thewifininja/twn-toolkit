@@ -10,6 +10,7 @@ import pwd
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
@@ -163,6 +164,16 @@ def _run(command: Sequence[str], *, check: bool = True) -> subprocess.CompletedP
     return subprocess.run(command, check=check, text=True)
 
 
+def _run_quiet(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        check=False,
+        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def _write_system_file(path: Path, content: bytes, mode: int = 0o644) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -194,6 +205,52 @@ def _validate_installation(root: Path) -> None:
         raise ServiceError("Python virtual environment is missing. Run ./install.sh first.")
 
 
+def _validate_macos_service_location(root: Path, user: ServiceUser) -> None:
+    resolved_root = root.resolve()
+    home = Path(user.home).resolve()
+    protected_roots = (
+        home / "Desktop",
+        home / "Documents",
+        home / "Downloads",
+        home / "Library" / "CloudStorage",
+        home / "Library" / "Mobile Documents",
+    )
+    protected = next(
+        (
+            candidate
+            for candidate in protected_roots
+            if resolved_root == candidate or resolved_root.is_relative_to(candidate)
+        ),
+        None,
+    )
+    if protected is not None:
+        recommended = home / "twn-toolkit"
+        raise ServiceError(
+            "macOS privacy controls prevent a system LaunchDaemon from executing "
+            f"the toolkit beneath {protected}. Use a fresh clone at an unprotected "
+            f"path such as {recommended}, then run ./install.sh and install the "
+            "service there. If relocating this checkout instead, rebuild its .venv. "
+            "No service changes were made."
+        )
+
+
+def _validate_install_request(
+    root: Path,
+    user: ServiceUser,
+    *,
+    system: str,
+    network_capabilities: bool,
+) -> None:
+    _validate_installation(root)
+    if system == "Darwin" and network_capabilities:
+        raise ServiceError(
+            "--network-capabilities is available only for systemd-based Linux. "
+            "Provision macOS BPF access separately."
+        )
+    if system == "Darwin":
+        _validate_macos_service_location(root, user)
+
+
 def _ensure_instance_directory(root: Path, user: ServiceUser) -> Path:
     instance = root / "instance"
     if not instance.exists():
@@ -223,6 +280,36 @@ def _platform_name(override: str | None = None) -> str:
     return name
 
 
+def _launchd_details() -> tuple[subprocess.CompletedProcess[str], str, str]:
+    result = subprocess.run(
+        ("launchctl", "print", f"system/{LAUNCHD_LABEL}"),
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    state = "unknown"
+    last_exit = ""
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("state = "):
+            state = stripped.removeprefix("state = ").strip()
+        elif stripped.startswith("last exit code = "):
+            last_exit = stripped.removeprefix("last exit code = ").strip()
+    return result, state, last_exit
+
+
+def _wait_for_launchd_running(timeout: float = 10.0) -> tuple[bool, str, str]:
+    deadline = time.monotonic() + timeout
+    state = "unknown"
+    last_exit = ""
+    while time.monotonic() < deadline:
+        result, state, last_exit = _launchd_details()
+        if result.returncode == 0 and state == "running":
+            return True, state, last_exit
+        time.sleep(0.25)
+    return False, state, last_exit
+
+
 def install_service(
     root: Path,
     user: ServiceUser,
@@ -230,13 +317,13 @@ def install_service(
     system: str,
     network_capabilities: bool,
 ) -> None:
+    _validate_install_request(
+        root,
+        user,
+        system=system,
+        network_capabilities=network_capabilities,
+    )
     _require_root()
-    _validate_installation(root)
-    if system == "Darwin" and network_capabilities:
-        raise ServiceError(
-            "--network-capabilities is available only for systemd-based Linux. "
-            "Provision macOS BPF access separately."
-        )
     instance = _ensure_instance_directory(root, user)
     if system == "Linux":
         if not shutil.which("systemctl"):
@@ -264,12 +351,23 @@ def install_service(
         log_path.touch(exist_ok=True)
         os.chown(log_path, user.uid, user.gid)
         os.chmod(log_path, 0o600)
-    _run(("launchctl", "bootout", f"system/{LAUNCHD_LABEL}"), check=False)
+    _run_quiet(("launchctl", "bootout", f"system/{LAUNCHD_LABEL}"))
     _write_system_file(LAUNCHD_PLIST_PATH, render_launchd_plist(root, user))
     os.chown(LAUNCHD_PLIST_PATH, 0, 0)
     _run(("launchctl", "bootstrap", "system", str(LAUNCHD_PLIST_PATH)))
     _run(("launchctl", "enable", f"system/{LAUNCHD_LABEL}"))
     _run(("launchctl", "kickstart", "-k", f"system/{LAUNCHD_LABEL}"))
+    running, state, last_exit = _wait_for_launchd_running()
+    if not running:
+        _run_quiet(("launchctl", "bootout", f"system/{LAUNCHD_LABEL}"))
+        LAUNCHD_PLIST_PATH.unlink(missing_ok=True)
+        detail = f"state {state!r}"
+        if last_exit:
+            detail += f", last exit {last_exit}"
+        raise ServiceError(
+            f"The macOS LaunchDaemon did not remain running ({detail}). "
+            "The failed service definition was removed; inspect ./twn service logs."
+        )
     print(f"Installed and started {LAUNCHD_LABEL} as {user.name}:{user.group}.")
     print("macOS does not provide systemd-style scoped network capabilities.")
     print("Packet capture/replay still requires administrator-managed BPF access; multicast PF remains separately installed.")
@@ -284,7 +382,7 @@ def uninstall_service(*, system: str) -> None:
         _run(("systemctl", "daemon-reload"))
         print(f"Removed {SYSTEMD_UNIT_NAME}. Toolkit data was retained.")
         return
-    _run(("launchctl", "bootout", f"system/{LAUNCHD_LABEL}"), check=False)
+    _run_quiet(("launchctl", "bootout", f"system/{LAUNCHD_LABEL}"))
     LAUNCHD_PLIST_PATH.unlink(missing_ok=True)
     print(f"Removed {LAUNCHD_LABEL}. Toolkit data and service logs were retained.")
 
@@ -316,10 +414,18 @@ def service_status(*, system: str) -> int:
     if not LAUNCHD_PLIST_PATH.exists():
         print(f"Autostart service is not installed ({LAUNCHD_PLIST_PATH}).")
         return 1
-    result = _run(("launchctl", "print", f"system/{LAUNCHD_LABEL}"), check=False)
-    print(f"Autostart service: {'loaded' if result.returncode == 0 else 'installed but not loaded'}")
+    result, state, last_exit = _launchd_details()
+    if result.returncode != 0:
+        print("Autostart service: installed but not loaded")
+    elif state == "running":
+        print("Autostart service: loaded, active")
+    else:
+        detail = f"loaded but not running (state: {state}"
+        if last_exit:
+            detail += f", last exit: {last_exit}"
+        print(f"Autostart service: {detail})")
     print(f"Property list: {LAUNCHD_PLIST_PATH}")
-    return 0 if result.returncode == 0 else 1
+    return 0 if result.returncode == 0 and state == "running" else 1
 
 
 def service_logs(root: Path, *, system: str) -> int:
@@ -352,6 +458,7 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--user")
     install.add_argument("--allow-root", action="store_true")
     install.add_argument("--network-capabilities", action="store_true")
+    install.add_argument("--validate-only", action="store_true", help=argparse.SUPPRESS)
     for action in ("uninstall", "start", "stop", "restart", "status", "logs"):
         subparsers.add_parser(action)
     return parser
@@ -365,6 +472,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         system = _platform_name(args.platform)
         if args.action == "install":
             user = service_user(args.user, allow_root=args.allow_root)
+            if args.validate_only:
+                _validate_install_request(
+                    root,
+                    user,
+                    system=system,
+                    network_capabilities=args.network_capabilities,
+                )
+                return 0
             install_service(
                 root,
                 user,

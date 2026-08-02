@@ -60,6 +60,14 @@ macOS installation creates
 boot even when nobody has logged in; its `UserName` and `GroupName` keep the
 toolkit process and instance data owned by the installing account.
 
+Install the toolkit outside macOS privacy-protected user folders. System
+LaunchDaemons cannot reliably execute programs beneath `Desktop`, `Documents`,
+`Downloads`, iCloud Drive, or `~/Library/CloudStorage`, even when the configured
+service user owns those files. A suitable location is `~/twn-toolkit`. The
+helper detects protected locations before stopping the current toolkit or
+writing a service definition. For a relocated existing checkout, rebuild its
+`.venv`; a fresh clone followed by `./install.sh` does this automatically.
+
 ```bash
 ./twn service install
 ./twn service logs

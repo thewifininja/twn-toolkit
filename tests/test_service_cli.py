@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import plistlib
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,10 +15,12 @@ from twn_toolkit.service_cli import (
     ServiceError,
     ServiceUser,
     _ensure_instance_directory,
+    _validate_macos_service_location,
     install_service,
     render_launchd_plist,
     render_systemd_unit,
     service_user,
+    service_status,
     uninstall_service,
 )
 
@@ -100,6 +103,39 @@ class ServiceCliTests(unittest.TestCase):
                 system="Darwin",
                 network_capabilities=True,
             )
+
+    def test_macos_install_rejects_privacy_protected_user_folder(self) -> None:
+        user = ServiceUser("toolkit", "staff", 501, 20, "/Users/toolkit")
+
+        with self.assertRaisesRegex(ServiceError, "privacy controls"):
+            _validate_macos_service_location(
+                Path("/Users/toolkit/Documents/twn-toolkit"),
+                user,
+            )
+        _validate_macos_service_location(Path("/Users/toolkit/twn-toolkit"), user)
+
+    def test_macos_status_does_not_call_scheduled_job_active(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            plist_path = Path(temporary) / "toolkit.plist"
+            plist_path.touch()
+            launchctl = subprocess.CompletedProcess(
+                args=("launchctl", "print"),
+                returncode=0,
+                stdout="state = spawn scheduled\nlast exit code = 78: EX_CONFIG\n",
+                stderr="",
+            )
+            with (
+                mock.patch("twn_toolkit.service_cli.LAUNCHD_PLIST_PATH", plist_path),
+                mock.patch("twn_toolkit.service_cli.subprocess.run", return_value=launchctl),
+                mock.patch("builtins.print") as output,
+            ):
+                result = service_status(system="Darwin")
+
+        self.assertEqual(result, 1)
+        output.assert_any_call(
+            "Autostart service: loaded but not running "
+            "(state: spawn scheduled, last exit: 78: EX_CONFIG)"
+        )
 
     def test_install_refuses_runtime_data_owned_by_another_account(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -1250,6 +1250,8 @@ service_control() {
   if [ "$#" -gt 0 ]; then shift; fi
   case "$service_action" in
     install)
+      cd "$ROOT"
+      "$PYTHON" -m twn_toolkit.service_cli --root "$ROOT" install --validate-only "$@" || return 1
       if [ "$(id -u)" -ne 0 ] && has_instance_permission_issues; then
         offer_permission_repair || return 1
       fi

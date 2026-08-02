@@ -61,6 +61,7 @@
 ./twn service status</code></pre>
     <p>The service normally uses port <code>5050</code>. Override one launch with <code>TWN_TOOLKIT_PORT=8000 ./twn start</code>.</p>
     <p><code>./twn service install</code> configures boot-time autostart through systemd on Ubuntu, Raspberry Pi OS, and other systemd Linux hosts, or through a system LaunchDaemon on macOS. It requests administrator authorization to install the service definition, then runs the toolkit as the installing user rather than root.</p>
+    <p>On macOS, keep a service installation outside privacy-protected <code>Desktop</code>, <code>Documents</code>, <code>Downloads</code>, iCloud Drive, and <code>~/Library/CloudStorage</code> locations. A path such as <code>~/twn-toolkit</code> is suitable. The helper rejects protected locations before stopping the current toolkit; use a fresh clone or rebuild <code>.venv</code> after relocating an existing checkout.</p>
   </div></details>
   <details class="help-topic"><summary>Shared interface conventions</summary><div class="help-topic-body">
     <ul><li>Expandable cards contain saved definitions, editors, or result history.</li><li><strong>New</strong> opens a form and changes to <strong>Cancel</strong> while open.</li><li>Secret fields are write-only and are not rendered back into forms.</li><li>Test/preview controls are read-only unless the page explicitly says changes will be applied.</li><li>Loading cards indicate server-side work. Automation workers continue without an open browser.</li></ul>
