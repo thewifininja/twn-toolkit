@@ -15,8 +15,10 @@ from twn_toolkit.service_cli import (
     ServiceError,
     ServiceUser,
     _ensure_instance_directory,
+    _managed_toolkit_is_ready,
     _validate_macos_service_location,
     _wait_for_launchd_running,
+    _wait_for_managed_toolkit,
     install_service,
     render_launchd_plist,
     render_systemd_unit,
@@ -174,6 +176,40 @@ class ServiceCliTests(unittest.TestCase):
         self.assertTrue(running)
         self.assertEqual(state, "active")
         self.assertEqual(last_exit, "")
+
+    def test_managed_toolkit_readiness_requires_all_processes_and_endpoint_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            instance = root / "instance"
+            instance.mkdir()
+            for name in (
+                "twn-service-launcher.pid",
+                "twn-toolkit.pid",
+                "twn-automation.pid",
+                "twn-supervisor.pid",
+            ):
+                (instance / name).write_text("42\n", encoding="utf-8")
+            for name in (
+                "twn-toolkit.scheme",
+                "twn-toolkit.host",
+                "twn-toolkit.port",
+            ):
+                (instance / name).touch()
+
+            with mock.patch("twn_toolkit.service_cli.os.kill"):
+                self.assertTrue(_managed_toolkit_is_ready(root))
+                (instance / "twn-supervisor.pid").unlink()
+                self.assertFalse(_managed_toolkit_is_ready(root))
+
+    def test_managed_toolkit_waits_until_process_set_is_ready(self) -> None:
+        with mock.patch(
+            "twn_toolkit.service_cli._managed_toolkit_is_ready",
+            side_effect=(False, True),
+        ) as ready:
+            with mock.patch("twn_toolkit.service_cli.time.sleep"):
+                self.assertTrue(_wait_for_managed_toolkit(Path("/srv/twn"), timeout=1))
+
+        self.assertEqual(ready.call_count, 2)
 
     def test_install_refuses_runtime_data_owned_by_another_account(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

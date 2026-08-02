@@ -302,6 +302,44 @@ def _launchd_state_is_active(state: str) -> bool:
     return state in {"active", "running"}
 
 
+def _pid_file_is_running(path: Path) -> bool:
+    try:
+        process_id = int(path.read_text(encoding="utf-8").strip())
+        if process_id <= 1:
+            return False
+        os.kill(process_id, 0)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _managed_toolkit_is_ready(root: Path) -> bool:
+    instance = root / "instance"
+    process_files = (
+        "twn-service-launcher.pid",
+        "twn-toolkit.pid",
+        "twn-automation.pid",
+        "twn-supervisor.pid",
+    )
+    endpoint_files = (
+        "twn-toolkit.scheme",
+        "twn-toolkit.host",
+        "twn-toolkit.port",
+    )
+    return all(_pid_file_is_running(instance / name) for name in process_files) and all(
+        (instance / name).is_file() for name in endpoint_files
+    )
+
+
+def _wait_for_managed_toolkit(root: Path, timeout: float = 15.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _managed_toolkit_is_ready(root):
+            return True
+        time.sleep(0.25)
+    return _managed_toolkit_is_ready(root)
+
+
 def _wait_for_launchd_running(timeout: float = 10.0) -> tuple[bool, str, str]:
     deadline = time.monotonic() + timeout
     state = "unknown"
@@ -371,6 +409,14 @@ def install_service(
         raise ServiceError(
             f"The macOS LaunchDaemon did not remain running ({detail}). "
             "The failed service definition was removed; inspect ./twn service logs."
+        )
+    if not _wait_for_managed_toolkit(root):
+        _run_quiet(("launchctl", "bootout", f"system/{LAUNCHD_LABEL}"))
+        LAUNCHD_PLIST_PATH.unlink(missing_ok=True)
+        raise ServiceError(
+            "The macOS LaunchDaemon started, but the managed toolkit processes did not "
+            "become ready. The failed service definition was removed; inspect "
+            "./twn service logs."
         )
     print(f"Installed and started {LAUNCHD_LABEL} as {user.name}:{user.group}.")
     print("macOS does not provide systemd-style scoped network capabilities.")
