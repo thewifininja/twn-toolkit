@@ -99,6 +99,11 @@ def main() -> None:
                 next_lease_renewal = now + 30
             available = max(0, max_pending - len(futures))
             active_ids = {work["automation_id"] for work in futures.values()}
+            checking_ids = {
+                work["automation_id"]
+                for work in futures.values()
+                if work["kind"] == "check"
+            }
             while available:
                 jobs = store.claim_jobs(
                     limit=1,
@@ -115,7 +120,15 @@ def main() -> None:
                 }
                 active_ids.add(job["automation_id"])
                 available -= 1
-            for automation in store.claim_due(limit=max(1, available)) if available else []:
+            due_automations = (
+                store.claim_due(
+                    limit=max(1, available),
+                    exclude_automation_ids=checking_ids,
+                )
+                if available
+                else []
+            )
+            for automation in due_automations:
                 if operational["skip_overlapping_automations"] and automation["id"] in active_ids:
                     store.record_observation(automation["id"], "skipped", "Skipped because the previous run is still active.")
                     continue

@@ -18,6 +18,7 @@ from .network_tools import (
     parse_ping_targets_with_errors,
     ping_engine_capability,
     ping_hosts,
+    validate_ping_timeout,
 )
 from .live_tools import LiveToolStore, public_live_session
 from .profiles import PingProfileStore
@@ -74,7 +75,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             interval = int(payload.get("interval", 2))
             if not 1 <= interval <= 60:
                 raise ToolInputError("Interval must be between 1 and 60 seconds.")
-            timeout = _ping_timeout(payload.get("timeout", 1), capability)
+            timeout = validate_ping_timeout(payload.get("timeout", 1), capability)
             title = " ".join(str(payload.get("title", "")).strip().split())
             if len(title) > 100:
                 raise ToolInputError("Live tool names must be 100 characters or fewer.")
@@ -154,7 +155,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             interval = int(payload.get("interval", 2))
             if not 1 <= interval <= 60:
                 raise ToolInputError("Interval must be between 1 and 60 seconds.")
-            timeout = _ping_timeout(payload.get("timeout", 1), capability)
+            timeout = validate_ping_timeout(payload.get("timeout", 1), capability)
             session = _live_tool_store().update_ping_session(
                 session_id,
                 user_id=_current_user()["id"],
@@ -304,7 +305,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             targets = parse_ping_targets(
                 str(payload.get("hosts", "")), limit=capability["target_limit"]
             )
-            timeout = _ping_timeout(payload.get("timeout", 1), capability)
+            timeout = validate_ping_timeout(payload.get("timeout", 1), capability)
             results = ping_hosts(
                 [target["host"] for target in targets], timeout=timeout
             )
@@ -420,7 +421,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             interval = int(payload.get("interval", 2))
             if not 1 <= interval <= 60:
                 raise ToolInputError("Interval must be between 1 and 60 seconds.")
-            timeout = _ping_timeout(payload.get("timeout", 1), capability)
+            timeout = validate_ping_timeout(payload.get("timeout", 1), capability)
         except (ToolInputError, TypeError, ValueError) as exc:
             return jsonify({"error": str(exc) or "Enter a valid interval."}), 400
 
@@ -498,20 +499,6 @@ def _bounded_int(value: object, minimum: int, maximum: int) -> int:
     except (TypeError, ValueError):
         parsed = minimum
     return max(minimum, min(maximum, parsed))
-
-
-def _ping_timeout(value: object, capability: dict[str, object]) -> float:
-    try:
-        timeout = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ToolInputError("Probe timeout must be a number.") from exc
-    minimum = 0.1 if capability.get("accelerated") else 1.0
-    if not minimum <= timeout <= 10:
-        raise ToolInputError(
-            f"Probe timeout must be between {minimum:g} and 10 seconds for the "
-            f"{capability.get('engine', 'active')} ping engine."
-        )
-    return timeout
 
 
 def _audit_ping_targets(value: object) -> list[dict[str, str]]:

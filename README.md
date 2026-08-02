@@ -274,9 +274,9 @@ Available actions include:
 The scheduler runs independently of the browser. Durable SQLite claims and
 renewable leases prevent duplicate work and allow abandoned jobs to be
 recovered after a bounded expiry. Automations support one-second minimum check
-intervals, trigger/recovery debounce, cooldowns, missed-schedule policy,
-downloadable artifacts, retention controls, queue/concurrency limits, overlap
-prevention, and automatic pruning.
+intervals with fixed-cadence, non-overlapping condition rounds, trigger/recovery
+debounce, cooldowns, missed-schedule policy, downloadable artifacts, retention
+controls, queue/concurrency limits, overlap prevention, and automatic pruning.
 
 See [Automation architecture and operations](docs/automations.md) for the state
 model, pipeline contract, security boundaries, and extension points.

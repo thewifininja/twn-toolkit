@@ -62,8 +62,10 @@ to the next future occurrence rather than replaying a backlog.
 
 - Condition: multi-host Ping health with reachability plus optional packet
   loss, average latency, and jitter limits. Each evaluation can take 1–10
-  probes per target before applying a degraded-target threshold. Existing
-  `ping.multi` definitions remain compatible.
+  probes per target before applying a degraded-target threshold. The working
+  accelerated `fping` engine permits 0.1–10 second per-target timeouts; the
+  compatibility engine permits 1–10 seconds. Existing `ping.multi` definitions
+  remain compatible.
 - Condition: DNS lookup health across a hostname-by-resolver matrix. A, AAAA,
   CNAME, MX, NS, PTR, and TXT records can require any successful answer or
   compare returned values against an expected set. Thresholds can trigger when
@@ -86,8 +88,13 @@ to the next future occurrence rather than replaying a backlog.
 - Run mode: Manual for explicitly started, on-demand automations. Manual
   automations are never claimed by the scheduler.
 - Check intervals: 1 second through 24 hours. The scheduler polls due work four
-  times per second so one-second checks are not held behind a one-second polling
-  boundary; actual duration still includes the condition execution time.
+  times per second and anchors each next deadline to the prior cadence rather
+  than completion time. A condition round never overlaps another round for the
+  same automation. If a timeout crosses the next deadline, the waiting round
+  starts promptly after completion without being claimed and discarded; long
+  pauses resume from the current time instead of replaying a backlog. Check
+  history uses the round's observation-start time, so a timeout remains
+  attributed to the second in which its probes began.
 - Per-condition thresholds: all targets breach policy, or at least a selected
   number breach policy.
 - General ping, DNS-name, and SSH-file-collection host lists accept

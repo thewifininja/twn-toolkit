@@ -19,7 +19,8 @@
       </label>
       <div class="form-grid automation-threshold-grid">
         <label>Per-target timeout
-          <div class="input-suffix"><input name="condition_timeout" type="number" min="1" max="10" value="{{ config.get('timeout', config.get('condition_timeout', '1')) }}" required><span>seconds</span></div>
+          <div class="input-suffix"><input name="condition_timeout" type="number" min="{{ 0.1 if automation_ping_capability.accelerated else 1 }}" max="10" step="{{ 0.1 if automation_ping_capability.accelerated else 1 }}" value="{{ config.get('timeout', config.get('condition_timeout', '1')) }}" required><span>seconds</span></div>
+          <small class="field-note">{{ 'Sub-second timeouts are available through the accelerated fping engine.' if automation_ping_capability.accelerated else 'Install and authorize fping to enable sub-second timeouts.' }}</small>
         </label>
         <label>Probes per target
           <input name="condition_probe_count" type="number" min="1" max="10" value="{{ config.get('probe_count', config.get('condition_probe_count', '3')) }}" required>
