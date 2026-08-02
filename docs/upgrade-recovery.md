@@ -86,6 +86,26 @@ loop descriptors until after daemonization. This makes the protection effective
 while upgrading from an older toolkit whose updater still uses captured installer
 pipes without risking library-owned descriptors such as macOS kqueues.
 
+## Installations managed at boot
+
+An installed systemd unit or macOS LaunchDaemon remains outside the release
+bundle. Upgrade, rollback, and recovery detect the loaded OS supervisor, pause
+the managed toolkit through that supervisor, and resume it with the same normal
+service account and security context. The operation does not silently install,
+remove, or change the optional Linux network-capability policy.
+
+After an upgrade on a boot-managed host, verify both layers:
+
+```bash
+./twn service status
+./twn status
+```
+
+Do not move a service-managed checkout as part of an upgrade. The OS definition
+stores an absolute path, and `.venv` also contains absolute paths. Use the
+documented uninstall, relocate/fresh-clone, reinstall, and service-install flow
+in [Autostart Service](autostart-service.md).
+
 ## Rollback rule
 
 Rollback is a **matched restore**, not a database downgrade. The toolkit never

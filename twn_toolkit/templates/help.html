@@ -14,7 +14,7 @@
   <div class="section-head"><div><h2 id="help-contents">Guide contents</h2><p>Jump directly to the area you need.</p></div></div>
   <div class="help-search"><label for="help-search-input">Search this guide</label><div class="help-search-controls"><input id="help-search-input" type="search" placeholder="Try automation, VLAN, backup, sudo…" autocomplete="off" data-help-search><button class="secondary" type="button" data-help-search-clear hidden>Clear</button></div><small data-help-search-status aria-live="polite"></small></div>
   <nav class="help-toc" aria-label="Help topics">
-    <a href="#release-notes">Release notes</a><a href="#getting-started">Getting started</a><a href="#dashboard">Dashboard</a><a href="#accounts">Accounts &amp; access</a><a href="#profiles">Profiles &amp; backups</a><a href="#fortinet">Fortinet</a><a href="#network-tools">Network tools</a><a href="#local-tools">Local tools</a><a href="#automations">Automations</a><a href="#packet-capture">Packet Capture</a><a href="#packet-replay">Packet Replay</a><a href="#operations">Operations</a><a href="#security">Security</a>
+    <a href="#release-notes">Release notes</a><a href="#getting-started">Getting started</a><a href="#dashboard">Dashboard</a><a href="#accounts">Accounts &amp; access</a><a href="#profiles">Profiles &amp; backups</a><a href="#fortinet">Fortinet</a><a href="#network-tools">Network tools</a><a href="#local-tools">Local tools</a><a href="#automations">Automations</a><a href="#dhcp-discover">DHCP Discover</a><a href="#packet-capture">Packet Capture</a><a href="#packet-replay">Packet Replay</a><a href="#operations">Operations</a><a href="#security">Security</a>
   </nav>
 </section>
 
@@ -50,7 +50,7 @@
   <details class="help-topic" open><summary>Navigation, Favorites, and finding tools</summary><div class="help-topic-body">
     <p>The persistent left pane is the primary navigation. Use <strong>Find a tool</strong> above Dashboard to filter permitted destinations by tool name or category path; clearing the search restores the tree exactly as you left it. Sections collapse independently, the current section opens automatically, and the pane scrolls separately from the page. Help and the installed version remain at the bottom. The hamburger button hides the pane completely when you want the full page width.</p>
     <ul><li><strong>Favorites</strong> contains personal shortcuts. Hover or focus a tool and use its star to add/remove it. With two or more Favorites, drag the handle beside any item to reorder it, or focus the handle and use the up/down arrow keys. Changes save automatically, and the dashboard Quick launch follows the same order.</li><li><strong>Fortinet Tools</strong> links to FortiGate and FortiAuthenticator profiles/workflows.</li><li><strong>Network Tools</strong> groups vendor-neutral diagnostics under Addressing &amp; Reachability, Multi-Host Tools, Services &amp; Protocols, and Traffic &amp; Interfaces.</li><li><strong>Automation</strong> separates the Automations workspace from the reusable Conditions and Actions libraries.</li><li><strong>Administration</strong> contains Settings, Updates &amp; Recovery, and System Diagnostics for system administrators.</li></ul>
-    <p>On narrow screens, use the hamburger button to open or close navigation.</p>
+    <p>On narrow screens, use the hamburger button to open or close navigation. The tool tree scrolls independently while Help, release notes, the configured instance name, and installed version remain reachable at the bottom. The sidebar follows the browser's visible viewport so Android browser controls and page zoom do not strand that footer off-screen.</p>
   </div></details>
   <details class="help-topic"><summary>First launch and service startup</summary><div class="help-topic-body">
     <p>There is no default login. A fresh installation generates a self-signed HTTPS certificate, prints its HTTPS URL, and the first visit creates the initial administrator. Review the browser's certificate warning before continuing. Rerunning the installer preserves an existing installation's protocol choice.</p>
@@ -61,7 +61,9 @@
 ./twn service status</code></pre>
     <p>The service normally uses port <code>5050</code>. Override one launch with <code>TWN_TOOLKIT_PORT=8000 ./twn start</code>.</p>
     <p><code>./twn service install</code> configures boot-time autostart through systemd on Ubuntu, Raspberry Pi OS, and other systemd Linux hosts, or through a system LaunchDaemon on macOS. It requests administrator authorization to install the service definition, then runs the toolkit as the installing user rather than root.</p>
+    <p>On a dedicated Linux diagnostic host, add <code>--network-capabilities</code> only when the service needs raw capture/replay, DHCP client-port access, promiscuous mode, or low-numbered listeners. The bounded unit capabilities are preferable to elevating the complete application. Verify both <code>./twn service status</code> and <code>./twn status</code> after installation and after a reboot.</p>
     <p>On macOS, keep a service installation outside privacy-protected <code>Desktop</code>, <code>Documents</code>, <code>Downloads</code>, iCloud Drive, and <code>~/Library/CloudStorage</code> locations. A path such as <code>~/twn-toolkit</code> is suitable. The helper rejects protected locations before stopping the current toolkit; use a fresh clone or rebuild <code>.venv</code> after relocating an existing checkout.</p>
+    <p>Service uninstall removes only the systemd unit or LaunchDaemon property list. It retains <code>instance/</code>, Datastore files, profiles, certificates, captures, and logs for manual startup or later service reinstallation.</p>
   </div></details>
   <details class="help-topic"><summary>Shared interface conventions</summary><div class="help-topic-body">
     <ul><li>Expandable cards contain saved definitions, editors, or result history.</li><li><strong>New</strong> opens a form and changes to <strong>Cancel</strong> while open.</li><li>Secret fields are write-only and are not rendered back into forms.</li><li>Test/preview controls are read-only unless the page explicitly says changes will be applied.</li><li>Loading cards indicate server-side work. Automation workers continue without an open browser.</li></ul>
@@ -269,6 +271,18 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
   </div></details>
 </section>
 
+<section class="home-section help-section" id="dhcp-discover">
+  <div class="section-head"><div><span class="eyebrow">Address assignment evidence</span><h2>DHCP Discover</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Probe boundary and results</summary><div class="help-topic-body">
+    <p>Choose one local interface, an authorized unicast client MAC, a 0.2–15 second timeout, and an ordered Parameter Request List. Optional host-name and vendor-class values help exercise client-specific policy. Each run creates a new transaction identifier and sends exactly one broadcast Discover.</p>
+    <p>The toolkit accepts only matching Offers, deduplicates repeated server/address pairs, and displays the offered address, server identifier, packet source, relay and next-server fields, plus decoded and raw option values. It never sends a Request, accepts a lease, or changes local addressing, routes, or DNS.</p>
+  </div></details>
+  <details class="help-topic"><summary>Platform permissions and no-response checks</summary><div class="help-topic-body">
+    <p>Linux binds UDP client port 68 and can use <code>./twn service install --network-capabilities</code>. macOS instead opens its BPF listener first, transmits one Ethernet/IPv4/UDP Discover through Scapy/libpcap/BPF, and captures matching Offers without a privileged port bind. Grant persistent BPF read/write access to the normal LaunchDaemon account; do not elevate the whole web application.</p>
+    <p>No matching Offer proves only that none reached this run before timeout. Verify interface/VLAN selection, test-MAC and vendor policy, DHCP relay behavior, local firewall or endpoint security, AP/switch broadcast handling, timeout, and the service account's packet permission. A simultaneous packet capture distinguishes an absent reply from a host-capture problem.</p>
+  </div></details>
+</section>
+
 <section class="home-section help-section" id="packet-capture">
   <div class="section-head"><div><span class="eyebrow">Passive diagnostics</span><h2>Packet Capture</h2></div><a href="#help-contents">Back to contents</a></div>
   <details class="help-topic" open><summary>Standalone captures and SPAN interfaces</summary><div class="help-topic-body">
@@ -278,7 +292,7 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
     <p>Local Datastore shows <strong>Inspect PCAP</strong> in the file actions for <code>.pcap</code>, <code>.pcapng</code>, and <code>.cap</code> files, so retained files can invoke the same viewer without returning to Packet Capture.</p>
   </div></details>
   <details class="help-topic"><summary>Permissions, storage, and sensitive traffic</summary><div class="help-topic-body">
-    <p>The toolkit service account must be allowed to capture packets through root, Linux capabilities, or platform-specific BPF access. The page reports missing <code>tcpdump</code>; a permission problem appears as a failed capture with the exact safe error.</p>
+    <p>The toolkit service account must be allowed to capture packets. Prefer the scoped Linux service capabilities or persistent administrator-managed macOS BPF read/write access for the normal service account instead of elevating the full application. Wireshark's optional ChmodBPF service is one established macOS policy. The page reports missing <code>tcpdump</code>; a permission problem appears as a failed capture with the exact safe error.</p>
     <p>Only one capture may run on an interface at a time across standalone and automation use. Standalone and automation PCAPs share the configured automation-artifact quota and minimum free-disk reserve. Datastore copies follow the separate datastore quota and remain after capture-history deletion. PCAPs may contain credentials and payload data, are excluded from profile backups, and should be deleted when no longer needed.</p>
   </div></details>
 </section>
@@ -290,7 +304,7 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
     <p>VLAN fanout accepts IDs, ranges, and <code>untagged</code>: <code>untagged,10-12,20</code>. VLAN 0 is priority-tagged, not untagged.</p>
   </div></details>
   <details class="help-topic"><summary>Permissions and capture verification</summary><div class="help-topic-body">
-    <p>Linux needs root or <code>CAP_NET_RAW</code>. macOS uses Scapy/libpcap/BPF and may require elevated BPF access. Wireless 802.11 injection is unsupported.</p>
+    <p>Linux needs raw packet access; <code>./twn service install --network-capabilities</code> provides the bounded service policy. macOS uses Scapy/libpcap/BPF and should grant persistent BPF read/write access to the normal LaunchDaemon account. Do not elevate the full web application merely for replay. Wireless 802.11 injection is unsupported.</p>
     <pre><code>sudo tcpdump -i en0 -e -nn -vvv 'vlan or ether proto 0x8100'
 sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
     <p>Sender acceptance is not remote delivery; verify actual egress on the wire.</p>
@@ -309,6 +323,9 @@ sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
 ./twn service install  Install and start boot-time autostart
 ./twn service status   Show systemd/launchd service state
 ./twn service logs     Show service-manager wrapper logs
+./twn service start    Start the installed OS service
+./twn service stop     Stop the installed OS service
+./twn service restart  Restart the installed OS service
 ./twn service uninstall Remove autostart; retain toolkit data
 ./twn enable-https     Generate and enable local HTTPS
 ./twn disable-https    Return to HTTP; retain certificate files
@@ -316,7 +333,7 @@ sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
 ./twn adminreset       Reset users only
 ./twn reset-data       Remove saved toolkit data</code></pre>
     <p>On a dedicated Linux diagnostic host, <code>./twn service install --network-capabilities</code> grants the service only <code>CAP_NET_RAW</code>, <code>CAP_NET_ADMIN</code>, and <code>CAP_NET_BIND_SERVICE</code> for capture, replay, interface access, and low ports. The default service has no added capabilities. macOS has no matching scoped-capability mechanism; keep the LaunchDaemon running as your normal account and provision BPF access separately for packet capture, replay, and DHCP Discover. Wireshark's optional ChmodBPF service is one established way to grant its <code>access_bpf</code> group persistent BPF read/write access.</p>
-    <p>With autostart installed, ordinary <code>./twn stop</code> and <code>./twn start</code> pause and resume the managed processes through the loaded supervisor. Upgrades and rollback use the same handshake, while a reboot always starts the toolkit again.</p>
+    <p>With autostart installed, ordinary <code>./twn stop</code> and <code>./twn start</code> pause and resume the managed processes through the loaded supervisor. Upgrades and rollback use the same handshake, while a reboot always starts the toolkit again. Installing the OS service does not enable disabled TFTP, FTP, SFTP/SCP, or iPerf3 listeners.</p>
   </div></details>
   <details class="help-topic"><summary>HTTPS and self-signed certificates</summary><div class="help-topic-body">
     <p>Fresh installations use HTTPS by default; upgrades preserve their existing protocol. Run <code>./twn enable-https</code> to migrate an older HTTP installation and safely restart the toolkit. Add stable names or addresses when needed: <code>./twn enable-https toolkit.local 192.0.2.25</code>.</p>

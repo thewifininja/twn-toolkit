@@ -54,7 +54,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
-        self.assertIn(b"v0.15.1", response.data)
+        self.assertIn(b"v0.16.0", response.data)
         self.assertIn(b'href="/help"', response.data)
         self.assertIn(b"Help &amp; release notes", response.data)
         self.assertIn(
@@ -111,6 +111,11 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"./twn fix-permissions", response.data)
         self.assertIn(b"./twn service install", response.data)
         self.assertIn(b"--network-capabilities", response.data)
+        self.assertIn(b"Service uninstall removes only", response.data)
+        self.assertIn(b'id="dhcp-discover"', response.data)
+        self.assertIn(b"sends exactly one broadcast Discover", response.data)
+        self.assertIn(b"never sends a Request", response.data)
+        self.assertIn(b"ChmodBPF", response.data)
         self.assertIn(b"updater metadata ownership", response.data)
         self.assertIn(b"Dashboard and activity", response.data)
         self.assertIn(b"Operators can use every tool granted", response.data)
@@ -121,7 +126,11 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Updates &amp; Recovery", response.data)
         self.assertIn(b"./twn upgrade", response.data)
         self.assertIn(b"never runs older code against post-upgrade data", response.data)
-        self.assertIn(b"v0.15.1", response.data)
+        self.assertIn(b"v0.16.0", response.data)
+        self.assertIn(
+            b"Boot-managed service and macOS network-tool parity",
+            response.data,
+        )
         self.assertIn(
             b"Reliable automation cadence and Datastore packet replay",
             response.data,

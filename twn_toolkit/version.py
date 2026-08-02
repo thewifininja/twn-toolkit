@@ -1,6 +1,50 @@
-APP_VERSION = "0.15.1"
+APP_VERSION = "0.16.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.16.0",
+        "date": "2026-08-02",
+        "title": "Boot-managed service and macOS network-tool parity",
+        "summary": (
+            "Adds a production-oriented boot service for systemd Linux and macOS, "
+            "keeps powerful network access scoped to the service account, and makes "
+            "the complete navigation usable across mobile browser viewport behavior."
+        ),
+        "groups": (
+            {
+                "title": "Cross-platform boot service",
+                "items": (
+                    "Adds ./twn service install, status, logs, start, stop, restart, and uninstall for systemd-based Linux—including Ubuntu and Raspberry Pi OS—and a system LaunchDaemon on macOS.",
+                    "Runs the managed toolkit as the selected normal account, verifies the web process, scheduler, and supervisor before declaring macOS installation successful, restarts after an unexpected process failure, and returns automatically after reboot.",
+                    "Keeps ordinary ./twn start, stop, restart, upgrade, rollback, and recovery coordinated with the loaded OS supervisor; uninstall removes only the service definition and retains instance data, Datastore files, captures, certificates, and logs.",
+                ),
+            },
+            {
+                "title": "Explicit, least-privilege network access",
+                "items": (
+                    "Offers an opt-in Linux --network-capabilities service mode bounded to CAP_NET_RAW, CAP_NET_ADMIN, and CAP_NET_BIND_SERVICE for packet capture, replay, DHCP client-port access, promiscuous mode, and low-numbered listeners without running the toolkit as root.",
+                    "Keeps the macOS LaunchDaemon unprivileged and documents persistent administrator-managed BPF access, including Wireshark's optional ChmodBPF service and access_bpf group, for packet capture, Packet Replay, and DHCP Discover.",
+                    "Moves macOS DHCP Discover to one BPF-transmitted Ethernet/IPv4/UDP Discover with matching Offer capture, avoiding a privileged port-68 bind while never sending a Request or accepting a lease.",
+                ),
+            },
+            {
+                "title": "Reliable responsive navigation",
+                "items": (
+                    "Keeps Help, release notes, the configured instance name, and installed version reachable at the bottom of the mobile sidebar under Android Chrome and other browsers whose visual viewport changes with zoom or browser controls.",
+                    "Makes the desktop sidebar more compact without hiding instance identity and aligns direct tools with nested tools through the same indentation and guide treatment.",
+                    "Refreshes the sidebar script by application version so upgraded browsers do not retain the older viewport behavior from cache.",
+                ),
+            },
+            {
+                "title": "Compatible, opt-in upgrade",
+                "items": (
+                    "Introduces no Python dependency, application-database schema, profile, configuration, or automation migration and supports direct upgrade from v0.15.1 through the verified release-bundle and matched rollback workflow.",
+                    "Leaves existing manual installations manual until an administrator explicitly installs the OS service, and preserves existing toolkit data and high-port listener defaults.",
+                    "Requires macOS service installations to live outside Desktop, Documents, Downloads, iCloud Drive, and ~/Library/CloudStorage; manual installations may remain there, while relocated checkouts need a rebuilt virtual environment because it contains absolute paths.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.15.1",
         "date": "2026-08-02",

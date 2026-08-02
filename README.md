@@ -13,7 +13,7 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.15.1**
+Current release: **v0.16.0**
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -105,8 +105,7 @@ The sidebar and Network Tools page use the same functional organization.
   Persistent runs continue through normal toolkit navigation and can be
   minimized to the collapsed-by-default Live tools footer dock, renamed in
   place, then restored with retained history by selecting the session card.
-  A
-  working optional `fping` system command enables batched high-capacity rounds
+  A working optional `fping` system command enables batched high-capacity rounds
   and raises the target limit from 100 to 250. Without it, the standard system
   `ping` compatibility engine remains available. Multi-Ping exposes separate
   round-interval and per-target probe-timeout controls; accelerated mode accepts
@@ -187,8 +186,9 @@ The sidebar and Network Tools page use the same functional organization.
   enabled, the page detects the optional dedicated compatibility configuration
   and provides `./twn multicast-pf` status, install, and uninstall guidance for
   IGMP Router Alert handling.
-- **DHCP Discover** — send a customizable Discover and inspect Offers without
-  requesting or accepting a lease.
+- **DHCP Discover** — send one customizable Discover and inspect matching Offers
+  without requesting or accepting a lease; Linux uses UDP client port 68 while
+  macOS uses BPF capture and transmit access.
 - **Packet Replay** — preview, rewrite, VLAN-tag/fan-out, and transmit raw
   Ethernet frames from hex, a local classic-PCAP upload, or a compatible PCAP
   selected directly from the contained Datastore after explicit authorization
@@ -359,6 +359,9 @@ For more detailed first-run and profile instructions, see
 ./twn service install   Install, enable, and start boot-time autostart
 ./twn service status    Show systemd/launchd installation and runtime state
 ./twn service logs      Show service-manager wrapper logs
+./twn service start     Start the installed OS service
+./twn service stop      Stop the installed OS service
+./twn service restart   Restart the installed OS service
 ./twn service uninstall Remove autostart while retaining toolkit data
 ./twn enable-https ...  Generate or regenerate toolkit-managed HTTPS
 ./twn disable-https     Return an existing installation to HTTP
@@ -398,8 +401,9 @@ permission:
   selected interface on Linux. On macOS it transmits and receives the same
   bounded Discover/Offer exchange through BPF so a normal-user service can run
   it when that account has BPF capture/transmit access.
-- **Packet Replay** needs raw Ethernet/BPF access (`CAP_NET_RAW` or root on
-  Linux; BPF permission may require `sudo` on macOS).
+- **Packet Capture** and **Packet Replay** need raw Ethernet/capture access.
+  Linux can use the scoped service capabilities; macOS should use persistent,
+  administrator-managed BPF access for the normal service account.
 - Standard TFTP/FTP ports may require privileged bind permission; the default
   high ports avoid that requirement.
 
@@ -452,8 +456,14 @@ unrestricted internet exposure.
 
 - [Quick Start](QUICKSTART.md) — installation, first login, saved profiles, and
   common operator workflows
+- [Autostart Service](docs/autostart-service.md) — systemd and LaunchDaemon
+  installation, permissions, lifecycle, logs, upgrades, and removal
 - [Automation](docs/automations.md) — condition/action contracts, scheduling,
   state, retention, and pipeline behavior
+- [DHCP Discover](docs/dhcp-discover.md) — safe probe behavior, platform
+  permissions, interpretation, and troubleshooting
+- [Packet Capture](docs/packet-capture.md) — capture deployment, controls,
+  permissions, storage, and security
 - [Packet Replay](docs/packet-replay.md) — raw-packet permissions and platform
   setup
 - [Multicast Tester](docs/multicast.md) — test modes, interpretation, platform

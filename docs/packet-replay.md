@@ -44,15 +44,22 @@ sudo ./twn start
 macOS uses Scapy for raw packet transmit. Untagged frames use the libpcap send
 path; VLAN-tagged frames use Scapy's BPF/raw-device path. Some systems allow
 this from a normal user session, while others require permission to open BPF
-packet devices. If the page reports a permission error, stop the normal service
-and use an administrator-managed BPF access policy. Starting the whole toolkit
-with `sudo` is reserved for short lab troubleshooting because it also elevates
-the web application and can create root-owned runtime data:
+packet devices. Provision an administrator-managed BPF policy for the same
+normal account that runs the toolkit. Wireshark's optional ChmodBPF service is
+one established way to grant persistent read/write access through its
+`access_bpf` group. Confirm the service user and device permissions, then
+restart the service so launchd applies updated supplementary groups:
 
 ```bash
-./twn stop
-sudo ./twn start
+id -Gn
+ls -l /dev/bpf0
+./twn service restart
 ```
+
+Do not run the entire web toolkit as root merely to obtain BPF access. The
+toolkit does not change BPF ownership or permissions automatically. See
+[Autostart Service](autostart-service.md) for persistent service placement and
+permission guidance.
 
 After changing packet replay code or updating the toolkit, restart the service
 before testing. The page should show **Send requested** after pressing **Send
@@ -111,8 +118,12 @@ sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'
 
 ## Common failures
 
-- **Permission denied:** restart the toolkit with root privileges or Linux
-  `CAP_NET_RAW`.
+- **Permission denied on Linux:** install the dedicated systemd service with
+  `--network-capabilities`, or provide an equivalent administrator-managed raw
+  packet policy for the service account.
+- **Permission denied on macOS:** grant persistent read/write access to
+  `/dev/bpf` devices for the normal service account, then restart the service so
+  its group membership is refreshed.
 - **No such device / interface not found:** select the OS interface name shown
   on the page, not a switchport name or VLAN label from another system.
 - **VLAN tag not visible:** check the preview's **First replay header bytes**.
