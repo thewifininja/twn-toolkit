@@ -141,6 +141,26 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(".side-nav-favorite-drag-handle {", stylesheet)
         self.assertIn("grid-template-columns: 24px minmax(0, 1fr);", stylesheet)
 
+    def test_sidebar_footer_survives_mobile_browser_chrome_and_desktop_is_compact(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+
+        self.assertIn("align-content: start;", stylesheet)
+        self.assertIn("flex: 1 1 0;", stylesheet)
+        self.assertIn("overscroll-behavior: contain;", stylesheet)
+        self.assertIn("scrollbar-gutter: stable;", stylesheet)
+        self.assertIn("@media (min-width: 901px) {", stylesheet)
+        self.assertIn("height: calc(100dvh - var(--topbar-height));", stylesheet)
+        self.assertIn(
+            "max-height: calc(100dvh - var(--topbar-height));",
+            stylesheet,
+        )
+        self.assertIn("env(safe-area-inset-bottom)", stylesheet)
+        self.assertIn("overflow-wrap: anywhere;", stylesheet)
+        self.assertIn("Help &amp; release notes", template)
+
     def test_automation_threshold_rows_share_aligned_label_space(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"

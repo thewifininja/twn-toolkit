@@ -214,8 +214,8 @@
                 </details>
               {% endfor %}
             </div>
-            <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}" title="Help">
-              <span class="side-nav-help-title"><span class="side-nav-icon" aria-hidden="true">?</span><span class="side-nav-label">Help{% if instance_name %}<small class="side-nav-instance">{{ instance_name }}</small>{% endif %}</span></span>
+            <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}" title="Help &amp; release notes">
+              <span class="side-nav-help-title"><span class="side-nav-icon" aria-hidden="true">?</span><span class="side-nav-label">Help &amp; release notes{% if instance_name %}<small class="side-nav-instance">{{ instance_name }}</small>{% endif %}</span></span>
               <span class="side-nav-version">v{{ app_version }}</span>
             </a>
           </nav>
