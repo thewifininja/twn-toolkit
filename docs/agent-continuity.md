@@ -215,12 +215,19 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.15.0: durable automation claims and renewable leases,
+- Current milestone is 0.15.1: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
   saves, metadata-only SMTP email actions, and the reorganized Administration
-  interface are implemented. Packet capture retains the host's existing
+  interface are implemented. Packet Replay can now select bounded classic PCAP
+  files directly from the contained Datastore when the operator has both tool
+  permissions, while retaining upload and raw-frame sources. Automation
+  condition deadlines now stay anchored to a non-overlapping start cadence,
+  avoid claiming and discarding a round while its predecessor is active, and
+  timestamp history at observation start. Automation Ping shares Multi-Ping's
+  capability-aware timeout validation, including sub-second values through a
+  verified `fping` engine. Packet capture retains the host's existing
   permission boundary and never installs software or invokes sudo. Certificate
   Automation now includes a tested, guided Let's Encrypt DNS-01 workflow that
   distinguishes configured-resolver caching from authoritative propagation,

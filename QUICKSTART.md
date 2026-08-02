@@ -136,6 +136,12 @@ viewer shows addresses, ports, protocols, VLANs, timestamps, and lengths
 without displaying packet payloads. Completed captures can be downloaded or
 copied to a selected datastore folder.
 
+Packet Replay can select a compatible classic `.pcap` or `.cap` file directly
+from the contained Datastore instead of requiring another browser upload.
+Non-administrator operators need both Packet Replay and Datastore access. The
+same preview, authorization confirmation, 256 KiB capture limit, multi-packet
+handling, MAC/VLAN changes, and bounded send plan apply to stored captures.
+
 SNMP Tester can also discover the standard IF-MIB interfaces across saved SNMP
 hosts and build a monitor set of up to 20 interfaces. Each interface gets an
 adaptive mirrored graph with endpoint download (interface transmit) above zero
@@ -249,6 +255,13 @@ Open **Automation → Automations** and expand **New automation**:
    zero seconds through 24 hours before it starts; the saved countdown continues
    in the background and survives a toolkit restart.
 7. Save the automation.
+
+Condition intervals describe desired start-to-start cadence. Checks for one
+automation never overlap, and a round that reaches its next deadline finishes
+before the waiting round begins; history is timestamped when observation
+starts. Automation Ping also accepts sub-second per-target timeouts such as
+`0.9` seconds when the verified accelerated `fping` engine is active. The
+standard compatibility engine retains a one-second minimum.
 
 New condition or schedule automations remain paused until you select **Arm**.
 Use **Test condition** before arming. Editing a referenced condition or action

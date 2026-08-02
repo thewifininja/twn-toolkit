@@ -48,7 +48,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
-        self.assertIn(b"v0.15.0", response.data)
+        self.assertIn(b"v0.15.1", response.data)
         self.assertIn(b'href="/help"', response.data)
         self.assertIn(b'<header class="topbar with-sidebar">', response.data)
         self.assertIn(b'id="side-nav-search-input"', response.data)
@@ -108,7 +108,11 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Updates &amp; Recovery", response.data)
         self.assertIn(b"./twn upgrade", response.data)
         self.assertIn(b"never runs older code against post-upgrade data", response.data)
-        self.assertIn(b"v0.15.0", response.data)
+        self.assertIn(b"v0.15.1", response.data)
+        self.assertIn(
+            b"Reliable automation cadence and Datastore packet replay",
+            response.data,
+        )
         self.assertIn(
             b"Multicast diagnostics and durable automation orchestration",
             response.data,

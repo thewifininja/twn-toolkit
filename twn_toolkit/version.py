@@ -1,6 +1,42 @@
-APP_VERSION = "0.15.0"
+APP_VERSION = "0.15.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.15.1",
+        "date": "2026-08-02",
+        "title": "Reliable automation cadence and Datastore packet replay",
+        "summary": (
+            "Keeps fast automation Ping monitoring on a stable, non-overlapping "
+            "cadence and lets authorized operators replay compatible captures "
+            "directly from the contained Datastore."
+        ),
+        "groups": (
+            {
+                "title": "Reliable one-second automation monitoring",
+                "items": (
+                    "Anchors condition deadlines to their intended start-to-start cadence and prevents a due round from being claimed and discarded while the preceding check is still finishing.",
+                    "Keeps rounds for one automation non-overlapping, starts a waiting round promptly after completion, resumes long pauses without replaying a backlog, and timestamps history when observation begins rather than after a timeout returns.",
+                    "Brings Multi-Ping's capability-aware timeout validation to Automation Ping: a verified accelerated fping engine accepts 0.1–10 second values such as 0.9 seconds, while the standard compatibility engine retains its honest one-second minimum.",
+                ),
+            },
+            {
+                "title": "Packet Replay from retained captures",
+                "items": (
+                    "Adds a contained Datastore picker beside local upload and raw-frame hex so compatible classic .pcap and .cap files can be previewed without downloading and uploading them again.",
+                    "Requires both Packet Replay and Datastore access for non-administrators, recursively lists only contained regular capture files, ignores symbolic links, and keeps the existing 256 KiB capture limit visible before selection.",
+                    "Supports multi-packet captures and carries the prepared packet sequence into the confirmed send step, applying MAC rewriting, VLAN handling, fanout, repeat, frame-count, and scheduled-duration limits to every source packet.",
+                ),
+            },
+            {
+                "title": "Compatible maintenance upgrade",
+                "items": (
+                    "Introduces no application-database schema, dependency, profile, configuration, command-line, or automation migration and supports direct upgrade from v0.15.0.",
+                    "Preserves upload and raw-hex Packet Replay sources, existing replay authorization confirmation, saved automation definitions and state, retained history, Datastore contents, and the host's current packet-transmit permission boundary.",
+                    "Keeps PCAPNG available for retained capture inspection but explicitly limits replay selection to classic Ethernet PCAP until that parser is supported.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.15.0",
         "date": "2026-08-01",
