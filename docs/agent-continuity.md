@@ -463,11 +463,18 @@ make state, risk, and the next action obvious.
   upgrade waiting indefinitely.
 - A boot-managed launcher is a long-lived shell and retains the functions it
   parsed before an upgrade. The installer sets
-  `TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER=1`; an external `twn start` then clears
-  the managed pause without posting a resume request, causing the old launcher
-  to exit unsuccessfully and systemd/launchd to reload the on-disk script. Wait
-  for a different launcher PID plus healthy web, scheduler, and supervisor
-  processes. Ordinary `./twn restart` still uses the lighter pause/resume path.
+  `TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER=1`; during an active upgrade it must start
+  a validation-only process set without clearing the managed pause. The updater
+  writes its terminal status and audit record, removes staged inputs, and
+  removes `operation.lock` last. Only then may a deferred helper stop the
+  validation set and clear the pause so systemd/launchd reloads the finalized
+  on-disk script. Never reload earlier: systemd `KillMode=mixed` and equivalent
+  job cleanup can terminate the detached updater before finalization. Suppress
+  startup-generation recording for the validation start so the final managed
+  start emits exactly one startup event. When rollback restores the launcher's
+  original version, restore the launcher PID and let it adopt the validated
+  process set. Ordinary `./twn restart` still uses the lighter pause/resume path,
+  and a manual installer outside an active upgrade reloads synchronously.
 - Libraries that create process helpers, synchronization primitives, or event-loop
   descriptors at import time must be imported only after daemonization. This is
   the bootstrap protection for upgrades launched by an older updater that still

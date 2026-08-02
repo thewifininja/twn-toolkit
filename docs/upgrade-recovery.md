@@ -91,12 +91,25 @@ pipes without risking library-owned descriptors such as macOS kqueues.
 An installed systemd unit or macOS LaunchDaemon remains outside the release
 bundle. Upgrade, rollback, and recovery detect the loaded OS supervisor and
 pause the managed toolkit through it. After application code is replaced, the
-installer deliberately retires the old in-memory launcher; systemd or launchd
-then loads the new `twn` from disk with the same normal service account and
-security context. The updater waits for the launcher PID to change and validates
-the complete managed process set. No separate `./twn service restart` or second
-administrator prompt is required. The operation does not silently install,
-remove, or change the optional Linux network-capability policy.
+installer starts a validation-only process set while keeping the original
+launcher paused. The updater validates the installed version, complete managed
+process set, enabled listeners, and databases, then records its terminal result,
+cleans the staged request and bundle, and removes the operation lock last.
+
+Only after that durable finalization signal does a deferred handoff stop the
+temporary process set and let systemd or launchd load the new `twn` from disk
+with the same normal service account and security context. This prevents the OS
+service manager from terminating the detached updater as part of an early
+cgroup or job reload. The temporary validation start suppresses the startup
+automation event; the final OS-managed start records it exactly once. Automatic
+rollback instead lets the original in-memory launcher adopt the validated
+restored process set when its version matches. Handoff details are available in
+`.twn-upgrades/service-reload.log`.
+
+No separate `./twn service restart` or second administrator prompt is required.
+The operation does not silently install, remove, or change the optional Linux
+network-capability policy. An ordinary `./install.sh` run outside an active
+upgrade continues to reload a boot-managed launcher synchronously.
 
 After an upgrade on a boot-managed host, verify both layers:
 

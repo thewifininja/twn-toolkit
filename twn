@@ -7,6 +7,8 @@ GUNICORN="$ROOT/.venv/bin/gunicorn"
 PYTHON="$ROOT/.venv/bin/python"
 RECOVERY_HELPER="$ROOT/twn_toolkit/recovery.py"
 UPGRADE_WORKSPACE="$ROOT/.twn-upgrades"
+UPGRADE_OPERATION_LOCK="$UPGRADE_WORKSPACE/operation.lock"
+UPGRADE_STATUS_FILE="$UPGRADE_WORKSPACE/status.json"
 RELEASE_MANIFEST="$ROOT/.twn-release-manifest.json"
 REQUIREMENTS="$ROOT/requirements.txt"
 INSTANCE="$ROOT/instance"
@@ -20,6 +22,8 @@ SUPERVISOR_PIDFILE="$INSTANCE/twn-supervisor.pid"
 SERVICE_LAUNCHER_PIDFILE="$INSTANCE/twn-service-launcher.pid"
 SERVICE_PAUSE_FILE="$INSTANCE/twn-service-paused"
 SERVICE_RESUME_FILE="$INSTANCE/twn-service-resume"
+SERVICE_DEFERRED_RELOAD_PIDFILE="$UPGRADE_WORKSPACE/service-reload.pid"
+SERVICE_RELOAD_LOG="$UPGRADE_WORKSPACE/service-reload.log"
 TFTP_PIDFILE="$INSTANCE/twn-tftp.pid"
 TFTP_READYFILE="$INSTANCE/twn-tftp.ready"
 SSH_TRANSFER_PIDFILE="$INSTANCE/twn-ssh-transfer.pid"
@@ -55,6 +59,8 @@ TLS_KEY=${TWN_TOOLKIT_KEYFILE:-}
 SCHEME=http
 SERVICE_RUN_MODE=${TWN_TOOLKIT_SERVICE_RUN:-0}
 SERVICE_RELOAD_REQUESTED=${TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER:-0}
+UPGRADE_REQUEST_ID=${TWN_TOOLKIT_UPGRADE_REQUEST_ID:-}
+SUPPRESS_TOOLKIT_START_EVENT=${TWN_TOOLKIT_SUPPRESS_START_EVENT:-0}
 
 if [ -z "$HOST" ] && [ -f "$SERVER_SETTINGS" ]; then
   HOST=$(python3 -c '
@@ -196,6 +202,173 @@ service_launcher_is_running() {
   [ -f "$SERVICE_LAUNCHER_PIDFILE" ] && pid_is_running "$(cat "$SERVICE_LAUNCHER_PIDFILE")"
 }
 
+upgrade_worker_is_ancestor() {
+  ancestor_pid=${PPID:-}
+  ancestor_hops=0
+  while [ "$ancestor_hops" -lt 12 ]; do
+    case "$ancestor_pid" in
+      ""|*[!0-9]*) return 1 ;;
+    esac
+    [ "$ancestor_pid" -gt 1 ] || return 1
+    ancestor_command=$(ps -o command= -p "$ancestor_pid" 2>/dev/null || true)
+    case "$ancestor_command" in
+      *twn_toolkit.upgrade_worker*) return 0 ;;
+    esac
+    ancestor_pid=$(ps -o ppid= -p "$ancestor_pid" 2>/dev/null | tr -d ' ' || true)
+    ancestor_hops=$((ancestor_hops + 1))
+  done
+  return 1
+}
+
+upgrade_reload_should_be_deferred() {
+  [ -f "$UPGRADE_OPERATION_LOCK" ] || return 1
+  active_request_id=$(cat "$UPGRADE_OPERATION_LOCK" 2>/dev/null || true)
+  [ -n "$active_request_id" ] || return 1
+  if [ -n "$UPGRADE_REQUEST_ID" ]; then
+    [ "$UPGRADE_REQUEST_ID" = "$active_request_id" ]
+    return
+  fi
+  upgrade_worker_is_ancestor
+}
+
+upgrade_from_version() {
+  "$PYTHON" -c '
+import json, sys
+try:
+    value = json.load(open(sys.argv[1], encoding="utf-8"))
+    print(str(value.get("from_version", "")))
+except (OSError, ValueError):
+    print("")
+' "$UPGRADE_STATUS_FILE"
+}
+
+installed_source_version() {
+  "$PYTHON" -c '
+import re, sys
+try:
+    source = open(sys.argv[1], encoding="utf-8").read()
+except OSError:
+    print("")
+else:
+    match = re.search(r"^APP_VERSION\s*=\s*[\"\x27]([^\"\x27]+)", source, re.MULTILINE)
+    print(match.group(1) if match else "")
+' "$ROOT/twn_toolkit/version.py"
+}
+
+restore_deferred_service_launcher() {
+  deferred_launcher_pid="$1"
+  if pid_is_running "$deferred_launcher_pid"; then
+    printf "%s\n" "$deferred_launcher_pid" > "$SERVICE_LAUNCHER_PIDFILE"
+    chmod 600 "$SERVICE_LAUNCHER_PIDFILE"
+  fi
+  rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"
+}
+
+withhold_deferred_service_launcher() {
+  # Do not recreate the path during the brief atomic instance-directory swap
+  # performed by rollback; the restored instance already contains the pause.
+  [ -d "$INSTANCE" ] || return
+  : > "$SERVICE_PAUSE_FILE"
+  rm -f "$SERVICE_LAUNCHER_PIDFILE" "$SERVICE_RESUME_FILE"
+}
+
+deferred_service_reload() {
+  deferred_launcher_pid="$1"
+  deferred_request_id="$2"
+  deferred_from_version="$3"
+  trap 'rm -f "$SERVICE_DEFERRED_RELOAD_PIDFILE"' EXIT
+  trap 'exit 1' INT TERM
+  trap '' HUP
+
+  deferred_attempts=0
+  while :; do
+    while [ -f "$UPGRADE_OPERATION_LOCK" ] && [ "$deferred_attempts" -lt 600 ]; do
+      # A matched instance restore can reintroduce the PID file captured in its
+      # recovery point. Keep discovery withheld so even an older restored twn
+      # starts validation directly instead of reloading the service too early.
+      withhold_deferred_service_launcher
+      deferred_attempts=$((deferred_attempts + 1))
+      sleep 1
+    done
+    if [ -f "$UPGRADE_OPERATION_LOCK" ]; then
+      echo "Deferred service reload for $deferred_request_id timed out; retaining the validated process set." >&2
+      restore_deferred_service_launcher "$deferred_launcher_pid"
+      return 1
+    fi
+
+    # v0.16.2 removed the operation lock just before its final request cleanup.
+    # Later workers remove it last. This grace period safely covers both orders,
+    # and the recheck avoids reloading during a newly queued operation.
+    sleep 2
+    [ -f "$UPGRADE_OPERATION_LOCK" ] || break
+  done
+  deferred_installed_version=$(installed_source_version || true)
+  if [ -n "$deferred_from_version" ] \
+    && [ "$deferred_installed_version" = "$deferred_from_version" ] \
+    && pid_is_running "$deferred_launcher_pid" \
+    && is_running && automation_is_running && supervisor_is_running; then
+    echo "Upgrade operation $deferred_request_id restored v$deferred_from_version; the original service launcher is adopting the validated rollback."
+    restore_deferred_service_launcher "$deferred_launcher_pid"
+    return
+  fi
+
+  echo "Upgrade operation $deferred_request_id finalized; requesting an OS-managed launcher reload."
+  TWN_TOOLKIT_SERVICE_RUN=1 \
+    TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER=0 \
+    "$ROOT/twn" stop || true
+  rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"
+}
+
+schedule_deferred_service_reload() {
+  deferred_launcher_pid="$1"
+  deferred_request_id="$2"
+  deferred_from_version="$3"
+  if [ -f "$SERVICE_DEFERRED_RELOAD_PIDFILE" ]; then
+    deferred_existing_pid=$(cat "$SERVICE_DEFERRED_RELOAD_PIDFILE" 2>/dev/null || true)
+    if pid_is_running "$deferred_existing_pid"; then
+      echo "A deferred service reload is already monitoring upgrade $deferred_request_id." >&2
+      return 1
+    fi
+    rm -f "$SERVICE_DEFERRED_RELOAD_PIDFILE"
+  fi
+  (
+    deferred_service_reload \
+      "$deferred_launcher_pid" "$deferred_request_id" "$deferred_from_version"
+  ) </dev/null >> "$SERVICE_RELOAD_LOG" 2>&1 &
+  deferred_helper_pid=$!
+  printf "%s\n" "$deferred_helper_pid" > "$SERVICE_DEFERRED_RELOAD_PIDFILE"
+  chmod 600 "$SERVICE_DEFERRED_RELOAD_PIDFILE"
+}
+
+arm_deferred_service_reload() {
+  deferred_launcher_pid="$1"
+  deferred_request_id="$2"
+  deferred_from_version="$3"
+  withhold_deferred_service_launcher
+  if ! schedule_deferred_service_reload \
+    "$deferred_launcher_pid" "$deferred_request_id" "$deferred_from_version"; then
+    restore_deferred_service_launcher "$deferred_launcher_pid"
+    return 1
+  fi
+}
+
+prepare_upgrade_service_reload() {
+  if ! upgrade_reload_should_be_deferred; then
+    echo "A matching active upgrade operation was not found." >&2
+    return 1
+  fi
+  deferred_launcher_pid=$(cat "$SERVICE_LAUNCHER_PIDFILE" 2>/dev/null || true)
+  if [ -z "$deferred_launcher_pid" ] || ! pid_is_running "$deferred_launcher_pid"; then
+    echo "No boot-managed launcher needs a deferred reload."
+    return 3
+  fi
+  deferred_request_id=$(cat "$UPGRADE_OPERATION_LOCK" 2>/dev/null || true)
+  deferred_from_version=$(upgrade_from_version || true)
+  arm_deferred_service_reload \
+    "$deferred_launcher_pid" "$deferred_request_id" "$deferred_from_version"
+  echo "The boot-managed launcher will reload after upgrade finalization."
+}
+
 request_service_start() {
   rm -f "$SERVICE_PAUSE_FILE"
   : > "$SERVICE_RESUME_FILE"
@@ -253,6 +426,43 @@ request_service_reload() {
   echo "Timed out waiting for the OS service manager to reload the toolkit launcher." >&2
   echo "Inspect: ./twn service status && ./twn service logs" >&2
   return 1
+}
+
+request_deferred_service_reload() {
+  deferred_launcher_pid=$(cat "$SERVICE_LAUNCHER_PIDFILE" 2>/dev/null || true)
+  deferred_request_id=$(cat "$UPGRADE_OPERATION_LOCK" 2>/dev/null || true)
+  deferred_from_version=$(upgrade_from_version || true)
+  if [ -z "$deferred_launcher_pid" ] || [ -z "$deferred_request_id" ]; then
+    echo "The active upgrade or service launcher could not be identified." >&2
+    return 1
+  fi
+
+  # This is the compatibility bridge for an upgrade launched by v0.16.2, whose
+  # worker cannot prepare the handoff before replacing application files.
+  if ! arm_deferred_service_reload \
+    "$deferred_launcher_pid" "$deferred_request_id" "$deferred_from_version"; then
+    return 1
+  fi
+
+  # Start the target process set directly while the old OS launcher remains
+  # paused. Do not record a toolkit-start event for this validation-only start;
+  # the final OS-managed launcher records the one real post-upgrade event.
+  deferred_start_failed=0
+  if ! TWN_TOOLKIT_SERVICE_RUN=1 \
+    TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER=0 \
+    TWN_TOOLKIT_SUPPRESS_START_EVENT=1 \
+    "$ROOT/twn" start; then
+    deferred_start_failed=1
+  fi
+
+  if [ "$deferred_start_failed" -eq 1 ]; then
+    return 1
+  fi
+
+  load_running_endpoint
+  if [ -f "$SCHEME_FILE" ]; then SCHEME=$(cat "$SCHEME_FILE"); fi
+  echo "The target process set is ready; the OS service launcher will reload after upgrade finalization."
+  show_access_urls
 }
 
 managed_worker_is_running() {
@@ -749,7 +959,11 @@ offer_permission_repair() {
 start() {
   if [ "$SERVICE_RUN_MODE" != "1" ] && service_launcher_is_running; then
     if [ "$SERVICE_RELOAD_REQUESTED" = "1" ]; then
-      request_service_reload
+      if upgrade_reload_should_be_deferred; then
+        request_deferred_service_reload
+      else
+        request_service_reload
+      fi
     else
       request_service_start
     fi
@@ -823,7 +1037,9 @@ start() {
       printf "%s\n" "$SCHEME" > "$SCHEME_FILE"
       printf "%s\n" "$HOST" > "$HOST_FILE"
       printf "%s\n" "$PORT" > "$PORT_FILE"
-      "$PYTHON" -m twn_toolkit.system_identity mark-start --instance "$INSTANCE" >/dev/null
+      if [ "$SUPPRESS_TOOLKIT_START_EVENT" != "1" ]; then
+        "$PYTHON" -m twn_toolkit.system_identity mark-start --instance "$INSTANCE" >/dev/null
+      fi
       start_automation
       start_transfer_services
       if ! start_iperf_servers; then
@@ -1245,7 +1461,8 @@ service_run_cleanup() {
   trap - EXIT INT TERM
   SERVICE_RUN_MODE=1
   stop || true
-  rm -f "$SERVICE_LAUNCHER_PIDFILE" "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"
+  rm -f "$SERVICE_LAUNCHER_PIDFILE" "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE" \
+    "$SERVICE_DEFERRED_RELOAD_PIDFILE"
   exit "$service_exit_status"
 }
 
@@ -1260,7 +1477,7 @@ service_run() {
   mkdir -p "$INSTANCE"
   printf "%s\n" "$$" > "$SERVICE_LAUNCHER_PIDFILE"
   chmod 600 "$SERVICE_LAUNCHER_PIDFILE"
-  rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"
+  rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE" "$SERVICE_DEFERRED_RELOAD_PIDFILE"
   SERVICE_RUN_MODE=1
   trap service_run_cleanup EXIT
   trap 'exit 0' INT TERM
@@ -1369,6 +1586,9 @@ case "${1:-}" in
   upgrade-status)
     ensure_requirements
     "$PYTHON" -m twn_toolkit.upgrade_cli --root "$ROOT" --instance "$INSTANCE" status
+    ;;
+  prepare-upgrade-service-reload)
+    prepare_upgrade_service_reload
     ;;
   multicast-pf)
     shift
