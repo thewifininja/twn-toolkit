@@ -146,20 +146,42 @@ class UIComponentTests(unittest.TestCase):
             encoding="utf-8"
         )
         template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+        sidebar_script = (
+            TEMPLATE_ROOT.parent / "static" / "sidebar.js"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("align-content: start;", stylesheet)
         self.assertIn("flex: 1 1 0;", stylesheet)
         self.assertIn("overscroll-behavior: contain;", stylesheet)
         self.assertIn("scrollbar-gutter: stable;", stylesheet)
-        self.assertIn("@media (min-width: 901px) {", stylesheet)
-        self.assertIn("height: calc(100dvh - var(--topbar-height));", stylesheet)
         self.assertIn(
-            "max-height: calc(100dvh - var(--topbar-height));",
+            "@media (min-width: 901px) and (hover: hover) and (pointer: fine) {",
             stylesheet,
+        )
+        self.assertIn(
+            "@media (max-width: 900px), (hover: none) and (pointer: coarse) {",
+            stylesheet,
+        )
+        self.assertIn(
+            "var(--mobile-visual-viewport-height, 100dvh)",
+            stylesheet,
+        )
+        self.assertIn(
+            "window.visualViewport?.height || window.innerHeight",
+            sidebar_script,
+        )
+        self.assertIn(
+            'window.visualViewport?.addEventListener("resize", updateSidebarGeometry);',
+            sidebar_script,
+        )
+        self.assertIn(
+            '"(min-width: 901px) and (hover: hover) and (pointer: fine)"',
+            sidebar_script,
         )
         self.assertIn("env(safe-area-inset-bottom)", stylesheet)
         self.assertIn("overflow-wrap: anywhere;", stylesheet)
         self.assertIn("Help &amp; release notes", template)
+        self.assertIn("filename='sidebar.js', v=app_version", template)
 
     def test_automation_threshold_rows_share_aligned_label_space(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

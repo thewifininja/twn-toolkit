@@ -1000,7 +1000,7 @@ body {
   text-transform: none;
 }
 
-@media (min-width: 901px) {
+@media (min-width: 901px) and (hover: hover) and (pointer: fine) {
   .side-nav-scroll {
     gap: 9px;
     padding: 14px 12px 10px;
@@ -1153,7 +1153,7 @@ body {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .live-tool-tray {
     left: 0;
   }
@@ -1165,9 +1165,9 @@ body {
   .app-sidebar {
     bottom: 0;
     box-shadow: 14px 0 36px rgb(0 0 0 / 24%);
-    height: calc(100dvh - var(--topbar-height));
+    height: calc(var(--mobile-visual-viewport-height, 100dvh) - var(--topbar-height));
     left: 0;
-    max-height: calc(100dvh - var(--topbar-height));
+    max-height: calc(var(--mobile-visual-viewport-height, 100dvh) - var(--topbar-height));
     max-width: min(320px, calc(100vw - 42px));
     position: fixed;
     top: var(--topbar-height);
@@ -1178,8 +1178,8 @@ body {
   }
 
   .has-live-tool-dock .app-sidebar {
-    height: calc(100dvh - var(--topbar-height) - var(--live-tool-dock-height));
-    max-height: calc(100dvh - var(--topbar-height) - var(--live-tool-dock-height));
+    height: calc(var(--mobile-visual-viewport-height, 100dvh) - var(--topbar-height) - var(--live-tool-dock-height));
+    max-height: calc(var(--mobile-visual-viewport-height, 100dvh) - var(--topbar-height) - var(--live-tool-dock-height));
   }
 
   .sidebar-open .app-sidebar {

@@ -9,7 +9,9 @@
   const dashboardSearchInput = document.getElementById("dashboard-tool-search-input");
   const dashboardSearchResults = document.getElementById("dashboard-tool-search-results");
   const dashboardSearchEmpty = document.getElementById("dashboard-tool-search-empty");
-  const desktopQuery = window.matchMedia("(min-width: 901px)");
+  const desktopQuery = window.matchMedia(
+    "(min-width: 901px) and (hover: hover) and (pointer: fine)",
+  );
 
   if (!button || !sidebar) return;
 
@@ -121,6 +123,19 @@
     );
   };
 
+  const updateMobileViewportHeight = () => {
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    document.documentElement.style.setProperty(
+      "--mobile-visual-viewport-height",
+      `${Math.floor(viewportHeight)}px`,
+    );
+  };
+
+  const updateSidebarGeometry = () => {
+    updateTopbarHeight();
+    updateMobileViewportHeight();
+  };
+
   const applyState = () => {
     const collapsed = document.body.classList.contains("sidebar-collapsed");
     const open = document.body.classList.contains("sidebar-open");
@@ -143,10 +158,12 @@
     applyState();
   };
 
-  updateTopbarHeight();
-  window.addEventListener("resize", updateTopbarHeight);
+  updateSidebarGeometry();
+  window.addEventListener("resize", updateSidebarGeometry);
+  window.visualViewport?.addEventListener("resize", updateSidebarGeometry);
+  window.visualViewport?.addEventListener("scroll", updateSidebarGeometry);
   if (window.ResizeObserver && topbar) {
-    new ResizeObserver(updateTopbarHeight).observe(topbar);
+    new ResizeObserver(updateSidebarGeometry).observe(topbar);
   }
 
   if (desktopQuery.matches && localStorage.getItem("twn-sidebar-collapsed") === "1") {
