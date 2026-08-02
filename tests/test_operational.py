@@ -584,7 +584,10 @@ class OperationalHardeningTests(unittest.TestCase):
             page = client.get("/settings/diagnostics")
             self.assertEqual(page.status_code, 200)
             self.assertIn(b"System diagnostics", page.data)
-            self.assertIn(b"fping high-capacity ICMP", page.data)
+            self.assertIn(b"Runtime mode", page.data)
+            self.assertIn(b"Platform capabilities", page.data)
+            self.assertIn(b"fping", page.data)
+            self.assertNotIn(b">openssl<", page.data)
             self.assertIn(b'class="field-note audit-empty-detail"', page.data)
             self.assertIn(b"Search audit history", page.data)
             filtered = client.get(

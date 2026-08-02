@@ -106,8 +106,9 @@ There is no default account.
 2. Sign in and open **Administration → System Settings**.
 3. Review the short instance name, preferred FQDN, client allowlist, password
    policy, idle timeout, operational limits, and retention settings.
-4. Open **Administration → System Diagnostics** and confirm that the web,
-   scheduler, supervisor, databases, and required dependencies are healthy.
+4. Open **Administration → System Diagnostics** and confirm the expected manual
+   or boot-service runtime mode, web/scheduler/supervisor health, databases,
+   command integrations, and platform capabilities.
 
 The persistent sidebar is the primary navigation:
 

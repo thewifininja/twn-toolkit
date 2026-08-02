@@ -331,6 +331,158 @@ def _managed_toolkit_is_ready(root: Path) -> bool:
     )
 
 
+def _service_definition_details(
+    path: Path, *, system: str
+) -> tuple[str, str, str]:
+    """Return the configured service user, group, and root without elevation."""
+    if system == "Darwin":
+        try:
+            payload = plistlib.loads(path.read_bytes())
+        except (OSError, plistlib.InvalidFileException, ValueError):
+            return "", "", ""
+        return (
+            str(payload.get("UserName", "")),
+            str(payload.get("GroupName", "")),
+            str(payload.get("WorkingDirectory", "")),
+        )
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return "", "", ""
+    values: dict[str, str] = {}
+    for line in lines:
+        key, separator, value = line.partition("=")
+        if separator and key in {"User", "Group", "WorkingDirectory"}:
+            values[key] = value.strip().strip('"')
+    return (
+        values.get("User", ""),
+        values.get("Group", ""),
+        values.get("WorkingDirectory", "").replace("%%", "%"),
+    )
+
+
+def service_runtime_status(root: Path, *, system: str | None = None) -> dict[str, object]:
+    """Describe how this checkout is running using the same facts as the CLI."""
+    detected_system = system or platform.system()
+    instance = root / "instance"
+    paused = (instance / "twn-service-paused").is_file()
+    launcher_running = _pid_file_is_running(instance / "twn-service-launcher.pid")
+    web_running = _pid_file_is_running(instance / "twn-toolkit.pid")
+    scheduler_running = _pid_file_is_running(instance / "twn-automation.pid")
+    supervisor_running = _pid_file_is_running(instance / "twn-supervisor.pid")
+    process_set_ready = web_running and scheduler_running and supervisor_running
+    any_process_running = any(
+        (launcher_running, web_running, scheduler_running, supervisor_running)
+    )
+
+    installed = False
+    manager_enabled = False
+    manager_active = False
+    manager_state = "unsupported"
+    last_exit = ""
+    definition_path = ""
+    service_user_name = ""
+    service_group_name = ""
+    service_root = ""
+    platform_supported = detected_system in {"Darwin", "Linux"}
+
+    if detected_system == "Linux":
+        definition_path = str(SYSTEMD_UNIT_PATH)
+        installed = SYSTEMD_UNIT_PATH.is_file()
+        if installed and shutil.which("systemctl"):
+            manager_enabled = (
+                _run_quiet(("systemctl", "is-enabled", SYSTEMD_UNIT_NAME)).returncode == 0
+            )
+            manager_active = (
+                _run_quiet(("systemctl", "is-active", SYSTEMD_UNIT_NAME)).returncode == 0
+            )
+            manager_state = "active" if manager_active else "inactive"
+        elif installed:
+            manager_state = "systemctl unavailable"
+        else:
+            manager_state = "not installed"
+        (
+            service_user_name,
+            service_group_name,
+            service_root,
+        ) = _service_definition_details(SYSTEMD_UNIT_PATH, system=detected_system)
+    elif detected_system == "Darwin":
+        definition_path = str(LAUNCHD_PLIST_PATH)
+        installed = LAUNCHD_PLIST_PATH.is_file()
+        if installed and shutil.which("launchctl"):
+            result, manager_state, last_exit = _launchd_details()
+            manager_enabled = result.returncode == 0
+            manager_active = manager_enabled and _launchd_state_is_active(manager_state)
+            if not manager_enabled:
+                manager_state = "not loaded"
+        elif installed:
+            manager_state = "launchctl unavailable"
+        else:
+            manager_state = "not installed"
+        (
+            service_user_name,
+            service_group_name,
+            service_root,
+        ) = _service_definition_details(LAUNCHD_PLIST_PATH, system=detected_system)
+
+    definition_matches = not service_root or Path(service_root).resolve() == root.resolve()
+    manages_this_checkout = installed and definition_matches
+
+    if manages_this_checkout and manager_active:
+        mode = "Boot-managed service"
+        if paused and launcher_running and not web_running:
+            state = "Paused"
+            healthy = True
+        elif launcher_running and process_set_ready:
+            state = "Active"
+            healthy = True
+        else:
+            state = "Degraded"
+            healthy = False
+    elif process_set_ready:
+        mode = "Manual process"
+        state = "Running"
+        healthy = True
+    elif any_process_running:
+        mode = "Manual process"
+        state = "Degraded"
+        healthy = False
+    elif manages_this_checkout:
+        mode = "Boot service installed"
+        state = "Inactive"
+        healthy = False
+    else:
+        mode = "Manual process"
+        state = "Stopped"
+        healthy = False
+
+    return {
+        "platform": detected_system,
+        "platform_supported": platform_supported,
+        "mode": mode,
+        "state": state,
+        "healthy": healthy,
+        "installed": installed,
+        "definition_matches": definition_matches,
+        "manages_this_checkout": manages_this_checkout,
+        "manager_enabled": manager_enabled,
+        "manager_active": manager_active,
+        "manager_state": manager_state,
+        "last_exit": last_exit,
+        "definition_path": definition_path,
+        "service_user": service_user_name,
+        "service_group": service_group_name,
+        "service_root": service_root,
+        "paused": paused,
+        "launcher_running": launcher_running,
+        "process_set_ready": process_set_ready,
+        "web_running": web_running,
+        "scheduler_running": scheduler_running,
+        "supervisor_running": supervisor_running,
+    }
+
+
 def _wait_for_managed_toolkit(root: Path, timeout: float = 15.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
