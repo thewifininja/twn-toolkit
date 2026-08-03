@@ -23,6 +23,7 @@ from .automation_registry import (
 )
 from .automation_types.models import evaluation_result
 from .schedule_tools import schedule_occurrence, schedule_should_fire
+from .system_diagnostics import readonly_sqlite_connection
 from .system_identity import collect_system_identity, startup_event
 
 
@@ -1766,17 +1767,7 @@ class AutomationStore:
 
     def retention_settings(self) -> dict[str, int | float]:
         with self._connect() as connection:
-            values = {
-                str(row["key"]): str(row["value"])
-                for row in connection.execute(
-                    "SELECT key, value FROM automation_settings"
-                )
-            }
-        return {
-            "check_retention_days": int(values.get("check_retention_days", "7")),
-            "run_retention_days": int(values.get("run_retention_days", "0")),
-            "last_pruned_at": float(values.get("last_pruned_at", "0")),
-        }
+            return self._retention_settings_from_connection(connection)
 
     def update_retention_settings(
         self, *, check_retention_days: int, run_retention_days: int
@@ -1935,6 +1926,105 @@ class AutomationStore:
                 {"version": f"automation-{row['version']}", "applied_at": row["applied_at"], "description": row["description"]}
                 for row in connection.execute("SELECT version, applied_at, description FROM automation_schema_migrations ORDER BY version")
             ]
+
+    def diagnostics_snapshot(self, now: float | None = None) -> dict[str, Any]:
+        """Collect read-only automation health data through one short connection."""
+        now = time.time() if now is None else now
+        with readonly_sqlite_connection(self.path) as connection:
+            settings = self._retention_settings_from_connection(connection)
+            check_days = int(settings["check_retention_days"])
+            run_days = int(settings["run_retention_days"])
+            check_cutoff = now - (check_days * 86400) if check_days else None
+            run_cutoff = now - (run_days * 86400) if run_days else None
+            checks = connection.execute(
+                "SELECT COUNT(*) AS count, MIN(checked_at) AS oldest FROM automation_checks"
+            ).fetchone()
+            runs = connection.execute(
+                "SELECT COUNT(*) AS count, MIN(started_at) AS oldest FROM automation_runs"
+            ).fetchone()
+            eligible_checks = (
+                connection.execute(
+                    "SELECT COUNT(*) FROM automation_checks WHERE checked_at < ?",
+                    (check_cutoff,),
+                ).fetchone()[0]
+                if check_cutoff is not None
+                else 0
+            )
+            eligible_runs = (
+                connection.execute(
+                    "SELECT COUNT(*) FROM automation_runs WHERE started_at < ?",
+                    (run_cutoff,),
+                ).fetchone()[0]
+                if run_cutoff is not None
+                else 0
+            )
+            migrations = [
+                {
+                    "version": f"automation-{row['version']}",
+                    "applied_at": row["applied_at"],
+                    "description": row["description"],
+                }
+                for row in connection.execute(
+                    "SELECT version, applied_at, description "
+                    "FROM automation_schema_migrations ORDER BY version"
+                )
+            ]
+            known_run_ids = {
+                str(row[0])
+                for row in connection.execute("SELECT id FROM automation_runs")
+            }
+
+        database_bytes = sum(
+            path.stat().st_size
+            for path in (self.path, Path(f"{self.path}-wal"), Path(f"{self.path}-shm"))
+            if path.exists()
+        )
+        orphan_folders = [
+            path
+            for path in self.artifact_root.iterdir()
+            if path.is_dir() and path.name not in known_run_ids
+        ]
+        orphan_bytes = 0
+        for folder in orphan_folders:
+            for root, _dirs, files in os.walk(folder):
+                for name in files:
+                    try:
+                        orphan_bytes += (Path(root) / name).stat().st_size
+                    except OSError:
+                        pass
+        return {
+            "migrations": migrations,
+            "storage": {
+                **settings,
+                "database_bytes": database_bytes,
+                "check_count": int(checks["count"]),
+                "oldest_check_at": checks["oldest"],
+                "run_count": int(runs["count"]),
+                "oldest_run_at": runs["oldest"],
+                "eligible_check_count": int(eligible_checks),
+                "eligible_run_count": int(eligible_runs),
+            },
+            "orphan_artifacts": {
+                "count": len(orphan_folders),
+                "bytes": orphan_bytes,
+            },
+        }
+
+    @staticmethod
+    def _retention_settings_from_connection(
+        connection: sqlite3.Connection,
+    ) -> dict[str, int | float]:
+        values = {
+            str(row["key"]): str(row["value"])
+            for row in connection.execute(
+                "SELECT key, value FROM automation_settings"
+            )
+        }
+        return {
+            "check_retention_days": int(values.get("check_retention_days", "7")),
+            "run_retention_days": int(values.get("run_retention_days", "0")),
+            "last_pruned_at": float(values.get("last_pruned_at", "0")),
+        }
 
     def _enqueue_execution_job(
         self,

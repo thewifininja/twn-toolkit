@@ -296,7 +296,10 @@ accepted replay frames.
   retains toolkit data. System Diagnostics now separates manual or
   boot-managed mode, OS service-manager state, live managed processes, external
   command integrations, and native macOS BPF or effective Linux network
-  capabilities without changing host permissions. Boot-managed upgrades now
+  capabilities without changing host permissions. Its live database and process
+  checks are read-only and bounded; diagnostics degrade per section instead of
+  reconciling runtime state or holding the entire page behind a long busy timeout.
+  Boot-managed upgrades now
   keep the original launcher
   paused while a temporary process set is validated, finalize status, audit,
   staged-input cleanup, and the external operation lock before asking systemd

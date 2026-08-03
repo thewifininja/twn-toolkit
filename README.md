@@ -303,8 +303,10 @@ The built-in system administrator can manage:
 - System Diagnostics with manual/boot-service mode, service-manager and process
   health, external command inventory, platform permission capabilities,
   migrations, storage, and an expandable, sanitized audit trail with curated
-  before/after changes. Meaningful annotated actions are attributed to both
-  operators and system administrators; routine polling and UI noise are omitted.
+  before/after changes. Live status collection uses bounded, read-only snapshots;
+  a busy subsystem is reported without blocking the remaining diagnostics.
+  Meaningful annotated actions are attributed to both operators and system
+  administrators; routine polling and UI noise are omitted.
 
 System Settings is separated into System, Email, Operations, and Accounts &
 access views. Updates & Recovery is separated into Updates, Recovery points,

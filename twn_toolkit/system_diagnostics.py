@@ -5,9 +5,11 @@ import os
 import platform
 import pwd
 import shutil
+import sqlite3
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from .network_tools import ping_engine_capability
 
@@ -18,6 +20,35 @@ LINUX_NETWORK_CAPABILITY_BITS = {
     "CAP_NET_ADMIN": 12,
     "CAP_NET_RAW": 13,
 }
+
+
+@contextmanager
+def readonly_sqlite_connection(
+    path: str | Path,
+    *,
+    timeout_seconds: float = 0.2,
+) -> Iterator[sqlite3.Connection]:
+    """Open an existing SQLite database without schema or data mutations.
+
+    Diagnostics must remain observational. A short busy timeout prevents one
+    active writer from holding the entire diagnostics page for SQLite's normal
+    ten-second application timeout.
+    """
+    database = Path(path).resolve()
+    connection = sqlite3.connect(
+        f"{database.as_uri()}?mode=ro",
+        uri=True,
+        timeout=max(0.0, float(timeout_seconds)),
+    )
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute(
+            f"PRAGMA busy_timeout = {max(0, int(timeout_seconds * 1000))}"
+        )
+        connection.execute("PRAGMA query_only = ON")
+        yield connection
+    finally:
+        connection.close()
 
 
 def _command_entry(

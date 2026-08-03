@@ -174,6 +174,24 @@ def _run_quiet(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _run_quiet_bounded(
+    command: Sequence[str], timeout_seconds: float | None
+) -> subprocess.CompletedProcess[str] | None:
+    if timeout_seconds is None:
+        return _run_quiet(command)
+    try:
+        return subprocess.run(
+            command,
+            check=False,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=max(0.05, float(timeout_seconds)),
+        )
+    except subprocess.TimeoutExpired:
+        return None
+
+
 def _write_system_file(path: Path, content: bytes, mode: int = 0o644) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -280,13 +298,24 @@ def _platform_name(override: str | None = None) -> str:
     return name
 
 
-def _launchd_details() -> tuple[subprocess.CompletedProcess[str], str, str]:
-    result = subprocess.run(
-        ("launchctl", "print", f"system/{LAUNCHD_LABEL}"),
-        check=False,
-        text=True,
-        capture_output=True,
-    )
+def _launchd_details(
+    *, timeout_seconds: float | None = None
+) -> tuple[subprocess.CompletedProcess[str], str, str]:
+    command = ("launchctl", "print", f"system/{LAUNCHD_LABEL}")
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=(
+                max(0.05, float(timeout_seconds))
+                if timeout_seconds is not None
+                else None
+            ),
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(command, 124, "", ""), "timed out", ""
     state = "unknown"
     last_exit = ""
     for line in result.stdout.splitlines():
@@ -362,7 +391,12 @@ def _service_definition_details(
     )
 
 
-def service_runtime_status(root: Path, *, system: str | None = None) -> dict[str, object]:
+def service_runtime_status(
+    root: Path,
+    *,
+    system: str | None = None,
+    manager_timeout_seconds: float | None = None,
+) -> dict[str, object]:
     """Describe how this checkout is running using the same facts as the CLI."""
     detected_system = system or platform.system()
     instance = root / "instance"
@@ -391,13 +425,20 @@ def service_runtime_status(root: Path, *, system: str | None = None) -> dict[str
         definition_path = str(SYSTEMD_UNIT_PATH)
         installed = SYSTEMD_UNIT_PATH.is_file()
         if installed and shutil.which("systemctl"):
-            manager_enabled = (
-                _run_quiet(("systemctl", "is-enabled", SYSTEMD_UNIT_NAME)).returncode == 0
+            enabled_result = _run_quiet_bounded(
+                ("systemctl", "is-enabled", SYSTEMD_UNIT_NAME),
+                manager_timeout_seconds,
             )
-            manager_active = (
-                _run_quiet(("systemctl", "is-active", SYSTEMD_UNIT_NAME)).returncode == 0
+            active_result = _run_quiet_bounded(
+                ("systemctl", "is-active", SYSTEMD_UNIT_NAME),
+                manager_timeout_seconds,
             )
-            manager_state = "active" if manager_active else "inactive"
+            if enabled_result is None or active_result is None:
+                manager_state = "timed out"
+            else:
+                manager_enabled = enabled_result.returncode == 0
+                manager_active = active_result.returncode == 0
+                manager_state = "active" if manager_active else "inactive"
         elif installed:
             manager_state = "systemctl unavailable"
         else:
@@ -411,10 +452,12 @@ def service_runtime_status(root: Path, *, system: str | None = None) -> dict[str
         definition_path = str(LAUNCHD_PLIST_PATH)
         installed = LAUNCHD_PLIST_PATH.is_file()
         if installed and shutil.which("launchctl"):
-            result, manager_state, last_exit = _launchd_details()
+            result, manager_state, last_exit = _launchd_details(
+                timeout_seconds=manager_timeout_seconds
+            )
             manager_enabled = result.returncode == 0
             manager_active = manager_enabled and _launchd_state_is_active(manager_state)
-            if not manager_enabled:
+            if not manager_enabled and manager_state != "timed out":
                 manager_state = "not loaded"
         elif installed:
             manager_state = "launchctl unavailable"
