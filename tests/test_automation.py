@@ -62,6 +62,30 @@ class AutomationStoreTests(unittest.TestCase):
             {migration["version"] for migration in snapshot["migrations"]},
         )
 
+    def test_workspace_snapshot_uses_one_read_only_connection(self) -> None:
+        automation_id = self.save()
+        self.store.record_error(automation_id, "simulated check failure")
+
+        with patch.object(
+            self.store,
+            "_connect",
+            side_effect=AssertionError("workspace reads must not initialize the schema"),
+        ):
+            snapshot = self.store.workspace_snapshot(recent_limit=10)
+
+        self.assertEqual(
+            [automation["name"] for automation in snapshot["automations"]],
+            ["Branch outage collection"],
+        )
+        automation = snapshot["automations"][0]
+        self.assertEqual(automation["conditions"][0]["type"], "test.condition")
+        self.assertEqual(automation["actions"][0]["type"], "test.action")
+        self.assertEqual(
+            snapshot["recent_checks"][automation_id][0]["status"],
+            "error",
+        )
+        self.assertEqual(snapshot["job_stats"]["queued_jobs"], 0)
+
     def test_binary_run_artifacts_follow_run_lifecycle(self) -> None:
         automation_id = self.store.save(
             name="Artifact lifecycle",
@@ -2169,6 +2193,9 @@ class AutomationRouteTests(unittest.TestCase):
             actions_page = client.get("/automations/actions")
 
         self.assertEqual(automations_page.status_code, 200)
+        self.assertIn("workspace;dur=", automations_page.headers["Server-Timing"])
+        self.assertIn("context;dur=", automations_page.headers["Server-Timing"])
+        self.assertIn("total;dur=", automations_page.headers["Server-Timing"])
         self.assertIn(b"New automation", automations_page.data)
         self.assertNotIn(b"New condition", automations_page.data)
         self.assertNotIn(b"New action", automations_page.data)

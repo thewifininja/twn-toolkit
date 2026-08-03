@@ -11058,7 +11058,8 @@ th {
   color: var(--ok);
 }
 
-.pill.planned {
+.pill.planned,
+.pill.warning {
   background: #fff2d8;
   color: var(--warn);
 }
@@ -11953,6 +11954,7 @@ th {
 
 [data-theme="dark"] .message.warning,
 [data-theme="dark"] .pill.planned,
+[data-theme="dark"] .pill.warning,
 [data-theme="dark"] .traceroute-hop.medium .traceroute-marker {
   background: #392f1c;
 }

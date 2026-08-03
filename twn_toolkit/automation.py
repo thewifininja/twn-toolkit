@@ -567,6 +567,85 @@ class AutomationStore:
             ).fetchall()
         return [self._automation_from_row(row, include_secrets) for row in rows]
 
+    def workspace_snapshot(
+        self,
+        *,
+        recent_limit: int = 10,
+        now: float | None = None,
+    ) -> dict[str, Any]:
+        """Read the Automation workspace through one non-mutating connection."""
+        now = time.time() if now is None else now
+        recent_limit = max(1, min(100, int(recent_limit)))
+        with readonly_sqlite_connection(
+            self.path,
+            timeout_seconds=1.0,
+        ) as connection:
+            connection.execute("BEGIN")
+            source_definitions = [
+                self._condition_definition_from_row(row)
+                for row in connection.execute(
+                    "SELECT * FROM automation_conditions ORDER BY name COLLATE NOCASE"
+                )
+            ]
+            action_definitions = [
+                self._action_definition_from_row(row, False)
+                for row in connection.execute(
+                    "SELECT * FROM automation_actions ORDER BY name COLLATE NOCASE"
+                )
+            ]
+            condition_map = {
+                str(definition["id"]): definition
+                for definition in source_definitions
+            }
+            action_map = {
+                str(definition["id"]): definition
+                for definition in action_definitions
+            }
+            automations = [
+                self._automation_from_row(
+                    row,
+                    False,
+                    condition_map=condition_map,
+                    action_map=action_map,
+                )
+                for row in connection.execute(
+                    "SELECT * FROM automations ORDER BY name COLLATE NOCASE"
+                )
+            ]
+            recent_runs: dict[str, list[dict[str, Any]]] = {}
+            recent_checks: dict[str, list[dict[str, Any]]] = {}
+            for automation in automations:
+                automation_id = str(automation["id"])
+                recent_runs[automation_id] = [
+                    {**dict(row), "results": json.loads(row["results_json"])}
+                    for row in connection.execute(
+                        """
+                        SELECT * FROM automation_runs WHERE automation_id = ?
+                        ORDER BY started_at DESC LIMIT ?
+                        """,
+                        (automation_id, recent_limit),
+                    )
+                ]
+                recent_checks[automation_id] = [
+                    {**dict(row), "evidence": json.loads(row["evidence_json"])}
+                    for row in connection.execute(
+                        """
+                        SELECT * FROM automation_checks WHERE automation_id = ?
+                        ORDER BY checked_at DESC LIMIT ?
+                        """,
+                        (automation_id, recent_limit),
+                    )
+                ]
+            job_stats = self._job_stats_from_connection(connection, now)
+        return {
+            "automations": automations,
+            "source_definitions": source_definitions,
+            "action_definitions": action_definitions,
+            "recent_runs": recent_runs,
+            "recent_checks": recent_checks,
+            "job_stats": job_stats,
+        }
+
     def get(
         self, automation_id: str, *, include_secrets: bool = False
     ) -> dict[str, Any] | None:
@@ -1466,18 +1545,25 @@ class AutomationStore:
     def job_stats(self) -> dict[str, Any]:
         now = time.time()
         with self._connect() as connection:
-            counts = {
-                str(row["status"]): int(row["count"])
-                for row in connection.execute(
-                    "SELECT status, COUNT(*) AS count FROM automation_jobs GROUP BY status"
-                )
-            }
-            oldest = connection.execute(
-                """
-                SELECT MIN(queued_at) FROM automation_jobs
-                WHERE status IN ('queued', 'waiting', 'running')
-                """
-            ).fetchone()[0]
+            return self._job_stats_from_connection(connection, now)
+
+    @staticmethod
+    def _job_stats_from_connection(
+        connection: sqlite3.Connection,
+        now: float,
+    ) -> dict[str, Any]:
+        counts = {
+            str(row["status"]): int(row["count"])
+            for row in connection.execute(
+                "SELECT status, COUNT(*) AS count FROM automation_jobs GROUP BY status"
+            )
+        }
+        oldest = connection.execute(
+            """
+            SELECT MIN(queued_at) FROM automation_jobs
+            WHERE status IN ('queued', 'waiting', 'running')
+            """
+        ).fetchone()[0]
         return {
             "queued_jobs": counts.get("queued", 0),
             "waiting_jobs": counts.get("waiting", 0),
@@ -1803,14 +1889,16 @@ class AutomationStore:
         run_cutoff = now - (run_days * 86400) if run_days else None
         with self._connect() as connection:
             checks = connection.execute(
-                "SELECT COUNT(*) AS count, MIN(checked_at) AS oldest FROM automation_checks"
+                "SELECT COUNT(*) AS count, MIN(checked_at) AS oldest "
+                "FROM automation_checks INDEXED BY automation_checks_recent"
             ).fetchone()
             runs = connection.execute(
                 "SELECT COUNT(*) AS count, MIN(started_at) AS oldest FROM automation_runs"
             ).fetchone()
             eligible_checks = (
                 connection.execute(
-                    "SELECT COUNT(*) FROM automation_checks WHERE checked_at < ?",
+                    "SELECT COUNT(*) FROM automation_checks "
+                    "INDEXED BY automation_checks_recent WHERE checked_at < ?",
                     (check_cutoff,),
                 ).fetchone()[0]
                 if check_cutoff is not None else 0
@@ -1937,14 +2025,16 @@ class AutomationStore:
             check_cutoff = now - (check_days * 86400) if check_days else None
             run_cutoff = now - (run_days * 86400) if run_days else None
             checks = connection.execute(
-                "SELECT COUNT(*) AS count, MIN(checked_at) AS oldest FROM automation_checks"
+                "SELECT COUNT(*) AS count, MIN(checked_at) AS oldest "
+                "FROM automation_checks INDEXED BY automation_checks_recent"
             ).fetchone()
             runs = connection.execute(
                 "SELECT COUNT(*) AS count, MIN(started_at) AS oldest FROM automation_runs"
             ).fetchone()
             eligible_checks = (
                 connection.execute(
-                    "SELECT COUNT(*) FROM automation_checks WHERE checked_at < ?",
+                    "SELECT COUNT(*) FROM automation_checks "
+                    "INDEXED BY automation_checks_recent WHERE checked_at < ?",
                     (check_cutoff,),
                 ).fetchone()[0]
                 if check_cutoff is not None
@@ -2124,7 +2214,12 @@ class AutomationStore:
         }
 
     def _automation_from_row(
-        self, row: sqlite3.Row, include_secrets: bool
+        self,
+        row: sqlite3.Row,
+        include_secrets: bool,
+        *,
+        condition_map: dict[str, dict[str, Any]] | None = None,
+        action_map: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         condition_definition_id = str(row["condition_definition_id"] or "")
         condition_definition_ids = json.loads(
@@ -2133,27 +2228,44 @@ class AutomationStore:
         if not condition_definition_ids and condition_definition_id:
             condition_definition_ids = [condition_definition_id]
         action_definition_ids = json.loads(row["action_definition_ids"] or "[]")
-        conditions = [
-            definition
-            for definition_id in condition_definition_ids
-            if (definition := self.get_condition_definition(str(definition_id)))
-            is not None
-        ]
+        if condition_map is None:
+            conditions = [
+                definition
+                for definition_id in condition_definition_ids
+                if (
+                    definition := self.get_condition_definition(
+                        str(definition_id)
+                    )
+                )
+                is not None
+            ]
+        else:
+            conditions = [
+                condition_map[str(definition_id)]
+                for definition_id in condition_definition_ids
+                if str(definition_id) in condition_map
+            ]
         condition = conditions[0] if conditions else None
-        action_map = {}
-        for action_id in action_definition_ids:
-            action = self.get_action_definition(action_id, include_secrets=include_secrets)
-            if action is not None:
-                action_map[action_id] = action
+        if action_map is None:
+            resolved_action_map = {}
+            for action_id in action_definition_ids:
+                action = self.get_action_definition(
+                    action_id,
+                    include_secrets=include_secrets,
+                )
+                if action is not None:
+                    resolved_action_map[action_id] = action
+        else:
+            resolved_action_map = action_map
         raw_stages = json.loads(row["action_stages"] or "null")
         normalized_stages = self._normalize_action_stages(raw_stages, action_definition_ids)
         stages = [
             {
                 **stage,
                 "actions": [
-                    action_map[action_id]
+                    resolved_action_map[action_id]
                     for action_id in stage["action_definition_ids"]
-                    if action_id in action_map
+                    if action_id in resolved_action_map
                 ],
             }
             for stage in normalized_stages

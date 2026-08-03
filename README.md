@@ -305,6 +305,8 @@ The built-in system administrator can manage:
   migrations, storage, and an expandable, sanitized audit trail with curated
   before/after changes. Live status collection uses bounded, read-only snapshots;
   a busy subsystem is reported without blocking the remaining diagnostics.
+  SQLite files larger than 64 MiB are identified for an intentional
+  maintenance-window integrity check instead of being scanned during page load.
   Meaningful annotated actions are attributed to both operators and system
   administrators; routine polling and UI noise are omitted.
 

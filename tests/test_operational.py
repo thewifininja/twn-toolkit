@@ -34,9 +34,57 @@ from twn_toolkit.supervisor_worker import (
     _restore_iperf_listeners,
     matching_supervisor_pids,
 )
+from twn_toolkit.admin_routes import (
+    DATABASE_LIVE_CHECK_MAX_BYTES,
+    _bounded_quick_check,
+    _database_diagnostics,
+)
 
 
 class OperationalHardeningTests(unittest.TestCase):
+    def test_live_database_integrity_check_stops_at_its_deadline(self) -> None:
+        class SlowQuickCheckConnection:
+            def __init__(self) -> None:
+                self.progress_handler = None
+
+            def set_progress_handler(self, handler, _instructions: int) -> None:
+                self.progress_handler = handler
+
+            def interrupt(self) -> None:
+                pass
+
+            def execute(self, statement: str):
+                self.assert_statement = statement
+                while self.progress_handler and not self.progress_handler():
+                    pass
+                raise sqlite3.OperationalError("interrupted")
+
+        connection = SlowQuickCheckConnection()
+        status, detail = _bounded_quick_check(
+            connection,  # type: ignore[arg-type]
+            timeout_seconds=0,
+        )
+
+        self.assertEqual(status, "bounded")
+        self.assertIn("keep this page responsive", detail)
+        self.assertEqual(connection.assert_statement, "PRAGMA quick_check(1)")
+        self.assertIsNone(connection.progress_handler)
+
+    def test_live_diagnostics_skip_large_database_integrity_scans(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            database = Path(instance) / "large.sqlite3"
+            with database.open("wb") as handle:
+                handle.truncate(DATABASE_LIVE_CHECK_MAX_BYTES + 1)
+            with patch(
+                "twn_toolkit.admin_routes.readonly_sqlite_connection",
+                side_effect=AssertionError("large databases must not be scanned live"),
+            ):
+                diagnostics = _database_diagnostics(Path(instance))
+
+        self.assertEqual(diagnostics[0]["status"], "manual")
+        self.assertEqual(diagnostics[0]["status_class"], "warning")
+        self.assertIn("maintenance window", diagnostics[0]["detail"])
+
     def test_package_import_does_not_eagerly_load_the_flask_application(self) -> None:
         result = subprocess.run(
             [
@@ -625,6 +673,24 @@ class OperationalHardeningTests(unittest.TestCase):
         self.assertIn(b"Automation storage diagnostics", page.data)
         self.assertIn("automation;dur=", page.headers["Server-Timing"])
         self.assertIn("total;dur=", page.headers["Server-Timing"])
+
+    def test_diagnostics_labels_time_bounded_database_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            with patch(
+                "twn_toolkit.admin_routes._bounded_quick_check",
+                return_value=(
+                    "bounded",
+                    "Live integrity scan stopped after 250 ms to keep this page responsive.",
+                ),
+            ):
+                page = client.get("/settings/diagnostics")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'class="pill warning">bounded</span>', page.data)
+        self.assertIn(b"Live integrity scan stopped after 250 ms", page.data)
 
     def test_heartbeat_freshness(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
