@@ -54,7 +54,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
-        self.assertIn(b"v0.16.5", response.data)
+        self.assertIn(b"v0.16.6", response.data)
         self.assertIn(b'href="/help"', response.data)
         self.assertIn(b"Help &amp; release notes", response.data)
         self.assertIn(
@@ -131,7 +131,11 @@ class HomePageTests(unittest.TestCase):
             response.data,
         )
         self.assertIn(b"exactly one toolkit-start automation event", response.data)
-        self.assertIn(b"v0.16.5", response.data)
+        self.assertIn(b"v0.16.6", response.data)
+        self.assertIn(
+            b"Production-scale diagnostics performance",
+            response.data,
+        )
         self.assertIn(
             b"Fast and resilient system diagnostics",
             response.data,

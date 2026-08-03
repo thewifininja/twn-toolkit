@@ -1,6 +1,42 @@
-APP_VERSION = "0.16.5"
+APP_VERSION = "0.16.6"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.16.6",
+        "date": "2026-08-02",
+        "title": "Production-scale diagnostics performance",
+        "summary": (
+            "Prevents large automation databases from holding System "
+            "Diagnostics open and removes repeated schema work from the "
+            "Automation workspace."
+        ),
+        "groups": (
+            {
+                "title": "Truthfully bounded database health",
+                "items": (
+                    "Stops scanning SQLite files larger than 64 MiB during a page request and labels them for an intentional maintenance-window integrity check instead.",
+                    "Retains a progress deadline and thread-safe SQLite interrupt watchdog for smaller live quick checks, with explicit bounded or unavailable status rather than a stalled page.",
+                    "Uses the existing compact automation history index for retention counts so large evidence payloads are not scanned merely to summarize storage health.",
+                ),
+            },
+            {
+                "title": "Faster Automation workspace",
+                "items": (
+                    "Loads reusable definitions, automation cards, recent checks and runs, and job counters through one consistent read-only snapshot.",
+                    "Avoids re-running schema initialization, reusable-definition migration checks, and numbered migration setup for every card and library lookup.",
+                    "Adds Automation workspace, context, rendering, and total Server-Timing metrics for direct performance attribution in browser developer tools.",
+                ),
+            },
+            {
+                "title": "Compatible production maintenance",
+                "items": (
+                    "Introduces no Python dependency, database migration, stored-data change, profile-format change, service-lifecycle change, permission change, or command-line incompatibility.",
+                    "Preserves automation definitions and history, retention behavior, service ownership, instance data, audit records, managed listeners, and recovery guarantees.",
+                    "Adds large-database regression coverage and validates the read path against a 446.7 MiB automation database containing 100,000 retained checks.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.5",
         "date": "2026-08-02",
