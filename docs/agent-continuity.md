@@ -215,7 +215,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.16.6: durable automation claims and renewable leases,
+- Current milestone is 0.16.7: durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
@@ -302,7 +302,12 @@ accepted replay frames.
   Diagnostics degrade per section instead of reconciling runtime state or holding
   the entire page behind a long busy timeout. The Automation workspace reads its
   definitions, recent history, and job counters through one consistent read-only
-  snapshot rather than re-running schema and migration setup for each card.
+  snapshot rather than re-running schema and migration setup for each card. The
+  toolkit now stores an optional IANA timezone override separately from the host
+  clock, applies it immediately to explicit localized Webhook, Email, and Syslog
+  variables, and uses it as the initial default for new schedules. UTC storage,
+  legacy timestamp variables, existing notification templates, and saved
+  schedule timezones remain unchanged.
   Boot-managed upgrades now
   keep the original launcher
   paused while a temporary process set is validated, finalize status, audit,

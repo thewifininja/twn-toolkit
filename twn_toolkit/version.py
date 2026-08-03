@@ -1,6 +1,42 @@
-APP_VERSION = "0.16.6"
+APP_VERSION = "0.16.7"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.16.7",
+        "date": "2026-08-02",
+        "title": "Toolkit timezone and localized notifications",
+        "summary": (
+            "Adds a host-aware or explicitly configured IANA timezone for "
+            "human-facing automation messages while preserving UTC records "
+            "and existing integration templates."
+        ),
+        "groups": (
+            {
+                "title": "Explicit toolkit time",
+                "items": (
+                    "Adds a Time and localization panel under System Settings with the current rendered time, resolved IANA timezone, UTC offset, and host-detected or explicit source.",
+                    "Validates explicit IANA names, applies daylight-saving transitions automatically, persists the setting atomically with owner-only permissions, and records changes in the audit trail.",
+                    "Applies timezone changes without a toolkit restart or operating-system clock change and uses the resolved timezone as the initial default for new calendar schedules without altering saved schedules.",
+                ),
+            },
+            {
+                "title": "Human-ready automation timestamps",
+                "items": (
+                    "Adds localized ISO, human-readable display, explicit UTC, and resolved-timezone variables shared by Webhook/API, Email, and Syslog automation actions.",
+                    "Adds equivalent localized startup-event variables so boot and toolkit-start notifications can show the intended local time and timezone abbreviation.",
+                    "Uses localized defaults for newly created webhook and email templates while leaving every existing saved payload unchanged for deliberate operator review.",
+                ),
+            },
+            {
+                "title": "Compatible notification update",
+                "items": (
+                    "Keeps all stored timestamps, {{timestamp}}, and {{startup.occurred_at}} in UTC and adds explicitly named variables instead of silently changing existing API payloads.",
+                    "Introduces no Python dependency, database migration, profile-format change, service-lifecycle change, permission change, command-line incompatibility, or operating-system configuration change.",
+                    "Adds regression coverage for host fallback, explicit timezones, malformed settings, summer and winter offsets, administration and audit behavior, schedule defaults, startup identity, and rendered webhook values.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.6",
         "date": "2026-08-02",
