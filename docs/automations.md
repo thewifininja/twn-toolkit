@@ -157,10 +157,9 @@ toolkit generation identifiers are deliberately omitted from action evidence.
   combined timeout budget across commands is limited to one hour per host.
 - Action: send an RFC 5424 syslog message to up to 20 UDP or TCP collectors.
   Facility, severity, hostname, application name, timeout, and destination ports
-  are configurable. Messages support the explicit variables
-  `{{trigger.status}}`, `{{trigger.summary}}`, `{{trigger.met}}`, and
-  `{{timestamp}}`. Each collector records its own success/error result, so a
-  partial delivery remains visible.
+  are configurable. Messages support the documented trigger, toolkit, startup,
+  and timestamp variables. Each collector records its own success/error result,
+  so a partial delivery remains visible.
 - Action: send a POST, PUT, or PATCH Webhook/API notification to up to 10
   endpoints. Headers are encrypted/write-only, accepted HTTP statuses and TLS
   verification are explicit, redirects are not followed, and retained response
@@ -175,6 +174,20 @@ toolkit generation identifiers are deliberately omitted from action evidence.
   metadata. Messages never include file or PCAP attachments, and retained run
   output contains delivery status, subject, and message ID without retaining
   the rendered body.
+
+Administration → System Settings → System controls the toolkit timezone used by
+localized notification variables. Leave it blank to follow the host timezone or
+save an IANA name such as `America/New_York`; the setting does not change the
+operating-system clock and applies without a restart. `{{timestamp.local}}`
+produces an ISO timestamp with the applicable UTC offset,
+`{{timestamp.display}}` produces a human-readable value with the timezone
+abbreviation, and `{{toolkit.timezone}}` exposes the resolved IANA name. Startup
+notifications have matching `{{startup.occurred_at_local}}` and
+`{{startup.occurred_at_display}}` variables. Existing `{{timestamp}}` and
+`{{startup.occurred_at}}` values remain UTC for compatibility; new webhook and
+email templates prefer the localized variables, while saved templates are never
+rewritten during upgrade. New calendar schedules default to the toolkit timezone
+but retain their own explicit timezone after they are saved.
 - Action: fetch regular files concurrently from named hosts over SFTP, SCP, or
   FTP. Results can be written beneath a selected datastore folder (optionally
   grouped per host) or retained as bounded run artifacts for ZIP download.

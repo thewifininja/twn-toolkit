@@ -13,6 +13,7 @@ from twn_toolkit.system_identity import (
     startup_event,
     write_toolkit_start_marker,
 )
+from twn_toolkit.time_settings import TimeSettingsStore
 
 
 class SystemIdentityTests(unittest.TestCase):
@@ -34,6 +35,7 @@ class SystemIdentityTests(unittest.TestCase):
             (instance / "twn-toolkit.host").write_text("0.0.0.0\n", encoding="utf-8")
             (instance / "twn-toolkit.port").write_text("5050\n", encoding="utf-8")
             marker = write_toolkit_start_marker(instance)
+            TimeSettingsStore(instance).save("America/New_York")
             addresses = [
                 {"address": "192.0.2.25", "family": "ipv4", "interface": "eth0"},
                 {"address": "2001:db8::25", "family": "ipv6", "interface": "eth0"},
@@ -61,6 +63,7 @@ class SystemIdentityTests(unittest.TestCase):
             toolkit = identity["toolkit"]
             self.assertEqual(toolkit["instance_name"], "branch-pi")
             self.assertEqual(toolkit["primary_ipv4"], "192.0.2.25")
+            self.assertEqual(toolkit["timezone"], "America/New_York")
             self.assertEqual(
                 toolkit["urls"],
                 [

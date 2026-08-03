@@ -152,6 +152,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "update_operational_settings",
         "update_server_settings",
         "update_session_settings",
+        "update_time_settings",
         "update_user_access",
         "upload_update_bundle",
         "upload_datastore_files",

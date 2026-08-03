@@ -56,6 +56,7 @@ from .system_diagnostics import (
     readonly_sqlite_connection,
 )
 from .tftp import tftp_process_status
+from .time_settings import COMMON_TIMEZONES, TimeSettingsStore
 from .ssh_transfer_server import ssh_transfer_process_status
 from .ftp_server import ftp_process_status
 from .iperf_server import iperf3_process_status
@@ -338,6 +339,7 @@ def register_admin_routes(
     project_root = Path(__file__).resolve().parent.parent
     upgrade_manager = UpgradeManager(project_root, Path(app.instance_path), APP_VERSION)
     smtp_store = SMTPSettingsStore(app.instance_path, app.config["SECRET_KEY"])
+    time_store = TimeSettingsStore(app.instance_path)
 
     @app.post("/settings/theme")
     def update_theme():
@@ -397,7 +399,38 @@ def register_admin_routes(
             operational_settings=operational_store.get(),
             operational_storage=_format_storage_summary(operational_store.storage_summary()),
             smtp_settings=smtp_store.get(),
+            time_settings=time_store.snapshot(),
+            timezone_choices=COMMON_TIMEZONES,
             settings_section=settings_section,
+        )
+
+    @app.post("/settings/timezone")
+    def update_time_settings():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        before = time_store.get()
+        try:
+            after = time_store.save(request.form.get("timezone", ""))
+        except ValueError as exc:
+            flash(str(exc), "error")
+        else:
+            annotate_audit_event(
+                category="Administration",
+                action="settings.timezone_updated",
+                summary="Updated the toolkit timezone.",
+                resource_type="settings",
+                resource_id="toolkit-timezone",
+                resource_name="Toolkit timezone",
+                before=before,
+                after=after,
+            )
+            resolved = time_store.resolved_timezone()
+            flash(
+                f"Toolkit timezone saved as {resolved}. No restart is required.",
+                "success",
+            )
+        return redirect(
+            url_for("settings", section="system", _anchor="toolkit-timezone")
         )
 
     @app.post("/settings/smtp")

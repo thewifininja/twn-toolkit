@@ -176,7 +176,7 @@
       </div>
       <label>Message
         <textarea name="syslog_message" rows="5" maxlength="8192" placeholder="Toolkit automation fired: {{ '{{trigger.summary}}' }}" required>{{ config.get('message', config.get('syslog_message', 'Toolkit automation fired: {{trigger.summary}}')) }}</textarea>
-        <small class="field-note">Available variables include trigger metadata, <code>{{ '{{toolkit.hostname}}' }}</code>, <code>{{ '{{toolkit.primary_ipv4}}' }}</code>, <code>{{ '{{toolkit.primary_url}}' }}</code>, and <code>{{ '{{timestamp}}' }}</code>.</small>
+        <small class="field-note">Available variables include trigger metadata, toolkit identity, <code>{{ '{{timestamp.local}}' }}</code>, <code>{{ '{{timestamp.display}}' }}</code>, and the backward-compatible UTC <code>{{ '{{timestamp}}' }}</code>.</small>
       </label>
     </div>
     <div data-action-fields="webhook.send" hidden>
@@ -245,7 +245,7 @@
           <p>Build the JSON or plain-text body sent to every destination.</p>
         </div>
         <label>Request body
-          <textarea class="command-input" name="webhook_body" rows="8" maxlength="65536" required>{% if config.get('body') %}{{ config.get('body') }}{% elif config.get('webhook_body') %}{{ config.get('webhook_body') }}{% else %}{"event":"toolkit_automation","status":"{{ '{{trigger.status}}' }}","summary":"{{ '{{trigger.summary}}' }}","timestamp":"{{ '{{timestamp}}' }}"}{% endif %}</textarea>
+          <textarea class="command-input" name="webhook_body" rows="8" maxlength="65536" required>{% if config.get('body') %}{{ config.get('body') }}{% elif config.get('webhook_body') %}{{ config.get('webhook_body') }}{% else %}{"event":"toolkit_automation","status":"{{ '{{trigger.status}}' }}","summary":"{{ '{{trigger.summary}}' }}","timestamp":"{{ '{{timestamp.local}}' }}","timezone":"{{ '{{toolkit.timezone}}' }}"}{% endif %}</textarea>
         </label>
         <details class="automation-helper-details">
           <summary>Available template variables</summary>
@@ -267,9 +267,16 @@
               <code>{{ '{{toolkit.ipv6_addresses}}' }}</code><span>All usable IPv6 addresses.</span>
               <code>{{ '{{toolkit.primary_url}}' }}</code><span>Preferred toolkit access URL.</span>
               <code>{{ '{{toolkit.urls}}' }}</code><span>All current toolkit access URLs.</span>
+              <code>{{ '{{toolkit.timezone}}' }}</code><span>Configured or host-detected IANA timezone.</span>
               <code>{{ '{{startup.reason}}' }}</code><span>Host boot, toolkit start, or startup test.</span>
               <code>{{ '{{startup.occurred_at}}' }}</code><span>Startup time in UTC.</span>
-              <code>{{ '{{timestamp}}' }}</code><span>Current automation timestamp.</span>
+              <code>{{ '{{startup.occurred_at_utc}}' }}</code><span>Explicit startup time in UTC.</span>
+              <code>{{ '{{startup.occurred_at_local}}' }}</code><span>Startup time with the toolkit timezone offset.</span>
+              <code>{{ '{{startup.occurred_at_display}}' }}</code><span>Human-readable startup time and timezone abbreviation.</span>
+              <code>{{ '{{timestamp}}' }}</code><span>Current UTC timestamp retained for compatibility.</span>
+              <code>{{ '{{timestamp.utc}}' }}</code><span>Explicit current UTC timestamp.</span>
+              <code>{{ '{{timestamp.local}}' }}</code><span>Current ISO timestamp with the toolkit timezone offset.</span>
+              <code>{{ '{{timestamp.display}}' }}</code><span>Human-readable current time and timezone abbreviation.</span>
             </div>
             <p>When a JSON value consists only of a variable token, boolean, object, and array values keep their native JSON type.</p>
           </div>
@@ -316,7 +323,7 @@
 Summary: {{ '{{trigger.summary}}' }}
 Condition met: {{ '{{trigger.met}}' }}
 Job ID: {{ '{{trigger.job_id}}' }}
-Time: {{ '{{timestamp}}' }}
+Time: {{ '{{timestamp.display}}' }}
 
 Earlier action results:
 {{ '{{actions.results}}' }}{% endif %}</textarea>
@@ -341,9 +348,16 @@ Earlier action results:
               <code>{{ '{{toolkit.ipv6_addresses}}' }}</code><span>All usable IPv6 addresses.</span>
               <code>{{ '{{toolkit.primary_url}}' }}</code><span>Preferred toolkit access URL.</span>
               <code>{{ '{{toolkit.urls}}' }}</code><span>All current toolkit access URLs.</span>
+              <code>{{ '{{toolkit.timezone}}' }}</code><span>Configured or host-detected IANA timezone.</span>
               <code>{{ '{{startup.reason}}' }}</code><span>Host boot, toolkit start, or startup test.</span>
               <code>{{ '{{startup.occurred_at}}' }}</code><span>Startup time in UTC.</span>
-              <code>{{ '{{timestamp}}' }}</code><span>Current automation timestamp.</span>
+              <code>{{ '{{startup.occurred_at_utc}}' }}</code><span>Explicit startup time in UTC.</span>
+              <code>{{ '{{startup.occurred_at_local}}' }}</code><span>Startup time with the toolkit timezone offset.</span>
+              <code>{{ '{{startup.occurred_at_display}}' }}</code><span>Human-readable startup time and timezone abbreviation.</span>
+              <code>{{ '{{timestamp}}' }}</code><span>Current UTC timestamp retained for compatibility.</span>
+              <code>{{ '{{timestamp.utc}}' }}</code><span>Explicit current UTC timestamp.</span>
+              <code>{{ '{{timestamp.local}}' }}</code><span>Current ISO timestamp with the toolkit timezone offset.</span>
+              <code>{{ '{{timestamp.display}}' }}</code><span>Human-readable current time and timezone abbreviation.</span>
             </div>
           </div>
         </details>

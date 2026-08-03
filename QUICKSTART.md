@@ -104,8 +104,9 @@ There is no default account.
 
 1. Create the first administrator.
 2. Sign in and open **Administration → System Settings**.
-3. Review the short instance name, preferred FQDN, client allowlist, password
-   policy, idle timeout, operational limits, and retention settings.
+3. Review the short instance name, preferred FQDN, client allowlist, toolkit
+   timezone, password policy, idle timeout, operational limits, and retention
+   settings.
 4. Open **Administration → System Diagnostics** and confirm the expected manual
    or boot-service runtime mode, web/scheduler/supervisor health, databases,
    command integrations, and platform capabilities.
@@ -315,7 +316,11 @@ pauses dependent automations so changes can be reviewed safely.
   the next matching event waits briefly for a usable address and then runs
   exactly once. Use **Test now** to verify the pipeline without consuming that
   baseline. Webhook/API, Email, and Syslog templates can include the configured
-  instance name, hostname, toolkit version, current addresses, and access URLs.
+  instance name, hostname, toolkit version, current addresses, access URLs, and
+  localized timestamps. Configure the toolkit timezone under **Administration →
+  System Settings → System**; `{{timestamp.display}}` is human-readable,
+  `{{timestamp.local}}` includes the UTC offset, and the existing
+  `{{timestamp}}` remains UTC.
 - A reusable **Calendar schedule** can contain multiple one-time, daily,
   weekday, alternating-week, monthly-date, or ordinal-weekday rules. Set an
   IANA timezone and missed-occurrence policy, then use **Refresh next run

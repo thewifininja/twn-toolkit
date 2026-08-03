@@ -259,6 +259,33 @@
     </form>
   </section>
 
+  <section class="panel server-access-panel settings-time-group" id="toolkit-timezone">
+    {{ section_header("Time and localization", "Choose how the toolkit renders human-facing automation timestamps without changing the host clock or UTC records.") }}
+    <div class="automation-storage-stats time-settings-stats">
+      <div>
+        <span>Current toolkit time</span>
+        <strong>{{ time_settings.current_display }}</strong>
+        <small>{{ time_settings.resolved_timezone }} · {{ time_settings.utc_offset }}</small>
+      </div>
+      <div>
+        <span>Timezone source</span>
+        <strong>{{ time_settings.source }}</strong>
+        <small>{% if time_settings.timezone %}Saved explicitly for this toolkit{% else %}Detected as {{ time_settings.host_timezone }}{% endif %}</small>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('update_time_settings') }}" class="form">
+      <label>Toolkit timezone
+        <input name="timezone" list="toolkit-timezone-choices" value="{{ time_settings.timezone }}" placeholder="Use host timezone · {{ time_settings.host_timezone }}">
+        <small class="field-note">Leave blank to follow the host. To override it, enter an IANA name such as <code>America/New_York</code>; daylight-saving changes are handled automatically.</small>
+      </label>
+      <datalist id="toolkit-timezone-choices">
+        {% for timezone_name in timezone_choices %}<option value="{{ timezone_name }}">{% endfor %}
+      </datalist>
+      <p class="field-note">Localized automation templates can use <code>{{ '{{timestamp.local}}' }}</code>, <code>{{ '{{timestamp.display}}' }}</code>, and <code>{{ '{{toolkit.timezone}}' }}</code>. Existing <code>{{ '{{timestamp}}' }}</code> and stored records remain UTC.</p>
+      <button type="submit">Save timezone</button>
+    </form>
+  </section>
+
 {% endif %}
 
 {% if current_user.is_admin and settings_section == 'email' %}
