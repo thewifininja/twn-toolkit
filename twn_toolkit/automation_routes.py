@@ -95,8 +95,13 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         form_error: str = "",
         form: dict[str, Any] | None = None,
         form_section: str = "",
-    ) -> str:
-        automations = store.all()
+    ) -> Response:
+        page_started = time.perf_counter()
+        workspace_started = time.perf_counter()
+        workspace = store.workspace_snapshot(recent_limit=10)
+        workspace_duration = (time.perf_counter() - workspace_started) * 1000
+        context_started = time.perf_counter()
+        automations = workspace["automations"]
         for automation in automations:
             for stage in automation["action_stages"]:
                 stage["delay_display"] = _format_duration(
@@ -125,10 +130,12 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 for stage in automation["action_stages"]
             ]
             automation["recent_runs"] = [
-                _format_run(run) for run in store.recent_runs(automation["id"], 10)
+                _format_run(run)
+                for run in workspace["recent_runs"].get(automation["id"], [])
             ]
             automation["recent_checks"] = [
-                _format_check(check) for check in store.recent_checks(automation["id"], 10)
+                _format_check(check)
+                for check in workspace["recent_checks"].get(automation["id"], [])
             ]
             automation["last_check_display"] = _format_time(automation["last_check_at"])
             automation["last_triggered_display"] = _format_time(
@@ -137,8 +144,16 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             automation["next_check_display"] = _format_time(
                 automation.get("pending_schedule_at") or automation["next_check_at"]
             )
-        condition_definitions = store.condition_definitions()
-        schedule_definitions = store.schedule_definitions()
+        condition_definitions = [
+            definition
+            for definition in workspace["source_definitions"]
+            if definition["type"] not in AUTOMATION_REGISTRY.triggers
+        ]
+        schedule_definitions = [
+            definition
+            for definition in workspace["source_definitions"]
+            if definition["type"] == "schedule.calendar"
+        ]
         for definition in schedule_definitions:
             if definition["type"] == "schedule.calendar":
                 definition["rule_descriptions"] = [
@@ -155,7 +170,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 definition["config"] = AUTOMATION_REGISTRY.validate_condition(
                     definition["type"], definition["config"]
                 )
-        action_definitions = store.action_definitions()
+        action_definitions = workspace["action_definitions"]
         for definition in action_definitions:
             config = definition.get("config", {})
             if definition.get("type") != "ssh.collect" or config.get("matrix"):
@@ -168,7 +183,9 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             except ToolInputError:
                 config["matrix"] = ""
                 config["target_count"] = 0
-        return render_template(
+        render_started = time.perf_counter()
+        context_duration = (render_started - context_started) * 1000
+        body = render_template(
             "automations/index.html",
             automations=automations,
             condition_definitions=condition_definitions,
@@ -176,7 +193,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             action_definitions=action_definitions,
             action_choices=[
                 {"id": item["id"], "name": item["name"], "type": item["type"]}
-                for item in store.action_definitions()
+                for item in action_definitions
             ],
             condition_types=AUTOMATION_REGISTRY.conditions.values(),
             action_types=AUTOMATION_REGISTRY.actions.values(),
@@ -189,7 +206,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             form_section=form_section,
             scheduler={
                 **_scheduler_status(store.instance_path),
-                **store.job_stats(),
+                **workspace["job_stats"],
             },
             schedule_default_timezone=local_timezone_name(),
             datastore_folders=LocalDatastore(store.instance_path).folders(),
@@ -202,6 +219,18 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             automation_ping_capability=ping_engine_capability(),
             page_section=page_section,
         )
+        render_duration = (time.perf_counter() - render_started) * 1000
+        total_duration = (time.perf_counter() - page_started) * 1000
+        response = app.make_response(body)
+        response.headers["Server-Timing"] = ", ".join(
+            (
+                f"workspace;dur={workspace_duration:.1f}",
+                f"context;dur={context_duration:.1f}",
+                f"render;dur={render_duration:.1f}",
+                f"total;dur={total_duration:.1f}",
+            )
+        )
+        return response
 
     @app.get("/automations")
     def automations():

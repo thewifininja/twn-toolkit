@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -62,6 +63,10 @@ from .upgrade_manager import ReleaseClient, UpgradeError, UpgradeManager
 from .version import APP_VERSION
 
 
+DATABASE_LIVE_CHECK_TIMEOUT_SECONDS = 0.25
+DATABASE_LIVE_CHECK_MAX_BYTES = 64 * 1024 * 1024
+
+
 def _format_bytes(value: int) -> str:
     amount = float(value)
     for unit in ("bytes", "KiB", "MiB", "GiB"):
@@ -93,22 +98,99 @@ def _diagnostic_value(
         timings.append((metric, (time.perf_counter() - started) * 1000))
 
 
+def _bounded_quick_check(
+    connection: sqlite3.Connection,
+    *,
+    timeout_seconds: float = DATABASE_LIVE_CHECK_TIMEOUT_SECONDS,
+) -> tuple[str, str]:
+    """Run SQLite's quick check without letting it dominate a web request."""
+    deadline = time.perf_counter() + max(0.0, float(timeout_seconds))
+    interrupted_by_deadline = False
+    deadline_reached = threading.Event()
+    check_finished = threading.Event()
+
+    def stop_after_deadline() -> int:
+        nonlocal interrupted_by_deadline
+        interrupted_by_deadline = time.perf_counter() >= deadline
+        return int(interrupted_by_deadline)
+
+    def interrupt_at_deadline() -> None:
+        if check_finished.is_set():
+            return
+        deadline_reached.set()
+        try:
+            connection.interrupt()
+        except sqlite3.Error:
+            # The request may have completed and closed the connection between
+            # the event check and the thread-safe interrupt call.
+            pass
+
+    connection.set_progress_handler(stop_after_deadline, 1000)
+    watchdog = threading.Timer(
+        max(0.0, float(timeout_seconds)),
+        interrupt_at_deadline,
+    )
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        row = connection.execute("PRAGMA quick_check(1)").fetchone()
+    except sqlite3.OperationalError as exc:
+        if (
+            (interrupted_by_deadline or deadline_reached.is_set())
+            and "interrupted" in str(exc).lower()
+        ):
+            milliseconds = max(1, round(timeout_seconds * 1000))
+            return (
+                "bounded",
+                f"Live integrity scan stopped after {milliseconds} ms to keep this page responsive.",
+            )
+        raise
+    finally:
+        check_finished.set()
+        watchdog.cancel()
+        watchdog.join(timeout=0.05)
+        connection.set_progress_handler(None, 0)
+    return str(row[0]), ""
+
+
 def _database_diagnostics(instance: Path) -> list[dict[str, str]]:
     databases = []
     for path in sorted(instance.glob("*.sqlite3")):
+        size = path.stat().st_size
+        if size > DATABASE_LIVE_CHECK_MAX_BYTES:
+            databases.append(
+                {
+                    "name": path.name,
+                    "size": _format_bytes(size),
+                    "status": "manual",
+                    "status_class": "warning",
+                    "detail": (
+                        "Live integrity scan skipped above 64 MiB; run a full "
+                        "check during a maintenance window."
+                    ),
+                }
+            )
+            continue
         status = "ok"
+        detail = ""
+        status_class = "success"
         try:
             with readonly_sqlite_connection(path) as connection:
-                status = str(
-                    connection.execute("PRAGMA quick_check(1)").fetchone()[0]
-                )
+                status, detail = _bounded_quick_check(connection)
+                if status == "bounded":
+                    status_class = "warning"
+                elif status != "ok":
+                    status_class = "error"
         except sqlite3.Error as exc:
             status = f"unavailable: {' '.join(str(exc).split())[:160]}"
+            status_class = "error"
         databases.append(
             {
                 "name": path.name,
-                "size": _format_bytes(path.stat().st_size),
+                "size": _format_bytes(size),
                 "status": status,
+                "status_class": status_class,
+                "detail": detail,
             }
         )
     return databases

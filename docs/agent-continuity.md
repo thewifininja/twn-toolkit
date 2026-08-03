@@ -297,8 +297,12 @@ accepted replay frames.
   boot-managed mode, OS service-manager state, live managed processes, external
   command integrations, and native macOS BPF or effective Linux network
   capabilities without changing host permissions. Its live database and process
-  checks are read-only and bounded; diagnostics degrade per section instead of
-  reconciling runtime state or holding the entire page behind a long busy timeout.
+  checks are read-only and bounded; SQLite files above 64 MiB are labeled for a
+  maintenance-window integrity check rather than scanned inside the web request.
+  Diagnostics degrade per section instead of reconciling runtime state or holding
+  the entire page behind a long busy timeout. The Automation workspace reads its
+  definitions, recent history, and job counters through one consistent read-only
+  snapshot rather than re-running schema and migration setup for each card.
   Boot-managed upgrades now
   keep the original launcher
   paused while a temporary process set is validated, finalize status, audit,
