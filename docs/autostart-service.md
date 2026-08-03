@@ -84,7 +84,9 @@ The authenticated **Administration → System Diagnostics** page combines these
 views without conflating them. It identifies manual versus boot-managed mode,
 shows whether the definition belongs to the checkout currently serving the
 page, and reports installed/enabled/active service state alongside the live
-launcher, web process, scheduler, and supervisor.
+launcher, web process, scheduler, and supervisor. These page checks are bounded
+and observational: an unresponsive service manager or busy SQLite database is
+reported without delaying or suppressing the remaining results.
 
 Linux distributions without systemd are detected and left unchanged. A future
 adapter can add another init system without weakening the systemd path.

@@ -588,6 +588,7 @@ class OperationalHardeningTests(unittest.TestCase):
             self.assertIn(b"Platform capabilities", page.data)
             self.assertIn(b"fping", page.data)
             self.assertNotIn(b">openssl<", page.data)
+            self.assertNotIn(b"heartbeat s ago", page.data)
             self.assertIn(b'class="field-note audit-empty-detail"', page.data)
             self.assertIn(b"Search audit history", page.data)
             filtered = client.get(
@@ -607,6 +608,23 @@ class OperationalHardeningTests(unittest.TestCase):
             self.assertIn(b"Updated operational limits", diagnostics.data)
             self.assertIn(b"Changed settings", diagnostics.data)
             self.assertIn(b"max concurrent automations", diagnostics.data)
+
+    def test_diagnostics_degrades_gracefully_and_reports_server_timings(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            with patch(
+                "twn_toolkit.admin_routes.AutomationStore.diagnostics_snapshot",
+                side_effect=sqlite3.OperationalError("database is locked"),
+            ):
+                page = client.get("/settings/diagnostics")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Some live diagnostics were unavailable", page.data)
+        self.assertIn(b"Automation storage diagnostics", page.data)
+        self.assertIn("automation;dur=", page.headers["Server-Timing"])
+        self.assertIn("total;dur=", page.headers["Server-Timing"])
 
     def test_heartbeat_freshness(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

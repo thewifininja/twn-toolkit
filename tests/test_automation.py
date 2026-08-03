@@ -46,6 +46,22 @@ class AutomationStoreTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
+    def test_diagnostics_snapshot_is_read_only_and_uses_one_bounded_connection(self) -> None:
+        with patch.object(
+            self.store,
+            "_connect",
+            side_effect=AssertionError("diagnostics must not initialize the schema"),
+        ):
+            snapshot = self.store.diagnostics_snapshot(now=1_800_000_000)
+
+        self.assertEqual(snapshot["storage"]["check_count"], 0)
+        self.assertEqual(snapshot["storage"]["run_count"], 0)
+        self.assertEqual(snapshot["orphan_artifacts"], {"count": 0, "bytes": 0})
+        self.assertIn(
+            "automation-7",
+            {migration["version"] for migration in snapshot["migrations"]},
+        )
+
     def test_binary_run_artifacts_follow_run_lifecycle(self) -> None:
         automation_id = self.store.save(
             name="Artifact lifecycle",

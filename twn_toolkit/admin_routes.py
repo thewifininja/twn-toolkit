@@ -49,7 +49,11 @@ from .smtp_tools import (
 from .migrations import MigrationManager
 from .network_tools import ToolInputError
 from .service_cli import service_runtime_status
-from .system_diagnostics import command_dependencies, platform_capabilities
+from .system_diagnostics import (
+    command_dependencies,
+    platform_capabilities,
+    readonly_sqlite_connection,
+)
 from .tftp import tftp_process_status
 from .ssh_transfer_server import ssh_transfer_process_status
 from .ftp_server import ftp_process_status
@@ -65,6 +69,49 @@ def _format_bytes(value: int) -> str:
             return f"{amount:.1f} {unit}" if unit != "bytes" else f"{int(amount)} bytes"
         amount /= 1024
     return f"{amount:.1f} GiB"
+
+
+def _diagnostic_value(
+    metric: str,
+    label: str,
+    collector: Callable[[], Any],
+    fallback: Any,
+    timings: list[tuple[str, float]],
+    warnings: list[str],
+) -> Any:
+    started = time.perf_counter()
+    try:
+        return collector()
+    except Exception as exc:
+        detail = " ".join(str(exc).split())[:240]
+        warnings.append(
+            f"{label} could not be collected"
+            f"{f': {detail}' if detail else '.'}"
+        )
+        return fallback
+    finally:
+        timings.append((metric, (time.perf_counter() - started) * 1000))
+
+
+def _database_diagnostics(instance: Path) -> list[dict[str, str]]:
+    databases = []
+    for path in sorted(instance.glob("*.sqlite3")):
+        status = "ok"
+        try:
+            with readonly_sqlite_connection(path) as connection:
+                status = str(
+                    connection.execute("PRAGMA quick_check(1)").fetchone()[0]
+                )
+        except sqlite3.Error as exc:
+            status = f"unavailable: {' '.join(str(exc).split())[:160]}"
+        databases.append(
+            {
+                "name": path.name,
+                "size": _format_bytes(path.stat().st_size),
+                "status": status,
+            }
+        )
+    return databases
 
 
 def _backup_audit_references(
@@ -373,6 +420,9 @@ def register_admin_routes(
     @app.get("/settings/diagnostics")
     def diagnostics():
         if not g.current_user.get("is_admin"): return Response("Administrator access is required.", status=403)
+        route_started = time.perf_counter()
+        timings: list[tuple[str, float]] = []
+        diagnostic_warnings: list[str] = []
         instance = Path(app.instance_path)
         processes = [
             _process_health(instance, "Web service", "twn-toolkit.pid", ""),
@@ -381,33 +431,105 @@ def register_admin_routes(
             {"name": "TFTP service", **tftp_process_status(app.instance_path)},
             {"name": "SFTP / SCP service", **ssh_transfer_process_status(app.instance_path)},
             {"name": "FTP service", **ftp_process_status(app.instance_path)},
-            {
-                "name": "Managed iPerf3 listeners",
-                **iperf3_process_status(app.instance_path),
-            },
         ]
-        databases = []
-        for path in sorted(instance.glob("*.sqlite3")):
-            status = "ok"
-            try:
-                connection = sqlite3.connect(path, timeout=2)
-                try: status = str(connection.execute("PRAGMA quick_check").fetchone()[0])
-                finally: connection.close()
-            except sqlite3.Error as exc: status = str(exc)
-            databases.append({"name": path.name, "size": _format_bytes(path.stat().st_size), "status": status})
-        runtime = service_runtime_status(project_root)
-        dependencies = command_dependencies()
-        capabilities = platform_capabilities()
+        iperf_status = _diagnostic_value(
+            "iperf",
+            "Managed iPerf3 listener status",
+            lambda: iperf3_process_status(app.instance_path),
+            {"running": False, "pid": None, "count": 0, "error": "Status unavailable."},
+            timings,
+            diagnostic_warnings,
+        )
+        if iperf_status.get("error"):
+            diagnostic_warnings.append(str(iperf_status["error"]))
+        processes.append({"name": "Managed iPerf3 listeners", **iperf_status})
+        databases = _diagnostic_value(
+            "databases",
+            "Database integrity",
+            lambda: _database_diagnostics(instance),
+            [],
+            timings,
+            diagnostic_warnings,
+        )
+        runtime = _diagnostic_value(
+            "runtime",
+            "Runtime mode",
+            lambda: service_runtime_status(
+                project_root,
+                manager_timeout_seconds=0.5,
+            ),
+            {
+                "mode": "Unavailable",
+                "platform": os.name,
+                "healthy": False,
+                "state": "Unknown",
+                "paused": False,
+                "process_set_ready": False,
+                "manages_this_checkout": False,
+                "installed": False,
+                "manager_state": "unavailable",
+                "last_exit": "",
+                "launcher_running": False,
+                "service_user": "",
+                "service_group": "",
+                "definition_path": "",
+            },
+            timings,
+            diagnostic_warnings,
+        )
+        dependencies = _diagnostic_value(
+            "dependencies",
+            "Command dependencies",
+            command_dependencies,
+            [],
+            timings,
+            diagnostic_warnings,
+        )
+        capabilities = _diagnostic_value(
+            "capabilities",
+            "Platform capabilities",
+            platform_capabilities,
+            [],
+            timings,
+            diagnostic_warnings,
+        )
         audit_query = request.args.get("audit_q", "").strip()[:160]
         try:
             audit_page_number = max(1, int(request.args.get("audit_page", "1")))
         except ValueError:
             audit_page_number = 1
-        audit_page = audit_store.search(
-            audit_query, page=audit_page_number, per_page=40
+        empty_audit_page = {
+            "events": [],
+            "query": audit_query,
+            "page": audit_page_number,
+            "per_page": 40,
+            "total": 0,
+            "total_pages": 1,
+            "first_item": 0,
+            "last_item": 0,
+        }
+        audit_page = _diagnostic_value(
+            "audit",
+            "Toolkit audit history",
+            lambda: audit_store.search(
+                audit_query,
+                page=audit_page_number,
+                per_page=40,
+                timeout_seconds=0.2,
+            ),
+            empty_audit_page,
+            timings,
+            diagnostic_warnings,
         )
         audit = audit_page["events"]
-        access_profiles = auth_store.access_profiles()
+        access_profiles = _diagnostic_value(
+            "access_profiles",
+            "Access profile labels",
+            auth_store.access_profiles,
+            [],
+            timings,
+            diagnostic_warnings,
+        )
         for event in audit:
             event["recorded_display"] = datetime.fromtimestamp(float(event["recorded_at"])).astimezone().strftime("%b %-d, %Y %-I:%M:%S %p")
             event["category"] = event.get("category") or "Administration"
@@ -439,16 +561,64 @@ def register_admin_routes(
                 for key, value in details.items()
                 if key != "changes"
             ]
-        return render_template(
+        storage = _diagnostic_value(
+            "storage",
+            "Storage capacity",
+            lambda: _format_storage_summary(operational_store.storage_summary()),
+            {
+                "disk_free_display": "Unavailable",
+                "disk_total_display": "Unavailable",
+                "datastore_display": "Unavailable",
+                "artifact_display": "Unavailable",
+                "datastore_quota_gib": "—",
+                "automation_artifact_quota_gib": "—",
+                "minimum_free_gib": "—",
+            },
+            timings,
+            diagnostic_warnings,
+        )
+        automation_snapshot = _diagnostic_value(
+            "automation",
+            "Automation storage diagnostics",
+            automation_store.diagnostics_snapshot,
+            {
+                "migrations": [],
+                "storage": {
+                    "eligible_check_count": 0,
+                    "eligible_run_count": 0,
+                },
+                "orphan_artifacts": {"count": 0, "bytes": 0},
+            },
+            timings,
+            diagnostic_warnings,
+        )
+        toolkit_migrations = _diagnostic_value(
+            "migrations",
+            "Toolkit migration history",
+            lambda: MigrationManager(app.instance_path).applied(),
+            [],
+            timings,
+            diagnostic_warnings,
+        )
+        render_started = time.perf_counter()
+        body = render_template(
             "auth/diagnostics.html", processes=processes, databases=databases,
             runtime=runtime, dependencies=dependencies, capabilities=capabilities,
             audit_events=audit,
-            storage=_format_storage_summary(operational_store.storage_summary()),
-            migrations=[*MigrationManager(app.instance_path).applied(), *automation_store.migration_status()],
-            automation_storage=automation_store.storage_stats(),
-            orphan_artifacts=automation_store.orphan_artifact_stats(),
+            storage=storage,
+            migrations=[*toolkit_migrations, *automation_snapshot["migrations"]],
+            automation_storage=automation_snapshot["storage"],
+            orphan_artifacts=automation_snapshot["orphan_artifacts"],
             audit_page=audit_page,
+            diagnostic_warnings=diagnostic_warnings,
         )
+        timings.append(("render", (time.perf_counter() - render_started) * 1000))
+        timings.append(("total", (time.perf_counter() - route_started) * 1000))
+        response = app.make_response(body)
+        response.headers["Server-Timing"] = ", ".join(
+            f"{name};dur={duration:.1f}" for name, duration in timings
+        )
+        return response
 
     @app.get("/settings/updates")
     def updates():

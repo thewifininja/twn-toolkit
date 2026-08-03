@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ from twn_toolkit.iperf_server import (
     _iperf_command_matches,
     _worker_command_matches,
     assert_iperf3_listener_available,
+    iperf3_process_status,
     run_managed_iperf3_server,
     stop_iperf_server_workers,
 )
@@ -304,6 +306,33 @@ class IperfToolTests(unittest.TestCase):
             self.assertTrue(store.stop_requested(session_id))
             self.assertEqual(store.clear_results("user-1"), 2)
             self.assertEqual(store.recent_results("user-1"), [])
+
+    def test_managed_server_process_status_is_observational(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            IperfServerStore(instance)
+            with patch(
+                "twn_toolkit.iperf_server.IperfServerStore._reconcile_workers",
+                side_effect=AssertionError("diagnostics must not reconcile workers"),
+            ):
+                status = iperf3_process_status(instance)
+
+        self.assertEqual(
+            status,
+            {"running": False, "pid": None, "count": 0, "error": ""},
+        )
+
+    def test_managed_server_process_status_reports_a_busy_database(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            IperfServerStore(instance)
+            with patch(
+                "twn_toolkit.iperf_server.readonly_sqlite_connection",
+                side_effect=sqlite3.OperationalError("database is locked"),
+            ):
+                status = iperf3_process_status(instance)
+
+        self.assertFalse(status["running"])
+        self.assertIn("temporarily unavailable", status["error"])
+        self.assertIn("database is locked", status["error"])
 
     def test_managed_server_history_is_bounded_per_user(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

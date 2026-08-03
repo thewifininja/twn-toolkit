@@ -15,6 +15,7 @@ from twn_toolkit.service_cli import (
     ServiceError,
     ServiceUser,
     _ensure_instance_directory,
+    _launchd_details,
     _managed_toolkit_is_ready,
     _validate_macos_service_location,
     _wait_for_launchd_running,
@@ -160,6 +161,44 @@ class ServiceCliTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         output.assert_any_call("Autostart service: loaded, active")
+
+    def test_bounded_launchd_status_reports_a_timeout(self) -> None:
+        with mock.patch(
+            "twn_toolkit.service_cli.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(("launchctl", "print"), 0.1),
+        ):
+            result, state, last_exit = _launchd_details(timeout_seconds=0.1)
+
+        self.assertEqual(result.returncode, 124)
+        self.assertEqual(state, "timed out")
+        self.assertEqual(last_exit, "")
+
+    def test_runtime_status_preserves_a_bounded_launchd_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "instance").mkdir()
+            plist_path = root / "toolkit.plist"
+            plist_path.touch()
+            timed_out = subprocess.CompletedProcess((), 124, "", "")
+            with (
+                mock.patch("twn_toolkit.service_cli.LAUNCHD_PLIST_PATH", plist_path),
+                mock.patch(
+                    "twn_toolkit.service_cli.shutil.which",
+                    return_value="/bin/launchctl",
+                ),
+                mock.patch(
+                    "twn_toolkit.service_cli._launchd_details",
+                    return_value=(timed_out, "timed out", ""),
+                ) as details,
+            ):
+                status = service_runtime_status(
+                    root,
+                    system="Darwin",
+                    manager_timeout_seconds=0.2,
+                )
+
+        self.assertEqual(status["manager_state"], "timed out")
+        details.assert_called_once_with(timeout_seconds=0.2)
 
     def test_runtime_status_identifies_active_linux_boot_service(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

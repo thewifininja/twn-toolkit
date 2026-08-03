@@ -22,6 +22,7 @@ from .iperf_tools import (
 )
 from .network_tools import ToolInputError
 from .pidfiles import stop_matching_daemons
+from .system_diagnostics import readonly_sqlite_connection
 
 
 IPERF_SERVER_ACTIVE_STATUSES = {"queued", "running", "stopping"}
@@ -866,19 +867,32 @@ def public_iperf_live_session(session: dict[str, Any]) -> dict[str, Any]:
 
 
 def iperf3_process_status(instance_path: str | Path) -> dict[str, Any]:
-    """Summarize toolkit-owned listener workers for diagnostics."""
-    store = IperfServerStore(instance_path)
-    store._reconcile_workers()
-    with store._connect() as connection:
-        rows = connection.execute(
-            """
-            SELECT worker_pid
-            FROM iperf_server_sessions
-            WHERE desired_active = 1
-                AND status IN ('queued', 'running', 'stopping')
-            ORDER BY created_at
-            """
-        ).fetchall()
+    """Read a bounded snapshot of toolkit-owned listener workers.
+
+    The supervisor owns worker reconciliation. System Diagnostics must not run
+    schema setup or update listener state merely to display process health.
+    """
+    path = Path(instance_path) / "iperf_servers.sqlite3"
+    if not path.exists():
+        return {"running": False, "pid": None, "count": 0, "error": ""}
+    try:
+        with readonly_sqlite_connection(path) as connection:
+            rows = connection.execute(
+                """
+                SELECT worker_pid
+                FROM iperf_server_sessions
+                WHERE desired_active = 1
+                    AND status IN ('queued', 'running', 'stopping')
+                ORDER BY created_at
+                """
+            ).fetchall()
+    except sqlite3.Error as exc:
+        return {
+            "running": False,
+            "pid": None,
+            "count": 0,
+            "error": f"Listener status is temporarily unavailable: {exc}",
+        }
     pids = [
         int(row["worker_pid"])
         for row in rows
@@ -889,6 +903,7 @@ def iperf3_process_status(instance_path: str | Path) -> dict[str, Any]:
         "running": bool(rows) and len(pids) == len(rows),
         "pid": pids[0] if pids else None,
         "count": len(rows),
+        "error": "",
     }
 
 

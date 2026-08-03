@@ -11,6 +11,8 @@ from typing import Any, Iterator
 
 from flask import g
 
+from .system_diagnostics import readonly_sqlite_connection
+
 
 _SECRET_FRAGMENTS = (
     "password",
@@ -342,7 +344,12 @@ class AuditStore:
         return events
 
     def search(
-        self, query: str = "", *, page: int = 1, per_page: int = 40
+        self,
+        query: str = "",
+        *,
+        page: int = 1,
+        per_page: int = 40,
+        timeout_seconds: float | None = None,
     ) -> dict[str, Any]:
         """Return one bounded page of audit events matching safe text fields."""
         normalized_query = str(query).strip()[:160]
@@ -376,7 +383,15 @@ class AuditStore:
             LEFT JOIN audit_event_details AS details
               ON details.audit_event_id = events.id
         """
-        with self._connect() as connection:
+        connection_context = (
+            readonly_sqlite_connection(
+                self.path,
+                timeout_seconds=timeout_seconds,
+            )
+            if timeout_seconds is not None
+            else self._connect()
+        )
+        with connection_context as connection:
             total = int(
                 connection.execute(
                     f"SELECT COUNT(*) {joined_tables} {where}", parameters
