@@ -1,6 +1,42 @@
-APP_VERSION = "0.16.4"
+APP_VERSION = "0.16.5"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.16.5",
+        "date": "2026-08-02",
+        "title": "Fast and resilient system diagnostics",
+        "summary": (
+            "Makes System Diagnostics observational, bounded, and responsive, "
+            "so one busy database or service manager cannot hold the entire "
+            "administration page for ten seconds."
+        ),
+        "groups": (
+            {
+                "title": "Bounded live health snapshots",
+                "items": (
+                    "Reads managed iPerf3 listener status without initializing its schema or reconciling workers; the supervisor remains the sole owner of listener recovery and state changes.",
+                    "Collects automation migrations, retention counts, and orphan-artifact evidence through one short read-only SQLite connection instead of repeatedly opening mutating store connections.",
+                    "Bounds web-only service-manager, audit, and database waits and keeps the remaining page available with an explicit partial-diagnostics warning when one subsystem is busy.",
+                ),
+            },
+            {
+                "title": "Responsive and attributable diagnostics",
+                "items": (
+                    "Publishes per-section Server-Timing metrics for runtime mode, databases, dependencies, capabilities, audit history, storage, automation, template rendering, and total request time.",
+                    "Contains long LaunchDaemon paths and other unbroken status text inside their cards, shifts shared status grids from four to two columns before they become cramped, and retains the existing one-column phone layout.",
+                    "Removes empty heartbeat labels from services that do not publish heartbeat age while preserving PID and heartbeat evidence for managed processes that do.",
+                ),
+            },
+            {
+                "title": "Compatible maintenance update",
+                "items": (
+                    "Introduces no Python dependency, database migration, profile-format, server-setting, capability, BPF-policy, permission-policy, service-lifecycle, or command-line incompatibility.",
+                    "Preserves service ownership, automation definitions and history, managed listeners, instance data, audit records, operational limits, and matched recovery guarantees.",
+                    "Updates README, built-in Help, autostart documentation, continuity guidance, and regression coverage for the bounded observational diagnostics contract.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.4",
         "date": "2026-08-02",
