@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .server_settings import ServerSettingsStore
+from .time_settings import TimeSettingsStore
 from .version import APP_VERSION
 
 
@@ -95,6 +96,7 @@ def collect_system_identity(instance_path: str | Path) -> dict[str, Any]:
             "addresses": addresses,
             "primary_url": urls[0] if urls else "",
             "urls": urls,
+            "timezone": TimeSettingsStore(instance).resolved_timezone(),
         },
         "startup": startup,
     }

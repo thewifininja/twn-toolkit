@@ -606,8 +606,15 @@ make state, risk, and the next action obvious.
   up to 120 seconds for a usable non-loopback address, then runs even without
   one. Internal generation IDs must not be exposed in notification evidence.
 - `system_identity.py` owns bounded instance name, hostname, version, address,
-  and access-URL discovery. Webhook, Email, and Syslog share its explicit
-  `toolkit.*` and `startup.*` template variables through one replacement map.
+  access-URL, and resolved-timezone discovery. `time_settings.py` stores an
+  optional IANA override separately from the operating-system clock; blank means
+  follow the host timezone. Webhook, Email, and Syslog share one explicit
+  replacement map for `toolkit.*`, `startup.*`, and timestamp variables.
+  Preserve UTC storage and the legacy `{{timestamp}}`/
+  `{{startup.occurred_at}}` values. Localized ISO/display variables resolve the
+  timezone at action execution so a saved setting applies without rewriting
+  definitions or restarting workers. New schedules may default to the toolkit
+  timezone, but every saved schedule keeps its own explicit timezone.
 - `dns.lookup` reuses the regular DNS tool's concurrent query engine. Each
   hostname/resolver pair is one check. An optional global expected-answer set
   can require any or all values; comparisons ignore case and a final DNS dot.

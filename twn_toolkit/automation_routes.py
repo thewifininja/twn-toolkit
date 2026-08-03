@@ -39,11 +39,12 @@ from .network_tools import (
     ping_engine_capability,
 )
 from .packet_capture import capture_interfaces
-from .schedule_tools import describe_schedule_rule, local_timezone_name, schedule_preview
+from .schedule_tools import describe_schedule_rule, schedule_preview
 from .profiles import SNMPHostProfileStore, SNMPOidProfileStore
 from .snmp_tools import parse_oid_profile
 from .ssh_commandlets import SSHCommandletStore, ssh_hosts_to_matrix
 from .system_identity import collect_system_identity
+from .time_settings import TimeSettingsStore
 
 
 def _automation_audit_snapshot(automation: dict[str, Any] | None) -> dict[str, Any]:
@@ -208,7 +209,9 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 **_scheduler_status(store.instance_path),
                 **workspace["job_stats"],
             },
-            schedule_default_timezone=local_timezone_name(),
+            schedule_default_timezone=TimeSettingsStore(
+                store.instance_path
+            ).resolved_timezone(),
             datastore_folders=LocalDatastore(store.instance_path).folders(),
             capture_interfaces=capture_interfaces(),
             ssh_commandlets=SSHCommandletStore(store.instance_path).all(),

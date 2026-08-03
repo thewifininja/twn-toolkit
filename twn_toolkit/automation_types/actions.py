@@ -33,6 +33,7 @@ from ..smtp_tools import (
     parse_email_recipients,
     send_smtp_message,
 )
+from ..time_settings import localized_time_values, resolve_toolkit_timezone
 from ..ssh_commandlets import build_ssh_command_plans, ssh_hosts_to_matrix
 from ..transfer_tools import (
     DEFAULT_TRANSFER_FILENAME_PATTERN as SFTP_DEFAULT_FILENAME_PATTERN,
@@ -317,13 +318,24 @@ def _validate_syslog(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _render_syslog_message(template: str, trigger: ConditionResult) -> str:
-    return _render_text_template(template, trigger)
+def _render_syslog_message(
+    template: str,
+    trigger: ConditionResult,
+    *,
+    instance_path: str = "",
+) -> str:
+    return _render_text_template(
+        template, trigger, instance_path=instance_path
+    )
 
 
 def _execute_syslog(config: dict[str, Any], trigger: ConditionResult) -> ActionResult:
     normalized = _validate_syslog(config)
-    message = _render_syslog_message(normalized["message"], trigger)
+    message = _render_syslog_message(
+        normalized["message"],
+        trigger,
+        instance_path=str(config.get("_instance_path", "")).strip(),
+    )
     results = []
     for line in normalized["destinations"].splitlines():
         target_text, port_text = (part.strip() for part in line.rsplit("|", 1))
@@ -457,22 +469,30 @@ def _validate_webhook(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _webhook_values(trigger: ConditionResult) -> dict[str, Any]:
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _webhook_values(
+    trigger: ConditionResult,
+    *,
+    instance_path: str = "",
+) -> dict[str, Any]:
     actions = trigger.evidence.get("actions", {})
     execution = trigger.evidence.get("execution", {})
     toolkit = trigger.evidence.get("toolkit", {})
     startup = trigger.evidence.get("startup", {})
+    timezone_name = resolve_toolkit_timezone(instance_path or None)
+    current_time = localized_time_values(_utc_now(), timezone_name)
     occurred_at = startup.get("occurred_at")
     try:
-        occurred_display = (
-            datetime.fromtimestamp(float(occurred_at), timezone.utc)
-            .isoformat(timespec="seconds")
-            .replace("+00:00", "Z")
+        startup_time = (
+            localized_time_values(float(occurred_at), timezone_name)
             if occurred_at
-            else ""
+            else {"utc": "", "local": "", "display": ""}
         )
     except (TypeError, ValueError, OSError):
-        occurred_display = ""
+        startup_time = {"utc": "", "local": "", "display": ""}
     return {
         "{{trigger.status}}": trigger.status,
         "{{trigger.summary}}": trigger.summary,
@@ -491,10 +511,17 @@ def _webhook_values(trigger: ConditionResult) -> dict[str, Any]:
         "{{toolkit.ipv6_addresses}}": toolkit.get("ipv6_addresses", []),
         "{{toolkit.primary_url}}": toolkit.get("primary_url", ""),
         "{{toolkit.urls}}": toolkit.get("urls", []),
+        "{{toolkit.timezone}}": timezone_name,
         "{{startup.reason}}": startup.get("reason", ""),
         "{{startup.mode}}": startup.get("mode", ""),
-        "{{startup.occurred_at}}": occurred_display,
-        "{{timestamp}}": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "{{startup.occurred_at}}": startup_time["utc"],
+        "{{startup.occurred_at_utc}}": startup_time["utc"],
+        "{{startup.occurred_at_local}}": startup_time["local"],
+        "{{startup.occurred_at_display}}": startup_time["display"],
+        "{{timestamp}}": current_time["utc"],
+        "{{timestamp.utc}}": current_time["utc"],
+        "{{timestamp.local}}": current_time["local"],
+        "{{timestamp.display}}": current_time["display"],
     }
 
 
@@ -514,8 +541,13 @@ def _replace_webhook_json(value: Any, replacements: dict[str, Any]) -> Any:
     return rendered
 
 
-def _render_webhook_body(config: dict[str, Any], trigger: ConditionResult) -> str:
-    replacements = _webhook_values(trigger)
+def _render_webhook_body(
+    config: dict[str, Any],
+    trigger: ConditionResult,
+    *,
+    instance_path: str = "",
+) -> str:
+    replacements = _webhook_values(trigger, instance_path=instance_path)
     if config["body_format"] == "json":
         parsed = json.loads(config["body"])
         return json.dumps(_replace_webhook_json(parsed, replacements), ensure_ascii=False, separators=(",", ":"))
@@ -525,9 +557,18 @@ def _render_webhook_body(config: dict[str, Any], trigger: ConditionResult) -> st
     return rendered
 
 
-def _render_text_template(template: str, trigger: ConditionResult) -> str:
+def _render_text_template(
+    template: str,
+    trigger: ConditionResult,
+    *,
+    instance_path: str = "",
+    replacements: dict[str, Any] | None = None,
+) -> str:
     rendered = template
-    for token, replacement in _webhook_values(trigger).items():
+    values = replacements or _webhook_values(
+        trigger, instance_path=instance_path
+    )
+    for token, replacement in values.items():
         value = (
             json.dumps(replacement, ensure_ascii=False)
             if isinstance(replacement, (dict, list))
@@ -584,9 +625,18 @@ def _execute_email(config: dict[str, Any], trigger: ConditionResult) -> ActionRe
         raise ToolInputError(
             "SMTP delivery is not configured. Save it under System Settings first."
         )
-    subject = _render_text_template(normalized["subject"], trigger)
+    replacements = _webhook_values(trigger, instance_path=instance_path)
+    subject = _render_text_template(
+        normalized["subject"],
+        trigger,
+        replacements=replacements,
+    )
     subject = " ".join(subject.splitlines()).strip()[:300]
-    body = _render_text_template(normalized["body"], trigger)
+    body = _render_text_template(
+        normalized["body"],
+        trigger,
+        replacements=replacements,
+    )
     to = parse_email_recipients(normalized["to"])
     cc = parse_email_recipients(normalized["cc"])
     bcc = parse_email_recipients(normalized["bcc"])
@@ -616,7 +666,11 @@ def _execute_webhook(config: dict[str, Any], trigger: ConditionResult) -> Action
         headers["Idempotency-Key"] = job_id
     if normalized["body_format"] == "json" and not any(name.lower() == "content-type" for name in headers):
         headers["Content-Type"] = "application/json"
-    body = _render_webhook_body(normalized, trigger)
+    body = _render_webhook_body(
+        normalized,
+        trigger,
+        instance_path=str(config.get("_instance_path", "")).strip(),
+    )
     accepted = _parse_webhook_statuses(normalized["expected_statuses"])
     retryable = _parse_webhook_statuses(normalized["retry_statuses"])
     results = []

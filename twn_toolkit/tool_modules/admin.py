@@ -25,7 +25,7 @@ def register_tools(registry: ToolRegistry) -> None:
         ToolLink(
             "admin.settings",
             "System Settings",
-            "Configure server access, email delivery, operational limits, users, and access profiles.",
+            "Configure server access, timezone, email delivery, operational limits, users, and access profiles.",
             "settings",
             "administration",
             "Administration",
@@ -60,6 +60,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "delete_user": "admin.settings",
             "update_session_settings": "admin.settings",
             "update_server_settings": "admin.settings",
+            "update_time_settings": "admin.settings",
             "update_smtp_settings": "admin.settings",
             "test_smtp_settings": "admin.settings",
             "update_automation_retention": "admin.settings",

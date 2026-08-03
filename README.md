@@ -311,9 +311,11 @@ The built-in system administrator can manage:
   administrators; routine polling and UI noise are omitted.
 
 System Settings is separated into System, Email, Operations, and Accounts &
-access views. Updates & Recovery is separated into Updates, Recovery points,
-and Profile backups so advanced and destructive controls remain available
-without crowding routine administration.
+access views. System settings include a host-detected or explicit IANA toolkit
+timezone for localized automation notifications; internal records and legacy
+integration timestamps remain UTC. Updates & Recovery is separated into
+Updates, Recovery points, and Profile backups so advanced and destructive
+controls remain available without crowding routine administration.
 
 Operators receive the union of their assigned custom profiles. Unauthorized tools
 are removed from navigation and remain blocked by the server if requested directly.
