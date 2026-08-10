@@ -215,7 +215,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.16.10: macOS combines direct unprivileged LaunchDaemons
+- Current milestone is 0.16.11: macOS combines direct unprivileged LaunchDaemons
   for Gunicorn, automation, supervisor, and transfer workers with a native root
   TCP connector restricted to the configured service UID. Production proved
   that v0.16.8 foreground children, direct PID-1 jobs using `UserName=admin`,

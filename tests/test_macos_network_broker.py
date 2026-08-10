@@ -30,16 +30,18 @@ class MacosNetworkBrokerClientTests(unittest.TestCase):
     def test_socket_create_connection_receives_brokered_descriptor(self) -> None:
         os.environ[BROKER_ENVIRONMENT] = "/var/run/example.sock"
         broker_end, peer_end = socket.socketpair()
+        handed_off = os.dup(broker_end.fileno())
         with (
             mock.patch.object(socket, "socket", BrokeredSocket),
             mock.patch(
                 "twn_toolkit.macos_network_broker.request_connected_descriptor",
-                return_value=os.dup(broker_end.fileno()),
+                return_value=handed_off,
             ) as request,
         ):
             connection = socket.create_connection(("192.0.2.10", 443), timeout=2)
         broker_end.close()
         try:
+            self.assertEqual(connection.fileno(), handed_off)
             connection.sendall(b"hello")
             self.assertEqual(peer_end.recv(5), b"hello")
             peer_end.sendall(b"world")
@@ -55,6 +57,47 @@ class MacosNetworkBrokerClientTests(unittest.TestCase):
             family_code=4,
             timeout=2.0,
         )
+
+    def test_socket_create_connection_adopts_brokered_tcp_descriptor(self) -> None:
+        os.environ[BROKER_ENVIRONMENT] = "/var/run/example.sock"
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            listener.bind(("127.0.0.1", 0))
+        except PermissionError as exc:
+            listener.close()
+            self.skipTest(f"loopback bind unavailable: {exc}")
+        listener.listen(1)
+        broker_end = socket.create_connection(listener.getsockname())
+        peer_end, _address = listener.accept()
+        listener.close()
+
+        def hand_off_descriptor(*_args: object, **_kwargs: object) -> int:
+            sender, receiver = socket.socketpair()
+            descriptors = array.array("i", [broker_end.fileno()])
+            sender.sendmsg(
+                [struct.pack("!I", 0)],
+                [(socket.SOL_SOCKET, socket.SCM_RIGHTS, descriptors)],
+            )
+            handed_off = _recv_descriptor(receiver)
+            sender.close()
+            receiver.close()
+            broker_end.close()
+            return handed_off
+
+        with (
+            mock.patch.object(socket, "socket", BrokeredSocket),
+            mock.patch(
+                "twn_toolkit.macos_network_broker.request_connected_descriptor",
+                side_effect=hand_off_descriptor,
+            ),
+        ):
+            connection = socket.create_connection(("192.0.2.10", 22), timeout=2)
+        try:
+            peer_end.sendall(b"SSH-2.0-test\r\n")
+            self.assertEqual(connection.recv(16), b"SSH-2.0-test\r\n")
+        finally:
+            connection.close()
+            peer_end.close()
 
     def test_protocol_request_is_bounded_and_network_ordered(self) -> None:
         channel = mock.Mock()

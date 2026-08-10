@@ -147,9 +147,19 @@ class BrokeredSocket(_ORIGINAL_SOCKET):
         )
         original_timeout = self.gettimeout()
         try:
-            os.dup2(received, self.fileno(), inheritable=False)
-        finally:
+            placeholder = self.detach()
+        except BaseException:
             os.close(received)
+            raise
+        try:
+            os.close(placeholder)
+            _ORIGINAL_SOCKET.__init__(self, fileno=received)
+        except BaseException:
+            try:
+                os.close(received)
+            except OSError:
+                pass
+            raise
         self.settimeout(original_timeout)
 
     def connect_ex(self, address: Any) -> int:

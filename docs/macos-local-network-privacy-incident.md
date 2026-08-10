@@ -1,6 +1,6 @@
 # macOS local-network privacy incident and service follow-up
 
-Status: root-only connection boundary proven in production; v0.16.10 connector implemented locally
+Status: root-only connection boundary and direct descriptor adoption proven in production; v0.16.11 candidate implemented locally
 Priority: high before the next macOS service-lifecycle change
 Observed: 2026-08-07 through 2026-08-10 on production v0.16.6-v0.16.9 candidates; final controlled probes on macOS 15.1.1 (24B91)
 
@@ -180,6 +180,22 @@ Managed Python workers opt in through an absolute Unix-socket environment
 variable and a process-wide socket subclass. Manual launches and Linux never
 install the shim.
 
+The first v0.16.10 production automation exposed a separate handoff edge case
+after the privacy failure was resolved. System Diagnostics reported the
+connector ready and the toolkit TCP scanner opened switch port 22, but Paramiko
+reported `Error reading SSH protocol banner`. Controlled probes showed:
+
+- a direct Terminal socket received `SSH-2.0-OpenSSH_9.9`;
+- the raw descriptor returned through `SCM_RIGHTS` received the same banner;
+- duplicating that descriptor over the Python placeholder socket produced an
+  immediate EOF; and
+- detaching the placeholder and initializing the socket object with the
+  returned descriptor received the banner normally.
+
+The v0.16.11 shim therefore adopts the returned descriptor directly and closes
+only the unused placeholder. The native root helper, its protocol, launchd job,
+and privilege boundary are unchanged.
+
 This boundary also covers other TCP-based actions that use the shared Python
 socket layer, including the TCP scanner, certificate probes, FTP/SFTP clients,
 and Requests/urllib3 integrations. UDP, BPF packet capture/replay, and listener
@@ -238,6 +254,8 @@ Maintain a physical or virtual macOS 15.5+ service test that covers:
 - toolkit restart, upgrade handoff, rollback, and recovery;
 - replacement of the Homebrew Python runtime;
 - outbound TCP and Paramiko SSH to a directly connected Ethernet address;
+- direct ownership of the `SCM_RIGHTS` descriptor without overlaying it on a
+  placeholder, including bidirectional traffic over a real TCP stream;
 - the same SSH collection while a bounded PCAP runs in parallel; and
 - actionable diagnostics for a deliberately denied local-network process.
 
@@ -268,9 +286,11 @@ Support guidance for affected existing versions:
    and restart the Mac.
 6. Re-test from the toolkit worker and then run an end-to-end automation.
 
-After installing v0.16.10 code on an existing macOS service host, run
-`sudo ./twn service install` once to install the direct-job set and protected
-TCP connector before testing without a CIDR exception.
+After installing v0.16.10 or newer code on a host that predates the connector,
+run `sudo ./twn service install` once to install the direct-job set and
+protected TCP connector before testing without a CIDR exception. A host that
+already completed that installation for v0.16.10 does not repeat it when
+upgrading to v0.16.11.
 
 Do not recommend running the complete toolkit as root to bypass this policy.
 

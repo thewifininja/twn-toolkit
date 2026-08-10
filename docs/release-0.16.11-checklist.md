@@ -1,4 +1,4 @@
-# v0.16.10 release checklist
+# v0.16.11 release checklist
 
 ## Direct unprivileged macOS LaunchDaemons
 
@@ -31,6 +31,11 @@
 - [x] Install the helper and its no-`UserName` root LaunchDaemon atomically,
   include it in aggregate service health and cleanup, and report connector
   readiness under System Diagnostics.
+- [x] Reproduce the v0.16.10 production banner failure and prove that the raw
+  `SCM_RIGHTS` descriptor receives the switch banner while overlaying it on the
+  Python placeholder produces EOF.
+- [x] Adopt the returned descriptor directly, preserve the caller timeout, and
+  add socket-ownership plus real-TCP bidirectional regression coverage.
 
 ## Lifecycle and compatibility
 
@@ -43,9 +48,10 @@
   coordinator PID transition cannot race `copytree`; persistent databases and
   WAL files, profiles, captures, certificates, logs, and datastore data remain
   covered by the integrity manifest.
-- [x] Existing macOS installations require one explicit
-  `sudo ./twn service install` after the v0.16.10 code upgrade; manual startup,
-  Linux systemd, databases, profiles, automations, and stored data are unchanged.
+- [x] Hosts predating the connector require one explicit
+  `sudo ./twn service install` after installing v0.16.10 or newer; a host that
+  already installed the v0.16.10 helper needs no repeat install for v0.16.11.
+  Manual startup, Linux, databases, profiles, automations, and data are unchanged.
 - [x] Aggregate service health requires the connector, coordinator, and every
   core direct job while disabled transfer jobs are not falsely reported as
   failures.
@@ -55,25 +61,31 @@
 - [x] Record the v0.16.8 production split result: with the CIDR exception,
   scheduled PCAP plus SSH succeeded on 5 of 5 switches; after CIDR removal and
   reboot, PCAP succeeded while SSH returned errno 65.
-- [x] Update built-in release notes, README, autostart guidance, incident notes,
-  refactor backlog, continuity guidance, and version assertions for v0.16.10.
+- [x] Record v0.16.10 production evidence: connector ready, TCP scanner open,
+  raw switch banner received, placeholder overlay EOF, and direct adoption good.
+- [x] Update built-in release notes, README, incident notes, continuity guidance,
+  and version assertions for v0.16.11.
 - [x] Pass native build/signature checks, shell syntax, focused connector,
   service, network-tool, and upgrade tests, then the complete test suite after
   final release metadata and documentation edits.
-- [x] Build and validate the v0.16.10 production-test bundle as an upgrade from
-  the production v0.16.9 candidate, including its generated SHA-256 checksum.
+- [x] Build and validate the v0.16.11 production-test bundle as an upgrade from
+  the production v0.16.10 candidate, including its generated SHA-256 checksum.
 
 ## Production acceptance without the CIDR fallback
 
-- [ ] Install the verified v0.16.10 code bundle while leaving the Ethernet CIDR
+- [x] Install the verified v0.16.10 code bundle while leaving the Ethernet CIDR
   exception absent, then run `sudo ./twn service install` once.
-- [ ] Verify all eight property lists and the native connector are root-owned;
+- [x] Verify all eight property lists and the native connector are root-owned;
   confirm the connector has no `UserName`, while Gunicorn, automation,
   supervisor, and enabled transfer workers remain UID 501 direct jobs.
-- [ ] Verify the Unix socket is mode 0600 and owned by the configured service
+- [x] Verify the Unix socket is mode 0600 and owned by the configured service
   UID, and that System Diagnostics reports **Protected TCP connector · Ready**.
-- [ ] Verify toolkit TCP Scanner access to `192.168.1.101:22`, then complete a
-  parallel PCAP plus five-switch SSH automation from the direct scheduler.
+- [x] Verify toolkit TCP Scanner access to `192.168.1.101:22` without the CIDR
+  fallback and diagnose the v0.16.10 SSH banner failure independently.
+- [ ] Install the verified v0.16.11 code bundle through the normal updater; do
+  not reinstall the unchanged root helper or alter the CIDR exception.
+- [ ] Complete a parallel PCAP plus five-switch SSH automation manually and
+  from the direct scheduler.
 - [ ] Restart the Mac and repeat toolkit TCP and scheduled PCAP plus SSH from a
   cold boot without an interactive Terminal launch.
 - [ ] If the connector path still returns errno 65, restore only
@@ -82,5 +94,5 @@
 - [ ] Pass release-preparation and merged-main CI before creating an annotated
   tag or publishing any GitHub release.
 
-Do not tag or publish v0.16.10 until the CIDR-free production acceptance and
+Do not tag or publish v0.16.11 until the CIDR-free production acceptance and
 cold-boot gates pass.

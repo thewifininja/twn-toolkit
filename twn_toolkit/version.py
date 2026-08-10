@@ -1,16 +1,24 @@
-APP_VERSION = "0.16.10"
+APP_VERSION = "0.16.11"
 
 RELEASE_NOTES = (
     {
-        "version": "0.16.10",
+        "version": "0.16.11",
         "date": "2026-08-10",
-        "title": "Protected macOS service networking",
+        "title": "Reliable protected macOS networking",
         "summary": (
-            "Adds a bounded root TCP connector for macOS services after production "
-            "proved that Local Network Privacy still denies a LaunchDaemon configured "
-            "with an unprivileged UserName."
+            "Adds a bounded root TCP connector and reliable descriptor adoption for "
+            "macOS services after production proved that Local Network Privacy still "
+            "denies a LaunchDaemon configured with an unprivileged UserName."
         ),
         "groups": (
+            {
+                "title": "Reliable socket handoff",
+                "items": (
+                    "Adopts the connector-provided socket descriptor directly instead of duplicating it over a placeholder socket, preserving the live TCP stream and its SSH protocol banner on production macOS.",
+                    "Adds regression coverage for direct descriptor ownership, SCM_RIGHTS transfer, and bidirectional traffic over a real TCP connection while retaining the existing bounded protocol and caller checks.",
+                    "Requires only the normal code upgrade from the v0.16.10 production candidate; the already-installed root helper and LaunchDaemon are unchanged and do not need another service install.",
+                ),
+            },
             {
                 "title": "Least-privilege local networking",
                 "items": (
@@ -36,6 +44,25 @@ RELEASE_NOTES = (
                     "Records that direct PID-1-owned Python jobs configured with UserName=admin still received errno 65 on macOS 15.1.1, and that a root LaunchDaemon parent spawning an unprivileged Python child was also insufficient because macOS attributed the operation to the child.",
                     "Confirms with controlled production probes that the same switch TCP port succeeds when the connecting process itself is the root LaunchDaemon, which defines the connector boundary used by this release.",
                     "Keeps the explicit Ethernet or Wi-Fi CIDR exception as an administrator-controlled fallback and retains the scheduled packet-capture path fix, nested Paramiko diagnostics, shutdown race fix, and full manual and Linux compatibility.",
+                ),
+            },
+        ),
+    },
+    {
+        "version": "0.16.10",
+        "date": "2026-08-10",
+        "title": "Protected macOS service networking candidate",
+        "summary": (
+            "Installed the bounded TCP connector and exposed a descriptor-adoption "
+            "edge case during the first production SSH automation test."
+        ),
+        "groups": (
+            {
+                "title": "Production candidate evidence",
+                "items": (
+                    "Confirmed the protected connector became ready and the toolkit TCP Port Scanner could open switch port 22 without the system-wide CIDR exception.",
+                    "Confirmed the raw descriptor returned by the connector received the switch SSH banner, while duplicating it over the Python placeholder socket produced an immediate EOF and Paramiko reported Error reading SSH protocol banner.",
+                    "Moved direct descriptor adoption and its regression coverage into v0.16.11 without changing the privileged helper or service configuration.",
                 ),
             },
         ),
