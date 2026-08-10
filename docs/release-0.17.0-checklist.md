@@ -106,8 +106,10 @@
   succeeds both times, while SSH succeeds on 4 of 5 and then 2 of 5 hosts;
   correlate the variable banner failures one-for-one with stranded admin relay
   children and invalidate the privilege-dropped candidate.
-- [ ] Repeat from a scheduled or condition-triggered automation with the final
-  root-retained relay.
+- [x] Repeat from a scheduled automation with the final root-retained relay and
+  shared SSH cleanup: capture 5,949 packets on `en0` in 30.0 seconds, collect
+  SSH output from all 5 of 5 switches, and leave no new relay children after
+  completion.
 - [ ] Restart the Mac and repeat diagnostics plus scheduled PCAP and SSH from a
   cold boot without an interactive Terminal launch.
 - [x] Audit `/Library/LaunchDaemons`, `/Library/PrivilegedHelperTools`, the
@@ -122,9 +124,16 @@
   eight-second banner timeout, one matching stranded root child, and successful
   15-of-15 concurrent raw plus 15-of-15 concurrent bare-Paramiko control
   handshakes through the same helper.
-- [ ] Repeat manual and scheduled PCAP plus five-switch SSH with the shared
-  inactive-transport cleanup and bounded banner retry; confirm 5 of 5 and only
-  the root listener remains after completion.
+- [x] Repeat manual and scheduled PCAP plus five-switch SSH with the shared
+  inactive-transport cleanup and bounded banner retry. The manual run captured
+  12,021 packets and the scheduled run captured 5,949; both collected SSH from
+  all 5 of 5 switches. Every relay child created by both final runs exited.
+  The one child created by the pre-fix 4-of-5 run remained visible during the
+  immediate check, then exited at the helper's 3,700-second lifetime cap; only
+  the root listener remained.
+- [x] Restore `Testing Window` to its original daily 09:43 AM rule after the
+  temporary acceptance run and re-arm `Scheduled PCAP`; verify its next
+  occurrence is 2026-08-11 09:43 EDT.
 
 ## Publication gate
 
@@ -138,6 +147,12 @@
 - [x] Build and validate the final 346-file root-retained relay bundle and
   matching SHA-256 sidecar: SHA-256
   `5a7c3c5d9e2716f224e92913333264732c70034f37ac2acedbbb2b5cf86bec8a`.
+- [x] Build and validate the final 346-file release candidate with shared SSH
+  cleanup and bounded banner retry: SHA-256
+  `99c3e5275a7b27c7d7283df8208ad3bc3494e238980e6761412498082c5aa289`.
+- [x] Verify recovery point `20260810-161919-e68c903`, reconcile that exact
+  release candidate on production, and confirm zero manifest mismatches, nine
+  healthy SQLite databases, active direct jobs, and SSH retry policy `15 2`.
 - [ ] Pass release-preparation and merged-main CI.
 - [ ] Create and push the annotated `v0.17.0` tag only after project-owner
   approval and all production acceptance checks pass.

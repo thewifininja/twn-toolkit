@@ -1,6 +1,6 @@
 # macOS local-network privacy incident and service follow-up
 
-Status: root-retained bounded network flow under final production acceptance; consolidated for v0.17.0 GA
+Status: root-retained bounded network flow passed CIDR-free manual and scheduled production acceptance; cold-boot gate remains for v0.17.0 GA
 Priority: high before the next macOS service-lifecycle change
 Observed: 2026-08-07 through 2026-08-10 on production v0.16.6-v0.16.9 candidates; final controlled probes on macOS 15.1.1 (24B91)
 
@@ -255,6 +255,18 @@ transport socket explicitly, allows 15 seconds for the server banner, and
 retries one banner failure with a fresh pre-authentication connection. SSH
 collection, SFTP, and SCP all use that path. This is bounded to one retry and
 does not replay an authenticated command or file operation.
+
+The final production candidate (SHA-256
+`99c3e5275a7b27c7d7283df8208ad3bc3494e238980e6761412498082c5aa289`)
+then passed both acceptance paths without the CIDR fallback. A manual
+simultaneous run captured 12,021 packets and collected SSH from all five
+switches. A real calendar-triggered service run captured 5,949 packets in 30.0
+seconds and also collected SSH from all five. All relay children created by
+those final runs exited; only the known child from the earlier pre-fix timeout
+was still present during the immediate post-run process check. It exited at the
+helper's 3,700-second lifetime cap, leaving only the root listener. The
+temporary calendar rule was restored to its original daily 09:43 AM time and
+the automation was re-armed.
 
 This boundary also covers other TCP-based actions that use the shared Python
 socket layer, including the TCP scanner, certificate probes, FTP/SFTP clients,
