@@ -129,9 +129,24 @@
 - [x] Invalidate that helper's cleanup result after the post-run process audit
   finds six retained root children consuming roughly 42% CPU each; trace the
   behavior to repeated inactive-descriptor `POLLHUP` wakeups.
-- [ ] Install the corrected helper and repeat cold-boot diagnostics, five-host
-  TCP scanning, simultaneous PCAP/SSH, and post-run cleanup; require only the
-  root listener to remain before closing the cold-boot gate.
+- [x] Verify recovery point `20260810-183853-b0becc3b`, then safely reconcile
+  the same-version corrected 346-file bundle (SHA-256
+  `ae149857e1b96b60bb7983e01ebcb0f02f66405788ce4f388997b0724915f52b`)
+  on production before reinstalling the protected helper and direct jobs.
+- [x] Confirm the installed helper and bundled helper both have SHA-256
+  `6260724da10245675f35ac3546859e3752011017ffe70ac44d4a6bd3059dafe3`,
+  the checkout has zero manifest mismatches, all nine SQLite databases pass
+  `PRAGMA quick_check`, and no upgrade operation lock remains.
+- [x] Pass the corrected helper's hot-install acceptance: all five switch SSH
+  ports open, simultaneous PCAP captures 11,488 packets on `en0` in 30.2
+  seconds, SSH collection succeeds on all 5 of 5 switches, and both the scan
+  and automation leave only the idle root listener at 0.0% CPU.
+- [x] Install the corrected helper and repeat cold-boot acceptance: diagnostics
+  report a boot-managed Active toolkit, Ready protected connector, current
+  scheduler and supervisor heartbeats, and Ready BPF access; all five switch
+  SSH ports open; simultaneous PCAP captures 15,371 packets on `en0` in 30.3
+  seconds; SSH collection succeeds on all 5 of 5 switches; and the post-run
+  audit leaves only the root listener at 0.0% CPU.
 - [x] Audit `/Library/LaunchDaemons`, `/Library/PrivilegedHelperTools`, the
   connector socket, service ownership, and toolkit runtime markers: property
   lists and helper are root-owned, the helper is executable, the socket is
@@ -170,6 +185,9 @@
 - [x] Build and validate the final 346-file release candidate with shared SSH
   cleanup and bounded banner retry: SHA-256
   `99c3e5275a7b27c7d7283df8208ad3bc3494e238980e6761412498082c5aa289`.
+- [x] Rebuild and validate the corrected 346-file release candidate with the
+  monotonic relay cleanup fix: SHA-256
+  `ae149857e1b96b60bb7983e01ebcb0f02f66405788ce4f388997b0724915f52b`.
 - [x] Verify recovery point `20260810-161919-e68c903`, reconcile that exact
   release candidate on production, and confirm zero manifest mismatches, nine
   healthy SQLite databases, active direct jobs, and SSH retry policy `15 2`.

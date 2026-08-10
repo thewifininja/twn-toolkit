@@ -1,8 +1,8 @@
 # macOS local-network privacy incident and service follow-up
 
-Status: root-retained bounded network flow passed CIDR-free manual and scheduled production acceptance; cold-boot gate remains for v0.17.0 GA
+Status: root-retained bounded network flow passed CIDR-free manual, scheduled, hot-install, and corrected cold-boot production acceptance; v0.17.0 publication remains gated on CI and project-owner approval
 Priority: high before the next macOS service-lifecycle change
-Observed: 2026-08-07 through 2026-08-10 on production v0.16.6-v0.16.9 candidates; final controlled probes on macOS 15.1.1 (24B91)
+Observed: 2026-08-07 through 2026-08-10 on production v0.16.6-v0.17.0 candidates; final controlled probes on macOS 15.1.1 (24B91)
 
 ## Summary
 
@@ -285,8 +285,19 @@ requested events from the poll set and maintains a monotonic deadline measured
 from actual reads, writes, EOF transitions, and half-closes. Repeated readiness
 without progress therefore cannot extend the deadline. A native harness now
 holds the application endpoint open after the remote closes and requires the
-relay to exit normally within the shortened test deadline. The corrected
-helper must pass a second production cold-boot and cleanup check before GA.
+relay to exit normally within the shortened test deadline.
+
+The corrected 346-file bundle (SHA-256
+`ae149857e1b96b60bb7983e01ebcb0f02f66405788ce4f388997b0724915f52b`)
+passed both hot-install and second cold-boot acceptance. After the second
+reboot and before manually starting the toolkit, diagnostics reported a
+boot-managed Active toolkit, Ready protected connector, current scheduler and
+supervisor heartbeats, and Ready BPF access. The TCP scanner opened port 22 on
+all five switches. A simultaneous automation then captured 15,371 packets on
+`en0` in 30.3 seconds and collected SSH output from all 5 of 5 switches. After
+the relay deadline, the process table contained only the root listener at 0.0%
+CPU, and the web, scheduler, and supervisor remained healthy. This closes the
+production cold-boot gate.
 
 This boundary also covers other TCP-based actions that use the shared Python
 socket layer, including the TCP scanner, certificate probes, FTP/SFTP clients,
