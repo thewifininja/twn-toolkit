@@ -361,6 +361,129 @@ def _copy_code(root: Path, destination: Path) -> None:
             shutil.copytree(source, destination / name, symlinks=True)
 
 
+_VOLATILE_INSTANCE_NAMES = frozenset(
+    {
+        "automation-heartbeat.json",
+        "packet_capture_locks",
+        "supervisor-heartbeat.json",
+        "tftp_runtime",
+        "ftp_runtime",
+        "ssh_transfer_runtime",
+        "twn-launchd-direct-enabled",
+        "twn-service-paused",
+        "twn-service-resume",
+        "twn-service-web-generation",
+        "twn-service-web-generation-marked",
+    }
+)
+_VOLATILE_INSTANCE_SUFFIXES = (
+    ".launchd-enabled",
+    ".lock",
+    ".pid",
+    ".ready",
+    ".tmp",
+    "-heartbeat.json",
+)
+
+
+def _ignore_volatile_instance_artifacts(_directory: str, names: list[str]) -> set[str]:
+    """Exclude process state that is recreated after restore and may disappear mid-copy."""
+    return {
+        name
+        for name in names
+        if name in _VOLATILE_INSTANCE_NAMES
+        or name.endswith(_VOLATILE_INSTANCE_SUFFIXES)
+    }
+
+
+def _sqlite_database_paths(instance: Path) -> tuple[Path, ...]:
+    """Return the durable, top-level SQLite databases owned by the instance."""
+    return tuple(
+        path
+        for path in sorted(instance.glob("*.sqlite3"))
+        if path.is_file()
+    )
+
+
+def _verify_sqlite_databases(instance: Path, *, context: str) -> None:
+    for database in _sqlite_database_paths(instance):
+        try:
+            connection = sqlite3.connect(
+                database.resolve().as_uri() + "?mode=ro",
+                uri=True,
+                timeout=30,
+            )
+            try:
+                result = connection.execute("PRAGMA quick_check").fetchone()
+            finally:
+                connection.close()
+        except (OSError, sqlite3.DatabaseError) as exc:
+            raise UpgradeError(
+                f"SQLite integrity verification failed for {context} "
+                f"database {database.name}: {exc}"
+            ) from exc
+        if result is None or result[0] != "ok":
+            detail = "no result" if result is None else str(result[0])
+            raise UpgradeError(
+                f"SQLite integrity verification failed for {context} "
+                f"database {database.name}: {detail}"
+            )
+
+
+def _copy_instance_with_sqlite_snapshots(instance: Path, destination: Path) -> None:
+    """Copy instance data while consolidating each live SQLite database safely."""
+    databases = _sqlite_database_paths(instance)
+    database_names = {database.name for database in databases}
+    instance_root = instance.resolve()
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        ignored = _ignore_volatile_instance_artifacts(directory, names)
+        if Path(directory).resolve() == instance_root:
+            ignored.update(
+                name
+                for name in names
+                if name.endswith((".sqlite3", ".sqlite3-wal", ".sqlite3-shm"))
+            )
+        return ignored
+
+    _verify_sqlite_databases(instance, context="live source")
+    shutil.copytree(instance, destination, symlinks=True, ignore=ignore)
+    if {database.name for database in _sqlite_database_paths(instance)} != database_names:
+        raise UpgradeError(
+            "The live SQLite database set changed while the recovery point was created."
+        )
+    for source in databases:
+        target = destination / source.name
+        source_connection: sqlite3.Connection | None = None
+        target_connection: sqlite3.Connection | None = None
+        try:
+            source_connection = sqlite3.connect(
+                source.resolve().as_uri() + "?mode=ro",
+                uri=True,
+                timeout=30,
+            )
+            target_connection = sqlite3.connect(target, timeout=30)
+            source_connection.backup(target_connection)
+            journal_mode = target_connection.execute(
+                "PRAGMA journal_mode=DELETE"
+            ).fetchone()
+            if journal_mode is None or str(journal_mode[0]).lower() != "delete":
+                raise sqlite3.DatabaseError(
+                    f"could not consolidate journal mode for {source.name}"
+                )
+        except (OSError, sqlite3.DatabaseError) as exc:
+            raise UpgradeError(
+                f"Could not create a consistent SQLite snapshot for {source.name}: {exc}"
+            ) from exc
+        finally:
+            if target_connection is not None:
+                target_connection.close()
+            if source_connection is not None:
+                source_connection.close()
+        os.chmod(target, source.stat().st_mode & 0o777)
+    _verify_sqlite_databases(destination, context="recovery point")
+
+
 def _integrity_manifest(root: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for base_name in ("code", "instance"):
@@ -385,6 +508,7 @@ def _verify_backup(backup: Path) -> None:
         raise UpgradeError("Recovery point integrity manifest is missing or invalid.") from exc
     if not isinstance(expected, dict) or expected != _integrity_manifest(backup):
         raise UpgradeError("Recovery point integrity verification failed.")
+    _verify_sqlite_databases(backup / "instance", context="recovery point")
 
 
 def _create_backup(root: Path, instance: Path, backup_root: Path, request: dict[str, Any]) -> Path:
@@ -396,7 +520,7 @@ def _create_backup(root: Path, instance: Path, backup_root: Path, request: dict[
     destination.mkdir(parents=True, mode=0o700)
     try:
         _copy_code(root, destination / "code")
-        shutil.copytree(instance, destination / "instance", symlinks=True)
+        _copy_instance_with_sqlite_snapshots(instance, destination / "instance")
         _atomic_json(destination / "integrity.json", _integrity_manifest(destination))
         metadata = {
             "id": identifier, "created_at": time.time(),
@@ -498,20 +622,37 @@ def _install_and_validate(
 ) -> None:
     command = [str(root / "install.sh")] if install_dependencies else [str(root / "twn"), "start"]
     environment = None
+    install_status_path: Path | None = None
     if upgrade_request_id or suppress_start_event:
         environment = os.environ.copy()
         if upgrade_request_id:
             environment["TWN_TOOLKIT_UPGRADE_REQUEST_ID"] = upgrade_request_id
         if suppress_start_event:
             environment["TWN_TOOLKIT_SUPPRESS_START_EVENT"] = "1"
+        if install_dependencies and upgrade_request_id:
+            safe_request_id = re.sub(r"[^A-Za-z0-9_.-]", "-", upgrade_request_id)[:100]
+            install_status_path = root / ".twn-upgrades" / f"install-status-{safe_request_id}.txt"
+            install_status_path.unlink(missing_ok=True)
+            environment["TWN_TOOLKIT_INSTALL_STATUS_FILE"] = str(install_status_path)
     install = _run(
         command, cwd=root, timeout=1200, retain_output=False,
         environment=environment,
     )
     if install.returncode:
+        stage = ""
+        if install_status_path is not None:
+            try:
+                recorded = install_status_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                recorded = ""
+            if re.fullmatch(r"failed:[a-z0-9-]+:[1-9][0-9]*", recorded):
+                stage = f" The bounded installer diagnostic was {recorded}."
         raise UpgradeError(
-            f"Installer exited with status {install.returncode}; output was not retained because package-manager logs may contain repository credentials."
+            f"Installer exited with status {install.returncode}; output was not retained "
+            f"because package-manager logs may contain repository credentials.{stage}"
         )
+    if install_status_path is not None:
+        install_status_path.unlink(missing_ok=True)
     version = _run([
         str(root / ".venv/bin/python"), "-c",
         "from twn_toolkit import __version__; print(__version__)",
@@ -522,13 +663,7 @@ def _install_and_validate(
     combined = f"{status.stdout}\n{status.stderr}".lower()
     if status.returncode or "not running" in combined or "enabled but not running" in combined:
         raise UpgradeError(f"Post-upgrade process health check failed: {combined[-2000:]}")
-    for database in instance.glob("*.sqlite3"):
-        connection = sqlite3.connect(database, timeout=5)
-        try:
-            if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
-                raise UpgradeError(f"Database integrity check failed: {database.name}")
-        finally:
-            connection.close()
+    _verify_sqlite_databases(instance, context="installed instance")
 
 
 def _prepare_service_reload(root: Path, request_id: str) -> bool:
@@ -553,9 +688,21 @@ def _prepare_service_reload(root: Path, request_id: str) -> bool:
 def _preserve_prepared_service_reload(instance: Path, prepared: bool) -> None:
     if not prepared:
         return
-    (instance / "twn-service-paused").touch(mode=0o600, exist_ok=True)
+    pause = instance / "twn-service-paused"
+    pause.write_text(
+        str(max(0, int((time.time() - time.monotonic()) // 10) * 10)) + "\n",
+        encoding="ascii",
+    )
+    os.chmod(pause, 0o600)
     (instance / "twn-service-launcher.pid").unlink(missing_ok=True)
     (instance / "twn-service-resume").unlink(missing_ok=True)
+    for marker in (
+        "twn-launchd-direct-enabled",
+        "twn-tftp.launchd-enabled",
+        "twn-ssh-transfer.launchd-enabled",
+        "twn-ftp.launchd-enabled",
+    ):
+        (instance / marker).unlink(missing_ok=True)
 
 
 def _record_result(

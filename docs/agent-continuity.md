@@ -215,7 +215,28 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.16.7: durable automation claims and renewable leases,
+- Current milestone is 0.17.0: macOS combines direct unprivileged LaunchDaemons
+  for Gunicorn, automation, supervisor, and transfer workers with a native root
+  TCP connector restricted to the configured service UID. Production proved
+  that v0.16.8 foreground children, direct PID-1 jobs using `UserName=admin`,
+  and an unprivileged child of a retained root parent all received Local Network
+  Privacy errno 65 without the system-wide CIDR exception; only the process
+  actually calling `connect()` as root succeeded. Final acceptance also proved
+  that transferring the remote descriptor did not preserve the background SSH
+  data path, and timed production runs showed that dropping UID before the
+  banner arrived made relay success timing-dependent. The connector now creates
+  and retains the remote flow in its bounded root process while blindly
+  relaying bytes without parsing, logging, persisting, authenticating, or
+  executing commands. Half-closed relays use a monotonic five-second deadline
+  measured from real I/O progress, and descriptors with no requested events
+  are removed from the poll set; otherwise macOS can repeatedly report
+  `POLLHUP`, prevent the timeout from firing, and spin a root relay child until
+  its hard lifetime cap. The native harness must retain the case where the
+  remote closes while the application endpoint stays open. The stable
+  coordinator retains pause/resume and upgrade handoffs, direct jobs use
+  owner-only boot and enable markers, scheduled PCAP actions invoke their
+  bounded helper by absolute path, and nested Darwin errno 65 SSH failures
+  identify Local Network Privacy as a possible cause. Durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP
@@ -228,8 +249,13 @@ accepted replay frames.
   timestamp history at observation start. Automation Ping shares Multi-Ping's
   capability-aware timeout validation, including sub-second values through a
   verified `fping` engine. Packet capture retains the host's existing
-  permission boundary and never installs software or invokes sudo. Certificate
-  Automation now includes a tested, guided Let's Encrypt DNS-01 workflow that
+  permission boundary and never installs software or invokes sudo. Recovery
+  points snapshot top-level SQLite databases through SQLite's online backup API,
+  consolidate WAL state, and reject malformed live or restored copies before
+  changing code. macOS service uninstall removes the complete direct-job and
+  connector layout before any intentional downgrade to pre-0.17 code.
+  Certificate Automation now includes a tested, guided Let's Encrypt DNS-01
+  workflow that
   distinguishes configured-resolver caching from authoritative propagation,
   retains protected Certbot material, and no longer carries a Beta label.
   Microsoft AD CS remains explicitly Beta. CLI operations now include guarded
@@ -707,9 +733,12 @@ make state, risk, and the next action obvious.
   retention pruning must remove matching artifact directories. Download ZIP
   resolves files through `AutomationStore.run_artifact()`; never trust a stored
   artifact path directly.
-- Multi-SSH and `ssh.collect` share the same prompt-aware executor. Connection,
-  authentication, and banner timeouts remain 8 seconds. Command ceilings default
-  to 300 seconds and support an inline `[timeout=N] command` override from 1 to
+- Multi-SSH and `ssh.collect` share the same prompt-aware executor. Connection
+  and authentication timeouts remain 8 seconds; server banners receive 15
+  seconds and one pre-authentication banner failure is retried with a fresh
+  connection. Cleanup explicitly closes the underlying socket when Paramiko
+  marks a failed transport inactive. Command ceilings default to 300 seconds
+  and support an inline `[timeout=N] command` override from 1 to
   3600 seconds, with a one-hour combined ceiling per host. Completion is the
   return of the device prompt, not a short quiet period. Timeouts retain partial
   output and stop later commands for that host. Gunicorn's worker timeout is

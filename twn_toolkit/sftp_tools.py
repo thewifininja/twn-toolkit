@@ -13,7 +13,11 @@ from string import Formatter
 from typing import Any
 
 from .network_tools import ToolInputError
-from .ssh_security import disabled_ssh_algorithms, format_ssh_connection_error
+from .ssh_security import (
+    close_ssh_client,
+    format_ssh_connection_error,
+    open_ssh_client,
+)
 
 
 SFTP_MAX_HOSTS = 50
@@ -205,33 +209,23 @@ def _fetch_sftp_host(
     name_lock: threading.Lock,
     allow_legacy_algorithms: bool = False,
 ) -> list[dict[str, Any]]:
-    import paramiko
-
     address = host["host"]
     label = host.get("label", "")
-    client = paramiko.SSHClient()
-    client.load_system_host_keys()
-    client.set_missing_host_key_policy(
-        paramiko.AutoAddPolicy() if allow_unknown_hosts else paramiko.RejectPolicy()
-    )
+    client = None
     try:
-        client.connect(
+        client = open_ssh_client(
             hostname=address,
             port=port,
             username=username,
             password=password,
-            allow_agent=False,
-            look_for_keys=False,
-            timeout=10,
+            allow_unknown_hosts=allow_unknown_hosts,
+            allow_legacy_algorithms=allow_legacy_algorithms,
+            connect_timeout=10,
             auth_timeout=10,
-            banner_timeout=10,
-            disabled_algorithms=disabled_ssh_algorithms(
-                allow_legacy_algorithms=allow_legacy_algorithms
-            ),
         )
         sftp = client.open_sftp()
     except Exception as exc:
-        client.close()
+        close_ssh_client(client)
         return [
             _result(address, label, path, "error", error=f"Connection failed: {format_ssh_connection_error(exc)}")
             for path in remote_paths
@@ -293,7 +287,7 @@ def _fetch_sftp_host(
         try:
             sftp.close()
         finally:
-            client.close()
+            close_ssh_client(client)
     return results
 
 
@@ -303,25 +297,21 @@ def _fetch_scp_host(
     filename_pattern: str, budget: _TransferBudget, used_names: set[str],
     name_lock: threading.Lock, allow_legacy_algorithms: bool = False,
 ) -> list[dict[str, Any]]:
-    import paramiko
-
     address, label = host["host"], host.get("label", "")
-    client = paramiko.SSHClient()
-    client.load_system_host_keys()
-    client.set_missing_host_key_policy(
-        paramiko.AutoAddPolicy() if allow_unknown_hosts else paramiko.RejectPolicy()
-    )
+    client = None
     try:
-        client.connect(
-            hostname=address, port=port, username=username, password=password,
-            allow_agent=False, look_for_keys=False, timeout=10, auth_timeout=10,
-            banner_timeout=10,
-            disabled_algorithms=disabled_ssh_algorithms(
-                allow_legacy_algorithms=allow_legacy_algorithms
-            ),
+        client = open_ssh_client(
+            hostname=address,
+            port=port,
+            username=username,
+            password=password,
+            allow_unknown_hosts=allow_unknown_hosts,
+            allow_legacy_algorithms=allow_legacy_algorithms,
+            connect_timeout=10,
+            auth_timeout=10,
         )
     except Exception as exc:
-        client.close()
+        close_ssh_client(client)
         return [_result(address, label, path, "error", error=f"Connection failed: {format_ssh_connection_error(exc)}") for path in remote_paths]
 
     results: list[dict[str, Any]] = []
@@ -399,7 +389,7 @@ def _fetch_scp_host(
                 if channel is not None:
                     channel.close()
     finally:
-        client.close()
+        close_ssh_client(client)
     return results
 
 

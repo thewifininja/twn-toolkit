@@ -20,6 +20,35 @@ turning the codebase into a rewrite project.
 
 ## Current scan findings
 
+### High priority: keep macOS workers under launchd supervision
+
+A production macOS 15.7.2 incident showed that the detached web and automation
+workers could be denied directly connected Ethernet access by Local Network
+Privacy even though interactive Terminal SSH continued to work. Production was
+restored with an administrator-approved Ethernet CIDR exception and a reboot;
+the toolkit then completed simultaneous PCAP and SSH collection on all five
+switches.
+
+The v0.16.8 response kept long-lived workers in the launchd-owned process tree,
+added focused `EHOSTUNREACH` diagnostics, and removed the scheduled PCAP
+action's working-directory dependency. Production then proved that foreground
+Python children and direct PID-1 jobs configured with `UserName=admin` still
+failed after the CIDR exception was removed and the Mac restarted. A retained
+root parent was also insufficient, while the connecting root LaunchDaemon
+process succeeded. The v0.16.10 follow-up therefore combines direct
+unprivileged workers with a native, UID-restricted root TCP connector that
+initially passed connected descriptors back. Final v0.17.0 production testing
+proved that background data I/O still failed in the receiving process, so the
+connector now retains the complete remote flow in its root network context and
+blindly relays the stream without parsing, logging, persisting, authenticating,
+or executing toolkit actions. Production proved that dropping UID before a
+switch banner arrived made success timing-dependent.
+Retain cold boot, service reinstall, upgrade handoff, rollback, Python
+replacement, CIDR removal, and concurrent PCAP/SSH in the macOS regression
+matrix for future service-lifecycle changes.
+The full incident evidence, security constraints, and fallback design are in
+[`macos-local-network-privacy-incident.md`](macos-local-network-privacy-incident.md).
+
 ### 0. Formalize SQLite migrations before the next schema expansion
 
 Automation schema expansion now uses the numbered

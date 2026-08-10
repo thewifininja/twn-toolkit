@@ -13,7 +13,11 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from typing import Any
 
-from .ssh_security import disabled_ssh_algorithms, format_ssh_connection_error
+from .ssh_security import (
+    close_ssh_client,
+    format_ssh_connection_error,
+    open_ssh_client,
+)
 
 
 RFC1918_NETWORKS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
@@ -1244,28 +1248,18 @@ def _ssh_host(
     allow_legacy_algorithms: bool = False,
     capture_limit: int = SSH_OUTPUT_LIMIT,
 ) -> dict[str, Any]:
-    import paramiko
-
-    client = paramiko.SSHClient()
-    client.load_system_host_keys()
-    client.set_missing_host_key_policy(
-        paramiko.AutoAddPolicy() if allow_unknown_hosts else paramiko.RejectPolicy()
-    )
+    client = None
     output: list[str] = []
     try:
-        client.connect(
+        client = open_ssh_client(
             hostname=host,
             port=port,
             username=username,
             password=password,
-            allow_agent=False,
-            look_for_keys=False,
-            timeout=8,
+            allow_unknown_hosts=allow_unknown_hosts,
+            allow_legacy_algorithms=allow_legacy_algorithms,
+            connect_timeout=8,
             auth_timeout=8,
-            banner_timeout=8,
-            disabled_algorithms=disabled_ssh_algorithms(
-                allow_legacy_algorithms=allow_legacy_algorithms
-            ),
         )
         channel = client.invoke_shell(width=200, height=1000)
         channel.settimeout(0.2)
@@ -1318,7 +1312,7 @@ def _ssh_host(
             "error": format_ssh_connection_error(exc),
         }
     finally:
-        client.close()
+        close_ssh_client(client)
 
 
 def _read_channel(channel: Any, max_wait: float, quiet_after: float = 0.35) -> str:

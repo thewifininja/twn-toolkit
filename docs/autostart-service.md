@@ -93,10 +93,47 @@ adapter can add another init system without weakening the systemd path.
 
 ## macOS
 
-macOS installation creates
-`/Library/LaunchDaemons/com.thewifininja.toolkit.plist`. A LaunchDaemon starts at
-boot even when nobody has logged in; its `UserName` and `GroupName` keep the
-toolkit process and instance data owned by the installing account.
+macOS installation creates a coordinator at
+`/Library/LaunchDaemons/com.thewifininja.toolkit.plist` plus direct `.web`,
+`.automation`, `.supervisor`, `.tftp`, `.ssh-transfer`, and `.ftp` jobs beside
+it. It also installs `com.thewifininja.toolkit.network-broker`, backed by the
+root-owned native helper
+`/Library/PrivilegedHelperTools/com.thewifininja.toolkit-network-broker`.
+System LaunchDaemons start at boot even when nobody has logged in. Every
+application job uses the selected `UserName` and `GroupName` so application and
+instance data remain owned by the installing account; only the bounded network
+broker omits those keys and runs as root.
+
+Each worker job invokes `twn launchd-run ROLE` and then `exec`s its final
+foreground process. Gunicorn, the automation scheduler, supervisor, and enabled
+transfer services are therefore managed directly by launchd. Production on
+macOS 15.1.1 nevertheless proved that Local Network Privacy still attributes
+outbound connections to Homebrew Python when the job uses `UserName`; both
+direct PID-1 parentage and an intervening root parent still returned errno 65.
+
+The native broker is the only root process in the design. It accepts requests
+only from the configured service UID over a mode-0600 Unix socket, performs the
+TCP `connect()`, and copies opaque bytes through a fixed bounded relay loop so
+macOS keeps the complete network flow in the exempt context. It does not parse,
+log, persist, authenticate, execute commands, or receive toolkit credentials as
+configuration. SSH and TLS application data is encrypted on the relayed stream;
+plaintext protocols may exist transiently in its bounded memory buffers.
+Gunicorn, automation, credentials, tools, and storage remain unprivileged. The
+coordinator retains only lifecycle, pause/resume, startup-generation, upgrade,
+rollback, and recovery handoffs. Manual launches and Linux service mode continue
+to use the normal socket and daemon paths.
+
+Upgrading code cannot create additional root-owned property lists. Existing
+macOS installations from v0.16.9 or earlier must therefore run this once after
+installing v0.16.10:
+
+```bash
+sudo ./twn service install
+```
+
+The installer validates the broker and complete direct-job set before declaring
+success. Administration → System Diagnostics reports the protected TCP
+connector separately from the unprivileged application processes.
 
 Install the toolkit outside macOS privacy-protected user folders. System
 LaunchDaemons cannot reliably execute programs beneath `Desktop`, `Documents`,
@@ -113,7 +150,11 @@ writing a service definition. For a relocated existing checkout, rebuild its
 ```
 
 macOS has no direct equivalent to systemd's scoped ambient capabilities. The
-service therefore remains unprivileged. Packet capture, packet replay, and DHCP
+application service remains unprivileged; the root connector is limited to TCP
+connection setup plus a fixed opaque relay with bounded clients, buffers,
+timeouts, and idle half-close cleanup. It clears supplemental groups and does
+not parse, log, persist, authenticate, or execute application traffic. Packet
+capture, packet replay, and DHCP
 Discover require an administrator-managed BPF access policy when normal-user
 BPF access is not already available. The macOS DHCP backend constructs one
 Ethernet/IPv4/UDP Discover through BPF, listens for matching Offers, and never
@@ -144,11 +185,11 @@ ChmodBPF package is one permission policy for it. The readiness check uses the
 effective account and groups of the running toolkit process. Restart the
 service after changing group membership before relying on that result.
 
-`./twn service install` waits for launchd to report the job active and for the
-web process, scheduler, and supervisor to become ready. If the job exits or the
-managed processes never become ready, installation removes the failed property
-list and points to `./twn service logs`; it does not leave a repeatedly failing
-LaunchDaemon installed.
+`./twn service install` waits for launchd to report the coordinator and three
+core jobs active and for the web process, scheduler, and supervisor to become
+ready. If a job exits or the managed processes never become ready, installation
+removes the failed property-list set and points to `./twn service logs`; it does
+not leave repeatedly failing LaunchDaemons installed.
 
 ## Lifecycle commands
 
@@ -174,12 +215,17 @@ administrator access:
   starts and validates the replacement process set before asking the OS manager
   to reload the launcher itself from the finalized files on disk.
 
-The pause is intentionally cleared by a service-manager restart or reboot, so
-an installed autostart service always returns after the host starts.
+The owner-only pause marker records the current boot generation. A
+service-manager start or restart removes it immediately; a coordinator started
+after a later boot recognizes and clears a stale generation, so an installed
+autostart service always returns after the host starts.
 
-Uninstallation removes only the systemd unit or launchd property list. It does
-not delete `instance/`, logs, profiles, certificates, captures, or Datastore
-files.
+Uninstallation removes the systemd unit or, on macOS, the coordinator, direct
+worker, and connector property lists, the connector helper executable and Unix
+socket, and launchd activation markers. It does not delete `instance/`, logs,
+profiles, certificates, captures, databases, recovery points, or Datastore
+files. The macOS cleanup discovers the checkout from any surviving worker
+property list, so a missing coordinator does not strand the newer jobs.
 
 ## Managed listeners and crash recovery
 
@@ -237,6 +283,12 @@ virtual environment, `instance/`, Datastore, certificates, captures, and service
 log files remain recoverable and can still be started manually with
 `./twn start`.
 
+To intentionally return a v0.17.0 macOS service installation to v0.16.7 or
+older, uninstall the service while v0.17.0 code is still present, restore the
+matched older code-and-instance recovery point, and install that version's
+service definition again. Do not replace the code first: older service code
+does not know the v0.17.0 worker and connector paths.
+
 ## Troubleshooting
 
 - **Service is active but the toolkit is not:** run `./twn service logs`, then
@@ -249,6 +301,15 @@ log files remain recoverable and can still be started manually with
   correctly unprivileged. Reinstall the Linux unit with
   `--network-capabilities`, or provision persistent BPF read/write access for
   the macOS service account and restart the service.
+- **Terminal reaches a local device but toolkit SSH or TCP reports `No route to
+  host` on macOS:** test the same address and port with the toolkit TCP Port
+  Scanner. An immediate errno 65 failure can be a Local Network Privacy denial
+  for the service process even when routing and Terminal access are healthy.
+  On v0.16.10 or newer, confirm System Diagnostics shows **Protected TCP
+  connector · Ready**; otherwise rerun `sudo ./twn service install`.
+  Review [Apple's Local Network Privacy guidance](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)
+  before changing system-wide CIDR exceptions; those exceptions affect every
+  program on the selected network and require a Mac restart.
 - **A low listener port fails on macOS:** use the toolkit's default high port.
   macOS does not provide the systemd-style scoped bind capability.
 - **The wrong account owns runtime files:** uninstall the service, repair the

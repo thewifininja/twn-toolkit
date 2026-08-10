@@ -1,6 +1,181 @@
-APP_VERSION = "0.16.7"
+APP_VERSION = "0.17.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.17.0",
+        "date": "2026-08-10",
+        "title": "Protected macOS networking and safe recovery",
+        "summary": (
+            "Restores CIDR-free SSH and other local TCP workflows for macOS "
+            "services through a bounded connector, while making upgrades and "
+            "service removal safe across the new launchd layout."
+        ),
+        "groups": (
+            {
+                "title": "Least-privilege macOS networking",
+                "items": (
+                    "Keeps Gunicorn, automation, SSH authentication, commands, credentials, transfers, and toolkit data under the configured non-root service account while a small native LaunchDaemon performs outbound TCP connection setup and opaque relay as root.",
+                    "Clears supplemental groups and runs only a fixed, bounded bidirectional copy loop over an owner-only Unix socket without parsing, logging, persisting, authenticating, or executing application traffic.",
+                    "Returns a local relay endpoint to Python so background Paramiko traffic remains in the root-created network flow instead of relying on a transferred remote descriptor that macOS still attributes to the receiving worker.",
+                    "Closes a half-closed relay after five seconds without real I/O progress, excludes inactive descriptors from polling so repeated macOS hangup events cannot spin a root child, and restores default termination signals in per-connection children.",
+                    "Explicitly closes sockets that Paramiko marks inactive after a failed banner, and covers the relay hangup edge case with a native remote-close regression harness.",
+                    "Allows 15 seconds for an SSH server banner and retries one pre-authentication banner failure with a fresh bounded connection across SSH collection, SFTP, and SCP.",
+                    "Requires one service reinstall after upgrading any existing macOS v0.16.10-v0.17.0 candidate so the corrected privileged helper is replaced; the web application and workers remain unprivileged.",
+                    "Preserves existing manual startup and Linux behavior; neither path installs or uses the macOS connector.",
+                ),
+            },
+            {
+                "title": "Scheduler and service reliability",
+                "items": (
+                    "Runs macOS web, automation, supervisor, and transfer workers as direct unprivileged LaunchDaemons while retaining a stable unprivileged coordinator for pause, resume, upgrade, rollback, and recovery handoffs.",
+                    "Invokes scheduled packet capture through its absolute bounded helper path, so ping, calendar, startup, and other background triggers no longer depend on the scheduler's current directory.",
+                    "Waits for the previous launchd generation to leave the system domain and automatically retries one partial bootstrap, avoiding the transient input/output failure observed during production service reinstallation.",
+                    "Retains focused Local Network Privacy diagnostics and the administrator-controlled CIDR exception only as an explicit fallback.",
+                ),
+            },
+            {
+                "title": "Verified recovery and clean removal",
+                "items": (
+                    "Creates every top-level SQLite recovery copy through SQLite's online backup API, consolidates WAL state, and requires quick-check integrity on the live source and completed snapshot before accepting the recovery point.",
+                    "Rechecks recovery-point databases after manifest verification so a hash-matched but malformed database cannot be restored during automatic rollback.",
+                    "Records only the failed installer stage and exit status when installation fails, preserving actionable diagnostics without retaining pip output or possible repository credentials.",
+                    "Recovers direct launchd workers whose PID marker is lost during validation handoff or restart by finding only exact-instance worker commands, terminating the untracked generation, and waiting for launchd to create a fresh marker-owning process.",
+                    "Removes all direct worker and coordinator property lists, the root connector job, helper executable, Unix socket, and launchd activation state during service uninstall, even if the coordinator property list is already missing.",
+                    "Retains user data, profiles, captures, databases, certificates, audit records, and service logs during service removal.",
+                ),
+            },
+            {
+                "title": "Candidate history",
+                "items": (
+                    "Supersedes the unpublished v0.16.8 through v0.16.11 production candidates and incorporates the evidence gathered from scheduled PCAP, five-switch SSH, direct launchd, descriptor handoff, root-retained relay, and rollback testing.",
+                    "Records the final descriptor-only production failure: Terminal-side raw and Paramiko probes succeeded, while the background scheduler lost all five SSH banners until the remote stream stayed in the helper-owned flow.",
+                    "Updates cryptography to 50.0.0 to remediate PYSEC-2026-3552, identified by the release-candidate dependency audit.",
+                    "Uses a minor version because the persistent macOS service topology and bounded privileged connection boundary are new operational architecture, not a patch-only correction.",
+                ),
+            },
+        ),
+    },
+    {
+        "version": "0.16.11",
+        "date": "2026-08-10",
+        "title": "Reliable protected macOS networking",
+        "summary": (
+            "Adds a bounded root TCP connector and reliable descriptor adoption for "
+            "macOS services after production proved that Local Network Privacy still "
+            "denies a LaunchDaemon configured with an unprivileged UserName."
+        ),
+        "groups": (
+            {
+                "title": "Reliable socket handoff",
+                "items": (
+                    "Adopts the connector-provided socket descriptor directly instead of duplicating it over a placeholder socket, preserving the live TCP stream and its SSH protocol banner on production macOS.",
+                    "Adds regression coverage for direct descriptor ownership, SCM_RIGHTS transfer, and bidirectional traffic over a real TCP connection while retaining the existing bounded protocol and caller checks.",
+                    "Requires only the normal code upgrade from the v0.16.10 production candidate; the already-installed root helper and LaunchDaemon are unchanged and do not need another service install.",
+                ),
+            },
+            {
+                "title": "Least-privilege local networking",
+                "items": (
+                    "Installs a small native root LaunchDaemon that performs only outbound TCP connection setup, accepts requests solely from the configured service UID over an owner-only Unix socket, and passes each connected descriptor back to the requesting process.",
+                    "Keeps Gunicorn, automation, SSH authentication, commands, credentials, output handling, transfer clients, and every other toolkit workflow under the normal service account; the connector never receives application credentials or executes toolkit actions.",
+                    "Routes shared Python TCP socket creation through the connector in managed macOS workers so SSH, the TCP scanner, certificate probes, FTP/SFTP clients, and HTTP-based integrations share the same fix while manual launches and Linux remain unchanged.",
+                ),
+            },
+            {
+                "title": "Compatible service lifecycle",
+                "items": (
+                    "Retains separate unprivileged LaunchDaemons for Gunicorn, the automation scheduler, worker supervisor, TFTP, SFTP/SCP, and FTP, plus the stable unprivileged coordinator for pause, resume, upgrade, rollback, and recovery handoffs.",
+                    "Uses owner-only pause, boot-generation, web-generation, and transfer-enable markers so ordinary starts, stops, settings changes, service restarts, and cold boots preserve their existing behavior without granting the web application permission to control system launchd jobs.",
+                    "Preserves validation-only process sets during upgrades and matched rollback, then lets the finalized direct jobs start from replaced code after the durable operation lock is removed.",
+                    "Excludes recreated PID, readiness, heartbeat, lock, and launchd activation markers from recovery snapshots so a coordinator restart cannot make an otherwise consistent backup fail while durable databases, profiles, captures, certificates, logs, and datastore files remain protected.",
+                    "Requires existing macOS service installations to run sudo ./twn service install once after upgrading so the root-owned connector executable and property list can be installed; Linux and manual startup are unchanged.",
+                ),
+            },
+            {
+                "title": "Production-validated cause",
+                "items": (
+                    "Records that v0.16.8 passed simultaneous scheduled PCAP and five-switch SSH with the CIDR exception present, but SSH returned errno 65 again after the exception was removed and the Mac restarted while PCAP still succeeded.",
+                    "Records that direct PID-1-owned Python jobs configured with UserName=admin still received errno 65 on macOS 15.1.1, and that a root LaunchDaemon parent spawning an unprivileged Python child was also insufficient because macOS attributed the operation to the child.",
+                    "Confirms with controlled production probes that the same switch TCP port succeeds when the connecting process itself is the root LaunchDaemon, which defines the connector boundary used by this release.",
+                    "Keeps the explicit Ethernet or Wi-Fi CIDR exception as an administrator-controlled fallback and retains the scheduled packet-capture path fix, nested Paramiko diagnostics, shutdown race fix, and full manual and Linux compatibility.",
+                ),
+            },
+        ),
+    },
+    {
+        "version": "0.16.10",
+        "date": "2026-08-10",
+        "title": "Protected macOS service networking candidate",
+        "summary": (
+            "Installed the bounded TCP connector and exposed a descriptor-adoption "
+            "edge case during the first production SSH automation test."
+        ),
+        "groups": (
+            {
+                "title": "Production candidate evidence",
+                "items": (
+                    "Confirmed the protected connector became ready and the toolkit TCP Port Scanner could open switch port 22 without the system-wide CIDR exception.",
+                    "Confirmed the raw descriptor returned by the connector received the switch SSH banner, while duplicating it over the Python placeholder socket produced an immediate EOF and Paramiko reported Error reading SSH protocol banner.",
+                    "Moved direct descriptor adoption and its regression coverage into v0.16.11 without changing the privileged helper or service configuration.",
+                ),
+            },
+        ),
+    },
+    {
+        "version": "0.16.9",
+        "date": "2026-08-10",
+        "title": "Direct macOS launchd service candidate",
+        "summary": (
+            "Introduced direct unprivileged worker jobs and exposed the remaining "
+            "UserName-based Local Network Privacy boundary during production testing."
+        ),
+        "groups": (
+            {
+                "title": "Production candidate evidence",
+                "items": (
+                    "Installed separate LaunchDaemons for Gunicorn, automation, supervisor, and transfer workers so launchd directly owns their foreground process lifetime.",
+                    "Confirmed that direct UID 501 jobs with PPID 1 still receive errno 65 when their property lists use UserName=admin, despite the same Python executable connecting successfully from Terminal.",
+                    "Retained the direct-job lifecycle work as the unprivileged application layer and moved the bounded root TCP connector into v0.16.10.",
+                ),
+            },
+        ),
+    },
+    {
+        "version": "0.16.8",
+        "date": "2026-08-10",
+        "title": "Reliable macOS service networking and scheduled captures",
+        "summary": (
+            "Keeps macOS service workers in launchd's network-privacy context "
+            "and makes scheduled packet captures independent of the worker's "
+            "current directory."
+        ),
+        "groups": (
+            {
+                "title": "Launchd-owned macOS networking",
+                "items": (
+                    "Runs Gunicorn, the automation scheduler, worker supervisor, and enabled transfer listeners as foreground children of the persistent macOS service launcher instead of self-daemonizing away from launchd.",
+                    "Retains the established manual and Linux daemon paths while adding foreground PID-file ownership and race-safe shutdown for the macOS LaunchDaemon path.",
+                    "Adds focused guidance when nested Paramiko failures contain Darwin errno 65, including a toolkit TCP Port Scanner probe and the distinction between Terminal and background-service privacy contexts.",
+                ),
+            },
+            {
+                "title": "Scheduler-safe packet capture",
+                "items": (
+                    "Invokes the bounded packet-capture helper by absolute path so ping, calendar, startup, and other scheduler-triggered captures work after the daemonized automation worker changes its directory to the filesystem root.",
+                    "Preserves the existing capture permission boundary, interface selection, size and duration limits, stop behavior, retained output, and simultaneous SSH collection.",
+                    "Audits the remaining automation actions and background toolkit-module launchers and adds regression checks for every launcher that intentionally depends on an explicit checkout working directory.",
+                ),
+            },
+            {
+                "title": "Compatible production hotfix",
+                "items": (
+                    "Introduces no Python dependency, database migration, stored-data change, profile-format change, server-setting change, operating-system configuration change, or command-line incompatibility.",
+                    "Preserves service ownership, automation definitions and history, packet captures, managed listeners, instance data, audit records, and matched upgrade rollback guarantees.",
+                    "Documents macOS Local Network Privacy diagnosis and keeps any system-wide CIDR exception an explicit administrator-controlled fallback rather than applying one during installation or upgrade.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.7",
         "date": "2026-08-02",

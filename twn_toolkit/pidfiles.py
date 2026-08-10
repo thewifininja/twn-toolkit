@@ -86,6 +86,24 @@ def matching_daemon_pids(
     *,
     required_text: str = "",
 ) -> list[int]:
+    return matching_worker_pids(
+        output,
+        module,
+        instance,
+        required_text=required_text,
+        daemon_only=True,
+    )
+
+
+def matching_worker_pids(
+    output: str,
+    module: str,
+    instance: Path,
+    *,
+    required_text: str = "",
+    daemon_only: bool = False,
+) -> list[int]:
+    """Match exact-instance workers, including direct launchd foreground jobs."""
     marker = f"-m {module} --instance {instance.resolve()} "
     matches = []
     for line in output.splitlines():
@@ -93,7 +111,7 @@ def matching_daemon_pids(
         if (
             len(parts) != 2
             or marker not in parts[1]
-            or " --daemon" not in parts[1]
+            or (daemon_only and " --daemon" not in parts[1])
             or (required_text and required_text not in parts[1])
         ):
             continue
@@ -114,6 +132,44 @@ def stop_matching_daemons(
     required_text: str = "",
     timeout: float = 5.0,
 ) -> list[int]:
+    return _stop_matching_workers(
+        module,
+        instance,
+        keep_pid=keep_pid,
+        required_text=required_text,
+        timeout=timeout,
+        daemon_only=True,
+    )
+
+
+def stop_matching_workers(
+    module: str,
+    instance: Path,
+    *,
+    keep_pid: int = 0,
+    required_text: str = "",
+    timeout: float = 5.0,
+) -> list[int]:
+    """Stop daemonized or direct workers scoped to one exact instance."""
+    return _stop_matching_workers(
+        module,
+        instance,
+        keep_pid=keep_pid,
+        required_text=required_text,
+        timeout=timeout,
+        daemon_only=False,
+    )
+
+
+def _stop_matching_workers(
+    module: str,
+    instance: Path,
+    *,
+    keep_pid: int,
+    required_text: str,
+    timeout: float,
+    daemon_only: bool,
+) -> list[int]:
     try:
         processes = subprocess.run(
             ["ps", "-axo", "pid=,command="],
@@ -125,8 +181,12 @@ def stop_matching_daemons(
     except (OSError, subprocess.SubprocessError):
         return []
     matched = [
-        pid for pid in matching_daemon_pids(
-            processes.stdout, module, instance, required_text=required_text,
+        pid for pid in matching_worker_pids(
+            processes.stdout,
+            module,
+            instance,
+            required_text=required_text,
+            daemon_only=daemon_only,
         )
         if pid != keep_pid
     ]

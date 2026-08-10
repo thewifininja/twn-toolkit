@@ -55,9 +55,13 @@ has independently reviewed the version and maintenance window.
 
 ## Automatic recovery boundary
 
-Before changing application files, the updater stops every managed service,
-checks free space, copies the complete stopped `instance/`, copies the matching
-managed application code, and writes an integrity manifest for the pair.
+Before changing application files, the updater stops every managed service and
+checks free space. It copies non-database `instance/` data, creates each
+top-level SQLite database through SQLite's online backup API, consolidates WAL
+state into the snapshot, and runs `PRAGMA quick_check` against both the live
+source and completed copy. It then copies the matching managed application code
+and writes an integrity manifest for the pair. A malformed source or snapshot
+aborts before application files change and restarts the untouched installation.
 
 Recovery points live under owner-only `.twn-upgrades/backups/` outside
 `instance/`, avoiding recursive backups. The five newest valid points are
@@ -66,9 +70,10 @@ and application code and must be protected like the live instance.
 
 After installation the updater verifies the reported version, managed process
 health, enabled-service state, and every SQLite database. A failure automatically
-stops the partial installation, verifies the recovery point, restores both code
-and instance data, restarts, and validates the restored version. The terminal
-result is written to the administrative audit trail.
+stops the partial installation, verifies both the recovery-point manifest and
+its SQLite databases, restores code and instance data, restarts, and validates
+the restored version. The terminal result is written to the administrative
+audit trail.
 
 The launcher enforces one automation scheduler, worker supervisor, and transfer
 daemon of each type per installation root. It also cleans exact-instance legacy
@@ -88,7 +93,7 @@ pipes without risking library-owned descriptors such as macOS kqueues.
 
 ## Installations managed at boot
 
-An installed systemd unit or macOS LaunchDaemon remains outside the release
+An installed systemd unit or macOS LaunchDaemon set remains outside the release
 bundle. Upgrade, rollback, and recovery detect the loaded OS supervisor and
 pause the managed toolkit through it. After application code is replaced, the
 installer starts a validation-only process set while keeping the original
@@ -106,10 +111,28 @@ rollback instead lets the original in-memory launcher adopt the validated
 restored process set when its version matches. Handoff details are available in
 `.twn-upgrades/service-reload.log`.
 
-No separate `./twn service restart` or second administrator prompt is required.
-The operation does not silently install, remove, or change the optional Linux
-network-capability policy. An ordinary `./install.sh` run outside an active
-upgrade continues to reload a boot-managed launcher synchronously.
+The macOS handoff also waits for the final direct web, scheduler, and supervisor
+PID markers. If a validation-to-launchd race leaves a worker running without its
+marker, the helper identifies only the exact module and instance, stops that
+untracked generation, and lets launchd recreate it. The same exact-instance
+cleanup lets an ordinary `./twn restart` recover a missing worker PID marker
+without affecting another checkout.
+
+No recurring `./twn service restart` or administrator prompt is required. The
+v0.17.0 transition is a one-time exception: an existing macOS host, including
+one that installed a descriptor-only production candidate, must run
+`sudo ./twn service install` after its code upgrade so the direct web and worker
+property lists plus the protected TCP connector can be installed beneath
+`/Library/LaunchDaemons` and `/Library/PrivilegedHelperTools`. The connector is
+the only root-started process; it accepts only the configured service UID,
+creates each remote TCP flow as root, and blindly relays the bounded opaque
+stream without parsing, logging, or persisting it. Authentication, commands,
+protocol handling, output, and durable data remain in the unprivileged toolkit.
+Later
+upgrades retain that layout. The operation does not silently install, remove,
+or change the optional Linux network-capability policy. An ordinary
+`./install.sh` run outside an active upgrade continues to reload a boot-managed
+launcher synchronously.
 
 After an upgrade on a boot-managed host, verify both layers:
 
@@ -133,6 +156,15 @@ are restored together.
 An installation upgraded before this feature cannot recreate a missing old
 instance backup. A current baseline recovery point protects future changes but
 does not enable return to an earlier state that was never captured.
+
+The v0.17.0 macOS service layout is external to a recovery point. Do not restore
+v0.16.7 or older code while its additional LaunchDaemons and connector remain
+loaded. If that downgrade is ever required, use the still-current v0.17.0 code
+to run `sudo ./twn service uninstall`, perform the matched code-and-instance
+rollback, and then run the restored version's `sudo ./twn service install`.
+This removes all v0.17.0 property lists, the helper executable, Unix socket, and
+activation markers before older code takes control. It retains the instance,
+service logs, and recovery points.
 
 ## Manual emergency recovery
 

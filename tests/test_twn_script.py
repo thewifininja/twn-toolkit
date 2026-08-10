@@ -258,10 +258,121 @@ class TwnScriptTests(unittest.TestCase):
             arm_body.index("schedule_deferred_service_reload"),
         )
         self.assertIn("withhold_deferred_service_launcher", deferred_body)
+        self.assertIn("wait_for_direct_process_set", deferred_body)
+        self.assertLess(
+            deferred_body.index('rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"'),
+            deferred_body.index("wait_for_direct_process_set"),
+        )
         self.assertIn(
             'SERVICE_RELOAD_LOG="$UPGRADE_WORKSPACE/service-reload.log"', source
         )
         self.assertIn("prepare-upgrade-service-reload)", source)
+
+    def test_macos_service_mode_keeps_workers_in_launchd_process_tree(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+
+        foreground = re.search(
+            r"launchd_foreground_children\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        service_run = re.search(
+            r"service_run\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(foreground)
+        self.assertIsNotNone(service_run)
+        self.assertIn('"$SERVICE_RUN_MODE" = "1"', foreground.group("body"))
+        self.assertIn('= "Darwin"', foreground.group("body"))
+        self.assertIn("TWN_TOOLKIT_SERVICE_RUN=1", service_run.group("body"))
+        self.assertIn("export TWN_TOOLKIT_SERVICE_RUN", service_run.group("body"))
+
+        for marker in (
+            '"$PYTHON" -m "$worker_module"',
+            '"$PYTHON" -m twn_toolkit.automation_worker',
+            '"$PYTHON" -m twn_toolkit.supervisor_worker',
+            'set -- "$@" --daemon',
+        ):
+            self.assertIn(marker, source)
+        self.assertGreaterEqual(source.count("if launchd_foreground_children; then"), 4)
+
+        transfer_start = re.search(
+            r"start_transfer_services\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(transfer_start)
+        transfer_body = transfer_start.group("body")
+        self.assertLess(
+            transfer_body.index("if launchd_foreground_children; then"),
+            transfer_body.index("start_tftp &"),
+        )
+        self.assertIn("if start_tftp; then tftp_started=1; fi", transfer_body)
+        self.assertIn(
+            "if start_ssh_transfer; then ssh_transfer_started=1; fi",
+            transfer_body,
+        )
+        self.assertIn("if start_ftp; then ftp_started=1; fi", transfer_body)
+
+    def test_macos_direct_launchd_jobs_exec_each_network_process(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+
+        launchd_run = re.search(
+            r"launchd_run\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        direct_coordinator = re.search(
+            r"service_run_direct\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(launchd_run)
+        self.assertIsNotNone(direct_coordinator)
+        body = launchd_run.group("body")
+        for role in (
+            "web)",
+            "automation)",
+            "supervisor)",
+            "tftp)",
+            "ssh-transfer)",
+            "ftp)",
+        ):
+            self.assertIn(role, body)
+        self.assertIn('exec "$@"', body)
+        self.assertGreaterEqual(body.count('exec "$PYTHON" -m'), 5)
+        self.assertNotIn("--daemon", body)
+        self.assertIn('SERVICE_LAUNCHD_MARKER="$INSTANCE/twn-launchd-direct-enabled"', source)
+        self.assertIn('[ -f "$SERVICE_LAUNCHD_MARKER" ] || return 0', body)
+        self.assertIn("TWN_TOOLKIT_LAUNCHD_DIRECT=0", source)
+        self.assertIn('launchd-run)', source)
+        self.assertIn('launchd_run "$@"', source)
+        self.assertIn("sync_launchd_transfer_markers", direct_coordinator.group("body"))
+        self.assertNotIn("start_automation", direct_coordinator.group("body"))
+        self.assertNotIn("start_supervisor", direct_coordinator.group("body"))
+        self.assertIn("wait_for_direct_process_set() {", source)
+        self.assertIn("cleanup_worker_processes() {", source)
+        self.assertIn("from twn_toolkit.pidfiles import stop_matching_workers", source)
+
+    def test_stop_snapshots_web_pid_before_stopping_sibling_workers(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+        stop = re.search(
+            r"^stop\(\) \{(?P<body>.*?)^\}",
+            source,
+            re.DOTALL | re.MULTILINE,
+        )
+        self.assertIsNotNone(stop)
+        body = stop.group("body")
+        self.assertIn('web_pid=$(cat "$PIDFILE" 2>/dev/null || true)', body)
+        self.assertLess(body.index("web_pid="), body.index("stop_supervisor"))
+        self.assertNotIn('pid=$(cat "$PIDFILE")', body)
 
 
 if __name__ == "__main__":

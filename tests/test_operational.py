@@ -22,10 +22,12 @@ from twn_toolkit.operational import OperationalSettingsStore
 from twn_toolkit.pidfiles import (
     acquire_singleton_lock,
     matching_daemon_pids,
+    matching_worker_pids,
     pid_is_running,
     process_marker_ready,
     remove_own_pid_file,
     stop_matching_daemons,
+    stop_matching_workers,
     write_pid_file,
 )
 from twn_toolkit.supervisor_worker import (
@@ -193,6 +195,15 @@ class OperationalHardeningTests(unittest.TestCase):
             ),
             [201],
         )
+        self.assertEqual(
+            matching_worker_pids(
+                output + "\n204 python -m twn_toolkit.automation_worker "
+                "--instance /srv/twn/instance --pid-file automation.pid",
+                "twn_toolkit.automation_worker",
+                instance,
+            ),
+            [201, 204],
+        )
 
     @mock.patch("twn_toolkit.pidfiles.Path.read_text")
     @mock.patch("twn_toolkit.pidfiles.os.kill")
@@ -250,6 +261,35 @@ class OperationalHardeningTests(unittest.TestCase):
         self.assertEqual(
             kill.call_args_list,
             [mock.call(302, signal.SIGTERM), mock.call(302, 0)],
+        )
+
+    @mock.patch("twn_toolkit.pidfiles.time.sleep")
+    @mock.patch("twn_toolkit.pidfiles.os.kill")
+    @mock.patch("twn_toolkit.pidfiles.subprocess.run")
+    def test_worker_cleanup_recovers_untracked_direct_launchd_process(
+        self, run: mock.Mock, kill: mock.Mock, _sleep: mock.Mock,
+    ) -> None:
+        run.return_value.stdout = "\n".join([
+            "401 python -m twn_toolkit.automation_worker --instance "
+            "/srv/twn/instance --pid-file automation.pid",
+            "402 python -m twn_toolkit.automation_worker --instance "
+            "/srv/twn-test/instance --pid-file automation.pid",
+        ])
+
+        def process_state(_pid: int, sent_signal: int) -> None:
+            if sent_signal == 0:
+                raise ProcessLookupError
+
+        kill.side_effect = process_state
+        stopped = stop_matching_workers(
+            "twn_toolkit.automation_worker",
+            Path("/srv/twn/instance"),
+        )
+
+        self.assertEqual(stopped, [401])
+        self.assertEqual(
+            kill.call_args_list,
+            [mock.call(401, signal.SIGTERM), mock.call(401, 0)],
         )
 
     def test_pid_file_cleanup_does_not_remove_another_worker_owner(self) -> None:

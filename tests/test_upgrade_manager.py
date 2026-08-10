@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import sqlite3
 import subprocess
 import tempfile
 import unittest
@@ -17,6 +18,8 @@ from twn_toolkit.upgrade_manager import (
     UpgradeError,
     UpgradeManager,
     _install_and_validate,
+    _integrity_manifest,
+    _ignore_volatile_instance_artifacts,
     _prepare_service_reload,
     _preserve_prepared_service_reload,
     _run,
@@ -98,6 +101,39 @@ class UpgradeBundleTests(unittest.TestCase):
             "1",
         )
 
+    def test_failed_install_reports_only_bounded_stage_diagnostic(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            instance = root / "instance"
+            instance.mkdir()
+            (root / ".twn-upgrades").mkdir()
+
+            def fail_install(*args, **kwargs):
+                status_path = Path(
+                    kwargs["environment"]["TWN_TOOLKIT_INSTALL_STATUS_FILE"]
+                )
+                status_path.write_text(
+                    "failed:toolkit-start:7\n",
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(args[0], 7)
+
+            with patch(
+                "twn_toolkit.upgrade_manager._run",
+                side_effect=fail_install,
+            ), self.assertRaisesRegex(
+                UpgradeError,
+                "failed:toolkit-start:7",
+            ) as failure:
+                _install_and_validate(
+                    root,
+                    instance,
+                    "0.17.0",
+                    upgrade_request_id="upgrade-1",
+                )
+
+            self.assertNotIn("pip", str(failure.exception).lower())
+
     def test_service_reload_preparation_is_request_scoped_and_optional(self) -> None:
         root = Path("/srv/twn")
         with patch(
@@ -125,12 +161,21 @@ class UpgradeBundleTests(unittest.TestCase):
             instance = Path(temporary)
             (instance / "twn-service-launcher.pid").write_text("123\n")
             (instance / "twn-service-resume").touch()
+            launchd_markers = (
+                "twn-launchd-direct-enabled",
+                "twn-tftp.launchd-enabled",
+                "twn-ssh-transfer.launchd-enabled",
+                "twn-ftp.launchd-enabled",
+            )
+            for marker in launchd_markers:
+                (instance / marker).touch()
 
             _preserve_prepared_service_reload(instance, True)
 
             self.assertTrue((instance / "twn-service-paused").is_file())
             self.assertFalse((instance / "twn-service-launcher.pid").exists())
             self.assertFalse((instance / "twn-service-resume").exists())
+            self.assertTrue(all(not (instance / marker).exists() for marker in launchd_markers))
 
     def test_build_and_validate_verified_release_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -184,6 +229,136 @@ class UpgradeBundleTests(unittest.TestCase):
 
 
 class UpgradeRecoveryTests(unittest.TestCase):
+    def test_backup_consolidates_live_wal_database_into_verified_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"; root.mkdir()
+            instance = root / "instance"; instance.mkdir()
+            backups = root / ".twn-upgrades" / "backups"; backups.mkdir(parents=True)
+            release_root(root, "0.10.2", "old")
+            database = instance / "automations.sqlite3"
+            live = sqlite3.connect(database)
+            try:
+                self.assertEqual(live.execute("PRAGMA journal_mode=WAL").fetchone()[0], "wal")
+                live.execute("PRAGMA wal_autocheckpoint=0")
+                live.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, value TEXT)")
+                live.execute("INSERT INTO events(value) VALUES ('from-wal')")
+                live.commit()
+                self.assertTrue(database.with_name(database.name + "-wal").is_file())
+
+                backup = _create_backup(root, instance, backups, {
+                    "from_version": "0.10.2",
+                    "target_version": "0.10.3",
+                    "operation": "upgrade",
+                })
+            finally:
+                live.close()
+
+            snapshot = backup / "instance" / database.name
+            restored = sqlite3.connect(snapshot)
+            try:
+                self.assertEqual(
+                    restored.execute("SELECT value FROM events").fetchone()[0],
+                    "from-wal",
+                )
+                self.assertEqual(restored.execute("PRAGMA quick_check").fetchone()[0], "ok")
+            finally:
+                restored.close()
+            self.assertFalse(snapshot.with_name(snapshot.name + "-wal").exists())
+            self.assertFalse(snapshot.with_name(snapshot.name + "-shm").exists())
+
+    def test_backup_rejects_malformed_live_database_without_leaving_recovery_point(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"; root.mkdir()
+            instance = root / "instance"; instance.mkdir()
+            backups = root / ".twn-upgrades" / "backups"; backups.mkdir(parents=True)
+            release_root(root, "0.10.2", "old")
+            (instance / "automations.sqlite3").write_bytes(b"not a SQLite database")
+
+            with self.assertRaisesRegex(UpgradeError, "live source database"):
+                _create_backup(root, instance, backups, {
+                    "from_version": "0.10.2",
+                    "target_version": "0.10.3",
+                    "operation": "upgrade",
+                })
+
+            self.assertEqual(list(backups.iterdir()), [])
+
+    def test_backup_verification_rejects_integrity_matched_database_corruption(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"; root.mkdir()
+            instance = root / "instance"; instance.mkdir()
+            backups = root / ".twn-upgrades" / "backups"; backups.mkdir(parents=True)
+            release_root(root, "0.10.2", "old")
+            database = sqlite3.connect(instance / "automations.sqlite3")
+            try:
+                database.execute("CREATE TABLE events (id INTEGER PRIMARY KEY)")
+                database.commit()
+            finally:
+                database.close()
+            backup = _create_backup(root, instance, backups, {
+                "from_version": "0.10.2",
+                "target_version": "0.10.3",
+                "operation": "upgrade",
+            })
+            (backup / "instance" / "automations.sqlite3").write_bytes(
+                b"not a SQLite database"
+            )
+            (backup / "integrity.json").write_text(
+                json.dumps(_integrity_manifest(backup)),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(UpgradeError, "recovery point database"):
+                _verify_backup(backup)
+
+    def test_backup_ignores_recreated_process_state_but_keeps_durable_data(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"; root.mkdir()
+            instance = root / "instance"; instance.mkdir()
+            backups = root / ".twn-upgrades" / "backups"; backups.mkdir(parents=True)
+            release_root(root, "0.10.2", "old")
+            (instance / "saved.txt").write_text("durable", encoding="utf-8")
+            volatile = (
+                "twn-service-launcher.pid",
+                "twn-automation.pid",
+                "twn-tftp.ready",
+                ".twn-automation.lock",
+                "automation-heartbeat.json",
+                "twn-service-paused",
+                "twn-launchd-direct-enabled",
+                "twn-tftp.launchd-enabled",
+                "packet_capture_locks",
+            )
+            for name in volatile:
+                path = instance / name
+                if name == "packet_capture_locks":
+                    path.mkdir()
+                    (path / "en0.lock").touch()
+                else:
+                    path.touch()
+            request = {
+                "from_version": "0.10.2",
+                "target_version": "0.10.3",
+                "operation": "upgrade",
+            }
+
+            backup = _create_backup(root, instance, backups, request)
+
+            self.assertEqual(
+                (backup / "instance" / "saved.txt").read_text(encoding="utf-8"),
+                "durable",
+            )
+            self.assertTrue(
+                all(not (backup / "instance" / name).exists() for name in volatile)
+            )
+            self.assertEqual(
+                _ignore_volatile_instance_artifacts(
+                    str(instance),
+                    ["saved.txt", *volatile],
+                ),
+                set(volatile),
+            )
+
     def test_backup_and_restore_keep_code_and_instance_as_a_matched_pair(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "toolkit"; root.mkdir()
@@ -268,6 +443,7 @@ class UpgradeRecoveryTests(unittest.TestCase):
             with patch("twn_toolkit.upgrade_manager.subprocess.Popen") as process:
                 request = manager.launch_backup({"id": "1", "username": "admin", "remote_ip": "127.0.0.1"})
             process.assert_called_once()
+            self.assertEqual(process.call_args.kwargs["cwd"], root.resolve())
             self.assertEqual(manager.status()["state"], "starting")
             self.assertEqual(request["operation"], "backup")
 
