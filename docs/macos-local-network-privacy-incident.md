@@ -298,6 +298,22 @@ This database failure was a recovery-point implementation defect discovered
 while testing the networking fix; it was not caused by Paramiko, packet capture,
 the root connector, or a schema migration.
 
+The successful v0.17.0 production upgrade then exposed a separate handoff race.
+The direct automation process and heartbeat were healthy, but its PID marker was
+absent, so CLI status and System Diagnostics correctly reported the managed
+process set as incomplete. The automation log's malformed-database traceback
+was historical; its modification time predated the upgrade by approximately 45
+minutes. `launchctl` showed the scheduler running with exit code 0.
+
+An ordinary restart reproduced the recovery gap: cleanup searched only for
+legacy `--daemon` workers, so it could not stop a direct launchd scheduler when
+the marker needed to identify its PID was already missing. Terminating the
+verified admin-owned scheduler let launchd recreate it with a PID marker and
+returned diagnostics to Active. v0.17.0 now scopes process matching by module
+and exact instance while including both daemonized and direct workers. Restart
+and the deferred upgrade handoff use that path, and the handoff performs a
+bounded final readiness wait with one exact-instance repair cycle.
+
 ## Release and support notes
 
 Suggested release-note text:

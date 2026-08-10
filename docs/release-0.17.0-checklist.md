@@ -43,19 +43,24 @@
   when only direct worker property lists remain.
 - [x] Retain only the bounded failed installer stage and exit status while
   continuing to discard package-manager output that may contain credentials.
+- [x] Reproduce the missing automation PID marker after a successful direct-job
+  handoff, distinguish the current scheduler from the historical database log,
+  and add exact-instance cleanup for direct and daemonized workers.
+- [x] Add a bounded post-handoff readiness wait that repairs an untracked
+  scheduler or supervisor generation before leaving the service degraded.
 - [x] Pass native build/signature checks, shell syntax, focused connector,
   service, network-tool, automation, and upgrade tests.
 - [x] Pass the complete test suite after final version and documentation edits:
-  632 passed, 7 skipped, and 214 subtests passed on the release-preparation Mac.
+  633 passed, 7 skipped, and 214 subtests passed on the release-preparation Mac.
 
 ## Production acceptance without the CIDR fallback
 
 - [x] Recover the production automation database from the newest healthy
   displaced pre-rollback copy; verify every live SQLite database and all core
   services before continuing.
-- [ ] Bootstrap the safe recovery-point implementation onto the v0.16.10
+- [x] Bootstrap the safe recovery-point implementation onto the v0.16.10
   production candidate before asking that older updater to install v0.17.0.
-- [ ] Install the verified v0.17.0 bundle without reinstalling the unchanged
+- [x] Install the verified v0.17.0 bundle without reinstalling the unchanged
   v0.16.10 connector helper or restoring the CIDR exception.
 - [ ] Complete simultaneous PCAP and five-switch SSH from a manual automation.
 - [ ] Repeat from a scheduled or condition-triggered automation.

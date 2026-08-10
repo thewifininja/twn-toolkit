@@ -111,6 +111,13 @@ rollback instead lets the original in-memory launcher adopt the validated
 restored process set when its version matches. Handoff details are available in
 `.twn-upgrades/service-reload.log`.
 
+The macOS handoff also waits for the final direct web, scheduler, and supervisor
+PID markers. If a validation-to-launchd race leaves a worker running without its
+marker, the helper identifies only the exact module and instance, stops that
+untracked generation, and lets launchd recreate it. The same exact-instance
+cleanup lets an ordinary `./twn restart` recover a missing worker PID marker
+without affecting another checkout.
+
 No recurring `./twn service restart` or administrator prompt is required. The
 v0.17.0 transition is a one-time exception: an existing macOS host must run
 `sudo ./twn service install` after its code upgrade so the direct web and worker

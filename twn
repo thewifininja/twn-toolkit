@@ -368,6 +368,10 @@ deferred_service_reload() {
     TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER=0 \
     "$ROOT/twn" stop || true
   rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"
+  if launchd_direct_layout_installed; then
+    wait_for_direct_process_set || \
+      echo "The direct launchd process set did not recreate every runtime marker after reload." >&2
+  fi
 }
 
 schedule_deferred_service_reload() {
@@ -630,7 +634,7 @@ stop_managed_worker() {
   acquire_managed_worker_lock "$worker_pidfile"
   status=0
   stop_managed_worker_unlocked "$worker_pidfile" "$worker_readyfile" "$cleanup" || status=$?
-  if [ "$status" -eq 0 ]; then cleanup_daemon_processes "$worker_module" 0 || status=$?; fi
+  if [ "$status" -eq 0 ]; then cleanup_worker_processes "$worker_module" 0 || status=$?; fi
   release_managed_worker_lock "$worker_pidfile"
   return "$status"
 }
@@ -792,20 +796,38 @@ stop_matching_daemons(sys.argv[1], Path(sys.argv[2]), keep_pid=int(sys.argv[3]))
 ' "$daemon_module" "$INSTANCE" "$daemon_keep_pid"
 }
 
+cleanup_worker_processes() {
+  worker_module=$1
+  worker_keep_pid=$2
+  worker_required_text=${3:-}
+  if [ ! -x "$PYTHON" ]; then return; fi
+  "$PYTHON" -c '
+from pathlib import Path
+import sys
+from twn_toolkit.pidfiles import stop_matching_workers
+stop_matching_workers(
+    sys.argv[1],
+    Path(sys.argv[2]),
+    keep_pid=int(sys.argv[3]),
+    required_text=sys.argv[4],
+)
+' "$worker_module" "$INSTANCE" "$worker_keep_pid" "$worker_required_text"
+}
+
 cleanup_managed_daemon() {
   daemon_module=$1
   daemon_pidfile=$2
   daemon_keep_pid=0
   if managed_worker_is_running "$daemon_pidfile"; then daemon_keep_pid=$(cat "$daemon_pidfile"); fi
-  cleanup_daemon_processes "$daemon_module" "$daemon_keep_pid"
+  cleanup_worker_processes "$daemon_module" "$daemon_keep_pid"
 }
 
 start_automation() {
   if automation_is_running; then
-    cleanup_daemon_processes "twn_toolkit.automation_worker" "$(cat "$AUTOMATION_PIDFILE")"
+    cleanup_worker_processes "twn_toolkit.automation_worker" "$(cat "$AUTOMATION_PIDFILE")"
     return
   fi
-  cleanup_daemon_processes "twn_toolkit.automation_worker" 0
+  cleanup_worker_processes "twn_toolkit.automation_worker" 0
   rm -f "$AUTOMATION_PIDFILE"
   cd "$ROOT"
   if launchd_managed_jobs_available; then
@@ -838,7 +860,7 @@ start_automation() {
 stop_automation() {
   if ! automation_is_running; then
     rm -f "$AUTOMATION_PIDFILE"
-    cleanup_daemon_processes "twn_toolkit.automation_worker" 0
+    cleanup_worker_processes "twn_toolkit.automation_worker" 0
     return
   fi
   automation_pid=$(cat "$AUTOMATION_PIDFILE")
@@ -852,7 +874,7 @@ stop_automation() {
     kill -KILL "$automation_pid" 2>/dev/null || true
   fi
   rm -f "$AUTOMATION_PIDFILE"
-  cleanup_daemon_processes "twn_toolkit.automation_worker" 0
+  cleanup_worker_processes "twn_toolkit.automation_worker" 0
 }
 
 stop_packet_captures() {
@@ -930,8 +952,13 @@ cleanup_duplicate_supervisors() {
   "$PYTHON" -c '
 from pathlib import Path
 import sys
-from twn_toolkit.supervisor_worker import stop_matching_supervisors
-stop_matching_supervisors(Path(sys.argv[1]), Path(sys.argv[2]), keep_pid=int(sys.argv[3]))
+from twn_toolkit.pidfiles import stop_matching_workers
+stop_matching_workers(
+    "twn_toolkit.supervisor_worker",
+    Path(sys.argv[2]),
+    keep_pid=int(sys.argv[3]),
+    required_text=f"--root {Path(sys.argv[1]).resolve()}",
+)
 ' "$ROOT" "$INSTANCE" "$keep_pid"
 }
 
@@ -1701,6 +1728,33 @@ launchd_run() {
 direct_process_set_ready() {
   is_running && automation_is_running && supervisor_is_running \
     && [ -f "$SCHEME_FILE" ] && [ -f "$HOST_FILE" ] && [ -f "$PORT_FILE" ]
+}
+
+wait_for_direct_process_set() {
+  direct_wait_attempts=0
+  while [ "$direct_wait_attempts" -lt 50 ]; do
+    if direct_process_set_ready; then return; fi
+    direct_wait_attempts=$((direct_wait_attempts + 1))
+    sleep 0.1
+  done
+
+  # A final validation worker can exit while launchd is recreating its direct
+  # replacement. If its PID marker is lost in that handoff, stop the exact
+  # untracked process so launchd gives it a fresh marker-owning generation.
+  if ! automation_is_running; then
+    cleanup_worker_processes "twn_toolkit.automation_worker" 0
+  fi
+  if ! supervisor_is_running; then
+    cleanup_duplicate_supervisors 0
+  fi
+
+  direct_wait_attempts=0
+  while [ "$direct_wait_attempts" -lt 100 ]; do
+    if direct_process_set_ready; then return; fi
+    direct_wait_attempts=$((direct_wait_attempts + 1))
+    sleep 0.1
+  done
+  return 1
 }
 
 mark_direct_web_generation() {

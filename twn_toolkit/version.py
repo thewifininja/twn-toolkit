@@ -34,6 +34,7 @@ RELEASE_NOTES = (
                     "Creates every top-level SQLite recovery copy through SQLite's online backup API, consolidates WAL state, and requires quick-check integrity on the live source and completed snapshot before accepting the recovery point.",
                     "Rechecks recovery-point databases after manifest verification so a hash-matched but malformed database cannot be restored during automatic rollback.",
                     "Records only the failed installer stage and exit status when installation fails, preserving actionable diagnostics without retaining pip output or possible repository credentials.",
+                    "Recovers direct launchd workers whose PID marker is lost during validation handoff or restart by finding only exact-instance worker commands, terminating the untracked generation, and waiting for launchd to create a fresh marker-owning process.",
                     "Removes all direct worker and coordinator property lists, the root connector job, helper executable, Unix socket, and launchd activation state during service uninstall, even if the coordinator property list is already missing.",
                     "Retains user data, profiles, captures, databases, certificates, audit records, and service logs during service removal.",
                 ),

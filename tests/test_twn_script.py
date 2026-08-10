@@ -258,6 +258,11 @@ class TwnScriptTests(unittest.TestCase):
             arm_body.index("schedule_deferred_service_reload"),
         )
         self.assertIn("withhold_deferred_service_launcher", deferred_body)
+        self.assertIn("wait_for_direct_process_set", deferred_body)
+        self.assertLess(
+            deferred_body.index('rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"'),
+            deferred_body.index("wait_for_direct_process_set"),
+        )
         self.assertIn(
             'SERVICE_RELOAD_LOG="$UPGRADE_WORKSPACE/service-reload.log"', source
         )
@@ -350,6 +355,9 @@ class TwnScriptTests(unittest.TestCase):
         self.assertIn("sync_launchd_transfer_markers", direct_coordinator.group("body"))
         self.assertNotIn("start_automation", direct_coordinator.group("body"))
         self.assertNotIn("start_supervisor", direct_coordinator.group("body"))
+        self.assertIn("wait_for_direct_process_set() {", source)
+        self.assertIn("cleanup_worker_processes() {", source)
+        self.assertIn("from twn_toolkit.pidfiles import stop_matching_workers", source)
 
     def test_stop_snapshots_web_pid_before_stopping_sibling_workers(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "twn").read_text(
