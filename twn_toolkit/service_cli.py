@@ -353,6 +353,18 @@ def _remove_launchd_activation_markers(instance: Path) -> None:
         (instance / marker).unlink(missing_ok=True)
 
 
+def _remove_launchd_runtime_artifacts(instance: Path) -> None:
+    """Remove state owned by the LaunchDaemon layout while retaining user data and logs."""
+    _remove_launchd_activation_markers(instance)
+    for name in (
+        "twn-service-paused",
+        "twn-service-resume",
+        "twn-service-web-generation",
+        "twn-service-web-generation-marked",
+    ):
+        (instance / name).unlink(missing_ok=True)
+
+
 def _remove_macos_network_broker() -> None:
     MACOS_NETWORK_BROKER_HELPER_PATH.unlink(missing_ok=True)
     Path(MACOS_NETWORK_BROKER_SOCKET).unlink(missing_ok=True)
@@ -935,18 +947,20 @@ def uninstall_service(*, system: str) -> None:
         _run(("systemctl", "daemon-reload"))
         print(f"Removed {SYSTEMD_UNIT_NAME}. Toolkit data was retained.")
         return
-    service_root = _service_definition_details(
-        LAUNCHD_PLIST_PATH,
-        system="Darwin",
-    )[2]
+    service_roots = {
+        Path(service_root)
+        for path in _launchd_paths()
+        if path != LAUNCHD_NETWORK_BROKER_PLIST_PATH
+        for service_root in (_service_definition_details(path, system="Darwin")[2],)
+        if service_root and service_root != "/"
+    }
     for label in reversed(_launchd_labels()):
         _run_quiet(("launchctl", "bootout", f"system/{label}"))
     for path in _launchd_paths():
         path.unlink(missing_ok=True)
     _remove_macos_network_broker()
-    if service_root:
-        runtime = Path(service_root) / "instance"
-        _remove_launchd_activation_markers(runtime)
+    for service_root in service_roots:
+        _remove_launchd_runtime_artifacts(service_root / "instance")
     print("Removed the toolkit LaunchDaemons. Toolkit data and service logs were retained.")
 
 

@@ -1,6 +1,6 @@
 # macOS local-network privacy incident and service follow-up
 
-Status: root-only connection boundary and direct descriptor adoption proven in production; v0.16.11 candidate implemented locally
+Status: root-only connection boundary and direct descriptor adoption proven in production; consolidated for v0.17.0 GA acceptance
 Priority: high before the next macOS service-lifecycle change
 Observed: 2026-08-07 through 2026-08-10 on production v0.16.6-v0.16.9 candidates; final controlled probes on macOS 15.1.1 (24B91)
 
@@ -263,6 +263,40 @@ Unit tests should also verify error unwrapping, CIDR merging/removal, platform
 gating, broker protocol bounds and errno propagation, direct-job property lists
 and marker conditions, foreground PID files, aggregate launchd health, and
 pause/resume behavior across boot generations.
+
+## Upgrade rollback incident and recovery hardening
+
+The first production attempt to install the descriptor-adoption candidate
+failed during its installer validation. Automatic rollback then restored a raw
+filesystem copy of `automations.sqlite3` whose main file and WAL state had not
+been captured atomically. The restored database reported a one-page freelist
+mismatch, and the automation worker failed with `database disk image is
+malformed`. The updater's hash manifest could prove that the malformed bytes
+matched the backup, but not that those bytes formed a valid database.
+
+Both automatically preserved, displaced pre-rollback instances contained
+healthy automation databases. Production was stopped, the newest healthy copy
+was consolidated through `sqlite3.Connection.backup()`, and every live
+top-level database passed `PRAGMA quick_check` before the service restarted.
+The malformed live file remains in an owner-only manual recovery directory for
+forensics and can be restored if later analysis requires it.
+
+The v0.17.0 recovery path now:
+
+1. omits top-level SQLite main, WAL, and shared-memory files from `copytree`;
+2. verifies each live source through SQLite;
+3. creates a consistent online backup and switches the snapshot to a
+   consolidated delete journal;
+4. verifies every snapshot before writing the integrity manifest; and
+5. repeats SQLite verification after manifest validation before any restore.
+
+Regression tests keep committed rows that exist only in a live WAL and prove
+the recovery point contains them without depending on copied sidecars. They
+also reject malformed live sources and hash-matched malformed recovery files.
+
+This database failure was a recovery-point implementation defect discovered
+while testing the networking fix; it was not caused by Paramiko, packet capture,
+the root connector, or a schema migration.
 
 ## Release and support notes
 

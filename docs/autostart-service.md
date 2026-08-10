@@ -214,9 +214,12 @@ service-manager start or restart removes it immediately; a coordinator started
 after a later boot recognizes and clears a stale generation, so an installed
 autostart service always returns after the host starts.
 
-Uninstallation removes only the systemd unit or launchd property list. It does
-not delete `instance/`, logs, profiles, certificates, captures, or Datastore
-files.
+Uninstallation removes the systemd unit or, on macOS, the coordinator, direct
+worker, and connector property lists, the connector helper executable and Unix
+socket, and launchd activation markers. It does not delete `instance/`, logs,
+profiles, certificates, captures, databases, recovery points, or Datastore
+files. The macOS cleanup discovers the checkout from any surviving worker
+property list, so a missing coordinator does not strand the newer jobs.
 
 ## Managed listeners and crash recovery
 
@@ -273,6 +276,12 @@ The second command should report that autostart is not installed. The checkout,
 virtual environment, `instance/`, Datastore, certificates, captures, and service
 log files remain recoverable and can still be started manually with
 `./twn start`.
+
+To intentionally return a v0.17.0 macOS service installation to v0.16.7 or
+older, uninstall the service while v0.17.0 code is still present, restore the
+matched older code-and-instance recovery point, and install that version's
+service definition again. Do not replace the code first: older service code
+does not know the v0.17.0 worker and connector paths.
 
 ## Troubleshooting
 

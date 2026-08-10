@@ -1,6 +1,52 @@
-APP_VERSION = "0.16.11"
+APP_VERSION = "0.17.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.17.0",
+        "date": "2026-08-10",
+        "title": "Protected macOS networking and safe recovery",
+        "summary": (
+            "Restores CIDR-free SSH and other local TCP workflows for macOS "
+            "services through a bounded connector, while making upgrades and "
+            "service removal safe across the new launchd layout."
+        ),
+        "groups": (
+            {
+                "title": "Least-privilege macOS networking",
+                "items": (
+                    "Keeps Gunicorn, automation, SSH authentication, commands, credentials, transfers, and toolkit data under the configured non-root service account while a small native root LaunchDaemon performs only outbound TCP connection setup.",
+                    "Restricts the connector to the configured service UID over an owner-only Unix socket and passes only connected descriptors; it never receives application credentials, payloads, or commands.",
+                    "Adopts the returned descriptor directly so Paramiko receives the live SSH protocol banner, fixing the EOF exposed by the v0.16.10 production candidate.",
+                    "Preserves existing manual startup and Linux behavior; neither path installs or uses the macOS connector.",
+                ),
+            },
+            {
+                "title": "Scheduler and service reliability",
+                "items": (
+                    "Runs macOS web, automation, supervisor, and transfer workers as direct unprivileged LaunchDaemons while retaining a stable unprivileged coordinator for pause, resume, upgrade, rollback, and recovery handoffs.",
+                    "Invokes scheduled packet capture through its absolute bounded helper path, so ping, calendar, startup, and other background triggers no longer depend on the scheduler's current directory.",
+                    "Retains focused Local Network Privacy diagnostics and the administrator-controlled CIDR exception only as an explicit fallback.",
+                ),
+            },
+            {
+                "title": "Verified recovery and clean removal",
+                "items": (
+                    "Creates every top-level SQLite recovery copy through SQLite's online backup API, consolidates WAL state, and requires quick-check integrity on the live source and completed snapshot before accepting the recovery point.",
+                    "Rechecks recovery-point databases after manifest verification so a hash-matched but malformed database cannot be restored during automatic rollback.",
+                    "Records only the failed installer stage and exit status when installation fails, preserving actionable diagnostics without retaining pip output or possible repository credentials.",
+                    "Removes all direct worker and coordinator property lists, the root connector job, helper executable, Unix socket, and launchd activation state during service uninstall, even if the coordinator property list is already missing.",
+                    "Retains user data, profiles, captures, databases, certificates, audit records, and service logs during service removal.",
+                ),
+            },
+            {
+                "title": "Candidate history",
+                "items": (
+                    "Supersedes the unpublished v0.16.8 through v0.16.11 production candidates and incorporates the evidence gathered from scheduled PCAP, five-switch SSH, direct launchd, connector, descriptor-handoff, and rollback testing.",
+                    "Uses a minor version because the persistent macOS service topology and bounded privileged connection boundary are new operational architecture, not a patch-only correction.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.11",
         "date": "2026-08-10",

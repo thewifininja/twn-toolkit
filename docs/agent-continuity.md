@@ -215,7 +215,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.16.11: macOS combines direct unprivileged LaunchDaemons
+- Current milestone is 0.17.0: macOS combines direct unprivileged LaunchDaemons
   for Gunicorn, automation, supervisor, and transfer workers with a native root
   TCP connector restricted to the configured service UID. Production proved
   that v0.16.8 foreground children, direct PID-1 jobs using `UserName=admin`,
@@ -239,8 +239,13 @@ accepted replay frames.
   timestamp history at observation start. Automation Ping shares Multi-Ping's
   capability-aware timeout validation, including sub-second values through a
   verified `fping` engine. Packet capture retains the host's existing
-  permission boundary and never installs software or invokes sudo. Certificate
-  Automation now includes a tested, guided Let's Encrypt DNS-01 workflow that
+  permission boundary and never installs software or invokes sudo. Recovery
+  points snapshot top-level SQLite databases through SQLite's online backup API,
+  consolidate WAL state, and reject malformed live or restored copies before
+  changing code. macOS service uninstall removes the complete direct-job and
+  connector layout before any intentional downgrade to pre-0.17 code.
+  Certificate Automation now includes a tested, guided Let's Encrypt DNS-01
+  workflow that
   distinguishes configured-resolver caching from authoritative propagation,
   retains protected Certbot material, and no longer carries a Beta label.
   Microsoft AD CS remains explicitly Beta. CLI operations now include guarded

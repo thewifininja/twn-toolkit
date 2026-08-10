@@ -1,5 +1,9 @@
 # v0.16.11 release checklist
 
+Historical production candidate only. Do not tag or publish this version. Its
+network descriptor fix is retained in v0.17.0, while production upgrade testing
+exposed a raw SQLite recovery-copy defect that v0.17.0 corrects before GA.
+
 ## Direct unprivileged macOS LaunchDaemons
 
 - [x] Render a stable coordinator plus direct web, automation, supervisor,
@@ -44,10 +48,9 @@
   return-after-reboot behavior.
 - [x] The coordinator retains upgrade, rollback, recovery, validation-only
   process sets, operation-lock finalization, and old-launcher compatibility.
-- [x] Recovery snapshots omit only recreated process-state artifacts so a live
-  coordinator PID transition cannot race `copytree`; persistent databases and
-  WAL files, profiles, captures, certificates, logs, and datastore data remain
-  covered by the integrity manifest.
+- [ ] Historical candidate copied persistent SQLite main and WAL files through
+  `copytree`. Production rollback proved that was not an atomic database
+  snapshot; v0.17.0 replaces it with verified SQLite online backups.
 - [x] Hosts predating the connector require one explicit
   `sudo ./twn service install` after installing v0.16.10 or newer; a host that
   already installed the v0.16.10 helper needs no repeat install for v0.16.11.

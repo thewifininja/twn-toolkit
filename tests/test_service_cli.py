@@ -592,6 +592,69 @@ class ServiceCliTests(unittest.TestCase):
             ],
         )
 
+    def test_macos_uninstall_removes_direct_jobs_connector_and_runtime_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"
+            instance = root / "instance"
+            instance.mkdir(parents=True)
+            plist_path = Path(temporary) / f"{LAUNCHD_LABEL}.plist"
+            broker_plist_path = Path(temporary) / f"{LAUNCHD_NETWORK_BROKER_LABEL}.plist"
+            broker_helper_path = Path(temporary) / "network-broker"
+            broker_socket_path = Path(temporary) / "network-broker.sock"
+            worker_paths = [
+                plist_path.with_name(f"{LAUNCHD_LABEL}.{role}.plist")
+                for role in LAUNCHD_JOB_ROLES
+            ]
+            worker_payload = plistlib.dumps({
+                "Label": f"{LAUNCHD_LABEL}.web",
+                "WorkingDirectory": str(root),
+                "UserName": self.user.name,
+                "GroupName": self.user.group,
+            })
+            # Leave the coordinator absent to prove a surviving worker still identifies
+            # the checkout whose activation state must be cleaned.
+            for path in worker_paths:
+                path.write_bytes(worker_payload)
+            broker_plist_path.touch()
+            broker_helper_path.touch()
+            broker_socket_path.touch()
+            runtime_names = (
+                "twn-launchd-direct-enabled",
+                *LAUNCHD_TRANSFER_MARKERS.values(),
+                "twn-service-paused",
+                "twn-service-resume",
+                "twn-service-web-generation",
+                "twn-service-web-generation-marked",
+            )
+            for name in runtime_names:
+                (instance / name).touch()
+
+            with (
+                mock.patch("twn_toolkit.service_cli._require_root"),
+                mock.patch("twn_toolkit.service_cli.LAUNCHD_PLIST_PATH", plist_path),
+                mock.patch(
+                    "twn_toolkit.service_cli.LAUNCHD_NETWORK_BROKER_PLIST_PATH",
+                    broker_plist_path,
+                ),
+                mock.patch(
+                    "twn_toolkit.service_cli.MACOS_NETWORK_BROKER_HELPER_PATH",
+                    broker_helper_path,
+                ),
+                mock.patch(
+                    "twn_toolkit.service_cli.MACOS_NETWORK_BROKER_SOCKET",
+                    str(broker_socket_path),
+                ),
+                mock.patch("twn_toolkit.service_cli._run_quiet") as run_quiet,
+            ):
+                uninstall_service(system="Darwin")
+
+            self.assertTrue(all(not path.exists() for path in worker_paths))
+            self.assertFalse(broker_plist_path.exists())
+            self.assertFalse(broker_helper_path.exists())
+            self.assertFalse(broker_socket_path.exists())
+            self.assertTrue(all(not (instance / name).exists() for name in runtime_names))
+            self.assertEqual(run_quiet.call_count, 2 + len(LAUNCHD_JOB_ROLES))
+
     def test_service_identifiers_remain_stable(self) -> None:
         self.assertEqual(SYSTEMD_UNIT_NAME, "twn-toolkit.service")
         self.assertEqual(LAUNCHD_LABEL, "com.thewifininja.toolkit")
