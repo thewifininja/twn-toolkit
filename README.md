@@ -402,10 +402,11 @@ and preferred FQDN without requiring that DNS already exist.
 systemd-based Linux distributions, or system LaunchDaemons on macOS. The
 toolkit, workers, credentials, and stored data start at boot as the installing
 user. On macOS, one small native root connector performs outbound TCP
-connection setup for Local Network Privacy, drops to the service UID, and
-blindly relays each stream over a UID-restricted Unix socket. Authentication,
-commands, protocol handling, and stored data remain in the unprivileged
-workers. On a dedicated Linux
+connection setup and blindly relays each stream over a UID-restricted Unix
+socket so Local Network Privacy continues to attribute the complete flow to the
+exempt process. Authentication, commands, protocol handling, and stored data
+remain in the unprivileged workers; the fixed native relay does not parse, log,
+or persist traffic. On a dedicated Linux
 diagnostic host, `./twn service install --network-capabilities` adds only the
 network capabilities needed for raw capture/replay and privileged ports. See
 [Autostart service](docs/autostart-service.md) for lifecycle, logging, security,

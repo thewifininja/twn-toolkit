@@ -113,8 +113,11 @@ direct PID-1 parentage and an intervening root parent still returned errno 65.
 
 The native broker is the only root process in the design. It accepts requests
 only from the configured service UID over a mode-0600 Unix socket, performs the
-TCP `connect()`, and passes the connected file descriptor back. It never sees
-SSH passwords, private keys, commands, HTTP request data, or captured output.
+TCP `connect()`, and copies opaque bytes through a fixed bounded relay loop so
+macOS keeps the complete network flow in the exempt context. It does not parse,
+log, persist, authenticate, execute commands, or receive toolkit credentials as
+configuration. SSH and TLS application data is encrypted on the relayed stream;
+plaintext protocols may exist transiently in its bounded memory buffers.
 Gunicorn, automation, credentials, tools, and storage remain unprivileged. The
 coordinator retains only lifecycle, pause/resume, startup-generation, upgrade,
 rollback, and recovery handoffs. Manual launches and Linux service mode continue
@@ -148,9 +151,10 @@ writing a service definition. For a relocated existing checkout, rebuild its
 
 macOS has no direct equivalent to systemd's scoped ambient capabilities. The
 application service remains unprivileged; the root connector is limited to TCP
-connection setup, then drops to the configured service UID before blindly
-relaying the connected stream. It does not parse, log, or persist application
-traffic. Packet capture, packet replay, and DHCP
+connection setup plus a fixed opaque relay with bounded clients, buffers,
+timeouts, and idle half-close cleanup. It clears supplemental groups and does
+not parse, log, persist, authenticate, or execute application traffic. Packet
+capture, packet replay, and DHCP
 Discover require an administrator-managed BPF access policy when normal-user
 BPF access is not already available. The macOS DHCP backend constructs one
 Ethernet/IPv4/UDP Discover through BPF, listens for matching Offers, and never

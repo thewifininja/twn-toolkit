@@ -234,7 +234,7 @@ def render_launchd_plist(root: Path, user: ServiceUser) -> bytes:
 
 
 def render_launchd_network_broker_plist(root: Path, user: ServiceUser) -> bytes:
-    """Render the root-only TCP connector used by unprivileged macOS workers."""
+    """Render the root TCP connector/relay used by unprivileged macOS workers."""
     instance = root / "instance"
     payload = {
         "Label": LAUNCHD_NETWORK_BROKER_LABEL,
@@ -801,6 +801,50 @@ def _wait_for_launchd_running(
     return False, state, last_exit
 
 
+def _wait_for_launchd_unloaded(
+    timeout: float = 10.0,
+) -> tuple[bool, tuple[str, ...]]:
+    """Wait until every toolkit job has left launchd's system domain."""
+    deadline = time.monotonic() + timeout
+    remaining = _launchd_labels()
+    while True:
+        remaining = tuple(
+            label
+            for label in remaining
+            if _launchd_details(label)[0].returncode == 0
+        )
+        if not remaining:
+            return True, ()
+        if time.monotonic() >= deadline:
+            return False, remaining
+        time.sleep(0.25)
+
+
+def _require_launchd_jobs_unloaded() -> None:
+    unloaded, remaining = _wait_for_launchd_unloaded()
+    if unloaded:
+        return
+    raise ServiceError(
+        "The existing macOS LaunchDaemons did not finish unloading: "
+        + ", ".join(remaining)
+        + ". Retry the service installation after they stop."
+    )
+
+
+def _bootstrap_launchd_paths(paths: Sequence[Path]) -> None:
+    """Bootstrap a complete job set, retrying once after a partial launchd race."""
+    try:
+        for path in paths:
+            _run(("launchctl", "bootstrap", "system", str(path)))
+        return
+    except subprocess.CalledProcessError:
+        for label in reversed(_launchd_labels()):
+            _run_quiet(("launchctl", "bootout", f"system/{label}"))
+        _require_launchd_jobs_unloaded()
+    for path in paths:
+        _run(("launchctl", "bootstrap", "system", str(path)))
+
+
 def install_service(
     root: Path,
     user: ServiceUser,
@@ -865,6 +909,7 @@ def install_service(
     _remove_launchd_activation_markers(instance)
     resume_path.unlink(missing_ok=True)
     try:
+        _require_launchd_jobs_unloaded()
         _write_system_file(
             MACOS_NETWORK_BROKER_HELPER_PATH,
             MACOS_NETWORK_BROKER_SOURCE.read_bytes(),
@@ -874,8 +919,7 @@ def install_service(
         for path, content in rendered.items():
             _write_system_file(path, content)
             os.chown(path, 0, 0)
-        for path in rendered:
-            _run(("launchctl", "bootstrap", "system", str(path)))
+        _bootstrap_launchd_paths(tuple(rendered))
         for label in _launchd_labels():
             _run(("launchctl", "enable", f"system/{label}"))
         resume_path.touch(mode=0o600, exist_ok=True)

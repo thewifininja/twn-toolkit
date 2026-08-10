@@ -39,8 +39,10 @@ process succeeded. The v0.16.10 follow-up therefore combines direct
 unprivileged workers with a native, UID-restricted root TCP connector that
 initially passed connected descriptors back. Final v0.17.0 production testing
 proved that background data I/O still failed in the receiving process, so the
-connector now drops to the service UID after `connect()` and blindly relays the
-stream without parsing, logging, persisting, or executing toolkit actions.
+connector now retains the complete remote flow in its root network context and
+blindly relays the stream without parsing, logging, persisting, authenticating,
+or executing toolkit actions. Production proved that dropping UID before a
+switch banner arrived made success timing-dependent.
 Retain cold boot, service reinstall, upgrade handoff, rollback, Python
 replacement, CIDR removal, and concurrent PCAP/SSH in the macOS regression
 matrix for future service-lifecycle changes.

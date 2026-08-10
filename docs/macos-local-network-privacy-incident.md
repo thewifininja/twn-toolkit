@@ -1,6 +1,6 @@
 # macOS local-network privacy incident and service follow-up
 
-Status: root-only connection boundary and direct descriptor adoption proven in production; consolidated for v0.17.0 GA acceptance
+Status: root-retained bounded network flow under final production acceptance; consolidated for v0.17.0 GA
 Priority: high before the next macOS service-lifecycle change
 Observed: 2026-08-07 through 2026-08-10 on production v0.16.6-v0.16.9 candidates; final controlled probes on macOS 15.1.1 (24B91)
 
@@ -163,18 +163,17 @@ Relevant code:
 ### 2. Use a bounded root TCP connector
 
 Do not run Gunicorn, automation, Paramiko, or the complete toolkit as root.
-Install one native root LaunchDaemon whose root-only authority is outbound TCP
-connection setup:
+Install one native root LaunchDaemon whose authority is limited to outbound TCP
+connection setup and a fixed opaque relay:
 
 1. Listen on a mode-0600 Unix socket owned by the configured service account.
 2. Verify every client with the kernel-provided peer UID.
 3. Accept only bounded TCP host, port, address-family, and timeout fields.
-4. Perform `connect()` as root, create a local socket pair, and drop supplemental
-   groups plus root UID/GID before returning the caller's local endpoint with
-   `SCM_RIGHTS`.
-5. Blindly relay bytes between the retained local endpoint and remote TCP
-   socket under the configured service UID. Never parse, log, or persist relay
-   traffic.
+4. Perform `connect()` as root, create a local socket pair, clear supplemental
+   groups, and return the caller's local endpoint with `SCM_RIGHTS`.
+5. Keep the remote socket in the bounded root child for the complete flow and
+   blindly copy bytes between it and the local endpoint. Never parse, log,
+   persist, authenticate, or execute relay traffic.
 6. Keep SSH credentials, host-key policy, authentication, commands, protocol
    parsing, transfer handling, and output storage in the normal caller.
 
@@ -222,12 +221,23 @@ using `UserName=admin` remain in the problematic role-account context. See
 
 v0.17.0 therefore keeps remote socket creation in the root LaunchDaemon but no
 longer hands that remote descriptor to Python. The helper creates a local socket
-pair, drops root and supplemental groups to the configured service UID, returns
-one local endpoint, and relays opaque bytes through the other endpoint for a
-bounded lifetime. The helper necessarily copies the raw stream, but it does not
-interpret, log, or persist it; application authentication, commands, protocol
-state, and stored output remain in the unprivileged toolkit. For SSH and TLS,
-post-handshake credentials and commands remain encrypted on that stream.
+pair, returns one local endpoint, and relays opaque bytes through the other
+endpoint for a bounded lifetime. An intermediate candidate dropped UID before
+starting the copy loop; a manual run happened to pass 5 of 5 switches, but two
+calendar runs succeeded on only 4 of 5 and then 2 of 5 because banner arrival
+remained timing-dependent. Every failed banner left one matching relay child
+and TCP session alive because the child inherited a termination handler and
+waited for the silent remote half indefinitely.
+
+The final helper retains root only in the small per-connection copy loop, clears
+supplemental groups, restores default termination signals, and closes an idle
+half-closed connection after five seconds. It necessarily copies the raw stream
+through bounded memory, but does not interpret, log, persist, authenticate, or
+execute it; application authentication, commands, protocol state, and stored
+output remain in the unprivileged toolkit. For SSH and TLS, post-handshake
+credentials and commands remain encrypted on that stream. Plaintext protocols
+may exist transiently in the fixed relay buffers and receive no additional
+parsing or storage from the helper.
 
 This boundary also covers other TCP-based actions that use the shared Python
 socket layer, including the TCP scanner, certificate probes, FTP/SFTP clients,
@@ -282,8 +292,9 @@ Maintain a physical or virtual macOS 15.5+ service test that covers:
 
 - a LaunchDaemon running as a non-root service user;
 - the root connector property list without `UserName`, root-owned helper,
-  mode-0600 UID-owned Unix socket, peer-UID rejection, root-only `connect()`,
-  privilege drop, and opaque bidirectional relay;
+  mode-0600 UID-owned Unix socket, peer-UID rejection, root-retained network
+  flow, cleared supplemental groups, opaque bidirectional relay, idle
+  half-close cleanup, and default child termination behavior;
 - a cold boot with no prior interactive Terminal launch;
 - toolkit restart, upgrade handoff, rollback, and recovery;
 - replacement of the Homebrew Python runtime;
@@ -353,8 +364,8 @@ bounded final readiness wait with one exact-instance repair cycle.
 Suggested release-note text:
 
 > Keeps macOS web and worker processes unprivileged while a bounded native root
-> LaunchDaemon performs TCP connection setup, drops to the service UID, and
-> blindly relays each stream over a UID-restricted Unix socket. Production
+> LaunchDaemon performs TCP connection setup and blindly relays each stream
+> over a UID-restricted Unix socket. Production
 > proved that direct UID 501
 > launchd jobs and unprivileged children of a root parent still received Local
 > Network Privacy errno 65; only the connecting root process was exempt.
@@ -377,7 +388,7 @@ protected TCP connector before testing without a CIDR exception. A host that
 already completed that installation for v0.16.10 does not repeat it when
 upgrading to v0.16.11. It must run the service install again for the final
 v0.17.0 build because that release replaces the descriptor-only helper with the
-privilege-dropped relay.
+root-retained bounded relay.
 
 Do not recommend running the complete toolkit as root to bypass this policy.
 

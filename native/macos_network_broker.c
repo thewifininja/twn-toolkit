@@ -26,6 +26,9 @@
 #define SETUP_LIFETIME_SECONDS 35
 #define RELAY_LIFETIME_SECONDS 3700
 #define RELAY_BUFFER_SIZE 65536
+#ifndef RELAY_HALF_CLOSE_IDLE_MS
+#define RELAY_HALF_CLOSE_IDLE_MS 5000
+#endif
 
 static volatile sig_atomic_t stopping = 0;
 static int listener_fd = -1;
@@ -198,9 +201,14 @@ static int relay_streams(int local_fd, int remote_fd) {
         if (relay_buffer_size(&to_remote) > 0) waiters[1].events |= POLLOUT;
 
         int ready;
+        int poll_timeout =
+            (to_remote.source_eof || to_local.source_eof)
+                ? RELAY_HALF_CLOSE_IDLE_MS
+                : -1;
         do {
-            ready = poll(waiters, 2, -1);
+            ready = poll(waiters, 2, poll_timeout);
         } while (ready < 0 && errno == EINTR);
+        if (ready == 0) return 0;
         if (ready < 0) return errno;
         if ((waiters[0].revents | waiters[1].revents) & POLLNVAL) return EBADF;
         if ((waiters[0].revents | waiters[1].revents) & POLLERR) return EIO;
@@ -221,13 +229,12 @@ static int relay_streams(int local_fd, int remote_fd) {
     }
 }
 
-static int drop_relay_privileges(void) {
+static int restrict_root_relay_groups(void) {
     gid_t groups[1] = {allowed_gid};
-    if (setgroups(1, groups) != 0 || setgid(allowed_gid) != 0 ||
-        setuid(allowed_uid) != 0) {
+    if (setgroups(1, groups) != 0 || setgid(allowed_gid) != 0) {
         return errno;
     }
-    if (geteuid() != allowed_uid || getegid() != allowed_gid) return EACCES;
+    if (geteuid() != 0 || getegid() != allowed_gid) return EACCES;
     return 0;
 }
 
@@ -382,7 +389,7 @@ static void handle_client(int descriptor) {
     (void)fcntl(relay_pair[0], F_SETFD, FD_CLOEXEC);
     (void)fcntl(relay_pair[1], F_SETFD, FD_CLOEXEC);
 
-    error_code = drop_relay_privileges();
+    error_code = restrict_root_relay_groups();
     if (error_code != 0) {
         close(relay_pair[0]);
         close(relay_pair[1]);
@@ -524,6 +531,9 @@ int main(int argc, char **argv) {
         pid_t child = fork();
         if (child == 0) {
             sigprocmask(SIG_SETMASK, &previous_signals, NULL);
+            signal(SIGTERM, SIG_DFL);
+            signal(SIGINT, SIG_DFL);
+            signal(SIGCHLD, SIG_DFL);
             close(listener_fd);
             listener_fd = -1;
             alarm(SETUP_LIFETIME_SECONDS);

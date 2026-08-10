@@ -125,9 +125,10 @@ one that installed a descriptor-only production candidate, must run
 property lists plus the protected TCP connector can be installed beneath
 `/Library/LaunchDaemons` and `/Library/PrivilegedHelperTools`. The connector is
 the only root-started process; it accepts only the configured service UID,
-creates each remote TCP flow as root, drops to that UID, and blindly relays the
+creates each remote TCP flow as root, and blindly relays the bounded opaque
 stream without parsing, logging, or persisting it. Authentication, commands,
-protocol handling, output, and durable data remain in the toolkit. Later
+protocol handling, output, and durable data remain in the unprivileged toolkit.
+Later
 upgrades retain that layout. The operation does not silently install, remove,
 or change the optional Linux network-capability policy. An ordinary
 `./install.sh` run outside an active upgrade continues to reload a boot-managed

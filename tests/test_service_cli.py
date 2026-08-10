@@ -21,11 +21,14 @@ from twn_toolkit.service_cli import (
     SYSTEMD_UNIT_NAME,
     ServiceError,
     ServiceUser,
+    _bootstrap_launchd_paths,
     _ensure_instance_directory,
     _launchd_details,
+    _launchd_labels,
     _managed_toolkit_is_ready,
     _validate_macos_service_location,
     _wait_for_launchd_running,
+    _wait_for_launchd_unloaded,
     _wait_for_managed_toolkit,
     install_service,
     manage_service,
@@ -151,7 +154,7 @@ class ServiceCliTests(unittest.TestCase):
             )
             self.assertFalse(payload["RunAtLoad"])
 
-    def test_native_connector_relays_after_dropping_root(self) -> None:
+    def test_native_connector_keeps_only_bounded_relay_root(self) -> None:
         source = (
             Path(__file__).resolve().parents[1]
             / "native"
@@ -162,15 +165,17 @@ class ServiceCliTests(unittest.TestCase):
         self.assertIn("socketpair(AF_UNIX, SOCK_STREAM, 0, relay_pair)", handler)
         self.assertIn("setgroups(1, groups)", source)
         self.assertIn("setgid(allowed_gid)", source)
-        self.assertIn("setuid(allowed_uid)", source)
+        self.assertNotIn("setuid(", source)
         self.assertLess(
-            handler.index("drop_relay_privileges()"),
+            handler.index("restrict_root_relay_groups()"),
             handler.index("send_result(descriptor, 0, relay_pair[0])"),
         )
         self.assertLess(
             handler.index("send_result(descriptor, 0, relay_pair[0])"),
             handler.index("relay_streams(relay_pair[1], connected_fd)"),
         )
+        self.assertIn("RELAY_HALF_CLOSE_IDLE_MS", source)
+        self.assertIn("signal(SIGTERM, SIG_DFL)", source)
 
     @unittest.skipUnless(os.uname().sysname == "Darwin", "requires macOS sockets")
     def test_native_connector_relay_is_bidirectional_and_half_closes(self) -> None:
@@ -277,6 +282,10 @@ class ServiceCliTests(unittest.TestCase):
                 mock.patch("twn_toolkit.service_cli._run_quiet") as run_quiet,
                 mock.patch("twn_toolkit.service_cli._run") as run,
                 mock.patch(
+                    "twn_toolkit.service_cli._wait_for_launchd_unloaded",
+                    return_value=(True, ()),
+                ) as wait_unloaded,
+                mock.patch(
                     "twn_toolkit.service_cli._wait_for_launchd_running",
                     return_value=(True, "active", ""),
                 ) as wait_launchd,
@@ -309,7 +318,61 @@ class ServiceCliTests(unittest.TestCase):
             ]
             self.assertEqual(len(bootstrap_calls), len(rendered_paths))
             self.assertGreaterEqual(run_quiet.call_count, len(rendered_paths))
+            wait_unloaded.assert_called_once_with()
             wait_launchd.assert_called_once_with(direct=True)
+
+    def test_macos_bootstrap_retries_after_partial_launchd_race(self) -> None:
+        paths = (Path("/tmp/broker.plist"), Path("/tmp/coordinator.plist"))
+        failed = False
+
+        def run(
+            command: tuple[str, ...], *, check: bool = True
+        ) -> subprocess.CompletedProcess[str]:
+            nonlocal failed
+            if command[-1] == str(paths[1]) and not failed:
+                failed = True
+                raise subprocess.CalledProcessError(5, command)
+            return subprocess.CompletedProcess(command, 0)
+
+        with (
+            mock.patch("twn_toolkit.service_cli._run", side_effect=run) as execute,
+            mock.patch("twn_toolkit.service_cli._run_quiet") as run_quiet,
+            mock.patch(
+                "twn_toolkit.service_cli._wait_for_launchd_unloaded",
+                return_value=(True, ()),
+            ) as wait_unloaded,
+        ):
+            _bootstrap_launchd_paths(paths)
+
+        bootstrap_calls = [
+            call
+            for call in execute.call_args_list
+            if call.args[0][:3] == ("launchctl", "bootstrap", "system")
+        ]
+        self.assertEqual([call.args[0][-1] for call in bootstrap_calls], [
+            str(paths[0]),
+            str(paths[1]),
+            str(paths[0]),
+            str(paths[1]),
+        ])
+        self.assertEqual(run_quiet.call_count, len(_launchd_labels()))
+        wait_unloaded.assert_called_once_with()
+
+    def test_wait_for_launchd_unloaded_reports_remaining_jobs(self) -> None:
+        loaded = subprocess.CompletedProcess(("launchctl", "print"), 0)
+        missing = subprocess.CompletedProcess(("launchctl", "print"), 113)
+
+        def details(label: str) -> tuple[subprocess.CompletedProcess[str], str, str]:
+            return (loaded if label == LAUNCHD_LABEL else missing), "unknown", ""
+
+        with (
+            mock.patch("twn_toolkit.service_cli._launchd_details", side_effect=details),
+            mock.patch("twn_toolkit.service_cli.time.monotonic", side_effect=(0.0, 0.0)),
+        ):
+            unloaded, remaining = _wait_for_launchd_unloaded(timeout=0.0)
+
+        self.assertFalse(unloaded)
+        self.assertEqual(remaining, (LAUNCHD_LABEL,))
 
     def test_macos_status_does_not_call_scheduled_job_active(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

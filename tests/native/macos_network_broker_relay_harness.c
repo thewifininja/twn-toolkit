@@ -1,3 +1,4 @@
+#define RELAY_HALF_CLOSE_IDLE_MS 100
 #define main twn_network_broker_program_main
 #include "../../native/macos_network_broker.c"
 #undef main
@@ -51,5 +52,34 @@ int main(void) {
     close(remote[0]);
     int status = 0;
     if (waitpid(relay, &status, 0) != relay) return 9;
-    return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : 10;
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return 10;
+
+    int abandoned_application[2] = {-1, -1};
+    int abandoned_remote[2] = {-1, -1};
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, abandoned_application) != 0 ||
+        socketpair(AF_UNIX, SOCK_STREAM, 0, abandoned_remote) != 0) {
+        return 11;
+    }
+    relay = fork();
+    if (relay < 0) return 12;
+    if (relay == 0) {
+        close(abandoned_application[0]);
+        close(abandoned_remote[0]);
+        alarm(2);
+        int error_code = relay_streams(
+            abandoned_application[1],
+            abandoned_remote[1]
+        );
+        close(abandoned_application[1]);
+        close(abandoned_remote[1]);
+        _exit(error_code == 0 ? 0 : 13);
+    }
+    close(abandoned_application[1]);
+    close(abandoned_remote[1]);
+    close(abandoned_application[0]);
+    if (waitpid(relay, &status, 0) != relay) return 14;
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return 15;
+    if (recv(abandoned_remote[0], &byte, 1, 0) != 0) return 16;
+    close(abandoned_remote[0]);
+    return 0;
 }
