@@ -728,9 +728,12 @@ make state, risk, and the next action obvious.
   retention pruning must remove matching artifact directories. Download ZIP
   resolves files through `AutomationStore.run_artifact()`; never trust a stored
   artifact path directly.
-- Multi-SSH and `ssh.collect` share the same prompt-aware executor. Connection,
-  authentication, and banner timeouts remain 8 seconds. Command ceilings default
-  to 300 seconds and support an inline `[timeout=N] command` override from 1 to
+- Multi-SSH and `ssh.collect` share the same prompt-aware executor. Connection
+  and authentication timeouts remain 8 seconds; server banners receive 15
+  seconds and one pre-authentication banner failure is retried with a fresh
+  connection. Cleanup explicitly closes the underlying socket when Paramiko
+  marks a failed transport inactive. Command ceilings default to 300 seconds
+  and support an inline `[timeout=N] command` override from 1 to
   3600 seconds, with a one-hour combined ceiling per host. Completion is the
   return of the device prompt, not a short quiet period. Timeouts retain partial
   output and stop later commands for that host. Gunicorn's worker timeout is

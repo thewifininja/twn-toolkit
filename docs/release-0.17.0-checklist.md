@@ -60,11 +60,18 @@
   manual 5-of-5 run, then timed runs fall to 4 of 5 and 2 of 5 with one stranded
   child per failed banner; retain only the fixed relay loop as root and add
   five-second idle half-close plus default-signal cleanup.
+- [x] Trace the final helper's single manual banner timeout to Paramiko 4.0
+  leaving its socket open after an inactive transport failure; centralize
+  forced socket cleanup, a 15-second banner window, and one pre-authentication
+  retry for SSH collection, SFTP, and SCP.
 - [x] Pass native build/signature checks, shell syntax, focused connector,
   service, network-tool, automation, and upgrade tests after the relay change.
 - [x] Pass the complete test suite after the final root-retained relay,
   launchd-race, version, and documentation edits: 637 passed, 7 skipped, and
   214 subtests passed on the release-preparation Mac.
+- [x] Pass the complete suite after shared inactive-transport cleanup and the
+  bounded banner retry: 641 passed, 7 skipped, and 214 subtests passed on the
+  release-preparation Mac.
 
 ## Production acceptance without the CIDR fallback
 
@@ -107,6 +114,17 @@
   connector socket, service ownership, and toolkit runtime markers: property
   lists and helper are root-owned, the helper is executable, the socket is
   `admin:staff` with owner-only access, and all direct-job markers are current.
+- [x] Install the final root-retained helper with one service-install command,
+  verify 346 release files, nine live SQLite databases, ownership, modes, and
+  the idle listener; capture 15,078 packets and observe five root relay
+  children during the first manual run.
+- [x] Record the remaining manual result as SSH 4 of 5 with SW2 exceeding the
+  eight-second banner timeout, one matching stranded root child, and successful
+  15-of-15 concurrent raw plus 15-of-15 concurrent bare-Paramiko control
+  handshakes through the same helper.
+- [ ] Repeat manual and scheduled PCAP plus five-switch SSH with the shared
+  inactive-transport cleanup and bounded banner retry; confirm 5 of 5 and only
+  the root listener remains after completion.
 
 ## Publication gate
 

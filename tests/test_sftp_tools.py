@@ -82,7 +82,7 @@ class SftpToolTests(unittest.TestCase):
             look_for_keys=False,
             timeout=10,
             auth_timeout=10,
-            banner_timeout=10,
+            banner_timeout=15,
             disabled_algorithms={
                 "keys": ["ssh-rsa"],
                 "pubkeys": ["ssh-rsa"],

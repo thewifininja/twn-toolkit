@@ -239,6 +239,23 @@ credentials and commands remain encrypted on that stream. Plaintext protocols
 may exist transiently in the fixed relay buffers and receive no additional
 parsing or storage from the helper.
 
+The first run with that final helper captured 15,078 packets in 30.3 seconds
+and completed SSH collection on four switches, but SW2 exceeded Paramiko's
+eight-second banner timeout. The root relay itself was healthy: three
+concurrent five-switch raw-banner rounds and three concurrent five-switch bare
+Paramiko rounds all succeeded (15 of 15 in each test family), including SW2.
+The failed automation nevertheless left exactly one root relay child alive.
+
+Inspection of Paramiko 4.0 identified the cleanup gap: `Transport.close()`
+returns without closing its socket when banner negotiation has already marked
+the transport inactive. The toolkit's `SSHClient.close()` call therefore could
+not half-close the local relay endpoint, so the helper's five-second
+half-close timer never began. The shared client path now closes the captured
+transport socket explicitly, allows 15 seconds for the server banner, and
+retries one banner failure with a fresh pre-authentication connection. SSH
+collection, SFTP, and SCP all use that path. This is bounded to one retry and
+does not replay an authenticated command or file operation.
+
 This boundary also covers other TCP-based actions that use the shared Python
 socket layer, including the TCP scanner, certificate probes, FTP/SFTP clients,
 and Requests/urllib3 integrations. UDP, BPF packet capture/replay, and listener
@@ -302,6 +319,8 @@ Maintain a physical or virtual macOS 15.5+ service test that covers:
 - direct ownership of the `SCM_RIGHTS` local relay endpoint without overlaying
   it on a placeholder, including bidirectional traffic over a real TCP stream;
 - the same SSH collection while a bounded PCAP runs in parallel; and
+- explicit inactive-transport socket cleanup plus one bounded banner retry
+  across SSH collection, SFTP, and SCP; and
 - actionable diagnostics for a deliberately denied local-network process.
 
 Unit tests should also verify error unwrapping, CIDR merging/removal, platform
