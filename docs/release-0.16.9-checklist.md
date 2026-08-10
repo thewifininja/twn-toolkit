@@ -20,6 +20,10 @@
   return-after-reboot behavior.
 - [x] The coordinator retains upgrade, rollback, recovery, validation-only
   process sets, operation-lock finalization, and old-launcher compatibility.
+- [x] Recovery snapshots omit only recreated process-state artifacts so a live
+  coordinator PID transition cannot race `copytree`; persistent databases and
+  WAL files, profiles, captures, certificates, logs, and datastore data remain
+  covered by the integrity manifest.
 - [x] Existing macOS installations require one explicit
   `sudo ./twn service install` after the v0.16.9 code upgrade; manual startup,
   Linux systemd, databases, profiles, automations, and stored data are unchanged.
@@ -33,8 +37,8 @@
   reboot, PCAP succeeded while SSH returned errno 65.
 - [x] Update built-in release notes, README, autostart guidance, incident notes,
   refactor backlog, continuity guidance, and version assertions for v0.16.9.
-- [x] Pass shell syntax, 49 focused service/upgrade tests, and the complete
-  pytest suite after the final release metadata and documentation edits: 621
+- [x] Pass shell syntax, 50 focused service/upgrade tests, and the complete
+  pytest suite after the final release metadata and documentation edits: 622
   passed, 6 skipped, and 214 subtests passed.
 - [x] Build and validate the exact v0.16.9 production-test bundle against
   v0.16.8, including its generated SHA-256 checksum.

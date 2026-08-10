@@ -17,6 +17,7 @@ from twn_toolkit.upgrade_manager import (
     UpgradeError,
     UpgradeManager,
     _install_and_validate,
+    _ignore_volatile_instance_artifacts,
     _prepare_service_reload,
     _preserve_prepared_service_reload,
     _run,
@@ -193,6 +194,54 @@ class UpgradeBundleTests(unittest.TestCase):
 
 
 class UpgradeRecoveryTests(unittest.TestCase):
+    def test_backup_ignores_recreated_process_state_but_keeps_durable_data(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"; root.mkdir()
+            instance = root / "instance"; instance.mkdir()
+            backups = root / ".twn-upgrades" / "backups"; backups.mkdir(parents=True)
+            release_root(root, "0.10.2", "old")
+            (instance / "saved.txt").write_text("durable", encoding="utf-8")
+            volatile = (
+                "twn-service-launcher.pid",
+                "twn-automation.pid",
+                "twn-tftp.ready",
+                ".twn-automation.lock",
+                "automation-heartbeat.json",
+                "twn-service-paused",
+                "twn-launchd-direct-enabled",
+                "twn-tftp.launchd-enabled",
+                "packet_capture_locks",
+            )
+            for name in volatile:
+                path = instance / name
+                if name == "packet_capture_locks":
+                    path.mkdir()
+                    (path / "en0.lock").touch()
+                else:
+                    path.touch()
+            request = {
+                "from_version": "0.10.2",
+                "target_version": "0.10.3",
+                "operation": "upgrade",
+            }
+
+            backup = _create_backup(root, instance, backups, request)
+
+            self.assertEqual(
+                (backup / "instance" / "saved.txt").read_text(encoding="utf-8"),
+                "durable",
+            )
+            self.assertTrue(
+                all(not (backup / "instance" / name).exists() for name in volatile)
+            )
+            self.assertEqual(
+                _ignore_volatile_instance_artifacts(
+                    str(instance),
+                    ["saved.txt", *volatile],
+                ),
+                set(volatile),
+            )
+
     def test_backup_and_restore_keep_code_and_instance_as_a_matched_pair(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "toolkit"; root.mkdir()

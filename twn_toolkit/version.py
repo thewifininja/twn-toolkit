@@ -24,6 +24,7 @@ RELEASE_NOTES = (
                 "items": (
                     "Uses owner-only pause, boot-generation, web-generation, and transfer-enable markers so ordinary starts, stops, settings changes, service restarts, and cold boots preserve their existing behavior without granting the web application permission to control system launchd jobs.",
                     "Preserves validation-only process sets during upgrades and matched rollback, then lets the finalized direct jobs start from replaced code after the durable operation lock is removed.",
+                    "Excludes recreated PID, readiness, heartbeat, lock, and launchd activation markers from recovery snapshots so a coordinator restart cannot make an otherwise consistent backup fail while durable databases, profiles, captures, certificates, logs, and datastore files remain protected.",
                     "Requires existing macOS service installations to run sudo ./twn service install once after upgrading so the additional root-owned LaunchDaemon property lists can be created; Linux and manual startup are unchanged.",
                 ),
             },

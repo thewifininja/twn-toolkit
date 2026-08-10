@@ -361,6 +361,41 @@ def _copy_code(root: Path, destination: Path) -> None:
             shutil.copytree(source, destination / name, symlinks=True)
 
 
+_VOLATILE_INSTANCE_NAMES = frozenset(
+    {
+        "automation-heartbeat.json",
+        "packet_capture_locks",
+        "supervisor-heartbeat.json",
+        "tftp_runtime",
+        "ftp_runtime",
+        "ssh_transfer_runtime",
+        "twn-launchd-direct-enabled",
+        "twn-service-paused",
+        "twn-service-resume",
+        "twn-service-web-generation",
+        "twn-service-web-generation-marked",
+    }
+)
+_VOLATILE_INSTANCE_SUFFIXES = (
+    ".launchd-enabled",
+    ".lock",
+    ".pid",
+    ".ready",
+    ".tmp",
+    "-heartbeat.json",
+)
+
+
+def _ignore_volatile_instance_artifacts(_directory: str, names: list[str]) -> set[str]:
+    """Exclude process state that is recreated after restore and may disappear mid-copy."""
+    return {
+        name
+        for name in names
+        if name in _VOLATILE_INSTANCE_NAMES
+        or name.endswith(_VOLATILE_INSTANCE_SUFFIXES)
+    }
+
+
 def _integrity_manifest(root: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for base_name in ("code", "instance"):
@@ -396,7 +431,12 @@ def _create_backup(root: Path, instance: Path, backup_root: Path, request: dict[
     destination.mkdir(parents=True, mode=0o700)
     try:
         _copy_code(root, destination / "code")
-        shutil.copytree(instance, destination / "instance", symlinks=True)
+        shutil.copytree(
+            instance,
+            destination / "instance",
+            symlinks=True,
+            ignore=_ignore_volatile_instance_artifacts,
+        )
         _atomic_json(destination / "integrity.json", _integrity_manifest(destination))
         metadata = {
             "id": identifier, "created_at": time.time(),
