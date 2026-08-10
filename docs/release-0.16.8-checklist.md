@@ -35,10 +35,15 @@
 - [x] Pass shell syntax and the complete pytest suite: 614 passed, 6 skipped,
   and 214 subtests passed locally. The focused release metadata, upgrade,
   packet-capture, SSH-diagnostic, launcher, and iPerf suite passed 82 tests.
-- [ ] Upgrade the production LaunchDaemon installation through the manual bundle
-  workflow and retain the matched v0.16.6 recovery point.
-- [ ] Validate production service ownership, restart behavior, toolkit TCP/SSH,
-  scheduled PCAP, and simultaneous five-switch SSH plus PCAP.
+- [x] Upgrade the production LaunchDaemon installation through the manual bundle
+  workflow and retain recovery point `20260810-092634-e39c6d68`.
+- [x] Validate process ownership, restart behavior, toolkit TCP, and a real
+  scheduler-dispatched parallel PCAP plus five-switch SSH run with the approved
+  Ethernet CIDR exception present.
+- [x] Remove the CIDR exception, restart the Mac, and record the negative result:
+  PCAP still succeeded, but SSH immediately returned errno 65. Do not publish
+  the v0.16.8 network-privacy claim as GA; the direct-launchd correction moves
+  to v0.16.9.
 - [ ] Pass release-preparation pull-request CI and merged-main CI.
 - [ ] Create and push the exact annotated `v0.16.8` tag only after project-owner
   approval of release publication.

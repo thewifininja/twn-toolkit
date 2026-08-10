@@ -59,6 +59,14 @@ on the Mac for the specified network and requires a restart:
   in 3.4 ms.
 - The final simultaneous validation completed successfully: PCAP captured 228
   packets in 30.1 seconds and SSH collection succeeded on all 5 of 5 switches.
+- Production was upgraded to v0.16.8 and its calendar scheduler then completed
+  a parallel 30.3-second PCAP containing 12,377 packets plus SSH collection on
+  all 5 of 5 switches while the Ethernet CIDR exception remained present.
+- The exception was subsequently removed and the Mac restarted. A manual
+  parallel PCAP and SSH automation then reproduced the split result: PCAP
+  succeeded, while SSH returned Darwin errno 65 for the first switch. This
+  proves that the v0.16.8 foreground-child design did not independently restore
+  local-network access.
 
 ## Cause assessment
 
@@ -76,43 +84,58 @@ process tree:
 - Automation, supervisor, and transfer workers use a POSIX double-fork and
   `setsid()` implementation.
 
-This creates a fragile boundary on macOS. Apple normally exempts launchd
-daemons and Terminal children from Local Network Privacy, but responsible-code
-tracking can treat the detached Homebrew Python executable as the responsible
-program. A service reload associated with deploying or configuring the new
-PCAP workflow likely exposed the issue; the PCAP operation itself did not alter
-routes, SSH, or persistent privacy configuration.
+This creates a fragile boundary on macOS. Apple exempts daemons started by
+launchd and Terminal children from Local Network Privacy, but separately tracks
+the responsible code that performs a local-network operation. Production later
+proved that avoiding double-fork daemonization was insufficient: Homebrew
+Python processes retained as foreground children of the launchd-owned shell
+still received errno 65 once the system-wide CIDR exception was removed. A
+service reload associated with deploying or configuring the new PCAP workflow
+likely exposed the issue; the PCAP operation itself did not alter routes, SSH,
+or persistent privacy configuration.
 
 The Python binary dated to 2026-03-02 and the retained OS installation history
 did not show a same-day system update, so neither was a direct same-day trigger.
 
 ## Engineering response
 
-### 1. Preserve launchd ownership of long-lived workers
+### 1. Make long-lived workers direct launchd daemons
 
 Do not self-daemonize when the toolkit is already running under a service
-manager. Preferred macOS design:
+manager. Required macOS design:
 
 1. Install separate LaunchDaemons for the web process, automation scheduler,
    supervisor, and enabled transfer services.
 2. Run each service in the foreground and let launchd own restart behavior,
    standard streams, and process lifetime.
 
-The implemented intermediate design keeps `twn service-run` in the foreground
-on macOS and launches Gunicorn, the automation scheduler, supervisor, and
-enabled transfer services as non-daemonizing children. Foreground workers write
-the same PID files as daemon mode, and shutdown snapshots the web PID before
-stopping sibling workers so Gunicorn cleanup cannot race the launcher.
+The v0.16.8 intermediate design kept `twn service-run` in the foreground on
+macOS and launched Gunicorn, the automation scheduler, supervisor, and enabled
+transfer services as non-daemonizing children. Foreground workers wrote the
+same PID files as daemon mode, and shutdown snapped the web PID before stopping
+sibling workers so Gunicorn cleanup could not race the launcher. The
+CIDR-removal test proved that this process ancestry was not equivalent to being
+started by launchd.
+
+The v0.16.9 design retains the coordinator only for lifecycle and upgrade
+handoffs and installs separate system LaunchDaemons for web, automation,
+supervisor, TFTP, SFTP/SCP, and FTP. Each job invokes `twn launchd-run ROLE`,
+performs bounded setup, and then `exec`s the final foreground process without a
+fork. Thus Gunicorn and every Python worker retain launchd as their actual
+parent. Owner-only pause, boot-generation, web-generation, and listener-enable
+markers preserve non-root start, stop, restart, settings, upgrade, rollback,
+and cold-boot behavior.
 
 Manual launches and Linux service mode retain their existing daemon behavior.
-A later service-layout refactor can still install separate LaunchDaemons for
-each long-lived process, but that is not required for this incident fix.
+Existing macOS installations require one administrator-approved
+`sudo ./twn service install` after the code upgrade because only root can create
+the additional files in `/Library/LaunchDaemons`.
 
 Relevant code:
 
 - `twn`: `start_automation`, Gunicorn construction, `start_supervisor`, and
   `service_run`
-- `twn_toolkit/service_cli.py`: `render_launchd_plist`
+- `twn_toolkit/service_cli.py`: `render_launchd_plists`
 - `twn_toolkit/automation_worker.py`: `_daemonize`
 - `twn_toolkit/supervisor_worker.py`: `_daemonize`
 - `twn_toolkit/tftp_worker.py`, `ftp_worker.py`, and
@@ -173,16 +196,18 @@ Maintain a physical or virtual macOS 15.5+ service test that covers:
 - actionable diagnostics for a deliberately denied local-network process.
 
 Unit tests should also verify error unwrapping, CIDR merging/removal, platform
-gating, and that foreground service mode writes and cleans its PID files.
+gating, direct-job property lists and marker conditions, foreground PID files,
+aggregate launchd health, and pause/resume behavior across boot generations.
 
 ## Release and support notes
 
 Suggested release-note text:
 
-> Fixed macOS background workers losing access to directly connected networks
-> after service restarts. Workers remain under launchd supervision. Diagnostics
-> now identify macOS Local Network Privacy failures, and an explicit
-> administrator-controlled CIDR exception is available as a fallback.
+> Runs each macOS web and worker process as a direct system LaunchDaemon after
+> production proved that foreground children of a launchd-owned shell could
+> still receive Local Network Privacy errno 65. Diagnostics identify the denial,
+> and an explicit administrator-controlled CIDR exception remains available as
+> a fallback.
 
 Support guidance for affected existing versions:
 
@@ -195,6 +220,10 @@ Support guidance for affected existing versions:
 5. If approved by the administrator, add only the required wired or Wi-Fi CIDR
    and restart the Mac.
 6. Re-test from the toolkit worker and then run an end-to-end automation.
+
+After installing v0.16.9 code on an existing macOS service host, run
+`sudo ./twn service install` once to replace the single v0.16.8 coordinator
+definition with the direct-job set before testing without a CIDR exception.
 
 Do not recommend running the complete toolkit as root to bypass this policy.
 

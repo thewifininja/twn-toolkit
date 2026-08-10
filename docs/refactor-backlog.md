@@ -29,12 +29,16 @@ restored with an administrator-approved Ethernet CIDR exception and a reboot;
 the toolkit then completed simultaneous PCAP and SSH collection on all five
 switches.
 
-The immediate response now keeps long-lived workers in the launchd-owned
-process tree, adds focused `EHOSTUNREACH` diagnostics, and removes the scheduled
-PCAP action's working-directory dependency. Retain cold boot, upgrade handoff,
-Python replacement, and concurrent PCAP/SSH in the macOS regression matrix for
-future service-lifecycle changes. The full incident evidence, security
-constraints, fallback design, and release-note draft are recorded in
+The v0.16.8 response kept long-lived workers in the launchd-owned process tree,
+added focused `EHOSTUNREACH` diagnostics, and removed the scheduled PCAP
+action's working-directory dependency. Production then proved that foreground
+Python children still failed after the CIDR exception was removed and the Mac
+restarted. The v0.16.9 follow-up installs direct LaunchDaemons for web,
+automation, supervisor, and transfer workers while retaining a non-networking
+coordinator for lifecycle handoffs. Retain cold boot, service reinstall,
+upgrade handoff, rollback, Python replacement, CIDR removal, and concurrent
+PCAP/SSH in the macOS regression matrix for future service-lifecycle changes.
+The full incident evidence, security constraints, and fallback design are in
 [`macos-local-network-privacy-incident.md`](macos-local-network-privacy-incident.md).
 
 ### 0. Formalize SQLite migrations before the next schema expansion

@@ -88,7 +88,7 @@ pipes without risking library-owned descriptors such as macOS kqueues.
 
 ## Installations managed at boot
 
-An installed systemd unit or macOS LaunchDaemon remains outside the release
+An installed systemd unit or macOS LaunchDaemon set remains outside the release
 bundle. Upgrade, rollback, and recovery detect the loaded OS supervisor and
 pause the managed toolkit through it. After application code is replaced, the
 installer starts a validation-only process set while keeping the original
@@ -106,10 +106,14 @@ rollback instead lets the original in-memory launcher adopt the validated
 restored process set when its version matches. Handoff details are available in
 `.twn-upgrades/service-reload.log`.
 
-No separate `./twn service restart` or second administrator prompt is required.
-The operation does not silently install, remove, or change the optional Linux
-network-capability policy. An ordinary `./install.sh` run outside an active
-upgrade continues to reload a boot-managed launcher synchronously.
+No recurring `./twn service restart` or administrator prompt is required. The
+v0.16.9 transition is a one-time exception: an existing macOS host must run
+`sudo ./twn service install` after its code upgrade so the new direct web and
+worker property lists can be created beneath `/Library/LaunchDaemons`. Later
+upgrades retain that layout. The operation does not silently install, remove,
+or change the optional Linux network-capability policy. An ordinary
+`./install.sh` run outside an active upgrade continues to reload a boot-managed
+launcher synchronously.
 
 After an upgrade on a boot-managed host, verify both layers:
 

@@ -1,6 +1,42 @@
-APP_VERSION = "0.16.8"
+APP_VERSION = "0.16.9"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.16.9",
+        "date": "2026-08-10",
+        "title": "Direct launchd network daemons",
+        "summary": (
+            "Makes each macOS network-capable service an actual launchd daemon "
+            "after production proved that retaining Python as a launcher child "
+            "did not remove its Local Network Privacy denial."
+        ),
+        "groups": (
+            {
+                "title": "Direct macOS privacy context",
+                "items": (
+                    "Installs separate system LaunchDaemons for Gunicorn, the automation scheduler, worker supervisor, TFTP, SFTP/SCP, and FTP, with foreground entry points that exec the final process instead of forking it from a shell supervisor.",
+                    "Retains the stable coordinator job for pause, resume, upgrade, rollback, and recovery handoffs while launchd owns the lifetime and restart policy of every long-lived worker.",
+                    "Keeps the complete toolkit unprivileged and retains the explicit Ethernet or Wi-Fi CIDR exception only as an administrator-controlled fallback.",
+                ),
+            },
+            {
+                "title": "Compatible service lifecycle",
+                "items": (
+                    "Uses owner-only pause, boot-generation, web-generation, and transfer-enable markers so ordinary starts, stops, settings changes, service restarts, and cold boots preserve their existing behavior without granting the web application permission to control system launchd jobs.",
+                    "Preserves validation-only process sets during upgrades and matched rollback, then lets the finalized direct jobs start from replaced code after the durable operation lock is removed.",
+                    "Requires existing macOS service installations to run sudo ./twn service install once after upgrading so the additional root-owned LaunchDaemon property lists can be created; Linux and manual startup are unchanged.",
+                ),
+            },
+            {
+                "title": "Evidence-driven follow-up",
+                "items": (
+                    "Records that v0.16.8 passed simultaneous scheduled PCAP and five-switch SSH with the CIDR exception present, but SSH returned errno 65 again after the exception was removed and the Mac restarted while PCAP still succeeded.",
+                    "Corrects the earlier assumption that foreground grandchildren of the coordinator inherit launchd's automatic local-network allowance; Apple documents that the allowance applies to daemons started by launchd and separately tracks responsible code.",
+                    "Retains the v0.16.8 scheduled packet-capture path fix, nested Paramiko diagnostics, shutdown race fix, and full manual and Linux compatibility.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.8",
         "date": "2026-08-10",

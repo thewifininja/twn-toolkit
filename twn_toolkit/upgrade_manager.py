@@ -553,9 +553,21 @@ def _prepare_service_reload(root: Path, request_id: str) -> bool:
 def _preserve_prepared_service_reload(instance: Path, prepared: bool) -> None:
     if not prepared:
         return
-    (instance / "twn-service-paused").touch(mode=0o600, exist_ok=True)
+    pause = instance / "twn-service-paused"
+    pause.write_text(
+        str(max(0, int((time.time() - time.monotonic()) // 10) * 10)) + "\n",
+        encoding="ascii",
+    )
+    os.chmod(pause, 0o600)
     (instance / "twn-service-launcher.pid").unlink(missing_ok=True)
     (instance / "twn-service-resume").unlink(missing_ok=True)
+    for marker in (
+        "twn-launchd-direct-enabled",
+        "twn-tftp.launchd-enabled",
+        "twn-ssh-transfer.launchd-enabled",
+        "twn-ftp.launchd-enabled",
+    ):
+        (instance / marker).unlink(missing_ok=True)
 
 
 def _record_result(

@@ -22,6 +22,9 @@ SUPERVISOR_PIDFILE="$INSTANCE/twn-supervisor.pid"
 SERVICE_LAUNCHER_PIDFILE="$INSTANCE/twn-service-launcher.pid"
 SERVICE_PAUSE_FILE="$INSTANCE/twn-service-paused"
 SERVICE_RESUME_FILE="$INSTANCE/twn-service-resume"
+SERVICE_LAUNCHD_MARKER="$INSTANCE/twn-launchd-direct-enabled"
+SERVICE_WEB_GENERATION_FILE="$INSTANCE/twn-service-web-generation"
+SERVICE_MARKED_WEB_GENERATION_FILE="$INSTANCE/twn-service-web-generation-marked"
 SERVICE_DEFERRED_RELOAD_PIDFILE="$UPGRADE_WORKSPACE/service-reload.pid"
 SERVICE_RELOAD_LOG="$UPGRADE_WORKSPACE/service-reload.log"
 TFTP_PIDFILE="$INSTANCE/twn-tftp.pid"
@@ -36,10 +39,13 @@ AUTOMATION_LOG="$INSTANCE/twn-automation.log"
 SUPERVISOR_LOG="$INSTANCE/twn-supervisor.log"
 TFTP_LOG="$INSTANCE/twn-tftp.log"
 TFTP_SETTINGS="$INSTANCE/tftp_settings.json"
+TFTP_LAUNCHD_MARKER="$INSTANCE/twn-tftp.launchd-enabled"
 SSH_TRANSFER_LOG="$INSTANCE/twn-ssh-transfer.log"
 SSH_TRANSFER_SETTINGS="$INSTANCE/ssh_transfer_settings.json"
+SSH_TRANSFER_LAUNCHD_MARKER="$INSTANCE/twn-ssh-transfer.launchd-enabled"
 FTP_LOG="$INSTANCE/twn-ftp.log"
 FTP_SETTINGS="$INSTANCE/ftp_settings.json"
+FTP_LAUNCHD_MARKER="$INSTANCE/twn-ftp.launchd-enabled"
 IPERF_LOG="$INSTANCE/twn-iperf3.log"
 SERVER_SETTINGS="$INSTANCE/server_settings.json"
 PREVIOUS_SERVER_SETTINGS="$INSTANCE/server_settings.previous.json"
@@ -61,6 +67,8 @@ SERVICE_RUN_MODE=${TWN_TOOLKIT_SERVICE_RUN:-0}
 SERVICE_RELOAD_REQUESTED=${TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER:-0}
 UPGRADE_REQUEST_ID=${TWN_TOOLKIT_UPGRADE_REQUEST_ID:-}
 SUPPRESS_TOOLKIT_START_EVENT=${TWN_TOOLKIT_SUPPRESS_START_EVENT:-0}
+LAUNCHD_DIRECT_MODE=${TWN_TOOLKIT_LAUNCHD_DIRECT:-0}
+LAUNCHD_ROLE=${TWN_TOOLKIT_LAUNCHD_ROLE:-}
 
 if [ -z "$HOST" ] && [ -f "$SERVER_SETTINGS" ]; then
   HOST=$(python3 -c '
@@ -102,6 +110,22 @@ load_running_endpoint() {
 launchd_foreground_children() {
   [ "$SERVICE_RUN_MODE" = "1" ] \
     && [ "$(uname -s 2>/dev/null || echo unknown)" = "Darwin" ]
+}
+
+launchd_direct_job() {
+  [ "$LAUNCHD_DIRECT_MODE" = "1" ] \
+    && [ "$(uname -s 2>/dev/null || echo unknown)" = "Darwin" ]
+}
+
+launchd_direct_layout_installed() {
+  [ "$(uname -s 2>/dev/null || echo unknown)" = "Darwin" ] \
+    && [ -f "/Library/LaunchDaemons/com.thewifininja.toolkit.web.plist" ] \
+    && [ -f "/Library/LaunchDaemons/com.thewifininja.toolkit.automation.plist" ] \
+    && [ -f "/Library/LaunchDaemons/com.thewifininja.toolkit.supervisor.plist" ]
+}
+
+launchd_managed_jobs_available() {
+  launchd_direct_job && service_launcher_is_running
 }
 
 show_access_urls() {
@@ -207,6 +231,28 @@ service_launcher_is_running() {
   [ -f "$SERVICE_LAUNCHER_PIDFILE" ] && pid_is_running "$(cat "$SERVICE_LAUNCHER_PIDFILE")"
 }
 
+service_boot_generation() {
+  "$PYTHON" -c 'import time; print(max(0, int((time.time() - time.monotonic()) // 10) * 10))'
+}
+
+write_service_pause_marker() {
+  mkdir -p "$INSTANCE"
+  service_boot_generation > "$SERVICE_PAUSE_FILE"
+  chmod 600 "$SERVICE_PAUSE_FILE"
+  rm -f "$SERVICE_LAUNCHD_MARKER" \
+    "$TFTP_LAUNCHD_MARKER" "$SSH_TRANSFER_LAUNCHD_MARKER" "$FTP_LAUNCHD_MARKER"
+}
+
+clear_stale_direct_service_pause() {
+  [ -f "$SERVICE_PAUSE_FILE" ] || return 0
+  paused_boot_generation=$(cat "$SERVICE_PAUSE_FILE" 2>/dev/null || true)
+  [ -n "$paused_boot_generation" ] || return 0
+  current_boot_generation=$(service_boot_generation)
+  if [ "$paused_boot_generation" != "$current_boot_generation" ]; then
+    rm -f "$SERVICE_PAUSE_FILE"
+  fi
+}
+
 upgrade_worker_is_ancestor() {
   ancestor_pid=${PPID:-}
   ancestor_hops=0
@@ -273,7 +319,7 @@ withhold_deferred_service_launcher() {
   # Do not recreate the path during the brief atomic instance-directory swap
   # performed by rollback; the restored instance already contains the pause.
   [ -d "$INSTANCE" ] || return
-  : > "$SERVICE_PAUSE_FILE"
+  write_service_pause_marker
   rm -f "$SERVICE_LAUNCHER_PIDFILE" "$SERVICE_RESUME_FILE"
 }
 
@@ -379,7 +425,7 @@ request_service_start() {
   : > "$SERVICE_RESUME_FILE"
   attempts=0
   while [ "$attempts" -lt 1800 ]; do
-    if is_running && automation_is_running \
+    if is_running && automation_is_running && supervisor_is_running \
       && [ -f "$SCHEME_FILE" ] && [ -f "$HOST_FILE" ] && [ -f "$PORT_FILE" ]; then
       rm -f "$SERVICE_RESUME_FILE"
       load_running_endpoint
@@ -409,6 +455,9 @@ request_service_reload() {
   # A paused launcher exits unsuccessfully when its pause is cleared while the
   # managed web process is stopped. systemd/launchd then starts a fresh copy of
   # this script from disk, which is required after an upgrade replaces `twn`.
+  if launchd_direct_layout_installed; then
+    rm -f "$SERVICE_LAUNCHER_PIDFILE"
+  fi
   rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE"
   attempts=0
   while [ "$attempts" -lt 1800 ]; do
@@ -453,7 +502,8 @@ request_deferred_service_reload() {
   # paused. Do not record a toolkit-start event for this validation-only start;
   # the final OS-managed launcher records the one real post-upgrade event.
   deferred_start_failed=0
-  if ! TWN_TOOLKIT_SERVICE_RUN=1 \
+  if ! TWN_TOOLKIT_LAUNCHD_DIRECT=0 \
+    TWN_TOOLKIT_SERVICE_RUN=1 \
     TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER=0 \
     TWN_TOOLKIT_SUPPRESS_START_EVENT=1 \
     "$ROOT/twn" start; then
@@ -484,6 +534,31 @@ managed_worker_is_ready() {
 managed_worker_enabled() {
   [ -f "$1" ] || return 1
   "$PYTHON" -c 'import json, sys; raise SystemExit(0 if json.load(open(sys.argv[1], encoding="utf-8")).get("enabled") else 1)' "$1" >/dev/null 2>&1
+}
+
+launchd_marker_for_pidfile() {
+  case "$1" in
+    "$TFTP_PIDFILE") echo "$TFTP_LAUNCHD_MARKER" ;;
+    "$SSH_TRANSFER_PIDFILE") echo "$SSH_TRANSFER_LAUNCHD_MARKER" ;;
+    "$FTP_PIDFILE") echo "$FTP_LAUNCHD_MARKER" ;;
+    *) return 1 ;;
+  esac
+}
+
+sync_launchd_transfer_markers() {
+  launchd_direct_job || return 0
+  if [ -f "$SERVICE_PAUSE_FILE" ]; then
+    rm -f "$SERVICE_LAUNCHD_MARKER" \
+      "$TFTP_LAUNCHD_MARKER" "$SSH_TRANSFER_LAUNCHD_MARKER" "$FTP_LAUNCHD_MARKER"
+    return 0
+  fi
+  : > "$SERVICE_LAUNCHD_MARKER"
+  if managed_worker_enabled "$TFTP_SETTINGS"; then : > "$TFTP_LAUNCHD_MARKER"; else rm -f "$TFTP_LAUNCHD_MARKER"; fi
+  if managed_worker_enabled "$SSH_TRANSFER_SETTINGS"; then : > "$SSH_TRANSFER_LAUNCHD_MARKER"; else rm -f "$SSH_TRANSFER_LAUNCHD_MARKER"; fi
+  if managed_worker_enabled "$FTP_SETTINGS"; then : > "$FTP_LAUNCHD_MARKER"; else rm -f "$FTP_LAUNCHD_MARKER"; fi
+  chmod 600 "$SERVICE_LAUNCHD_MARKER" \
+    "$TFTP_LAUNCHD_MARKER" "$SSH_TRANSFER_LAUNCHD_MARKER" "$FTP_LAUNCHD_MARKER" \
+    2>/dev/null || true
 }
 
 acquire_managed_worker_lock() {
@@ -527,6 +602,10 @@ stop_managed_worker_unlocked() {
   worker_pidfile=$1
   worker_readyfile=$2
   cleanup=$3
+  if launchd_managed_jobs_available; then
+    worker_launchd_marker=$(launchd_marker_for_pidfile "$worker_pidfile" 2>/dev/null || true)
+    if [ -n "$worker_launchd_marker" ]; then rm -f "$worker_launchd_marker"; fi
+  fi
   if ! managed_worker_is_running "$worker_pidfile"; then
     rm -f "$worker_pidfile"
     rm -f "$worker_readyfile"
@@ -577,7 +656,11 @@ start_managed_worker_unlocked() {
   cd "$ROOT"
   worker_log_start=0
   if [ -f "$worker_log" ]; then worker_log_start=$(wc -l < "$worker_log" | tr -d ' '); fi
-  if launchd_foreground_children; then
+  if launchd_managed_jobs_available; then
+    worker_launchd_marker=$(launchd_marker_for_pidfile "$worker_pidfile")
+    : > "$worker_launchd_marker"
+    chmod 600 "$worker_launchd_marker"
+  elif launchd_foreground_children; then
     "$PYTHON" -m "$worker_module" \
       --instance "$INSTANCE" \
       --pid-file "$worker_pidfile" \
@@ -725,7 +808,9 @@ start_automation() {
   cleanup_daemon_processes "twn_toolkit.automation_worker" 0
   rm -f "$AUTOMATION_PIDFILE"
   cd "$ROOT"
-  if launchd_foreground_children; then
+  if launchd_managed_jobs_available; then
+    : # launchd restarts the direct scheduler job after its PID disappears.
+  elif launchd_foreground_children; then
     "$PYTHON" -m twn_toolkit.automation_worker \
       --instance "$INSTANCE" \
       --pid-file "$AUTOMATION_PIDFILE" \
@@ -799,7 +884,9 @@ start_supervisor() {
   cleanup_duplicate_supervisors 0
   rm -f "$SUPERVISOR_PIDFILE"
   cd "$ROOT"
-  if launchd_foreground_children; then
+  if launchd_managed_jobs_available; then
+    : # launchd restarts the direct supervisor job after its PID disappears.
+  elif launchd_foreground_children; then
     "$PYTHON" -m twn_toolkit.supervisor_worker \
       --instance "$INSTANCE" \
       --root "$ROOT" \
@@ -1124,7 +1211,7 @@ start() {
 stop() {
   if [ "$SERVICE_RUN_MODE" != "1" ] && service_launcher_is_running; then
     mkdir -p "$INSTANCE"
-    : > "$SERVICE_PAUSE_FILE"
+    write_service_pause_marker
     rm -f "$SERVICE_RESUME_FILE"
   fi
 
@@ -1501,9 +1588,173 @@ web_restart() {
   fi
 }
 
+launchd_run() {
+  launchd_worker_role=${1:-}
+  if ! launchd_direct_job; then
+    echo "launchd-run is reserved for the installed macOS LaunchDaemon jobs." >&2
+    return 2
+  fi
+  if [ -n "$LAUNCHD_ROLE" ] && [ "$LAUNCHD_ROLE" != "$launchd_worker_role" ]; then
+    echo "The launchd role does not match the requested worker." >&2
+    return 2
+  fi
+  if [ -f "$SERVICE_PAUSE_FILE" ]; then return 0; fi
+  case "$launchd_worker_role" in
+    web|automation|supervisor)
+      [ -f "$SERVICE_LAUNCHD_MARKER" ] || return 0
+      ;;
+  esac
+
+  mkdir -p "$INSTANCE"
+  cd "$ROOT"
+  case "$launchd_worker_role" in
+    web)
+      configure_tls
+      if [ ! -x "$GUNICORN" ]; then
+        echo "Gunicorn is not installed. Run: .venv/bin/pip install -r requirements.txt" >&2
+        return 1
+      fi
+      if ! port_available; then
+        echo "Cannot start the direct web daemon: $HOST:$PORT is already in use." >&2
+        return 1
+      fi
+      rm -f "$PIDFILE"
+      printf "%s\n" "$SCHEME" > "$SCHEME_FILE"
+      printf "%s\n" "$HOST" > "$HOST_FILE"
+      printf "%s\n" "$PORT" > "$PORT_FILE"
+      web_generation_temporary="$SERVICE_WEB_GENERATION_FILE.$$"
+      printf "%s.%s\n" "$(date +%s)" "$$" > "$web_generation_temporary"
+      chmod 600 "$web_generation_temporary"
+      mv "$web_generation_temporary" "$SERVICE_WEB_GENERATION_FILE"
+      set -- "$GUNICORN" \
+        --bind "$HOST:$PORT" \
+        --workers "$WORKERS" \
+        --timeout 3700 \
+        --pid "$PIDFILE" \
+        --access-logfile "$ACCESS_LOG" \
+        --error-logfile "$ERROR_LOG" \
+        --capture-output
+      if [ "$SCHEME" = "https" ]; then
+        set -- "$@" --certfile "$TLS_CERT" --keyfile "$TLS_KEY"
+        export TWN_TOOLKIT_HTTPS=1
+      else
+        unset TWN_TOOLKIT_HTTPS 2>/dev/null || true
+      fi
+      set -- "$@" "twn_toolkit:create_app()"
+      exec "$@"
+      ;;
+    automation)
+      rm -f "$AUTOMATION_PIDFILE"
+      exec "$PYTHON" -m twn_toolkit.automation_worker \
+        --instance "$INSTANCE" \
+        --pid-file "$AUTOMATION_PIDFILE" \
+        --log-file "$AUTOMATION_LOG"
+      ;;
+    supervisor)
+      rm -f "$SUPERVISOR_PIDFILE"
+      exec "$PYTHON" -m twn_toolkit.supervisor_worker \
+        --instance "$INSTANCE" \
+        --root "$ROOT" \
+        --pid-file "$SUPERVISOR_PIDFILE" \
+        --log-file "$SUPERVISOR_LOG"
+      ;;
+    tftp)
+      [ -f "$TFTP_LAUNCHD_MARKER" ] && managed_worker_enabled "$TFTP_SETTINGS" || {
+        rm -f "$TFTP_LAUNCHD_MARKER"; return 0;
+      }
+      rm -f "$TFTP_PIDFILE" "$TFTP_READYFILE"
+      exec "$PYTHON" -m twn_toolkit.tftp_worker \
+        --instance "$INSTANCE" \
+        --pid-file "$TFTP_PIDFILE" \
+        --ready-file "$TFTP_READYFILE" \
+        --log-file "$TFTP_LOG"
+      ;;
+    ssh-transfer)
+      [ -f "$SSH_TRANSFER_LAUNCHD_MARKER" ] && managed_worker_enabled "$SSH_TRANSFER_SETTINGS" || {
+        rm -f "$SSH_TRANSFER_LAUNCHD_MARKER"; return 0;
+      }
+      rm -f "$SSH_TRANSFER_PIDFILE" "$SSH_TRANSFER_READYFILE"
+      exec "$PYTHON" -m twn_toolkit.ssh_transfer_worker \
+        --instance "$INSTANCE" \
+        --pid-file "$SSH_TRANSFER_PIDFILE" \
+        --ready-file "$SSH_TRANSFER_READYFILE" \
+        --log-file "$SSH_TRANSFER_LOG"
+      ;;
+    ftp)
+      [ -f "$FTP_LAUNCHD_MARKER" ] && managed_worker_enabled "$FTP_SETTINGS" || {
+        rm -f "$FTP_LAUNCHD_MARKER"; return 0;
+      }
+      rm -f "$FTP_PIDFILE" "$FTP_READYFILE"
+      exec "$PYTHON" -m twn_toolkit.ftp_worker \
+        --instance "$INSTANCE" \
+        --pid-file "$FTP_PIDFILE" \
+        --ready-file "$FTP_READYFILE" \
+        --log-file "$FTP_LOG"
+      ;;
+    *)
+      echo "Unknown launchd worker role: $launchd_worker_role" >&2
+      return 2
+      ;;
+  esac
+}
+
+direct_process_set_ready() {
+  is_running && automation_is_running && supervisor_is_running \
+    && [ -f "$SCHEME_FILE" ] && [ -f "$HOST_FILE" ] && [ -f "$PORT_FILE" ]
+}
+
+mark_direct_web_generation() {
+  direct_process_set_ready || return 0
+  direct_web_generation=$(cat "$SERVICE_WEB_GENERATION_FILE" 2>/dev/null || true)
+  marked_web_generation=$(cat "$SERVICE_MARKED_WEB_GENERATION_FILE" 2>/dev/null || true)
+  if [ -z "$direct_web_generation" ] || [ "$direct_web_generation" = "$marked_web_generation" ]; then
+    return 0
+  fi
+  "$PYTHON" -m twn_toolkit.system_identity mark-start --instance "$INSTANCE" >/dev/null
+  marked_generation_temporary="$SERVICE_MARKED_WEB_GENERATION_FILE.$$"
+  printf "%s\n" "$direct_web_generation" > "$marked_generation_temporary"
+  chmod 600 "$marked_generation_temporary"
+  mv "$marked_generation_temporary" "$SERVICE_MARKED_WEB_GENERATION_FILE"
+}
+
+service_run_direct() {
+  clear_stale_direct_service_pause
+  sync_launchd_transfer_markers
+  rm -f "$SERVICE_RESUME_FILE"
+  echo "The toolkit coordinator is monitoring direct launchd jobs."
+  while :; do
+    recorded_launcher_pid=$(cat "$SERVICE_LAUNCHER_PIDFILE" 2>/dev/null || true)
+    if [ "$recorded_launcher_pid" != "$$" ]; then
+      echo "The direct launchd coordinator was withheld for reload." >&2
+      return 1
+    fi
+    if [ -f "$SERVICE_PAUSE_FILE" ]; then
+      sync_launchd_transfer_markers
+      sleep 1
+      continue
+    fi
+    if [ -f "$SERVICE_RESUME_FILE" ]; then
+      rm -f "$SERVICE_RESUME_FILE"
+    fi
+    sync_launchd_transfer_markers
+    mark_direct_web_generation
+    sleep 2
+  done
+}
+
+remove_own_service_launcher_pid() {
+  recorded_launcher_pid=$(cat "$SERVICE_LAUNCHER_PIDFILE" 2>/dev/null || true)
+  if [ "$recorded_launcher_pid" = "$$" ]; then rm -f "$SERVICE_LAUNCHER_PIDFILE"; fi
+}
+
 service_run_cleanup() {
   service_exit_status=$?
   trap - EXIT INT TERM
+  if launchd_direct_job; then
+    remove_own_service_launcher_pid
+    rm -f "$SERVICE_DEFERRED_RELOAD_PIDFILE"
+    exit "$service_exit_status"
+  fi
   SERVICE_RUN_MODE=1
   stop || true
   rm -f "$SERVICE_LAUNCHER_PIDFILE" "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE" \
@@ -1522,12 +1773,21 @@ service_run() {
   mkdir -p "$INSTANCE"
   printf "%s\n" "$$" > "$SERVICE_LAUNCHER_PIDFILE"
   chmod 600 "$SERVICE_LAUNCHER_PIDFILE"
-  rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE" "$SERVICE_DEFERRED_RELOAD_PIDFILE"
+  if launchd_direct_job; then
+    rm -f "$SERVICE_DEFERRED_RELOAD_PIDFILE"
+  else
+    rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE" "$SERVICE_DEFERRED_RELOAD_PIDFILE"
+  fi
   SERVICE_RUN_MODE=1
   TWN_TOOLKIT_SERVICE_RUN=1
   export TWN_TOOLKIT_SERVICE_RUN
   trap service_run_cleanup EXIT
   trap 'exit 0' INT TERM
+
+  if launchd_direct_job; then
+    service_run_direct
+    return
+  fi
 
   start
   echo "The toolkit autostart supervisor is monitoring the managed process set."
@@ -1667,6 +1927,10 @@ case "${1:-}" in
     ;;
   service-run)
     service_run
+    ;;
+  launchd-run)
+    shift
+    launchd_run "$@"
     ;;
   enable-https)
     shift

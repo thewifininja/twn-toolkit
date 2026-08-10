@@ -9,7 +9,10 @@ from pathlib import Path
 from unittest import mock
 
 from twn_toolkit.service_cli import (
+    LAUNCHD_CORE_ROLES,
+    LAUNCHD_JOB_ROLES,
     LAUNCHD_LABEL,
+    LAUNCHD_TRANSFER_MARKERS,
     NETWORK_CAPABILITIES,
     SYSTEMD_UNIT_NAME,
     ServiceError,
@@ -21,7 +24,9 @@ from twn_toolkit.service_cli import (
     _wait_for_launchd_running,
     _wait_for_managed_toolkit,
     install_service,
+    manage_service,
     render_launchd_plist,
+    render_launchd_plists,
     render_systemd_unit,
     service_runtime_status,
     service_user,
@@ -77,9 +82,45 @@ class ServiceCliTests(unittest.TestCase):
         self.assertEqual(payload["Umask"], 0o077)
         self.assertEqual(payload["EnvironmentVariables"]["HOME"], "/home/toolkit")
         self.assertEqual(
+            payload["EnvironmentVariables"]["TWN_TOOLKIT_LAUNCHD_DIRECT"],
+            "1",
+        )
+        self.assertEqual(
+            payload["EnvironmentVariables"]["TWN_TOOLKIT_LAUNCHD_ROLE"],
+            "coordinator",
+        )
+        self.assertEqual(
             payload["StandardErrorPath"],
             str(root / "instance" / "twn-service-error.log"),
         )
+
+    def test_macos_network_processes_are_direct_launchd_jobs(self) -> None:
+        root = Path("/Users/toolkit/twn-toolkit")
+        rendered = render_launchd_plists(root, self.user)
+
+        self.assertEqual(len(rendered), 1 + len(LAUNCHD_JOB_ROLES))
+        payloads = [plistlib.loads(content) for content in rendered.values()]
+        by_role = {
+            payload["EnvironmentVariables"]["TWN_TOOLKIT_LAUNCHD_ROLE"]: payload
+            for payload in payloads
+        }
+        self.assertEqual(set(by_role), {"coordinator", *LAUNCHD_JOB_ROLES})
+        core_marker = str(root / "instance" / "twn-launchd-direct-enabled")
+        for role in LAUNCHD_CORE_ROLES:
+            payload = by_role[role]
+            self.assertEqual(
+                payload["ProgramArguments"],
+                [str(root / "twn"), "launchd-run", role],
+            )
+            self.assertEqual(payload["KeepAlive"], {"PathState": {core_marker: True}})
+            self.assertFalse(payload["RunAtLoad"])
+        for role, marker in LAUNCHD_TRANSFER_MARKERS.items():
+            payload = by_role[role]
+            self.assertEqual(
+                payload["KeepAlive"],
+                {"PathState": {str(root / "instance" / marker): True}},
+            )
+            self.assertFalse(payload["RunAtLoad"])
 
     @mock.patch("twn_toolkit.service_cli.grp.getgrgid")
     @mock.patch("twn_toolkit.service_cli.pwd.getpwnam")
@@ -118,6 +159,60 @@ class ServiceCliTests(unittest.TestCase):
                 user,
             )
         _validate_macos_service_location(Path("/Users/toolkit/twn-toolkit"), user)
+
+    def test_macos_install_bootstraps_direct_launchd_job_set(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"
+            instance = root / "instance"
+            instance.mkdir(parents=True)
+            plist_path = Path(temporary) / f"{LAUNCHD_LABEL}.plist"
+            with (
+                mock.patch("twn_toolkit.service_cli.LAUNCHD_PLIST_PATH", plist_path),
+                mock.patch("twn_toolkit.service_cli._validate_install_request"),
+                mock.patch("twn_toolkit.service_cli._require_root"),
+                mock.patch(
+                    "twn_toolkit.service_cli._ensure_instance_directory",
+                    return_value=instance,
+                ),
+                mock.patch(
+                    "twn_toolkit.service_cli.shutil.which",
+                    return_value="/bin/launchctl",
+                ),
+                mock.patch("twn_toolkit.service_cli.os.chown"),
+                mock.patch("twn_toolkit.service_cli._run_quiet") as run_quiet,
+                mock.patch("twn_toolkit.service_cli._run") as run,
+                mock.patch(
+                    "twn_toolkit.service_cli._wait_for_launchd_running",
+                    return_value=(True, "active", ""),
+                ) as wait_launchd,
+                mock.patch(
+                    "twn_toolkit.service_cli._wait_for_managed_toolkit",
+                    return_value=True,
+                ),
+            ):
+                install_service(
+                    root,
+                    self.user,
+                    system="Darwin",
+                    network_capabilities=False,
+                )
+
+            rendered_paths = [
+                plist_path,
+                *[
+                    plist_path.with_name(f"{LAUNCHD_LABEL}.{role}.plist")
+                    for role in LAUNCHD_JOB_ROLES
+                ],
+            ]
+            self.assertTrue(all(path.is_file() for path in rendered_paths))
+            bootstrap_calls = [
+                call
+                for call in run.call_args_list
+                if call.args[0][:3] == ("launchctl", "bootstrap", "system")
+            ]
+            self.assertEqual(len(bootstrap_calls), len(rendered_paths))
+            self.assertGreaterEqual(run_quiet.call_count, len(rendered_paths))
+            wait_launchd.assert_called_once_with(direct=True)
 
     def test_macos_status_does_not_call_scheduled_job_active(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -162,6 +257,89 @@ class ServiceCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         output.assert_any_call("Autostart service: loaded, active")
 
+    def test_macos_direct_status_requires_all_core_jobs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"
+            root.mkdir()
+            plist_path = Path(temporary) / f"{LAUNCHD_LABEL}.plist"
+            plist_path.write_bytes(render_launchd_plist(root, self.user))
+            with (
+                mock.patch("twn_toolkit.service_cli.LAUNCHD_PLIST_PATH", plist_path),
+                mock.patch(
+                    "twn_toolkit.service_cli._launchd_aggregate_details",
+                    return_value=(True, "active", ""),
+                ) as aggregate,
+                mock.patch("builtins.print") as output,
+            ):
+                result = service_status(system="Darwin")
+
+        self.assertEqual(result, 0)
+        aggregate.assert_called_once_with(direct=True)
+        output.assert_any_call("Autostart service: loaded, active direct jobs")
+
+    def test_macos_direct_restart_cycles_every_job_through_pause_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"
+            instance = root / "instance"
+            instance.mkdir(parents=True)
+            plist_path = Path(temporary) / f"{LAUNCHD_LABEL}.plist"
+            plist_path.write_bytes(render_launchd_plist(root, self.user))
+            for marker in LAUNCHD_TRANSFER_MARKERS.values():
+                (instance / marker).touch()
+            with (
+                mock.patch("twn_toolkit.service_cli.LAUNCHD_PLIST_PATH", plist_path),
+                mock.patch("twn_toolkit.service_cli._require_root"),
+                mock.patch("twn_toolkit.service_cli._run") as run,
+                mock.patch("twn_toolkit.service_cli._run_quiet") as run_quiet,
+            ):
+                manage_service("restart", system="Darwin")
+
+            self.assertFalse((instance / "twn-service-paused").exists())
+            self.assertTrue((instance / "twn-service-resume").exists())
+            self.assertTrue((instance / "twn-launchd-direct-enabled").exists())
+            self.assertTrue(
+                all(
+                    not (instance / marker).exists()
+                    for marker in LAUNCHD_TRANSFER_MARKERS.values()
+                )
+            )
+            kill_calls = [
+                call
+                for call in run_quiet.call_args_list
+                if call.args[0][:3] == ("launchctl", "kill", "SIGTERM")
+            ]
+            kickstart_calls = [
+                call
+                for call in run.call_args_list
+                if call.args[0][:3] == ("launchctl", "kickstart", "-k")
+            ]
+            self.assertEqual(len(kill_calls), 1 + len(LAUNCHD_JOB_ROLES))
+            self.assertEqual(len(kickstart_calls), 1 + len(LAUNCHD_CORE_ROLES))
+
+    def test_macos_direct_stop_removes_every_activation_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"
+            instance = root / "instance"
+            instance.mkdir(parents=True)
+            plist_path = Path(temporary) / f"{LAUNCHD_LABEL}.plist"
+            plist_path.write_bytes(render_launchd_plist(root, self.user))
+            markers = (
+                "twn-launchd-direct-enabled",
+                *LAUNCHD_TRANSFER_MARKERS.values(),
+            )
+            for marker in markers:
+                (instance / marker).touch()
+            with (
+                mock.patch("twn_toolkit.service_cli.LAUNCHD_PLIST_PATH", plist_path),
+                mock.patch("twn_toolkit.service_cli._require_root"),
+                mock.patch("twn_toolkit.service_cli._run"),
+                mock.patch("twn_toolkit.service_cli._run_quiet"),
+            ):
+                manage_service("stop", system="Darwin")
+
+            self.assertTrue((instance / "twn-service-paused").exists())
+            self.assertTrue(all(not (instance / marker).exists() for marker in markers))
+
     def test_bounded_launchd_status_reports_a_timeout(self) -> None:
         with mock.patch(
             "twn_toolkit.service_cli.subprocess.run",
@@ -198,7 +376,11 @@ class ServiceCliTests(unittest.TestCase):
                 )
 
         self.assertEqual(status["manager_state"], "timed out")
-        details.assert_called_once_with(timeout_seconds=0.2)
+        self.assertFalse(status["direct_launchd"])
+        details.assert_called_once_with(
+            "com.thewifininja.toolkit",
+            timeout_seconds=0.2,
+        )
 
     def test_runtime_status_identifies_active_linux_boot_service(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -245,6 +427,31 @@ class ServiceCliTests(unittest.TestCase):
         self.assertEqual(status["mode"], "Manual process")
         self.assertEqual(status["state"], "Running")
         self.assertFalse(status["installed"])
+
+    def test_runtime_status_recognizes_paused_direct_launchd_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"
+            instance = root / "instance"
+            instance.mkdir(parents=True)
+            (instance / "twn-service-paused").write_text("1\n", encoding="ascii")
+            (instance / "twn-service-launcher.pid").write_text("42\n", encoding="ascii")
+            plist_path = Path(temporary) / f"{LAUNCHD_LABEL}.plist"
+            plist_path.write_bytes(render_launchd_plist(root, self.user))
+            with (
+                mock.patch("twn_toolkit.service_cli.LAUNCHD_PLIST_PATH", plist_path),
+                mock.patch("twn_toolkit.service_cli.shutil.which", return_value="/bin/launchctl"),
+                mock.patch(
+                    "twn_toolkit.service_cli._launchd_aggregate_details",
+                    return_value=(False, "degraded", ""),
+                ),
+                mock.patch("twn_toolkit.service_cli.os.kill"),
+            ):
+                status = service_runtime_status(root, system="Darwin")
+
+        self.assertTrue(status["direct_launchd"])
+        self.assertEqual(status["mode"], "Boot-managed service")
+        self.assertEqual(status["state"], "Paused")
+        self.assertTrue(status["healthy"])
 
     def test_macos_install_wait_accepts_active_launchdaemon(self) -> None:
         launchctl = subprocess.CompletedProcess(

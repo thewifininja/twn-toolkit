@@ -215,11 +215,14 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.16.8: macOS LaunchDaemon mode keeps Gunicorn,
-  automation, supervisor, and enabled transfer workers in the launchd-owned
-  process tree, scheduled PCAP actions invoke their bounded helper by absolute
-  path, and nested Darwin errno 65 SSH failures identify Local Network Privacy
-  as a possible cause. Durable automation claims and renewable leases,
+- Current milestone is 0.16.9: macOS installs direct LaunchDaemons for Gunicorn,
+  automation, supervisor, and transfer workers after production proved that
+  v0.16.8 foreground children still received Local Network Privacy errno 65
+  without the system-wide CIDR exception. The stable coordinator retains
+  pause/resume and upgrade handoffs, direct jobs use owner-only boot and enable
+  markers, scheduled PCAP actions invoke their bounded helper by absolute path,
+  and nested Darwin errno 65 SSH failures identify Local Network Privacy as a
+  possible cause. Durable automation claims and renewable leases,
   explicit check-interval and schedule run modes, reusable ALL/ANY condition
   groups, Ping Quality and DNS Performance conditions, standalone and automated
   Packet Capture, lightweight live and retained PCAP inspection, datastore PCAP

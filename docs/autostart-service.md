@@ -93,16 +93,30 @@ adapter can add another init system without weakening the systemd path.
 
 ## macOS
 
-macOS installation creates
-`/Library/LaunchDaemons/com.thewifininja.toolkit.plist`. A LaunchDaemon starts at
-boot even when nobody has logged in; its `UserName` and `GroupName` keep the
-toolkit process and instance data owned by the installing account.
+macOS installation creates a coordinator at
+`/Library/LaunchDaemons/com.thewifininja.toolkit.plist` plus direct `.web`,
+`.automation`, `.supervisor`, `.tftp`, `.ssh-transfer`, and `.ftp` jobs beside
+it. System LaunchDaemons start at boot even when nobody has logged in; every
+property list uses the selected `UserName` and `GroupName` so application and
+instance data remain owned by the installing account.
 
-Under launchd, the macOS launcher keeps Gunicorn, the automation scheduler,
-supervisor, and enabled transfer services as foreground child processes instead
-of letting them self-daemonize. This preserves the service's process ownership
-and macOS privacy context. Manual launches and Linux service mode continue to
-use the normal daemon path.
+Each worker job invokes `twn launchd-run ROLE` and then `exec`s its final
+foreground process. Gunicorn, the automation scheduler, supervisor, and enabled
+transfer services are therefore daemons actually started by launchd, rather
+than Python grandchildren attributed to the shell coordinator. This distinction
+matters for macOS Local Network Privacy. The coordinator retains only lifecycle,
+pause/resume, startup-generation, upgrade, rollback, and recovery handoffs.
+Manual launches and Linux service mode continue to use the normal daemon path.
+
+Upgrading code cannot create additional root-owned property lists. Existing
+macOS installations from v0.16.8 or earlier must therefore run this once after
+installing v0.16.9:
+
+```bash
+sudo ./twn service install
+```
+
+The installer validates the complete direct-job set before declaring success.
 
 Install the toolkit outside macOS privacy-protected user folders. System
 LaunchDaemons cannot reliably execute programs beneath `Desktop`, `Documents`,
@@ -150,11 +164,11 @@ ChmodBPF package is one permission policy for it. The readiness check uses the
 effective account and groups of the running toolkit process. Restart the
 service after changing group membership before relying on that result.
 
-`./twn service install` waits for launchd to report the job active and for the
-web process, scheduler, and supervisor to become ready. If the job exits or the
-managed processes never become ready, installation removes the failed property
-list and points to `./twn service logs`; it does not leave a repeatedly failing
-LaunchDaemon installed.
+`./twn service install` waits for launchd to report the coordinator and three
+core jobs active and for the web process, scheduler, and supervisor to become
+ready. If a job exits or the managed processes never become ready, installation
+removes the failed property-list set and points to `./twn service logs`; it does
+not leave repeatedly failing LaunchDaemons installed.
 
 ## Lifecycle commands
 
@@ -180,8 +194,10 @@ administrator access:
   starts and validates the replacement process set before asking the OS manager
   to reload the launcher itself from the finalized files on disk.
 
-The pause is intentionally cleared by a service-manager restart or reboot, so
-an installed autostart service always returns after the host starts.
+The owner-only pause marker records the current boot generation. A
+service-manager start or restart removes it immediately; a coordinator started
+after a later boot recognizes and clears a stale generation, so an installed
+autostart service always returns after the host starts.
 
 Uninstallation removes only the systemd unit or launchd property list. It does
 not delete `instance/`, logs, profiles, certificates, captures, or Datastore

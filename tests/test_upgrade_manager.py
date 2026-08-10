@@ -125,12 +125,21 @@ class UpgradeBundleTests(unittest.TestCase):
             instance = Path(temporary)
             (instance / "twn-service-launcher.pid").write_text("123\n")
             (instance / "twn-service-resume").touch()
+            launchd_markers = (
+                "twn-launchd-direct-enabled",
+                "twn-tftp.launchd-enabled",
+                "twn-ssh-transfer.launchd-enabled",
+                "twn-ftp.launchd-enabled",
+            )
+            for marker in launchd_markers:
+                (instance / marker).touch()
 
             _preserve_prepared_service_reload(instance, True)
 
             self.assertTrue((instance / "twn-service-paused").is_file())
             self.assertFalse((instance / "twn-service-launcher.pid").exists())
             self.assertFalse((instance / "twn-service-resume").exists())
+            self.assertTrue(all(not (instance / marker).exists() for marker in launchd_markers))
 
     def test_build_and_validate_verified_release_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

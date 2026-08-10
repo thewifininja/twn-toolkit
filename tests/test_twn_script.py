@@ -312,6 +312,45 @@ class TwnScriptTests(unittest.TestCase):
         )
         self.assertIn("if start_ftp; then ftp_started=1; fi", transfer_body)
 
+    def test_macos_direct_launchd_jobs_exec_each_network_process(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "twn").read_text(
+            encoding="utf-8"
+        )
+
+        launchd_run = re.search(
+            r"launchd_run\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        direct_coordinator = re.search(
+            r"service_run_direct\(\) \{(?P<body>.*?)\n\}",
+            source,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(launchd_run)
+        self.assertIsNotNone(direct_coordinator)
+        body = launchd_run.group("body")
+        for role in (
+            "web)",
+            "automation)",
+            "supervisor)",
+            "tftp)",
+            "ssh-transfer)",
+            "ftp)",
+        ):
+            self.assertIn(role, body)
+        self.assertIn('exec "$@"', body)
+        self.assertGreaterEqual(body.count('exec "$PYTHON" -m'), 5)
+        self.assertNotIn("--daemon", body)
+        self.assertIn('SERVICE_LAUNCHD_MARKER="$INSTANCE/twn-launchd-direct-enabled"', source)
+        self.assertIn('[ -f "$SERVICE_LAUNCHD_MARKER" ] || return 0', body)
+        self.assertIn("TWN_TOOLKIT_LAUNCHD_DIRECT=0", source)
+        self.assertIn('launchd-run)', source)
+        self.assertIn('launchd_run "$@"', source)
+        self.assertIn("sync_launchd_transfer_markers", direct_coordinator.group("body"))
+        self.assertNotIn("start_automation", direct_coordinator.group("body"))
+        self.assertNotIn("start_supervisor", direct_coordinator.group("body"))
+
     def test_stop_snapshots_web_pid_before_stopping_sibling_workers(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "twn").read_text(
             encoding="utf-8"
