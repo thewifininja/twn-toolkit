@@ -35,7 +35,7 @@ action's working-directory dependency. Production then proved that foreground
 Python children and direct PID-1 jobs configured with `UserName=admin` still
 failed after the CIDR exception was removed and the Mac restarted. A retained
 root parent was also insufficient, while the connecting root LaunchDaemon
-process succeeded. The v0.16.9 follow-up therefore combines direct
+process succeeded. The v0.16.10 follow-up therefore combines direct
 unprivileged workers with a native, UID-restricted root TCP connector that
 passes connected descriptors back without handling credentials or toolkit
 actions. Retain cold boot, service reinstall, upgrade handoff, rollback, Python

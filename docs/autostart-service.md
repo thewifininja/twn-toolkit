@@ -121,8 +121,8 @@ rollback, and recovery handoffs. Manual launches and Linux service mode continue
 to use the normal socket and daemon paths.
 
 Upgrading code cannot create additional root-owned property lists. Existing
-macOS installations from v0.16.8 or earlier must therefore run this once after
-installing v0.16.9:
+macOS installations from v0.16.9 or earlier must therefore run this once after
+installing v0.16.10:
 
 ```bash
 sudo ./twn service install
@@ -290,7 +290,7 @@ log files remain recoverable and can still be started manually with
   host` on macOS:** test the same address and port with the toolkit TCP Port
   Scanner. An immediate errno 65 failure can be a Local Network Privacy denial
   for the service process even when routing and Terminal access are healthy.
-  On v0.16.9 or newer, confirm System Diagnostics shows **Protected TCP
+  On v0.16.10 or newer, confirm System Diagnostics shows **Protected TCP
   connector · Ready**; otherwise rerun `sudo ./twn service install`.
   Review [Apple's Local Network Privacy guidance](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)
   before changing system-wide CIDR exceptions; those exceptions affect every

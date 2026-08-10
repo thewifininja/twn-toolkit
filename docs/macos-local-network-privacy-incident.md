@@ -1,6 +1,6 @@
 # macOS local-network privacy incident and service follow-up
 
-Status: root-only connection boundary proven in production; bounded connector implemented locally
+Status: root-only connection boundary proven in production; v0.16.10 connector implemented locally
 Priority: high before the next macOS service-lifecycle change
 Observed: 2026-08-07 through 2026-08-10 on production v0.16.6-v0.16.9 candidates; final controlled probes on macOS 15.1.1 (24B91)
 
@@ -134,7 +134,7 @@ sibling workers so Gunicorn cleanup could not race the launcher. The
 CIDR-removal test proved that this process ancestry was not equivalent to being
 started by launchd.
 
-The first v0.16.9 design retained the coordinator only for lifecycle and upgrade
+The v0.16.9 candidate retained the coordinator only for lifecycle and upgrade
 handoffs and installs separate system LaunchDaemons for web, automation,
 supervisor, TFTP, SFTP/SCP, and FTP. Each job invokes `twn launchd-run ROLE`,
 performs bounded setup, and then `exec`s the final foreground process without a
@@ -268,7 +268,7 @@ Support guidance for affected existing versions:
    and restart the Mac.
 6. Re-test from the toolkit worker and then run an end-to-end automation.
 
-After installing v0.16.9 code on an existing macOS service host, run
+After installing v0.16.10 code on an existing macOS service host, run
 `sudo ./twn service install` once to install the direct-job set and protected
 TCP connector before testing without a CIDR exception.
 

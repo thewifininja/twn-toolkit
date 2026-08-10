@@ -1,8 +1,8 @@
-APP_VERSION = "0.16.9"
+APP_VERSION = "0.16.10"
 
 RELEASE_NOTES = (
     {
-        "version": "0.16.9",
+        "version": "0.16.10",
         "date": "2026-08-10",
         "title": "Protected macOS service networking",
         "summary": (
@@ -36,6 +36,25 @@ RELEASE_NOTES = (
                     "Records that direct PID-1-owned Python jobs configured with UserName=admin still received errno 65 on macOS 15.1.1, and that a root LaunchDaemon parent spawning an unprivileged Python child was also insufficient because macOS attributed the operation to the child.",
                     "Confirms with controlled production probes that the same switch TCP port succeeds when the connecting process itself is the root LaunchDaemon, which defines the connector boundary used by this release.",
                     "Keeps the explicit Ethernet or Wi-Fi CIDR exception as an administrator-controlled fallback and retains the scheduled packet-capture path fix, nested Paramiko diagnostics, shutdown race fix, and full manual and Linux compatibility.",
+                ),
+            },
+        ),
+    },
+    {
+        "version": "0.16.9",
+        "date": "2026-08-10",
+        "title": "Direct macOS launchd service candidate",
+        "summary": (
+            "Introduced direct unprivileged worker jobs and exposed the remaining "
+            "UserName-based Local Network Privacy boundary during production testing."
+        ),
+        "groups": (
+            {
+                "title": "Production candidate evidence",
+                "items": (
+                    "Installed separate LaunchDaemons for Gunicorn, automation, supervisor, and transfer workers so launchd directly owns their foreground process lifetime.",
+                    "Confirmed that direct UID 501 jobs with PPID 1 still receive errno 65 when their property lists use UserName=admin, despite the same Python executable connecting successfully from Terminal.",
+                    "Retained the direct-job lifecycle work as the unprivileged application layer and moved the bounded root TCP connector into v0.16.10.",
                 ),
             },
         ),

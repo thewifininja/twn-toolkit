@@ -1,4 +1,4 @@
-# v0.16.9 release checklist
+# v0.16.10 release checklist
 
 ## Direct unprivileged macOS LaunchDaemons
 
@@ -44,7 +44,7 @@
   WAL files, profiles, captures, certificates, logs, and datastore data remain
   covered by the integrity manifest.
 - [x] Existing macOS installations require one explicit
-  `sudo ./twn service install` after the v0.16.9 code upgrade; manual startup,
+  `sudo ./twn service install` after the v0.16.10 code upgrade; manual startup,
   Linux systemd, databases, profiles, automations, and stored data are unchanged.
 - [x] Aggregate service health requires the connector, coordinator, and every
   core direct job while disabled transfer jobs are not falsely reported as
@@ -56,16 +56,16 @@
   scheduled PCAP plus SSH succeeded on 5 of 5 switches; after CIDR removal and
   reboot, PCAP succeeded while SSH returned errno 65.
 - [x] Update built-in release notes, README, autostart guidance, incident notes,
-  refactor backlog, continuity guidance, and version assertions for v0.16.9.
-- [ ] Pass native build/signature checks, shell syntax, focused connector,
+  refactor backlog, continuity guidance, and version assertions for v0.16.10.
+- [x] Pass native build/signature checks, shell syntax, focused connector,
   service, network-tool, and upgrade tests, then the complete test suite after
   final release metadata and documentation edits.
-- [ ] Build and validate the revised v0.16.9 production-test bundle against
-  v0.16.9 candidate code, including its generated SHA-256 checksum.
+- [x] Build and validate the v0.16.10 production-test bundle as an upgrade from
+  the production v0.16.9 candidate, including its generated SHA-256 checksum.
 
 ## Production acceptance without the CIDR fallback
 
-- [ ] Install the verified v0.16.9 code bundle while leaving the Ethernet CIDR
+- [ ] Install the verified v0.16.10 code bundle while leaving the Ethernet CIDR
   exception absent, then run `sudo ./twn service install` once.
 - [ ] Verify all eight property lists and the native connector are root-owned;
   confirm the connector has no `UserName`, while Gunicorn, automation,
@@ -82,5 +82,5 @@
 - [ ] Pass release-preparation and merged-main CI before creating an annotated
   tag or publishing any GitHub release.
 
-Do not tag or publish v0.16.9 until the CIDR-free production acceptance and
+Do not tag or publish v0.16.10 until the CIDR-free production acceptance and
 cold-boot gates pass.

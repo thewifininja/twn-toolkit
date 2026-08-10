@@ -107,7 +107,7 @@ restored process set when its version matches. Handoff details are available in
 `.twn-upgrades/service-reload.log`.
 
 No recurring `./twn service restart` or administrator prompt is required. The
-v0.16.9 transition is a one-time exception: an existing macOS host must run
+v0.16.10 transition is a one-time exception: an existing macOS host must run
 `sudo ./twn service install` after its code upgrade so the direct web and worker
 property lists plus the protected TCP connector can be installed beneath
 `/Library/LaunchDaemons` and `/Library/PrivilegedHelperTools`. The connector is
