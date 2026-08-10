@@ -163,16 +163,20 @@ Relevant code:
 ### 2. Use a bounded root TCP connector
 
 Do not run Gunicorn, automation, Paramiko, or the complete toolkit as root.
-Install one native root LaunchDaemon whose sole authority is outbound TCP
+Install one native root LaunchDaemon whose root-only authority is outbound TCP
 connection setup:
 
 1. Listen on a mode-0600 Unix socket owned by the configured service account.
 2. Verify every client with the kernel-provided peer UID.
 3. Accept only bounded TCP host, port, address-family, and timeout fields.
-4. Perform `connect()` as the root broker, then pass the connected descriptor
-   back with `SCM_RIGHTS` and close the broker's copy.
-5. Keep SSH credentials, host-key policy, authentication, commands, HTTP
-   payloads, transfer data, and output in the UID 501 caller.
+4. Perform `connect()` as root, create a local socket pair, and drop supplemental
+   groups plus root UID/GID before returning the caller's local endpoint with
+   `SCM_RIGHTS`.
+5. Blindly relay bytes between the retained local endpoint and remote TCP
+   socket under the configured service UID. Never parse, log, or persist relay
+   traffic.
+6. Keep SSH credentials, host-key policy, authentication, commands, protocol
+   parsing, transfer handling, and output storage in the normal caller.
 
 The helper is a small universal native executable installed root-owned beneath
 `/Library/PrivilegedHelperTools`; it never executes toolkit code as root.
@@ -192,9 +196,38 @@ reported `Error reading SSH protocol banner`. Controlled probes showed:
 - detaching the placeholder and initializing the socket object with the
   returned descriptor received the banner normally.
 
-The v0.16.11 shim therefore adopts the returned descriptor directly and closes
-only the unused placeholder. The native root helper, its protocol, launchd job,
-and privilege boundary are unchanged.
+The v0.16.11 shim therefore adopted the returned descriptor directly and closed
+only the unused placeholder.
+
+The final production acceptance run exposed a deeper limitation in that model.
+With the CIDR exception still absent, a simultaneous PCAP captured 7,711
+packets, but the scheduler reported `Error reading SSH protocol banner` for all
+five switches. Controlled probes established that:
+
+- raw connector, adopted-socket, bare Paramiko, and five-way concurrent
+  Paramiko handshakes all received `SSH-2.0-OpenSSH_9.9` when launched from
+  Terminal;
+- the exact saved SSH action, run from Terminal with its encrypted production
+  configuration, succeeded on three switches and lost two banners; and
+- the same action in the background automation scheduler lost all five
+  banners, even though its LaunchDaemon had the connector environment and the
+  connector socket was ready.
+
+That evidence invalidated Terminal-side descriptor probes as proof of the
+background data path. Apple documents that macOS tracks the responsible code
+performing a local-network operation, automatically exempts root and proper
+system LaunchDaemons, and treats user-context agents differently. Direct jobs
+using `UserName=admin` remain in the problematic role-account context. See
+[TN3179: Understanding local network privacy](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
+
+v0.17.0 therefore keeps remote socket creation in the root LaunchDaemon but no
+longer hands that remote descriptor to Python. The helper creates a local socket
+pair, drops root and supplemental groups to the configured service UID, returns
+one local endpoint, and relays opaque bytes through the other endpoint for a
+bounded lifetime. The helper necessarily copies the raw stream, but it does not
+interpret, log, or persist it; application authentication, commands, protocol
+state, and stored output remain in the unprivileged toolkit. For SSH and TLS,
+post-handshake credentials and commands remain encrypted on that stream.
 
 This boundary also covers other TCP-based actions that use the shared Python
 socket layer, including the TCP scanner, certificate probes, FTP/SFTP clients,
@@ -249,13 +282,14 @@ Maintain a physical or virtual macOS 15.5+ service test that covers:
 
 - a LaunchDaemon running as a non-root service user;
 - the root connector property list without `UserName`, root-owned helper,
-  mode-0600 UID-owned Unix socket, peer-UID rejection, and descriptor handoff;
+  mode-0600 UID-owned Unix socket, peer-UID rejection, root-only `connect()`,
+  privilege drop, and opaque bidirectional relay;
 - a cold boot with no prior interactive Terminal launch;
 - toolkit restart, upgrade handoff, rollback, and recovery;
 - replacement of the Homebrew Python runtime;
 - outbound TCP and Paramiko SSH to a directly connected Ethernet address;
-- direct ownership of the `SCM_RIGHTS` descriptor without overlaying it on a
-  placeholder, including bidirectional traffic over a real TCP stream;
+- direct ownership of the `SCM_RIGHTS` local relay endpoint without overlaying
+  it on a placeholder, including bidirectional traffic over a real TCP stream;
 - the same SSH collection while a bounded PCAP runs in parallel; and
 - actionable diagnostics for a deliberately denied local-network process.
 
@@ -319,8 +353,9 @@ bounded final readiness wait with one exact-instance repair cycle.
 Suggested release-note text:
 
 > Keeps macOS web and worker processes unprivileged while a bounded native root
-> LaunchDaemon performs only TCP connection setup and passes connected sockets
-> over a UID-restricted Unix socket. Production proved that direct UID 501
+> LaunchDaemon performs TCP connection setup, drops to the service UID, and
+> blindly relays each stream over a UID-restricted Unix socket. Production
+> proved that direct UID 501
 > launchd jobs and unprivileged children of a root parent still received Local
 > Network Privacy errno 65; only the connecting root process was exempt.
 
@@ -340,7 +375,9 @@ After installing v0.16.10 or newer code on a host that predates the connector,
 run `sudo ./twn service install` once to install the direct-job set and
 protected TCP connector before testing without a CIDR exception. A host that
 already completed that installation for v0.16.10 does not repeat it when
-upgrading to v0.16.11.
+upgrading to v0.16.11. It must run the service install again for the final
+v0.17.0 build because that release replaces the descriptor-only helper with the
+privilege-dropped relay.
 
 Do not recommend running the complete toolkit as root to bypass this policy.
 

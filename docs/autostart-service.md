@@ -148,7 +148,9 @@ writing a service definition. For a relocated existing checkout, rebuild its
 
 macOS has no direct equivalent to systemd's scoped ambient capabilities. The
 application service remains unprivileged; the root connector is limited to TCP
-connection setup and descriptor handoff. Packet capture, packet replay, and DHCP
+connection setup, then drops to the configured service UID before blindly
+relaying the connected stream. It does not parse, log, or persist application
+traffic. Packet capture, packet replay, and DHCP
 Discover require an administrator-managed BPF access policy when normal-user
 BPF access is not already available. The macOS DHCP backend constructs one
 Ethernet/IPv4/UDP Discover through BPF, listens for matching Offers, and never

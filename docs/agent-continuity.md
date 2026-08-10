@@ -221,8 +221,11 @@ accepted replay frames.
   that v0.16.8 foreground children, direct PID-1 jobs using `UserName=admin`,
   and an unprivileged child of a retained root parent all received Local Network
   Privacy errno 65 without the system-wide CIDR exception; only the process
-  actually calling `connect()` as root succeeded. The connector passes the
-  connected descriptor back with no credentials or command data. The stable
+  actually calling `connect()` as root succeeded. Final acceptance also proved
+  that transferring the remote descriptor did not preserve the background SSH
+  data path. The connector now creates the remote flow as root, drops to the
+  service UID, and blindly relays bytes without parsing, logging, persisting,
+  authenticating, or executing commands. The stable
   coordinator retains pause/resume and upgrade handoffs, direct jobs use
   owner-only boot and enable markers, scheduled PCAP actions invoke their
   bounded helper by absolute path, and nested Darwin errno 65 SSH failures

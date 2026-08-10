@@ -128,6 +128,7 @@ class ServiceCliTests(unittest.TestCase):
             for payload in payloads
             if "EnvironmentVariables" in payload
         }
+
         self.assertEqual(set(by_role), {"coordinator", *LAUNCHD_JOB_ROLES})
         core_marker = str(root / "instance" / "twn-launchd-direct-enabled")
         for role in LAUNCHD_CORE_ROLES:
@@ -149,6 +150,57 @@ class ServiceCliTests(unittest.TestCase):
                 {"PathState": {str(root / "instance" / marker): True}},
             )
             self.assertFalse(payload["RunAtLoad"])
+
+    def test_native_connector_relays_after_dropping_root(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "native"
+            / "macos_network_broker.c"
+        ).read_text(encoding="utf-8")
+        handler = source[source.index("static void handle_client") :]
+
+        self.assertIn("socketpair(AF_UNIX, SOCK_STREAM, 0, relay_pair)", handler)
+        self.assertIn("setgroups(1, groups)", source)
+        self.assertIn("setgid(allowed_gid)", source)
+        self.assertIn("setuid(allowed_uid)", source)
+        self.assertLess(
+            handler.index("drop_relay_privileges()"),
+            handler.index("send_result(descriptor, 0, relay_pair[0])"),
+        )
+        self.assertLess(
+            handler.index("send_result(descriptor, 0, relay_pair[0])"),
+            handler.index("relay_streams(relay_pair[1], connected_fd)"),
+        )
+
+    @unittest.skipUnless(os.uname().sysname == "Darwin", "requires macOS sockets")
+    def test_native_connector_relay_is_bidirectional_and_half_closes(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        harness = root / "tests" / "native" / "macos_network_broker_relay_harness.c"
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "network-broker-relay-harness"
+            subprocess.run(
+                [
+                    "xcrun",
+                    "clang",
+                    "-Wall",
+                    "-Wextra",
+                    "-Werror",
+                    str(harness),
+                    "-o",
+                    str(executable),
+                ],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [str(executable)],
+                check=True,
+                timeout=10,
+                capture_output=True,
+                text=True,
+            )
 
     @mock.patch("twn_toolkit.service_cli.grp.getgrgid")
     @mock.patch("twn_toolkit.service_cli.pwd.getpwnam")

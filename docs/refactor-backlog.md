@@ -37,8 +37,11 @@ failed after the CIDR exception was removed and the Mac restarted. A retained
 root parent was also insufficient, while the connecting root LaunchDaemon
 process succeeded. The v0.16.10 follow-up therefore combines direct
 unprivileged workers with a native, UID-restricted root TCP connector that
-passes connected descriptors back without handling credentials or toolkit
-actions. Retain cold boot, service reinstall, upgrade handoff, rollback, Python
+initially passed connected descriptors back. Final v0.17.0 production testing
+proved that background data I/O still failed in the receiving process, so the
+connector now drops to the service UID after `connect()` and blindly relays the
+stream without parsing, logging, persisting, or executing toolkit actions.
+Retain cold boot, service reinstall, upgrade handoff, rollback, Python
 replacement, CIDR removal, and concurrent PCAP/SSH in the macOS regression
 matrix for future service-lifecycle changes.
 The full incident evidence, security constraints, and fallback design are in

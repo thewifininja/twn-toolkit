@@ -88,7 +88,7 @@ def _recv_descriptor(channel: socket.socket) -> int:
                 for extra in descriptors[1:]:
                     os.close(int(extra))
                 return received
-    raise BrokerProtocolError(errno.EPROTO, "Network broker omitted the connected socket")
+    raise BrokerProtocolError(errno.EPROTO, "Network broker omitted the connected stream")
 
 
 def request_connected_descriptor(
@@ -131,7 +131,7 @@ def request_connected_descriptor(
 
 
 class BrokeredSocket(_ORIGINAL_SOCKET):
-    """Socket subclass that delegates service TCP connects to the root broker."""
+    """Socket subclass backed by the broker's local endpoint for a TCP relay."""
 
     def connect(self, address: Any) -> None:
         candidate = _broker_candidate(self.family, self.type, address, self.gettimeout())

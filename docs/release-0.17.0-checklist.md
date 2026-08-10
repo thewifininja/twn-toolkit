@@ -7,8 +7,9 @@
   bounded privileged connector are new operational architecture.
 - [x] Keep the application, automation scheduler, Paramiko, credentials,
   commands, transfers, and stored data under the configured non-root account.
-- [x] Limit the native root helper to outbound TCP connection setup for the
-  configured service UID and descriptor handoff over an owner-only Unix socket.
+- [x] Limit the native helper to outbound TCP connection setup as root for the
+  configured service UID, then drop root before blindly relaying the stream
+  over an owner-only Unix socket without parsing, logging, or persisting it.
 - [x] Preserve existing manual startup and Linux behavior without installing or
   invoking the macOS connector.
 
@@ -48,10 +49,15 @@
   and add exact-instance cleanup for direct and daemonized workers.
 - [x] Add a bounded post-handoff readiness wait that repairs an untracked
   scheduler or supervisor generation before leaving the service degraded.
+- [x] Reproduce the final descriptor-handoff gap: raw and bare Paramiko probes
+  succeed from Terminal, but the background scheduler loses every SSH banner;
+  replace the data plane with a bounded relay that drops to the service UID
+  before forwarding opaque bytes.
 - [x] Pass native build/signature checks, shell syntax, focused connector,
-  service, network-tool, automation, and upgrade tests.
-- [x] Pass the complete test suite after final version and documentation edits:
-  633 passed, 7 skipped, and 214 subtests passed on the release-preparation Mac.
+  service, network-tool, automation, and upgrade tests after the relay change.
+- [x] Pass the complete test suite after the relay, final version, and
+  documentation edits: 635 passed and 7 skipped on the release-preparation
+  Mac, including the compiled native bidirectional and half-close harness.
 
 ## Production acceptance without the CIDR fallback
 
@@ -62,7 +68,7 @@
   production candidate before asking that older updater to install v0.17.0.
 - [x] Install the verified v0.17.0 bundle without reinstalling the unchanged
   v0.16.10 connector helper or restoring the CIDR exception.
-- [x] Reconcile production to the final 345-file v0.17.0 bundle (SHA-256
+- [x] Reconcile production to the 345-file descriptor candidate (SHA-256
   `c1ef8be68dbd5191bb1ccb1f9c775a3dbab663ecf774d48763b778843aaf8f9b`)
   after verifying recovery point `20260810-134833-72604bc5`.
 - [x] Verify the reconciled checkout has zero manifest mismatches, every live
@@ -85,8 +91,10 @@
 - [ ] Review the production installer failure independently after database
   rollback safety is in place; retain bounded diagnostics without exposing
   package-manager credentials.
-- [x] Build and validate the exact 345-file v0.17.0 bundle and matching SHA-256
-  sidecar from the release-preparation source.
+- [x] Build and validate the exact 345-file descriptor candidate and matching
+  SHA-256 sidecar from the release-preparation source.
+- [x] Build and validate the final 346-file privilege-dropped relay bundle and
+  matching SHA-256 sidecar.
 - [ ] Pass release-preparation and merged-main CI.
 - [ ] Create and push the annotated `v0.17.0` tag only after project-owner
   approval and all production acceptance checks pass.

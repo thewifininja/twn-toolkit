@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <poll.h>
+#include <grp.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -22,13 +23,24 @@
 #define MAX_TIMEOUT_MS 30000U
 #define MIN_TIMEOUT_MS 100U
 #define MAX_CHILDREN 256
-#define CHILD_LIFETIME_SECONDS 35
+#define SETUP_LIFETIME_SECONDS 35
+#define RELAY_LIFETIME_SECONDS 3700
+#define RELAY_BUFFER_SIZE 65536
 
 static volatile sig_atomic_t stopping = 0;
 static int listener_fd = -1;
 static const char *socket_path = NULL;
 static uid_t allowed_uid = (uid_t)-1;
+static gid_t allowed_gid = (gid_t)-1;
 static volatile sig_atomic_t active_children = 0;
+
+struct relay_buffer {
+    unsigned char data[RELAY_BUFFER_SIZE];
+    size_t start;
+    size_t end;
+    int source_eof;
+    int target_shutdown;
+};
 
 static uint16_t read_u16(const unsigned char *value) {
     return (uint16_t)(((uint16_t)value[0] << 8) | value[1]);
@@ -77,6 +89,145 @@ static int send_result(int descriptor, int error_code, int connected_fd) {
     while (sendmsg(descriptor, &message, 0) < 0) {
         if (errno != EINTR) return errno;
     }
+    return 0;
+}
+
+static int set_nonblocking(int descriptor) {
+    int flags = fcntl(descriptor, F_GETFL, 0);
+    if (flags < 0 || fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) < 0) {
+        return errno;
+    }
+    return 0;
+}
+
+static size_t relay_buffer_size(const struct relay_buffer *buffer) {
+    return buffer->end - buffer->start;
+}
+
+static void compact_relay_buffer(struct relay_buffer *buffer) {
+    if (buffer->start == buffer->end) {
+        buffer->start = 0;
+        buffer->end = 0;
+    } else if (buffer->end == sizeof(buffer->data) && buffer->start > 0) {
+        size_t length = relay_buffer_size(buffer);
+        memmove(buffer->data, buffer->data + buffer->start, length);
+        buffer->start = 0;
+        buffer->end = length;
+    }
+}
+
+static int read_relay_data(int descriptor, struct relay_buffer *buffer) {
+    compact_relay_buffer(buffer);
+    if (buffer->source_eof || buffer->end == sizeof(buffer->data)) return 0;
+    ssize_t count = recv(
+        descriptor,
+        buffer->data + buffer->end,
+        sizeof(buffer->data) - buffer->end,
+        0
+    );
+    if (count > 0) {
+        buffer->end += (size_t)count;
+        return 0;
+    }
+    if (count == 0 || errno == ECONNRESET) {
+        buffer->source_eof = 1;
+        return 0;
+    }
+    if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+    return errno;
+}
+
+static int write_relay_data(int descriptor, struct relay_buffer *buffer) {
+    size_t length = relay_buffer_size(buffer);
+    if (length == 0) return 0;
+    ssize_t count = send(descriptor, buffer->data + buffer->start, length, 0);
+    if (count > 0) {
+        buffer->start += (size_t)count;
+        compact_relay_buffer(buffer);
+        return 0;
+    }
+    if (count < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
+        return 0;
+    }
+    return count < 0 ? errno : EPIPE;
+}
+
+static int finish_relay_direction(int descriptor, struct relay_buffer *buffer) {
+    if (!buffer->source_eof || relay_buffer_size(buffer) != 0 || buffer->target_shutdown) {
+        return 0;
+    }
+    if (shutdown(descriptor, SHUT_WR) != 0 && errno != ENOTCONN && errno != EINVAL) {
+        return errno;
+    }
+    buffer->target_shutdown = 1;
+    return 0;
+}
+
+static int relay_streams(int local_fd, int remote_fd) {
+    int error_code = set_nonblocking(local_fd);
+    if (error_code == 0) error_code = set_nonblocking(remote_fd);
+    if (error_code != 0) return error_code;
+
+    struct relay_buffer to_remote;
+    struct relay_buffer to_local;
+    memset(&to_remote, 0, sizeof(to_remote));
+    memset(&to_local, 0, sizeof(to_local));
+
+    while (1) {
+        error_code = finish_relay_direction(remote_fd, &to_remote);
+        if (error_code == 0) error_code = finish_relay_direction(local_fd, &to_local);
+        if (error_code != 0) return error_code;
+        if (to_remote.target_shutdown && to_local.target_shutdown) return 0;
+
+        compact_relay_buffer(&to_remote);
+        compact_relay_buffer(&to_local);
+        struct pollfd waiters[2];
+        waiters[0].fd = local_fd;
+        waiters[0].events = 0;
+        waiters[0].revents = 0;
+        waiters[1].fd = remote_fd;
+        waiters[1].events = 0;
+        waiters[1].revents = 0;
+        if (!to_remote.source_eof && to_remote.end < sizeof(to_remote.data)) {
+            waiters[0].events |= POLLIN;
+        }
+        if (relay_buffer_size(&to_local) > 0) waiters[0].events |= POLLOUT;
+        if (!to_local.source_eof && to_local.end < sizeof(to_local.data)) {
+            waiters[1].events |= POLLIN;
+        }
+        if (relay_buffer_size(&to_remote) > 0) waiters[1].events |= POLLOUT;
+
+        int ready;
+        do {
+            ready = poll(waiters, 2, -1);
+        } while (ready < 0 && errno == EINTR);
+        if (ready < 0) return errno;
+        if ((waiters[0].revents | waiters[1].revents) & POLLNVAL) return EBADF;
+        if ((waiters[0].revents | waiters[1].revents) & POLLERR) return EIO;
+
+        if (waiters[0].revents & (POLLIN | POLLHUP)) {
+            error_code = read_relay_data(local_fd, &to_remote);
+        }
+        if (error_code == 0 && waiters[1].revents & (POLLIN | POLLHUP)) {
+            error_code = read_relay_data(remote_fd, &to_local);
+        }
+        if (error_code == 0 && waiters[0].revents & POLLOUT) {
+            error_code = write_relay_data(local_fd, &to_local);
+        }
+        if (error_code == 0 && waiters[1].revents & POLLOUT) {
+            error_code = write_relay_data(remote_fd, &to_remote);
+        }
+        if (error_code != 0) return error_code;
+    }
+}
+
+static int drop_relay_privileges(void) {
+    gid_t groups[1] = {allowed_gid};
+    if (setgroups(1, groups) != 0 || setgid(allowed_gid) != 0 ||
+        setuid(allowed_uid) != 0) {
+        return errno;
+    }
+    if (geteuid() != allowed_uid || getegid() != allowed_gid) return EACCES;
     return 0;
 }
 
@@ -216,9 +367,37 @@ static void handle_client(int descriptor) {
     }
 
     int connected_fd = connect_target(host, port, header[5], timeout_ms);
-    error_code = connected_fd < 0 ? errno : 0;
-    (void)send_result(descriptor, error_code, connected_fd);
-    if (connected_fd >= 0) close(connected_fd);
+    if (connected_fd < 0) {
+        (void)send_result(descriptor, errno, -1);
+        return;
+    }
+
+    int relay_pair[2] = {-1, -1};
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, relay_pair) != 0) {
+        error_code = errno;
+        close(connected_fd);
+        (void)send_result(descriptor, error_code, -1);
+        return;
+    }
+    (void)fcntl(relay_pair[0], F_SETFD, FD_CLOEXEC);
+    (void)fcntl(relay_pair[1], F_SETFD, FD_CLOEXEC);
+
+    error_code = drop_relay_privileges();
+    if (error_code != 0) {
+        close(relay_pair[0]);
+        close(relay_pair[1]);
+        close(connected_fd);
+        (void)send_result(descriptor, error_code, -1);
+        return;
+    }
+    error_code = send_result(descriptor, 0, relay_pair[0]);
+    close(relay_pair[0]);
+    if (error_code == 0) {
+        alarm(RELAY_LIFETIME_SECONDS);
+        (void)relay_streams(relay_pair[1], connected_fd);
+    }
+    close(relay_pair[1]);
+    close(connected_fd);
 }
 
 static void stop_handler(int signal_number) {
@@ -280,7 +459,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     allowed_uid = (uid_t)uid_value;
-    gid_t allowed_gid = (gid_t)gid_value;
+    allowed_gid = (gid_t)gid_value;
 
     struct sockaddr_un address;
     memset(&address, 0, sizeof(address));
@@ -346,7 +525,8 @@ int main(int argc, char **argv) {
         if (child == 0) {
             sigprocmask(SIG_SETMASK, &previous_signals, NULL);
             close(listener_fd);
-            alarm(CHILD_LIFETIME_SECONDS);
+            listener_fd = -1;
+            alarm(SETUP_LIFETIME_SECONDS);
             handle_client(client_fd);
             close(client_fd);
             _exit(0);

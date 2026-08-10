@@ -119,12 +119,15 @@ cleanup lets an ordinary `./twn restart` recover a missing worker PID marker
 without affecting another checkout.
 
 No recurring `./twn service restart` or administrator prompt is required. The
-v0.17.0 transition is a one-time exception: an existing macOS host must run
+v0.17.0 transition is a one-time exception: an existing macOS host, including
+one that installed a descriptor-only production candidate, must run
 `sudo ./twn service install` after its code upgrade so the direct web and worker
 property lists plus the protected TCP connector can be installed beneath
 `/Library/LaunchDaemons` and `/Library/PrivilegedHelperTools`. The connector is
-the only root process; it accepts only the configured service UID and passes
-connected descriptors without application credentials or payload data. Later
+the only root-started process; it accepts only the configured service UID,
+creates each remote TCP flow as root, drops to that UID, and blindly relays the
+stream without parsing, logging, or persisting it. Authentication, commands,
+protocol handling, output, and durable data remain in the toolkit. Later
 upgrades retain that layout. The operation does not silently install, remove,
 or change the optional Linux network-capability policy. An ordinary
 `./install.sh` run outside an active upgrade continues to reload a boot-managed

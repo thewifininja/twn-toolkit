@@ -14,9 +14,10 @@ RELEASE_NOTES = (
             {
                 "title": "Least-privilege macOS networking",
                 "items": (
-                    "Keeps Gunicorn, automation, SSH authentication, commands, credentials, transfers, and toolkit data under the configured non-root service account while a small native root LaunchDaemon performs only outbound TCP connection setup.",
-                    "Restricts the connector to the configured service UID over an owner-only Unix socket and passes only connected descriptors; it never receives application credentials, payloads, or commands.",
-                    "Adopts the returned descriptor directly so Paramiko receives the live SSH protocol banner, fixing the EOF exposed by the v0.16.10 production candidate.",
+                    "Keeps Gunicorn, automation, SSH authentication, commands, credentials, transfers, and toolkit data under the configured non-root service account while a small native LaunchDaemon performs outbound TCP connection setup as root.",
+                    "Drops supplemental groups and root UID/GID immediately after connection setup, then blindly relays the stream over an owner-only Unix socket without parsing, logging, or persisting traffic.",
+                    "Returns a local relay endpoint to Python so background Paramiko traffic remains in the root-created network flow instead of relying on a transferred remote descriptor that macOS still attributes to the receiving worker.",
+                    "Requires one service reinstall on existing macOS v0.16.10-v0.17.0 candidates to replace the privileged helper; the web application and workers remain unprivileged.",
                     "Preserves existing manual startup and Linux behavior; neither path installs or uses the macOS connector.",
                 ),
             },
@@ -42,7 +43,8 @@ RELEASE_NOTES = (
             {
                 "title": "Candidate history",
                 "items": (
-                    "Supersedes the unpublished v0.16.8 through v0.16.11 production candidates and incorporates the evidence gathered from scheduled PCAP, five-switch SSH, direct launchd, connector, descriptor-handoff, and rollback testing.",
+                    "Supersedes the unpublished v0.16.8 through v0.16.11 production candidates and incorporates the evidence gathered from scheduled PCAP, five-switch SSH, direct launchd, descriptor handoff, privilege-dropped relay, and rollback testing.",
+                    "Records the final descriptor-only production failure: Terminal-side raw and Paramiko probes succeeded, while the background scheduler lost all five SSH banners until the remote stream stayed in the helper-owned flow.",
                     "Uses a minor version because the persistent macOS service topology and bounded privileged connection boundary are new operational architecture, not a patch-only correction.",
                 ),
             },
