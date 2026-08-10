@@ -227,7 +227,12 @@ accepted replay frames.
   banner arrived made relay success timing-dependent. The connector now creates
   and retains the remote flow in its bounded root process while blindly
   relaying bytes without parsing, logging, persisting, authenticating, or
-  executing commands. The stable
+  executing commands. Half-closed relays use a monotonic five-second deadline
+  measured from real I/O progress, and descriptors with no requested events
+  are removed from the poll set; otherwise macOS can repeatedly report
+  `POLLHUP`, prevent the timeout from firing, and spin a root relay child until
+  its hard lifetime cap. The native harness must retain the case where the
+  remote closes while the application endpoint stays open. The stable
   coordinator retains pause/resume and upgrade handoffs, direct jobs use
   owner-only boot and enable markers, scheduled PCAP actions invoke their
   bounded helper by absolute path, and nested Darwin errno 65 SSH failures

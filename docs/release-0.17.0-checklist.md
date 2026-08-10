@@ -72,6 +72,17 @@
 - [x] Pass the complete suite after shared inactive-transport cleanup and the
   bounded banner retry: 641 passed, 7 skipped, and 214 subtests passed on the
   release-preparation Mac.
+- [x] Reproduce the cold-boot relay cleanup failure: after successful TCP
+  scanner and SSH activity, macOS repeatedly returns `POLLHUP` for an inactive
+  relay descriptor, preventing the timeout from firing and leaving root
+  children spinning near 42% CPU each.
+- [x] Exclude descriptors with no requested events from `poll()`, measure the
+  five-second half-close deadline from actual relay progress rather than poll
+  wakeups, and add a native regression where the remote closes while the local
+  application endpoint remains open.
+- [x] Rebuild and sign the universal helper, pass 85 focused connector,
+  service, scanner, network, and SSH tests, then pass the complete suite: 641
+  passed, 7 skipped, and 214 subtests passed.
 
 ## Production acceptance without the CIDR fallback
 
@@ -110,8 +121,17 @@
   shared SSH cleanup: capture 5,949 packets on `en0` in 30.0 seconds, collect
   SSH output from all 5 of 5 switches, and leave no new relay children after
   completion.
-- [ ] Restart the Mac and repeat diagnostics plus scheduled PCAP and SSH from a
-  cold boot without an interactive Terminal launch.
+- [x] Complete the first cold-boot functional pass without manually starting
+  the toolkit: boot-managed service, web, scheduler, supervisor, coordinator,
+  connector, and BPF diagnostics are healthy; all five switch SSH ports open;
+  the simultaneous automation captures 8,264 packets and collects SSH from all
+  5 of 5 switches.
+- [x] Invalidate that helper's cleanup result after the post-run process audit
+  finds six retained root children consuming roughly 42% CPU each; trace the
+  behavior to repeated inactive-descriptor `POLLHUP` wakeups.
+- [ ] Install the corrected helper and repeat cold-boot diagnostics, five-host
+  TCP scanning, simultaneous PCAP/SSH, and post-run cleanup; require only the
+  root listener to remain before closing the cold-boot gate.
 - [x] Audit `/Library/LaunchDaemons`, `/Library/PrivilegedHelperTools`, the
   connector socket, service ownership, and toolkit runtime markers: property
   lists and helper are root-owned, the helper is executable, the socket is

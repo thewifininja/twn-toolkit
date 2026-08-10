@@ -81,5 +81,30 @@ int main(void) {
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return 15;
     if (recv(abandoned_remote[0], &byte, 1, 0) != 0) return 16;
     close(abandoned_remote[0]);
+
+    int waiting_application[2] = {-1, -1};
+    int closed_remote[2] = {-1, -1};
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, waiting_application) != 0 ||
+        socketpair(AF_UNIX, SOCK_STREAM, 0, closed_remote) != 0) {
+        return 17;
+    }
+    relay = fork();
+    if (relay < 0) return 18;
+    if (relay == 0) {
+        close(waiting_application[0]);
+        close(closed_remote[0]);
+        alarm(2);
+        int error_code = relay_streams(waiting_application[1], closed_remote[1]);
+        close(waiting_application[1]);
+        close(closed_remote[1]);
+        _exit(error_code == 0 ? 0 : 19);
+    }
+    close(waiting_application[1]);
+    close(closed_remote[1]);
+    close(closed_remote[0]);
+    if (waitpid(relay, &status, 0) != relay) return 20;
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return 21;
+    if (recv(waiting_application[0], &byte, 1, 0) != 0) return 22;
+    close(waiting_application[0]);
     return 0;
 }

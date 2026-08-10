@@ -268,6 +268,26 @@ helper's 3,700-second lifetime cap, leaving only the root listener. The
 temporary calendar rule was restored to its original daily 09:43 AM time and
 the automation was re-armed.
 
+The first cold-boot functional pass also succeeded before any interactive
+Terminal launch: launchd restored every managed component, diagnostics showed
+the connector Ready and BPF access Ready, the toolkit scanner opened SSH port
+22 on all five switches, and a simultaneous automation captured 8,264 packets
+while collecting SSH from all five. The required post-run process audit then
+found six retained root relay children consuming roughly 42% CPU each. Five
+had been created together during the earlier scanner check and one began later.
+
+The children were not blocked on network traffic. Once one side had closed,
+macOS continued returning `POLLHUP` for a descriptor whose relay direction was
+already complete. Because `poll()` returned immediately instead of timing out,
+the original five-second timeout never fired and the root child spun until its
+3,700-second hard cap. The corrected helper removes descriptors with no
+requested events from the poll set and maintains a monotonic deadline measured
+from actual reads, writes, EOF transitions, and half-closes. Repeated readiness
+without progress therefore cannot extend the deadline. A native harness now
+holds the application endpoint open after the remote closes and requires the
+relay to exit normally within the shortened test deadline. The corrected
+helper must pass a second production cold-boot and cleanup check before GA.
+
 This boundary also covers other TCP-based actions that use the shared Python
 socket layer, including the TCP scanner, certificate probes, FTP/SFTP clients,
 and Requests/urllib3 integrations. UDP, BPF packet capture/replay, and listener

@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define REQUEST_HEADER_SIZE 16
@@ -107,6 +108,12 @@ static size_t relay_buffer_size(const struct relay_buffer *buffer) {
     return buffer->end - buffer->start;
 }
 
+static uint64_t monotonic_milliseconds(void) {
+    struct timespec value;
+    if (clock_gettime(CLOCK_MONOTONIC, &value) != 0) return 0;
+    return ((uint64_t)value.tv_sec * 1000U) + ((uint64_t)value.tv_nsec / 1000000U);
+}
+
 static void compact_relay_buffer(struct relay_buffer *buffer) {
     if (buffer->start == buffer->end) {
         buffer->start = 0;
@@ -119,7 +126,11 @@ static void compact_relay_buffer(struct relay_buffer *buffer) {
     }
 }
 
-static int read_relay_data(int descriptor, struct relay_buffer *buffer) {
+static int read_relay_data(
+    int descriptor,
+    struct relay_buffer *buffer,
+    int *made_progress
+) {
     compact_relay_buffer(buffer);
     if (buffer->source_eof || buffer->end == sizeof(buffer->data)) return 0;
     ssize_t count = recv(
@@ -130,23 +141,30 @@ static int read_relay_data(int descriptor, struct relay_buffer *buffer) {
     );
     if (count > 0) {
         buffer->end += (size_t)count;
+        *made_progress = 1;
         return 0;
     }
     if (count == 0 || errno == ECONNRESET) {
         buffer->source_eof = 1;
+        *made_progress = 1;
         return 0;
     }
     if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) return 0;
     return errno;
 }
 
-static int write_relay_data(int descriptor, struct relay_buffer *buffer) {
+static int write_relay_data(
+    int descriptor,
+    struct relay_buffer *buffer,
+    int *made_progress
+) {
     size_t length = relay_buffer_size(buffer);
     if (length == 0) return 0;
     ssize_t count = send(descriptor, buffer->data + buffer->start, length, 0);
     if (count > 0) {
         buffer->start += (size_t)count;
         compact_relay_buffer(buffer);
+        *made_progress = 1;
         return 0;
     }
     if (count < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
@@ -155,7 +173,11 @@ static int write_relay_data(int descriptor, struct relay_buffer *buffer) {
     return count < 0 ? errno : EPIPE;
 }
 
-static int finish_relay_direction(int descriptor, struct relay_buffer *buffer) {
+static int finish_relay_direction(
+    int descriptor,
+    struct relay_buffer *buffer,
+    int *made_progress
+) {
     if (!buffer->source_eof || relay_buffer_size(buffer) != 0 || buffer->target_shutdown) {
         return 0;
     }
@@ -163,6 +185,7 @@ static int finish_relay_direction(int descriptor, struct relay_buffer *buffer) {
         return errno;
     }
     buffer->target_shutdown = 1;
+    *made_progress = 1;
     return 0;
 }
 
@@ -175,11 +198,16 @@ static int relay_streams(int local_fd, int remote_fd) {
     struct relay_buffer to_local;
     memset(&to_remote, 0, sizeof(to_remote));
     memset(&to_local, 0, sizeof(to_local));
+    uint64_t last_progress_ms = monotonic_milliseconds();
 
     while (1) {
-        error_code = finish_relay_direction(remote_fd, &to_remote);
-        if (error_code == 0) error_code = finish_relay_direction(local_fd, &to_local);
+        int made_progress = 0;
+        error_code = finish_relay_direction(remote_fd, &to_remote, &made_progress);
+        if (error_code == 0) {
+            error_code = finish_relay_direction(local_fd, &to_local, &made_progress);
+        }
         if (error_code != 0) return error_code;
+        if (made_progress) last_progress_ms = monotonic_milliseconds();
         if (to_remote.target_shutdown && to_local.target_shutdown) return 0;
 
         compact_relay_buffer(&to_remote);
@@ -199,12 +227,17 @@ static int relay_streams(int local_fd, int remote_fd) {
             waiters[1].events |= POLLIN;
         }
         if (relay_buffer_size(&to_remote) > 0) waiters[1].events |= POLLOUT;
+        if (waiters[0].events == 0) waiters[0].fd = -1;
+        if (waiters[1].events == 0) waiters[1].fd = -1;
 
         int ready;
-        int poll_timeout =
-            (to_remote.source_eof || to_local.source_eof)
-                ? RELAY_HALF_CLOSE_IDLE_MS
-                : -1;
+        int poll_timeout = -1;
+        if (to_remote.source_eof || to_local.source_eof) {
+            uint64_t now_ms = monotonic_milliseconds();
+            uint64_t idle_ms = now_ms >= last_progress_ms ? now_ms - last_progress_ms : 0;
+            if (idle_ms >= RELAY_HALF_CLOSE_IDLE_MS) return 0;
+            poll_timeout = (int)(RELAY_HALF_CLOSE_IDLE_MS - idle_ms);
+        }
         do {
             ready = poll(waiters, 2, poll_timeout);
         } while (ready < 0 && errno == EINTR);
@@ -214,18 +247,19 @@ static int relay_streams(int local_fd, int remote_fd) {
         if ((waiters[0].revents | waiters[1].revents) & POLLERR) return EIO;
 
         if (waiters[0].revents & (POLLIN | POLLHUP)) {
-            error_code = read_relay_data(local_fd, &to_remote);
+            error_code = read_relay_data(local_fd, &to_remote, &made_progress);
         }
         if (error_code == 0 && waiters[1].revents & (POLLIN | POLLHUP)) {
-            error_code = read_relay_data(remote_fd, &to_local);
+            error_code = read_relay_data(remote_fd, &to_local, &made_progress);
         }
         if (error_code == 0 && waiters[0].revents & POLLOUT) {
-            error_code = write_relay_data(local_fd, &to_local);
+            error_code = write_relay_data(local_fd, &to_local, &made_progress);
         }
         if (error_code == 0 && waiters[1].revents & POLLOUT) {
-            error_code = write_relay_data(remote_fd, &to_remote);
+            error_code = write_relay_data(remote_fd, &to_remote, &made_progress);
         }
         if (error_code != 0) return error_code;
+        if (made_progress) last_progress_ms = monotonic_milliseconds();
     }
 }
 
