@@ -62,12 +62,23 @@
   production candidate before asking that older updater to install v0.17.0.
 - [x] Install the verified v0.17.0 bundle without reinstalling the unchanged
   v0.16.10 connector helper or restoring the CIDR exception.
+- [x] Reconcile production to the final 345-file v0.17.0 bundle (SHA-256
+  `c1ef8be68dbd5191bb1ccb1f9c775a3dbab663ecf774d48763b778843aaf8f9b`)
+  after verifying recovery point `20260810-134833-72604bc5`.
+- [x] Verify the reconciled checkout has zero manifest mismatches, every live
+  SQLite database passes integrity checks, and no upgrade operation lock
+  remains.
+- [x] Complete a normal production restart through the revised handoff path;
+  confirm fresh web, scheduler, supervisor, coordinator, and toolkit PID
+  markers plus an Active toolkit and Ready protected TCP connector.
 - [ ] Complete simultaneous PCAP and five-switch SSH from a manual automation.
 - [ ] Repeat from a scheduled or condition-triggered automation.
 - [ ] Restart the Mac and repeat diagnostics plus scheduled PCAP and SSH from a
   cold boot without an interactive Terminal launch.
-- [ ] Audit `/Library/LaunchDaemons`, `/Library/PrivilegedHelperTools`, the
-  connector socket, service ownership, and toolkit runtime markers.
+- [x] Audit `/Library/LaunchDaemons`, `/Library/PrivilegedHelperTools`, the
+  connector socket, service ownership, and toolkit runtime markers: property
+  lists and helper are root-owned, the helper is executable, the socket is
+  `admin:staff` with owner-only access, and all direct-job markers are current.
 
 ## Publication gate
 
