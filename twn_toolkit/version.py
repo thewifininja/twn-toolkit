@@ -4,36 +4,38 @@ RELEASE_NOTES = (
     {
         "version": "0.16.9",
         "date": "2026-08-10",
-        "title": "Direct launchd network daemons",
+        "title": "Protected macOS service networking",
         "summary": (
-            "Makes each macOS network-capable service an actual launchd daemon "
-            "after production proved that retaining Python as a launcher child "
-            "did not remove its Local Network Privacy denial."
+            "Adds a bounded root TCP connector for macOS services after production "
+            "proved that Local Network Privacy still denies a LaunchDaemon configured "
+            "with an unprivileged UserName."
         ),
         "groups": (
             {
-                "title": "Direct macOS privacy context",
+                "title": "Least-privilege local networking",
                 "items": (
-                    "Installs separate system LaunchDaemons for Gunicorn, the automation scheduler, worker supervisor, TFTP, SFTP/SCP, and FTP, with foreground entry points that exec the final process instead of forking it from a shell supervisor.",
-                    "Retains the stable coordinator job for pause, resume, upgrade, rollback, and recovery handoffs while launchd owns the lifetime and restart policy of every long-lived worker.",
-                    "Keeps the complete toolkit unprivileged and retains the explicit Ethernet or Wi-Fi CIDR exception only as an administrator-controlled fallback.",
+                    "Installs a small native root LaunchDaemon that performs only outbound TCP connection setup, accepts requests solely from the configured service UID over an owner-only Unix socket, and passes each connected descriptor back to the requesting process.",
+                    "Keeps Gunicorn, automation, SSH authentication, commands, credentials, output handling, transfer clients, and every other toolkit workflow under the normal service account; the connector never receives application credentials or executes toolkit actions.",
+                    "Routes shared Python TCP socket creation through the connector in managed macOS workers so SSH, the TCP scanner, certificate probes, FTP/SFTP clients, and HTTP-based integrations share the same fix while manual launches and Linux remain unchanged.",
                 ),
             },
             {
                 "title": "Compatible service lifecycle",
                 "items": (
+                    "Retains separate unprivileged LaunchDaemons for Gunicorn, the automation scheduler, worker supervisor, TFTP, SFTP/SCP, and FTP, plus the stable unprivileged coordinator for pause, resume, upgrade, rollback, and recovery handoffs.",
                     "Uses owner-only pause, boot-generation, web-generation, and transfer-enable markers so ordinary starts, stops, settings changes, service restarts, and cold boots preserve their existing behavior without granting the web application permission to control system launchd jobs.",
                     "Preserves validation-only process sets during upgrades and matched rollback, then lets the finalized direct jobs start from replaced code after the durable operation lock is removed.",
                     "Excludes recreated PID, readiness, heartbeat, lock, and launchd activation markers from recovery snapshots so a coordinator restart cannot make an otherwise consistent backup fail while durable databases, profiles, captures, certificates, logs, and datastore files remain protected.",
-                    "Requires existing macOS service installations to run sudo ./twn service install once after upgrading so the additional root-owned LaunchDaemon property lists can be created; Linux and manual startup are unchanged.",
+                    "Requires existing macOS service installations to run sudo ./twn service install once after upgrading so the root-owned connector executable and property list can be installed; Linux and manual startup are unchanged.",
                 ),
             },
             {
-                "title": "Evidence-driven follow-up",
+                "title": "Production-validated cause",
                 "items": (
                     "Records that v0.16.8 passed simultaneous scheduled PCAP and five-switch SSH with the CIDR exception present, but SSH returned errno 65 again after the exception was removed and the Mac restarted while PCAP still succeeded.",
-                    "Corrects the earlier assumption that foreground grandchildren of the coordinator inherit launchd's automatic local-network allowance; Apple documents that the allowance applies to daemons started by launchd and separately tracks responsible code.",
-                    "Retains the v0.16.8 scheduled packet-capture path fix, nested Paramiko diagnostics, shutdown race fix, and full manual and Linux compatibility.",
+                    "Records that direct PID-1-owned Python jobs configured with UserName=admin still received errno 65 on macOS 15.1.1, and that a root LaunchDaemon parent spawning an unprivileged Python child was also insufficient because macOS attributed the operation to the child.",
+                    "Confirms with controlled production probes that the same switch TCP port succeeds when the connecting process itself is the root LaunchDaemon, which defines the connector boundary used by this release.",
+                    "Keeps the explicit Ethernet or Wi-Fi CIDR exception as an administrator-controlled fallback and retains the scheduled packet-capture path fix, nested Paramiko diagnostics, shutdown race fix, and full manual and Linux compatibility.",
                 ),
             },
         ),

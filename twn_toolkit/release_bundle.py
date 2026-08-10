@@ -16,7 +16,7 @@ PRODUCT_ID = "twn-toolkit"
 MAX_BUNDLE_BYTES = 256 * 1024 * 1024
 MAX_EXPANDED_BYTES = 512 * 1024 * 1024
 MAX_BUNDLE_FILES = 10_000
-ROOT_DIRECTORIES = (".github", "docs", "scripts", "tests", "twn_toolkit")
+ROOT_DIRECTORIES = (".github", "docs", "native", "scripts", "tests", "twn_toolkit")
 ROOT_FILES = (
     ".gitignore", "CONTRIBUTING.md", "LICENSE", "QUICKSTART.md", "README.md",
     "install.sh", "requirements-dev.txt", "requirements.txt", "twn",

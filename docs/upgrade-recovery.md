@@ -108,8 +108,11 @@ restored process set when its version matches. Handoff details are available in
 
 No recurring `./twn service restart` or administrator prompt is required. The
 v0.16.9 transition is a one-time exception: an existing macOS host must run
-`sudo ./twn service install` after its code upgrade so the new direct web and
-worker property lists can be created beneath `/Library/LaunchDaemons`. Later
+`sudo ./twn service install` after its code upgrade so the direct web and worker
+property lists plus the protected TCP connector can be installed beneath
+`/Library/LaunchDaemons` and `/Library/PrivilegedHelperTools`. The connector is
+the only root process; it accepts only the configured service UID and passes
+connected descriptors without application credentials or payload data. Later
 upgrades retain that layout. The operation does not silently install, remove,
 or change the optional Linux network-capability policy. An ordinary
 `./install.sh` run outside an active upgrade continues to reload a boot-managed

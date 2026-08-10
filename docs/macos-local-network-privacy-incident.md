@@ -1,8 +1,8 @@
 # macOS local-network privacy incident and service follow-up
 
-Status: production mitigated; launcher and diagnostic fixes implemented locally
+Status: root-only connection boundary proven in production; bounded connector implemented locally
 Priority: high before the next macOS service-lifecycle change
-Observed: 2026-08-07 on production v0.16.6, macOS 15.7.2
+Observed: 2026-08-07 through 2026-08-10 on production v0.16.6-v0.16.9 candidates; final controlled probes on macOS 15.1.1 (24B91)
 
 ## Summary
 
@@ -67,6 +67,21 @@ on the Mac for the specified network and requires a restart:
   succeeded, while SSH returned Darwin errno 65 for the first switch. This
   proves that the v0.16.8 foreground-child design did not independently restore
   local-network access.
+- The first v0.16.9 candidate installed all seven direct jobs successfully.
+  Gunicorn, automation, and supervisor were UID 501 processes with PPID 1, but
+  the toolkit TCP scanner still returned errno 65 in 1.2 ms while the exact
+  virtualenv Python executable connected from Terminal.
+- Every application property list contained `UserName=admin` and
+  `GroupName=staff`. Apple Developer Technical Support specifically excludes a
+  LaunchDaemon using `UserName` for a role account from the automatic daemon
+  allowance discussed in TN3179.
+- A temporary root LaunchDaemon parent that spawned the same Python probe as
+  UID 501 still returned errno 65. This disproved the idea that retaining a
+  privileged ancestor was sufficient; macOS attributed the operation to the
+  unprivileged Python child.
+- A temporary root LaunchDaemon running `/usr/bin/nc` as the connecting process
+  reached `192.168.1.101:22` successfully. Both temporary jobs were unloaded
+  after their result was captured.
 
 ## Cause assessment
 
@@ -74,32 +89,34 @@ The proven failure mechanism was macOS Local Network Privacy returning
 `EHOSTUNREACH` to a background toolkit process. The exact privacy-state event
 that changed cannot be proven from retained macOS or toolkit history.
 
-The best-supported explanation is a responsible-code classification change
-after a toolkit upgrade or service reload. The installed LaunchDaemon starts
-`twn service-run`, but the managed processes detach from that launchd-owned
-process tree:
+The original service layout had a fragile responsibility boundary. Its
+LaunchDaemon started `twn service-run`, but the managed processes detached from
+that launchd-owned process tree:
 
 - Gunicorn is started with `--daemon` in `twn`.
 - The automation scheduler is started with `--daemon` in `twn`.
 - Automation, supervisor, and transfer workers use a POSIX double-fork and
   `setsid()` implementation.
 
-This creates a fragile boundary on macOS. Apple exempts daemons started by
-launchd and Terminal children from Local Network Privacy, but separately tracks
-the responsible code that performs a local-network operation. Production later
-proved that avoiding double-fork daemonization was insufficient: Homebrew
-Python processes retained as foreground children of the launchd-owned shell
-still received errno 65 once the system-wide CIDR exception was removed. A
-service reload associated with deploying or configuring the new PCAP workflow
-likely exposed the issue; the PCAP operation itself did not alter routes, SSH,
-or persistent privacy configuration.
+Direct jobs removed that lifecycle defect but did not remove the privacy denial.
+Apple exempts root processes and qualifying launchd daemons, but separately
+tracks the responsible code performing the operation. Apple DTS guidance adds
+the critical qualification that a LaunchDaemon using `UserName` for a role
+account is not in the automatic system-daemon case. Production matched that
+condition exactly: direct Homebrew Python processes were UID 501 and failed,
+regardless of whether their parent was PID 1 or a retained root shell. Only the
+process that actually called `connect()` while root received the exemption.
+
+A service reload associated with deploying or configuring the new PCAP
+workflow likely exposed the pre-existing privacy fragility; the PCAP operation
+itself did not alter routes, SSH, or persistent privacy configuration.
 
 The Python binary dated to 2026-03-02 and the retained OS installation history
 did not show a same-day system update, so neither was a direct same-day trigger.
 
 ## Engineering response
 
-### 1. Make long-lived workers direct launchd daemons
+### 1. Keep long-lived workers under direct launchd supervision
 
 Do not self-daemonize when the toolkit is already running under a service
 manager. Required macOS design:
@@ -117,14 +134,16 @@ sibling workers so Gunicorn cleanup could not race the launcher. The
 CIDR-removal test proved that this process ancestry was not equivalent to being
 started by launchd.
 
-The v0.16.9 design retains the coordinator only for lifecycle and upgrade
+The first v0.16.9 design retained the coordinator only for lifecycle and upgrade
 handoffs and installs separate system LaunchDaemons for web, automation,
 supervisor, TFTP, SFTP/SCP, and FTP. Each job invokes `twn launchd-run ROLE`,
 performs bounded setup, and then `exec`s the final foreground process without a
 fork. Thus Gunicorn and every Python worker retain launchd as their actual
-parent. Owner-only pause, boot-generation, web-generation, and listener-enable
-markers preserve non-root start, stop, restart, settings, upgrade, rollback,
-and cold-boot behavior.
+parent. This remains the correct lifecycle model, but the production CIDR-free
+test proved it is not by itself a Local Network Privacy fix when `UserName`
+selects the non-root service account. Owner-only pause, boot-generation,
+web-generation, and listener-enable markers preserve non-root start, stop,
+restart, settings, upgrade, rollback, and cold-boot behavior.
 
 Manual launches and Linux service mode retain their existing daemon behavior.
 Existing macOS installations require one administrator-approved
@@ -141,7 +160,32 @@ Relevant code:
 - `twn_toolkit/tftp_worker.py`, `ftp_worker.py`, and
   `ssh_transfer_worker.py`: worker daemonization
 
-### 2. Diagnose errno 65 explicitly
+### 2. Use a bounded root TCP connector
+
+Do not run Gunicorn, automation, Paramiko, or the complete toolkit as root.
+Install one native root LaunchDaemon whose sole authority is outbound TCP
+connection setup:
+
+1. Listen on a mode-0600 Unix socket owned by the configured service account.
+2. Verify every client with the kernel-provided peer UID.
+3. Accept only bounded TCP host, port, address-family, and timeout fields.
+4. Perform `connect()` as the root broker, then pass the connected descriptor
+   back with `SCM_RIGHTS` and close the broker's copy.
+5. Keep SSH credentials, host-key policy, authentication, commands, HTTP
+   payloads, transfer data, and output in the UID 501 caller.
+
+The helper is a small universal native executable installed root-owned beneath
+`/Library/PrivilegedHelperTools`; it never executes toolkit code as root.
+Managed Python workers opt in through an absolute Unix-socket environment
+variable and a process-wide socket subclass. Manual launches and Linux never
+install the shim.
+
+This boundary also covers other TCP-based actions that use the shared Python
+socket layer, including the TCP scanner, certificate probes, FTP/SFTP clients,
+and Requests/urllib3 integrations. UDP, BPF packet capture/replay, and listener
+permissions remain separate concerns.
+
+### 3. Diagnose errno 65 explicitly
 
 SSH error formatting now unwraps nested Paramiko connection errors. When one
 contains Darwin `errno.EHOSTUNREACH` (65), it identifies macOS Local Network
@@ -160,7 +204,7 @@ Diagnostics should offer probes from both the web worker and automation worker.
 A Terminal-originated probe is not equivalent on macOS because Terminal and its
 children receive special treatment.
 
-### 3. Provide an explicit administrator fallback
+### 4. Provide an explicit administrator fallback
 
 Consider a helper such as:
 
@@ -183,11 +227,13 @@ Keep this as a supported fallback even after fixing process ownership because
 Apple privacy behavior and unsigned/interpreted responsible-code identity can
 change between macOS releases.
 
-### 4. Add regression coverage
+### 5. Add regression coverage
 
 Maintain a physical or virtual macOS 15.5+ service test that covers:
 
 - a LaunchDaemon running as a non-root service user;
+- the root connector property list without `UserName`, root-owned helper,
+  mode-0600 UID-owned Unix socket, peer-UID rejection, and descriptor handoff;
 - a cold boot with no prior interactive Terminal launch;
 - toolkit restart, upgrade handoff, rollback, and recovery;
 - replacement of the Homebrew Python runtime;
@@ -196,18 +242,19 @@ Maintain a physical or virtual macOS 15.5+ service test that covers:
 - actionable diagnostics for a deliberately denied local-network process.
 
 Unit tests should also verify error unwrapping, CIDR merging/removal, platform
-gating, direct-job property lists and marker conditions, foreground PID files,
-aggregate launchd health, and pause/resume behavior across boot generations.
+gating, broker protocol bounds and errno propagation, direct-job property lists
+and marker conditions, foreground PID files, aggregate launchd health, and
+pause/resume behavior across boot generations.
 
 ## Release and support notes
 
 Suggested release-note text:
 
-> Runs each macOS web and worker process as a direct system LaunchDaemon after
-> production proved that foreground children of a launchd-owned shell could
-> still receive Local Network Privacy errno 65. Diagnostics identify the denial,
-> and an explicit administrator-controlled CIDR exception remains available as
-> a fallback.
+> Keeps macOS web and worker processes unprivileged while a bounded native root
+> LaunchDaemon performs only TCP connection setup and passes connected sockets
+> over a UID-restricted Unix socket. Production proved that direct UID 501
+> launchd jobs and unprivileged children of a root parent still received Local
+> Network Privacy errno 65; only the connecting root process was exempt.
 
 Support guidance for affected existing versions:
 
@@ -222,8 +269,8 @@ Support guidance for affected existing versions:
 6. Re-test from the toolkit worker and then run an end-to-end automation.
 
 After installing v0.16.9 code on an existing macOS service host, run
-`sudo ./twn service install` once to replace the single v0.16.8 coordinator
-definition with the direct-job set before testing without a CIDR exception.
+`sudo ./twn service install` once to install the direct-job set and protected
+TCP connector before testing without a CIDR exception.
 
 Do not recommend running the complete toolkit as root to bypass this policy.
 

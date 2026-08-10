@@ -32,12 +32,15 @@ switches.
 The v0.16.8 response kept long-lived workers in the launchd-owned process tree,
 added focused `EHOSTUNREACH` diagnostics, and removed the scheduled PCAP
 action's working-directory dependency. Production then proved that foreground
-Python children still failed after the CIDR exception was removed and the Mac
-restarted. The v0.16.9 follow-up installs direct LaunchDaemons for web,
-automation, supervisor, and transfer workers while retaining a non-networking
-coordinator for lifecycle handoffs. Retain cold boot, service reinstall,
-upgrade handoff, rollback, Python replacement, CIDR removal, and concurrent
-PCAP/SSH in the macOS regression matrix for future service-lifecycle changes.
+Python children and direct PID-1 jobs configured with `UserName=admin` still
+failed after the CIDR exception was removed and the Mac restarted. A retained
+root parent was also insufficient, while the connecting root LaunchDaemon
+process succeeded. The v0.16.9 follow-up therefore combines direct
+unprivileged workers with a native, UID-restricted root TCP connector that
+passes connected descriptors back without handling credentials or toolkit
+actions. Retain cold boot, service reinstall, upgrade handoff, rollback, Python
+replacement, CIDR removal, and concurrent PCAP/SSH in the macOS regression
+matrix for future service-lifecycle changes.
 The full incident evidence, security constraints, and fallback design are in
 [`macos-local-network-privacy-incident.md`](macos-local-network-privacy-incident.md).
 

@@ -1,6 +1,6 @@
 # v0.16.9 release checklist
 
-## Direct macOS LaunchDaemons
+## Direct unprivileged macOS LaunchDaemons
 
 - [x] Render a stable coordinator plus direct web, automation, supervisor,
   TFTP, SFTP/SCP, and FTP system LaunchDaemon property lists.
@@ -12,6 +12,25 @@
   leaves the additional jobs dormant.
 - [x] The toolkit remains owned by the selected non-root service account and
   never runs the complete application as root.
+
+## Protected TCP connector
+
+- [x] Record the failed candidate evidence: direct UID 501 workers with PPID 1
+  and `UserName=admin` still receive errno 65 on production macOS 15.1.1.
+- [x] Record controlled boundary probes: a root LaunchDaemon parent spawning an
+  unprivileged Python child still fails, while the process calling `connect()`
+  as root succeeds; unload both temporary jobs afterward.
+- [x] Add a universal native connector whose root authority is limited to TCP
+  connection setup and descriptor handoff over a mode-0600 Unix socket.
+- [x] Restrict requests to the configured service UID with `getpeereid`, bound
+  protocol lengths and timeouts, and pass only the connected descriptor with
+  `SCM_RIGHTS`; credentials, SSH commands, HTTP payloads, and output remain in
+  the unprivileged caller.
+- [x] Route managed macOS Python TCP sockets through the connector while
+  bypassing loopback, nonblocking sockets, manual launches, and Linux.
+- [x] Install the helper and its no-`UserName` root LaunchDaemon atomically,
+  include it in aggregate service health and cleanup, and report connector
+  readiness under System Diagnostics.
 
 ## Lifecycle and compatibility
 
@@ -27,8 +46,9 @@
 - [x] Existing macOS installations require one explicit
   `sudo ./twn service install` after the v0.16.9 code upgrade; manual startup,
   Linux systemd, databases, profiles, automations, and stored data are unchanged.
-- [x] Aggregate service health requires the coordinator and every core direct
-  job while disabled transfer jobs are not falsely reported as failures.
+- [x] Aggregate service health requires the connector, coordinator, and every
+  core direct job while disabled transfer jobs are not falsely reported as
+  failures.
 
 ## Evidence and documentation
 
@@ -37,25 +57,28 @@
   reboot, PCAP succeeded while SSH returned errno 65.
 - [x] Update built-in release notes, README, autostart guidance, incident notes,
   refactor backlog, continuity guidance, and version assertions for v0.16.9.
-- [x] Pass shell syntax, 50 focused service/upgrade tests, and the complete
-  pytest suite after the final release metadata and documentation edits: 622
-  passed, 6 skipped, and 214 subtests passed.
-- [x] Build and validate the exact v0.16.9 production-test bundle against
-  v0.16.8, including its generated SHA-256 checksum.
+- [ ] Pass native build/signature checks, shell syntax, focused connector,
+  service, network-tool, and upgrade tests, then the complete test suite after
+  final release metadata and documentation edits.
+- [ ] Build and validate the revised v0.16.9 production-test bundle against
+  v0.16.9 candidate code, including its generated SHA-256 checksum.
 
 ## Production acceptance without the CIDR fallback
 
 - [ ] Install the verified v0.16.9 code bundle while leaving the Ethernet CIDR
   exception absent, then run `sudo ./twn service install` once.
-- [ ] Verify all seven property lists are root-owned and the Gunicorn master,
-  automation worker, supervisor, and enabled transfer workers have launchd as
-  their direct parent.
+- [ ] Verify all eight property lists and the native connector are root-owned;
+  confirm the connector has no `UserName`, while Gunicorn, automation,
+  supervisor, and enabled transfer workers remain UID 501 direct jobs.
+- [ ] Verify the Unix socket is mode 0600 and owned by the configured service
+  UID, and that System Diagnostics reports **Protected TCP connector · Ready**.
 - [ ] Verify toolkit TCP Scanner access to `192.168.1.101:22`, then complete a
   parallel PCAP plus five-switch SSH automation from the direct scheduler.
 - [ ] Restart the Mac and repeat toolkit TCP and scheduled PCAP plus SSH from a
   cold boot without an interactive Terminal launch.
-- [ ] If errno 65 returns, restore only `192.168.1.0/24`, restart the Mac, retain
-  the CIDR as the production fallback, and do not publish the fix as GA.
+- [ ] If the connector path still returns errno 65, restore only
+  `192.168.1.0/24`, restart the Mac, retain the CIDR as the production fallback,
+  and do not publish the fix as GA.
 - [ ] Pass release-preparation and merged-main CI before creating an annotated
   tag or publishing any GitHub release.
 

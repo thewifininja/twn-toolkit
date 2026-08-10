@@ -21,6 +21,15 @@ SYSTEMD_UNIT_NAME = "twn-toolkit.service"
 SYSTEMD_UNIT_PATH = Path("/etc/systemd/system") / SYSTEMD_UNIT_NAME
 LAUNCHD_LABEL = "com.thewifininja.toolkit"
 LAUNCHD_PLIST_PATH = Path("/Library/LaunchDaemons") / f"{LAUNCHD_LABEL}.plist"
+LAUNCHD_NETWORK_BROKER_LABEL = f"{LAUNCHD_LABEL}.network-broker"
+LAUNCHD_NETWORK_BROKER_PLIST_PATH = (
+    Path("/Library/LaunchDaemons") / f"{LAUNCHD_NETWORK_BROKER_LABEL}.plist"
+)
+MACOS_NETWORK_BROKER_SOURCE = Path(__file__).resolve().parent / "bin" / "twn-network-broker"
+MACOS_NETWORK_BROKER_HELPER_PATH = (
+    Path("/Library/PrivilegedHelperTools") / "com.thewifininja.toolkit-network-broker"
+)
+MACOS_NETWORK_BROKER_SOCKET = "/var/run/twn-toolkit-network-broker.sock"
 LAUNCHD_JOB_ROLES = (
     "web",
     "automation",
@@ -160,12 +169,14 @@ def _launchd_job_path(role: str) -> Path:
 
 def _launchd_labels(*, include_coordinator: bool = True) -> tuple[str, ...]:
     workers = tuple(_launchd_job_label(role) for role in LAUNCHD_JOB_ROLES)
-    return ((LAUNCHD_LABEL,) + workers) if include_coordinator else workers
+    base = (LAUNCHD_NETWORK_BROKER_LABEL,)
+    return (base + (LAUNCHD_LABEL,) + workers) if include_coordinator else (base + workers)
 
 
 def _launchd_paths(*, include_coordinator: bool = True) -> tuple[Path, ...]:
     workers = tuple(_launchd_job_path(role) for role in LAUNCHD_JOB_ROLES)
-    return ((LAUNCHD_PLIST_PATH,) + workers) if include_coordinator else workers
+    base = (LAUNCHD_NETWORK_BROKER_PLIST_PATH,)
+    return (base + (LAUNCHD_PLIST_PATH,) + workers) if include_coordinator else (base + workers)
 
 
 def _render_launchd_payload(
@@ -199,6 +210,7 @@ def _render_launchd_payload(
             "LOGNAME": user.name,
             "TWN_TOOLKIT_LAUNCHD_DIRECT": "1",
             "TWN_TOOLKIT_LAUNCHD_ROLE": role,
+            "TWN_TOOLKIT_NETWORK_BROKER": MACOS_NETWORK_BROKER_SOCKET,
         },
         "StandardOutPath": str(instance / stdout_name),
         "StandardErrorPath": str(instance / stderr_name),
@@ -221,6 +233,32 @@ def render_launchd_plist(root: Path, user: ServiceUser) -> bytes:
     )
 
 
+def render_launchd_network_broker_plist(root: Path, user: ServiceUser) -> bytes:
+    """Render the root-only TCP connector used by unprivileged macOS workers."""
+    instance = root / "instance"
+    payload = {
+        "Label": LAUNCHD_NETWORK_BROKER_LABEL,
+        "ProgramArguments": [
+            str(MACOS_NETWORK_BROKER_HELPER_PATH),
+            "--socket",
+            MACOS_NETWORK_BROKER_SOCKET,
+            "--uid",
+            str(user.uid),
+            "--gid",
+            str(user.gid),
+        ],
+        "WorkingDirectory": "/",
+        "RunAtLoad": True,
+        "KeepAlive": True,
+        "ThrottleInterval": 5,
+        "ProcessType": "Background",
+        "Umask": 0o077,
+        "StandardOutPath": str(instance / "twn-network-broker.log"),
+        "StandardErrorPath": str(instance / "twn-network-broker.log"),
+    }
+    return plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=False)
+
+
 def render_launchd_plists(root: Path, user: ServiceUser) -> dict[Path, bytes]:
     """Render direct launchd jobs so network workers are actual daemons."""
     instance = root / "instance"
@@ -233,7 +271,10 @@ def render_launchd_plists(root: Path, user: ServiceUser) -> dict[Path, bytes]:
         "ssh-transfer": ("twn-ssh-transfer.log", "twn-ssh-transfer.log"),
         "ftp": ("twn-ftp.log", "twn-ftp.log"),
     }
-    rendered = {LAUNCHD_PLIST_PATH: render_launchd_plist(root, user)}
+    rendered = {
+        LAUNCHD_NETWORK_BROKER_PLIST_PATH: render_launchd_network_broker_plist(root, user),
+        LAUNCHD_PLIST_PATH: render_launchd_plist(root, user),
+    }
     for role in LAUNCHD_JOB_ROLES:
         if role in LAUNCHD_TRANSFER_MARKERS:
             keep_alive: dict[str, object] = {
@@ -312,6 +353,11 @@ def _remove_launchd_activation_markers(instance: Path) -> None:
         (instance / marker).unlink(missing_ok=True)
 
 
+def _remove_macos_network_broker() -> None:
+    MACOS_NETWORK_BROKER_HELPER_PATH.unlink(missing_ok=True)
+    Path(MACOS_NETWORK_BROKER_SOCKET).unlink(missing_ok=True)
+
+
 def _write_system_file(path: Path, content: bytes, mode: int = 0o644) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -387,6 +433,13 @@ def _validate_install_request(
         )
     if system == "Darwin":
         _validate_macos_service_location(root, user)
+        if not MACOS_NETWORK_BROKER_SOURCE.is_file() or not os.access(
+            MACOS_NETWORK_BROKER_SOURCE,
+            os.X_OK,
+        ):
+            raise ServiceError(
+                "The macOS network broker is missing or not executable in this release bundle."
+            )
 
 
 def _ensure_instance_directory(root: Path, user: ServiceUser) -> Path:
@@ -469,7 +522,7 @@ def _launchd_plist_is_direct(path: Path | None = None) -> bool:
 def _launchd_required_labels(*, direct: bool) -> tuple[str, ...]:
     if not direct:
         return (LAUNCHD_LABEL,)
-    return (LAUNCHD_LABEL,) + tuple(
+    return (LAUNCHD_NETWORK_BROKER_LABEL, LAUNCHD_LABEL) + tuple(
         _launchd_job_label(role) for role in LAUNCHD_CORE_ROLES
     )
 
@@ -594,6 +647,8 @@ def service_runtime_status(
     service_group_name = ""
     service_root = ""
     direct_launchd = False
+    network_broker_installed = False
+    network_broker_socket_ready = False
     platform_supported = detected_system in {"Darwin", "Linux"}
 
     if detected_system == "Linux":
@@ -628,6 +683,11 @@ def service_runtime_status(
         installed = LAUNCHD_PLIST_PATH.is_file()
         if installed and shutil.which("launchctl"):
             direct_launchd = _launchd_plist_is_direct()
+            network_broker_installed = (
+                LAUNCHD_NETWORK_BROKER_PLIST_PATH.is_file()
+                and MACOS_NETWORK_BROKER_HELPER_PATH.is_file()
+            )
+            network_broker_socket_ready = Path(MACOS_NETWORK_BROKER_SOCKET).exists()
             manager_active, manager_state, last_exit = _launchd_aggregate_details(
                 direct=direct_launchd,
                 timeout_seconds=manager_timeout_seconds
@@ -693,6 +753,8 @@ def service_runtime_status(
         "service_group": service_group_name,
         "service_root": service_root,
         "direct_launchd": direct_launchd,
+        "network_broker_installed": network_broker_installed,
+        "network_broker_socket_ready": network_broker_socket_ready,
         "paused": paused,
         "launcher_running": launcher_running,
         "process_set_ready": process_set_ready,
@@ -773,6 +835,7 @@ def install_service(
         "twn-tftp.log",
         "twn-ssh-transfer.log",
         "twn-ftp.log",
+        "twn-network-broker.log",
     ):
         log_path = instance / log_name
         log_path.touch(exist_ok=True)
@@ -785,10 +848,17 @@ def install_service(
     rendered = render_launchd_plists(root, user)
     for label in reversed(_launchd_labels()):
         _run_quiet(("launchctl", "bootout", f"system/{label}"))
+    Path(MACOS_NETWORK_BROKER_SOCKET).unlink(missing_ok=True)
     _write_pause_marker(pause_path, user)
     _remove_launchd_activation_markers(instance)
     resume_path.unlink(missing_ok=True)
     try:
+        _write_system_file(
+            MACOS_NETWORK_BROKER_HELPER_PATH,
+            MACOS_NETWORK_BROKER_SOURCE.read_bytes(),
+            mode=0o755,
+        )
+        os.chown(MACOS_NETWORK_BROKER_HELPER_PATH, 0, 0)
         for path, content in rendered.items():
             _write_system_file(path, content)
             os.chown(path, 0, 0)
@@ -808,6 +878,7 @@ def install_service(
             _run_quiet(("launchctl", "bootout", f"system/{label}"))
         for path in _launchd_paths():
             path.unlink(missing_ok=True)
+        _remove_macos_network_broker()
         pause_path.unlink(missing_ok=True)
         resume_path.unlink(missing_ok=True)
         _remove_launchd_activation_markers(instance)
@@ -819,6 +890,7 @@ def install_service(
             _run_quiet(("launchctl", "bootout", f"system/{label}"))
         for path in _launchd_paths():
             path.unlink(missing_ok=True)
+        _remove_macos_network_broker()
         pause_path.unlink(missing_ok=True)
         resume_path.unlink(missing_ok=True)
         _remove_launchd_activation_markers(instance)
@@ -834,6 +906,7 @@ def install_service(
             _run_quiet(("launchctl", "bootout", f"system/{label}"))
         for path in _launchd_paths():
             path.unlink(missing_ok=True)
+        _remove_macos_network_broker()
         pause_path.unlink(missing_ok=True)
         resume_path.unlink(missing_ok=True)
         _remove_launchd_activation_markers(instance)
@@ -843,8 +916,8 @@ def install_service(
             "./twn service logs."
         )
     print(
-        f"Installed and started {len(rendered)} direct LaunchDaemons as "
-        f"{user.name}:{user.group}."
+        f"Installed and started the root TCP connector plus {len(rendered) - 1} "
+        f"unprivileged LaunchDaemons as {user.name}:{user.group}."
     )
     print("macOS does not provide systemd-style scoped network capabilities.")
     print(
@@ -870,6 +943,7 @@ def uninstall_service(*, system: str) -> None:
         _run_quiet(("launchctl", "bootout", f"system/{label}"))
     for path in _launchd_paths():
         path.unlink(missing_ok=True)
+    _remove_macos_network_broker()
     if service_root:
         runtime = Path(service_root) / "instance"
         _remove_launchd_activation_markers(runtime)
@@ -963,6 +1037,7 @@ def service_logs(root: Path, *, system: str) -> int:
         "twn-tftp.log",
         "twn-ssh-transfer.log",
         "twn-ftp.log",
+        "twn-network-broker.log",
     ):
         path = root / "instance" / name
         if not path.exists():

@@ -1,4 +1,8 @@
+from .macos_network_broker import install_socket_broker_from_environment
 from .version import APP_VERSION
+
+
+install_socket_broker_from_environment()
 
 __version__ = APP_VERSION
 

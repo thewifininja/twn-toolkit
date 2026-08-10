@@ -399,8 +399,11 @@ loopback addresses, the machine hostname, and any additional names supplied to
 and preferred FQDN without requiring that DNS already exist.
 
 `./twn service install` uses systemd on Ubuntu, Raspberry Pi OS, and other
-systemd-based Linux distributions, or a system LaunchDaemon on macOS. It starts
-at boot as the installing user rather than root. On a dedicated Linux
+systemd-based Linux distributions, or system LaunchDaemons on macOS. The
+toolkit, workers, credentials, and stored data start at boot as the installing
+user. On macOS, one small native root connector performs only outbound TCP
+connection setup for Local Network Privacy and passes connected sockets to that
+unprivileged account over a UID-restricted Unix socket. On a dedicated Linux
 diagnostic host, `./twn service install --network-capabilities` adds only the
 network capabilities needed for raw capture/replay and privileged ports. See
 [Autostart service](docs/autostart-service.md) for lifecycle, logging, security,

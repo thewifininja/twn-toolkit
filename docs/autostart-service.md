@@ -96,17 +96,29 @@ adapter can add another init system without weakening the systemd path.
 macOS installation creates a coordinator at
 `/Library/LaunchDaemons/com.thewifininja.toolkit.plist` plus direct `.web`,
 `.automation`, `.supervisor`, `.tftp`, `.ssh-transfer`, and `.ftp` jobs beside
-it. System LaunchDaemons start at boot even when nobody has logged in; every
-property list uses the selected `UserName` and `GroupName` so application and
-instance data remain owned by the installing account.
+it. It also installs `com.thewifininja.toolkit.network-broker`, backed by the
+root-owned native helper
+`/Library/PrivilegedHelperTools/com.thewifininja.toolkit-network-broker`.
+System LaunchDaemons start at boot even when nobody has logged in. Every
+application job uses the selected `UserName` and `GroupName` so application and
+instance data remain owned by the installing account; only the bounded network
+broker omits those keys and runs as root.
 
 Each worker job invokes `twn launchd-run ROLE` and then `exec`s its final
 foreground process. Gunicorn, the automation scheduler, supervisor, and enabled
-transfer services are therefore daemons actually started by launchd, rather
-than Python grandchildren attributed to the shell coordinator. This distinction
-matters for macOS Local Network Privacy. The coordinator retains only lifecycle,
-pause/resume, startup-generation, upgrade, rollback, and recovery handoffs.
-Manual launches and Linux service mode continue to use the normal daemon path.
+transfer services are therefore managed directly by launchd. Production on
+macOS 15.1.1 nevertheless proved that Local Network Privacy still attributes
+outbound connections to Homebrew Python when the job uses `UserName`; both
+direct PID-1 parentage and an intervening root parent still returned errno 65.
+
+The native broker is the only root process in the design. It accepts requests
+only from the configured service UID over a mode-0600 Unix socket, performs the
+TCP `connect()`, and passes the connected file descriptor back. It never sees
+SSH passwords, private keys, commands, HTTP request data, or captured output.
+Gunicorn, automation, credentials, tools, and storage remain unprivileged. The
+coordinator retains only lifecycle, pause/resume, startup-generation, upgrade,
+rollback, and recovery handoffs. Manual launches and Linux service mode continue
+to use the normal socket and daemon paths.
 
 Upgrading code cannot create additional root-owned property lists. Existing
 macOS installations from v0.16.8 or earlier must therefore run this once after
@@ -116,7 +128,9 @@ installing v0.16.9:
 sudo ./twn service install
 ```
 
-The installer validates the complete direct-job set before declaring success.
+The installer validates the broker and complete direct-job set before declaring
+success. Administration → System Diagnostics reports the protected TCP
+connector separately from the unprivileged application processes.
 
 Install the toolkit outside macOS privacy-protected user folders. System
 LaunchDaemons cannot reliably execute programs beneath `Desktop`, `Documents`,
@@ -133,7 +147,8 @@ writing a service definition. For a relocated existing checkout, rebuild its
 ```
 
 macOS has no direct equivalent to systemd's scoped ambient capabilities. The
-service therefore remains unprivileged. Packet capture, packet replay, and DHCP
+application service remains unprivileged; the root connector is limited to TCP
+connection setup and descriptor handoff. Packet capture, packet replay, and DHCP
 Discover require an administrator-managed BPF access policy when normal-user
 BPF access is not already available. The macOS DHCP backend constructs one
 Ethernet/IPv4/UDP Discover through BPF, listens for matching Offers, and never
@@ -275,6 +290,8 @@ log files remain recoverable and can still be started manually with
   host` on macOS:** test the same address and port with the toolkit TCP Port
   Scanner. An immediate errno 65 failure can be a Local Network Privacy denial
   for the service process even when routing and Terminal access are healthy.
+  On v0.16.9 or newer, confirm System Diagnostics shows **Protected TCP
+  connector · Ready**; otherwise rerun `sudo ./twn service install`.
   Review [Apple's Local Network Privacy guidance](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)
   before changing system-wide CIDR exceptions; those exceptions affect every
   program on the selected network and require a Mac restart.

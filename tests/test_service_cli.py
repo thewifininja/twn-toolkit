@@ -12,7 +12,11 @@ from twn_toolkit.service_cli import (
     LAUNCHD_CORE_ROLES,
     LAUNCHD_JOB_ROLES,
     LAUNCHD_LABEL,
+    LAUNCHD_NETWORK_BROKER_LABEL,
+    LAUNCHD_NETWORK_BROKER_PLIST_PATH,
     LAUNCHD_TRANSFER_MARKERS,
+    MACOS_NETWORK_BROKER_HELPER_PATH,
+    MACOS_NETWORK_BROKER_SOCKET,
     NETWORK_CAPABILITIES,
     SYSTEMD_UNIT_NAME,
     ServiceError,
@@ -26,6 +30,7 @@ from twn_toolkit.service_cli import (
     install_service,
     manage_service,
     render_launchd_plist,
+    render_launchd_network_broker_plist,
     render_launchd_plists,
     render_systemd_unit,
     service_runtime_status,
@@ -98,11 +103,30 @@ class ServiceCliTests(unittest.TestCase):
         root = Path("/Users/toolkit/twn-toolkit")
         rendered = render_launchd_plists(root, self.user)
 
-        self.assertEqual(len(rendered), 1 + len(LAUNCHD_JOB_ROLES))
+        self.assertEqual(len(rendered), 2 + len(LAUNCHD_JOB_ROLES))
         payloads = [plistlib.loads(content) for content in rendered.values()]
+        broker = plistlib.loads(render_launchd_network_broker_plist(root, self.user))
+        self.assertEqual(broker["Label"], LAUNCHD_NETWORK_BROKER_LABEL)
+        self.assertEqual(
+            broker["ProgramArguments"],
+            [
+                str(MACOS_NETWORK_BROKER_HELPER_PATH),
+                "--socket",
+                MACOS_NETWORK_BROKER_SOCKET,
+                "--uid",
+                "1001",
+                "--gid",
+                "1001",
+            ],
+        )
+        self.assertNotIn("UserName", broker)
+        self.assertNotIn("GroupName", broker)
+        self.assertTrue(broker["RunAtLoad"])
+        self.assertTrue(broker["KeepAlive"])
         by_role = {
             payload["EnvironmentVariables"]["TWN_TOOLKIT_LAUNCHD_ROLE"]: payload
             for payload in payloads
+            if "EnvironmentVariables" in payload
         }
         self.assertEqual(set(by_role), {"coordinator", *LAUNCHD_JOB_ROLES})
         core_marker = str(root / "instance" / "twn-launchd-direct-enabled")
@@ -114,6 +138,10 @@ class ServiceCliTests(unittest.TestCase):
             )
             self.assertEqual(payload["KeepAlive"], {"PathState": {core_marker: True}})
             self.assertFalse(payload["RunAtLoad"])
+            self.assertEqual(
+                payload["EnvironmentVariables"]["TWN_TOOLKIT_NETWORK_BROKER"],
+                MACOS_NETWORK_BROKER_SOCKET,
+            )
         for role, marker in LAUNCHD_TRANSFER_MARKERS.items():
             payload = by_role[role]
             self.assertEqual(
@@ -166,8 +194,23 @@ class ServiceCliTests(unittest.TestCase):
             instance = root / "instance"
             instance.mkdir(parents=True)
             plist_path = Path(temporary) / f"{LAUNCHD_LABEL}.plist"
+            broker_plist_path = Path(temporary) / f"{LAUNCHD_NETWORK_BROKER_LABEL}.plist"
+            broker_helper_path = Path(temporary) / "network-broker"
+            broker_socket_path = str(Path(temporary) / "network-broker.sock")
             with (
                 mock.patch("twn_toolkit.service_cli.LAUNCHD_PLIST_PATH", plist_path),
+                mock.patch(
+                    "twn_toolkit.service_cli.LAUNCHD_NETWORK_BROKER_PLIST_PATH",
+                    broker_plist_path,
+                ),
+                mock.patch(
+                    "twn_toolkit.service_cli.MACOS_NETWORK_BROKER_HELPER_PATH",
+                    broker_helper_path,
+                ),
+                mock.patch(
+                    "twn_toolkit.service_cli.MACOS_NETWORK_BROKER_SOCKET",
+                    broker_socket_path,
+                ),
                 mock.patch("twn_toolkit.service_cli._validate_install_request"),
                 mock.patch("twn_toolkit.service_cli._require_root"),
                 mock.patch(
@@ -198,6 +241,7 @@ class ServiceCliTests(unittest.TestCase):
                 )
 
             rendered_paths = [
+                broker_plist_path,
                 plist_path,
                 *[
                     plist_path.with_name(f"{LAUNCHD_LABEL}.{role}.plist")
@@ -205,6 +249,7 @@ class ServiceCliTests(unittest.TestCase):
                 ],
             ]
             self.assertTrue(all(path.is_file() for path in rendered_paths))
+            self.assertTrue(broker_helper_path.is_file())
             bootstrap_calls = [
                 call
                 for call in run.call_args_list
@@ -313,8 +358,8 @@ class ServiceCliTests(unittest.TestCase):
                 for call in run.call_args_list
                 if call.args[0][:3] == ("launchctl", "kickstart", "-k")
             ]
-            self.assertEqual(len(kill_calls), 1 + len(LAUNCHD_JOB_ROLES))
-            self.assertEqual(len(kickstart_calls), 1 + len(LAUNCHD_CORE_ROLES))
+            self.assertEqual(len(kill_calls), 2 + len(LAUNCHD_JOB_ROLES))
+            self.assertEqual(len(kickstart_calls), 2 + len(LAUNCHD_CORE_ROLES))
 
     def test_macos_direct_stop_removes_every_activation_marker(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

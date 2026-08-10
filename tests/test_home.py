@@ -133,7 +133,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"exactly one toolkit-start automation event", response.data)
         self.assertIn(b"v0.16.9", response.data)
         self.assertIn(
-            b"Direct launchd network daemons",
+            b"Protected macOS service networking",
             response.data,
         )
         self.assertIn(
