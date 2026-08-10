@@ -175,6 +175,9 @@
 - [x] Review the production installer failures after database rollback safety
   is in place; retain bounded stage/exit diagnostics, and harden the launchd
   unload/bootstrap transition without exposing package-manager credentials.
+- [x] Update `cryptography` from 49.0.0 to 50.0.0 after release-candidate CI
+  identifies `PYSEC-2026-3552`; rerun the dependency audit and complete suite
+  before merging.
 - [x] Build and validate the exact 345-file descriptor candidate and matching
   SHA-256 sidecar from the release-preparation source.
 - [x] Build and validate the intermediate 346-file privilege-dropped relay

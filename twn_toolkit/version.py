@@ -49,6 +49,7 @@ RELEASE_NOTES = (
                 "items": (
                     "Supersedes the unpublished v0.16.8 through v0.16.11 production candidates and incorporates the evidence gathered from scheduled PCAP, five-switch SSH, direct launchd, descriptor handoff, root-retained relay, and rollback testing.",
                     "Records the final descriptor-only production failure: Terminal-side raw and Paramiko probes succeeded, while the background scheduler lost all five SSH banners until the remote stream stayed in the helper-owned flow.",
+                    "Updates cryptography to 50.0.0 to remediate PYSEC-2026-3552, identified by the release-candidate dependency audit.",
                     "Uses a minor version because the persistent macOS service topology and bounded privileged connection boundary are new operational architecture, not a patch-only correction.",
                 ),
             },
