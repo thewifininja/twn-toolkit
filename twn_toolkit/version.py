@@ -1,6 +1,42 @@
-APP_VERSION = "0.16.7"
+APP_VERSION = "0.16.8"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.16.8",
+        "date": "2026-08-10",
+        "title": "Reliable macOS service networking and scheduled captures",
+        "summary": (
+            "Keeps macOS service workers in launchd's network-privacy context "
+            "and makes scheduled packet captures independent of the worker's "
+            "current directory."
+        ),
+        "groups": (
+            {
+                "title": "Launchd-owned macOS networking",
+                "items": (
+                    "Runs Gunicorn, the automation scheduler, worker supervisor, and enabled transfer listeners as foreground children of the persistent macOS service launcher instead of self-daemonizing away from launchd.",
+                    "Retains the established manual and Linux daemon paths while adding foreground PID-file ownership and race-safe shutdown for the macOS LaunchDaemon path.",
+                    "Adds focused guidance when nested Paramiko failures contain Darwin errno 65, including a toolkit TCP Port Scanner probe and the distinction between Terminal and background-service privacy contexts.",
+                ),
+            },
+            {
+                "title": "Scheduler-safe packet capture",
+                "items": (
+                    "Invokes the bounded packet-capture helper by absolute path so ping, calendar, startup, and other scheduler-triggered captures work after the daemonized automation worker changes its directory to the filesystem root.",
+                    "Preserves the existing capture permission boundary, interface selection, size and duration limits, stop behavior, retained output, and simultaneous SSH collection.",
+                    "Audits the remaining automation actions and background toolkit-module launchers and adds regression checks for every launcher that intentionally depends on an explicit checkout working directory.",
+                ),
+            },
+            {
+                "title": "Compatible production hotfix",
+                "items": (
+                    "Introduces no Python dependency, database migration, stored-data change, profile-format change, server-setting change, operating-system configuration change, or command-line incompatibility.",
+                    "Preserves service ownership, automation definitions and history, packet captures, managed listeners, instance data, audit records, and matched upgrade rollback guarantees.",
+                    "Documents macOS Local Network Privacy diagnosis and keeps any system-wide CIDR exception an explicit administrator-controlled fallback rather than applying one during installation or upgrade.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.16.7",
         "date": "2026-08-02",

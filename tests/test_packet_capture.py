@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 import shutil
 import struct
+import subprocess
+import sys
 from unittest.mock import patch
 
 from scapy.layers.inet import IP, TCP, UDP
@@ -149,10 +151,31 @@ class PacketCaptureTests(unittest.TestCase):
         self.assertIn("en7", launch.command)
         self.assertIn("-c", launch.command)
         self.assertIn("1000", launch.command)
+        capture_wrapper = Path(launch.command[1])
+        self.assertTrue(capture_wrapper.is_absolute())
+        self.assertEqual(capture_wrapper.name, "packet_capture_exec.py")
+        self.assertNotIn("-m", launch.command[:4])
         self.assertEqual(launch.command[-1], VALID_CONFIG["capture_filter"])
         self.assertEqual(result["termination_reason"], "stopped by user")
         self.assertEqual(result["packet_count_captured"], 12)
         self.assertEqual(result["size_bytes"], 32)
+
+    @unittest.skipUnless(Path("/usr/bin/true").exists(), "requires POSIX true")
+    def test_capture_exec_wrapper_does_not_depend_on_checkout_cwd(self) -> None:
+        wrapper = (
+            Path(__file__).resolve().parents[1]
+            / "twn_toolkit"
+            / "packet_capture_exec.py"
+        )
+        with tempfile.TemporaryDirectory() as unrelated_cwd:
+            result = subprocess.run(
+                [sys.executable, str(wrapper), "24", "/usr/bin/true"],
+                cwd=unrelated_cwd,
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_store_tracks_lifecycle_and_prevents_interface_overlap(self) -> None:
         capability, interfaces, compiler = self.capability_patches()
@@ -267,6 +290,10 @@ class PacketCaptureTests(unittest.TestCase):
         command = launcher.call_args.args[0]
         self.assertIn(str(Path(instance).resolve()), command)
         self.assertIn("--daemon", command)
+        self.assertEqual(
+            launcher.call_args.kwargs["cwd"],
+            str(Path(__file__).resolve().parents[1]),
+        )
 
     def test_standalone_routes_start_report_download_and_delete(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

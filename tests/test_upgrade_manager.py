@@ -268,6 +268,7 @@ class UpgradeRecoveryTests(unittest.TestCase):
             with patch("twn_toolkit.upgrade_manager.subprocess.Popen") as process:
                 request = manager.launch_backup({"id": "1", "username": "admin", "remote_ip": "127.0.0.1"})
             process.assert_called_once()
+            self.assertEqual(process.call_args.kwargs["cwd"], root.resolve())
             self.assertEqual(manager.status()["state"], "starting")
             self.assertEqual(request["operation"], "backup")
 

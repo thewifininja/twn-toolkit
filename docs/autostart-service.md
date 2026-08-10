@@ -98,6 +98,12 @@ macOS installation creates
 boot even when nobody has logged in; its `UserName` and `GroupName` keep the
 toolkit process and instance data owned by the installing account.
 
+Under launchd, the macOS launcher keeps Gunicorn, the automation scheduler,
+supervisor, and enabled transfer services as foreground child processes instead
+of letting them self-daemonize. This preserves the service's process ownership
+and macOS privacy context. Manual launches and Linux service mode continue to
+use the normal daemon path.
+
 Install the toolkit outside macOS privacy-protected user folders. System
 LaunchDaemons cannot reliably execute programs beneath `Desktop`, `Documents`,
 `Downloads`, iCloud Drive, or `~/Library/CloudStorage`, even when the configured
@@ -249,6 +255,13 @@ log files remain recoverable and can still be started manually with
   correctly unprivileged. Reinstall the Linux unit with
   `--network-capabilities`, or provision persistent BPF read/write access for
   the macOS service account and restart the service.
+- **Terminal reaches a local device but toolkit SSH or TCP reports `No route to
+  host` on macOS:** test the same address and port with the toolkit TCP Port
+  Scanner. An immediate errno 65 failure can be a Local Network Privacy denial
+  for the service process even when routing and Terminal access are healthy.
+  Review [Apple's Local Network Privacy guidance](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)
+  before changing system-wide CIDR exceptions; those exceptions affect every
+  program on the selected network and require a Mac restart.
 - **A low listener port fails on macOS:** use the toolkit's default high port.
   macOS does not provide the systemd-style scoped bind capability.
 - **The wrong account owns runtime files:** uninstall the service, repair the

@@ -37,6 +37,8 @@ def main() -> None:
         return
     if args.daemon:
         _daemonize(args.pid_file, args.log_file)
+    else:
+        write_pid_file(args.pid_file)
     record_lock_owner(singleton)
     instance_path = str(instance_directory)
     os.environ["TWN_TOOLKIT_INSTANCE_PATH"] = instance_path

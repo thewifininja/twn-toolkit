@@ -262,8 +262,7 @@ def run_packet_capture(
         tcpdump_command.extend(["--", normalized["capture_filter"]])
     command = [
         sys.executable,
-        "-m",
-        "twn_toolkit.packet_capture_exec",
+        str(Path(__file__).with_name("packet_capture_exec.py").resolve()),
         str(max_bytes),
         *tcpdump_command,
     ]

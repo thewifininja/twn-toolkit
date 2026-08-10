@@ -30,6 +30,7 @@ def main() -> None:
     if singleton is None:
         return
     if args.daemon: _daemonize(args.pid_file, args.log_file)
+    else: write_pid_file(args.pid_file)
     record_lock_owner(singleton)
     running = True
     retry_after: dict[str, float] = {}

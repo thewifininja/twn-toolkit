@@ -1,0 +1,239 @@
+# macOS local-network privacy incident and service follow-up
+
+Status: production mitigated; launcher and diagnostic fixes implemented locally
+Priority: high before the next macOS service-lifecycle change
+Observed: 2026-08-07 on production v0.16.6, macOS 15.7.2
+
+## Summary
+
+The production macOS instance abruptly stopped reaching five switches over SSH.
+Every automation SSH action failed with a Paramiko error similar to:
+
+```text
+NoValidConnectionsError: [Errno None] Unable to connect to port 22 on 192.168.1.101
+```
+
+Interactive SSH from Terminal continued to work. A packet-capture action added
+around the same time completed successfully, which initially made concurrent
+capture the leading suspect. The capture did not cause the failure. The toolkit
+web and automation processes were being denied local-network connections by
+macOS before an SSH handshake began.
+
+The operational mitigation was to add the directly connected Ethernet subnet
+to macOS's system-wide local-network exception and restart the Mac:
+
+```bash
+sudo defaults write com.apple.network.local-network \
+  AllowedEthernetLocalNetworkAddresses -array "192.168.1.0/24"
+```
+
+This command was safe in this incident because the preference domain did not
+previously exist. Any product helper must read and merge existing values rather
+than overwrite them. Apple documents that this setting applies to every program
+on the Mac for the specified network and requires a restart:
+
+- <https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy>
+
+## Evidence
+
+- Manual OpenSSH connected to the switch successfully.
+- A Python socket connection launched from Terminal received the switch's SSH
+  banner.
+- Paramiko launched from Terminal completed its client handshake.
+- The toolkit TCP Port Scanner, running in the web worker, failed immediately
+  with `[Errno 65] No route to host` for `192.168.1.101:22`.
+- The host had a valid direct route to `192.168.1.101` through active Ethernet
+  interface `en6`; the Mac's address on that link was `192.168.1.254/24`.
+- All five switches failed together, ruling against an individual switch SSH
+  configuration or credential problem.
+- No `tcpdump` or packet-capture worker was left running after the capture.
+- Retained automation history contained an SSH-only failure immediately before
+  the SSH-plus-PCAP failure. PCAP concurrency was therefore not required to
+  reproduce the problem.
+- Toggling the visible Python entry under System Settings > Privacy & Security >
+  Local Network off and on did not restore toolkit access.
+- Starting the toolkit through the interactive Terminal context did not change
+  the result because its long-lived workers subsequently daemonized and
+  detached.
+- After the CIDR exception and reboot, the toolkit worker reported port 22 open
+  in 3.4 ms.
+- The final simultaneous validation completed successfully: PCAP captured 228
+  packets in 30.1 seconds and SSH collection succeeded on all 5 of 5 switches.
+
+## Cause assessment
+
+The proven failure mechanism was macOS Local Network Privacy returning
+`EHOSTUNREACH` to a background toolkit process. The exact privacy-state event
+that changed cannot be proven from retained macOS or toolkit history.
+
+The best-supported explanation is a responsible-code classification change
+after a toolkit upgrade or service reload. The installed LaunchDaemon starts
+`twn service-run`, but the managed processes detach from that launchd-owned
+process tree:
+
+- Gunicorn is started with `--daemon` in `twn`.
+- The automation scheduler is started with `--daemon` in `twn`.
+- Automation, supervisor, and transfer workers use a POSIX double-fork and
+  `setsid()` implementation.
+
+This creates a fragile boundary on macOS. Apple normally exempts launchd
+daemons and Terminal children from Local Network Privacy, but responsible-code
+tracking can treat the detached Homebrew Python executable as the responsible
+program. A service reload associated with deploying or configuring the new
+PCAP workflow likely exposed the issue; the PCAP operation itself did not alter
+routes, SSH, or persistent privacy configuration.
+
+The Python binary dated to 2026-03-02 and the retained OS installation history
+did not show a same-day system update, so neither was a direct same-day trigger.
+
+## Engineering response
+
+### 1. Preserve launchd ownership of long-lived workers
+
+Do not self-daemonize when the toolkit is already running under a service
+manager. Preferred macOS design:
+
+1. Install separate LaunchDaemons for the web process, automation scheduler,
+   supervisor, and enabled transfer services.
+2. Run each service in the foreground and let launchd own restart behavior,
+   standard streams, and process lifetime.
+
+The implemented intermediate design keeps `twn service-run` in the foreground
+on macOS and launches Gunicorn, the automation scheduler, supervisor, and
+enabled transfer services as non-daemonizing children. Foreground workers write
+the same PID files as daemon mode, and shutdown snapshots the web PID before
+stopping sibling workers so Gunicorn cleanup cannot race the launcher.
+
+Manual launches and Linux service mode retain their existing daemon behavior.
+A later service-layout refactor can still install separate LaunchDaemons for
+each long-lived process, but that is not required for this incident fix.
+
+Relevant code:
+
+- `twn`: `start_automation`, Gunicorn construction, `start_supervisor`, and
+  `service_run`
+- `twn_toolkit/service_cli.py`: `render_launchd_plist`
+- `twn_toolkit/automation_worker.py`: `_daemonize`
+- `twn_toolkit/supervisor_worker.py`: `_daemonize`
+- `twn_toolkit/tftp_worker.py`, `ftp_worker.py`, and
+  `ssh_transfer_worker.py`: worker daemonization
+
+### 2. Diagnose errno 65 explicitly
+
+SSH error formatting now unwraps nested Paramiko connection errors. When one
+contains Darwin `errno.EHOSTUNREACH` (65), it identifies macOS Local Network
+Privacy as a possible cause, directs the operator to the toolkit TCP Port
+Scanner, and explains that a successful Terminal connection is a different
+privacy context.
+
+Future diagnostic work should also:
+
+- report the selected route and interface without claiming that a valid route
+  disproves the privacy denial; and
+- include the service/worker PID, parent PID, executable, macOS version, and
+  configured CIDR exceptions in the diagnostics bundle.
+
+Diagnostics should offer probes from both the web worker and automation worker.
+A Terminal-originated probe is not equivalent on macOS because Terminal and its
+children receive special treatment.
+
+### 3. Provide an explicit administrator fallback
+
+Consider a helper such as:
+
+```text
+sudo ./twn local-network allow-ethernet 192.168.1.0/24
+```
+
+Requirements:
+
+- validate and normalize IPv4 or IPv6 CIDR input;
+- select Ethernet or Wi-Fi explicitly;
+- read, preserve, and merge existing array values;
+- show that the exception applies system-wide to every program on that network;
+- require explicit administrator confirmation;
+- explain that a Mac restart is required;
+- provide a matching command that removes only the selected CIDR; and
+- never apply the exception silently during install or upgrade.
+
+Keep this as a supported fallback even after fixing process ownership because
+Apple privacy behavior and unsigned/interpreted responsible-code identity can
+change between macOS releases.
+
+### 4. Add regression coverage
+
+Maintain a physical or virtual macOS 15.5+ service test that covers:
+
+- a LaunchDaemon running as a non-root service user;
+- a cold boot with no prior interactive Terminal launch;
+- toolkit restart, upgrade handoff, rollback, and recovery;
+- replacement of the Homebrew Python runtime;
+- outbound TCP and Paramiko SSH to a directly connected Ethernet address;
+- the same SSH collection while a bounded PCAP runs in parallel; and
+- actionable diagnostics for a deliberately denied local-network process.
+
+Unit tests should also verify error unwrapping, CIDR merging/removal, platform
+gating, and that foreground service mode writes and cleans its PID files.
+
+## Release and support notes
+
+Suggested release-note text:
+
+> Fixed macOS background workers losing access to directly connected networks
+> after service restarts. Workers remain under launchd supervision. Diagnostics
+> now identify macOS Local Network Privacy failures, and an explicit
+> administrator-controlled CIDR exception is available as a fallback.
+
+Support guidance for affected existing versions:
+
+1. Confirm the target has a valid route and that Terminal can connect.
+2. Reproduce from the toolkit TCP Port Scanner with closed/error results shown.
+3. Treat immediate `[Errno 65] No route to host` on macOS as a possible Local
+   Network Privacy denial, not proof of a routing failure.
+4. Inspect existing `com.apple.network.local-network` defaults before changing
+   them.
+5. If approved by the administrator, add only the required wired or Wi-Fi CIDR
+   and restart the Mac.
+6. Re-test from the toolkit worker and then run an end-to-end automation.
+
+Do not recommend running the complete toolkit as root to bypass this policy.
+
+## Separate PCAP configuration observation
+
+The production action was named `en0-pcap-30`, but its successful run captured
+on `lo0`. The switch network routed through `en6`. This did not cause the SSH
+failure, but future UI work should show interface name, addresses, status, and
+loopback classification prominently so an action name cannot obscure the saved
+capture interface. Do not automatically change an interface because SPAN and
+capture interfaces may intentionally differ from the management route.
+
+## Related scheduled-PCAP import failure
+
+Follow-up testing found a separate service-only failure for PCAP actions started
+by ping, calendar, and other scheduler-driven automations:
+
+```text
+packet.capture failed: ToolInputError: .../.venv/bin/python: Error while
+finding module specification for 'twn_toolkit.packet_capture_exec'
+(ModuleNotFoundError: No module named 'twn_toolkit')
+```
+
+Manual **Run now** automation executions worked because the web process had the
+checkout root as its working directory. The detached automation scheduler calls
+`os.chdir("/")`; its PCAP action then started
+`python -m twn_toolkit.packet_capture_exec`, so the child interpreter could not
+discover the source package from `/`.
+
+The code fix does not rely only on the macOS foreground-worker change. It
+invokes `packet_capture_exec.py` by its absolute path so scheduled captures also
+work in manual daemon mode and on Linux. Regression coverage executes that
+wrapper from an unrelated working directory.
+
+An audit of the other registered automation actions found no equivalent package
+import dependency: SSH, remote transfer, syslog, webhook, email, and their
+condition evaluators use imported libraries, absolute instance paths, temporary
+directories, or executables resolved from the service PATH. Other background
+`python -m twn_toolkit...` launches currently provide the checkout root as an
+explicit `cwd`: standalone packet-capture workers, managed iPerf server workers,
+and upgrade workers. Their launch tests now assert that working-directory
+invariant.

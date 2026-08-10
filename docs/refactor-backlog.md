@@ -20,6 +20,23 @@ turning the codebase into a rewrite project.
 
 ## Current scan findings
 
+### High priority: keep macOS workers under launchd supervision
+
+A production macOS 15.7.2 incident showed that the detached web and automation
+workers could be denied directly connected Ethernet access by Local Network
+Privacy even though interactive Terminal SSH continued to work. Production was
+restored with an administrator-approved Ethernet CIDR exception and a reboot;
+the toolkit then completed simultaneous PCAP and SSH collection on all five
+switches.
+
+The immediate response now keeps long-lived workers in the launchd-owned
+process tree, adds focused `EHOSTUNREACH` diagnostics, and removes the scheduled
+PCAP action's working-directory dependency. Retain cold boot, upgrade handoff,
+Python replacement, and concurrent PCAP/SSH in the macOS regression matrix for
+future service-lifecycle changes. The full incident evidence, security
+constraints, fallback design, and release-note draft are recorded in
+[`macos-local-network-privacy-incident.md`](macos-local-network-privacy-incident.md).
+
 ### 0. Formalize SQLite migrations before the next schema expansion
 
 Automation schema expansion now uses the numbered

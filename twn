@@ -99,6 +99,11 @@ load_running_endpoint() {
   fi
 }
 
+launchd_foreground_children() {
+  [ "$SERVICE_RUN_MODE" = "1" ] \
+    && [ "$(uname -s 2>/dev/null || echo unknown)" = "Darwin" ]
+}
+
 show_access_urls() {
   "$PYTHON" -c '
 import ipaddress
@@ -572,9 +577,18 @@ start_managed_worker_unlocked() {
   cd "$ROOT"
   worker_log_start=0
   if [ -f "$worker_log" ]; then worker_log_start=$(wc -l < "$worker_log" | tr -d ' '); fi
-  if ! "$PYTHON" -m "$worker_module" --instance "$INSTANCE" --daemon --pid-file "$worker_pidfile" --ready-file "$worker_readyfile" --log-file "$worker_log"; then
-    echo "The $worker_label service launcher failed before daemon startup." >&2
-    return 1
+  if launchd_foreground_children; then
+    "$PYTHON" -m "$worker_module" \
+      --instance "$INSTANCE" \
+      --pid-file "$worker_pidfile" \
+      --ready-file "$worker_readyfile" \
+      --log-file "$worker_log" \
+      </dev/null >> "$worker_log" 2>&1 &
+  else
+    if ! "$PYTHON" -m "$worker_module" --instance "$INSTANCE" --daemon --pid-file "$worker_pidfile" --ready-file "$worker_readyfile" --log-file "$worker_log"; then
+      echo "The $worker_label service launcher failed before daemon startup." >&2
+      return 1
+    fi
   fi
   attempts=0
   while [ "$attempts" -lt 100 ]; do
@@ -651,6 +665,12 @@ start_transfer_services() {
   tftp_started=0
   ssh_transfer_started=0
   ftp_started=0
+  if launchd_foreground_children; then
+    if start_tftp; then tftp_started=1; fi
+    if start_ssh_transfer; then ssh_transfer_started=1; fi
+    if start_ftp; then ftp_started=1; fi
+    return 0
+  fi
   start_tftp &
   tftp_start_job=$!
   start_ssh_transfer &
@@ -705,11 +725,19 @@ start_automation() {
   cleanup_daemon_processes "twn_toolkit.automation_worker" 0
   rm -f "$AUTOMATION_PIDFILE"
   cd "$ROOT"
-  "$PYTHON" -m twn_toolkit.automation_worker \
-    --instance "$INSTANCE" \
-    --daemon \
-    --pid-file "$AUTOMATION_PIDFILE" \
-    --log-file "$AUTOMATION_LOG"
+  if launchd_foreground_children; then
+    "$PYTHON" -m twn_toolkit.automation_worker \
+      --instance "$INSTANCE" \
+      --pid-file "$AUTOMATION_PIDFILE" \
+      --log-file "$AUTOMATION_LOG" \
+      </dev/null >> "$AUTOMATION_LOG" 2>&1 &
+  else
+    "$PYTHON" -m twn_toolkit.automation_worker \
+      --instance "$INSTANCE" \
+      --daemon \
+      --pid-file "$AUTOMATION_PIDFILE" \
+      --log-file "$AUTOMATION_LOG"
+  fi
   attempts=0
   while [ "$attempts" -lt 20 ]; do
     if automation_is_running; then
@@ -771,7 +799,16 @@ start_supervisor() {
   cleanup_duplicate_supervisors 0
   rm -f "$SUPERVISOR_PIDFILE"
   cd "$ROOT"
-  "$PYTHON" -m twn_toolkit.supervisor_worker --instance "$INSTANCE" --root "$ROOT" --daemon --pid-file "$SUPERVISOR_PIDFILE" --log-file "$SUPERVISOR_LOG"
+  if launchd_foreground_children; then
+    "$PYTHON" -m twn_toolkit.supervisor_worker \
+      --instance "$INSTANCE" \
+      --root "$ROOT" \
+      --pid-file "$SUPERVISOR_PIDFILE" \
+      --log-file "$SUPERVISOR_LOG" \
+      </dev/null >> "$SUPERVISOR_LOG" 2>&1 &
+  else
+    "$PYTHON" -m twn_toolkit.supervisor_worker --instance "$INSTANCE" --root "$ROOT" --daemon --pid-file "$SUPERVISOR_PIDFILE" --log-file "$SUPERVISOR_LOG"
+  fi
   attempts=0
   while [ "$attempts" -lt 20 ]; do
     if supervisor_is_running; then return; fi
@@ -1020,8 +1057,10 @@ start() {
     --pid "$PIDFILE" \
     --access-logfile "$ACCESS_LOG" \
     --error-logfile "$ERROR_LOG" \
-    --capture-output \
-    --daemon
+    --capture-output
+  if ! launchd_foreground_children; then
+    set -- "$@" --daemon
+  fi
   if [ "$SCHEME" = "https" ]; then
     set -- "$@" --certfile "$TLS_CERT" --keyfile "$TLS_KEY"
     export TWN_TOOLKIT_HTTPS=1
@@ -1029,7 +1068,11 @@ start() {
     unset TWN_TOOLKIT_HTTPS 2>/dev/null || true
   fi
   set -- "$@" "twn_toolkit:create_app()"
-  "$@"
+  if launchd_foreground_children; then
+    "$@" &
+  else
+    "$@"
+  fi
 
   attempts=0
   while [ "$attempts" -lt 30 ]; do
@@ -1085,7 +1128,8 @@ stop() {
     rm -f "$SERVICE_RESUME_FILE"
   fi
 
-  if ! is_running; then
+  web_pid=$(cat "$PIDFILE" 2>/dev/null || true)
+  if ! pid_is_running "$web_pid"; then
     rm -f "$PIDFILE"
     rm -f "$SCHEME_FILE"
     stop_supervisor
@@ -1102,29 +1146,30 @@ stop() {
   stop_iperf_servers
   stop_automation
   stop_transfer_services
-  pid=$(cat "$PIDFILE")
-  kill "$pid"
+  if pid_is_running "$web_pid"; then
+    kill "$web_pid"
+  fi
   attempts=0
   max_attempts=$((STOP_TIMEOUT * 10))
-  while pid_is_running "$pid" && [ "$attempts" -lt "$max_attempts" ]; do
+  while pid_is_running "$web_pid" && [ "$attempts" -lt "$max_attempts" ]; do
     attempts=$((attempts + 1))
     sleep 0.1
   done
-  if pid_is_running "$pid"; then
-    echo "Graceful stop timed out after ${STOP_TIMEOUT}s; forcing shutdown (PID $pid)." >&2
-    children=$(pgrep -P "$pid" 2>/dev/null || true)
+  if pid_is_running "$web_pid"; then
+    echo "Graceful stop timed out after ${STOP_TIMEOUT}s; forcing shutdown (PID $web_pid)." >&2
+    children=$(pgrep -P "$web_pid" 2>/dev/null || true)
     if [ -n "$children" ]; then
-      kill -KILL $children "$pid" 2>/dev/null || true
+      kill -KILL $children "$web_pid" 2>/dev/null || true
     else
-      kill -KILL "$pid" 2>/dev/null || true
+      kill -KILL "$web_pid" 2>/dev/null || true
     fi
     attempts=0
-    while pid_is_running "$pid" && [ "$attempts" -lt 50 ]; do
+    while pid_is_running "$web_pid" && [ "$attempts" -lt 50 ]; do
       attempts=$((attempts + 1))
       sleep 0.1
     done
-    if pid_is_running "$pid"; then
-      echo "The server could not be stopped (PID $pid)." >&2
+    if pid_is_running "$web_pid"; then
+      echo "The server could not be stopped (PID $web_pid)." >&2
       echo "Its PID file was retained; inspect the process manually." >&2
       return 1
     fi
@@ -1479,6 +1524,8 @@ service_run() {
   chmod 600 "$SERVICE_LAUNCHER_PIDFILE"
   rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE" "$SERVICE_DEFERRED_RELOAD_PIDFILE"
   SERVICE_RUN_MODE=1
+  TWN_TOOLKIT_SERVICE_RUN=1
+  export TWN_TOOLKIT_SERVICE_RUN
   trap service_run_cleanup EXIT
   trap 'exit 0' INT TERM
 

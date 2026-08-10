@@ -536,6 +536,10 @@ class IperfToolTests(unittest.TestCase):
             command = popen.call_args.args[0]
             self.assertIn("twn_toolkit.iperf_server_worker", command)
             self.assertIn("--daemon", command)
+            self.assertEqual(
+                popen.call_args.kwargs["cwd"],
+                str(Path(__file__).resolve().parents[1]),
+            )
             self.assertTrue(popen.call_args.kwargs["start_new_session"])
             log_path = Path(instance, "twn-iperf3.log")
             self.assertTrue(log_path.exists())
