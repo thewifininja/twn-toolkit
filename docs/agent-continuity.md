@@ -215,9 +215,16 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.17.0: macOS combines direct unprivileged LaunchDaemons
-  for Gunicorn, automation, supervisor, and transfer workers with a native root
-  TCP connector restricted to the configured service UID. Production proved
+- Current milestone is 0.18.0: one reusable responsive workspace system now
+  governs full-width pages, tabs-first peer navigation, top-level spacing,
+  nested panels, saved configuration managers, and mobile behavior. Operators
+  can duplicate supported Fortinet, network, certificate, access, and automation
+  records with collision-safe names; secret-bearing copies remain server-side
+  and write-only in the browser. The release changes no database schema,
+  dependency, service topology, backup format, or existing configuration file.
+- The 0.17.0 milestone established the macOS architecture: direct unprivileged
+  LaunchDaemons for Gunicorn, automation, supervisor, and transfer workers with
+  a native root TCP connector restricted to the configured service UID. Production proved
   that v0.16.8 foreground children, direct PID-1 jobs using `UserName=admin`,
   and an unprivileged child of a retained root parent all received Local Network
   Privacy errno 65 without the system-wide CIDR exception; only the process

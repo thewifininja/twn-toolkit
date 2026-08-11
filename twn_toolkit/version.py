@@ -1,6 +1,45 @@
-APP_VERSION = "0.17.0"
+APP_VERSION = "0.18.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.18.0",
+        "date": "2026-08-11",
+        "title": "Cohesive workspaces and reusable duplication",
+        "summary": (
+            "Unifies the toolkit around one responsive workspace system and "
+            "lets operators duplicate saved configuration instead of rebuilding "
+            "profiles, automation definitions, and certificate records by hand."
+        ),
+        "groups": (
+            {
+                "title": "One interface system",
+                "items": (
+                    "Uses shared tabs-first workspace chrome for Automation, System Settings, Updates, Recovery, Profile Backups, and Certificate Automation so peer navigation remains in one predictable location.",
+                    "Applies one full-width page model and top-level spacing rhythm across the toolkit, removing narrow tool-page caps and inconsistent gaps that caused DNS and other action rows to wrap prematurely.",
+                    "Reorganizes saved network-tool configuration into the same compact manager pattern, while multi-record Fortinet, certificate, and access-profile pages share expandable libraries, create rows, record cards, and action placement.",
+                    "Standardizes nested-section boundaries, buttons, menus, panels, form layouts, empty states, and mobile stacking in both light and dark themes without hiding advanced controls.",
+                    "Keeps tab navigation first, horizontally scrollable, and free of document overflow from wide desktop layouts through tablet, phone, and 320-pixel compact views.",
+                ),
+            },
+            {
+                "title": "Duplicate instead of rebuild",
+                "items": (
+                    "Duplicates FortiGate, FortiAuthenticator, and custom access profiles with collision-safe Copy names while preserving the source as an independent record.",
+                    "Duplicates saved Ping, DNS, NTP, Traceroute, TCP Port Scanner, RADIUS, SNMP, and Wake-on-LAN configuration through one shared profile-manager interaction.",
+                    "Duplicates Certificate Automation credentials, AD CS servers, and certificate templates without rendering stored secrets back into the browser.",
+                    "Duplicates reusable schedules, conditions, actions, and complete automations, plus individual schedule rules and action-pipeline stages while editing.",
+                    "Records server-side duplication in the sanitized audit ledger and subjects every new endpoint to the same access checks as its parent workflow.",
+                ),
+            },
+            {
+                "title": "Compatibility and quality",
+                "items": (
+                    "Retains existing configuration files, encrypted secrets, automation databases, routes, and backup formats without a schema migration or service reinstall.",
+                    "Adds regression coverage for duplicate naming, secret handling, endpoint permissions, reusable page chrome, saved-profile behavior, full-width layouts, spacing, and responsive controls.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.17.0",
         "date": "2026-08-10",

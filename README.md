@@ -13,7 +13,7 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.17.0**
+Current release: **v0.18.0**
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -37,6 +37,12 @@ Current release: **v0.17.0**
 - **Administration** — Settings, access, backups, operational limits, and
   System Diagnostics
 - **Help** — searchable operator guidance and release notes
+
+Tabbed workspaces use one tabs-first, full-width responsive layout across
+desktop and mobile views. Saved configurations share a consistent manager or
+expandable library, and supported profiles, credentials, automation definitions,
+complete automations, schedule rules, and action stages can be duplicated before
+they are adapted for another site or workflow.
 
 ## What it includes
 
@@ -239,6 +245,10 @@ Automation is built from four reusable layers:
 - **Automation → Conditions** is the reusable observation and trigger library.
 - **Automation → Actions** is the reusable response library.
 
+Schedules, conditions, actions, and complete automations can be duplicated as
+independent copies. While editing, individual schedule rules and action-pipeline
+stages can also be duplicated in place.
+
 1. **Automations** choose manual, startup, condition, or schedule run mode.
 2. **Schedules** describe reusable calendar timing.
 3. **Conditions** describe health observations and can be combined with ALL or
@@ -295,6 +305,8 @@ The built-in system administrator can manage:
 
 - users, password policy, idle timeout, and password changes;
 - reusable custom access profiles with individual-tool permissions;
+- duplication of custom access profiles before permissions are adapted for a
+  new operator role;
 - server bind addresses, client allowlists, instance name, and preferred FQDN;
 - installation-wide SMTP delivery for automation email notifications;
 - selectable profile backup/restore with combine or replace behavior;
