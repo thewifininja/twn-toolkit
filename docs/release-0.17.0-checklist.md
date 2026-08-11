@@ -194,7 +194,9 @@
 - [x] Verify recovery point `20260810-161919-e68c903`, reconcile that exact
   release candidate on production, and confirm zero manifest mismatches, nine
   healthy SQLite databases, active direct jobs, and SSH retry policy `15 2`.
-- [ ] Pass release-preparation and merged-main CI.
+- [x] Pass release-preparation, pull-request CI for PR `#108`, and merged-main
+  CI run `31444350950` for commit `7c88e814`: repository and bundle checks,
+  dependency audit, Ubuntu Python 3.10 and 3.13, and macOS Python 3.13 all pass.
 - [ ] Create and push the annotated `v0.17.0` tag only after project-owner
   approval and all production acceptance checks pass.
 - [ ] Verify the published release contains both the ZIP and SHA-256 asset before
