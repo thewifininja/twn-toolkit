@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <netinet/tcp.h>
 #include <poll.h>
 #include <grp.h>
 #include <signal.h>
@@ -329,6 +330,14 @@ static int connect_one(const struct addrinfo *address, uint32_t timeout_ms) {
         errno = saved;
         return -1;
     }
+    int tcp_no_delay = 1;
+    (void)setsockopt(
+        descriptor,
+        IPPROTO_TCP,
+        TCP_NODELAY,
+        &tcp_no_delay,
+        sizeof(tcp_no_delay)
+    );
     return descriptor;
 }
 

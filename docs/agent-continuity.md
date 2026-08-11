@@ -215,7 +215,13 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.18.0: one reusable responsive workspace system now
+- Current milestone is 0.18.1: launchd-managed macOS HTTPS clients now treat
+  the broker-provided AF_UNIX descriptor as a relay endpoint instead of applying
+  TCP-only options to it, while the native helper applies TCP_NODELAY to the
+  actual remote stream. The repair works with the helper already installed by
+  v0.17.0 or v0.18.0; reinstalling the service refreshes the helper but is not
+  required to restore release discovery. The 0.18.0 milestone established one
+  reusable responsive workspace system that
   governs full-width pages, tabs-first peer navigation, top-level spacing,
   nested panels, saved configuration managers, and mobile behavior. Operators
   can duplicate supported Fortinet, network, certificate, access, and automation

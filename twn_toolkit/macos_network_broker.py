@@ -133,6 +133,8 @@ def request_connected_descriptor(
 class BrokeredSocket(_ORIGINAL_SOCKET):
     """Socket subclass backed by the broker's local endpoint for a TCP relay."""
 
+    _brokered_relay = False
+
     def connect(self, address: Any) -> None:
         candidate = _broker_candidate(self.family, self.type, address, self.gettimeout())
         if candidate is None:
@@ -160,7 +162,23 @@ class BrokeredSocket(_ORIGINAL_SOCKET):
             except OSError:
                 pass
             raise
+        self._brokered_relay = True
         self.settimeout(original_timeout)
+
+    def setsockopt(
+        self,
+        level: int,
+        option: int,
+        value: Any,
+        *args: Any,
+    ) -> None:
+        if (
+            self._brokered_relay
+            and level == socket.IPPROTO_TCP
+            and option == socket.TCP_NODELAY
+        ):
+            return
+        super().setsockopt(level, option, value, *args)
 
     def connect_ex(self, address: Any) -> int:
         try:
