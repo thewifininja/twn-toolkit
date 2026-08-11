@@ -21,6 +21,32 @@ def setup_admin(client) -> None:
 
 
 class AccessProfileTests(unittest.TestCase):
+    def test_admin_can_duplicate_an_access_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            client = app.test_client()
+            setup_admin(client)
+            store = AuthStore(instance)
+            source = store.save_access_profile(
+                name="Network operators",
+                description="Routine diagnostics",
+                tool_ids=["tools.ping", "tools.traceroute"],
+            )
+
+            response = client.post(
+                f"/settings/access-profiles/{source['id']}/duplicate"
+            )
+
+            self.assertEqual(response.status_code, 302)
+            copied = next(
+                profile
+                for profile in store.access_profiles()
+                if profile["name"] == "Network operators copy"
+            )
+            self.assertNotEqual(copied["id"], source["id"])
+            self.assertEqual(copied["description"], source["description"])
+            self.assertEqual(copied["tool_ids"], source["tool_ids"])
+
     def test_admin_can_create_custom_access_profile_and_assign_to_user(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)

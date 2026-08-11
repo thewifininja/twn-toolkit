@@ -1,7 +1,15 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import section_header %}
+{% from "components/ui.html" import section_header, workspace_header %}
 {% block content %}
-<section class="home-hero"><div><p class="eyebrow">Administration</p><h1>System diagnostics</h1><p>Runtime mode, process health, storage capacity, database integrity, dependencies, capabilities, migrations, and toolkit audit history.</p></div><div class="home-hero-card"><span>Free disk</span><strong>{{ storage.disk_free_display }}</strong><small>of {{ storage.disk_total_display }}</small></div></section>
+<div class="workspace-page diagnostics-page">
+{{ workspace_header(
+  'System diagnostics',
+  'Runtime mode, process health, storage capacity, database integrity, dependencies, capabilities, migrations, and toolkit audit history.',
+  'Administration',
+  'Free disk',
+  storage.disk_free_display,
+  'of ' ~ storage.disk_total_display
+) }}
 
 {% if diagnostic_warnings %}<div class="message warning diagnostics-warning" role="status"><strong>Some live diagnostics were unavailable.</strong><ul>{% for warning in diagnostic_warnings|unique %}<li>{{ warning }}</li>{% endfor %}</ul><span>The remaining checks are shown normally; reload the page to try the unavailable checks again.</span></div>{% endif %}
 {% if runtime.platform == 'Darwin' and runtime.manages_this_checkout and not runtime.direct_launchd %}<div class="message warning" role="status"><strong>The legacy single-job macOS service is still installed.</strong><span>Run <code>sudo ./twn service install</code> once from the toolkit directory to install the current direct-job layout and protected TCP connector.</span></div>{% endif %}
@@ -89,4 +97,5 @@
     {% endif %}
   </div>
 </section>
+</div>
 {% endblock %}

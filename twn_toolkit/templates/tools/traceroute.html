@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import host_range_guidance %}
+{% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
 
 {% block content %}
 <section class="panel">
@@ -10,14 +10,20 @@
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
   <form class="form" method="post" id="traceroute-form" data-run-url="{{ url_for('tools.traceroute_run') }}" data-save-profile-url="{{ url_for('tools.save_traceroute_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_traceroute_profile') }}">
-    <label>Destination profile
-      <select id="traceroute-profile">
-        <option value="">New / unsaved list</option>
-        {% for profile in profiles %}
-          <option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} destination{{ '' if profile.count == 1 else 's' }}</option>
-        {% endfor %}
-      </select>
-    </label>
+    {% call saved_profile_manager("Destination profiles", "Load or maintain reusable traceroute target lists.", profiles|length) %}
+      <div class="saved-profile-fields">
+        <label>Saved profile<select id="traceroute-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} destination{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
+        <label>Profile name<input id="traceroute-profile-name" data-saved-profile-name placeholder="Core network paths" maxlength="100"></label>
+      </div>
+      <div class="saved-profile-manager-actions">
+        <span class="saved-profile-state" data-saved-profile-state>New profile</span>
+        <div class="button-row">
+          <button class="secondary profile-save-action" id="traceroute-save-profile" data-saved-profile-save type="button">Save profile</button>
+          <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_traceroute_profile') }}" data-profile-select="#traceroute-profile" disabled>Duplicate</button>
+          <button class="danger" id="traceroute-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+        </div>
+      </div>
+    {% endcall %}
     <div class="traceroute-options">
       <label>Destinations
         <textarea name="hosts" id="traceroute-hosts" rows="4" placeholder="Public DNS = 1.1.1.1&#10;Test path = 10.0.0.1-10.0.0.4&#10;example.com" required>{{ form.host }}</textarea>
@@ -45,11 +51,6 @@
       <label>Probe timeout
         <input name="timeout" type="number" min="1" max="5" step="1" value="{{ form.timeout }}" required>
       </label>
-    </div>
-    <div class="button-row">
-      <input id="traceroute-profile-name" placeholder="Destination profile name" maxlength="100">
-      <button class="secondary" id="traceroute-save-profile" type="button">Save destinations</button>
-      <button class="danger" id="traceroute-delete-profile" type="button">Delete</button>
     </div>
     <div class="button-row">
       <button type="submit" id="traceroute-start">Run traceroute</button>

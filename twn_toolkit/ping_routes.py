@@ -8,6 +8,7 @@ from .activity_context import increment_current_activity, record_current_activit
 from .audit import (
     annotate_audit_event,
     annotate_profile_deleted,
+    annotate_profile_duplicated,
     annotate_profile_saved,
     suppress_audit_event,
 )
@@ -460,6 +461,20 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             profile=profile,
         )
         return jsonify({"deleted": name})
+
+    @tools_bp.post("/ping/profiles/duplicate")
+    def duplicate_ping_profile():
+        name = request.form.get("name", "").strip()
+        store = _ping_profile_store()
+        source = store.get(name)
+        if not source:
+            return jsonify({"error": "Profile not found."}), 404
+        copied = store.duplicate(name)
+        annotate_profile_duplicated(
+            category="Network tools", action_namespace="ping",
+            profile_type="Ping profile", source=source, copied=copied,
+        )
+        return jsonify({"profile": {"name": copied["name"]}})
 
 
 def _ping_profile_store() -> PingProfileStore:

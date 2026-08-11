@@ -5,7 +5,7 @@ import platform
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
+from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
 from .network_tools import (
     ToolInputError,
     parse_radius_attributes,
@@ -246,6 +246,27 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
             profile=profile,
         )
         return jsonify({"deleted": name})
+
+    @tools_bp.post("/radius-test/profiles/<kind>/duplicate")
+    def duplicate_radius_profile(kind: str):
+        if kind not in {"servers", "credentials", "attributes"}:
+            return jsonify({"error": "Unknown RADIUS profile type."}), 404
+        name = request.form.get("name", "").strip()
+        store = _radius_profile_store(kind)
+        source = store.get(name)
+        if not source:
+            return jsonify({"error": "Profile not found."}), 404
+        copied = store.duplicate(name)
+        profile_type = {
+            "servers": "RADIUS server profile",
+            "credentials": "RADIUS credential profile",
+            "attributes": "RADIUS request-attribute profile",
+        }[kind]
+        annotate_profile_duplicated(
+            category="Network tools", action_namespace=f"radius.{kind}",
+            profile_type=profile_type, source=source, copied=copied,
+        )
+        return jsonify({"profile": {"name": copied["name"]}})
 
 
 def _radius_profile_store(kind: str) -> RadiusProfileStore:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
+from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
 from .network_tools import (
     ToolInputError,
     parse_ping_targets,
@@ -133,6 +133,22 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
             profile=profile,
         )
         return jsonify({"deleted": name})
+
+    @tools_bp.post("/port-scanner/profiles/<kind>/duplicate")
+    def duplicate_port_scan_profile(kind: str):
+        if kind not in {"hosts", "ports"}:
+            return jsonify({"error": "Unknown port scanner profile type."}), 404
+        name = request.form.get("name", "").strip()
+        store = _port_scan_profile_store(kind)
+        source = store.get(name)
+        if not source:
+            return jsonify({"error": "Profile not found."}), 404
+        copied = store.duplicate(name)
+        annotate_profile_duplicated(
+            category="Network tools", action_namespace=f"tcp_scanner.{kind}",
+            profile_type=f"TCP scanner {kind[:-1]} profile", source=source, copied=copied,
+        )
+        return jsonify({"profile": {"name": copied["name"]}})
 
 
 def _port_scan_profile_store(kind: str) -> PortScanProfileStore:

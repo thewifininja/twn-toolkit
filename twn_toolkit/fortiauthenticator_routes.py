@@ -12,6 +12,7 @@ from flask import (
     current_app,
     flash,
     g,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -22,6 +23,7 @@ from .activity_context import record_current_activity
 from .audit import (
     annotate_audit_event,
     annotate_profile_deleted,
+    annotate_profile_duplicated,
     annotate_profile_saved,
     annotate_profile_tested,
     audit_reference,
@@ -190,6 +192,18 @@ def register_fortiauthenticator_routes(
             )
         flash(f"Deleted FortiAuthenticator profile '{name}'.", "success")
         return redirect(url_for("fortiauthenticator_home"))
+
+    @app.post("/fortiauthenticator/profiles/<name>/duplicate")
+    def duplicate_fortiauthenticator_profile(name: str):
+        source = profile_store.get(name)
+        if not source:
+            return jsonify({"error": "Profile not found."}), 404
+        copied = profile_store.duplicate(name)
+        annotate_profile_duplicated(
+            category="FortiAuthenticator", action_namespace="fortiauthenticator",
+            profile_type="FortiAuthenticator profile", source=source, copied=copied,
+        )
+        return jsonify({"profile": {"name": copied["name"]}})
 
     @app.post("/fortiauthenticator/profiles/<name>/test")
     def test_fortiauthenticator_profile(name: str):

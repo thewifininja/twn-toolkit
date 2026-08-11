@@ -105,6 +105,8 @@
   <div class="section-head"><div><span class="eyebrow">Saved data</span><h2>Profiles, secrets, and backups</h2></div><a href="#help-contents">Back to contents</a></div>
   <details class="help-topic" open><summary>Saved profiles and credentials</summary><div class="help-topic-body">
     <p>Reusable lists and credentials reduce repeated entry across Fortinet, ping, DNS, RADIUS, SNMP, NTP, traceroute, TCP scanning, and automation tools. API keys, passwords, RADIUS secrets, and SNMP credentials are never rendered back into forms.</p>
+    <p>Compact <strong>Saved configuration</strong> panels use the same workflow throughout the network tools: choose a profile to load it, edit its working values, then save changes. Choose <strong>New / unsaved profile</strong> and enter a name to create one. Duplicate and Delete are available only while a saved profile is selected; changing its name renames it when saved.</p>
+    <p>Tools with several related record types use expandable profile libraries. Open a collection such as Credentials, Hosts, or Templates, use the in-flow New row to create a record, and expand an existing record to update, duplicate, or delete it.</p>
     <p>Most profile stores are owner-readable local files, not a remote secrets vault. Automation action configuration is encrypted at rest using the installation session secret. Treat the host and <code>instance/</code> as trusted and sensitive.</p>
   </div></details>
   <details class="help-topic"><summary>Encrypted exports and import behavior</summary><div class="help-topic-body">

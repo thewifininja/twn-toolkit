@@ -1,25 +1,25 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import create_toggle, section_header %}
+{% from "components/ui.html" import create_toggle, section_header, workspace_chrome %}
 {% block content %}
-<div class="page-head auth-settings-head">
-  <p class="eyebrow">Administration</p>
-  <h1>{{ 'System settings' if current_user.is_admin else 'Account settings' }}</h1>
-  <p>{{ 'Configure the toolkit host, delivery services, operational limits, and account access.' if current_user.is_admin else 'Change the password for your toolkit account.' }}</p>
-</div>
-{% if current_user.is_admin %}
-<nav class="admin-page-nav" aria-label="Settings categories">
-  <a class="button-link {{ 'secondary' if settings_section != 'system' }}" href="{{ url_for('settings', section='system') }}" {% if settings_section == 'system' %}aria-current="page"{% endif %}>System</a>
-  <a class="button-link {{ 'secondary' if settings_section != 'email' }}" href="{{ url_for('settings', section='email') }}" {% if settings_section == 'email' %}aria-current="page"{% endif %}>Email</a>
-  <a class="button-link {{ 'secondary' if settings_section != 'operations' }}" href="{{ url_for('settings', section='operations') }}" {% if settings_section == 'operations' %}aria-current="page"{% endif %}>Operations</a>
-  <a class="button-link {{ 'secondary' if settings_section != 'accounts' }}" href="{{ url_for('settings', section='accounts') }}" {% if settings_section == 'accounts' %}aria-current="page"{% endif %}>Accounts &amp; access</a>
-</nav>
-{% endif %}
+<div class="workspace-page settings-page">
+{% set settings_tabs = [
+  {'label': 'System', 'href': url_for('settings', section='system'), 'active': settings_section == 'system'},
+  {'label': 'Email', 'href': url_for('settings', section='email'), 'active': settings_section == 'email'},
+  {'label': 'Operations', 'href': url_for('settings', section='operations'), 'active': settings_section == 'operations'},
+  {'label': 'Accounts & access', 'href': url_for('settings', section='accounts'), 'active': settings_section == 'accounts'}
+] if current_user.is_admin else [] %}
+{{ workspace_chrome(
+  'System settings' if current_user.is_admin else 'Account settings',
+  'Configure the toolkit host, delivery services, operational limits, and account access.' if current_user.is_admin else 'Change the password for your toolkit account.',
+  'Administration' if current_user.is_admin else 'Account',
+  settings_tabs,
+  'System settings sections'
+) }}
 <div class="settings-organizer">
 
 {% if current_user.is_admin and settings_section == 'accounts' %}
     <section class="panel auth-settings-panel settings-auth-group" id="authentication-policy">
-      <h2>Authentication policy</h2>
-      <p>Configure session expiry and the requirements for newly assigned passwords.</p>
+      {{ section_header("Authentication policy", "Configure session expiry and the requirements for newly assigned passwords.") }}
       <form method="post" action="{{ url_for('update_session_settings') }}" class="form auth-policy-form">
         <label>Idle minutes (0 = never expire)
           <input type="number" name="idle_timeout_minutes" min="0" max="1440"
@@ -192,6 +192,7 @@
               </div>
               <div class="button-row">
                 <button type="submit">Update profile</button>
+                <button class="secondary duplicate-action" type="submit" formaction="{{ url_for('duplicate_access_profile', profile_id=profile.id) }}">Duplicate</button>
                 <button
                   class="danger"
                   type="submit"
@@ -480,10 +481,10 @@
 
 {% if current_user.is_admin and settings_section == 'accounts' %}
   <section class="panel recovery-note settings-recovery-group">
-    <h2>Lockout recovery</h2>
-    <p>On the server, stop the toolkit and delete <code>instance/auth.json</code>, then start it again.
-       The next visit will create a new administrator. Device profiles and credentials are untouched.</p>
+    {{ section_header("Lockout recovery", "Use this only when every administrator has lost access.") }}
+    <p>On the server, stop the toolkit and delete <code>instance/auth.json</code>, then start it again. The next visit will create a new administrator. Device profiles and credentials are untouched.</p>
   </section>
 {% endif %}
+</div>
 </div>
 {% endblock %}

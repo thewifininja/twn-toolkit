@@ -123,6 +123,7 @@ def register_tools(registry: ToolRegistry) -> None:
     registry.map_endpoints(
         {
             "save_profile": "fortigate.home",
+            "duplicate_profile": "fortigate.home",
             "delete_profile": "fortigate.home",
             "test_profile": "fortigate.home",
             "fortiap_client_history": "fortigate.wireless_client_history",

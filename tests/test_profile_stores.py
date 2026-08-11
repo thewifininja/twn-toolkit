@@ -36,6 +36,26 @@ class ProfileStoreTests(unittest.TestCase):
             self.assertTrue(store.delete("New"))
             self.assertFalse(store.delete("New"))
 
+    def test_duplicate_preserves_values_and_generates_incrementing_copy_names(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = ProfileStore(instance)
+            store.upsert(
+                {
+                    "name": "Production",
+                    "api_key": "secret-value",
+                    "is_default": True,
+                }
+            )
+
+            first = store.duplicate("Production")
+            second = store.duplicate("Production")
+
+            self.assertEqual(first["name"], "Production copy")
+            self.assertEqual(second["name"], "Production copy 2")
+            self.assertEqual(first["api_key"], "secret-value")
+            self.assertFalse(first["is_default"])
+            self.assertTrue(store.get("Production")["is_default"])
+
     def test_specialized_stores_keep_their_existing_filenames(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             store = DNSProfileStore(instance, "servers")

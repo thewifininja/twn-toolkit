@@ -132,10 +132,10 @@
 </section>
 {% endif %}
 
-<section class="panel tool-panel radius-management">
+<section class="panel tool-panel radius-management saved-profile-library-panel">
   {{ section_header("RADIUS profiles", "Profiles are reusable across tests. Saved secrets and passwords are never rendered back into this page.", class_name="profile-manager-head") }}
 
-  <div class="access-profile-list radius-profile-groups">
+  <div class="access-profile-list radius-profile-groups saved-profile-library">
   {% call profile_section("RADIUS servers", servers|length ~ " saved · Shared secrets are write-only", not servers, "radius-profile-section") %}
     {% call profile_create("New server", not servers) %}
       <form class="form radius-profile-form" data-kind="servers">
@@ -160,6 +160,7 @@
             <span class="field-note secret-note">Leave blank to keep the saved secret.</span>
             {% call action_row() %}
               <button type="submit">Update server</button>
+              <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_radius_profile', kind='servers') }}" data-profile-name="{{ server.name }}">Duplicate</button>
               <button class="danger radius-delete-profile" data-kind="servers" data-name="{{ server.name }}" type="button">Delete</button>
             {% endcall %}
           </form>
@@ -190,6 +191,7 @@
             <span class="field-note secret-note">Leave blank to keep the saved password.</span>
             {% call action_row() %}
               <button type="submit">Update credentials</button>
+              <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_radius_profile', kind='credentials') }}" data-profile-name="{{ profile.name }}">Duplicate</button>
               <button class="danger radius-delete-profile" data-kind="credentials" data-name="{{ profile.name }}" type="button">Delete</button>
             {% endcall %}
           </form>
@@ -222,6 +224,7 @@
             <span class="field-note">One <code>Name = value</code> per line. Unknown attributes accept <code>#type = hex</code> or <code>#vendor:type = hex</code>.</span>
             {% call action_row() %}
               <button type="submit">Update attributes</button>
+              <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_radius_profile', kind='attributes') }}" data-profile-name="{{ profile.name }}">Duplicate</button>
               <button class="danger radius-delete-profile" data-kind="attributes" data-name="{{ profile.name }}" type="button">Delete</button>
             {% endcall %}
           </form>

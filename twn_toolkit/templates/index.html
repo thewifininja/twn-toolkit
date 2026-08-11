@@ -17,13 +17,13 @@
 </section>
 
 {% if can_manage_profiles %}
-  <section class="panel fortinet-profile-panel">
+  <section class="panel fortinet-profile-panel saved-profile-library-panel">
     {{ section_header(
       "FortiGate profiles",
       "Save FortiGate API connections once, then use them across AP, switch, wireless client, and inventory workflows.",
       class_name="profile-manager-head"
     ) }}
-    <details class="add-user-card card-action-details" {% if not profiles %}open{% endif %}>
+    <details class="add-user-card card-action-details saved-profile-create" {% if not profiles %}open{% endif %}>
       {{ create_toggle("New profile") }}
       <form class="form" method="post" action="{{ url_for('save_profile') }}">
         <p class="field-note">Create a new FortiGate API profile.</p>
@@ -56,9 +56,9 @@
     </details>
 
     {% if profiles %}
-      <div class="access-profile-list fortinet-profile-list">
+      <div class="access-profile-list fortinet-profile-list saved-profile-library">
         {% for profile in profiles %}
-          <details class="access-profile-card fortinet-profile-card" {% if edit_profile and edit_profile.name == profile.name %}open{% endif %}>
+          <details class="access-profile-card fortinet-profile-card saved-profile-record" {% if edit_profile and edit_profile.name == profile.name %}open{% endif %}>
             <summary>
               <span>
                 <strong>
@@ -103,6 +103,7 @@
               <div class="button-row">
                 <button class="secondary" type="submit" form="fortigate-test-profile-{{ loop.index }}">Test profile</button>
                 <button type="submit">Update profile</button>
+                <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('duplicate_profile', name=profile.name) }}" data-profile-name="{{ profile.name }}">Duplicate</button>
                 <button
                   class="danger"
                   type="submit"

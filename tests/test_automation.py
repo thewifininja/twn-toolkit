@@ -1629,6 +1629,72 @@ class AutomationStoreTests(unittest.TestCase):
 
 
 class AutomationRouteTests(unittest.TestCase):
+    def test_reusable_action_and_automation_can_be_duplicated_with_secrets(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            store = AutomationStore(
+                instance_path,
+                load_or_create_secret_key(instance_path),
+            )
+            condition_id = store.save_condition_definition(
+                name="Manual source",
+                type_id="manual.trigger",
+                config={},
+            )
+            action_id = store.save_action_definition(
+                name="Notify endpoint",
+                type_id="webhook.send",
+                config={
+                    "endpoints": "https://example.invalid/hook",
+                    "method": "POST",
+                    "body_format": "json",
+                    "body_template": "{}",
+                    "headers": "Authorization: Bearer private-token",
+                    "timeout": 5,
+                    "max_attempts": 1,
+                    "retry_delay_seconds": 0,
+                    "allow_private_targets": False,
+                },
+            )
+            automation_id = store.save(
+                name="Manual notification",
+                interval_seconds=30,
+                trigger_after=1,
+                recover_after=1,
+                cooldown_seconds=0,
+                condition_definition_id=condition_id,
+                action_definition_ids=[action_id],
+                created_by="test-user",
+            )
+
+            action_response = client.post(
+                f"/automations/actions/{action_id}/duplicate"
+            )
+            automation_response = client.post(
+                f"/automations/{automation_id}/duplicate"
+            )
+
+            self.assertEqual(action_response.status_code, 302)
+            copied_action = next(
+                action
+                for action in store.action_definitions(include_secrets=True)
+                if action["name"] == "Notify endpoint copy"
+            )
+            self.assertIn("private-token", copied_action["config"]["headers"])
+            self.assertEqual(automation_response.status_code, 302)
+            copied_automation = next(
+                automation
+                for automation in store.all()
+                if automation["name"] == "Manual notification copy"
+            )
+            self.assertFalse(copied_automation["enabled"])
+            self.assertEqual(
+                copied_automation["action_stages"][0]["action_definition_ids"],
+                [action_id],
+            )
+
     def test_ping_condition_form_matches_active_ping_timeout_capability(self) -> None:
         accelerated = {
             "engine": "fping",

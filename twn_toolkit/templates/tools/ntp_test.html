@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import host_range_guidance %}
+{% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
 
 {% block content %}
 <section class="panel">
@@ -10,23 +10,24 @@
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
   <form class="form" method="post" id="ntp-form" data-loading-message="Testing NTP servers…" data-save-profile-url="{{ url_for('tools.save_ntp_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_ntp_profile') }}">
-    <label>Server profile
-      <select id="ntp-profile">
-        <option value="">New / unsaved list</option>
-        {% for profile in profiles %}
-          <option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} server{{ '' if profile.count == 1 else 's' }}</option>
-        {% endfor %}
-      </select>
-    </label>
+    {% call saved_profile_manager("NTP server lists", "Load or maintain reusable groups of time servers.", profiles|length) %}
+      <div class="saved-profile-fields">
+        <label>Saved profile<select id="ntp-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} server{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
+        <label>Profile name<input id="ntp-profile-name" data-saved-profile-name placeholder="Primary time servers" maxlength="100"></label>
+      </div>
+      <div class="saved-profile-manager-actions">
+        <span class="saved-profile-state" data-saved-profile-state>New profile</span>
+        <div class="button-row">
+          <button class="secondary profile-save-action" id="ntp-save-profile" data-saved-profile-save type="button">Save profile</button>
+          <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_ntp_profile') }}" data-profile-select="#ntp-profile" disabled>Duplicate</button>
+          <button class="danger" id="ntp-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+        </div>
+      </div>
+    {% endcall %}
     <label>NTP servers
       <textarea name="hosts" id="ntp-hosts" rows="5" placeholder="Primary = time.example.com&#10;Site clocks = 192.0.2.20-192.0.2.24" required>{{ form.hosts }}</textarea>
     </label>
     <span class="field-note">{{ host_range_guidance(20, 'servers') }}</span>
-    <div class="button-row">
-      <input id="ntp-profile-name" placeholder="Server profile name" maxlength="100">
-      <button class="secondary" id="ntp-save-profile" type="button">Save servers</button>
-      <button class="danger" id="ntp-delete-profile" type="button">Delete</button>
-    </div>
     <div class="ntp-options">
       <label>UDP port
         <input name="port" type="number" min="1" max="65535" value="{{ form.port }}" required>

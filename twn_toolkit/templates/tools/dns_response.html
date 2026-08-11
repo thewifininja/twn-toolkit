@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import host_range_guidance %}
+{% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
 
 {% block content %}
 <section class="panel dns-workspace-panel">
@@ -51,15 +51,20 @@
           <span class="dns-card-limit">Up to 100</span>
         </header>
 
-        <label class="dns-profile-picker">
-          <span>Saved query list</span>
-          <select class="dns-profile-select" data-kind="hosts">
-            <option value="">New / unsaved list</option>
-            {% for profile in host_profiles %}
-              <option value="{{ profile.name }}" data-values='{{ profile["values"]|tojson }}'>{{ profile.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
+        {% call saved_profile_manager("Query profiles", "Load or maintain reusable query-name lists.", host_profiles|length, "dns-profile-manager") %}
+          <div class="saved-profile-fields">
+            <label>Saved profile<select class="dns-profile-select" data-kind="hosts" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in host_profiles %}<option value="{{ profile.name }}" data-values='{{ profile["values"]|tojson }}'>{{ profile.name }}</option>{% endfor %}</select></label>
+            <label>Profile name<input class="profile-name-input" data-kind="hosts" data-saved-profile-name placeholder="Production domains" maxlength="100"></label>
+          </div>
+          <div class="saved-profile-manager-actions">
+            <span class="saved-profile-state" data-saved-profile-state>New profile</span>
+            <div class="button-row dns-profile-actions">
+              <button class="secondary dns-save-profile profile-save-action" data-kind="hosts" data-saved-profile-save type="button">Save profile</button>
+              <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_dns_profile', kind='hosts') }}" data-profile-select=".dns-profile-select[data-kind='hosts']" disabled>Duplicate</button>
+              <button class="danger dns-delete-profile" data-kind="hosts" data-saved-profile-delete type="button" disabled>Delete</button>
+            </div>
+          </div>
+        {% endcall %}
 
         <label class="dns-source-field">
           <span>Hostnames, addresses, or ranges</span>
@@ -68,14 +73,6 @@
 
         <p class="field-note dns-card-note">{{ host_range_guidance(100, 'hosts') }}</p>
 
-        <details class="dns-profile-manager">
-          <summary>Save or manage query profiles</summary>
-          <div class="dns-profile-actions">
-            <input class="profile-name-input" data-kind="hosts" aria-label="Query profile name" placeholder="Query profile name" maxlength="100">
-            <button class="secondary dns-save-profile" data-kind="hosts" type="button">Save profile</button>
-            <button class="danger dns-delete-profile" data-kind="hosts" type="button" disabled>Delete</button>
-          </div>
-        </details>
       </article>
 
       <article class="dns-input-card">
@@ -88,15 +85,20 @@
           <span class="dns-card-limit">20 compare · {{ load_limits.servers }} load</span>
         </header>
 
-        <label class="dns-profile-picker">
-          <span>Saved resolver list</span>
-          <select class="dns-profile-select" data-kind="servers">
-            <option value="">New / unsaved list</option>
-            {% for profile in server_profiles %}
-              <option value="{{ profile.name }}" data-values='{{ profile["values"]|tojson }}'>{{ profile.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
+        {% call saved_profile_manager("Resolver profiles", "Load or maintain reusable DNS server lists.", server_profiles|length, "dns-profile-manager") %}
+          <div class="saved-profile-fields">
+            <label>Saved profile<select class="dns-profile-select" data-kind="servers" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in server_profiles %}<option value="{{ profile.name }}" data-values='{{ profile["values"]|tojson }}'>{{ profile.name }}</option>{% endfor %}</select></label>
+            <label>Profile name<input class="profile-name-input" data-kind="servers" data-saved-profile-name placeholder="Public resolvers" maxlength="100"></label>
+          </div>
+          <div class="saved-profile-manager-actions">
+            <span class="saved-profile-state" data-saved-profile-state>New profile</span>
+            <div class="button-row dns-profile-actions">
+              <button class="secondary dns-save-profile profile-save-action" data-kind="servers" data-saved-profile-save type="button">Save profile</button>
+              <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_dns_profile', kind='servers') }}" data-profile-select=".dns-profile-select[data-kind='servers']" disabled>Duplicate</button>
+              <button class="danger dns-delete-profile" data-kind="servers" data-saved-profile-delete type="button" disabled>Delete</button>
+            </div>
+          </div>
+        {% endcall %}
 
         <label class="dns-source-field">
           <span>DNS server addresses</span>
@@ -105,14 +107,6 @@
 
         <p class="field-note dns-card-note">Enter one IPv4 or IPv6 address per line. Optional labels use <code>Name = address</code>.</p>
 
-        <details class="dns-profile-manager">
-          <summary>Save or manage resolver profiles</summary>
-          <div class="dns-profile-actions">
-            <input class="profile-name-input" data-kind="servers" aria-label="Resolver profile name" placeholder="Resolver profile name" maxlength="100">
-            <button class="secondary dns-save-profile" data-kind="servers" type="button">Save profile</button>
-            <button class="danger dns-delete-profile" data-kind="servers" type="button" disabled>Delete</button>
-          </div>
-        </details>
       </article>
     </div>
 

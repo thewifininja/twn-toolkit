@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
+from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
 from .network_tools import ToolInputError
 from .profiles import WOLTargetProfileStore
 from .wol_tools import (
@@ -152,6 +152,20 @@ def register_wol_routes(tools_bp: Blueprint) -> None:
             profile=_profile_audit_snapshot(profile),
         )
         return jsonify({"deleted": name})
+
+    @tools_bp.post("/wake-on-lan/profiles/duplicate")
+    def duplicate_wol_profile():
+        name = request.form.get("name", "").strip()
+        store = WOLTargetProfileStore(current_app.instance_path)
+        source = store.get(name)
+        if not source:
+            return jsonify({"error": "Device group not found."}), 404
+        copied = store.duplicate(name)
+        annotate_profile_duplicated(
+            category="Network tools", action_namespace="wol",
+            profile_type="Wake-on-LAN device group", source=source, copied=copied,
+        )
+        return jsonify({"profile": {"name": copied["name"]}})
 
 
 def _profile_audit_snapshot(profile: dict[str, object] | None) -> dict[str, object]:

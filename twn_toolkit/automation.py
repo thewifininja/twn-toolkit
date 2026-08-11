@@ -292,7 +292,6 @@ class AutomationStore:
             }]
         normalized = []
         seen_stage_ids: set[str] = set()
-        seen_action_ids: set[str] = set()
         for index, raw in enumerate(stages, 1):
             stage_id = str(raw.get("id", "")).strip() or f"stage-{index}"
             if stage_id in seen_stage_ids or len(stage_id) > 80:
@@ -317,9 +316,6 @@ class AutomationStore:
             action_ids = [str(value).strip() for value in raw.get("action_definition_ids", []) if str(value).strip()]
             if not action_ids:
                 raise ValueError(f"{name} must contain at least one action.")
-            if any(action_id in seen_action_ids for action_id in action_ids):
-                raise ValueError("Each reusable action may appear only once in an automation pipeline.")
-            seen_action_ids.update(action_ids)
             normalized.append({
                 "id": stage_id,
                 "name": name,

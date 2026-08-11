@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import host_range_guidance %}
+{% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
 
 {% block content %}
 <section class="panel">
@@ -12,38 +12,44 @@
   <form class="form" method="post" id="port-scan-form" data-loading-message="Scanning TCP ports…">
     <div class="grid two port-profile-grid">
       <div class="form port-inline-profile" data-kind="hosts" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='hosts') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='hosts') }}">
-        <label>Host profile
-          <select class="port-existing-profile">
-            <option value="">New / unsaved list</option>
-            {% for profile in host_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }}</option>{% endfor %}
-          </select>
-        </label>
+        {% call saved_profile_manager("Host profiles", "Reusable target lists for authorized scans.", host_profiles|length, "port-saved-profile-manager") %}
+          <div class="saved-profile-fields">
+            <label>Saved profile<select class="port-existing-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in host_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }}</option>{% endfor %}</select></label>
+            <label>Profile name<input class="port-profile-name" data-saved-profile-name placeholder="Infrastructure hosts" maxlength="100"></label>
+          </div>
+          <div class="saved-profile-manager-actions">
+            <span class="saved-profile-state" data-saved-profile-state>New profile</span>
+            <div class="button-row port-profile-actions">
+              <button class="secondary port-save-profile profile-save-action" data-saved-profile-save type="button">Save profile</button>
+              <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_port_scan_profile', kind='hosts') }}" data-profile-select=".port-inline-profile[data-kind='hosts'] .port-existing-profile" disabled>Duplicate</button>
+              <button class="danger port-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+            </div>
+          </div>
+        {% endcall %}
         <label>Hosts
           <textarea name="hosts" class="port-profile-values" id="port-scan-hosts" rows="7" placeholder="Core Switch = 192.0.2.10&#10;Access switches = 10.0.0.1-10.0.0.24&#10;server.example.com" required>{{ form.hosts }}</textarea>
         </label>
         <span class="field-note">{{ host_range_guidance(50, 'hosts') }}</span>
-        <div class="button-row port-profile-actions">
-          <input class="port-profile-name" placeholder="Host profile name" maxlength="100">
-          <button class="secondary port-save-profile" type="button">Save hosts</button>
-          <button class="danger port-delete-profile" type="button">Delete</button>
-        </div>
       </div>
       <div class="form port-inline-profile" data-kind="ports" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='ports') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='ports') }}">
-        <label>Port profile
-          <select class="port-existing-profile">
-            <option value="">New / unsaved list</option>
-            {% for profile in port_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }}</option>{% endfor %}
-          </select>
-        </label>
+        {% call saved_profile_manager("Port profiles", "Reusable TCP port sets for repeated scans.", port_profiles|length, "port-saved-profile-manager") %}
+          <div class="saved-profile-fields">
+            <label>Saved profile<select class="port-existing-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in port_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }}</option>{% endfor %}</select></label>
+            <label>Profile name<input class="port-profile-name" data-saved-profile-name placeholder="Common service ports" maxlength="100"></label>
+          </div>
+          <div class="saved-profile-manager-actions">
+            <span class="saved-profile-state" data-saved-profile-state>New profile</span>
+            <div class="button-row port-profile-actions">
+              <button class="secondary port-save-profile profile-save-action" data-saved-profile-save type="button">Save profile</button>
+              <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_port_scan_profile', kind='ports') }}" data-profile-select=".port-inline-profile[data-kind='ports'] .port-existing-profile" disabled>Duplicate</button>
+              <button class="danger port-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+            </div>
+          </div>
+        {% endcall %}
         <label>TCP ports
           <textarea name="ports" class="port-profile-values" id="port-scan-ports" rows="7" placeholder="22, 53, 80, 443, 8000-8010" required>{{ form.ports }}</textarea>
         </label>
         <span class="field-note">Comma, whitespace, and ascending ranges are accepted. Maximum 200 unique ports.</span>
-        <div class="button-row port-profile-actions">
-          <input class="port-profile-name" placeholder="Port profile name" maxlength="100">
-          <button class="secondary port-save-profile" type="button">Save ports</button>
-          <button class="danger port-delete-profile" type="button">Delete</button>
-        </div>
       </div>
     </div>
     <span class="tool-status" id="port-profile-status">Only scan systems you own or are authorized to test.</span>

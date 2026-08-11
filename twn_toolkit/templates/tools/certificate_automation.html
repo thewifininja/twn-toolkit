@@ -1,9 +1,15 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import action_row, empty_state, profile_card, profile_create, profile_section %}
+{% from "components/ui.html" import action_row, empty_state, profile_card, profile_create, profile_section, workspace_tabs %}
 
 {% block shell_classes %} certificate-shell{% endblock %}
 
 {% block content %}
+<div class="workspace-page certificate-workspace">
+{{ workspace_tabs('Certificate authority', [
+  {'label': 'ACME / Let’s Encrypt', 'href': url_for('tools.certificate_automation', section='acme'), 'active': certificate_section == 'acme'},
+  {'label': 'Microsoft AD CS · Beta', 'href': url_for('tools.certificate_automation', section='adcs'), 'active': certificate_section == 'adcs'}
+], 'certificate-page-nav') }}
+
 <section class="panel tool-panel certificate-automation-hero">
   <div class="panel-head certificate-automation-title">
     <div>
@@ -50,11 +56,6 @@
     {% endif %}
   </div>
 </section>
-
-<nav class="admin-page-nav certificate-page-nav" aria-label="Certificate authority">
-  <a class="button-link {{ 'secondary' if certificate_section != 'acme' }}" href="{{ url_for('tools.certificate_automation', section='acme') }}" {% if certificate_section == 'acme' %}aria-current="page"{% endif %}>ACME / Let’s Encrypt</a>
-  <a class="button-link {{ 'secondary' if certificate_section != 'adcs' }}" href="{{ url_for('tools.certificate_automation', section='adcs') }}" {% if certificate_section == 'adcs' %}aria-current="page"{% endif %}>Microsoft AD CS <span class="pill planned certificate-beta-pill">Beta</span></a>
-</nav>
 
 {% if certificate_section == 'acme' %}
 <section class="panel tool-panel certificate-acme-panel" id="acme-issuance">
@@ -376,7 +377,7 @@
   </div>
 </section>
 
-<section class="panel tool-panel certificate-profile-panel" id="pki-profiles">
+<section class="panel tool-panel certificate-profile-panel saved-profile-library-panel" id="pki-profiles">
   <div class="panel-head certificate-section-head">
     <div>
       <span class="section-kicker">Reusable configuration</span>
@@ -384,7 +385,7 @@
       <p>Keep provider connections, enrollment identities, and certificate templates modular.</p>
     </div>
   </div>
-  <div class="access-profile-list certificate-profile-columns">
+  <div class="access-profile-list certificate-profile-columns saved-profile-library">
     {% call profile_section("Credentials", credentials|length ~ " saved · Enrollment identities with locally encrypted passwords", not credentials, "certificate-profile-section") %}
       {% call profile_create("New credential", not credentials) %}
           <form class="form" method="post" action="{{ url_for('tools.save_pki_credential') }}">
@@ -405,6 +406,7 @@
           </form>
           {% call action_row(detached=true) %}
             <button type="submit" form="pki-credential-{{ profile.id }}">Update</button>
+            <form method="post" action="{{ url_for('tools.duplicate_pki_credential', credential_id=profile.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form>
             <form method="post" action="{{ url_for('tools.delete_pki_credential', credential_id=profile.id) }}" data-confirm="Delete credential profile “{{ profile.name }}”?"><button class="danger" type="submit">Delete</button></form>
           {% endcall %}
         {% endcall %}{% endfor %}
@@ -443,6 +445,7 @@
           </form>
           {% call action_row(detached=true) %}
             <button type="submit" form="pki-server-{{ profile.id }}">Update</button>
+            <form method="post" action="{{ url_for('tools.duplicate_pki_server', server_id=profile.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form>
             <form method="post" action="{{ url_for('tools.test_pki_server', server_id=profile.id) }}" data-loading-message="Testing PKI server…">
               {% if not profile.credential_id %}<details class="certificate-one-time-credentials"><summary>Credentials for test</summary><div class="certificate-inline-fields"><label>Username<input name="username" autocomplete="username"></label><label>Password<input name="password" type="password" autocomplete="current-password"></label></div></details>{% endif %}
               <button class="secondary" type="submit">Test connection</button>
@@ -476,6 +479,7 @@
           </form>
           {% call action_row(detached=true) %}
             <button type="submit" form="pki-template-{{ profile.id }}">Update</button>
+            <form method="post" action="{{ url_for('tools.duplicate_pki_template', template_id=profile.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form>
             <form method="post" action="{{ url_for('tools.delete_pki_template', template_id=profile.id) }}" data-confirm="Delete certificate template profile “{{ profile.name }}”?"><button class="danger" type="submit">Delete</button></form>
           {% endcall %}
         {% endcall %}{% endfor %}
@@ -485,5 +489,6 @@
 </section>
 
 {% endif %}
+</div>
 {% if certificate_section == 'acme' %}<script src="{{ url_for('static', filename='certificate-automation.js') }}"></script>{% endif %}
 {% endblock %}

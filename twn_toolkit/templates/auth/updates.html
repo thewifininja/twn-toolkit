@@ -1,21 +1,21 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import section_header %}
+{% from "components/ui.html" import section_header, workspace_chrome %}
 {% block content %}
-<div class="updates-page">
-  <section class="home-hero updates-hero">
-    <div>
-      <p class="eyebrow">Administration</p>
-      <h1>Updates &amp; recovery</h1>
-      <p>Install verified releases, create matched recovery points, and move selected profile configuration between toolkit installations.</p>
-    </div>
-    <div class="home-hero-card"><span>Installed version</span><strong>v{{ installed_version }}</strong><small>Stable channel</small></div>
-  </section>
-
-  <nav class="admin-page-nav" aria-label="Updates and recovery categories">
-    <a class="button-link {{ 'secondary' if updates_section != 'updates' }}" href="{{ url_for('updates', section='updates') }}" {% if updates_section == 'updates' %}aria-current="page"{% endif %}>Updates</a>
-    <a class="button-link {{ 'secondary' if updates_section != 'recovery' }}" href="{{ url_for('updates', section='recovery') }}" {% if updates_section == 'recovery' %}aria-current="page"{% endif %}>Recovery points</a>
-    <a class="button-link secondary" href="{{ url_for('backup_settings') }}">Profile backups</a>
-  </nav>
+<div class="workspace-page updates-page">
+  {{ workspace_chrome(
+    'Updates & recovery',
+    'Install verified releases, create matched recovery points, and move selected configuration between toolkit installations.',
+    'Administration',
+    [
+      {'label': 'Updates', 'href': url_for('updates', section='updates'), 'active': updates_section == 'updates'},
+      {'label': 'Recovery points', 'href': url_for('updates', section='recovery'), 'active': updates_section == 'recovery'},
+      {'label': 'Profile backups', 'href': url_for('backup_settings'), 'active': false}
+    ],
+    'Updates and recovery sections',
+    'Installed version',
+    'v' ~ installed_version,
+    'Stable channel'
+  ) }}
 
   {% if updates_section == 'updates' %}
     {% if upgrade_status %}
