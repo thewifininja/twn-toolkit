@@ -35,9 +35,11 @@
   ignored by policy.
 - [x] Build and validate the exact v0.18.0 upgrade bundle and checksum from the
   completed release-preparation source.
-- [ ] Pass pull-request CI on Ubuntu Python 3.10/3.13 and macOS Python 3.13,
-  including repository checks and the dependency audit.
-- [ ] Merge through the protected `main` workflow and pass merged-main CI.
+- [x] Pass pull-request CI run `31483215565` for PR `#110` on Ubuntu Python
+  3.10/3.13 and macOS Python 3.13, including repository checks and the
+  dependency audit.
+- [x] Squash-merge PR `#110` as commit `dd8c23f9282408876e2ed80f3cfe5b5b4e1f898a`
+  and pass merged-main CI run `31483394599`.
 
 ## Publication gate
 
