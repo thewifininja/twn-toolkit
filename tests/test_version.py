@@ -10,9 +10,9 @@ class VersionMetadataTests(unittest.TestCase):
     def test_current_release_note_matches_application_version(self) -> None:
         self.assertTrue(RELEASE_NOTES)
         self.assertEqual(RELEASE_NOTES[0]["version"], APP_VERSION)
-        self.assertEqual(APP_VERSION, "0.18.0")
-        self.assertIn("reusable duplication", RELEASE_NOTES[0]["title"].lower())
-        self.assertEqual(RELEASE_NOTES[1]["version"], "0.17.0")
+        self.assertEqual(APP_VERSION, "0.18.1")
+        self.assertIn("macos service update", RELEASE_NOTES[0]["title"].lower())
+        self.assertEqual(RELEASE_NOTES[1]["version"], "0.18.0")
 
     def test_release_versions_are_unique_and_well_formed(self) -> None:
         versions = [release["version"] for release in RELEASE_NOTES]

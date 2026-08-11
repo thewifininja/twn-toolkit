@@ -1,6 +1,34 @@
-APP_VERSION = "0.18.0"
+APP_VERSION = "0.18.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.18.1",
+        "date": "2026-08-11",
+        "title": "Reliable macOS service update checks",
+        "summary": (
+            "Restores HTTPS release discovery and other outbound HTTP clients "
+            "for launchd-managed macOS installations using the protected TCP "
+            "relay."
+        ),
+        "groups": (
+            {
+                "title": "macOS relay compatibility",
+                "items": (
+                    "Recognizes when Python is using the broker's local Unix relay endpoint and safely absorbs the TCP_NODELAY request made by the standard HTTPS client instead of applying a TCP-only option to an AF_UNIX socket.",
+                    "Applies TCP_NODELAY inside the native helper to the actual remote TCP connection, preserving the intended socket behavior at the correct side of the relay.",
+                    "Restores release checks, verified bundle downloads, and other HTTP-based integrations in direct launchd jobs while leaving manual startup, Linux, and non-brokered sockets unchanged.",
+                ),
+            },
+            {
+                "title": "Upgrade and verification",
+                "items": (
+                    "Works with the helper already installed by v0.17.0 or v0.18.0, so manually uploading the official v0.18.1 bundle or running ./twn upgrade --bundle restores update access without requiring a service reinstall first.",
+                    "Refreshes the bundled universal arm64/x86_64 helper; running sudo ./twn service install after the code upgrade installs that helper-side TCP tuning but is not required for the compatibility repair itself.",
+                    "Adds a production-shaped HTTPS regression through a real AF_UNIX relay descriptor and verifies the path on Python 3.12, 3.13, and 3.14, alongside the native bidirectional relay harness.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.18.0",
         "date": "2026-08-11",

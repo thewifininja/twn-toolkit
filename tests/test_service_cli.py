@@ -175,6 +175,8 @@ class ServiceCliTests(unittest.TestCase):
             handler.index("relay_streams(relay_pair[1], connected_fd)"),
         )
         self.assertIn("RELAY_HALF_CLOSE_IDLE_MS", source)
+        self.assertIn("#include <netinet/tcp.h>", source)
+        self.assertIn("setsockopt(\n        descriptor,\n        IPPROTO_TCP,\n        TCP_NODELAY", source)
         self.assertIn("signal(SIGTERM, SIG_DFL)", source)
 
     @unittest.skipUnless(os.uname().sysname == "Darwin", "requires macOS sockets")

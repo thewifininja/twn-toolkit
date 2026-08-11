@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import array
 import errno
+import http.client
 import os
 import socket
 import struct
@@ -98,6 +99,57 @@ class MacosNetworkBrokerClientTests(unittest.TestCase):
         finally:
             connection.close()
             peer_end.close()
+
+    def test_https_client_tcp_nodelay_is_compatible_with_relay_endpoint(self) -> None:
+        os.environ[BROKER_ENVIRONMENT] = "/var/run/example.sock"
+        broker_end, peer_end = socket.socketpair()
+        handed_off = os.dup(broker_end.fileno())
+        tls_context = mock.Mock()
+        tls_context.wrap_socket.side_effect = lambda sock, **_kwargs: sock
+        address = (
+            socket.AF_INET,
+            socket.SOCK_STREAM,
+            socket.IPPROTO_TCP,
+            "",
+            ("192.0.2.10", 443),
+        )
+        with (
+            mock.patch.object(socket, "socket", BrokeredSocket),
+            mock.patch.object(socket, "getaddrinfo", return_value=[address]),
+            mock.patch(
+                "twn_toolkit.macos_network_broker.request_connected_descriptor",
+                return_value=handed_off,
+            ) as request,
+        ):
+            connection = http.client.HTTPSConnection(
+                "api.github.com",
+                443,
+                timeout=2,
+                context=tls_context,
+            )
+            connection.connect()
+            connected_socket = connection.sock
+        broker_end.close()
+        try:
+            self.assertIsNotNone(connection.sock)
+            self.assertTrue(connection.sock._brokered_relay)
+            connection.sock.sendall(b"GET / HTTP/1.0\r\n\r\n")
+            self.assertEqual(peer_end.recv(18), b"GET / HTTP/1.0\r\n\r\n")
+        finally:
+            connection.close()
+            peer_end.close()
+
+        request.assert_called_once_with(
+            "/var/run/example.sock",
+            "192.0.2.10",
+            443,
+            family_code=4,
+            timeout=2.0,
+        )
+        tls_context.wrap_socket.assert_called_once_with(
+            connected_socket,
+            server_hostname="api.github.com",
+        )
 
     def test_protocol_request_is_bounded_and_network_ordered(self) -> None:
         channel = mock.Mock()
