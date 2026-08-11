@@ -33,9 +33,11 @@
   ignored by policy.
 - [x] Build and validate the exact v0.18.1 upgrade bundle and checksum: 351
   manifested files and a matching SHA-256 digest.
-- [ ] Pass pull-request CI on Ubuntu Python 3.10/3.13 and macOS Python 3.13,
-  including repository checks and the dependency audit.
-- [ ] Squash-merge the approved pull request and pass merged-main CI.
+- [x] Pass pull-request CI run `31492492477` for PR `#112` on Ubuntu Python
+  3.10/3.13 and macOS Python 3.13, including repository checks and the
+  dependency audit.
+- [x] Squash-merge PR `#112` as commit `3457a759f110f6c65522484441481fc84cb0668b`
+  and pass merged-main CI run `31492680977`.
 
 ## Publication gate
 
