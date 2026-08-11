@@ -28,6 +28,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from requests.adapters import HTTPAdapter
 
 from .certificate_tools import HOSTNAME_PATTERN
+from .duplication import duplicate_name
 
 
 MAX_CA_BUNDLE_BYTES = 2 * 1024 * 1024
@@ -234,6 +235,33 @@ class CertificateAutomationStore:
             )
         return bool(result.rowcount)
 
+    def duplicate_credential(self, credential_id: str) -> dict[str, Any]:
+        with self._connect() as connection:
+            source = connection.execute(
+                "SELECT * FROM pki_credentials WHERE id = ?", (credential_id,)
+            ).fetchone()
+            if not source:
+                raise ValueError("Credential profile not found.")
+            names = [row["name"] for row in connection.execute("SELECT name FROM pki_credentials")]
+            now = time.time()
+            copied_id = self._new_id()
+            connection.execute(
+                """
+                INSERT INTO pki_credentials
+                    (id, name, username, password_encrypted, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    copied_id,
+                    duplicate_name(source["name"], names),
+                    source["username"],
+                    source["password_encrypted"],
+                    now,
+                    now,
+                ),
+            )
+        return self.credential_profile(copied_id) or {}
+
     def server_profiles(self) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -313,6 +341,26 @@ class CertificateAutomationStore:
             ) from exc
         return bool(result.rowcount)
 
+    def duplicate_server(self, server_id: str) -> dict[str, Any]:
+        source = self.server_profile(server_id)
+        if not source:
+            raise ValueError("PKI server profile not found.")
+        return self.save_server(
+            {
+                "name": duplicate_name(
+                    source["name"],
+                    (profile["name"] for profile in self.server_profiles()),
+                ),
+                "provider": source["provider"],
+                "enrollment_url": source["enrollment_url"],
+                "credential_id": source.get("credential_id") or "",
+                "ca_bundle_pem": source.get("ca_bundle_pem") or "",
+                "verify_tls": bool(source["verify_tls"]),
+                "retrieval_strategy": source["retrieval_strategy"],
+                "timeout": source["timeout"],
+            }
+        )
+
     def template_profiles(self) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -385,6 +433,23 @@ class CertificateAutomationStore:
         except sqlite3.IntegrityError as exc:
             raise ValueError("This template is still used by a managed certificate.") from exc
         return bool(result.rowcount)
+
+    def duplicate_template(self, template_id: str) -> dict[str, Any]:
+        source = self.template_profile(template_id)
+        if not source:
+            raise ValueError("Certificate template profile not found.")
+        return self.save_template(
+            {
+                "name": duplicate_name(
+                    source["name"],
+                    (profile["name"] for profile in self.template_profiles()),
+                ),
+                "server_id": source["server_id"],
+                "template_identifier": source["template_identifier"],
+                "key_size": source["key_size"],
+                "renewal_days": source["renewal_days"],
+            }
+        )
 
     def managed_certificates(self) -> list[dict[str, Any]]:
         with self._connect() as connection:

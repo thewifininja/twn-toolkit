@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import saved_profile_manager %}
 
 {% block content %}
 <section class="panel">
@@ -16,14 +17,20 @@
     data-save-profile-url="{{ url_for('tools.save_wol_profile') }}"
     data-delete-profile-url="{{ url_for('tools.delete_wol_profile') }}"
   >
-    <label>Saved device group
-      <select id="wol-profile">
-        <option value="">New / unsaved group</option>
-        {% for profile in profiles %}
-          <option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} device{{ '' if profile.count == 1 else 's' }}</option>
-        {% endfor %}
-      </select>
-    </label>
+    {% call saved_profile_manager("Device groups", "Load or maintain reusable Wake-on-LAN device sets.", profiles|length) %}
+      <div class="saved-profile-fields">
+        <label>Saved profile<select id="wol-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} device{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
+        <label>Profile name<input id="wol-profile-name" data-saved-profile-name placeholder="Office workstations" maxlength="100"></label>
+      </div>
+      <div class="saved-profile-manager-actions">
+        <span class="saved-profile-state" data-saved-profile-state>New profile</span>
+        <div class="button-row wol-profile-actions">
+          <button class="secondary profile-save-action" id="wol-save-profile" data-saved-profile-save type="button">Save profile</button>
+          <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_wol_profile') }}" data-profile-select="#wol-profile" disabled>Duplicate</button>
+          <button class="danger" id="wol-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+        </div>
+      </div>
+    {% endcall %}
 
     <label>Devices
       <textarea name="targets" id="wol-targets" rows="7" placeholder="Office PC | 00:11:22:33:44:55 | 192.0.2.25&#10;Lab server | aa:bb:cc:dd:ee:ff&#10;02:00:00:00:00:01" required>{{ form.targets }}</textarea>
@@ -31,11 +38,6 @@
     <span class="field-note">
       One device per line: <code>MAC</code>, <code>Name | MAC</code>, or <code>Name | MAC | verification hostname/IP</code>. Verification addresses are optional. Maximum {{ target_limit }} devices.
     </span>
-    <div class="button-row wol-profile-actions">
-      <input id="wol-profile-name" placeholder="Device group name" maxlength="100">
-      <button class="secondary" id="wol-save-profile" type="button">Save devices</button>
-      <button class="danger" id="wol-delete-profile" type="button">Delete</button>
-    </div>
 
     <div class="ntp-options">
       <label>Destination mode

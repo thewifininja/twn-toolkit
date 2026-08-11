@@ -27,6 +27,7 @@ from .activity_context import record_current_activity
 from .audit import (
     annotate_audit_event,
     annotate_profile_deleted,
+    annotate_profile_duplicated,
     annotate_profile_saved,
     annotate_profile_tested,
     annotate_tool_run,
@@ -314,6 +315,24 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
             flash(f"Deleted credential profile {profile['name']}.", "success")
         return _redirect_home(anchor="pki-profiles")
 
+    @tools_bp.post("/certificate-automation/credentials/<credential_id>/duplicate")
+    def duplicate_pki_credential(credential_id: str):
+        store = _store()
+        source = store.credential_profile(credential_id)
+        if not source:
+            flash("Credential profile not found.", "error")
+        else:
+            copied = store.duplicate_credential(credential_id)
+            annotate_profile_duplicated(
+                category="Network tools",
+                action_namespace="certificate_automation.credentials",
+                profile_type="PKI credential profile",
+                source=source,
+                copied=copied,
+            )
+            flash(f"Duplicated credential profile as {copied['name']}.", "success")
+        return _redirect_home(anchor="pki-profiles")
+
     @tools_bp.post("/certificate-automation/servers")
     def save_pki_server():
         store = _store()
@@ -380,6 +399,24 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
                     profile=_server_audit_snapshot(profile),
                 )
                 flash(f"Deleted PKI server profile {profile['name']}.", "success")
+        return _redirect_home(anchor="pki-profiles")
+
+    @tools_bp.post("/certificate-automation/servers/<server_id>/duplicate")
+    def duplicate_pki_server(server_id: str):
+        store = _store()
+        source = store.server_profile(server_id)
+        if not source:
+            flash("PKI server profile not found.", "error")
+        else:
+            copied = store.duplicate_server(server_id)
+            annotate_profile_duplicated(
+                category="Network tools",
+                action_namespace="certificate_automation.servers",
+                profile_type="PKI server profile",
+                source=source,
+                copied=copied,
+            )
+            flash(f"Duplicated PKI server profile as {copied['name']}.", "success")
         return _redirect_home(anchor="pki-profiles")
 
     @tools_bp.post("/certificate-automation/servers/<server_id>/test")
@@ -474,6 +511,24 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
                     profile=profile,
                 )
                 flash(f"Deleted certificate template profile {profile['name']}.", "success")
+        return _redirect_home(anchor="pki-profiles")
+
+    @tools_bp.post("/certificate-automation/templates/<template_id>/duplicate")
+    def duplicate_pki_template(template_id: str):
+        store = _store()
+        source = store.template_profile(template_id)
+        if not source:
+            flash("Certificate template profile not found.", "error")
+        else:
+            copied = store.duplicate_template(template_id)
+            annotate_profile_duplicated(
+                category="Network tools",
+                action_namespace="certificate_automation.templates",
+                profile_type="certificate template profile",
+                source=source,
+                copied=copied,
+            )
+            flash(f"Duplicated certificate template profile as {copied['name']}.", "success")
         return _redirect_home(anchor="pki-profiles")
 
     @tools_bp.post("/certificate-automation/enroll")

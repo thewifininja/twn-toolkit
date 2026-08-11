@@ -6,9 +6,9 @@
 
 {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
-<section class="panel snmp-management-panel">
+<section class="panel snmp-management-panel saved-profile-library-panel">
   {{ section_header("SNMP profiles", "Manage credentials, target hosts, and reusable OID collections. Secret values are never rendered back into this page.", class_name="profile-manager-head") }}
-  <div class="access-profile-list snmp-management-list">
+  <div class="access-profile-list snmp-management-list saved-profile-library">
     {% call profile_section("SNMP credentials", credentials|length ~ " saved · SNMPv2c communities and SNMPv3 credentials", not credentials, "snmp-manager-details") %}
       {% call profile_create("New credential", not credentials) %}
         <form class="form snmp-profile-form" data-kind="credentials" data-save-url="{{ url_for('tools.save_snmp_profile', kind='credentials') }}" data-delete-url="{{ url_for('tools.delete_snmp_profile', kind='credentials') }}">
@@ -107,6 +107,7 @@
               </div>
               {% call action_row() %}
                 <button type="submit">Update credential</button>
+                <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_snmp_profile', kind='credentials') }}" data-profile-name="{{ profile.name }}">Duplicate</button>
                 <button class="danger snmp-delete-profile" data-name="{{ profile.name }}" type="button">Delete</button>
               {% endcall %}
               <span class="tool-status snmp-form-status"></span>
@@ -147,6 +148,7 @@
               <label>SNMP profile<select name="credential_name" required><option value="">Select a profile</option>{% for profile in credentials %}<option value="{{ profile.name }}" {% if host.credential_name == profile.name %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select></label>
               {% call action_row() %}
                 <button type="submit">Update host</button>
+                <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_snmp_profile', kind='hosts') }}" data-profile-name="{{ host.name }}">Duplicate</button>
                 <button class="danger snmp-delete-profile" data-name="{{ host.name }}" type="button">Delete</button>
               {% endcall %}
               <span class="tool-status snmp-form-status"></span>
@@ -177,6 +179,7 @@
               <span class="field-note">Use <code>Label = numeric OID</code>, <code>walk: Label = OID</code>, or <code>calc: Label = function(Source A, Source B)</code>. Calculations support <code>percent</code>, <code>remaining_percent</code>, <code>difference</code>, and <code>sum</code>; sources must be scalar numeric values in this profile.</span>
               {% call action_row() %}
                 <button type="submit">Update OID profile</button>
+                <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_snmp_profile', kind='oids') }}" data-profile-name="{{ profile.name }}">Duplicate</button>
                 <button class="danger snmp-delete-profile" data-name="{{ profile.name }}" type="button">Delete</button>
               {% endcall %}
               <span class="tool-status snmp-form-status"></span>

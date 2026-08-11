@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
+from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
 from .network_tools import ToolInputError, parse_ping_targets
 from .ntp_tools import test_ntp_servers
 from .profiles import NTPHostProfileStore
@@ -98,3 +98,17 @@ def register_ntp_routes(tools_bp: Blueprint) -> None:
             profile=profile,
         )
         return jsonify({"deleted": name})
+
+    @tools_bp.post("/ntp-test/profiles/duplicate")
+    def duplicate_ntp_profile():
+        name = request.form.get("name", "").strip()
+        store = NTPHostProfileStore(current_app.instance_path)
+        source = store.get(name)
+        if not source:
+            return jsonify({"error": "Profile not found."}), 404
+        copied = store.duplicate(name)
+        annotate_profile_duplicated(
+            category="Network tools", action_namespace="ntp",
+            profile_type="NTP host profile", source=source, copied=copied,
+        )
+        return jsonify({"profile": {"name": copied["name"]}})

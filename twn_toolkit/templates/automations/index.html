@@ -4,7 +4,7 @@
 {% from "automations/_schedule_forms.html" import schedule_form with context %}
 {% from "automations/_condition_evidence.html" import condition_group_evidence, dns_test_evidence, ping_test_evidence, tcp_test_evidence, snmp_test_evidence, certificate_test_evidence with context %}
 {% from "automations/_action_forms.html" import action_form with context %}
-{% from "components/ui.html" import create_toggle, empty_state, workspace_intro %}
+{% from "components/ui.html" import create_toggle, empty_state, workspace_chrome %}
 
 {% macro automation_form(values, automation=none) %}
   {% set selected_conditions = automation.condition_definition_ids if automation else values.get('condition_definition_ids', [values.get('condition_definition_id', '')]) %}
@@ -96,18 +96,19 @@
 {% endmacro %}
 
 {% block content %}
-{{ workspace_intro(
-  'Schedules' if page_section == 'schedules' else 'Conditions' if page_section == 'conditions' else 'Actions' if page_section == 'actions' else 'Automations',
-  'Create reusable calendars for automations that run at specific times.' if page_section == 'schedules' else 'Create and test reusable health observations that can be shared by multiple automations.' if page_section == 'conditions' else 'Create reusable responses, then arrange them into parallel and sequential automation stages.' if page_section == 'actions' else 'Choose when to run, then connect it to a staged action pipeline.',
-  'Automation'
+<div class="workspace-page automation-workspace">
+{{ workspace_chrome(
+  'Automation',
+  'Build reusable schedules, observations, and responses, then connect them into workflows that can run without an open browser.',
+  'Workspace',
+  [
+    {'label': 'Automations', 'href': url_for('automations'), 'active': page_section == 'automations'},
+    {'label': 'Schedules', 'href': url_for('automation_schedules'), 'active': page_section == 'schedules'},
+    {'label': 'Conditions', 'href': url_for('automation_conditions'), 'active': page_section == 'conditions'},
+    {'label': 'Actions', 'href': url_for('automation_actions'), 'active': page_section == 'actions'}
+  ],
+  'Automation sections'
 ) }}
-
-<nav class="automation-page-nav" aria-label="Automation workspace">
-  <a class="button-link {{ 'secondary' if page_section != 'automations' }}" href="{{ url_for('automations') }}" {% if page_section == 'automations' %}aria-current="page"{% endif %}>Automations</a>
-  <a class="button-link {{ 'secondary' if page_section != 'schedules' }}" href="{{ url_for('automation_schedules') }}" {% if page_section == 'schedules' %}aria-current="page"{% endif %}>Schedules</a>
-  <a class="button-link {{ 'secondary' if page_section != 'conditions' }}" href="{{ url_for('automation_conditions') }}" {% if page_section == 'conditions' %}aria-current="page"{% endif %}>Conditions</a>
-  <a class="button-link {{ 'secondary' if page_section != 'actions' }}" href="{{ url_for('automation_actions') }}" {% if page_section == 'actions' %}aria-current="page"{% endif %}>Actions</a>
-</nav>
 
 {% if page_section == 'schedules' %}
 <section class="panel automation-manager automation-library-panel">
@@ -127,6 +128,7 @@
           <div class="button-row automation-actions">
             <form method="post" action="{{ url_for('test_schedule_definition', definition_id=definition.id) }}" data-loading-message="Refreshing schedule preview…"><button class="secondary" type="submit">Refresh next run times</button></form>
             <button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-schedule-{{ definition.id }}">Edit</button>
+            <form method="post" action="{{ url_for('duplicate_automation_schedule', definition_id=definition.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form>
             <form method="post" action="{{ url_for('delete_automation_schedule', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable schedule?')"><button class="danger" type="submit">Delete</button></form>
           </div>
           <div class="automation-record-editor" id="edit-schedule-{{ definition.id }}" hidden>{{ schedule_form({}, definition) }}</div>
@@ -159,6 +161,7 @@
           <div class="button-row automation-actions">
             <form method="post" action="{{ url_for('test_condition_definition', definition_id=definition.id) }}" data-loading-message="Testing reusable condition…"><button class="secondary" type="submit">Test</button></form>
             <button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-condition-{{ definition.id }}">Edit</button>
+            <form method="post" action="{{ url_for('duplicate_automation_condition', definition_id=definition.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form>
             <form method="post" action="{{ url_for('delete_automation_condition', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable condition?')"><button class="danger" type="submit">Delete</button></form>
           </div>
           <div class="automation-record-editor" id="edit-condition-{{ definition.id }}" hidden>{{ condition_form({}, definition) }}</div>
@@ -182,7 +185,7 @@
       <details class="access-profile-card automation-card" {% if request.args.get('focus_action') == definition.id %}open{% endif %}>
         <summary><span><strong>{{ definition.name }}</strong><small>{% if definition.type == 'syslog.send' %}Syslog {{ definition.config.protocol|upper }} · {{ definition.config.destinations.split('\n')|length }} destination{{ '' if definition.config.destinations.split('\n')|length == 1 else 's' }} · priority {{ definition.config.facility * 8 + definition.config.severity }}{% elif definition.type == 'webhook.send' %}Webhook {{ definition.config.method }} · {{ definition.config.endpoints.split('\n')|length }} endpoint{{ '' if definition.config.endpoints.split('\n')|length == 1 else 's' }} · {{ definition.config.body_format|upper }} · {{ definition.config.max_attempts|default(1) }} attempt{{ '' if definition.config.max_attempts|default(1) == 1 else 's' }}{% if definition.has_headers %} · headers saved{% endif %}{% elif definition.type == 'email.send' %}Email notification · {{ definition.config.to }}{% elif definition.type == 'sftp.fetch' %}{{ definition.config.protocol|default('sftp')|upper }} fetch · {{ definition.config.hosts.split('\n')|length }} host{{ '' if definition.config.hosts.split('\n')|length == 1 else 's' }} · credentials saved{% elif definition.type == 'ssh.collect' %}SSH command collection · {{ definition.config.target_count|default(0) }} host{{ '' if definition.config.target_count|default(0) == 1 else 's' }} · {{ definition.config.variables|default([])|length }} variable{{ '' if definition.config.variables|default([])|length == 1 else 's' }} · credentials saved{% elif definition.type == 'packet.capture' %}Packet capture · {{ definition.config.interface }} · {{ definition.config.duration_seconds }}s · {{ definition.config.max_size_mib }} MiB limit{% else %}{{ definition.type }}{% endif %}</small></span></summary>
         <div class="automation-card-body">
-          <div class="button-row automation-actions"><button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-action-{{ definition.id }}">Edit</button><form method="post" action="{{ url_for('delete_automation_action', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable action?')"><button class="danger" type="submit">Delete</button></form></div>
+          <div class="button-row automation-actions"><button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-action-{{ definition.id }}">Edit</button><form method="post" action="{{ url_for('duplicate_automation_action', definition_id=definition.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form><form method="post" action="{{ url_for('delete_automation_action', definition_id=definition.id) }}" onsubmit="return confirm('Delete this reusable action?')"><button class="danger" type="submit">Delete</button></form></div>
           <div class="automation-record-editor" id="edit-action-{{ definition.id }}" hidden>{{ action_form({}, definition) }}</div>
         </div>
       </details>
@@ -229,7 +232,7 @@
           {% if automation.condition.type == 'tcp.reachability' and test_result and test_result.automation_id == automation.id %}{{ tcp_test_evidence(test_result) }}{% endif %}
           {% if automation.condition.type == 'snmp.value' and test_result and test_result.automation_id == automation.id %}{{ snmp_test_evidence(test_result) }}{% endif %}
           {% if automation.condition.type == 'certificate.health' and test_result and test_result.automation_id == automation.id %}{{ certificate_test_evidence(test_result) }}{% endif %}
-          <div class="button-row automation-actions">{% if is_manual %}<form method="post" action="{{ url_for('run_automation_now', automation_id=automation.id) }}" data-loading-message="Running automation actions…"><button type="submit">Run now</button></form>{% else %}<form method="post" action="{{ url_for('toggle_automation', automation_id=automation.id) }}"><button class="{{ 'secondary' if automation.enabled else '' }}" type="submit">{{ 'Pause' if automation.enabled else 'Arm' }}</button></form>{% if is_startup %}<form method="post" action="{{ url_for('run_automation_now', automation_id=automation.id) }}" data-loading-message="Sending startup notification test…"><button class="secondary" type="submit">Test now</button></form>{% else %}<form method="post" action="{{ url_for('test_automation_condition', automation_id=automation.id) }}" data-loading-message="{{ 'Refreshing schedule preview…' if is_schedule else 'Testing automation condition…' }}"><button class="secondary" type="submit" {% if is_schedule %}title="Read-only: recalculates upcoming occurrences without arming or running anything."{% endif %}>{{ 'Refresh next run time' if is_schedule else 'Test condition' }}</button></form>{% endif %}{% endif %}<button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-automation-{{ automation.id }}">Edit</button><form method="post" action="{{ url_for('delete_automation', automation_id=automation.id) }}" onsubmit="return confirm('Delete this automation and its retained history?')"><button class="danger" type="submit">Delete</button></form></div>
+          <div class="button-row automation-actions">{% if is_manual %}<form method="post" action="{{ url_for('run_automation_now', automation_id=automation.id) }}" data-loading-message="Running automation actions…"><button type="submit">Run now</button></form>{% else %}<form method="post" action="{{ url_for('toggle_automation', automation_id=automation.id) }}"><button class="{{ 'secondary' if automation.enabled else '' }}" type="submit">{{ 'Pause' if automation.enabled else 'Arm' }}</button></form>{% if is_startup %}<form method="post" action="{{ url_for('run_automation_now', automation_id=automation.id) }}" data-loading-message="Sending startup notification test…"><button class="secondary" type="submit">Test now</button></form>{% else %}<form method="post" action="{{ url_for('test_automation_condition', automation_id=automation.id) }}" data-loading-message="{{ 'Refreshing schedule preview…' if is_schedule else 'Testing automation condition…' }}"><button class="secondary" type="submit" {% if is_schedule %}title="Read-only: recalculates upcoming occurrences without arming or running anything."{% endif %}>{{ 'Refresh next run time' if is_schedule else 'Test condition' }}</button></form>{% endif %}{% endif %}<button class="secondary" type="button" data-automation-edit-toggle aria-expanded="false" aria-controls="edit-automation-{{ automation.id }}">Edit</button><form method="post" action="{{ url_for('duplicate_automation', automation_id=automation.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form><form method="post" action="{{ url_for('delete_automation', automation_id=automation.id) }}" onsubmit="return confirm('Delete this automation and its retained history?')"><button class="danger" type="submit">Delete</button></form></div>
           {% if is_schedule %}<p class="field-note automation-context-note schedule-preview-note">Refresh is read-only. It recalculates the next occurrence without arming the schedule or running its actions.</p>{% endif %}
           <div class="automation-record-editor" id="edit-automation-{{ automation.id }}" hidden>{{ automation_form({}, automation) }}</div>
           {% if not is_manual %}<details class="automation-subsection"><summary>{{ 'Schedule history' if is_schedule else 'Startup history' if is_startup else 'Recent checks' }} <small>{{ automation.recent_checks|length }}</small></summary>{% if automation.recent_checks %}<div class="automation-history-list">{% for check in automation.recent_checks %}<article><span class="pill {{ 'error' if check.status == 'error' else 'planned' if check.status in ['scheduled', 'skipped', 'started'] or check.met else 'success' }}">{{ check.status }}</span><strong>{{ check.summary }}</strong><small>{{ check.checked_display }}</small></article>{% endfor %}</div>{% else %}<p class="empty">{{ 'No schedule occurrences yet.' if is_schedule else 'No startup events yet.' if is_startup else 'No checks have run yet.' }}</p>{% endif %}</details>{% endif %}
@@ -306,6 +309,7 @@
   </div>{% else %}{{ empty_state("No automations yet.", "Create an action, then choose condition, schedule, startup, or manual mode here.") }}{% endif %}
 </section>
 {% endif %}
+</div>
 {% if page_section == 'actions' %}
   <script type="application/json" data-automation-ssh-commandlets>{{ ssh_commandlets|tojson }}</script>
   <script src="{{ url_for('static', filename='ssh-matrix-editor.js') }}"></script>

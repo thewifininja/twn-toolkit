@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
+from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
 from .network_tools import (
     DNS_LOAD_MAX_CONCURRENCY,
     DNS_LOAD_MAX_DURATION_SECONDS,
@@ -239,6 +239,23 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
             profile=profile,
         )
         return jsonify({"deleted": name})
+
+    @tools_bp.post("/dns-response/profiles/<kind>/duplicate")
+    def duplicate_dns_profile(kind: str):
+        if kind not in {"hosts", "servers"}:
+            return jsonify({"error": "Unknown DNS profile type."}), 404
+        name = request.form.get("name", "").strip()
+        store = _dns_profile_store(kind)
+        source = store.get(name)
+        if not source:
+            return jsonify({"error": "Profile not found."}), 404
+        copied = store.duplicate(name)
+        annotate_profile_duplicated(
+            category="Network tools", action_namespace=f"dns.{kind}",
+            profile_type=f"DNS {'host' if kind == 'hosts' else 'server'} profile",
+            source=source, copied=copied,
+        )
+        return jsonify({"profile": {"name": copied["name"]}})
 
 
 def _dns_profile_store(kind: str) -> DNSProfileStore:

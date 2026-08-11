@@ -8,6 +8,7 @@ from .activity_context import increment_current_activity, record_current_activit
 from .audit import (
     annotate_audit_event,
     annotate_profile_deleted,
+    annotate_profile_duplicated,
     annotate_profile_saved,
     annotate_tool_run,
     suppress_audit_event,
@@ -280,6 +281,31 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
             profile=profile,
         )
         return jsonify({"deleted": name})
+
+    @tools_bp.post("/snmp-test/profiles/<kind>/duplicate")
+    def duplicate_snmp_profile(kind: str):
+        if kind not in {"credentials", "hosts", "oids"}:
+            return jsonify({"error": "Unknown SNMP profile type."}), 404
+        store = (
+            _snmp_credential_store() if kind == "credentials"
+            else _snmp_host_store() if kind == "hosts"
+            else _snmp_oid_store()
+        )
+        name = request.form.get("name", "").strip()
+        source = store.get(name)
+        if not source:
+            return jsonify({"error": "Profile not found."}), 404
+        copied = store.duplicate(name)
+        profile_type = {
+            "credentials": "SNMP credential profile",
+            "hosts": "SNMP host profile",
+            "oids": "SNMP OID profile",
+        }[kind]
+        annotate_profile_duplicated(
+            category="Network tools", action_namespace=f"snmp.{kind}",
+            profile_type=profile_type, source=source, copied=copied,
+        )
+        return jsonify({"profile": {"name": copied["name"]}})
 
     @tools_bp.post("/snmp-test/interfaces")
     def snmp_interfaces():

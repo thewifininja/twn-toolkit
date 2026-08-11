@@ -133,11 +133,21 @@
         all_failed: "Failure path: the next stage runs only when every action reports an error.",
       };
       const stageId = () => globalThis.crypto?.randomUUID?.() || `stage-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const duplicateStageName = (sourceName) => {
+        const baseName = String(sourceName || "Stage").replace(/ copy(?: \d+)?$/i, "").trim() || "Stage";
+        const usedNames = new Set(stages.map((stage) => String(stage.name || "").trim().toLowerCase()));
+        let copyNumber = 1;
+        let candidate = `${baseName} copy`;
+        while (usedNames.has(candidate.toLowerCase())) {
+          copyNumber += 1;
+          candidate = `${baseName} copy ${copyNumber}`;
+        }
+        return candidate;
+      };
       if (!stages.length) stages = [{id:stageId(), name:"Stage 1", continue_policy:"all_completed", delay_seconds:0, action_definition_ids:[]}];
       const syncStages = () => { if (hidden) hidden.value = JSON.stringify(stages); };
       const renderStages = () => {
         list.replaceChildren();
-        const assigned = new Set(stages.flatMap((stage) => stage.action_definition_ids || []));
         stages.forEach((stage, index) => {
           const card = document.createElement("section");
           card.className = "automation-stage-card";
@@ -162,10 +172,7 @@
               </div>
               <small class="field-note">Runs in the background and survives restarts.</small>
             </label>`;
-          const unavailableChoices = choices.filter((choice) => !selectedActionIds.includes(choice.id) && assigned.has(choice.id));
-          const unavailableNames = unavailableChoices.slice(0, 3).map((choice) => escapeHtml(choice.name)).join(", ");
-          const unavailableMore = unavailableChoices.length > 3 ? ` +${unavailableChoices.length - 3} more` : "";
-          const actionRows = choices.filter((choice) => selectedActionIds.includes(choice.id) || !assigned.has(choice.id)).map((choice) => {
+          const actionRows = choices.map((choice) => {
             const selected = selectedActionIds.includes(choice.id);
             return `<label class="check automation-stage-action"><input type="checkbox" value="${escapeHtml(choice.id)}" ${selected ? "checked" : ""}><span><strong>${escapeHtml(choice.name)}</strong><small>${escapeHtml(choice.type)}</small></span></label>`;
           }).join("");
@@ -178,6 +185,7 @@
               <div class="automation-stage-controls" aria-label="Stage ${index + 1} controls">
                 <button class="secondary compact" type="button" data-stage-up aria-label="Move stage ${index + 1} up" title="Move up" ${index === 0 ? "disabled" : ""}>↑</button>
                 <button class="secondary compact" type="button" data-stage-down aria-label="Move stage ${index + 1} down" title="Move down" ${index === stages.length - 1 ? "disabled" : ""}>↓</button>
+                <button class="secondary compact duplicate-action" type="button" data-duplicate-stage aria-label="Duplicate stage ${index + 1}" title="Duplicate stage">Duplicate</button>
                 ${stages.length > 1 ? `<button class="text-danger compact" type="button" data-remove-stage aria-label="Remove stage ${index + 1}">Remove</button>` : ""}
               </div>
             </header>
@@ -199,7 +207,6 @@
             <section class="automation-stage-action-section">
               <header><div><strong>Actions</strong><small>Selected actions run in parallel.</small></div><span>${selectedActionIds.length} selected</span></header>
               <div class="automation-stage-actions">${actionRows || '<p class="automation-stage-empty">No actions are available for this stage.</p>'}</div>
-              ${unavailableChoices.length ? `<small class="automation-stage-assigned-note"><strong>Assigned elsewhere:</strong> ${unavailableNames}${unavailableMore}</small>` : ""}
             </section>`;
           list.append(card);
           card.querySelector("[data-stage-name]").addEventListener("input", (event) => {
@@ -233,6 +240,16 @@
           }));
           card.querySelector("[data-stage-up]").addEventListener("click", () => { [stages[index - 1], stages[index]] = [stages[index], stages[index - 1]]; syncStages(); renderStages(); });
           card.querySelector("[data-stage-down]").addEventListener("click", () => { [stages[index + 1], stages[index]] = [stages[index], stages[index + 1]]; syncStages(); renderStages(); });
+          card.querySelector("[data-duplicate-stage]").addEventListener("click", () => {
+            stages.splice(index + 1, 0, {
+              ...stage,
+              id: stageId(),
+              name: duplicateStageName(stageName),
+              action_definition_ids: [...selectedActionIds],
+            });
+            syncStages();
+            renderStages();
+          });
           card.querySelector("[data-remove-stage]")?.addEventListener("click", () => { stages.splice(index, 1); syncStages(); renderStages(); });
         });
         syncStages();

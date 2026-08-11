@@ -31,6 +31,7 @@ from .automation_registry import AUTOMATION_REGISTRY
 from .audit import annotate_audit_event
 from .activity_context import record_current_activity
 from .datastore import LocalDatastore
+from .duplication import duplicate_name
 from .network_tools import (
     SSH_EXECUTION_BATCH_SIZE,
     SSH_EXECUTION_WORKERS,
@@ -88,6 +89,26 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     def require_admin() -> None:
         if not g.current_user.get("is_admin"):
             abort(403)
+
+    def _annotate_duplicate(
+        resource_type: str,
+        source: dict[str, Any],
+        copied: dict[str, Any] | None,
+    ) -> None:
+        if not copied:
+            return
+        annotate_audit_event(
+            category="Automation",
+            action=f"{resource_type}.duplicated",
+            summary=(
+                f"Duplicated {resource_type} {source['name']} as {copied['name']}."
+            ),
+            resource_type=resource_type,
+            resource_id=str(copied["id"]),
+            resource_name=str(copied["name"]),
+            details={f"source {resource_type} id": str(source["id"])},
+            after=_definition_audit_snapshot(copied),
+        )
 
     def render_page(
         *,
@@ -614,6 +635,63 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             flash("Action deleted.", "success")
         return redirect(url_for("automation_actions"))
 
+    @app.post("/automations/conditions/<definition_id>/duplicate")
+    def duplicate_automation_condition(definition_id: str):
+        require_admin()
+        source = store.get_condition_definition(definition_id)
+        if not source or source["type"] in AUTOMATION_REGISTRY.triggers:
+            abort(404)
+        copied_id = store.save_condition_definition(
+            name=duplicate_name(
+                source["name"],
+                (item["name"] for item in store.condition_definitions()),
+            ),
+            type_id=source["type"],
+            config=dict(source["config"]),
+        )
+        copied = store.get_condition_definition(copied_id)
+        _annotate_duplicate("condition", source, copied)
+        flash(f"Duplicated condition as {copied['name']}.", "success")
+        return redirect(url_for("automation_conditions", focus_condition=copied_id))
+
+    @app.post("/automations/schedules/<definition_id>/duplicate")
+    def duplicate_automation_schedule(definition_id: str):
+        require_admin()
+        source = store.get_condition_definition(definition_id)
+        if not source or source["type"] != "schedule.calendar":
+            abort(404)
+        copied_id = store.save_condition_definition(
+            name=duplicate_name(
+                source["name"],
+                (item["name"] for item in store.schedule_definitions()),
+            ),
+            type_id=source["type"],
+            config=dict(source["config"]),
+        )
+        copied = store.get_condition_definition(copied_id)
+        _annotate_duplicate("schedule", source, copied)
+        flash(f"Duplicated schedule as {copied['name']}.", "success")
+        return redirect(url_for("automation_schedules", focus_schedule=copied_id))
+
+    @app.post("/automations/actions/<definition_id>/duplicate")
+    def duplicate_automation_action(definition_id: str):
+        require_admin()
+        source = store.get_action_definition(definition_id, include_secrets=True)
+        if not source:
+            abort(404)
+        copied_id = store.save_action_definition(
+            name=duplicate_name(
+                source["name"],
+                (item["name"] for item in store.action_definitions()),
+            ),
+            type_id=source["type"],
+            config=dict(source["config"]),
+        )
+        copied = store.get_action_definition(copied_id)
+        _annotate_duplicate("action", source, copied)
+        flash(f"Duplicated action as {copied['name']}.", "success")
+        return redirect(url_for("automation_actions", focus_action=copied_id))
+
     @app.post("/automations/<automation_id>/toggle")
     def toggle_automation(automation_id: str):
         require_admin()
@@ -651,6 +729,49 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             message = "Automation armed; its first check is due now."
         flash(message, "success")
         return redirect(url_for("automations", focus=automation_id))
+
+    @app.post("/automations/<automation_id>/duplicate")
+    def duplicate_automation(automation_id: str):
+        require_admin()
+        source = store.get(automation_id)
+        if not source:
+            abort(404)
+        copied_id = store.save(
+            name=duplicate_name(
+                source["name"],
+                (item["name"] for item in store.all()),
+            ),
+            interval_seconds=int(source["interval_seconds"]),
+            trigger_after=int(source["trigger_after"]),
+            recover_after=int(source["recover_after"]),
+            cooldown_seconds=int(source["cooldown_seconds"]),
+            condition_definition_ids=list(source["condition_definition_ids"]),
+            condition_operator=str(source["condition_operator"]),
+            action_stages=[
+                {
+                    "id": stage["id"],
+                    "name": stage["name"],
+                    "continue_policy": stage["continue_policy"],
+                    "delay_seconds": stage["delay_seconds"],
+                    "action_definition_ids": list(stage["action_definition_ids"]),
+                }
+                for stage in source["action_stages"]
+            ],
+            created_by=str(g.current_user["id"]),
+        )
+        copied = store.get(copied_id)
+        annotate_audit_event(
+            category="Automation",
+            action="automation.duplicated",
+            summary=f"Duplicated automation {source['name']} as {copied['name']}.",
+            resource_type="automation",
+            resource_id=copied_id,
+            resource_name=str(copied["name"]),
+            details={"source automation id": automation_id},
+            after=_automation_audit_snapshot(copied),
+        )
+        flash(f"Duplicated automation as {copied['name']}. The copy is paused.", "success")
+        return redirect(url_for("automations", focus=copied_id))
 
     @app.post("/automations/<automation_id>/run-now")
     def run_automation_now(automation_id: str):

@@ -1044,6 +1044,25 @@ def register_admin_routes(
             flash("Access profile deleted.", "success")
         return redirect(url_for("settings", section="accounts"))
 
+    @app.post("/settings/access-profiles/<profile_id>/duplicate")
+    def duplicate_access_profile(profile_id: str):
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        source = auth_store.get_access_profile(profile_id)
+        if not source:
+            abort(404)
+        copied = auth_store.duplicate_access_profile(profile_id)
+        annotate_audit_event(
+            category="Administration", action="access_profile.duplicated",
+            summary=f"Duplicated access profile {source['name']} as {copied['name']}.",
+            resource_type="access profile", resource_id=copied["id"],
+            resource_name=copied["name"],
+            details={"source profile id": profile_id},
+            after=_profile_audit_snapshot(copied),
+        )
+        flash(f"Duplicated access profile as {copied['name']}.", "success")
+        return redirect(url_for("settings", section="accounts", _anchor="access-profiles"))
+
     @app.post("/settings/users/<user_id>/password")
     def change_user_password(user_id: str):
         is_self = user_id == g.current_user["id"]

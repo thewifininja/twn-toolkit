@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
+
+from .duplication import duplicate_name
 
 
 class JsonListStore:
@@ -42,6 +45,22 @@ class JsonListStore:
             return False
         self._write(remaining)
         return True
+
+    def duplicate(self, name: str) -> dict[str, Any]:
+        profiles = self._read()
+        source = next((profile for profile in profiles if profile["name"] == name), None)
+        if source is None:
+            raise ValueError("Profile not found.")
+        copied = deepcopy(source)
+        copied["name"] = duplicate_name(
+            str(source["name"]),
+            (str(profile["name"]) for profile in profiles),
+        )
+        if "is_default" in copied:
+            copied["is_default"] = False
+        profiles.append(copied)
+        self._write(profiles)
+        return copied
 
     def clear(self) -> None:
         if self.path.exists():

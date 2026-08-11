@@ -157,6 +157,28 @@ def annotate_profile_deleted(
     )
 
 
+def annotate_profile_duplicated(
+    *,
+    category: str,
+    action_namespace: str,
+    profile_type: str,
+    source: dict[str, Any],
+    copied: dict[str, Any],
+) -> None:
+    source_name = str(source.get("name", "")).strip()
+    copied_name = str(copied.get("name", "")).strip()
+    annotate_audit_event(
+        category=category,
+        action=f"{action_namespace}.profile_duplicated",
+        summary=f"Duplicated {profile_type} {source_name} as {copied_name}.",
+        resource_type=f"{action_namespace.replace('.', '_')}_profile",
+        resource_id=copied_name,
+        resource_name=copied_name,
+        details={"profile type": profile_type, "source profile": source_name},
+        after=audit_safe_snapshot(copied),
+    )
+
+
 def annotate_profile_tested(
     *,
     category: str,

@@ -46,6 +46,74 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('class="section-actions"', html)
         self.assertIn('class="empty-state"', html)
 
+    def test_shared_workspace_header_and_tabs_contracts(self) -> None:
+        html = self.render(
+            """
+            {% from "components/ui.html" import workspace_chrome %}
+            {{ workspace_chrome(
+              "Automation",
+              "Build reliable workflows.",
+              "Workspace",
+              [
+                {"label": "Automations", "href": "/automations", "active": true},
+                {"label": "Actions", "href": "/automations/actions", "active": false}
+              ],
+              "Automation sections",
+              "Configured",
+              "12",
+              "Reusable records"
+            ) }}
+            """
+        )
+
+        self.assertIn('class="workspace-header has-metric"', html)
+        self.assertIn('class="workspace-header-metric"', html)
+        self.assertIn('class="workspace-tabs" aria-label="Automation sections"', html)
+        self.assertIn('class="workspace-tab is-active"', html)
+        self.assertIn('aria-current="page"', html)
+        self.assertLess(html.index('class="workspace-tabs"'), html.index('class="workspace-header'))
+
+    def test_shared_workspace_shell_is_responsive(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(".workspace-page {", stylesheet)
+        self.assertIn(".workspace-header.has-metric {", stylesheet)
+        self.assertIn(".workspace-tabs {", stylesheet)
+        self.assertIn(".workspace-tab.is-active {", stylesheet)
+        self.assertIn("--workspace-section-gap: 18px;", stylesheet)
+        self.assertIn("gap: var(--workspace-section-gap);", stylesheet)
+        self.assertIn(".shell > * + * {", stylesheet)
+
+    def test_every_peer_view_uses_shared_tabs_first_workspace_structure(self) -> None:
+        shared_chrome_templates = (
+            "automations/index.html",
+            "auth/settings.html",
+            "auth/updates.html",
+            "auth/backup.html",
+        )
+
+        for template_name in shared_chrome_templates:
+            template = (TEMPLATE_ROOT / template_name).read_text(encoding="utf-8")
+            with self.subTest(template=template_name):
+                self.assertIn("workspace_chrome(", template)
+
+        certificate_template = (
+            TEMPLATE_ROOT / "tools" / "certificate_automation.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn('class="workspace-page certificate-workspace"', certificate_template)
+        self.assertLess(
+            certificate_template.index("workspace_tabs('Certificate authority'"),
+            certificate_template.index('class="panel tool-panel certificate-automation-hero"'),
+        )
+
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn(".admin-page-nav", stylesheet)
+        self.assertNotIn(".automation-page-nav", stylesheet)
+
     def test_host_range_guidance_documents_shared_syntax_and_expanded_limit(self) -> None:
         html = self.render(
             """
@@ -72,12 +140,103 @@ class UIComponentTests(unittest.TestCase):
             """
         )
 
-        self.assertIn('class="access-profile-card profile-section" open', html)
-        self.assertIn('class="profile-create-details card-action-details"', html)
+        self.assertIn('class="access-profile-card profile-section saved-profile-collection" open', html)
+        self.assertIn('class="profile-create-details card-action-details saved-profile-create"', html)
         self.assertIn('class="card-action-closed-label">New credential</span>', html)
         self.assertIn('class="card-action-open-label">Cancel</span>', html)
-        self.assertIn('class="access-profile-card nested-profile-card" open', html)
-        self.assertIn('class="button-row profile-form-actions"', html)
+        self.assertIn('class="access-profile-card nested-profile-card saved-profile-record" open', html)
+        self.assertIn('class="button-row profile-form-actions saved-profile-record-actions"', html)
+
+    def test_compact_saved_profile_manager_contract(self) -> None:
+        html = self.render(
+            """
+            {% from "components/ui.html" import saved_profile_manager %}
+            {% call saved_profile_manager("Target profiles", "Reusable host lists", 3, "tool-profile-manager") %}
+              <select data-saved-profile-select><option>Branch</option></select>
+            {% endcall %}
+            """
+        )
+
+        self.assertIn('class="saved-profile-manager tool-profile-manager"', html)
+        self.assertIn('data-saved-profile-manager', html)
+        self.assertIn('class="saved-profile-kicker">Saved configuration</span>', html)
+        self.assertIn('class="saved-profile-count">3 saved</span>', html)
+        self.assertIn("Reusable host lists", html)
+
+    def test_saved_profile_manager_state_contract(self) -> None:
+        script = (TEMPLATE_ROOT.parent / "static" / "saved-profile-manager.js").read_text(
+            encoding="utf-8"
+        )
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('manager.dataset.profileState = isRenaming ? "renaming"', script)
+        self.assertIn('hasSavedProfile ? "Save changes" : "Save profile"', script)
+        self.assertIn("duplicate.disabled = !hasSavedProfile", script)
+        self.assertIn("remove.disabled = !hasSavedProfile", script)
+        self.assertIn(".saved-profile-manager {", stylesheet)
+        self.assertIn(".saved-profile-create.card-action-details:not([open])", stylesheet)
+        self.assertIn("@container saved-profile-manager (max-width: 650px)", stylesheet)
+
+    def test_data_dense_network_tools_can_use_the_full_content_width(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        tool_panel_rule = stylesheet.split(".tool-panel {", 1)[1].split("}", 1)[0]
+        dns_panel_rule = stylesheet.split(".dns-workspace-panel,", 1)[1].split("}", 1)[0]
+        traceroute_path_rule = stylesheet.split(".traceroute-path {", 1)[1].split(
+            "}", 1
+        )[0]
+
+        self.assertIn("max-width: none;", tool_panel_rule)
+        self.assertIn("max-width: none;", dns_panel_rule)
+        self.assertIn("max-width: none;", traceroute_path_rule)
+
+    def test_all_tool_workflow_entry_panels_use_the_full_content_width(self) -> None:
+        workflow_templates = (
+            "task.html",
+            "fortiap_client_history.html",
+            "fortiauthenticator/mac_devices.html",
+            "fortiauthenticator/mac_group_memberships.html",
+            "fortiauthenticator/mac_cleanup.html",
+        )
+
+        for template_name in workflow_templates:
+            template = (TEMPLATE_ROOT / template_name).read_text(encoding="utf-8")
+            with self.subTest(template=template_name):
+                self.assertIn('<section class="panel tool-panel">', template)
+                self.assertNotIn('class="panel narrow"', template)
+
+    def test_legacy_tool_and_result_width_caps_are_removed(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn(".panel.narrow {", stylesheet)
+        self.assertNotIn(".speed-test-panel {\n  max-width:", stylesheet)
+        self.assertNotIn(".speed-test-notes {\n  max-width:", stylesheet)
+        self.assertNotIn(".ip-address-panel {\n  max-width:", stylesheet)
+        for selector in (".preview-panel {", ".rename-editor {"):
+            rule = stylesheet.split(selector, 1)[1].split("}", 1)[0]
+            self.assertIn("max-width: none;", rule)
+
+    def test_mobile_workspace_navigation_and_compact_profile_actions_do_not_clip(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        mobile_workspace = stylesheet.split("@media (max-width: 700px) {", 1)[1]
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr));", mobile_workspace)
+        self.assertIn(".workspace-tab:last-child:nth-child(odd)", mobile_workspace)
+        self.assertIn("main .link-button.subtle", mobile_workspace)
+        self.assertIn("min-height: 32px;", mobile_workspace)
+
+        compact_profiles = stylesheet.split(
+            "@container saved-profile-manager (max-width: 300px) {", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("grid-template-columns: minmax(0, 1fr);", compact_profiles)
 
     def test_profile_create_surface_uses_shared_collection_token(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

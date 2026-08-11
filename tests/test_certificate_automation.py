@@ -377,6 +377,49 @@ class CertificateAutomationCoreTests(unittest.TestCase):
 
 
 class CertificateAutomationStoreTests(unittest.TestCase):
+    def test_pki_profiles_can_be_duplicated_without_exposing_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = CertificateAutomationStore(directory, "test-secret-key")
+            credential = store.save_credential(
+                credential_id="",
+                name="Enrollment",
+                username="user@example.test",
+                password="sensitive-password",
+            )
+            server = store.save_server(
+                {
+                    "name": "AD CS",
+                    "provider": "adcs_web_enrollment",
+                    "enrollment_url": "https://pki.example.test/certsrv",
+                    "credential_id": credential["id"],
+                    "ca_bundle_pem": "trusted-ca",
+                    "verify_tls": True,
+                    "retrieval_strategy": "same_endpoint",
+                    "timeout": 15,
+                }
+            )
+            template = store.save_template(
+                {
+                    "name": "RADIUS",
+                    "server_id": server["id"],
+                    "template_identifier": "InternalWebServer",
+                    "key_size": 2048,
+                    "renewal_days": 30,
+                }
+            )
+
+            copied_credential = store.duplicate_credential(credential["id"])
+            copied_server = store.duplicate_server(server["id"])
+            copied_template = store.duplicate_template(template["id"])
+
+            self.assertEqual(copied_credential["name"], "Enrollment copy")
+            self.assertEqual(copied_credential["username"], credential["username"])
+            self.assertNotIn("password", copied_credential)
+            self.assertEqual(copied_server["name"], "AD CS copy")
+            self.assertEqual(copied_server["ca_bundle_pem"], "trusted-ca")
+            self.assertEqual(copied_template["name"], "RADIUS copy")
+            self.assertEqual(copied_template["server_id"], server["id"])
+
     def test_profiles_and_key_material_are_encrypted_and_versioned(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = CertificateAutomationStore(directory, "test-secret-key")
@@ -571,7 +614,10 @@ class CertificateAutomationRouteTests(unittest.TestCase):
         self.assertIn(b"New credential", response.data)
         self.assertIn(b"New PKI server", response.data)
         self.assertIn(b"New template", response.data)
-        self.assertIn(b'class="button-row profile-form-actions"', response.data)
+        self.assertIn(
+            b'class="button-row profile-form-actions saved-profile-record-actions"',
+            response.data,
+        )
         self.assertIn(b'form="pki-credential-', response.data)
 
     def test_profile_enrollment_and_download_archive(self) -> None:

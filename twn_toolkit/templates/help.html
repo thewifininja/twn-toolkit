@@ -105,6 +105,8 @@
   <div class="section-head"><div><span class="eyebrow">Saved data</span><h2>Profiles, secrets, and backups</h2></div><a href="#help-contents">Back to contents</a></div>
   <details class="help-topic" open><summary>Saved profiles and credentials</summary><div class="help-topic-body">
     <p>Reusable lists and credentials reduce repeated entry across Fortinet, ping, DNS, RADIUS, SNMP, NTP, traceroute, TCP scanning, and automation tools. API keys, passwords, RADIUS secrets, and SNMP credentials are never rendered back into forms.</p>
+    <p>Compact <strong>Saved configuration</strong> panels use the same workflow throughout the network tools: choose a profile to load it, edit its working values, then save changes. Choose <strong>New / unsaved profile</strong> and enter a name to create one. Duplicate and Delete are available only while a saved profile is selected; changing its name renames it when saved.</p>
+    <p>Tools with several related record types use expandable profile libraries. Open a collection such as Credentials, Hosts, or Templates, use the in-flow New row to create a record, and expand an existing record to update, duplicate, or delete it.</p>
     <p>Most profile stores are owner-readable local files, not a remote secrets vault. Automation action configuration is encrypted at rest using the installation session secret. Treat the host and <code>instance/</code> as trusted and sensitive.</p>
   </div></details>
   <details class="help-topic"><summary>Encrypted exports and import behavior</summary><div class="help-topic-body">
@@ -188,7 +190,7 @@
   <details class="help-topic" open><summary>The reusable four-part model</summary><div class="help-topic-body">
     <ol><li>An <strong>automation</strong> chooses manual, startup, condition, or schedule run mode and connects definitions to state policy and retained history.</li><li>A <strong>schedule</strong> describes reusable calendar timing.</li><li>A <strong>condition</strong> observes health and can participate in an ALL or ANY group.</li><li>An <strong>action</strong> defines a trusted response in an ordered stage.</li></ol>
     <p>Use <strong>Automation → Schedules</strong>, <strong>Conditions</strong>, and <strong>Actions</strong> to maintain the reusable libraries. Use <strong>Automation → Automations</strong> to connect them, arm scheduled or monitored work, inspect checks, and manage retained runs.</p>
-    <p>Definitions may be shared by many automations. Editing a shared definition pauses every dependent automation for review.</p>
+    <p>Definitions may be shared by many automations. Editing a shared definition pauses every dependent automation for review. Use <strong>Duplicate</strong> when a new schedule, condition, action, or complete automation should begin as an independent copy; schedule rules and action-pipeline stages can also be duplicated while editing.</p>
   </div></details>
   <details class="help-topic"><summary>Run after host or toolkit startup</summary><div class="help-topic-body">
     <p>Startup mode can run once per operating-system boot (recommended) or after every complete toolkit start. Arming records the current event as a baseline, so setup never sends a surprise notification; the next matching startup creates one durable action job. Scheduler or worker restarts do not count as toolkit starts and cannot duplicate an already-recorded event.</p>

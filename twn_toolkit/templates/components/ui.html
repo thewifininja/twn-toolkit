@@ -6,6 +6,36 @@
 </section>
 {%- endmacro %}
 
+{% macro workspace_header(title, description='', eyebrow='', metric_label='', metric_value='', metric_detail='', class_name='') -%}
+<header class="workspace-header{% if metric_value %} has-metric{% endif %}{% if class_name %} {{ class_name }}{% endif %}">
+  <div class="workspace-header-copy">
+    {% if eyebrow %}<span class="eyebrow">{{ eyebrow }}</span>{% endif %}
+    <h1>{{ title }}</h1>
+    {% if description %}<p>{{ description }}</p>{% endif %}
+  </div>
+  {% if metric_value %}
+    <div class="workspace-header-metric">
+      {% if metric_label %}<span>{{ metric_label }}</span>{% endif %}
+      <strong>{{ metric_value }}</strong>
+      {% if metric_detail %}<small>{{ metric_detail }}</small>{% endif %}
+    </div>
+  {% endif %}
+</header>
+{%- endmacro %}
+
+{% macro workspace_tabs(label, tabs, class_name='') -%}
+<nav class="workspace-tabs{% if class_name %} {{ class_name }}{% endif %}" aria-label="{{ label }}">
+  {% for tab in tabs %}
+    <a class="workspace-tab{% if tab.active %} is-active{% endif %}" href="{{ tab.href }}"{% if tab.active %} aria-current="page"{% endif %}>{{ tab.label }}</a>
+  {% endfor %}
+</nav>
+{%- endmacro %}
+
+{% macro workspace_chrome(title, description='', eyebrow='', tabs=none, tab_label='', metric_label='', metric_value='', metric_detail='', class_name='', tabs_class='') -%}
+  {% if tabs %}{{ workspace_tabs(tab_label, tabs, tabs_class) }}{% endif %}
+  {{ workspace_header(title, description, eyebrow, metric_label, metric_value, metric_detail, class_name) }}
+{%- endmacro %}
+
 {% macro section_header(title, description='', eyebrow='', compact=false, class_name='') -%}
 <div class="section-head{% if caller is defined %} has-actions{% endif %}{% if compact %} compact{% endif %}{% if class_name %} {{ class_name }}{% endif %}">
   <div>
@@ -34,8 +64,24 @@
 </div>
 {%- endmacro %}
 
+{% macro saved_profile_manager(title, description='', count=0, class_name='') -%}
+<section class="saved-profile-manager{% if class_name %} {{ class_name }}{% endif %}" data-saved-profile-manager data-profile-state="new" aria-label="{{ title }}">
+  <header class="saved-profile-manager-head">
+    <div>
+      <span class="saved-profile-kicker">Saved configuration</span>
+      <strong>{{ title }}</strong>
+      {% if description %}<small>{{ description }}</small>{% endif %}
+    </div>
+    <span class="saved-profile-count">{{ count }} saved</span>
+  </header>
+  <div class="saved-profile-manager-body">
+    {{ caller() }}
+  </div>
+</section>
+{%- endmacro %}
+
 {% macro profile_section(title, description='', open=false, class_name='') -%}
-<details class="access-profile-card profile-section{% if class_name %} {{ class_name }}{% endif %}"{% if open %} open{% endif %}>
+<details class="access-profile-card profile-section{% if class_name %} {{ class_name }}{% endif %} saved-profile-collection"{% if open %} open{% endif %}>
   <summary>
     <span>
       <strong>{{ title }}</strong>
@@ -47,14 +93,14 @@
 {%- endmacro %}
 
 {% macro profile_create(label, open=false, class_name='', cancel_label='Cancel') -%}
-<details class="profile-create-details card-action-details{% if class_name %} {{ class_name }}{% endif %}"{% if open %} open{% endif %}>
+<details class="profile-create-details card-action-details{% if class_name %} {{ class_name }}{% endif %} saved-profile-create"{% if open %} open{% endif %}>
   {{ create_toggle(label, cancel_label) }}
   {{ caller() }}
 </details>
 {%- endmacro %}
 
 {% macro profile_card(title, description='', open=false, class_name='') -%}
-<details class="access-profile-card nested-profile-card{% if class_name %} {{ class_name }}{% endif %}"{% if open %} open{% endif %}>
+<details class="access-profile-card nested-profile-card{% if class_name %} {{ class_name }}{% endif %} saved-profile-record"{% if open %} open{% endif %}>
   <summary>
     <span>
       <strong>{{ title }}</strong>
@@ -66,7 +112,7 @@
 {%- endmacro %}
 
 {% macro action_row(detached=false, class_name='') -%}
-<div class="button-row{% if detached %} profile-form-actions{% endif %}{% if class_name %} {{ class_name }}{% endif %}">
+<div class="button-row{% if detached %} profile-form-actions{% endif %}{% if class_name %} {{ class_name }}{% endif %} saved-profile-record-actions">
   {{ caller() }}
 </div>
 {%- endmacro %}

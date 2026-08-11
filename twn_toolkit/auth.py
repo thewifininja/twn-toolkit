@@ -11,6 +11,8 @@ from typing import Any
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from .duplication import duplicate_name
+
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.@-]{3,64}$")
 MIN_PASSWORD_LENGTH = 8
@@ -215,6 +217,20 @@ class AuthStore:
         profile["tool_ids"] = cleaned_tool_ids
         self._write(data)
         return _normalize_access_profile(profile)
+
+    def duplicate_access_profile(self, profile_id: str) -> dict[str, Any]:
+        source = self.get_access_profile(profile_id)
+        if source is None:
+            raise ValueError("Access profile not found.")
+        return self.save_access_profile(
+            name=duplicate_name(
+                source["name"],
+                (profile["name"] for profile in self.access_profiles()),
+                max_length=80,
+            ),
+            description=source["description"],
+            tool_ids=list(source["tool_ids"]),
+        )
 
     def delete_access_profile(self, profile_id: str) -> None:
         data = self._read()

@@ -127,6 +127,11 @@ The persistent sidebar is the primary navigation:
 Hover or focus a tool in the sidebar and select its star to add or remove a
 personal Favorite.
 
+Pages with peer views place their tab navigator first. Saved configuration
+panels follow one workflow: select a record to load it, edit and save it, or use
+**Duplicate** to create an independent copy before changing it. Multi-record
+libraries expose the same action on each expandable record.
+
 ## Run a first network test
 
 **Multi-Host Ping** is a useful first test because it needs no saved
@@ -229,6 +234,10 @@ deleting a MAC device globally.
 
 Automation uses reusable definitions. A condition or action can be shared by
 multiple automations without being rebuilt.
+
+Use **Duplicate** on a saved schedule, condition, action, or complete automation
+when a new workflow should start from known-good configuration. Schedule rules
+and action-pipeline stages can also be duplicated while editing.
 
 ### 1. Create and test a condition
 

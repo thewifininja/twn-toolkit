@@ -1,30 +1,25 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import section_header, workspace_chrome %}
 {% block content %}
-<div class="updates-page">
-<section class="home-hero updates-hero">
-  <div>
-    <p class="eyebrow">Administration</p>
-    <h1>Updates &amp; recovery</h1>
-    <p>Install verified releases, create matched recovery points, and move selected profile configuration between toolkit installations.</p>
-  </div>
-  <div class="home-hero-card"><span>Installed version</span><strong>v{{ installed_version }}</strong><small>Stable channel</small></div>
-</section>
+<div class="workspace-page updates-page">
+{{ workspace_chrome(
+  'Updates & recovery',
+  'Install verified releases, create matched recovery points, and move selected configuration between toolkit installations.',
+  'Administration',
+  [
+    {'label': 'Updates', 'href': url_for('updates', section='updates'), 'active': false},
+    {'label': 'Recovery points', 'href': url_for('updates', section='recovery'), 'active': false},
+    {'label': 'Profile backups', 'href': url_for('backup_settings'), 'active': true}
+  ],
+  'Updates and recovery sections',
+  'Installed version',
+  'v' ~ installed_version,
+  'Stable channel'
+) }}
 
-<nav class="admin-page-nav" aria-label="Updates and recovery categories">
-  <a class="button-link secondary" href="{{ url_for('updates', section='updates') }}">Updates</a>
-  <a class="button-link secondary" href="{{ url_for('updates', section='recovery') }}">Recovery points</a>
-  <a class="button-link" href="{{ url_for('backup_settings') }}" aria-current="page">Profile backups</a>
-</nav>
-
-<div class="page-section-intro">
-  <h2>Profile backup and restore</h2>
-  <p>Export or import selected toolkit profile groups. Files containing stored credentials or secrets require password encryption.</p>
-</div>
-
-<section class="grid two settings-grid">
+<section class="grid two settings-grid" aria-label="Profile backup and restore">
   <div class="panel">
-    <h2>Export backup</h2>
-    <p>Choose the profile groups to download as one toolkit backup file.</p>
+    {{ section_header("Export backup", "Choose the profile groups to download as one toolkit backup file.") }}
     <form method="post" action="{{ url_for('export_profile_backup') }}" class="form backup-form" id="backup-export-form">
       <div class="checkbox-actions" aria-label="Export group selection shortcuts">
         <button type="button" class="link-button" data-checkbox-action="select" data-checkbox-target="input[name='item']">Select all groups</button>
@@ -62,11 +57,7 @@
   </div>
 
   <div class="panel">
-    <h2>Import backup</h2>
-    <p>
-      Choose a toolkit backup file and the profile groups to restore. Combine keeps existing
-      profiles, adds new profile names, and updates matching names from the backup.
-    </p>
+    {{ section_header("Import backup", "Choose a toolkit backup file and the profile groups to restore. Combine keeps existing profiles, adds new profile names, and updates matching names from the backup.") }}
     <form method="post" action="{{ url_for('import_profile_backup') }}" enctype="multipart/form-data" class="form backup-form"
           data-loading-message="Importing selected backup groups…">
       <label>Backup JSON file

@@ -56,6 +56,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "create_user": "admin.settings",
             "update_user_access": "admin.settings",
             "save_access_profile": "admin.settings",
+            "duplicate_access_profile": "admin.settings",
             "delete_access_profile": "admin.settings",
             "delete_user": "admin.settings",
             "update_session_settings": "admin.settings",

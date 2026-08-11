@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import host_range_guidance %}
+{% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
 
 {% block content %}
 <div id="ping-workspace">
@@ -28,30 +28,27 @@
     data-validate-url="{{ url_for('tools.ping_validate_targets') }}"
     data-save-profile-url="{{ url_for('tools.save_ping_profile') }}"
   >
-    <div class="ping-profile-manager">
-      <label>
-        Saved profile
-        <select id="ping-profile">
-          <option value="">New profile</option>
-          {% for profile in profiles %}
-            <option
-              value="{{ profile.name }}"
-              data-interval="{{ profile.interval }}"
-              data-timeout="{{ profile.get('timeout', 1) }}"
-              data-targets='{{ profile.targets|tojson }}'
-            >{{ profile.name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>
-        Profile name
-        <input id="ping-profile-name" type="text" maxlength="100" placeholder="Branch offices">
-      </label>
-      <div class="button-row ping-profile-actions">
-        <button class="secondary" id="ping-profile-save" type="button">Save</button>
-        <button class="danger" id="ping-profile-delete" type="button">Delete</button>
+    {% call saved_profile_manager("Ping profiles", "Load a saved target and timing set, or name the current settings to reuse them later.", profiles|length, "ping-profile-manager") %}
+      <div class="saved-profile-fields">
+        <label>Saved profile
+          <select id="ping-profile" data-saved-profile-select>
+            <option value="">New / unsaved profile</option>
+            {% for profile in profiles %}
+              <option value="{{ profile.name }}" data-interval="{{ profile.interval }}" data-timeout="{{ profile.get('timeout', 1) }}" data-targets='{{ profile.targets|tojson }}'>{{ profile.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Profile name<input id="ping-profile-name" data-saved-profile-name type="text" maxlength="100" placeholder="Branch offices"></label>
       </div>
-    </div>
+      <div class="saved-profile-manager-actions">
+        <span class="saved-profile-state" data-saved-profile-state>New profile</span>
+        <div class="button-row ping-profile-actions">
+          <button class="secondary profile-save-action" id="ping-profile-save" data-saved-profile-save type="button">Save profile</button>
+          <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_ping_profile') }}" data-profile-select="#ping-profile" disabled>Duplicate</button>
+          <button class="danger" id="ping-profile-delete" data-saved-profile-delete type="button" disabled>Delete</button>
+        </div>
+      </div>
+    {% endcall %}
     <label>
       Hosts
       <textarea id="ping-hosts" rows="6" placeholder="Core Router = 192.0.2.1&#10;Classroom = 10.0.0.1-10.0.0.24&#10;router.example.com" required></textarea>

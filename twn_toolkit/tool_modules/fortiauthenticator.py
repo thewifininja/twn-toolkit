@@ -66,6 +66,7 @@ def register_tools(registry: ToolRegistry) -> None:
     registry.map_endpoints(
         {
             "save_fortiauthenticator_profile": "fortiauthenticator.home",
+            "duplicate_fortiauthenticator_profile": "fortiauthenticator.home",
             "delete_fortiauthenticator_profile": "fortiauthenticator.home",
             "test_fortiauthenticator_profile": "fortiauthenticator.home",
             "fortiauthenticator_mac_devices": "fortiauthenticator.mac_devices",

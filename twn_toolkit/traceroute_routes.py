@@ -13,7 +13,7 @@ from flask import (
 )
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_saved, annotate_tool_run
+from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
 from .network_tools import ToolInputError, parse_ping_targets
 from .profiles import TracerouteHostProfileStore
 from .traceroute_tools import prepare_traceroute, run_traceroute, stream_traceroute
@@ -141,6 +141,20 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
             profile=profile,
         )
         return jsonify({"deleted": name})
+
+    @tools_bp.post("/traceroute/profiles/duplicate")
+    def duplicate_traceroute_profile():
+        name = request.form.get("name", "").strip()
+        store = TracerouteHostProfileStore(current_app.instance_path)
+        source = store.get(name)
+        if not source:
+            return jsonify({"error": "Profile not found."}), 404
+        copied = store.duplicate(name)
+        annotate_profile_duplicated(
+            category="Network tools", action_namespace="traceroute",
+            profile_type="Traceroute host profile", source=source, copied=copied,
+        )
+        return jsonify({"profile": {"name": copied["name"]}})
 
     @tools_bp.post("/traceroute/run")
     def traceroute_run():
