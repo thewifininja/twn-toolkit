@@ -134,11 +134,11 @@ panels follow one workflow: select a record to load it, edit and save it, or use
 **Duplicate** to create an independent copy before changing it. Multi-record
 libraries expose the same action on each expandable record.
 
-## Start a troubleshooting investigation
+## Start a troubleshooting case
 
 1. Open **Investigations** and enter a concise title plus the situation already
    known.
-2. Select **Start investigation**. A recording banner remains visible as you move
+2. Select **Open case**. A recording banner remains visible as you move
    through the toolkit.
 3. Run **Network Tools → Addressing & Reachability → DNS Tester**. Completed and
    failed DNS runs are added to the journal with structured inputs and results.
@@ -146,12 +146,14 @@ libraries expose the same action on each expandable record.
    runs should not be associated automatically; notes and evidence can still be
    added while paused.
 5. Use **Evidence** for relevant files. The toolkit stores them in a managed
-   investigation folder and records their SHA-256 hashes.
-6. Use **Report** to review the evidence-backed timeline and print or save it as
-   PDF. Select **Finish investigation** when the work is complete.
+   case folder and records their SHA-256 hashes.
+6. Use **Report contents** to select individual timeline entries and evidence
+   files. The printable case report keeps the timeline concise and links each
+   structured diagnostic to its detailed-result page. Select **Close case** when
+   the work is complete; report selection remains editable afterward.
 
 The initial integration records DNS Tester runs. Other tools can be added to the
-same event contract without changing existing investigations.
+same event contract without changing existing cases.
 
 ## Run a first network test
 

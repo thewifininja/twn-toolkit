@@ -44,7 +44,7 @@ class InvestigationStore:
         title: str,
         description: str = "",
     ) -> dict[str, Any]:
-        clean_title = self._clean_text(title, "Investigation title", 120, required=True)
+        clean_title = self._clean_text(title, "Case title", 120, required=True)
         clean_description = self._clean_text(description, "Description", 2_000)
         user_id = self._clean_identity(owner_user_id, "owner")
         username = self._clean_identity(owner_username, "operator")
@@ -63,7 +63,7 @@ class InvestigationStore:
                 ).fetchone()
                 if existing:
                     raise InvestigationError(
-                        "Finish the current investigation before starting another one."
+                        "Close the current case before starting another one."
                     )
                 connection.execute(
                     """
@@ -90,9 +90,9 @@ class InvestigationStore:
                     operation_id=f"investigation-created:{investigation_id}",
                     event_type="investigation.started",
                     tool_id="investigations.workspace",
-                    action="Investigation started",
+                    action="Case opened",
                     outcome="info",
-                    summary=f"Started investigation: {clean_title}.",
+                    summary=f"Opened case: {clean_title}.",
                     targets=[],
                     parameters={},
                     metrics={},
@@ -104,7 +104,7 @@ class InvestigationStore:
                 )
         except sqlite3.IntegrityError as exc:
             raise InvestigationError(
-                "Finish the current investigation before starting another one."
+                "Close the current case before starting another one."
             ) from exc
         return self.get_for_user(investigation_id, user_id)
 
@@ -164,7 +164,7 @@ class InvestigationStore:
                 (investigation_id, self._clean_identity(user_id, "user")),
             ).fetchone()
         if not row:
-            raise InvestigationError("Investigation not found.")
+            raise InvestigationError("Case not found.")
         return self._investigation(row)
 
     def events_for_user(
@@ -213,6 +213,88 @@ class InvestigationStore:
             raise InvestigationError("Evidence file not found.")
         return self._artifact(row)
 
+    def set_report_contents(
+        self,
+        investigation_id: str,
+        user_id: str,
+        *,
+        event_ids: list[str],
+        artifact_ids: list[str],
+    ) -> dict[str, int]:
+        """Update report presentation without changing retained source evidence."""
+        user_id = self._clean_identity(user_id, "user")
+        selected_events = {
+            str(item).strip() for item in event_ids if str(item).strip()
+        }
+        selected_artifacts = {
+            str(item).strip() for item in artifact_ids if str(item).strip()
+        }
+        if len(selected_events) > 10_000 or len(selected_artifacts) > 10_000:
+            raise InvestigationError("The report selection is too large.")
+
+        with self._connect() as connection, connection:
+            owner = connection.execute(
+                "SELECT id FROM investigations WHERE id = ? AND owner_user_id = ?",
+                (investigation_id, user_id),
+            ).fetchone()
+            if not owner:
+                raise InvestigationError("Case not found.")
+            available_events = {
+                str(row["id"])
+                for row in connection.execute(
+                    "SELECT id FROM investigation_events WHERE investigation_id = ?",
+                    (investigation_id,),
+                ).fetchall()
+            }
+            available_artifacts = {
+                str(row["id"])
+                for row in connection.execute(
+                    "SELECT id FROM investigation_artifacts WHERE investigation_id = ?",
+                    (investigation_id,),
+                ).fetchall()
+            }
+            if not selected_events.issubset(available_events):
+                raise InvestigationError("The report contains an unknown journal event.")
+            if not selected_artifacts.issubset(available_artifacts):
+                raise InvestigationError("The report contains an unknown evidence file.")
+
+            connection.execute(
+                """
+                UPDATE investigation_events
+                SET report_placement = 'excluded'
+                WHERE investigation_id = ?
+                """,
+                (investigation_id,),
+            )
+            connection.executemany(
+                """
+                UPDATE investigation_events
+                SET report_placement = 'main'
+                WHERE investigation_id = ? AND id = ?
+                """,
+                [(investigation_id, event_id) for event_id in selected_events],
+            )
+            connection.execute(
+                """
+                UPDATE investigation_artifacts
+                SET report_placement = 'excluded'
+                WHERE investigation_id = ?
+                """,
+                (investigation_id,),
+            )
+            connection.executemany(
+                """
+                UPDATE investigation_artifacts
+                SET report_placement = 'appendix'
+                WHERE investigation_id = ? AND id = ?
+                """,
+                [(investigation_id, artifact_id) for artifact_id in selected_artifacts],
+            )
+        return {
+            "included_events": len(selected_events),
+            "included_artifacts": len(selected_artifacts),
+        }
+
     def set_state(
         self,
         investigation_id: str,
@@ -221,7 +303,7 @@ class InvestigationStore:
         state: str,
     ) -> dict[str, Any]:
         if state not in {"recording", "paused", "completed"}:
-            raise InvestigationError("Choose a valid investigation state.")
+            raise InvestigationError("Choose a valid case state.")
         now = time.time()
         user_id = self._clean_identity(user_id, "user")
         username = self._clean_identity(username, "operator")
@@ -231,12 +313,12 @@ class InvestigationStore:
                 (investigation_id, user_id),
             ).fetchone()
             if not row:
-                raise InvestigationError("Investigation not found.")
+                raise InvestigationError("Case not found.")
             current = str(row["state"])
             if current == state:
                 return self._investigation(row)
             if current not in OPEN_STATES:
-                raise InvestigationError("Completed investigations cannot be resumed yet.")
+                raise InvestigationError("Closed cases cannot be reopened yet.")
             ended_at = now if state == "completed" else None
             connection.execute(
                 """
@@ -247,9 +329,21 @@ class InvestigationStore:
                 (state, ended_at, now, investigation_id),
             )
             labels = {
-                "recording": ("investigation.resumed", "Investigation resumed", "Resumed automatic journal recording."),
-                "paused": ("investigation.paused", "Investigation paused", "Paused automatic journal recording."),
-                "completed": ("investigation.completed", "Investigation completed", "Finished the investigation."),
+                "recording": (
+                    "investigation.resumed",
+                    "Case recording resumed",
+                    "Resumed automatic journal recording for the case.",
+                ),
+                "paused": (
+                    "investigation.paused",
+                    "Case recording paused",
+                    "Paused automatic journal recording for the case.",
+                ),
+                "completed": (
+                    "investigation.completed",
+                    "Case closed",
+                    "Closed the troubleshooting case.",
+                ),
             }
             event_type, action, summary = labels[state]
             self._insert_event(
@@ -385,7 +479,7 @@ class InvestigationStore:
     ) -> dict[str, Any]:
         investigation = self.get_for_user(investigation_id, user_id)
         if investigation["state"] not in OPEN_STATES:
-            raise InvestigationError("Completed investigations cannot accept new evidence.")
+            raise InvestigationError("Closed cases cannot accept new evidence.")
         stored_name = self._available_evidence_name(
             investigation["datastore_path"], filename
         )
@@ -504,9 +598,9 @@ class InvestigationStore:
             (investigation_id, user_id),
         ).fetchone()
         if not row:
-            raise InvestigationError("Investigation not found.")
+            raise InvestigationError("Case not found.")
         if str(row["state"]) not in OPEN_STATES:
-            raise InvestigationError("Completed investigations cannot be changed.")
+            raise InvestigationError("Closed cases cannot be changed.")
         return row
 
     def _insert_event(
@@ -701,6 +795,12 @@ class InvestigationStore:
         result = dict(row)
         result["is_open"] = result["state"] in OPEN_STATES
         result["is_recording"] = result["state"] == "recording"
+        result["state_label"] = {
+            "recording": "Recording",
+            "paused": "Paused",
+            "completed": "Closed",
+            "archived": "Archived",
+        }.get(str(result["state"]), str(result["state"]).title())
         result["started_display"] = self._display_time(float(result["started_at"]))
         result["updated_display"] = self._display_time(float(result["updated_at"]))
         result["ended_display"] = (

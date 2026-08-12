@@ -204,23 +204,25 @@ The sidebar and Network Tools page use the same functional organization.
 
 ### Investigations
 
-An operator can start one investigation at a time and carry its recording
-context across toolkit pages. The first supported diagnostic integration is DNS
+An operator can open one case at a time in the Investigations workspace and
+carry its recording context across toolkit pages. The first supported diagnostic integration is DNS
 Tester; each run retains its targets, parameters, outcome, metrics, and detailed
 results as an immutable journal event. Operators can also:
 
-- pause automatic capture without ending the investigation;
+- pause automatic capture without closing the case;
 - add timestamped notes while recording is active or paused;
-- upload collision-safe evidence files to a managed per-investigation Datastore
+- upload collision-safe evidence files to a managed per-case Datastore
   folder with retained size, content type, and SHA-256 metadata;
 - review a chronological journal and download retained evidence; and
-- render a deterministic report whose statements and result tables come from
-  retained journal evidence, then print or save it as PDF.
+- curate a deterministic case report without changing source evidence, then
+  print a compact timeline, linked detailed-result pages, and an optional
+  evidence appendix or save them as PDF.
 
 Investigations are owner-scoped and access-profile controlled. Metadata lives in
 owner-only `instance/investigations.sqlite3`; files live below
-`instance/datastore/Investigations/`. Completed investigations are read-only in
-this first slice. See [Investigation journals](docs/investigations.md) for the
+`instance/datastore/Investigations/`. Closed case journals and evidence are
+read-only; report inclusion remains editable because it is presentation
+metadata only. See [Investigation journals](docs/investigations.md) for the
 event contract and extension guidance.
 
 ### Local Tools

@@ -7,19 +7,19 @@
     "Investigations",
     "Keep tests, evidence, operator notes, and the final troubleshooting narrative together from the first check through the handoff.",
     "Troubleshooting journal",
-    "Your investigations",
+    "Your cases",
     investigations|length,
-    "One can be open at a time"
+    "One case can be open at a time"
   ) }}
 
   {% if open_investigation %}
     <section class="panel investigation-current-card">
-      {% call section_header("Current investigation", "Automatic journal recording follows you across toolkit pages.", "Recording context") %}
+      {% call section_header("Current case", "Automatic journal recording follows you across toolkit pages.", "Recording context") %}
         <a class="button-link" href="{{ url_for('investigation_detail', investigation_id=open_investigation.id) }}">Open journal</a>
       {% endcall %}
       <div class="investigation-current-summary">
         <div>
-          <span class="investigation-state {{ open_investigation.state }}">{{ open_investigation.state }}</span>
+          <span class="investigation-state {{ open_investigation.state }}">{{ open_investigation.state_label }}</span>
           <h3>{{ open_investigation.title }}</h3>
           {% if open_investigation.description %}<p>{{ open_investigation.description }}</p>{% endif %}
         </div>
@@ -32,10 +32,10 @@
     </section>
   {% else %}
     <section class="panel investigation-create-panel">
-      {{ section_header("Start an investigation", "Give the work a durable name before running the first diagnostic.", "New workspace") }}
+      {{ section_header("Start a case", "Give the work a durable name before running the first diagnostic.", "New case") }}
       <form method="post" action="{{ url_for('create_investigation') }}" class="form-grid investigation-create-form">
         <div class="investigation-create-fields">
-          <label class="investigation-create-title">Investigation title
+          <label class="investigation-create-title">Case title
             <input name="title" maxlength="120" required placeholder="Branch office intermittent outage">
           </label>
           <label>Starting context
@@ -46,22 +46,22 @@
         <footer class="investigation-create-actions">
           <div>
             <strong>Recording begins immediately.</strong>
-            <small>Supported tool runs will be added until you pause or finish the investigation.</small>
+            <small>Supported tool runs will be added until you pause or close the case.</small>
           </div>
-          <button type="submit">Start investigation</button>
+          <button type="submit">Open case</button>
         </footer>
       </form>
     </section>
   {% endif %}
 
   <section class="panel investigation-library">
-    {{ section_header("Investigation history", "Completed work remains available as a durable technical record.", "Your journal") }}
+    {{ section_header("Case history", "Closed work remains available as a durable technical record.", "Your journal") }}
     {% if investigations %}
       <div class="investigation-card-grid">
         {% for investigation in investigations %}
           <article class="investigation-card">
             <header>
-              <span class="investigation-state {{ investigation.state }}">{{ investigation.state }}</span>
+              <span class="investigation-state {{ investigation.state }}">{{ investigation.state_label }}</span>
               <h3><a href="{{ url_for('investigation_detail', investigation_id=investigation.id) }}">{{ investigation.title }}</a></h3>
               {% if investigation.description %}<p>{{ investigation.description }}</p>{% endif %}
             </header>
@@ -70,12 +70,12 @@
               <div><dt>Events</dt><dd>{{ investigation.event_count }}</dd></div>
               <div><dt>Evidence</dt><dd>{{ investigation.artifact_count }}</dd></div>
             </dl>
-            <a class="button-link secondary" href="{{ url_for('investigation_detail', investigation_id=investigation.id) }}">View investigation</a>
+            <a class="button-link secondary" href="{{ url_for('investigation_detail', investigation_id=investigation.id) }}">View case</a>
           </article>
         {% endfor %}
       </div>
     {% else %}
-      {% call empty_state("No investigations yet", "Start one above before beginning your next troubleshooting session.") %}{% endcall %}
+      {% call empty_state("No cases yet", "Start one above before beginning your next troubleshooting session.") %}{% endcall %}
     {% endif %}
   </section>
 </div>

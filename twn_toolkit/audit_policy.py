@@ -170,6 +170,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.duplicate_wol_profile",
         "update_automation_retention",
         "update_investigation_state",
+        "update_investigation_report_contents",
         "update_operational_settings",
         "update_server_settings",
         "update_session_settings",

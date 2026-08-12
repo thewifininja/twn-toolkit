@@ -273,7 +273,8 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("grid-template-columns: minmax(0, 1fr);", start_form_rule)
         self.assertIn('class="investigation-create-fields"', index_template)
         self.assertIn('class="investigation-create-actions"', index_template)
-        self.assertIn("Start investigation", index_template)
+        self.assertIn("Start a case", index_template)
+        self.assertIn("Open case", index_template)
         self.assertIn('class="investigation-return-nav"', detail_template)
         self.assertIn("Back to investigations", detail_template)
 
@@ -290,8 +291,13 @@ class UIComponentTests(unittest.TestCase):
 
         self.assertIn('class="investigation-report-evidence"', detail_template)
         self.assertIn('class="investigation-dns-results-table"', detail_template)
+        self.assertIn('class="panel investigation-report-builder"', detail_template)
+        self.assertIn('href="#report-result-{{ event.id }}"', detail_template)
+        self.assertIn('class="investigation-report-result"', detail_template)
         self.assertIn("display: block;", print_rules)
+        self.assertIn(".investigation-report-builder", print_rules)
         self.assertIn(".investigation-report-evidence", print_rules)
+        self.assertIn(".investigation-report-result", print_rules)
         self.assertIn("break-before: page;", print_rules)
         self.assertIn(".investigation-report table", print_rules)
         self.assertIn("break-inside: auto;", print_rules)

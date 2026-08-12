@@ -60,11 +60,32 @@ def register_investigation_routes(
         investigation = investigation_or_404(investigation_id)
         events = store.events_for_user(investigation_id, user_id())
         artifacts = store.artifacts_for_user(investigation_id, user_id())
+        report_events = [
+            event for event in events if event["report_placement"] == "main"
+        ]
+        report_artifacts = [
+            artifact
+            for artifact in artifacts
+            if artifact["report_placement"] == "appendix"
+        ]
+        report_result_events = [
+            event for event in report_events if _event_has_detailed_results(event)
+        ]
         return render_template(
             "investigations/detail.html",
             investigation=investigation,
             investigation_events=events,
             investigation_artifacts=artifacts,
+            report_events=report_events,
+            report_artifacts=report_artifacts,
+            report_result_events=report_result_events,
+            detailed_result_event_ids={
+                event["id"] for event in events if _event_has_detailed_results(event)
+            },
+            report_result_labels={
+                event["id"]: f"R-{index:02d}"
+                for index, event in enumerate(report_result_events, start=1)
+            },
             investigation_tabs=tabs(investigation_id, active_tab),
             active_investigation_tab=active_tab,
             format_bytes=format_bytes,
@@ -96,12 +117,12 @@ def register_investigation_routes(
         annotate_audit_event(
             category="Investigations",
             action="investigation.created",
-            summary=f"Started investigation {investigation['title']}.",
+            summary=f"Opened case {investigation['title']}.",
             resource_type="investigation",
             resource_id=str(investigation["id"]),
             resource_name=str(investigation["title"]),
         )
-        flash(f"Started investigation {investigation['title']}.", "success")
+        flash(f"Opened case {investigation['title']}.", "success")
         return redirect(
             url_for("investigation_detail", investigation_id=investigation["id"])
         )
@@ -126,13 +147,15 @@ def register_investigation_routes(
             annotate_audit_event(
                 category="Investigations",
                 action="investigation.note_added",
-                summary=f"Added a note to investigation {investigation['title']}.",
+                summary=f"Added a note to case {investigation['title']}.",
                 resource_type="investigation",
                 resource_id=investigation_id,
                 resource_name=str(investigation["title"]),
             )
-            flash("Added the note to the investigation journal.", "success")
-        return redirect(url_for("investigation_detail", investigation_id=investigation_id))
+            flash("Added the note to the case journal.", "success")
+        return redirect(
+            url_for("investigation_detail", investigation_id=investigation_id)
+        )
 
     @app.post("/investigations/<investigation_id>/state")
     def update_investigation_state(investigation_id: str):
@@ -148,22 +171,22 @@ def register_investigation_routes(
         except InvestigationError as exc:
             flash(str(exc), "error")
         else:
-            action_labels = {
-                "recording": "resumed",
-                "paused": "paused",
-                "completed": "completed",
+            actions = {
+                "recording": ("resumed", "resumed"),
+                "paused": ("paused", "paused"),
+                "completed": ("completed", "closed"),
             }
-            action = action_labels[state]
+            action, label = actions[state]
             annotate_audit_event(
                 category="Investigations",
                 action=f"investigation.{action}",
-                summary=f"{action.title()} investigation {investigation['title']}.",
+                summary=f"{label.title()} case {investigation['title']}.",
                 resource_type="investigation",
                 resource_id=investigation_id,
                 resource_name=str(investigation["title"]),
                 details={"state": updated["state"]},
             )
-            flash(f"Investigation {action}.", "success")
+            flash(f"Case {label}.", "success")
         default_destination = (
             url_for("investigations")
             if state == "completed"
@@ -181,10 +204,14 @@ def register_investigation_routes(
         uploads = [item for item in request.files.getlist("files") if item.filename]
         if not uploads:
             flash("Choose at least one evidence file.", "error")
-            return redirect(url_for("investigation_evidence", investigation_id=investigation_id))
+            return redirect(
+                url_for("investigation_evidence", investigation_id=investigation_id)
+            )
         if len(uploads) > 20:
             flash("Upload no more than 20 evidence files at once.", "error")
-            return redirect(url_for("investigation_evidence", investigation_id=investigation_id))
+            return redirect(
+                url_for("investigation_evidence", investigation_id=investigation_id)
+            )
         saved = []
         try:
             for upload in uploads:
@@ -204,7 +231,7 @@ def register_investigation_routes(
                     category="Investigations",
                     action="investigation.evidence_uploaded",
                     summary=(
-                        f"Added {len(saved)} evidence file(s) to investigation "
+                        f"Added {len(saved)} evidence file(s) to case "
                         f"{investigation['title']} before the upload stopped."
                     ),
                     resource_type="investigation",
@@ -222,27 +249,34 @@ def register_investigation_routes(
             annotate_audit_event(
                 category="Investigations",
                 action="investigation.evidence_uploaded",
-                summary=f"Added {len(saved)} evidence file(s) to investigation {investigation['title']}.",
+                summary=(
+                    f"Added {len(saved)} evidence file(s) to case "
+                    f"{investigation['title']}."
+                ),
                 resource_type="investigation",
                 resource_id=investigation_id,
                 resource_name=str(investigation["title"]),
                 details={"file count": len(saved)},
             )
             flash(f"Added {len(saved)} evidence file(s).", "success")
-        return redirect(url_for("investigation_evidence", investigation_id=investigation_id))
+        return redirect(
+            url_for("investigation_evidence", investigation_id=investigation_id)
+        )
 
     @app.get("/investigations/<investigation_id>/evidence/<artifact_id>/download")
     def download_investigation_evidence(investigation_id: str, artifact_id: str):
         investigation = investigation_or_404(investigation_id)
         try:
-            artifact = store.artifact_for_user(investigation_id, artifact_id, user_id())
+            artifact = store.artifact_for_user(
+                investigation_id, artifact_id, user_id()
+            )
             path = store.datastore.file(str(artifact["relative_path"]))
         except (DatastoreError, InvestigationError):
             abort(404)
         annotate_audit_event(
             category="Investigations",
             action="investigation.evidence_downloaded",
-            summary=f"Downloaded evidence from investigation {investigation['title']}.",
+            summary=f"Downloaded evidence from case {investigation['title']}.",
             resource_type="investigation_artifact",
             resource_id=artifact_id,
             resource_name=str(artifact["display_name"]),
@@ -258,6 +292,36 @@ def register_investigation_routes(
     def investigation_report(investigation_id: str):
         return render_workspace(investigation_id, active_tab="report")
 
+    @app.post("/investigations/<investigation_id>/report/contents")
+    def update_investigation_report_contents(investigation_id: str):
+        investigation = investigation_or_404(investigation_id)
+        try:
+            counts = store.set_report_contents(
+                investigation_id,
+                user_id(),
+                event_ids=request.form.getlist("event_id"),
+                artifact_ids=request.form.getlist("artifact_id"),
+            )
+        except InvestigationError as exc:
+            flash(str(exc), "error")
+        else:
+            annotate_audit_event(
+                category="Investigations",
+                action="investigation.report_contents_updated",
+                summary=f"Updated report contents for case {investigation['title']}.",
+                resource_type="investigation",
+                resource_id=investigation_id,
+                resource_name=str(investigation["title"]),
+                details={
+                    "included event count": counts["included_events"],
+                    "included evidence count": counts["included_artifacts"],
+                },
+            )
+            flash("Saved the case report contents.", "success")
+        return redirect(
+            url_for("investigation_report", investigation_id=investigation_id)
+        )
+
 
 def _safe_next(default: str) -> str:
     value = request.form.get("next", "").strip()
@@ -265,3 +329,13 @@ def _safe_next(default: str) -> str:
     if value.startswith("/") and not value.startswith("//") and not parsed.netloc:
         return value
     return default
+
+
+def _event_has_detailed_results(event: dict[str, object]) -> bool:
+    if event.get("tool_id") != "tools.dns_response":
+        return False
+    details = event.get("details")
+    return bool(
+        isinstance(details, dict)
+        and (details.get("results") or details.get("load_result"))
+    )

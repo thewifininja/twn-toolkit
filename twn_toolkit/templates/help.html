@@ -155,17 +155,17 @@
 
 <section class="home-section help-section" id="investigations">
   <div class="section-head"><div><span class="eyebrow">Troubleshooting record</span><h2>Investigations</h2></div><a href="#help-contents">Back to contents</a></div>
-  <details class="help-topic" open><summary>Recording, pausing, and finishing</summary><div class="help-topic-body">
-    <p>Start an investigation before the first test. One investigation may be recording or paused per user. Its global banner follows you across permitted toolkit pages, so the destination of the next supported result remains visible.</p>
-    <p><strong>Pause recording</strong> suppresses automatic tool events without ending the workspace. Deliberate notes and evidence uploads remain available while paused. <strong>Finish investigation</strong> makes the journal and evidence read-only; starting the next investigation does not alter completed work.</p>
+  <details class="help-topic" open><summary>Recording, pausing, and closing cases</summary><div class="help-topic-body">
+    <p>Start a case before the first test. One case may be recording or paused per user. Its global banner follows you across permitted toolkit pages, so the destination of the next supported result remains visible.</p>
+    <p><strong>Pause recording</strong> suppresses automatic tool events without ending the case. Deliberate notes and evidence uploads remain available while paused. <strong>Close case</strong> makes the journal and evidence read-only; starting the next case does not alter closed work.</p>
   </div></details>
   <details class="help-topic"><summary>Journal events and current tool support</summary><div class="help-topic-body">
     <p>The Journal retains meaningful actions in chronological order rather than page visits or unfinished forms. DNS Tester is the first integrated diagnostic: lookup and bounded load-test attempts retain normalized targets, non-secret settings, outcomes, summary metrics, and structured results. A journal-write problem is logged without changing the diagnostic's own result.</p>
-    <p>Add operator notes for hypotheses, observations, calls, changes, and decisions that happen between tool runs. Paused investigations accept notes because those additions are intentional.</p>
+    <p>Add operator notes for hypotheses, observations, calls, changes, and decisions that happen between tool runs. Paused cases accept notes because those additions are intentional.</p>
   </div></details>
   <details class="help-topic"><summary>Evidence and reports</summary><div class="help-topic-body">
-    <p>Evidence uploads are stored beneath a managed <code>Datastore/Investigations</code> folder with collision-safe names. The library retains size, content type, collection time, and SHA-256 digest. Access to an investigation is scoped to its owner; opening the underlying folder also requires Datastore access.</p>
-    <p>The first Report is deterministic: its timeline, DNS result tables, and evidence appendix come from retained journal data rather than generated interpretation. Use the browser print control to print it or save it as PDF.</p>
+    <p>Evidence uploads are stored beneath a managed <code>Datastore/Investigations</code> folder with collision-safe names. The library retains size, content type, collection time, and SHA-256 digest. Access to a case is scoped to its owner; opening the underlying folder also requires Datastore access.</p>
+    <p>The case report is deterministic: a compact timeline links to separate detailed-result pages, followed by an optional evidence appendix. Use <strong>Report contents</strong> to include or exclude individual timeline entries and files; these presentation choices remain editable after the case closes and never delete source evidence. Use the browser print control to print the report or save it as PDF.</p>
   </div></details>
 </section>
 

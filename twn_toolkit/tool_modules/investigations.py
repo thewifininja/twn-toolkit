@@ -8,7 +8,7 @@ def register_tools(registry: ToolRegistry) -> None:
         ToolLink(
             "investigations.workspace",
             "Investigations",
-            "Record troubleshooting activity, evidence, notes, and reports in one durable workspace.",
+            "Record troubleshooting activity, evidence, notes, and case reports in one durable workspace.",
             "investigations",
             "investigations",
             "Investigations",
@@ -26,5 +26,6 @@ def register_tools(registry: ToolRegistry) -> None:
             "upload_investigation_evidence": "investigations.workspace",
             "download_investigation_evidence": "investigations.workspace",
             "investigation_report": "investigations.workspace",
+            "update_investigation_report_contents": "investigations.workspace",
         }
     )

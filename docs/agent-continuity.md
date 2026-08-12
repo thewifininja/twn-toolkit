@@ -57,12 +57,13 @@ precedent.
   cap duration, per-resolver QPS, resolver count, concurrency, and total queries;
   retain only aggregate results and latency percentiles rather than every
   response.
-- Investigations are durable, owner-scoped troubleshooting workspaces. Keep one
-  recording-or-paused investigation per user, make tool events immutable and
+- Investigations is the feature area; individual records are cases. Keep one
+  owner-scoped recording-or-paused case per user, make tool events immutable and
   idempotent by operation ID, and do not let journal-write failure break the
   diagnostic itself. Pausing blocks automatic tool capture but still permits
-  intentional notes and evidence. Completed investigations are read-only until
-  an explicit reopening policy is designed. Store metadata in owner-only
+  intentional notes and evidence. Closed case source evidence is read-only until
+  an explicit reopening policy is designed; report inclusion is editable
+  presentation metadata and must never mutate that source. Store metadata in owner-only
   `instance/investigations.sqlite3`; constrain files to managed
   `instance/datastore/Investigations/<investigation-id>/` folders. Reports must
   remain deterministic views of retained evidence; generated narrative or AI

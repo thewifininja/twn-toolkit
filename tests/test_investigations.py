@@ -36,7 +36,7 @@ class InvestigationStoreTests(unittest.TestCase):
         self.assertTrue(
             Path(self.temporary.name, "datastore", investigation["datastore_path"], "Reports").is_dir()
         )
-        with self.assertRaisesRegex(InvestigationError, "Finish the current"):
+        with self.assertRaisesRegex(InvestigationError, "Close the current"):
             self.store.create(
                 owner_user_id="operator-1",
                 owner_username="nelson",
@@ -122,6 +122,78 @@ class InvestigationStoreTests(unittest.TestCase):
             title="Next issue",
         )
         self.assertEqual(next_investigation["state"], "recording")
+
+    def test_report_contents_are_atomic_and_editable_after_case_closes(self) -> None:
+        investigation = self.store.create(
+            owner_user_id="operator-1",
+            owner_username="nelson",
+            title="Report selection",
+        )
+        diagnostic = self.store.record_for_active(
+            user_id="operator-1",
+            username="nelson",
+            operation_id="dns-report-selection",
+            event_type="diagnostic.completed",
+            tool_id="tools.dns_response",
+            action="DNS lookup",
+            outcome="succeeded",
+            summary="Retained diagnostic summary.",
+            targets={"hosts": ["example.com"]},
+            parameters={"record_type": "A"},
+            metrics={"successful": 1, "failed": 0},
+            details={"results": [{"host": "example.com"}]},
+            started_at=10,
+            completed_at=11,
+        )
+        artifact = self.store.add_evidence(
+            investigation_id=investigation["id"],
+            user_id="operator-1",
+            username="nelson",
+            filename="status.txt",
+            content_type="text/plain",
+            stream=io.BytesIO(b"retained evidence"),
+        )
+        self.store.set_state(
+            investigation["id"], "operator-1", "nelson", "completed"
+        )
+
+        counts = self.store.set_report_contents(
+            investigation["id"],
+            "operator-1",
+            event_ids=[diagnostic["id"], diagnostic["id"]],
+            artifact_ids=[],
+        )
+        self.assertEqual(counts, {"included_events": 1, "included_artifacts": 0})
+        events = self.store.events_for_user(investigation["id"], "operator-1")
+        self.assertEqual(
+            [event["id"] for event in events if event["report_placement"] == "main"],
+            [diagnostic["id"]],
+        )
+        self.assertEqual(
+            next(event for event in events if event["id"] == diagnostic["id"])[
+                "summary"
+            ],
+            "Retained diagnostic summary.",
+        )
+        self.assertEqual(
+            self.store.artifacts_for_user(investigation["id"], "operator-1")[0][
+                "report_placement"
+            ],
+            "excluded",
+        )
+
+        with self.assertRaisesRegex(InvestigationError, "unknown journal event"):
+            self.store.set_report_contents(
+                investigation["id"],
+                "operator-1",
+                event_ids=["not-an-event"],
+                artifact_ids=[artifact["id"]],
+            )
+        unchanged = self.store.events_for_user(investigation["id"], "operator-1")
+        self.assertEqual(
+            [event["id"] for event in unchanged if event["report_placement"] == "main"],
+            [diagnostic["id"]],
+        )
 
     def test_investigations_are_owner_scoped_and_database_is_owner_only(self) -> None:
         investigation = self.store.create(
@@ -242,9 +314,9 @@ class InvestigationRouteTests(unittest.TestCase):
 
             page = client.get("/investigations")
             self.assertEqual(page.status_code, 200)
-            self.assertIn(b"Start an investigation", page.data)
-            self.assertIn(b"Investigation title", page.data)
-            self.assertIn(b"Start investigation", page.data)
+            self.assertIn(b"Start a case", page.data)
+            self.assertIn(b"Case title", page.data)
+            self.assertIn(b"Open case", page.data)
             created = client.post(
                 "/investigations",
                 data={
@@ -286,7 +358,7 @@ class InvestigationRouteTests(unittest.TestCase):
                     },
                 )
             self.assertEqual(response.status_code, 200)
-            self.assertIn(b"Recorded in the active investigation", response.data)
+            self.assertIn(b"Recorded in the active case", response.data)
             self.assertIn(b"Branch office outage", response.data)
 
             note = client.post(
@@ -323,7 +395,12 @@ class InvestigationRouteTests(unittest.TestCase):
             report = client.get(f"/investigations/{investigation_id}/report")
             self.assertEqual(report.status_code, 200)
             self.assertIn(b"Back to investigations", report.data)
-            self.assertIn(b"Troubleshooting report", report.data)
+            self.assertIn(b"Case report", report.data)
+            self.assertIn(b"Case timeline", report.data)
+            self.assertIn(b"Detailed results R-01", report.data)
+            self.assertIn(
+                f'href="#report-result-{dns_event["id"]}"'.encode(), report.data
+            )
             self.assertIn(b"portal.example.com", report.data)
             self.assertIn(b"192.0.2.10", report.data)
             self.assertIn(b"status.txt", report.data)
@@ -336,7 +413,21 @@ class InvestigationRouteTests(unittest.TestCase):
             self.assertEqual(completed.headers["Location"], "/investigations")
             history = client.get(completed.headers["Location"])
             self.assertIn(b"Branch office outage", history.data)
-            self.assertIn(b"completed", history.data)
+            self.assertIn(b"Closed", history.data)
+
+            curated = client.post(
+                f"/investigations/{investigation_id}/report/contents",
+                data={"event_id": dns_event["id"]},
+            )
+            self.assertEqual(curated.status_code, 302)
+            curated_report = client.get(curated.headers["Location"])
+            self.assertIn(b"Saved the case report contents.", curated_report.data)
+            report_preview = curated_report.data.split(
+                b'<article class="investigation-report"', 1
+            )[1]
+            self.assertIn(b"portal.example.com", report_preview)
+            self.assertNotIn(b"The firewall policy changed at 09:45.", report_preview)
+            self.assertNotIn(b"Evidence appendix", report_preview)
 
     def test_pause_stops_automatic_tool_recording_but_keeps_manual_context(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -369,7 +460,7 @@ class InvestigationRouteTests(unittest.TestCase):
                         "duration": "10", "qps": "50", "concurrency": "40",
                     },
                 )
-            self.assertNotIn(b"Recorded in the active investigation", response.data)
+            self.assertNotIn(b"Recorded in the active case", response.data)
             self.assertIn(b"Recording paused for", response.data)
             self.assertEqual(
                 len(store.events_for_user(investigation_id, "test-user")), before

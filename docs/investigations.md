@@ -1,32 +1,34 @@
-# Investigation journals
+# Investigations and case journals
 
-Investigations turn individual toolkit actions into a durable troubleshooting
+Investigations is the toolkit workspace; each individual troubleshooting record
+inside it is a case. Cases turn individual toolkit actions into a durable
 record. This first vertical slice establishes the shared persistence and UI
 contract, integrates DNS Tester, and leaves SSH/Telnet session capture and other
 diagnostics for later slices.
 
 ## Operator workflow
 
-Each user may have one open investigation. An open investigation is either:
+Each user may have one open case. An open case is either:
 
 - `recording`, which accepts supported tool events automatically; or
 - `paused`, which suppresses automatic tool events while still accepting
   deliberate notes and evidence uploads.
 
-Finishing moves the investigation to `completed`. Completed investigations,
-their journal events, and their evidence metadata are read-only. Starting a new
-investigation does not alter completed work.
+Closing moves the case to the internal `completed` state. Closed case journal
+events and evidence metadata are read-only. Report inclusion is presentation
+metadata and remains editable after closure; changing it never changes or
+deletes source evidence. Starting a new case does not alter closed work.
 
 The global banner makes the current recording context visible on every permitted
-page. The investigation workspace uses tabs-first Journal, Evidence, and Report
+page. The case workspace uses tabs-first Journal, Evidence, and Report
 views on desktop and mobile.
 
 ## Persistence and ownership
 
-`instance/investigations.sqlite3` is the source of truth for investigations,
+`instance/investigations.sqlite3` is the source of truth for cases,
 journal events, and evidence metadata. It uses SQLite WAL mode, a busy timeout,
 a fresh-instance initialization lock, foreign keys, and owner-only file modes.
-All queries that expose investigation data include the owning user ID.
+All queries that expose case data include the owning user ID.
 
 Files are stored through `LocalDatastore` beneath:
 
@@ -43,7 +45,7 @@ timestamp, and the journal event that introduced it.
 
 The toolkit recovery archive already includes top-level SQLite databases and the
 Datastore. Profile backup intentionally does not include operational
-investigation data.
+case data.
 
 ## Event contract
 
@@ -70,18 +72,26 @@ metrics, details, summaries, or audit records.
 
 ## DNS integration
 
-DNS Tester records lookup and bounded load-test attempts while the current
-investigation is recording. Events retain parsed hosts/resolvers, mode, record
+DNS Tester records lookup and bounded load-test attempts while the current case
+is recording. Events retain parsed hosts/resolvers, mode, record
 type, timeout and bounded load settings, outcome, summary metrics, and the
 existing structured result payload. The report expands lookup results and load
 metrics without rerunning the test.
 
 ## Reporting
 
-The first report is deterministic HTML derived from retained journal events and
-artifact metadata. It includes the situation, operator, lifecycle state,
-chronological evidence, DNS result tables, and a hashed evidence appendix. The
-browser print flow provides paper or PDF output.
+The report is deterministic HTML derived from retained journal events and
+artifact metadata. Its first layer is a compact chronological case timeline with
+summary facts. Structured diagnostic results appear on individually numbered
+detail pages linked from the timeline, followed by an evidence appendix when at
+least one file is selected. The browser print flow preserves those internal
+links in paper or PDF output.
+
+The Report contents editor includes or excludes individual timeline events and
+evidence files. It changes only each item's `report_placement`; the underlying
+event payload, artifact metadata, and stored file remain untouched. This editor
+therefore stays available after the case closes even though the journal and
+evidence library are immutable.
 
 Future generated narrative may summarize or propose findings, but it must be
 clearly labeled as generated interpretation, cite retained event IDs, and remain
