@@ -303,6 +303,9 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("break-inside: auto;", print_rules)
         self.assertIn(".investigation-report tr", print_rules)
         self.assertIn("display: table-header-group;", print_rules)
+        self.assertIn(".investigation-report-event > header > div", print_rules)
+        self.assertIn("padding: 4px 0 5px 9px;", print_rules)
+        self.assertIn("font-size: 8.3pt;", print_rules)
 
     def test_profile_create_surface_uses_shared_collection_token(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
