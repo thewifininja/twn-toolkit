@@ -231,6 +231,26 @@
             </section>
           {% endif %}
         {% endwith %}
+        {% if active_investigation %}
+          <section class="active-investigation-banner {{ active_investigation.state }}" aria-label="Active investigation">
+            <a class="active-investigation-copy" href="{{ url_for('investigation_detail', investigation_id=active_investigation.id) }}">
+              <span class="active-investigation-indicator" aria-hidden="true"></span>
+              <span>
+                <small>{{ 'Recording to' if active_investigation.is_recording else 'Recording paused for' }}</small>
+                <strong>{{ active_investigation.title }}</strong>
+              </span>
+              <span class="active-investigation-count">{{ active_investigation.event_count }} events</span>
+            </a>
+            <div class="active-investigation-actions">
+              <a href="{{ url_for('investigation_detail', investigation_id=active_investigation.id) }}">Open journal</a>
+              <form method="post" action="{{ url_for('update_investigation_state', investigation_id=active_investigation.id) }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <input type="hidden" name="state" value="{{ 'paused' if active_investigation.is_recording else 'recording' }}">
+                <button type="submit" class="link-button">{{ 'Pause' if active_investigation.is_recording else 'Resume' }}</button>
+              </form>
+            </div>
+          </section>
+        {% endif %}
         {% block content %}{% endblock %}
       </main>
     </div>

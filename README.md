@@ -32,6 +32,7 @@ Current release: **v0.18.1**
   - Multi-Host Tools
   - Services & Protocols
   - Traffic & Interfaces
+- **Investigations** — durable troubleshooting journals, evidence, and reports
 - **Local Tools** — Datastore and managed File Transfers
 - **Automation** — reusable Conditions, Actions, and Automations
 - **Administration** — Settings, access, backups, operational limits, and
@@ -200,6 +201,27 @@ The sidebar and Network Tools page use the same functional organization.
   selected directly from the contained Datastore after explicit authorization
   confirmation; each replay is bounded by capture size, frame count, and
   scheduled duration.
+
+### Investigations
+
+An operator can start one investigation at a time and carry its recording
+context across toolkit pages. The first supported diagnostic integration is DNS
+Tester; each run retains its targets, parameters, outcome, metrics, and detailed
+results as an immutable journal event. Operators can also:
+
+- pause automatic capture without ending the investigation;
+- add timestamped notes while recording is active or paused;
+- upload collision-safe evidence files to a managed per-investigation Datastore
+  folder with retained size, content type, and SHA-256 metadata;
+- review a chronological journal and download retained evidence; and
+- render a deterministic report whose statements and result tables come from
+  retained journal evidence, then print or save it as PDF.
+
+Investigations are owner-scoped and access-profile controlled. Metadata lives in
+owner-only `instance/investigations.sqlite3`; files live below
+`instance/datastore/Investigations/`. Completed investigations are read-only in
+this first slice. See [Investigation journals](docs/investigations.md) for the
+event contract and extension guidance.
 
 ### Local Tools
 
@@ -492,6 +514,8 @@ unrestricted internet exposure.
   installation, permissions, lifecycle, logs, upgrades, and removal
 - [Automation](docs/automations.md) — condition/action contracts, scheduling,
   state, retention, and pipeline behavior
+- [Investigation journals](docs/investigations.md) — lifecycle, event evidence,
+  managed files, reports, and tool-integration guidance
 - [DHCP Discover](docs/dhcp-discover.md) — safe probe behavior, platform
   permissions, interpretation, and troubleshooting
 - [Packet Capture](docs/packet-capture.md) — capture deployment, controls,

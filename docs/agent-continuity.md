@@ -57,6 +57,16 @@ precedent.
   cap duration, per-resolver QPS, resolver count, concurrency, and total queries;
   retain only aggregate results and latency percentiles rather than every
   response.
+- Investigations are durable, owner-scoped troubleshooting workspaces. Keep one
+  recording-or-paused investigation per user, make tool events immutable and
+  idempotent by operation ID, and do not let journal-write failure break the
+  diagnostic itself. Pausing blocks automatic tool capture but still permits
+  intentional notes and evidence. Completed investigations are read-only until
+  an explicit reopening policy is designed. Store metadata in owner-only
+  `instance/investigations.sqlite3`; constrain files to managed
+  `instance/datastore/Investigations/<investigation-id>/` folders. Reports must
+  remain deterministic views of retained evidence; generated narrative or AI
+  interpretation must be visibly separate and must never rewrite source events.
 - iPerf3 support uses only an already installed `iperf3` binary and never
   installs packages or invokes a shell. Client traffic requires explicit
   authorization and fixed duration/stream/rate caps. Server mode runs in a

@@ -119,6 +119,8 @@ The persistent sidebar is the primary navigation:
   workflows.
 - **Network Tools** is divided into Addressing & Reachability, Multi-Host
   Tools, Services & Protocols, and Traffic & Interfaces.
+- **Investigations** keeps troubleshooting tests, notes, evidence, and reports
+  together.
 - **Local Tools** contains the Datastore and managed File Transfers.
 - **Automation** contains reusable Automations, Schedules, Conditions, and
   Actions.
@@ -131,6 +133,25 @@ Pages with peer views place their tab navigator first. Saved configuration
 panels follow one workflow: select a record to load it, edit and save it, or use
 **Duplicate** to create an independent copy before changing it. Multi-record
 libraries expose the same action on each expandable record.
+
+## Start a troubleshooting investigation
+
+1. Open **Investigations** and enter a concise title plus the situation already
+   known.
+2. Select **Start recording**. A recording banner remains visible as you move
+   through the toolkit.
+3. Run **Network Tools → Addressing & Reachability → DNS Tester**. Completed and
+   failed DNS runs are added to the journal with structured inputs and results.
+4. Open the journal to add operator context. Use **Pause recording** when tool
+   runs should not be associated automatically; notes and evidence can still be
+   added while paused.
+5. Use **Evidence** for relevant files. The toolkit stores them in a managed
+   investigation folder and records their SHA-256 hashes.
+6. Use **Report** to review the evidence-backed timeline and print or save it as
+   PDF. Select **Finish investigation** when the work is complete.
+
+The initial integration records DNS Tester runs. Other tools can be added to the
+same event contract without changing existing investigations.
 
 ## Run a first network test
 

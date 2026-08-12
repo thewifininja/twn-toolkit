@@ -92,6 +92,7 @@ class UIComponentTests(unittest.TestCase):
             "auth/settings.html",
             "auth/updates.html",
             "auth/backup.html",
+            "investigations/detail.html",
         )
 
         for template_name in shared_chrome_templates:
@@ -237,6 +238,23 @@ class UIComponentTests(unittest.TestCase):
             "@container saved-profile-manager (max-width: 300px) {", 1
         )[1].split("}", 1)[0]
         self.assertIn("grid-template-columns: minmax(0, 1fr);", compact_profiles)
+
+    def test_investigation_evidence_and_reports_contain_dense_mobile_content(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            ".investigation-evidence-library .section-head p {", stylesheet
+        )
+        self.assertIn("overflow-wrap: anywhere;", stylesheet)
+        self.assertIn(".investigation-report > *", stylesheet)
+        self.assertIn(".investigation-report .table-wrap {", stylesheet)
+        report_table_rule = stylesheet.split(
+            ".investigation-report .table-wrap {", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("max-width: 100%;", report_table_rule)
+        self.assertIn("width: 100%;", report_table_rule)
 
     def test_profile_create_surface_uses_shared_collection_token(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

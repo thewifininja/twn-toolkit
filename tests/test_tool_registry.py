@@ -23,6 +23,7 @@ class ToolRegistryTests(unittest.TestCase):
         self.assertIn("tools.iperf3", TOOL_BY_ID)
         self.assertIn("tools.multicast", TOOL_BY_ID)
         self.assertIn("tools.wake_on_lan", TOOL_BY_ID)
+        self.assertIn("investigations.workspace", TOOL_BY_ID)
         self.assertEqual(TOOL_BY_ID["tools.iperf3"].nav_group, "traffic")
         self.assertEqual(TOOL_BY_ID["tools.multicast"].nav_group, "traffic")
         self.assertEqual(TOOL_BY_ID["tools.wake_on_lan"].nav_group, "services")
@@ -42,6 +43,10 @@ class ToolRegistryTests(unittest.TestCase):
         self.assertEqual(
             REGISTRY.tool_id_for_endpoint("fortiap_client_history"),
             "fortigate.wireless_client_history",
+        )
+        self.assertEqual(
+            REGISTRY.tool_id_for_endpoint("investigation_report"),
+            "investigations.workspace",
         )
 
     def test_registry_rejects_duplicate_tool_ids(self) -> None:

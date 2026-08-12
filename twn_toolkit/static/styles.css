@@ -2556,6 +2556,578 @@ button.danger:hover {
   }
 }
 
+/* Investigation journal and evidence workspace */
+.active-investigation-banner {
+  align-items: stretch;
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 8%);
+  border: 1px solid color-mix(in srgb, var(--line-strong), var(--depth-primary) 30%);
+  border-left: 5px solid var(--depth-primary);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-width: 0;
+  overflow: hidden;
+  padding: 10px 12px;
+}
+
+.active-investigation-banner.paused {
+  background: color-mix(in srgb, var(--panel), #c9903a 8%);
+  border-left-color: #c9903a;
+}
+
+.active-investigation-copy {
+  align-items: center;
+  color: var(--ink);
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  text-decoration: none;
+}
+
+.active-investigation-copy > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+}
+
+.active-investigation-copy small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.active-investigation-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-investigation-indicator {
+  background: var(--depth-primary);
+  border: 3px solid color-mix(in srgb, var(--depth-primary), transparent 76%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--depth-primary), transparent 86%);
+  flex: 0 0 auto;
+  height: 11px;
+  width: 11px;
+}
+
+.active-investigation-banner.paused .active-investigation-indicator {
+  background: #c9903a;
+  border-color: color-mix(in srgb, #c9903a, transparent 76%);
+  box-shadow: none;
+}
+
+.active-investigation-count {
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.active-investigation-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.active-investigation-actions a,
+.active-investigation-actions .link-button {
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 850;
+  padding: 7px 9px;
+}
+
+.investigation-recorded-notice {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 9%);
+  border: 1px solid color-mix(in srgb, var(--line-strong), var(--depth-primary) 28%);
+  border-radius: 9px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+  padding: 9px 11px;
+}
+
+.investigation-recorded-notice > span {
+  color: var(--depth-primary);
+}
+
+.investigation-recorded-notice a {
+  margin-left: auto;
+}
+
+.investigation-current-summary,
+.investigation-overview-strip {
+  align-items: start;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
+}
+
+.investigation-current-summary h3,
+.investigation-card h3,
+.investigation-artifact-card h3 {
+  margin: 8px 0 0;
+}
+
+.investigation-current-summary p,
+.investigation-card p,
+.investigation-artifact-card p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+.investigation-state {
+  background: var(--surface-inset);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+.investigation-state.recording {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 12%);
+  border-color: color-mix(in srgb, var(--line-strong), var(--depth-primary) 35%);
+  color: var(--depth-primary);
+}
+
+.investigation-state.paused {
+  background: color-mix(in srgb, var(--panel), #c9903a 12%);
+  border-color: color-mix(in srgb, var(--line-strong), #c9903a 35%);
+  color: color-mix(in srgb, #c9903a, var(--ink) 28%);
+}
+
+.investigation-inline-stats,
+.investigation-card-stats,
+.investigation-report-meta,
+.investigation-result-metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  margin: 0;
+}
+
+.investigation-inline-stats > div,
+.investigation-card-stats > div,
+.investigation-report-meta > div,
+.investigation-result-metrics > div {
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.investigation-inline-stats dt,
+.investigation-card-stats dt,
+.investigation-report-meta dt,
+.investigation-result-metrics dt {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.investigation-inline-stats dd,
+.investigation-card-stats dd,
+.investigation-report-meta dd,
+.investigation-result-metrics dd {
+  font-weight: 750;
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.investigation-card-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.investigation-card {
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-left: 3px solid color-mix(in srgb, var(--depth-primary), transparent 32%);
+  border-radius: 11px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.investigation-card h3 a {
+  color: var(--ink);
+}
+
+.investigation-overview-strip {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.investigation-state-actions {
+  justify-content: end;
+  margin: 0;
+}
+
+.investigation-note-form,
+.investigation-upload-form {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.investigation-note-form textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.investigation-upload-form label {
+  margin: 0;
+}
+
+.investigation-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.investigation-event {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  padding-bottom: 16px;
+  position: relative;
+}
+
+.investigation-event:not(:last-child)::before {
+  background: var(--line-strong);
+  content: "";
+  left: 8px;
+  position: absolute;
+  top: 17px;
+  bottom: -1px;
+  width: 2px;
+}
+
+.investigation-event-marker {
+  background: var(--panel);
+  border: 3px solid var(--depth-primary);
+  border-radius: 50%;
+  height: 16px;
+  margin-top: 16px;
+  position: relative;
+  width: 16px;
+  z-index: 1;
+}
+
+.investigation-event.note-added .investigation-event-marker {
+  border-color: var(--depth-secondary);
+}
+
+.investigation-event > article {
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.investigation-event-head {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.investigation-event-head h3 {
+  margin: 3px 0 0;
+}
+
+.investigation-event-time {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.investigation-event > article > p {
+  line-height: 1.55;
+  margin: 10px 0;
+  white-space: pre-wrap;
+}
+
+.investigation-event footer {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  gap: 6px 14px;
+}
+
+.investigation-artifact-list {
+  display: grid;
+  gap: 10px;
+}
+
+.investigation-evidence-library .section-head > div,
+.investigation-evidence-library .section-head p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.investigation-artifact-card {
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 13px 14px;
+}
+
+.investigation-artifact-card h3 {
+  margin: 0;
+}
+
+.investigation-artifact-card code {
+  display: block;
+  font-size: 0.7rem;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+}
+
+.investigation-artifact-icon {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 8%);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  display: flex;
+  font-size: 1.2rem;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.investigation-report-toolbar {
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.investigation-report-toolbar p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.investigation-report {
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  color: #19211f;
+  display: grid;
+  gap: 30px;
+  padding: clamp(24px, 5vw, 58px);
+}
+
+.investigation-report > *,
+.investigation-report-event {
+  min-width: 0;
+}
+
+.investigation-report .table-wrap {
+  max-width: 100%;
+  width: 100%;
+}
+
+.investigation-report-title {
+  border-bottom: 2px solid #d9dfdc;
+  padding-bottom: 24px;
+}
+
+.investigation-report-title h1 {
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  letter-spacing: -0.045em;
+  margin: 6px 0 0;
+}
+
+.investigation-report-title > p {
+  color: #4d5b57;
+  line-height: 1.6;
+  max-width: 80ch;
+}
+
+.investigation-report-meta > div,
+.investigation-result-metrics > div {
+  background: #f5f7f6;
+  border-color: #d9dfdc;
+}
+
+.investigation-report > section > h2 {
+  border-bottom: 1px solid #d9dfdc;
+  padding-bottom: 8px;
+}
+
+.investigation-report-event {
+  border-left: 3px solid #2f7656;
+  padding: 2px 0 18px 18px;
+}
+
+.investigation-report-event + .investigation-report-event {
+  border-top: 1px solid #e1e5e3;
+  padding-top: 18px;
+}
+
+.investigation-report-event > header {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.investigation-report-event h3 {
+  margin: 3px 0 0;
+}
+
+.investigation-report-event time {
+  color: #5d6966;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.investigation-report table {
+  color: #19211f;
+}
+
+@media (max-width: 800px) {
+  .active-investigation-banner,
+  .investigation-current-summary,
+  .investigation-overview-strip,
+  .investigation-note-form,
+  .investigation-upload-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .active-investigation-banner {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .active-investigation-actions {
+    border-top: 1px solid var(--line);
+    justify-content: space-between;
+    padding-top: 8px;
+  }
+
+  .investigation-state-actions {
+    justify-content: start;
+  }
+
+  .investigation-note-form button,
+  .investigation-upload-form button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .active-investigation-copy {
+    align-items: start;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .active-investigation-count {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .investigation-inline-stats,
+  .investigation-card-stats,
+  .investigation-report-meta,
+  .investigation-result-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .investigation-state-actions,
+  .investigation-state-actions form,
+  .investigation-state-actions button {
+    width: 100%;
+  }
+
+  .investigation-artifact-card {
+    align-items: start;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .investigation-artifact-card > .button-link {
+    grid-column: 1 / -1;
+    text-align: center;
+  }
+
+  .investigation-report-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media print {
+  .topbar,
+  .app-sidebar,
+  .active-investigation-banner,
+  .messages,
+  .investigation-detail-page > .workspace-tabs,
+  .investigation-detail-page > .workspace-header,
+  .investigation-overview-strip,
+  .investigation-report-toolbar,
+  .live-tool-tray {
+    display: none !important;
+  }
+
+  .app-layout,
+  .shell,
+  .investigation-detail-page {
+    display: block;
+    margin: 0;
+    max-width: none;
+    padding: 0;
+  }
+
+  .investigation-report {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .investigation-report-event,
+  .investigation-artifact-card,
+  .investigation-report table {
+    break-inside: avoid;
+  }
+}
+
 .certificate-options {
   display: grid;
   gap: 14px;

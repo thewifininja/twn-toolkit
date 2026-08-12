@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import empty_state, section_header, workspace_header %}
+{% block shell_classes %} investigation-shell{% endblock %}
+{% block content %}
+<div class="workspace-page investigations-page">
+  {{ workspace_header(
+    "Investigations",
+    "Keep tests, evidence, operator notes, and the final troubleshooting narrative together from the first check through the handoff.",
+    "Troubleshooting journal",
+    "Your investigations",
+    investigations|length,
+    "One can be open at a time"
+  ) }}
+
+  {% if open_investigation %}
+    <section class="panel investigation-current-card">
+      {% call section_header("Current investigation", "Automatic journal recording follows you across toolkit pages.", "Recording context") %}
+        <a class="button-link" href="{{ url_for('investigation_detail', investigation_id=open_investigation.id) }}">Open journal</a>
+      {% endcall %}
+      <div class="investigation-current-summary">
+        <div>
+          <span class="investigation-state {{ open_investigation.state }}">{{ open_investigation.state }}</span>
+          <h3>{{ open_investigation.title }}</h3>
+          {% if open_investigation.description %}<p>{{ open_investigation.description }}</p>{% endif %}
+        </div>
+        <dl class="investigation-inline-stats">
+          <div><dt>Started</dt><dd>{{ open_investigation.started_display }}</dd></div>
+          <div><dt>Journal events</dt><dd>{{ open_investigation.event_count }}</dd></div>
+          <div><dt>Evidence files</dt><dd>{{ open_investigation.artifact_count }}</dd></div>
+        </dl>
+      </div>
+    </section>
+  {% else %}
+    <section class="panel investigation-create-panel">
+      {{ section_header("Start an investigation", "Give the work a durable name before running the first diagnostic.", "New workspace") }}
+      <form method="post" action="{{ url_for('create_investigation') }}" class="form-grid investigation-create-form">
+        <label class="full-width">Title
+          <input name="title" maxlength="120" required placeholder="Branch office intermittent outage">
+        </label>
+        <label class="full-width">Situation and starting context
+          <textarea name="description" rows="4" maxlength="2000" placeholder="What is affected, when it started, and what is already known?"></textarea>
+        </label>
+        <div class="button-row full-width">
+          <button type="submit">Start recording</button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+
+  <section class="panel investigation-library">
+    {{ section_header("Investigation history", "Completed work remains available as a durable technical record.", "Your journal") }}
+    {% if investigations %}
+      <div class="investigation-card-grid">
+        {% for investigation in investigations %}
+          <article class="investigation-card">
+            <header>
+              <span class="investigation-state {{ investigation.state }}">{{ investigation.state }}</span>
+              <h3><a href="{{ url_for('investigation_detail', investigation_id=investigation.id) }}">{{ investigation.title }}</a></h3>
+              {% if investigation.description %}<p>{{ investigation.description }}</p>{% endif %}
+            </header>
+            <dl class="investigation-card-stats">
+              <div><dt>Started</dt><dd>{{ investigation.started_display }}</dd></div>
+              <div><dt>Events</dt><dd>{{ investigation.event_count }}</dd></div>
+              <div><dt>Evidence</dt><dd>{{ investigation.artifact_count }}</dd></div>
+            </dl>
+            <a class="button-link secondary" href="{{ url_for('investigation_detail', investigation_id=investigation.id) }}">View investigation</a>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% call empty_state("No investigations yet", "Start one above before beginning your next troubleshooting session.") %}{% endcall %}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
