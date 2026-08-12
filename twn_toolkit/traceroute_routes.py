@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import secrets
+import time
 
 from flask import (
     Blueprint,
@@ -13,7 +15,13 @@ from flask import (
 )
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
+from .audit import (
+    annotate_profile_deleted,
+    annotate_profile_duplicated,
+    annotate_profile_saved,
+    annotate_tool_run,
+)
+from .investigation_context import record_current_investigation_event
 from .network_tools import ToolInputError, parse_ping_targets
 from .profiles import TracerouteHostProfileStore
 from .traceroute_tools import prepare_traceroute, run_traceroute, stream_traceroute
@@ -48,8 +56,11 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
             "timeout": "2",
         }
         result = None
+        journal_event = None
         error = ""
         if request.method == "POST":
+            operation_id = f"traceroute:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
             form = {
                 "host": request.form.get("host", "").strip(),
                 "family": request.form.get("family", "auto"),
@@ -95,12 +106,48 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
                     "destination reached": bool(result and result.get("reached")),
                 },
             )
+            if error:
+                journal_summary = f"Traceroute failed: {error}"
+                journal_metrics = {}
+            else:
+                reached = bool(result and result.get("reached"))
+                journal_summary = (
+                    f"Traced the path to {result['host']} across "
+                    f"{result['hop_count']} hop(s); the destination was "
+                    f"{'reached' if reached else 'not reached'}."
+                )
+                journal_metrics = {
+                    "hop_count": result.get("hop_count", 0),
+                    "responding_hops": result.get("responding_hops", 0),
+                    "reached": reached,
+                }
+            journal_event = record_current_investigation_event(
+                operation_id=operation_id,
+                event_type="diagnostic.failed" if error else "diagnostic.completed",
+                tool_id="tools.traceroute",
+                action="Traceroute",
+                outcome="failed" if error else "succeeded",
+                summary=journal_summary,
+                targets={"host": result.get("host") if result else ""},
+                parameters={
+                    "family": form["family"],
+                    "method": form["method"],
+                    "maximum_hops": form["max_hops"],
+                    "probes_per_hop": form["probes"],
+                    "timeout_seconds": form["timeout"],
+                },
+                metrics=journal_metrics,
+                details={"error": error, "result": result or {}},
+                started_at=journal_started_at,
+                completed_at=time.time(),
+            )
         return render_template(
             "tools/traceroute.html",
             error=error,
             form=form,
             result=result,
             profiles=TracerouteHostProfileStore(current_app.instance_path).all(),
+            journal_event=journal_event,
         )
 
     @tools_bp.post("/traceroute/profiles")
@@ -158,6 +205,8 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.post("/traceroute/run")
     def traceroute_run():
+        operation_id = f"traceroute-stream:{secrets.token_hex(12)}"
+        journal_started_at = time.time()
         payload = request.get_json(silent=True) or {}
         try:
             prepared = prepare_traceroute(
@@ -192,8 +241,13 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
 
         @stream_with_context
         def generate():
+            hops: list[dict[str, object]] = []
             try:
                 for event in stream_traceroute(prepared):
+                    if event.get("type") == "hop" and isinstance(
+                        event.get("hop"), dict
+                    ):
+                        hops.append(dict(event["hop"]))
                     if event.get("type") == "complete":
                         _record_traceroute_activity(
                             "Ran traceroute",
@@ -207,6 +261,45 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
                             hops=int(event.get("hop_count", 0)),
                             count_action=True,
                         )
+                        reached = bool(event.get("reached"))
+                        journal_event = record_current_investigation_event(
+                            operation_id=operation_id,
+                            event_type="diagnostic.completed",
+                            tool_id="tools.traceroute",
+                            action="Traceroute",
+                            outcome="succeeded",
+                            summary=(
+                                f"Traced the path to {prepared['host']} across "
+                                f"{event.get('hop_count', 0)} hop(s); the destination "
+                                f"was {'reached' if reached else 'not reached'}."
+                            ),
+                            targets={"host": prepared["host"]},
+                            parameters={
+                                "family": str(payload.get("family", "auto")),
+                                "method": prepared["method"],
+                                "maximum_hops": prepared["max_hops"],
+                                "probes_per_hop": prepared["probes"],
+                                "timeout_seconds": prepared["timeout"],
+                            },
+                            metrics={
+                                "hop_count": int(event.get("hop_count", 0)),
+                                "responding_hops": int(
+                                    event.get("responding_hops", 0)
+                                ),
+                                "reached": reached,
+                            },
+                            details={
+                                "result": {
+                                    "host": prepared["host"],
+                                    "family": str(payload.get("family", "auto")),
+                                    "method": prepared["method"],
+                                    "hops": hops,
+                                }
+                            },
+                            started_at=journal_started_at,
+                            completed_at=time.time(),
+                        )
+                        event["case_recorded"] = bool(journal_event)
                     yield json.dumps(event, separators=(",", ":")) + "\n"
             except ToolInputError as exc:
                 _record_traceroute_activity(
@@ -214,7 +307,34 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
                     f"{prepared['host']}: failed",
                     count_action=True,
                 )
-                yield json.dumps({"type": "error", "error": str(exc)}, separators=(",", ":")) + "\n"
+                journal_event = record_current_investigation_event(
+                    operation_id=operation_id,
+                    event_type="diagnostic.failed",
+                    tool_id="tools.traceroute",
+                    action="Traceroute",
+                    outcome="failed",
+                    summary=f"Traceroute failed: {exc}",
+                    targets={"host": prepared["host"]},
+                    parameters={
+                        "family": str(payload.get("family", "auto")),
+                        "method": prepared["method"],
+                        "maximum_hops": prepared["max_hops"],
+                        "probes_per_hop": prepared["probes"],
+                        "timeout_seconds": prepared["timeout"],
+                    },
+                    metrics={"hop_count": len(hops)},
+                    details={"error": str(exc), "hops": hops},
+                    started_at=journal_started_at,
+                    completed_at=time.time(),
+                )
+                yield json.dumps(
+                    {
+                        "type": "error",
+                        "error": str(exc),
+                        "case_recorded": bool(journal_event),
+                    },
+                    separators=(",", ":"),
+                ) + "\n"
 
         response = Response(generate(), mimetype="application/x-ndjson")
         response.headers["Cache-Control"] = "no-store"

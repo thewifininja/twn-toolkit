@@ -290,7 +290,7 @@ class UIComponentTests(unittest.TestCase):
         )[0]
 
         self.assertIn('class="investigation-report-evidence"', detail_template)
-        self.assertIn('class="investigation-dns-results-table"', detail_template)
+        self.assertIn('class="investigation-result-table"', detail_template)
         self.assertIn('class="panel investigation-report-builder"', detail_template)
         self.assertIn('href="#report-result-{{ event.id }}"', detail_template)
         self.assertIn('class="investigation-report-result"', detail_template)

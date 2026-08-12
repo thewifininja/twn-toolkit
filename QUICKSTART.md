@@ -140,8 +140,9 @@ libraries expose the same action on each expandable record.
    known.
 2. Select **Open case**. A recording banner remains visible as you move
    through the toolkit.
-3. Run **Network Tools → Addressing & Reachability → DNS Tester**. Completed and
-   failed DNS runs are added to the journal with structured inputs and results.
+3. Run a supported finite diagnostic: DNS Tester, TCP Port Scanner, Traceroute,
+   NTP Tester, Path MTU Tester, or Wi-Fi / LAN Speed Test. Completed and failed
+   runs are added to the journal with structured inputs and results.
 4. Open the journal to add operator context. Use **Pause recording** when tool
    runs should not be associated automatically; notes and evidence can still be
    added while paused.
@@ -152,8 +153,9 @@ libraries expose the same action on each expandable record.
    structured diagnostic to its detailed-result page. Select **Close case** when
    the work is complete; report selection remains editable afterward.
 
-The initial integration records DNS Tester runs. Other tools can be added to the
-same event contract without changing existing cases.
+Long-running Multi-Ping and future terminal sessions use a separate lifecycle:
+their later integration will record start and stop events plus a bounded summary
+rather than treating every sample or terminal byte as a journal event.
 
 ## Run a first network test
 

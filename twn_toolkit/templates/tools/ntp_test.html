@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
+{% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager %}
 
 {% block content %}
 <section class="panel">
@@ -8,6 +8,7 @@
     <p>Query an NTP server directly and measure its clock offset, network delay, jitter, and synchronization state.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  {{ case_recorded_notice(journal_event) }}
 
   <form class="form" method="post" id="ntp-form" data-loading-message="Testing NTP servers…" data-save-profile-url="{{ url_for('tools.save_ntp_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_ntp_profile') }}">
     {% call saved_profile_manager("NTP server lists", "Load or maintain reusable groups of time servers.", profiles|length) %}

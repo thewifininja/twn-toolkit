@@ -205,9 +205,10 @@ The sidebar and Network Tools page use the same functional organization.
 ### Investigations
 
 An operator can open one case at a time in the Investigations workspace and
-carry its recording context across toolkit pages. The first supported diagnostic integration is DNS
-Tester; each run retains its targets, parameters, outcome, metrics, and detailed
-results as an immutable journal event. Operators can also:
+carry its recording context across toolkit pages. DNS tests, TCP port scans,
+traceroutes, NTP tests, Path MTU tests, and browser-to-toolkit speed tests retain
+their targets, non-secret parameters, outcomes, metrics, and bounded results as
+immutable journal events. Operators can also:
 
 - pause automatic capture without closing the case;
 - add timestamped notes while recording is active or paused;

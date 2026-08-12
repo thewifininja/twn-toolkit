@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
+{% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager %}
 
 {% block content %}
 <section class="panel dns-workspace-panel">
@@ -13,13 +13,7 @@
   </header>
 
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  {% if journal_event %}
-    <div class="investigation-recorded-notice">
-      <span aria-hidden="true">●</span>
-      <strong>Recorded in the active case</strong>
-      <a href="{{ url_for('investigation_detail', investigation_id=journal_event.investigation_id) }}">View journal entry</a>
-    </div>
-  {% endif %}
+  {{ case_recorded_notice(journal_event) }}
 
   <form
     class="dns-workspace-form"

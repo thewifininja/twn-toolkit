@@ -3300,6 +3300,10 @@ button.danger:hover {
   color: #19211f;
 }
 
+.investigation-result-table td {
+  white-space: pre-line;
+}
+
 @media (max-width: 800px) {
   .active-investigation-banner,
   .investigation-current-summary,

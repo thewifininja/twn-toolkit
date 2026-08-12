@@ -73,6 +73,7 @@
       path: element.querySelector(".traceroute-path"),
       output: element.querySelector(".traceroute-live-output"),
       respondingHops: 0,
+      caseRecorded: false,
     };
   }
 
@@ -122,6 +123,7 @@
   }
 
   function handleEvent(view, event) {
+    if (event.case_recorded) view.caseRecorded = true;
     if (event.type === "start") {
       view.meta.textContent = `${view.target.label ? `${view.target.host} · ` : ""}${event.family} · ${event.method} · trace in progress`;
       view.state.textContent = "tracing";
@@ -214,7 +216,10 @@
     status.textContent = `Tracing ${targets.length} destination${targets.length === 1 ? "" : "s"}…`;
     try {
       await runQueue(targets, payload, views);
-      status.textContent = cancelled ? "Traceroutes cancelled." : "All traceroutes completed.";
+      const recorded = views.filter((view) => view.caseRecorded).length;
+      status.textContent = cancelled
+        ? "Traceroutes cancelled."
+        : `All traceroutes completed.${recorded ? ` ${recorded} recorded in the active case.` : ""}`;
     } finally {
       startButton.disabled = false;
       cancelButton.disabled = true;

@@ -68,6 +68,10 @@ precedent.
   `instance/datastore/Investigations/<investigation-id>/` folders. Reports must
   remain deterministic views of retained evidence; generated narrative or AI
   interpretation must be visibly separate and must never rewrite source events.
+  Tool-specific case-report shaping belongs in `investigation_reporting.py`,
+  not in the shared report template. Finite diagnostics record one completed or
+  failed event; long-running tools require explicit lifecycle events and bounded
+  summaries.
 - iPerf3 support uses only an already installed `iperf3` binary and never
   installs packages or invokes a shell. Client traffic requires explicit
   authorization and fixed duration/stream/rate caps. Server mode runs in a

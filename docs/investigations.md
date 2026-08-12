@@ -2,9 +2,9 @@
 
 Investigations is the toolkit workspace; each individual troubleshooting record
 inside it is a case. Cases turn individual toolkit actions into a durable
-record. This first vertical slice establishes the shared persistence and UI
-contract, integrates DNS Tester, and leaves SSH/Telnet session capture and other
-diagnostics for later slices.
+record. The shared persistence and UI contract now covers the first finite
+diagnostic set; long-running Multi-Ping and SSH/Telnet session capture remain
+separate lifecycle slices.
 
 ## Operator workflow
 
@@ -70,13 +70,20 @@ could contain unintended or sensitive content. Credentials, tokens, community
 strings, passwords, and private keys never belong in targets, parameters,
 metrics, details, summaries, or audit records.
 
-## DNS integration
+## Finite diagnostic integrations
 
-DNS Tester records lookup and bounded load-test attempts while the current case
-is recording. Events retain parsed hosts/resolvers, mode, record
-type, timeout and bounded load settings, outcome, summary metrics, and the
-existing structured result payload. The report expands lookup results and load
-metrics without rerunning the test.
+The first finite-result set records DNS Tester, TCP Port Scanner, Traceroute,
+NTP Tester, Path MTU Tester, and Wi-Fi / LAN Speed Test runs while the current
+case is recording. Each route retains normalized targets, non-secret bounded
+settings, summary metrics, and the structured results needed to reproduce the
+screen result in a report without rerunning the diagnostic. Browser speed tests
+are labeled specifically as browser-to-toolkit measurements, not internet speed
+tests.
+
+Streamed traceroutes record one event when each destination finishes. A client
+disconnect before completion does not invent a completed result. Multi-Ping and
+terminal sessions will instead need explicit started, stopped, disconnected,
+and reattached lifecycle events plus bounded rollups.
 
 ## Reporting
 
@@ -93,6 +100,11 @@ event payload, artifact metadata, and stored file remain untouched. This editor
 therefore stays available after the case closes even though the journal and
 evidence library are immutable.
 
+`investigation_reporting.py` is the presentation registry. It converts retained
+events into shared timeline facts and either a generic detail table or metric
+group. Report templates do not contain tool-specific result branches. Add a
+registry builder when a new event needs more than its human-readable summary.
+
 Future generated narrative may summarize or propose findings, but it must be
 clearly labeled as generated interpretation, cite retained event IDs, and remain
 separate from immutable source evidence.
@@ -104,4 +116,6 @@ After a meaningful tool run finishes, call
 contract above. Record start time before execution and completion time after the
 result is known. Normalize and sanitize data before the call. Add store or route
 tests proving successful and failed outcomes, pause behavior, retained details,
-and deterministic report rendering for any new result presentation.
+and deterministic report rendering for any new result presentation. Register
+the tool's report builder in `investigation_reporting.py`; keep presentation
+logic out of the shared Jinja template.

@@ -18,6 +18,7 @@ from flask import (
 from .audit import annotate_audit_event
 from .datastore import DatastoreError, format_bytes
 from .investigations import InvestigationError, InvestigationStore
+from .investigation_reporting import event_report_presentation
 
 
 def register_investigation_routes(
@@ -60,6 +61,9 @@ def register_investigation_routes(
         investigation = investigation_or_404(investigation_id)
         events = store.events_for_user(investigation_id, user_id())
         artifacts = store.artifacts_for_user(investigation_id, user_id())
+        event_presentations = {
+            event["id"]: event_report_presentation(event) for event in events
+        }
         report_events = [
             event for event in events if event["report_placement"] == "main"
         ]
@@ -69,8 +73,14 @@ def register_investigation_routes(
             if artifact["report_placement"] == "appendix"
         ]
         report_result_events = [
-            event for event in report_events if _event_has_detailed_results(event)
+            event
+            for event in report_events
+            if event_presentations[event["id"]]["detail"]
         ]
+        report_result_labels = {
+            event["id"]: f"R-{index:02d}"
+            for index, event in enumerate(report_result_events, start=1)
+        }
         return render_template(
             "investigations/detail.html",
             investigation=investigation,
@@ -80,12 +90,12 @@ def register_investigation_routes(
             report_artifacts=report_artifacts,
             report_result_events=report_result_events,
             detailed_result_event_ids={
-                event["id"] for event in events if _event_has_detailed_results(event)
+                event["id"]
+                for event in events
+                if event_presentations[event["id"]]["detail"]
             },
-            report_result_labels={
-                event["id"]: f"R-{index:02d}"
-                for index, event in enumerate(report_result_events, start=1)
-            },
+            event_presentations=event_presentations,
+            report_result_labels=report_result_labels,
             investigation_tabs=tabs(investigation_id, active_tab),
             active_investigation_tab=active_tab,
             format_bytes=format_bytes,
@@ -329,13 +339,3 @@ def _safe_next(default: str) -> str:
     if value.startswith("/") and not value.startswith("//") and not parsed.netloc:
         return value
     return default
-
-
-def _event_has_detailed_results(event: dict[str, object]) -> bool:
-    if event.get("tool_id") != "tools.dns_response":
-        return False
-    details = event.get("details")
-    return bool(
-        isinstance(details, dict)
-        and (details.get("results") or details.get("load_result"))
-    )

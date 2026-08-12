@@ -14,7 +14,7 @@
     "Investigation sections",
     "Journal state",
     investigation.state_label,
-    investigation.event_count ~ " events · " ~ investigation.artifact_count ~ " evidence files"
+    investigation.event_count ~ (" event" if investigation.event_count == 1 else " events") ~ " · " ~ investigation.artifact_count ~ (" evidence file" if investigation.artifact_count == 1 else " evidence files")
   ) }}
 
   <section class="panel investigation-overview-strip">
@@ -165,7 +165,7 @@
         <span class="eyebrow">Case report</span><h1>{{ investigation.title }}</h1>
         {% if investigation.description %}<p>{{ investigation.description }}</p>{% endif %}
         <dl class="investigation-report-meta">
-          <div><dt>Started</dt><dd>{{ investigation.started_display }}</dd></div><div><dt>Status</dt><dd>{{ investigation.state_label }}</dd></div><div><dt>Operator</dt><dd>{{ investigation.owner_username }}</dd></div><div><dt>Included</dt><dd>{{ report_events|length }} timeline entries · {{ report_artifacts|length }} files</dd></div>
+          <div><dt>Started</dt><dd>{{ investigation.started_display }}</dd></div><div><dt>Status</dt><dd>{{ investigation.state_label }}</dd></div><div><dt>Operator</dt><dd>{{ investigation.owner_username }}</dd></div><div><dt>Included</dt><dd>{{ report_events|length }} timeline {{ 'entry' if report_events|length == 1 else 'entries' }} · {{ report_artifacts|length }} {{ 'file' if report_artifacts|length == 1 else 'files' }}</dd></div>
         </dl>
       </header>
       <section class="investigation-report-timeline" id="case-timeline"><h2>Case timeline</h2>
@@ -174,15 +174,10 @@
             <article class="investigation-report-event">
               <header><div><time>{{ event.started_display }}</time><h3>{{ event.action }}</h3></div><span class="pill {{ 'success' if event.outcome == 'succeeded' else 'error' if event.outcome == 'failed' else '' }}">{{ event.outcome }}</span></header>
               <p>{{ event.summary }}</p>
-              {% if event.tool_id == 'tools.dns_response' %}
+              {% set presentation = event_presentations[event.id] %}
+              {% if presentation.facts %}
                 <dl class="investigation-report-event-facts">
-                  {% if event.parameters.record_type %}<div><dt>Record type</dt><dd>{{ event.parameters.record_type }}</dd></div>{% endif %}
-                  {% if event.metrics.successful is defined %}<div><dt>Successful</dt><dd>{{ event.metrics.successful }}</dd></div>{% endif %}
-                  {% if event.metrics.failed is defined %}<div><dt>Failed</dt><dd>{{ event.metrics.failed }}</dd></div>{% endif %}
-                  {% if event.metrics.average_ms is defined and event.metrics.average_ms is not none %}<div><dt>Average</dt><dd>{{ event.metrics.average_ms }} ms</dd></div>{% endif %}
-                  {% if event.metrics.completed_queries is defined %}<div><dt>Queries</dt><dd>{{ event.metrics.completed_queries }}</dd></div>{% endif %}
-                  {% if event.metrics.success_rate is defined %}<div><dt>Success rate</dt><dd>{{ event.metrics.success_rate }}%</dd></div>{% endif %}
-                  {% if event.metrics.achieved_qps is defined %}<div><dt>Achieved load</dt><dd>{{ event.metrics.achieved_qps }} QPS</dd></div>{% endif %}
+                  {% for fact in presentation.facts %}<div><dt>{{ fact.label }}</dt><dd>{{ fact.value }}</dd></div>{% endfor %}
                 </dl>
               {% endif %}
               {% if event.id in report_result_labels %}<a class="investigation-report-detail-link" href="#report-result-{{ event.id }}">Detailed results {{ report_result_labels[event.id] }} <span aria-hidden="true">→</span></a>{% endif %}
@@ -196,13 +191,13 @@
             <article class="investigation-report-result" id="report-result-{{ event.id }}">
               <header><div><span class="eyebrow">Detailed results · {{ report_result_labels[event.id] }}</span><h2>{{ event.action }}</h2><p>{{ event.started_display }} · {{ event.outcome }}</p></div><a href="#case-timeline">Back to timeline</a></header>
               <p>{{ event.summary }}</p>
-              {% if event.tool_id == 'tools.dns_response' and event.details.results %}
-                <div class="table-wrap"><table class="investigation-dns-results-table"><thead><tr><th>Query</th><th>Resolver</th><th>Type</th><th>Outcome</th><th>Answers</th><th>Time</th></tr></thead><tbody>
-                  {% for result in event.details.results %}<tr><td>{{ result.host_label or result.host }}{% if result.host_label and result.host %}<br><code>{{ result.host }}</code>{% endif %}</td><td>{{ result.server_label or result.server }}{% if result.server_label and result.server %}<br><code>{{ result.server }}</code>{% endif %}</td><td>{{ result.record_type }}</td><td>{{ result.status }}</td><td>{% if result.answers %}{% for answer in result.answers %}<code>{{ answer }}</code>{% if not loop.last %}<br>{% endif %}{% endfor %}{% else %}—{% endif %}</td><td>{{ result.response_ms }} ms</td></tr>{% endfor %}
+              {% set detail = event_presentations[event.id].detail %}
+              {% if detail and detail.kind == 'table' %}
+                <div class="table-wrap"><table class="investigation-result-table"><thead><tr>{% for column in detail.columns %}<th>{{ column }}</th>{% endfor %}</tr></thead><tbody>
+                  {% for row in detail.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}
                 </tbody></table></div>
-              {% elif event.tool_id == 'tools.dns_response' and event.details.load_result %}
-                {% set load = event.details.load_result %}
-                <dl class="investigation-result-metrics"><div><dt>Queries</dt><dd>{{ load.completed_queries }}</dd></div><div><dt>Success rate</dt><dd>{{ load.success_rate }}%</dd></div><div><dt>Achieved load</dt><dd>{{ load.achieved_qps }} QPS</dd></div><div><dt>Elapsed</dt><dd>{{ load.elapsed_seconds }} seconds</dd></div></dl>
+              {% elif detail and detail.kind == 'metrics' %}
+                <dl class="investigation-result-metrics">{% for metric in detail.values %}<div><dt>{{ metric.label }}</dt><dd>{{ metric.value }}</dd></div>{% endfor %}</dl>
               {% endif %}
             </article>
           {% endfor %}

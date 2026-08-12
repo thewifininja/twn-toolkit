@@ -473,6 +473,207 @@ class InvestigationRouteTests(unittest.TestCase):
                 len(store.events_for_user(investigation_id, "test-user")), before + 1
             )
 
+    def test_finite_diagnostics_share_case_recording_and_report_presentations(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Network baseline"})
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            investigation_id = str(investigation["id"])
+
+            port_results = [
+                {
+                    "host": "192.0.2.10",
+                    "label": "Core",
+                    "port": 443,
+                    "service": "https",
+                    "status": "open",
+                    "detail": "",
+                    "elapsed_ms": 4.2,
+                },
+                {
+                    "host": "192.0.2.10",
+                    "label": "Core",
+                    "port": 8443,
+                    "service": "",
+                    "status": "closed",
+                    "detail": "Connection refused",
+                    "elapsed_ms": 1.1,
+                },
+            ]
+            with patch(
+                "twn_toolkit.port_scanner_routes.scan_tcp_ports",
+                return_value=port_results,
+            ):
+                port_page = client.post(
+                    "/tools/port-scanner",
+                    data={
+                        "hosts": "Core = 192.0.2.10",
+                        "ports": "443, 8443",
+                        "timeout": "1",
+                        "concurrency": "20",
+                    },
+                )
+            self.assertIn(b"Recorded in the active case", port_page.data)
+
+            trace_result = {
+                "host": "example.com",
+                "family": "IPv4",
+                "method": "UDP",
+                "raw_output": "trace output",
+                "hops": [
+                    {
+                        "number": 1,
+                        "responded": True,
+                        "name": "gateway.local",
+                        "addresses": ["192.0.2.1"],
+                        "latencies_ms": [1.2, 1.4],
+                        "average_ms": 1.3,
+                        "loss_percent": 0,
+                    }
+                ],
+                "hop_count": 1,
+                "responding_hops": 1,
+                "reached": True,
+                "destination_addresses": ["93.184.216.34"],
+            }
+            with patch(
+                "twn_toolkit.traceroute_routes.run_traceroute",
+                return_value=trace_result,
+            ):
+                trace_page = client.post(
+                    "/tools/traceroute",
+                    data={
+                        "host": "example.com",
+                        "family": "auto",
+                        "method": "udp",
+                        "max_hops": "30",
+                        "probes": "3",
+                        "timeout": "2",
+                    },
+                )
+            self.assertIn(b"Recorded in the active case", trace_page.data)
+
+            ntp_result = {
+                "host": "ntp.example",
+                "label": "Primary",
+                "port": 123,
+                "resolved_address": "192.0.2.123",
+                "status": "success",
+                "successful_samples": 1,
+                "total_samples": 1,
+                "offset_ms": 0.5,
+                "delay_ms": 10.2,
+                "jitter_ms": 0.0,
+                "stratum": 2,
+                "version": 4,
+                "leap_text": "No warning",
+                "reference_id": "192.0.2.1",
+                "reference_time": "2023-11-14T00:00:00.000Z",
+                "root_delay_ms": 2.0,
+                "root_dispersion_ms": 1.0,
+                "precision_seconds": 0.000001,
+                "synchronized": True,
+                "samples": [
+                    {
+                        "status": "success",
+                        "offset_ms": 0.5,
+                        "delay_ms": 10.2,
+                        "server_time": "2023-11-14T00:00:01.000Z",
+                    }
+                ],
+            }
+            with patch(
+                "twn_toolkit.ntp_routes.test_ntp_servers",
+                return_value=[ntp_result],
+            ):
+                ntp_page = client.post(
+                    "/tools/ntp-test",
+                    data={
+                        "hosts": "Primary = ntp.example",
+                        "port": "123",
+                        "timeout": "3",
+                        "samples": "1",
+                    },
+                )
+            self.assertIn(b"Recorded in the active case", ntp_page.data)
+
+            mtu_result = {
+                "host": "example.test",
+                "address": "192.0.2.1",
+                "family": "IPv4",
+                "mtu": 1400,
+                "minimum": 576,
+                "maximum": 1500,
+                "overhead": 28,
+                "conclusive": True,
+                "probes": [
+                    {
+                        "mtu": 1400,
+                        "payload": 1372,
+                        "success": True,
+                        "detail": "reply",
+                    }
+                ],
+            }
+            with patch(
+                "twn_toolkit.path_mtu_routes.test_path_mtu",
+                return_value=mtu_result,
+            ):
+                mtu_page = client.post(
+                    "/tools/path-mtu",
+                    data={
+                        "host": "example.test",
+                        "family": "auto",
+                        "minimum": "576",
+                        "maximum": "1500",
+                        "timeout": "1",
+                    },
+                )
+            self.assertIn(b"Recorded in the active case", mtu_page.data)
+
+            speed = client.post(
+                "/tools/speed-test/activity",
+                json={
+                    "download_bytes": 125_000_000,
+                    "upload_bytes": 50_000_000,
+                    "download_mbps": 125.5,
+                    "upload_mbps": 50.25,
+                    "latency_ms": 8.4,
+                    "jitter_ms": 1.2,
+                },
+            )
+            self.assertTrue(speed.get_json()["case_recorded"])
+
+            events = store.events_for_user(investigation_id, "test-user")
+            recorded_tools = {
+                event["tool_id"]
+                for event in events
+                if event["tool_id"] != "investigations.workspace"
+            }
+            self.assertEqual(
+                recorded_tools,
+                {
+                    "tools.port_scanner",
+                    "tools.traceroute",
+                    "tools.ntp_test",
+                    "tools.path_mtu",
+                    "tools.speed_test",
+                },
+            )
+            report = client.get(f"/investigations/{investigation_id}/report")
+            for value in (
+                b"TCP port scan",
+                b"gateway.local",
+                b"Primary",
+                b"1400 bytes",
+                b"125.5 Mbps",
+            ):
+                self.assertIn(value, report.data)
+            self.assertEqual(report.data.count(b"Detailed results R-"), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

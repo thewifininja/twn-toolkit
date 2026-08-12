@@ -1009,6 +1009,17 @@ class NetworkToolTests(unittest.TestCase):
             self.assertEqual(activity_response.status_code, 200)
             self.assertEqual(
                 client.post(
+                    "/tools/speed-test/activity",
+                    json={
+                        "download_bytes": 1025,
+                        "upload_bytes": 4097,
+                        "download_mbps": 10,
+                    },
+                ).status_code,
+                400,
+            )
+            self.assertEqual(
+                client.post(
                     "/tools/speed-test/upload",
                     data=b"",
                     content_type="application/octet-stream",

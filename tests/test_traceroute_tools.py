@@ -12,6 +12,7 @@ from unittest.mock import patch
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
 from twn_toolkit.audit import AuditStore
+from twn_toolkit.investigations import InvestigationStore
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.traceroute_tools import (
     _iter_process_lines,
@@ -210,6 +211,8 @@ class TracerouteToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Streaming trace"})
             with (
                 patch(
                     "twn_toolkit.traceroute_routes.prepare_traceroute",
@@ -225,22 +228,34 @@ class TracerouteToolTests(unittest.TestCase):
                 ),
                 patch("twn_toolkit.traceroute_routes.stream_traceroute", return_value=events),
             ):
-                response = app.test_client().post(
+                response = client.post(
                     "/tools/traceroute/run",
                     json={"host": "example.com"},
                 )
                 payload = response.get_data(as_text=True)
             summary = ActivityStore(instance).summary()
             event = AuditStore(instance).recent(1)[0]
+            investigation = InvestigationStore(instance).active_for_user("test-user")
+            case_events = InvestigationStore(instance).events_for_user(
+                investigation["id"], "test-user"
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('"type":"complete"', payload)
+        self.assertIn('"case_recorded":true', payload)
         self.assertEqual(summary["counters"]["traceroute"]["completed"], 1)
         self.assertEqual(summary["counters"]["traceroute"]["hops"], 1)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
         self.assertEqual(summary["scoreboard"][0]["metrics"][0]["key"], "traceroute.completed")
         self.assertEqual(event["action"], "traceroute.stream.run_started")
         self.assertEqual(event["details"]["maximum hops"], 30)
+        trace_event = next(
+            item for item in case_events if item["tool_id"] == "tools.traceroute"
+        )
+        self.assertEqual(
+            trace_event["details"]["result"]["hops"],
+            [{"number": 1, "responded": True}],
+        )
 
     def test_traceroute_host_profile_crud(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

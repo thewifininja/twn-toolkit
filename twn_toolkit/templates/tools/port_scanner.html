@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
+{% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager %}
 
 {% block content %}
 <section class="panel">
@@ -8,6 +8,7 @@
     <p>Check selected TCP ports across authorized hosts from the toolkit host.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  {{ case_recorded_notice(journal_event) }}
 
   <form class="form" method="post" id="port-scan-form" data-loading-message="Scanning TCP ports…">
     <div class="grid two port-profile-grid">
