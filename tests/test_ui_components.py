@@ -277,6 +277,27 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('class="investigation-return-nav"', detail_template)
         self.assertIn("Back to investigations", detail_template)
 
+    def test_investigation_print_layout_allows_large_results_to_paginate(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        detail_template = (
+            TEMPLATE_ROOT / "investigations" / "detail.html"
+        ).read_text(encoding="utf-8")
+        print_rules = stylesheet.split("@media print {", 1)[1].split(
+            "\n\n.certificate-options", 1
+        )[0]
+
+        self.assertIn('class="investigation-report-evidence"', detail_template)
+        self.assertIn('class="investigation-dns-results-table"', detail_template)
+        self.assertIn("display: block;", print_rules)
+        self.assertIn(".investigation-report-evidence", print_rules)
+        self.assertIn("break-before: page;", print_rules)
+        self.assertIn(".investigation-report table", print_rules)
+        self.assertIn("break-inside: auto;", print_rules)
+        self.assertIn(".investigation-report tr", print_rules)
+        self.assertIn("display: table-header-group;", print_rules)
+
     def test_profile_create_surface_uses_shared_collection_token(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"

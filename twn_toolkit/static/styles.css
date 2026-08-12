@@ -3170,10 +3170,17 @@ button.danger:hover {
 }
 
 @media print {
+  html,
+  body,
+  .app-layout {
+    background: #fff !important;
+  }
+
   .topbar,
   .app-sidebar,
   .active-investigation-banner,
   .messages,
+  .investigation-return-nav,
   .investigation-detail-page > .workspace-tabs,
   .investigation-detail-page > .workspace-header,
   .investigation-overview-strip,
@@ -3195,14 +3202,84 @@ button.danger:hover {
     border: 0;
     border-radius: 0;
     box-shadow: none;
+    display: block;
     padding: 0;
   }
 
-  .investigation-report-event,
-  .investigation-artifact-card,
-  .investigation-report table {
+  .investigation-report-title {
+    break-after: avoid;
+    margin-bottom: 28px;
+  }
+
+  .investigation-report > section {
+    display: block;
+  }
+
+  .investigation-report > section + section {
+    margin-top: 28px;
+  }
+
+  .investigation-report-evidence {
+    break-before: page;
+  }
+
+  .investigation-report-event {
+    break-inside: auto;
+    margin-bottom: 18px;
+  }
+
+  .investigation-report-event > header,
+  .investigation-report-event > p,
+  .investigation-artifact-card {
     break-inside: avoid;
   }
+
+  .investigation-report-event > header,
+  .investigation-report-event > p {
+    break-after: avoid;
+  }
+
+  .investigation-report .table-wrap {
+    max-width: 100%;
+    overflow: visible;
+    width: 100%;
+  }
+
+  .investigation-report table {
+    break-inside: auto;
+    font-size: 8pt;
+    min-width: 0;
+    table-layout: auto;
+    width: 100%;
+  }
+
+  .investigation-report thead {
+    display: table-header-group;
+  }
+
+  .investigation-report tr {
+    break-inside: avoid;
+  }
+
+  .investigation-report th,
+  .investigation-report td {
+    overflow-wrap: anywhere;
+    padding: 7px 6px;
+  }
+
+  .investigation-report code {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .investigation-evidence-table {
+    table-layout: fixed !important;
+  }
+
+  .investigation-evidence-table th:nth-child(1) { width: 19%; }
+  .investigation-evidence-table th:nth-child(2) { width: 22%; }
+  .investigation-evidence-table th:nth-child(3) { width: 12%; }
+  .investigation-evidence-table th:nth-child(4) { width: 47%; }
 }
 
 .certificate-options {

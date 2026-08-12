@@ -133,7 +133,7 @@
               <header><div><time>{{ event.started_display }}</time><h3>{{ event.action }}</h3></div><span class="pill {{ 'success' if event.outcome == 'succeeded' else 'error' if event.outcome == 'failed' else '' }}">{{ event.outcome }}</span></header>
               <p>{{ event.summary }}</p>
               {% if event.tool_id == 'tools.dns_response' and event.details.results %}
-                <div class="table-wrap"><table><thead><tr><th>Query</th><th>Resolver</th><th>Type</th><th>Outcome</th><th>Answers</th><th>Time</th></tr></thead><tbody>
+                <div class="table-wrap"><table class="investigation-dns-results-table"><thead><tr><th>Query</th><th>Resolver</th><th>Type</th><th>Outcome</th><th>Answers</th><th>Time</th></tr></thead><tbody>
                   {% for result in event.details.results %}<tr><td>{{ result.host_label or result.host }}{% if result.host_label and result.host %}<br><code>{{ result.host }}</code>{% endif %}</td><td>{{ result.server_label or result.server }}{% if result.server_label and result.server %}<br><code>{{ result.server }}</code>{% endif %}</td><td>{{ result.record_type }}</td><td>{{ result.status }}</td><td>{% if result.answers %}{% for answer in result.answers %}<code>{{ answer }}</code>{% if not loop.last %}<br>{% endif %}{% endfor %}{% else %}—{% endif %}</td><td>{{ result.response_ms }} ms</td></tr>{% endfor %}
                 </tbody></table></div>
               {% elif event.tool_id == 'tools.dns_response' and event.details.load_result %}
@@ -144,8 +144,8 @@
           {% endfor %}
         {% else %}<p>No journal events have been recorded.</p>{% endif %}
       </section>
-      <section><h2>Evidence appendix</h2>
-        {% if investigation_artifacts %}<div class="table-wrap"><table><thead><tr><th>File</th><th>Collected</th><th>Size</th><th>SHA-256</th></tr></thead><tbody>{% for artifact in investigation_artifacts %}<tr><td>{{ artifact.display_name }}</td><td>{{ artifact.created_display }}</td><td>{{ format_bytes(artifact.byte_count) }}</td><td><code>{{ artifact.sha256 }}</code></td></tr>{% endfor %}</tbody></table></div>{% else %}<p>No separate evidence files were attached.</p>{% endif %}
+      <section class="investigation-report-evidence"><h2>Evidence appendix</h2>
+        {% if investigation_artifacts %}<div class="table-wrap"><table class="investigation-evidence-table"><thead><tr><th>File</th><th>Collected</th><th>Size</th><th>SHA-256</th></tr></thead><tbody>{% for artifact in investigation_artifacts %}<tr><td>{{ artifact.display_name }}</td><td>{{ artifact.created_display }}</td><td>{{ format_bytes(artifact.byte_count) }}</td><td><code>{{ artifact.sha256 }}</code></td></tr>{% endfor %}</tbody></table></div>{% else %}<p>No separate evidence files were attached.</p>{% endif %}
       </section>
     </article>
   {% endif %}
