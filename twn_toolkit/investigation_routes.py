@@ -164,7 +164,12 @@ def register_investigation_routes(
                 details={"state": updated["state"]},
             )
             flash(f"Investigation {action}.", "success")
-        return redirect(_safe_next(url_for("investigation_detail", investigation_id=investigation_id)))
+        default_destination = (
+            url_for("investigations")
+            if state == "completed"
+            else url_for("investigation_detail", investigation_id=investigation_id)
+        )
+        return redirect(_safe_next(default_destination))
 
     @app.get("/investigations/<investigation_id>/evidence")
     def investigation_evidence(investigation_id: str):

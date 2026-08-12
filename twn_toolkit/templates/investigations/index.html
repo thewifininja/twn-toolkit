@@ -34,15 +34,22 @@
     <section class="panel investigation-create-panel">
       {{ section_header("Start an investigation", "Give the work a durable name before running the first diagnostic.", "New workspace") }}
       <form method="post" action="{{ url_for('create_investigation') }}" class="form-grid investigation-create-form">
-        <label class="full-width">Title
-          <input name="title" maxlength="120" required placeholder="Branch office intermittent outage">
-        </label>
-        <label class="full-width">Situation and starting context
-          <textarea name="description" rows="4" maxlength="2000" placeholder="What is affected, when it started, and what is already known?"></textarea>
-        </label>
-        <div class="button-row full-width">
-          <button type="submit">Start recording</button>
+        <div class="investigation-create-fields">
+          <label class="investigation-create-title">Investigation title
+            <input name="title" maxlength="120" required placeholder="Branch office intermittent outage">
+          </label>
+          <label>Starting context
+            <small>Capture what is affected, when it began, and anything already known.</small>
+            <textarea name="description" rows="5" maxlength="2000" placeholder="Users at the branch report intermittent access after the firewall change…"></textarea>
+          </label>
         </div>
+        <footer class="investigation-create-actions">
+          <div>
+            <strong>Recording begins immediately.</strong>
+            <small>Supported tool runs will be added until you pause or finish the investigation.</small>
+          </div>
+          <button type="submit">Start investigation</button>
+        </footer>
       </form>
     </section>
   {% endif %}

@@ -2667,6 +2667,74 @@ button.danger:hover {
   margin-left: auto;
 }
 
+.form-grid.investigation-create-form {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.investigation-create-fields {
+  display: grid;
+  gap: 16px;
+}
+
+.investigation-create-title {
+  max-width: 720px;
+}
+
+.investigation-create-fields label > small,
+.investigation-create-actions small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.investigation-create-fields textarea {
+  min-height: 128px;
+}
+
+.investigation-create-actions {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding-top: 16px;
+}
+
+.investigation-create-actions > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.investigation-create-actions button {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.investigation-return-nav {
+  display: flex;
+}
+
+.investigation-return-link {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.86rem;
+  font-weight: 850;
+  gap: 7px;
+  min-height: 34px;
+  text-decoration: none;
+}
+
+.investigation-return-link:hover,
+.investigation-return-link:focus {
+  color: var(--ink);
+}
+
 .investigation-current-summary,
 .investigation-overview-strip {
   align-items: start;
@@ -3052,6 +3120,15 @@ button.danger:hover {
 }
 
 @media (max-width: 520px) {
+  .investigation-create-actions {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .investigation-create-actions button {
+    width: 100%;
+  }
+
   .active-investigation-copy {
     align-items: start;
     display: grid;

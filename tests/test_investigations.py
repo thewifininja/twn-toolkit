@@ -243,6 +243,8 @@ class InvestigationRouteTests(unittest.TestCase):
             page = client.get("/investigations")
             self.assertEqual(page.status_code, 200)
             self.assertIn(b"Start an investigation", page.data)
+            self.assertIn(b"Investigation title", page.data)
+            self.assertIn(b"Start investigation", page.data)
             created = client.post(
                 "/investigations",
                 data={
@@ -320,10 +322,21 @@ class InvestigationRouteTests(unittest.TestCase):
 
             report = client.get(f"/investigations/{investigation_id}/report")
             self.assertEqual(report.status_code, 200)
+            self.assertIn(b"Back to investigations", report.data)
             self.assertIn(b"Troubleshooting report", report.data)
             self.assertIn(b"portal.example.com", report.data)
             self.assertIn(b"192.0.2.10", report.data)
             self.assertIn(b"status.txt", report.data)
+
+            completed = client.post(
+                f"/investigations/{investigation_id}/state",
+                data={"state": "completed"},
+            )
+            self.assertEqual(completed.status_code, 302)
+            self.assertEqual(completed.headers["Location"], "/investigations")
+            history = client.get(completed.headers["Location"])
+            self.assertIn(b"Branch office outage", history.data)
+            self.assertIn(b"completed", history.data)
 
     def test_pause_stops_automatic_tool_recording_but_keeps_manual_context(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

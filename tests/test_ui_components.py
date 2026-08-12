@@ -256,6 +256,27 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("max-width: 100%;", report_table_rule)
         self.assertIn("width: 100%;", report_table_rule)
 
+    def test_investigation_start_form_and_detail_return_navigation_contract(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        index_template = (TEMPLATE_ROOT / "investigations" / "index.html").read_text(
+            encoding="utf-8"
+        )
+        detail_template = (
+            TEMPLATE_ROOT / "investigations" / "detail.html"
+        ).read_text(encoding="utf-8")
+
+        start_form_rule = stylesheet.split(
+            ".form-grid.investigation-create-form {", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("grid-template-columns: minmax(0, 1fr);", start_form_rule)
+        self.assertIn('class="investigation-create-fields"', index_template)
+        self.assertIn('class="investigation-create-actions"', index_template)
+        self.assertIn("Start investigation", index_template)
+        self.assertIn('class="investigation-return-nav"', detail_template)
+        self.assertIn("Back to investigations", detail_template)
+
     def test_profile_create_surface_uses_shared_collection_token(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"

@@ -138,7 +138,7 @@ libraries expose the same action on each expandable record.
 
 1. Open **Investigations** and enter a concise title plus the situation already
    known.
-2. Select **Start recording**. A recording banner remains visible as you move
+2. Select **Start investigation**. A recording banner remains visible as you move
    through the toolkit.
 3. Run **Network Tools → Addressing & Reachability → DNS Tester**. Completed and
    failed DNS runs are added to the journal with structured inputs and results.

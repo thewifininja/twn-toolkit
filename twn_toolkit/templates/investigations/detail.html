@@ -3,6 +3,9 @@
 {% block shell_classes %} investigation-shell{% if active_investigation_tab == 'report' %} investigation-report-shell{% endif %}{% endblock %}
 {% block content %}
 <div class="workspace-page investigation-detail-page">
+  <nav class="investigation-return-nav" aria-label="Investigation navigation">
+    <a class="investigation-return-link" href="{{ url_for('investigations') }}"><span aria-hidden="true">←</span> Back to investigations</a>
+  </nav>
   {{ workspace_chrome(
     investigation.title,
     investigation.description or "A durable troubleshooting record with evidence linked to the work that produced it.",
