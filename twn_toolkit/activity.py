@@ -118,7 +118,7 @@ METRIC_DEFINITIONS: tuple[MetricDefinition, ...] = (
         "{probes} packet-size probes", (RankDefinition("tests", "Path MTU tests", "tests"),),
     ),
     MetricDefinition(
-        "ssh", ("hosts", "commands"), "Automation", "Multi-SSH", "hosts", "hosts",
+        "ssh", ("hosts", "commands"), "Automation", "Bulk SSH", "hosts", "hosts",
         "{commands} command deliveries", (RankDefinition("hosts", "SSH hosts", "hosts"),),
     ),
     MetricDefinition(

@@ -56,6 +56,13 @@ class ResetDataTests(unittest.TestCase):
                     paths.append(store.path)
             auth_path = Path(app.instance_path) / "auth.json"
             auth_path.write_text(json.dumps({"users": [{"username": "keep"}]}), encoding="utf-8")
+            remote_connections = app.extensions["remote_connection_store"]
+            remote_connections.save_credential(
+                user_id="operator-one",
+                name="Remote admin",
+                remote_username="admin",
+                password="encrypted-secret",
+            )
 
             result = app.test_cli_runner().invoke(args=["reset-data", "--yes"])
 
@@ -66,6 +73,10 @@ class ResetDataTests(unittest.TestCase):
             self.assertTrue(all(not path.exists() for path in paths))
             self.assertIsNotNone(automation_store)
             self.assertEqual(automation_store.all(), [])
+            self.assertEqual(
+                remote_connections.library_for_user("operator-one")["credentials"],
+                [],
+            )
 
 
 if __name__ == "__main__":

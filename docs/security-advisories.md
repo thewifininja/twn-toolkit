@@ -14,7 +14,7 @@ host-key and public-key negotiation in every Paramiko client and server path.
 
 An operator who must connect to a legacy appliance that supports no RSA-SHA2,
 ECDSA, or Ed25519 option can explicitly enable legacy SSH compatibility for one
-Multi-SSH or Multi-Transfer run, or in the saved settings for an SSH/SFTP/SCP
+Bulk SSH or Bulk Transfer run, or in the saved settings for an SSH/SFTP/SCP
 automation or the managed SFTP/SCP service. These controls pass the exception
 through the shared policy to that operation only and are audited without secrets.
 Saved exceptions remain enabled until disabled. The

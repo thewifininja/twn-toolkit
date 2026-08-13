@@ -94,13 +94,33 @@ The automatically captured finite-result set includes:
 - FortiGate wireless-client history with a collapsed AP path rather than raw
   vendor-log objects.
 
-Multi-SSH stores per-host output as generated text evidence. Multi-Transfer
+Bulk SSH stores per-host output as generated text evidence. Bulk Transfer
 stores a result manifest without duplicating each transferred payload. Syslog
 stores full retained messages as JSON evidence while keeping the timeline
 compact. API Request stores the origin, method, timing, sizes, and header names,
 but not URL credentials, query strings, header values, or request/response
 bodies. RADIUS and SNMP never retain passwords, shared secrets, communities, or
 SNMPv3 key material.
+
+Remote Terminal uses lifecycle boundaries. Starting an SSH shell records its
+non-secret destination, remote username, and transcript choice. Stopping it,
+remote closure, connection failure, case closure, idle expiry, or a toolkit
+restart supplies the completion boundary. When transcript capture was selected,
+the case receives a sanitized, bounded remote-output text artifact in the
+appendix. The SSH password and submitted input are never written to the remote
+session database or case; commands echoed by the remote device are output and
+therefore may appear in the transcript.
+
+Saved-host launches inherit transcript capture automatically while the case is
+recording; Quick Connect preserves its explicit checkbox. An operator may also
+attach a live or completed owner-scoped session to the current open case. A
+live attachment records the attachment boundary and includes retained output
+from before that boundary when the final transcript is created. Attaching
+completed scrollback creates the evidence immediately. Separately, operators
+with Datastore access can save the retained output to a selected folder. An
+active shell produces a point-in-time snapshot and remains connected; a
+completed shell produces a completed-scrollback file. Repeated saves receive
+collision-safe names and never overwrite an earlier copy.
 
 FortiGate/FortiAuthenticator exports are copied into the case as their original
 CSV while configuration-changing rename, order, and cleanup workflows use the
@@ -127,7 +147,7 @@ disconnect before completion does not invent a completed result.
 
 ## Persistent session integrations
 
-Multi-Ping records one start event and one terminal event rather than adding a
+Ping records one start event and one terminal event rather than adding a
 journal entry for every probe or observed reply change. The session is attached
 to the case that was recording at Start and remains attached if recording is
 later paused. Configuration edits are retained as timestamped revisions, and
@@ -136,7 +156,7 @@ a bounded per-target summary while the complete retained sample window becomes
 an immutable CSV artifact in the case Evidence folder. A target that never
 replies is described as `No replies observed`; the journal does not infer that
 the device itself was down. Closing a case stops and finalizes its attached
-Multi-Ping sessions before the case becomes read-only. Browser lease expiry and
+Ping sessions before the case becomes read-only. Browser lease expiry and
 monitor errors use the same idempotent finalization path with distinct terminal
 outcomes.
 
@@ -151,7 +171,7 @@ completion without reading a potentially large capture into application memory,
 and reports its bounds, packet count, size, termination, and digest. Managed
 iPerf3 listeners attach at start, retain a bounded JSON result set, and report
 each completed client test and rate. Closing a case stops and finalizes all
-attached Multi-Ping, SNMP monitor, packet-capture, and managed-iPerf3 sessions
+attached Ping, SNMP monitor, packet-capture, and managed-iPerf3 sessions
 before the journal becomes read-only. Terminal recovery is idempotent and also
 runs from status/page requests and background-worker completion.
 

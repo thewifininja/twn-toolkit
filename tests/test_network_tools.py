@@ -1361,7 +1361,7 @@ class NetworkToolTests(unittest.TestCase):
             self.assertEqual(summary["counters"]["ssh"]["hosts"], 1)
             self.assertEqual(summary["counters"]["ssh"]["commands"], 1)
             self.assertEqual(summary["counters"]["actions"]["total"], 8)
-            self.assertEqual(summary["recent"][0]["title"], "Ran Multi-SSH")
+            self.assertEqual(summary["recent"][0]["title"], "Ran Bulk SSH")
 
 
 if __name__ == "__main__":

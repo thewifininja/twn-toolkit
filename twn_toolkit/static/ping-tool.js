@@ -254,7 +254,7 @@
           hosts: activeHostsSource,
           interval: intervalInput.value,
           timeout: timeoutInput.value,
-          title: profileNameInput.value || profileSelect.value || "Multi-Host Ping",
+          title: profileNameInput.value || profileSelect.value || "Ping",
         }),
       });
       const data = await response.json();

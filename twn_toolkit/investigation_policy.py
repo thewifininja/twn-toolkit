@@ -42,6 +42,7 @@ CAPTURE_POLICIES: dict[str, InvestigationCapturePolicy] = {
     "tools.subnet_excluder": _policy("finite", "bounded-results", "A submitted calculation is an intentional finite observation."),
     "tools.ping": _policy("lifecycle", "csv", "Persistent samples require lifecycle boundaries and bounded evidence."),
     "tools.multi_ssh": _policy("finite", "generated-output", "Executed commands and per-host outcomes are meaningful work."),
+    "tools.remote_terminal": _policy("lifecycle", "transcript", "Interactive shells need explicit boundaries and optional bounded transcript evidence."),
     "tools.multi_sftp": _policy("finite", "result-manifest", "Transfer outcomes matter without duplicating every payload."),
     "tools.dns_response": _policy("finite", "bounded-results", "DNS results are finite structured observations."),
     "tools.radius_test": _policy("finite", "redacted-results", "Authentication outcomes matter; credentials never do."),

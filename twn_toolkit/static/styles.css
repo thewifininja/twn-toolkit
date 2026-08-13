@@ -27,7 +27,7 @@
   --card-tint: color-mix(in srgb, var(--panel), var(--accent) 3%);
   --topbar-height: 75px;
   --live-tool-dock-height: 42px;
-  --page-content-max-width: 1600px;
+  --page-inline-gutter: clamp(14px, 2vw, 28px);
 }
 
 * {
@@ -1245,13 +1245,14 @@ body {
 .shell {
   margin: 0;
   max-width: none;
-  padding: 28px clamp(16px, 4vw, 48px);
+  padding: 24px var(--page-inline-gutter);
 }
 
 .shell > * {
   margin-left: auto;
   margin-right: auto;
-  max-width: var(--page-content-max-width);
+  max-width: none;
+  width: 100%;
 }
 
 .grid.two {
@@ -2595,8 +2596,10 @@ button.danger:hover {
   gap: 14px;
   justify-content: space-between;
   min-width: 0;
+  max-width: none;
   overflow: hidden;
   padding: 10px 12px;
+  width: 100%;
 }
 
 .active-investigation-banner.paused {
@@ -5551,8 +5554,8 @@ button.compact,
   box-shadow: 0 3px 10px rgba(91, 69, 10, 0.12);
   color: #5b450a;
   margin-bottom: 18px;
-  max-width: 960px;
   padding: 16px 18px;
+  width: 100%;
 }
 
 .platform-warning strong {
@@ -5706,10 +5709,6 @@ button.compact,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.switch-order-tool {
-  max-width: 900px;
 }
 
 .switch-order-editor {
@@ -9651,8 +9650,7 @@ button.compact,
   overflow: auto;
   padding: 1rem;
   tab-size: 4;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: pre;
 }
 
 .sftp-output-options .check {
@@ -13341,6 +13339,1160 @@ th {
   }
 }
 
+/* Remote connection library and terminal workspace */
+.remote-terminal-manager-head {
+  align-items: center;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+}
+
+.remote-terminal-manager-head h1,
+.remote-terminal-manager-head p {
+  margin: 0;
+}
+
+.remote-terminal-manager-head h1 {
+  margin-top: 4px;
+}
+
+.remote-terminal-manager-head p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 7px;
+  max-width: 850px;
+}
+
+.remote-terminal-primary-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 9px;
+}
+
+.remote-terminal-manager {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(270px, 330px) minmax(0, 1fr);
+  max-width: none;
+  width: 100%;
+}
+
+.remote-connection-explorer {
+  align-content: start;
+  container-type: inline-size;
+  display: grid;
+  gap: 12px;
+  max-height: calc(100vh - var(--topbar-height) - 42px);
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px;
+  position: sticky;
+  top: calc(var(--topbar-height) + 18px);
+}
+
+.remote-connection-explorer > header,
+.remote-connection-explorer > header > div,
+.remote-terminal-tabs-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.remote-connection-explorer h2,
+.remote-connection-explorer header span {
+  margin: 0;
+}
+
+.remote-connection-explorer header span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.remote-connection-library-actions {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.remote-connection-library-actions button {
+  font-size: 0.74rem;
+  min-width: 0;
+  padding-inline: 6px;
+  white-space: nowrap;
+}
+
+.remote-connection-search input {
+  min-height: 40px;
+  width: 100%;
+}
+
+.remote-connection-tree {
+  align-content: start;
+  display: grid;
+  gap: 4px;
+  max-height: calc(100vh - var(--topbar-height) - 250px);
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 1px 3px 10px 1px;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.remote-connection-empty {
+  align-content: center;
+  min-height: 180px;
+  padding: 22px 16px;
+}
+
+.remote-connection-folder {
+  border-radius: 9px;
+  min-width: 0;
+}
+
+.remote-connection-folder-head {
+  align-items: center;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  min-height: 36px;
+  position: relative;
+}
+
+.remote-connection-folder-head:hover,
+.remote-connection-folder-head:focus-within {
+  background: var(--card-tint);
+}
+
+.remote-connection-folder-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--ink);
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  justify-content: stretch;
+  min-height: 36px;
+  min-width: 0;
+  padding: 6px 4px 6px 8px;
+  text-align: left;
+}
+
+.remote-connection-folder-toggle:hover,
+.remote-connection-folder-toggle:focus-visible {
+  background: transparent;
+}
+
+.remote-connection-folder-toggle strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-connection-folder-toggle small {
+  background: color-mix(in srgb, var(--bg), var(--brand-green) 10%);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 850;
+  min-width: 22px;
+  padding: 3px 6px;
+  text-align: center;
+}
+
+.remote-connection-folder-icon::before {
+  color: var(--brand-green-dark);
+  content: "▸";
+  display: block;
+  font-size: 0.85rem;
+  transform-origin: 45% 50%;
+  transition: transform 100ms ease;
+}
+
+.remote-connection-folder-toggle[aria-expanded="true"] .remote-connection-folder-icon::before {
+  transform: rotate(90deg);
+}
+
+.remote-connection-folder-menu-wrap {
+  position: relative;
+}
+
+.remote-connection-folder-menu-trigger {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.78rem;
+  height: 30px;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0;
+  width: 30px;
+}
+
+.remote-connection-folder-menu-trigger:hover,
+.remote-connection-folder-menu-trigger:focus-visible,
+.remote-connection-folder-menu-trigger[aria-expanded="true"] {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.remote-connection-folder-menu {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  display: grid;
+  gap: 2px;
+  margin: 3px 4px 7px 26px;
+  min-width: 0;
+  padding: 5px;
+}
+
+.remote-connection-folder-menu[hidden] {
+  display: none;
+}
+
+.remote-connection-folder-menu-item {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--ink);
+  font-size: 0.76rem;
+  justify-content: flex-start;
+  min-height: 32px;
+  padding: 7px 9px;
+  text-align: left;
+  width: 100%;
+}
+
+.remote-connection-folder-menu-item:hover,
+.remote-connection-folder-menu-item:focus-visible {
+  background: var(--card-tint);
+}
+
+.remote-connection-folder-body {
+  border-left: 1px solid var(--line-strong);
+  display: grid;
+  gap: 3px;
+  margin-left: 16px;
+  padding: 3px 0 4px 8px;
+}
+
+.remote-connection-folder-body:empty {
+  display: none;
+}
+
+.remote-connection-host {
+  align-items: stretch;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  min-width: 0;
+}
+
+.remote-connection-host:hover,
+.remote-connection-host:focus-within {
+  background: var(--card-tint);
+}
+
+.remote-connection-host-connect,
+.remote-connection-host-manage {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.remote-connection-host-connect {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 27px minmax(0, 1fr);
+  justify-content: stretch;
+  padding: 7px 4px 7px 7px;
+  text-align: left;
+}
+
+.remote-connection-host-connect > span:last-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.remote-connection-host-connect strong,
+.remote-connection-host-connect small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-connection-host-connect small {
+  color: var(--muted);
+  font-size: 0.69rem;
+  font-weight: 650;
+}
+
+.remote-connection-host-icon {
+  align-items: center;
+  background: var(--profile-collection-surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--brand-green-dark);
+  display: flex;
+  font: 850 0.62rem/1 ui-monospace, monospace;
+  height: 27px;
+  justify-content: center;
+  width: 27px;
+}
+
+.remote-connection-host-connect.connecting .remote-connection-host-icon {
+  animation: remote-host-pulse 900ms ease-in-out infinite alternate;
+}
+
+@keyframes remote-host-pulse {
+  to { background: color-mix(in srgb, var(--panel), var(--brand-green) 18%); border-color: var(--brand-green-dark); }
+}
+
+.remote-connection-host-manage {
+  align-items: center;
+  align-self: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.68rem;
+  height: 30px;
+  justify-content: center;
+  justify-self: center;
+  letter-spacing: -1px;
+  min-height: 30px;
+  padding: 0;
+  width: 30px;
+}
+
+.remote-connection-host-manage:hover,
+.remote-connection-host-manage:focus-visible {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.remote-connection-no-match {
+  color: var(--muted);
+  font-size: 0.82rem;
+  padding: 18px 8px;
+  text-align: center;
+}
+
+.remote-terminal-stage {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.remote-terminal-session-stage {
+  container-type: inline-size;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.remote-terminal-tabs-head {
+  background: var(--card-tint);
+  border-bottom: 1px solid var(--line);
+  min-height: 52px;
+  padding: 8px 12px;
+}
+
+.remote-terminal-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 5px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.remote-terminal-tabs.empty::before {
+  align-self: center;
+  color: var(--muted);
+  content: "No active sessions";
+  font-size: 0.78rem;
+  padding-left: 4px;
+}
+
+.remote-terminal-tab-shell {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  display: grid;
+  flex: 0 0 250px;
+  grid-template-columns: minmax(0, 1fr) 28px 28px;
+  min-height: 34px;
+  min-width: 170px;
+  overflow: hidden;
+  padding: 2px;
+}
+
+.remote-terminal-tab-shell.selected,
+.remote-terminal-tab-shell:focus-within {
+  background: var(--panel);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.remote-terminal-tab {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: inherit;
+  display: inline-flex;
+  gap: 7px;
+  justify-content: flex-start;
+  min-height: 30px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 6px;
+  text-align: left;
+  width: 100%;
+}
+
+.remote-terminal-tab:hover,
+.remote-terminal-tab:focus-visible {
+  background: transparent;
+}
+
+.remote-terminal-tab > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-terminal-tab-action {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.82rem;
+  height: 28px;
+  justify-content: center;
+  min-height: 28px;
+  opacity: 0.5;
+  padding: 0;
+  width: 28px;
+}
+
+.remote-terminal-tab-shell:hover .remote-terminal-tab-action,
+.remote-terminal-tab-shell.selected .remote-terminal-tab-action,
+.remote-terminal-tab-action:focus-visible {
+  opacity: 1;
+}
+
+.remote-terminal-tab-action:hover,
+.remote-terminal-tab-action:focus-visible {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 12%);
+  color: var(--ink);
+}
+
+.remote-terminal-tab-action.close {
+  font-size: 1rem;
+}
+
+.remote-terminal-tab-action.close:hover,
+.remote-terminal-tab-action.close:focus-visible {
+  background: color-mix(in srgb, var(--panel), var(--bad) 9%);
+  color: var(--bad);
+}
+
+.remote-terminal-tab-dot {
+  background: var(--muted);
+  border-radius: 50%;
+  flex: 0 0 auto;
+  height: 7px;
+  width: 7px;
+}
+
+.remote-terminal-tab-shell.running .remote-terminal-tab-dot {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgb(36 158 69 / 12%);
+}
+
+.remote-terminal-stage-empty {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 570px;
+  padding: 42px;
+  text-align: center;
+}
+
+.remote-terminal-stage-empty h2,
+.remote-terminal-stage-empty p {
+  margin: 0;
+}
+
+.remote-terminal-stage-empty p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 8px 0 18px;
+  max-width: 520px;
+}
+
+.remote-terminal-stage-mark {
+  align-items: center;
+  background: #0b1110;
+  border-radius: 14px;
+  color: #bceac5;
+  display: flex;
+  font: 850 1.15rem/1 ui-monospace, monospace;
+  height: 58px;
+  justify-content: center;
+  margin-bottom: 18px;
+  width: 58px;
+}
+
+.remote-terminal-session-stage .remote-terminal-workspace {
+  padding: 20px;
+}
+
+.remote-terminal-shared-view-note {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 14px 0 0;
+  padding: 9px 11px;
+}
+
+.remote-terminal-session-actions .compact {
+  font-size: 0.84rem;
+  min-height: 38px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.remote-terminal-session-title-row {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.remote-terminal-case-pill {
+  align-items: center;
+  color: var(--brand-green-dark);
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 800;
+  gap: 6px;
+  margin-top: 7px;
+  text-decoration: none;
+}
+
+.remote-terminal-case-pill::before {
+  background: currentColor;
+  border-radius: 50%;
+  content: "";
+  height: 7px;
+  width: 7px;
+}
+
+.remote-terminal-case-pill:hover,
+.remote-terminal-case-pill:focus-visible {
+  text-decoration: underline;
+}
+
+.remote-terminal-session-rename {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.8rem;
+  height: 28px;
+  justify-content: center;
+  min-height: 28px;
+  opacity: 0.55;
+  padding: 0;
+  width: 28px;
+}
+
+.remote-terminal-session-title-row:hover .remote-terminal-session-rename,
+.remote-terminal-session-rename:focus-visible {
+  opacity: 1;
+}
+
+.remote-terminal-session-rename:hover,
+.remote-terminal-session-rename:focus-visible {
+  background: var(--card-tint);
+  border-color: var(--control-border);
+  color: var(--ink);
+}
+
+.remote-terminal-rename-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.remote-terminal-datastore-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.remote-terminal-dialog {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgb(10 28 19 / 32%);
+  color: var(--ink);
+  max-height: calc(100vh - 32px);
+  max-width: calc(100vw - 32px);
+  overflow: auto;
+  padding: 0;
+  width: min(760px, calc(100vw - 32px));
+}
+
+.remote-terminal-dialog::backdrop {
+  backdrop-filter: blur(2px);
+  background: rgb(10 24 17 / 48%);
+}
+
+.remote-terminal-dialog-form {
+  display: grid;
+  gap: 17px;
+  padding: 22px;
+}
+
+.remote-terminal-dialog header,
+.remote-credential-manager > header {
+  align-items: start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.remote-terminal-dialog header h2,
+.remote-terminal-dialog header p,
+.remote-credential-manager h2 {
+  margin: 0;
+}
+
+.dialog-close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  display: flex;
+  font-size: 1.5rem;
+  height: 34px;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0;
+  width: 34px;
+}
+
+.dialog-close:hover,
+.dialog-close:focus-visible {
+  background: var(--card-tint);
+  color: var(--ink);
+}
+
+.remote-terminal-dialog-intro {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: -5px 0 0;
+}
+
+.remote-quick-connect-dialog {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.remote-terminal-dialog-section {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.remote-terminal-dialog-section-head h3,
+.remote-terminal-dialog-section-head p {
+  margin: 0;
+}
+
+.remote-terminal-dialog-section-head h3 {
+  font-size: 1rem;
+}
+
+.remote-terminal-dialog-section-head p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin-top: 3px;
+}
+
+.remote-quick-target-grid {
+  grid-template-columns: minmax(0, 1fr) 112px;
+}
+
+.remote-quick-target-grid label:last-child {
+  grid-column: 1 / -1;
+}
+
+.remote-terminal-dialog-grid {
+  grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr) minmax(100px, .45fr);
+}
+
+.remote-terminal-dialog-grid label:first-child,
+.remote-terminal-dialog-grid label:nth-child(2) {
+  grid-column: span 1;
+}
+
+.remote-terminal-credential-choice {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  display: grid;
+  gap: 13px;
+  margin: 0;
+  min-width: 0;
+  padding: 14px;
+}
+
+.remote-terminal-credential-choice legend {
+  color: var(--field-label);
+  font-weight: 800;
+  padding: 0 6px;
+}
+
+.remote-terminal-choice-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.remote-terminal-choice-row .check {
+  align-items: start;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px;
+}
+
+.remote-terminal-choice-row .check:has(input:checked) {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 11%);
+  border-color: color-mix(in srgb, var(--line-strong), var(--brand-green-dark) 48%);
+}
+
+.remote-terminal-choice-row small {
+  color: var(--muted);
+  display: block;
+  font-weight: 500;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.remote-terminal-credential-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.remote-terminal-advanced-options {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  overflow: hidden;
+}
+
+.remote-terminal-advanced-options > summary {
+  color: var(--field-label);
+  cursor: pointer;
+  font-weight: 800;
+  list-style-position: inside;
+  padding: 12px 14px;
+}
+
+.remote-terminal-advanced-options[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.remote-terminal-advanced-options .remote-terminal-options {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  gap: 0;
+  margin: 0;
+  padding: 4px 14px;
+}
+
+.remote-terminal-advanced-options .check {
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.remote-terminal-advanced-options .check:last-child {
+  border-bottom: 0;
+}
+
+.remote-terminal-advanced-options .check strong,
+.remote-terminal-advanced-options .check small {
+  display: block;
+}
+
+.remote-terminal-advanced-options .check small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.compact-options {
+  gap: 9px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.remote-terminal-dialog-form > footer,
+.remote-credential-manager footer {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 16px;
+}
+
+.remote-terminal-dialog-form > footer .tool-status {
+  margin-right: auto;
+}
+
+.remote-terminal-dialog-footer-split {
+  justify-content: space-between !important;
+}
+
+.remote-terminal-dialog-footer-split .button-row {
+  margin: 0;
+}
+
+.remote-credential-dialog {
+  width: min(900px, calc(100vw - 32px));
+}
+
+.remote-credential-manager {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+}
+
+.remote-credential-manager-body {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, .75fr) minmax(300px, 1.25fr);
+}
+
+.remote-credential-manager-body > aside {
+  align-content: start;
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.remote-credential-list-head,
+.remote-credential-list-head > div {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.remote-credential-list-head h3,
+.remote-credential-list-head span {
+  margin: 0;
+}
+
+.remote-credential-list-head h3 {
+  font-size: 0.92rem;
+}
+
+.remote-credential-list-head span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.remote-credential-list {
+  align-content: start;
+  display: grid;
+  gap: 6px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.remote-credential-list-item {
+  align-items: start;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  min-width: 0;
+  padding: 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.remote-credential-list-item.active {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 11%);
+  border-color: color-mix(in srgb, var(--line-strong), var(--brand-green-dark) 48%);
+}
+
+.remote-credential-list-item strong,
+.remote-credential-list-item small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-credential-list-item small {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.remote-credential-manager-body > form {
+  align-content: start;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.remote-credential-editor-head h3,
+.remote-credential-editor-head p {
+  margin: 0;
+}
+
+.remote-credential-editor-head h3 {
+  font-size: 1rem;
+}
+
+.remote-credential-editor-head p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin-top: 3px;
+}
+
+.remote-credential-core-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.remote-terminal-popout-page {
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+.remote-terminal-popout-head {
+  align-items: center;
+  background: #151b1a;
+  border-bottom: 3px solid var(--brand-green);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 8px 14px;
+}
+
+.remote-terminal-popout-head .brand {
+  color: #fff;
+}
+
+.remote-terminal-popout-head .brand img {
+  height: 36px;
+  width: 36px;
+}
+
+.remote-terminal-popout-shell {
+  margin: 0 auto;
+  padding: 16px;
+  width: 100%;
+}
+
+.remote-terminal-popout-shell .remote-terminal-workspace {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.remote-terminal-popout-shell .remote-terminal-surface {
+  height: calc(100vh - 235px);
+  min-height: 340px;
+}
+
+@media (max-width: 1050px) {
+  .remote-terminal-manager {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-connection-explorer {
+    max-height: none;
+    min-height: 0;
+    position: static;
+  }
+
+  .remote-connection-tree {
+    max-height: 360px;
+  }
+}
+
+@media (max-width: 760px) {
+  .remote-terminal-manager-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .remote-terminal-primary-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .remote-terminal-primary-actions button {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .remote-terminal-dialog-grid,
+  .remote-terminal-credential-fields,
+  .remote-credential-core-fields,
+  .compact-options,
+  .remote-credential-manager-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-credential-manager-body > aside {
+    max-height: 250px;
+  }
+
+  .remote-terminal-stage-empty {
+    min-height: 430px;
+  }
+}
+
+@media (max-width: 620px) {
+  .remote-terminal-manager-head,
+  .remote-connection-explorer,
+  .remote-terminal-session-stage .remote-terminal-workspace,
+  .remote-credential-manager,
+  .remote-terminal-dialog-form {
+    padding: 14px;
+  }
+
+  .remote-terminal-primary-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-terminal-tabs-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .remote-terminal-tabs-head > button {
+    width: 100%;
+  }
+
+  .remote-terminal-tab-shell {
+    flex-basis: 210px;
+  }
+
+  .remote-terminal-stage-empty {
+    min-height: 360px;
+    padding: 30px 18px;
+  }
+
+  .remote-terminal-choice-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-quick-target-grid {
+    grid-template-columns: minmax(0, 1fr) 92px;
+  }
+
+  .remote-terminal-dialog {
+    max-height: calc(100vh - 16px);
+    max-width: calc(100vw - 16px);
+    width: calc(100vw - 16px);
+  }
+
+  .remote-terminal-dialog-footer-split {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+
+  .remote-terminal-dialog-footer-split .button-row,
+  .remote-terminal-dialog-footer-split .button-row button {
+    width: 100%;
+  }
+
+  .remote-terminal-popout-head .brand span {
+    display: none;
+  }
+
+  .remote-terminal-popout-head .button-link {
+    font-size: .78rem;
+  }
+
+  .remote-terminal-popout-shell {
+    padding: 8px;
+  }
+
+  .remote-terminal-popout-shell .remote-terminal-workspace {
+    padding: 12px;
+  }
+
+  .remote-terminal-popout-shell .remote-terminal-surface {
+    height: calc(100vh - 330px);
+    min-height: 300px;
+  }
+}
+
+@container (max-width: 620px) {
+  .remote-terminal-session-stage .remote-terminal-workspace-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .remote-terminal-session-stage .remote-terminal-session-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .remote-terminal-session-stage .remote-terminal-session-actions button {
+    white-space: nowrap;
+  }
+}
+
 /* Multicast Tester */
 .multicast-mode-picker {
   border: 0;
@@ -14618,5 +15770,543 @@ button.danger:hover {
 
   .saved-profile-manager-actions .profile-save-action {
     grid-column: auto;
+  }
+}
+
+/* Persistent remote terminal */
+.remote-terminal-start-layout {
+  align-items: start;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.75fr);
+}
+
+.remote-terminal-form,
+.remote-terminal-guidance {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-width: 0;
+  padding: 18px;
+}
+
+.remote-terminal-guidance {
+  background: var(--profile-collection-surface);
+  border-left: 4px solid var(--brand-green-dark);
+}
+
+.remote-terminal-guidance h2 {
+  font-size: 1.15rem;
+  margin: 5px 0 8px;
+}
+
+.remote-terminal-guidance p {
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0 0 12px;
+}
+
+.remote-terminal-guidance ul {
+  color: var(--ink);
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+  padding-left: 21px;
+}
+
+.remote-terminal-identity-grid {
+  grid-template-columns: minmax(210px, 1.2fr) minmax(210px, 1.2fr) minmax(110px, 0.5fr);
+}
+
+.remote-terminal-identity-grid label:nth-child(4),
+.remote-terminal-identity-grid label:nth-child(5) {
+  grid-column: span 1;
+}
+
+.remote-terminal-options {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+  padding: 14px;
+}
+
+.remote-terminal-workspace {
+  scroll-margin-top: calc(var(--topbar-height) + 16px);
+}
+
+.remote-terminal-workspace-head,
+.remote-terminal-history-head {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.remote-terminal-workspace-head h2,
+.remote-terminal-workspace-head p,
+.remote-terminal-history-head h2,
+.remote-terminal-history-head p {
+  margin: 0;
+}
+
+.remote-terminal-workspace-head p,
+.remote-terminal-history-head p {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+#remote-terminal-session-count {
+  white-space: nowrap;
+}
+
+.remote-terminal-session-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.remote-terminal-session-menu {
+  position: relative;
+}
+
+.remote-terminal-session-menu > summary {
+  align-items: center;
+  background: var(--surface-subtle);
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 850;
+  height: 38px;
+  justify-content: center;
+  list-style: none;
+  min-height: 38px;
+  padding: 0 10px;
+  width: 42px;
+}
+
+.remote-terminal-session-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.remote-terminal-session-menu > summary:hover,
+.remote-terminal-session-menu > summary:focus-visible,
+.remote-terminal-session-menu[open] > summary {
+  background: var(--card-tint);
+  border-color: var(--line-strong);
+}
+
+.remote-terminal-session-menu-items {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 14px 36px rgb(10 28 19 / 18%);
+  display: grid;
+  min-width: 200px;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 25;
+}
+
+.remote-terminal-session-menu-items button,
+.remote-terminal-session-menu-items a {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  box-shadow: none;
+  color: var(--ink);
+  display: flex;
+  font-size: 0.84rem;
+  font-weight: 750;
+  justify-content: flex-start;
+  min-height: 36px;
+  padding: 8px 10px;
+  text-decoration: none;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.remote-terminal-session-menu-items button:hover,
+.remote-terminal-session-menu-items button:focus-visible,
+.remote-terminal-session-menu-items a:hover,
+.remote-terminal-session-menu-items a:focus-visible {
+  background: var(--card-tint);
+}
+
+.remote-terminal-session-menu-items .danger {
+  color: var(--bad);
+}
+
+.status-pill {
+  background: #e6ece8;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 850;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.status-pill.running {
+  background: #e5f5e8;
+  color: var(--ok);
+}
+
+.status-pill.error,
+.status-pill.interrupted {
+  background: #f9e7e7;
+  color: var(--bad);
+}
+
+.remote-terminal-surface {
+  background: #0b1110;
+  border: 1px solid #35423d;
+  border-radius: 10px;
+  cursor: text;
+  height: clamp(330px, 52vh, 680px);
+  margin: 16px 0 10px;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.remote-terminal-surface:focus-within {
+  border-color: #69bd78;
+  box-shadow: 0 0 0 3px rgb(105 189 120 / 22%);
+}
+
+.remote-terminal-surface.input-disabled {
+  cursor: default;
+}
+
+.remote-terminal-screen {
+  color: #d7f7df;
+  font: 500 0.9rem/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-ligatures: none;
+  height: 100%;
+  margin: 0;
+  overflow: auto;
+  padding: 16px;
+  scrollbar-color: #52665e #111a17;
+  tab-size: 8;
+  white-space: pre;
+  word-break: normal;
+}
+
+.remote-terminal-cursor {
+  background: #bceac5;
+  color: #0b1110;
+}
+
+.remote-terminal-screen .terminal-fg-0 { color: #2e3436; }
+.remote-terminal-screen .terminal-fg-1 { color: #cc4b4b; }
+.remote-terminal-screen .terminal-fg-2 { color: #72c982; }
+.remote-terminal-screen .terminal-fg-3 { color: #d6bf55; }
+.remote-terminal-screen .terminal-fg-4 { color: #729fcf; }
+.remote-terminal-screen .terminal-fg-5 { color: #ad7fa8; }
+.remote-terminal-screen .terminal-fg-6 { color: #55c1c3; }
+.remote-terminal-screen .terminal-fg-7 { color: #d3d7cf; }
+.remote-terminal-screen .terminal-fg-8 { color: #708078; }
+.remote-terminal-screen .terminal-fg-9 { color: #ff6b6b; }
+.remote-terminal-screen .terminal-fg-10 { color: #8ae99b; }
+.remote-terminal-screen .terminal-fg-11 { color: #fce977; }
+.remote-terminal-screen .terminal-fg-12 { color: #92bfe9; }
+.remote-terminal-screen .terminal-fg-13 { color: #d6a0d1; }
+.remote-terminal-screen .terminal-fg-14 { color: #73e0e2; }
+.remote-terminal-screen .terminal-fg-15 { color: #fff; }
+.remote-terminal-screen .terminal-bg-0 { background: #2e3436; }
+.remote-terminal-screen .terminal-bg-1 { background: #cc4b4b; }
+.remote-terminal-screen .terminal-bg-2 { background: #72c982; }
+.remote-terminal-screen .terminal-bg-3 { background: #d6bf55; }
+.remote-terminal-screen .terminal-bg-4 { background: #729fcf; }
+.remote-terminal-screen .terminal-bg-5 { background: #ad7fa8; }
+.remote-terminal-screen .terminal-bg-6 { background: #55c1c3; }
+.remote-terminal-screen .terminal-bg-7 { background: #d3d7cf; }
+.remote-terminal-screen .terminal-bg-8 { background: #708078; }
+.remote-terminal-screen .terminal-bg-9 { background: #ff6b6b; }
+.remote-terminal-screen .terminal-bg-10 { background: #8ae99b; }
+.remote-terminal-screen .terminal-bg-11 { background: #fce977; }
+.remote-terminal-screen .terminal-bg-12 { background: #92bfe9; }
+.remote-terminal-screen .terminal-bg-13 { background: #d6a0d1; }
+.remote-terminal-screen .terminal-bg-14 { background: #73e0e2; }
+.remote-terminal-screen .terminal-bg-15 { background: #fff; }
+.remote-terminal-screen .terminal-bold { font-weight: 850; }
+.remote-terminal-screen .terminal-dim { opacity: 0.68; }
+.remote-terminal-screen .terminal-italic { font-style: italic; }
+.remote-terminal-screen .terminal-underline { text-decoration: underline; }
+.remote-terminal-screen .terminal-inverse { background: #d7f7df; color: #0b1110; }
+.remote-terminal-screen .remote-terminal-cursor { background: #bceac5; color: #0b1110; }
+
+.remote-terminal-surface:focus-within .remote-terminal-cursor {
+  animation: remote-terminal-cursor-blink 1.05s step-end infinite;
+}
+
+@keyframes remote-terminal-cursor-blink {
+  0%, 48% { background: #bceac5; color: #0b1110; }
+  49%, 100% { background: transparent; color: inherit; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remote-terminal-surface:focus-within .remote-terminal-cursor {
+    animation: none;
+  }
+}
+
+.remote-terminal-screen:empty::before {
+  color: #789087;
+  content: "Waiting for remote output…";
+}
+
+.remote-terminal-input-capture {
+  background: transparent;
+  border: 0;
+  caret-color: transparent;
+  height: 1px;
+  inset: auto auto 12px 12px;
+  opacity: 0.01;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  resize: none;
+  width: 1px;
+}
+
+.remote-terminal-input-capture:focus {
+  box-shadow: none;
+  outline: 0;
+}
+
+.remote-terminal-focus-state {
+  background: rgb(11 17 16 / 88%);
+  border: 1px solid #35423d;
+  border-radius: 999px;
+  bottom: 10px;
+  color: #91a99e;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  padding: 5px 9px;
+  pointer-events: none;
+  position: absolute;
+  right: 10px;
+}
+
+.remote-terminal-surface:focus-within .remote-terminal-focus-state {
+  border-color: #477c52;
+  color: #bceac5;
+}
+
+.remote-terminal-input-tools {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.remote-terminal-input-tools p {
+  color: var(--muted);
+  font-size: 0.84rem;
+  margin: 0;
+  max-width: 720px;
+}
+
+.remote-terminal-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.remote-terminal-control-row button {
+  min-width: 62px;
+}
+
+.remote-terminal-session-list {
+  display: grid;
+  gap: 6px;
+}
+
+.remote-terminal-session-card {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--muted);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px 12px;
+}
+
+.remote-terminal-session-card.running,
+.remote-terminal-session-card.connecting {
+  border-left-color: var(--brand-green-dark);
+}
+
+.remote-terminal-session-card.error,
+.remote-terminal-session-card.interrupted {
+  border-left-color: var(--bad);
+}
+
+.remote-terminal-session-card > div:first-child {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.remote-terminal-session-card-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 5px;
+  justify-content: flex-end;
+}
+
+.remote-terminal-history-action,
+.remote-terminal-session-card-actions .remote-terminal-history-action {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 38px;
+  height: 38px;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0;
+  width: 38px;
+}
+
+.remote-terminal-history-action svg {
+  fill: none;
+  height: 19px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  width: 19px;
+}
+
+.remote-terminal-session-card strong,
+.remote-terminal-session-card span,
+.remote-terminal-session-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-terminal-session-card span,
+.remote-terminal-session-card small {
+  color: var(--muted);
+}
+
+.remote-terminal-session-card .remote-terminal-session-case {
+  color: var(--brand-green-dark);
+  font-weight: 750;
+}
+
+@media (max-width: 900px) {
+  .remote-terminal-start-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-terminal-identity-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .remote-terminal-form,
+  .remote-terminal-guidance {
+    padding: 14px;
+  }
+
+  .remote-terminal-identity-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-terminal-workspace-head,
+  .remote-terminal-history-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .remote-terminal-session-actions,
+  .remote-terminal-session-actions button,
+  .remote-terminal-session-actions .button-link {
+    width: 100%;
+  }
+
+  .remote-terminal-session-menu,
+  .remote-terminal-session-menu > summary {
+    width: 100%;
+  }
+
+  .remote-terminal-session-menu > summary::before {
+    content: "Session actions";
+    margin-right: 8px;
+  }
+
+  .remote-terminal-session-menu-items {
+    left: 0;
+    right: 0;
+  }
+
+  .remote-terminal-session-card {
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .remote-terminal-session-card-actions {
+    display: flex;
+    width: auto;
+  }
+
+  .remote-terminal-session-card .remote-terminal-history-action,
+  .remote-terminal-session-card-actions .remote-terminal-history-action {
+    flex-basis: 44px;
+    height: 44px;
+    justify-content: center;
+    min-height: 44px;
+    width: 44px;
+  }
+
+  .remote-terminal-surface {
+    height: 52vh;
+    min-height: 300px;
+  }
+
+  .remote-terminal-screen {
+    padding: 12px;
+  }
+
+  .remote-terminal-input-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .remote-terminal-control-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .remote-terminal-control-row button {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+}
+
+@media (max-width: 460px) {
+  .remote-terminal-session-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-terminal-session-card-actions {
+    justify-content: flex-end;
   }
 }

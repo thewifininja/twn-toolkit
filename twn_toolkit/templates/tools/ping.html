@@ -5,7 +5,7 @@
 <div id="ping-workspace">
 <section class="panel tool-panel" id="ping-controls">
   <div class="panel-head">
-    <h1>Multi-Host Ping</h1>
+    <h1>Ping</h1>
     <p>Troubleshoot reachability, latency, and packet loss for up to {{ ping_target_limit }} hosts from this machine.</p>
   </div>
   {% if ping_capability.accelerated %}
@@ -16,7 +16,7 @@
   {% else %}
     <div class="message warning" role="note">
       <strong>Compatibility ping engine active</strong>
-      <p>{{ ping_capability.detail }} Multi-Ping remains available through the standard system <code>ping</code> command with a {{ ping_target_limit }}-target limit. Install and authorize <code>fping</code>, then restart the toolkit, to enable high-capacity mode.</p>
+      <p>{{ ping_capability.detail }} Ping remains available through the standard system <code>ping</code> command with a {{ ping_target_limit }}-target limit. Install and authorize <code>fping</code>, then restart the toolkit, to enable high-capacity mode.</p>
     </div>
   {% endif %}
   <form
@@ -154,7 +154,7 @@
 <section class="panel tool-panel ping-minimized-placeholder" id="ping-minimized" hidden>
   <div>
     <span class="eyebrow">Live tool</span>
-    <h1>Multi-Host Ping is minimized</h1>
+    <h1>Ping is minimized</h1>
     <p>The run is still collecting results. You can navigate anywhere in the toolkit and restore it from the Live tools footer dock.</p>
   </div>
   <button id="ping-restore-inline" type="button">Restore workspace</button>

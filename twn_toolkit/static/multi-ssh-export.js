@@ -50,7 +50,7 @@
   downloadAll.addEventListener("click", () => {
     const divider = "=".repeat(78);
     const body = results.map((result) => `${divider}\n${resultText(result)}`).join("\n");
-    download(`${timestamp()}-multi-ssh-results.txt`, `Multi-SSH results\n${body}`);
+    download(`${timestamp()}-bulk-ssh-results.txt`, `Bulk SSH results\n${body}`);
   });
 
   results.forEach((result) => {

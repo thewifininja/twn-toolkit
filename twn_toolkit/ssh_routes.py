@@ -342,7 +342,7 @@ def _record_successful_run(
     command_count = len(preview["plans"][0]["commands"]) if host_count else 0
     record_current_activity(
         "Automation",
-        "Ran Multi-SSH",
+        "Ran Bulk SSH",
         f"{host_count} host(s), {command_count} command(s)",
         counters={
             "ssh": {
@@ -372,7 +372,7 @@ def _record_failed_run(
     command_count = (
         len(preview["plans"][0]["commands"]) if preview and host_count else 0
     )
-    record_current_activity("Automation", "Ran Multi-SSH", "Request failed")
+    record_current_activity("Automation", "Ran Bulk SSH", "Request failed")
     _annotate_run(
         "matrix",
         form,
@@ -423,10 +423,10 @@ def _record_ssh_investigation(
         "operation_id": operation_id,
         "event_type": "action.failed" if error else "action.completed",
         "tool_id": "tools.multi_ssh",
-        "action": "Multi-SSH",
+        "action": "Bulk SSH",
         "outcome": "failed" if error else "succeeded" if successful == len(results) else "incomplete",
         "summary": (
-            f"Multi-SSH failed: {error}"
+            f"Bulk SSH failed: {error}"
             if error
             else f"Ran {command_count} rendered SSH command(s) across {len(results)} host(s): {successful} succeeded."
         ),
@@ -487,7 +487,7 @@ def _annotate_run(
     annotate_tool_run(
         category="Network tools",
         action_namespace="ssh.multi_host_execution",
-        tool_name="Multi-SSH",
+        tool_name="Bulk SSH",
         outcome=outcome,
         details={
             "mode": mode,

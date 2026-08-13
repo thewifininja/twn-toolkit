@@ -752,6 +752,37 @@ def _ssh_presentation(event: dict[str, Any]) -> ReportPresentation:
     }
 
 
+def _remote_terminal_presentation(event: dict[str, Any]) -> ReportPresentation:
+    parameters = _mapping(event.get("parameters"))
+    metrics = _mapping(event.get("metrics"))
+    details = _mapping(event.get("details"))
+    targets = _mapping(event.get("targets"))
+    facts = []
+    _fact(facts, "Session", parameters.get("title"))
+    _fact(
+        facts,
+        "Remote",
+        _host_port(targets.get("host"), targets.get("port")),
+    )
+    _fact(facts, "Protocol", parameters.get("protocol"))
+    _fact(facts, "Remote user", parameters.get("remote_username"))
+    if event.get("event_type") == "remote_terminal.session.started":
+        _fact(
+            facts,
+            "Transcript",
+            "Enabled" if parameters.get("transcript_enabled") else "Not retained",
+        )
+        return {"facts": facts, "detail": None}
+    _fact(facts, "Duration", _duration(parameters.get("duration_seconds")))
+    _fact(facts, "Ended by", _termination(parameters.get("termination")))
+    _fact(facts, "Output", _unit(metrics.get("output_bytes"), "bytes"))
+    if metrics.get("output_truncated"):
+        _fact(facts, "Retention limit", "Transcript was truncated")
+    _fact(facts, "Transcript evidence", _mapping(details.get("evidence")).get("filename"))
+    _fact(facts, "Error", details.get("error"))
+    return {"facts": facts, "detail": None}
+
+
 def _transfer_presentation(event: dict[str, Any]) -> ReportPresentation:
     parameters = _mapping(event.get("parameters"))
     metrics = _mapping(event.get("metrics"))
@@ -1116,6 +1147,10 @@ def _termination(value: Any) -> str:
         "case_closed": "Case closure",
         "lease_expired": "Browser lease expired",
         "error": "Monitor error",
+        "remote_closed": "Remote host closed the shell",
+        "idle_timeout": "Eight-hour inactivity limit",
+        "toolkit_restart": "Toolkit restart",
+        "connection_error": "Connection error",
     }.get(str(value or ""), _text(value))
 
 
@@ -1139,6 +1174,7 @@ _PRESENTATION_BUILDERS: dict[str, PresentationBuilder] = {
     "tools.packet_replay": _packet_replay_presentation,
     "tools.packet_capture": _packet_capture_presentation,
     "tools.multi_ssh": _ssh_presentation,
+    "tools.remote_terminal": _remote_terminal_presentation,
     "tools.multi_sftp": _transfer_presentation,
     "fortigate.wireless_client_history": _wireless_history_presentation,
     "fortigate.rename_aps": _external_action_presentation,

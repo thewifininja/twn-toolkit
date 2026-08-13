@@ -29,7 +29,6 @@ Current release: **v0.18.1**
   - FortiAuthenticator workflows
 - **Network Tools**
   - Addressing & Reachability
-  - Multi-Host Tools
   - Services & Protocols
   - Traffic & Interfaces
 - **Investigations** — durable troubleshooting journals, evidence, and reports
@@ -105,19 +104,19 @@ The sidebar and Network Tools page use the same functional organization.
 - **Traceroute** — run UDP or ICMP traces for multiple destinations with live
   graphical hops and text output.
 
-#### Multi-Host Tools
-
-- **Multi-Host Ping** — graph reachability, latency, and loss for a validated
+- **Ping** — graph reachability, latency, and loss for a validated
   target snapshot; update targets without discarding unchanged history.
   Persistent runs continue through normal toolkit navigation and can be
   minimized to the collapsed-by-default Live tools footer dock, renamed in
   place, then restored with retained history by selecting the session card.
   A working optional `fping` system command enables batched high-capacity rounds
   and raises the target limit from 100 to 250. Without it, the standard system
-  `ping` compatibility engine remains available. Multi-Ping exposes separate
+  `ping` compatibility engine remains available. Ping exposes separate
   round-interval and per-target probe-timeout controls; accelerated mode accepts
   sub-second timeouts for dense groups of known-local targets.
-- **Multi-SSH** — build prompt-aware concurrent runs in one spreadsheet-style
+#### Services & Protocols
+
+- **Bulk SSH** — build prompt-aware concurrent runs in one spreadsheet-style
   target table, with a Raw Matrix editor for CSV-style pasting and a compact
   importer for friendly host lists and inclusive IPv4/IPv6 ranges. Substitute
   literal `{{ variable }}` values into reusable Stored Commandlets; the fixed
@@ -128,14 +127,25 @@ The sidebar and Network Tools page use the same functional organization.
   optionally retain their target matrix and per-host values, while credentials
   remain per-run only. Signed previews show every rendered command before
   execution.
-- **Multi-Transfer** — fetch files concurrently over SFTP, SCP, or FTP into the
+- **Bulk Transfer** — fetch files concurrently over SFTP, SCP, or FTP into the
   Datastore or a one-shot ZIP, using collision-safe filename templates and the
   same explicit legacy SSH exception for SFTP/SCP.
 - **TCP Port Scanner** — check individual ports or ranges across authorized
   hosts.
 
-#### Services & Protocols
-
+- **Remote Terminal** — keep up to twelve owner-scoped SSH shells running under
+  the toolkit service, including multiple sessions to the same saved host, and
+  restore them from Live Tools after navigation, a closed browser tab, or a
+  brief client disconnect. Session tabs can be renamed independently from their
+  saved hosts or closed while preserving scrollback in Recent sessions. Each
+  shell has a 10 MiB reconnect scrollback limit, an eight-hour idle limit, and
+  seven-day completed-scrollback retention. Credentials and submitted input
+  are not persisted. Saved-host sessions automatically retain a sanitized
+  transcript when a case is recording; Quick Connect keeps an explicit capture
+  choice. Active or completed sessions can also be attached to the open case
+  afterward. Retained output can be copied independently to any permitted
+  Datastore folder as a live snapshot or completed scrollback without
+  overwriting an earlier copy.
 - **RADIUS Authentication Test** — compare PAP and CHAP results and returned
   attributes; optional `eapol_test` support adds PEAP/MSCHAPv2 and EAP-TLS.
 - **Certificate Chain Inspector** — inspect the exact TLS chain presented by a
@@ -207,7 +217,7 @@ The sidebar and Network Tools page use the same functional organization.
 An operator can open one case at a time in the Investigations workspace and
 carry its recording context across toolkit pages. Finite network diagnostics,
 one-off SNMP polls, interface monitoring, certificate inspection, persistent
-Multi-Ping, packet capture, managed iPerf3 listeners, command/transfer runs,
+Ping, remote SSH terminals, packet capture, managed iPerf3 listeners, command/transfer runs,
 selected vendor workflows, and other intentional tool actions retain safe
 structured events or generated evidence. Operators can also:
 

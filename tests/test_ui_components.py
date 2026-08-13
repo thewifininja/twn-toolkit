@@ -19,14 +19,16 @@ class UIComponentTests(unittest.TestCase):
     def render(self, source: str) -> str:
         return self.environment.from_string(source).render()
 
-    def test_shared_page_shell_uses_wide_responsive_content_cap(self) -> None:
+    def test_shared_page_shell_uses_full_responsive_content_width(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn("--page-content-max-width: 1600px;", stylesheet)
+        self.assertIn("--page-inline-gutter: clamp(14px, 2vw, 28px);", stylesheet)
         self.assertIn(".shell > * {", stylesheet)
-        self.assertIn("max-width: var(--page-content-max-width);", stylesheet)
+        self.assertIn("padding: 24px var(--page-inline-gutter);", stylesheet)
+        self.assertIn("max-width: none;", stylesheet)
+        self.assertIn("width: 100%;", stylesheet)
 
     def test_workspace_section_and_empty_state_contracts(self) -> None:
         html = self.render(
@@ -126,6 +128,126 @@ class UIComponentTests(unittest.TestCase):
         self.assertNotIn("border:", action_rule)
         self.assertIn("dialog.showModal()", script)
         self.assertIn("note.focus()", script)
+
+    def test_active_case_and_remote_terminal_share_the_full_workspace_width(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        remote_template = (
+            TEMPLATE_ROOT / "tools" / "remote_terminal.html"
+        ).read_text(encoding="utf-8")
+
+        case_banner_rule = stylesheet.split(
+            ".active-investigation-banner {", 1
+        )[1].split("}", 1)[0]
+        terminal_manager_rule = stylesheet.split(
+            ".remote-terminal-manager {", 1
+        )[1].split("}", 1)[0]
+        library_actions_rule = stylesheet.split(
+            ".remote-connection-library-actions {", 1
+        )[1].split("}", 1)[0]
+
+        for rule in (case_banner_rule, terminal_manager_rule):
+            self.assertIn("max-width: none;", rule)
+            self.assertIn("width: 100%;", rule)
+        self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", library_actions_rule)
+        self.assertIn(
+            'class="remote-connection-library-actions"',
+            remote_template,
+        )
+        self.assertIn(
+            'class="secondary compact" type="button" data-open-credentials>Credentials',
+            remote_template,
+        )
+        self.assertNotIn(".remote-connection-explorer > footer {", stylesheet)
+
+    def test_remote_terminal_launchers_and_dialogs_have_clear_roles(self) -> None:
+        remote_template = (
+            TEMPLATE_ROOT / "tools" / "remote_terminal.html"
+        ).read_text(encoding="utf-8")
+        remote_script = (
+            TEMPLATE_ROOT.parent / "static" / "remote-connections.js"
+        ).read_text(encoding="utf-8")
+        terminal_workspace = (
+            TEMPLATE_ROOT / "tools" / "_remote_terminal_workspace.html"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn(">New session</button>", remote_template)
+        self.assertIn(">Quick connect</button>", remote_template)
+        self.assertIn('id="remote-terminal-new-session"', remote_template)
+        terminal_script = (
+            TEMPLATE_ROOT.parent / "static" / "remote-terminal.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "newSessionButton.hidden = !activeSessions.length", terminal_script
+        )
+        self.assertIn('class="remote-terminal-dialog-section"', remote_template)
+        self.assertIn('class="remote-terminal-advanced-options"', remote_template)
+        self.assertIn('id="remote-credential-editor-title"', remote_template)
+        self.assertIn('id="remote-credential-count"', remote_template)
+        self.assertIn('id="remote-credential-save"', remote_template)
+        self.assertIn('openDialog(quickDialog, "remote-terminal-host")', remote_script)
+        self.assertIn('credential ? "Edit credential" : "New credential"', remote_script)
+        self.assertIn('setAttribute("aria-haspopup", "menu")', remote_script)
+        self.assertIn('setAttribute("role", "menuitem")', remote_script)
+        self.assertIn('event.key !== "Escape"', remote_script)
+        self.assertNotIn("remote-connection-folder-tools", remote_script)
+        self.assertIn('id="remote-terminal-session-rename"', terminal_workspace)
+        self.assertIn('id="remote-terminal-rename-dialog"', terminal_workspace)
+        self.assertIn("saved host name stays unchanged", terminal_workspace)
+
+    def test_remote_terminal_tabs_can_be_renamed_and_closed(self) -> None:
+        script = (TEMPLATE_ROOT.parent / "static" / "remote-terminal.js").read_text(
+            encoding="utf-8"
+        )
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('tabAction("✎", `Rename ${session.title}`', script)
+        self.assertIn('tabAction("×", `Close ${session.title}`', script)
+        self.assertIn("async function closeSessionTab(session, control)", script)
+        self.assertIn("scrollback will remain in Recent sessions", script)
+        self.assertIn("async function saveSessionName(event)", script)
+        self.assertIn("fetch(session.rename_url", script)
+        self.assertIn(".remote-terminal-tab-shell {", stylesheet)
+        self.assertIn(".remote-terminal-tab-action.close:hover", stylesheet)
+
+    def test_remote_terminal_exposes_case_and_datastore_capture_actions(self) -> None:
+        workspace = (
+            TEMPLATE_ROOT / "tools" / "_remote_terminal_workspace.html"
+        ).read_text(encoding="utf-8")
+        script = (TEMPLATE_ROOT.parent / "static" / "remote-terminal.js").read_text(
+            encoding="utf-8"
+        )
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('data-active-case-id="{{ active_investigation.id', workspace)
+        self.assertIn('id="remote-terminal-attach-case"', workspace)
+        self.assertIn('id="remote-terminal-save-datastore"', workspace)
+        self.assertIn('id="remote-terminal-datastore-dialog"', workspace)
+        self.assertIn("all retained scrollback, including output produced before attachment", script)
+        self.assertIn("This saves the output retained so far as a snapshot", script)
+        self.assertIn('terminalActionIcon("datastore")', script)
+        self.assertIn('terminalActionIcon("case")', script)
+        self.assertIn(".remote-terminal-case-pill {", stylesheet)
+        self.assertIn(".remote-terminal-datastore-dialog {", stylesheet)
+
+    def test_remote_host_action_stays_a_compact_square(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        rule = stylesheet.rsplit(
+            ".remote-connection-host-manage {", 1
+        )[1].split("}", 1)[0]
+
+        self.assertIn("align-self: center;", rule)
+        self.assertIn("height: 30px;", rule)
+        self.assertIn("min-height: 30px;", rule)
+        self.assertIn("width: 30px;", rule)
+        self.assertIn("padding: 0;", rule)
 
     def test_every_peer_view_uses_shared_tabs_first_workspace_structure(self) -> None:
         shared_chrome_templates = (
@@ -260,6 +382,8 @@ class UIComponentTests(unittest.TestCase):
         self.assertNotIn(".speed-test-panel {\n  max-width:", stylesheet)
         self.assertNotIn(".speed-test-notes {\n  max-width:", stylesheet)
         self.assertNotIn(".ip-address-panel {\n  max-width:", stylesheet)
+        self.assertNotIn(".switch-order-tool {\n  max-width:", stylesheet)
+        self.assertNotIn(".remote-terminal-popout-shell {\n  max-width:", stylesheet)
         for selector in (".preview-panel {", ".rename-editor {"):
             rule = stylesheet.split(selector, 1)[1].split("}", 1)[0]
             self.assertIn("max-width: none;", rule)

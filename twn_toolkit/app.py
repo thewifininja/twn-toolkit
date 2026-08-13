@@ -60,6 +60,8 @@ from .version import APP_VERSION, RELEASE_NOTES
 from .audit import AuditStore, annotate_audit_event
 from .migrations import run_toolkit_migrations
 from .operational import OperationalSettingsStore
+from .remote_sessions import RemoteSessionManager, RemoteSessionStore
+from .remote_connections import RemoteConnectionStore
 
 
 def create_app(instance_path: str | None = None) -> Flask:
@@ -103,6 +105,17 @@ def create_app(instance_path: str | None = None) -> Flask:
     operational_store = OperationalSettingsStore(app.instance_path)
     investigation_store = InvestigationStore(app.instance_path)
     app.extensions["investigation_store"] = investigation_store
+    remote_connection_store = RemoteConnectionStore(
+        app.instance_path, app.config["SECRET_KEY"]
+    )
+    app.extensions["remote_connection_store"] = remote_connection_store
+    remote_session_store = RemoteSessionStore(app.instance_path)
+    remote_session_manager = RemoteSessionManager(
+        remote_session_store,
+        investigation_store,
+        logger=app.logger,
+    )
+    app.extensions["remote_session_manager"] = remote_session_manager
 
     @app.before_request
     def require_authentication():
@@ -702,6 +715,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             return
         for profile_store in build_reset_stores(app.instance_path):
             profile_store.clear()
+        remote_connection_store.clear()
         certificate_automation_store.clear()
         acme_dns_manager.clear()
         click.echo("The WiFi Ninja's Toolkit local profile data has been reset.")
@@ -746,6 +760,14 @@ def create_app(instance_path: str | None = None) -> Flask:
         live_sessions = LiveToolStore(app.instance_path).sessions_for_user(
             g.current_user["id"], renew_lease=False
         )
+        if (
+            is_admin
+            or allowed_tool_ids is None
+            or "tools.remote_terminal" in allowed_tool_ids
+        ):
+            live_sessions.extend(
+                remote_session_manager.sessions_for_user(g.current_user["id"])
+            )
         if is_admin or (
             allowed_tool_ids is not None
             and "tools.iperf3" in allowed_tool_ids

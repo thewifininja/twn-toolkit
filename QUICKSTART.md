@@ -156,16 +156,16 @@ libraries expose the same action on each expandable record.
    the work is complete; report selection remains editable afterward. A closed
    case can be reopened in paused mode when there is no other open case.
 
-Long-running Multi-Ping and future terminal sessions use a separate lifecycle:
+Long-running Ping and future terminal sessions use a separate lifecycle:
 their later integration will record start and stop events plus a bounded summary
 rather than treating every sample or terminal byte as a journal event.
 
 ## Run a first network test
 
-**Multi-Host Ping** is a useful first test because it needs no saved
+**Ping** is a useful first test because it needs no saved
 credentials:
 
-1. Open **Network Tools → Multi-Host Tools → Multi-Host Ping**.
+1. Open **Network Tools → Addressing & Reachability → Ping**.
 2. Enter one target per line. Optional friendly names use
    `Friendly Name = hostname-or-IP`.
 3. Select **Start**.
@@ -191,11 +191,11 @@ IF-MIB counter history after navigating elsewhere.
 
 The other Network Tools follow the same category layout shown in the sidebar:
 
-- **Addressing & Reachability:** IP information, subnet exclusion, DNS, NTP,
-  Path MTU, and Traceroute
-- **Multi-Host Tools:** Ping, Multi-SSH, Multi-Transfer, and TCP Port Scanner
-- **Services & Protocols:** RADIUS, certificate inspection and AD CS enrollment,
-  SNMP, Wake-on-LAN, Webhook/API, and Syslog
+- **Addressing & Reachability:** IP information, subnet exclusion, Ping, DNS,
+  NTP, Path MTU, and Traceroute
+- **Services & Protocols:** Bulk SSH, Remote Terminal, Bulk Transfer, TCP Port
+  Scanner, RADIUS, certificate inspection and AD CS enrollment, SNMP,
+  Wake-on-LAN, Webhook/API, and Syslog
 - **Traffic & Interfaces:** Packet Capture, Wi-Fi/LAN Speed Test, iPerf3 Tester,
   Multicast Tester, DHCP Discover, and Packet Replay
 

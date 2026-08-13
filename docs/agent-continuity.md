@@ -68,6 +68,15 @@ precedent.
   `instance/datastore/Investigations/<investigation-id>/` folders. Reports must
   remain deterministic views of retained evidence; generated narrative or AI
   interpretation must be visibly separate and must never rewrite source events.
+- Remote Terminal shells are owner-scoped durable toolkit objects in
+  `instance/remote_sessions.sqlite3`. The browser is a reconnectable view, not
+  the connection owner. Keep credentials in memory only through SSH
+  authentication, never persist submitted input, cap scrollback at 10 MiB per
+  session, expire idle shells after eight hours, and purge completed scrollback
+  after seven days. A toolkit restart marks open shells interrupted because the
+  underlying TCP connection cannot survive process replacement. Case-attached
+  shells use start/completion lifecycle events and optional sanitized transcript
+  evidence; case closure stops and finalizes them before closing the case.
   `investigation_policy.py` is exhaustive over the registered tool catalog and
   declares native, finite, lifecycle, hybrid, action, explicit, or excluded
   behavior plus the intended evidence form. Automatic evidence modes must have
@@ -75,7 +84,7 @@ precedent.
   which tests enforce. Presentation logic does not belong in the shared report
   template. Finite diagnostics record one completed or
   failed event; long-running tools require explicit lifecycle events and bounded
-  summaries. Multi-Ping attaches to the case recording at session start, retains
+  summaries. Ping attaches to the case recording at session start, retains
   timestamped configuration revisions and revision-tagged samples, then writes a
   compact terminal event plus generated CSV evidence. Pausing must not orphan an
   attached run, and case closure must stop and finalize it before source evidence
@@ -201,7 +210,7 @@ When wiring a tool into metrics:
 Activity instrumentation now covers every registered diagnostic/workflow tool:
 ping, FortiGate/FortiAuthenticator API work, traceroute, SNMP, RADIUS, DNS,
 syslog send/receive, packet replay sends, completed speed tests, TCP scans, NTP,
-DHCP Discover, certificate inspection, manual API requests, Path MTU, Multi-SSH, Multi-Transfer,
+DHCP Discover, certificate inspection, manual API requests, Path MTU, Bulk SSH, Bulk Transfer,
 Subnet Excluder, What's My IP, and multicast listen/send/path tests.
 
 Speed-test helper requests are a special case: latency/download/upload endpoints
@@ -287,7 +296,7 @@ accepted replay frames.
   permissions, while retaining upload and raw-frame sources. Automation
   condition deadlines now stay anchored to a non-overlapping start cadence,
   avoid claiming and discarding a round while its predecessor is active, and
-  timestamp history at observation start. Automation Ping shares Multi-Ping's
+  timestamp history at observation start. Automation Ping shares Ping's
   capability-aware timeout validation, including sub-second values through a
   verified `fping` engine. Packet capture retains the host's existing
   permission boundary and never installs software or invokes sudo. Recovery
@@ -306,7 +315,7 @@ accepted replay frames.
   Message-ID generation uses the validated sender domain instead of resolving
   the host FQDN, avoiding platform-specific DNS delays. CI reports slow-test
   timings and keeps host-sensitive certificate tests independent of transient
-  runner names. Multi-SSH now uses one preview-first workflow with reusable
+  runner names. Bulk SSH now uses one preview-first workflow with reusable
   Stored Commandlets, spreadsheet-style target matrices, per-host variables,
   signed previews, and bounded fleet execution for up to 5,000 targets. Its
   compact host importer retains the earlier friendly-name and inclusive
@@ -345,7 +354,7 @@ accepted replay frames.
   Webhook/API actions
   validate configured success statuses and may use explicit bounded retries
   for network failures or selected HTTP responses while retaining per-endpoint
-  attempt evidence. Multi-Ping graph canvases and card headers remain contained
+  attempt evidence. Ping graph canvases and card headers remain contained
   through live workspace resizing. Managed TFTP, FTP, and SFTP/SCP services use
   instance-scoped lifecycle locks plus exact readiness markers, concurrent
   launcher operations, stale/zombie detection, and lazy web-app imports so
@@ -600,7 +609,7 @@ make state, risk, and the next action obvious.
   10,000 calculated points per interface. Polling intervals are 1, 5, 10, 15,
   30, or 60 seconds and may be changed while running without clearing history.
   A five-minute browser lease and 24-hour stopped-session cleanup match persistent
-  Multi-Host Ping.
+  Ping.
 - Visible windows are 1, 2, 5, 15, 30, or 60 minutes. A shared history slider and
   Older/Live/Newer controls move every interface graph together while collection
   continues. The zero line shifts within a bounded 20–80% vertical range according
@@ -700,7 +709,7 @@ make state, risk, and the next action obvious.
   `Classroom-0001`. Expanded addresses count against the caller's existing
   limit. Keep structured destination formats such as `host | ports` on their
   dedicated parser rather than applying general range expansion implicitly.
-- Multi-Host Ping capability is determined by
+- Ping capability is determined by
   `network_tools.ping_engine_capability`, which runs and caches a real localhost
   ICMP probe. A working optional `fping` command enables one bounded batch
   subprocess per round and a 250-target limit. Missing or unusable `fping`
@@ -718,7 +727,7 @@ make state, risk, and the next action obvious.
   ten minutes of raw samples and one hour of ten-second buckets before using
   minute buckets; a 500,000-sample global budget is divided across active
   targets so long-running high-capacity sessions remain memory-bounded.
-  Multi-Ping keeps round interval separate from probe timeout. Accelerated mode
+  Ping keeps round interval separate from probe timeout. Accelerated mode
   accepts 0.1–10 second timeouts; compatibility mode accepts 1–10 seconds because
   portable system `ping` timeout flags do not reliably support sub-second values.
   Existing saved profiles without a timeout load with the one-second default.
@@ -774,7 +783,7 @@ make state, risk, and the next action obvious.
   retention pruning must remove matching artifact directories. Download ZIP
   resolves files through `AutomationStore.run_artifact()`; never trust a stored
   artifact path directly.
-- Multi-SSH and `ssh.collect` share the same prompt-aware executor. Connection
+- Bulk SSH and `ssh.collect` share the same prompt-aware executor. Connection
   and authentication timeouts remain 8 seconds; server banners receive 15
   seconds and one pre-authentication banner failure is retried with a fresh
   connection. Cleanup explicitly closes the underlying socket when Paramiko
@@ -783,18 +792,18 @@ make state, risk, and the next action obvious.
   3600 seconds, with a one-hour combined ceiling per host. Completion is the
   return of the device prompt, not a short quiet period. Timeouts retain partial
   output and stop later commands for that host. Gunicorn's worker timeout is
-  3700 seconds so synchronous Multi-SSH can honor that bounded SSH budget.
+  3700 seconds so synchronous Bulk SSH can honor that bounded SSH budget.
 - All Paramiko client and server paths must obtain algorithm restrictions from
   `ssh_security.disabled_ssh_algorithms()`; do not add route-local cipher or key
   overrides. The default rejects SHA-1 `ssh-rsa`. A user-visible
   `allow_legacy_algorithms` boolean may explicitly relax negotiation for trusted
-  old equipment. Multi-SSH and Multi-Transfer scope it to one run; automation
+  old equipment. Bulk SSH and Bulk Transfer scope it to one run; automation
   actions and the managed SFTP/SCP service persist it visibly until disabled.
   Keep this separate from unknown-host-key acceptance, forward it through the
   shared executor/service boundary, and audit the boolean without credentials,
   commands, remote paths, or returned content. Any new SSH/SFTP/SCP feature must
   expose the same strong-default/explicit-exception model and add tests for both.
-- Multi-Transfer uses the request-independent `sftp_tools.fetch_ssh_files` service,
+- Bulk Transfer uses the request-independent `sftp_tools.fetch_ssh_files` service,
   which writes into a caller-provided output directory and returns structured
   per-host/per-path results with SFTP, SCP, and FTP protocol adapters. Routes either persist through
   `LocalDatastore` or package an ephemeral ZIP. The legacy action type ID remains

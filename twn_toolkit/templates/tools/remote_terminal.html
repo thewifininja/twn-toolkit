@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel tool-panel remote-terminal-manager-head">
+  <div>
+    <span class="eyebrow">Persistent remote access</span>
+    <h1>Remote Terminal</h1>
+    <p>Quick-connect without saving anything, or organize reusable SSH connections and encrypted credentials in your private library.</p>
+  </div>
+  <div class="remote-terminal-primary-actions">
+    <button type="button" data-open-quick-connect>Quick connect</button>
+  </div>
+</section>
+
+<section
+  class="remote-terminal-manager"
+  id="remote-terminal-manager"
+  data-library-url="{{ url_for('tools.remote_terminal_library') }}"
+  data-folders-url="{{ url_for('tools.create_remote_terminal_folder') }}"
+  data-credentials-url="{{ url_for('tools.create_remote_terminal_credential') }}"
+  data-hosts-url="{{ url_for('tools.create_remote_terminal_host') }}"
+>
+  <aside class="panel remote-connection-explorer" aria-label="Saved SSH connections">
+    <header>
+      <div>
+        <h2>Connections</h2>
+        <span id="remote-connection-count">0 hosts</span>
+      </div>
+    </header>
+    <div class="remote-connection-library-actions" aria-label="Saved connection actions">
+      <button class="compact" type="button" data-open-host>New host</button>
+      <button class="secondary compact" type="button" data-open-folder>New folder</button>
+      <button class="secondary compact" type="button" data-open-credentials>Credentials</button>
+    </div>
+    <label class="remote-connection-search">
+      <span class="sr-only">Find a saved connection</span>
+      <input id="remote-connection-search" type="search" placeholder="Find a connection…" autocomplete="off">
+    </label>
+    <nav class="remote-connection-tree" id="remote-connection-tree" aria-label="Connection folders"></nav>
+    <div class="empty-state remote-connection-empty" id="remote-connection-empty" hidden>
+      <strong>No saved connections yet.</strong>
+      <p>Add hosts you expect to revisit, then organize them into folders when the library grows.</p>
+    </div>
+  </aside>
+
+  <div class="remote-terminal-stage">
+    <section class="panel remote-terminal-session-stage">
+      <div class="remote-terminal-tabs-head">
+        <div class="remote-terminal-tabs" id="remote-terminal-tabs" role="tablist" aria-label="Active SSH sessions"></div>
+        <button class="secondary compact" id="remote-terminal-new-session" type="button" data-open-quick-connect hidden>Quick connect</button>
+      </div>
+      <div class="remote-terminal-stage-empty" id="remote-terminal-stage-empty">
+        <span class="remote-terminal-stage-mark" aria-hidden="true">&gt;_</span>
+        <h2>Choose a connection</h2>
+        <p>Open a saved host from the explorer or connect temporarily without adding it to your library.</p>
+        <button type="button" data-open-quick-connect>Quick connect</button>
+      </div>
+      {% include "tools/_remote_terminal_workspace.html" %}
+    </section>
+
+    <section class="panel tool-panel remote-terminal-history">
+      <div class="panel-head remote-terminal-history-head">
+        <div>
+          <h2>Recent sessions</h2>
+          <p>Restore an active shell or inspect retained scrollback from a completed connection.</p>
+        </div>
+        <span id="remote-terminal-session-count">{{ remote_sessions|length }} retained</span>
+      </div>
+      <div class="remote-terminal-session-list" id="remote-terminal-session-list"></div>
+      <p class="empty-state" id="remote-terminal-empty" {% if remote_sessions %}hidden{% endif %}>No remote sessions have been opened yet.</p>
+    </section>
+  </div>
+</section>
+
+<dialog class="remote-terminal-dialog remote-quick-connect-dialog" id="remote-quick-connect-dialog" aria-labelledby="remote-quick-connect-title">
+  <form class="form remote-terminal-dialog-form" id="remote-terminal-form" data-start-url="{{ url_for('tools.start_remote_terminal_session') }}">
+    <header>
+      <div><span class="eyebrow">Temporary connection</span><h2 id="remote-quick-connect-title">Quick connect</h2></div>
+      <button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button>
+    </header>
+    <p class="remote-terminal-dialog-intro">Connect without adding this host to your saved connections. The session remains available for reconnection until it is stopped or expires.</p>
+    <section class="remote-terminal-dialog-section">
+      <div class="remote-terminal-dialog-section-head">
+        <h3>Connection</h3>
+        <p>Enter the destination first. A session name is optional and only helps identify its tab and history.</p>
+      </div>
+      <div class="form-grid remote-quick-target-grid">
+        <label>Host
+          <input id="remote-terminal-host" type="text" maxlength="255" required placeholder="switch.example.com" autocomplete="off" autocapitalize="none" spellcheck="false">
+        </label>
+        <label>SSH port
+          <input id="remote-terminal-port" type="number" min="1" max="65535" value="22" required>
+        </label>
+        <label>Session name <span class="inline-label-note">(optional)</span>
+          <input id="remote-terminal-title" type="text" maxlength="100" placeholder="Core switch maintenance">
+        </label>
+      </div>
+    </section>
+    <fieldset class="remote-terminal-credential-choice">
+      <legend>Credentials for this connection</legend>
+      <div class="remote-terminal-choice-row">
+        <label class="check"><input type="radio" name="quick_credential_mode" value="temporary" checked><span>One-time credentials<small>Used only for this connection attempt.</small></span></label>
+        <label class="check"><input type="radio" name="quick_credential_mode" value="saved"><span>Saved credential<small>Use an existing shared vault entry.</small></span></label>
+      </div>
+      <div class="form-grid remote-terminal-credential-fields" data-quick-temporary>
+        <label>SSH username
+          <input id="remote-terminal-username" type="text" maxlength="128" autocomplete="username" autocapitalize="none" spellcheck="false">
+        </label>
+        <label>Password
+          <input id="remote-terminal-password" type="password" autocomplete="current-password">
+        </label>
+      </div>
+      <label data-quick-saved hidden>Saved credential
+        <select id="remote-terminal-credential"></select>
+      </label>
+    </fieldset>
+    <details class="remote-terminal-advanced-options">
+      <summary>Connection options</summary>
+      <div class="remote-terminal-options">
+        <label class="check"><input id="remote-terminal-unknown-host" type="checkbox"><span><strong>Trust this host key on first connection</strong><small>Accept an unknown host key without a separate confirmation.</small></span></label>
+        <label class="check"><input id="remote-terminal-legacy" type="checkbox"><span><strong>Allow legacy SSH algorithms</strong><small>Use only when an older device cannot negotiate modern algorithms.</small></span></label>
+        <label class="check"><input id="remote-terminal-transcript" type="checkbox" {% if active_investigation and active_investigation.is_recording %}checked{% endif %}><span><strong>Retain transcript with the active case</strong><small>Store terminal output as case evidence while recording.</small></span></label>
+      </div>
+    </details>
+    <footer>
+      <span class="tool-status" id="remote-terminal-start-status" role="status"></span>
+      <button class="secondary" type="button" data-dialog-close>Cancel</button>
+      <button id="remote-terminal-start" type="submit">Connect</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="remote-terminal-dialog" id="remote-folder-dialog" aria-labelledby="remote-folder-title">
+  <form class="form remote-terminal-dialog-form" id="remote-folder-form">
+    <header><div><span class="eyebrow">Connection library</span><h2 id="remote-folder-title">New folder</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
+    <input id="remote-folder-id" type="hidden">
+    <label>Folder name<input id="remote-folder-name" maxlength="100" required></label>
+    <label>Parent folder<select id="remote-folder-parent"></select></label>
+    <p class="tool-status" id="remote-folder-status" role="status"></p>
+    <footer class="remote-terminal-dialog-footer-split">
+      <span class="button-row" data-folder-existing-actions hidden><button class="secondary" type="button" data-duplicate-folder>Duplicate</button><button class="danger" type="button" data-delete-folder>Delete</button></span>
+      <span class="button-row"><button class="secondary" type="button" data-dialog-close>Cancel</button><button type="submit">Save folder</button></span>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="remote-terminal-dialog remote-host-dialog" id="remote-host-dialog" aria-labelledby="remote-host-title">
+  <form class="form remote-terminal-dialog-form" id="remote-host-form">
+    <header><div><span class="eyebrow">Connection library</span><h2 id="remote-host-title">New saved host</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
+    <input id="remote-host-id" type="hidden">
+    <div class="form-grid remote-terminal-dialog-grid">
+      <label>Display name<input id="remote-host-name" maxlength="100" required placeholder="Core Switch 01"></label>
+      <label>Host<input id="remote-host-address" maxlength="255" required placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"></label>
+      <label>SSH port<input id="remote-host-port" type="number" min="1" max="65535" value="22" required></label>
+      <label>Folder<select id="remote-host-folder"></select></label>
+    </div>
+    <fieldset class="remote-terminal-credential-choice">
+      <legend>Credential assignment</legend>
+      <div class="remote-terminal-choice-row">
+        <label class="check"><input type="radio" name="host_credential_mode" value="saved" checked><span>Shared saved credential<small>Reuse a separately managed vault entry.</small></span></label>
+        <label class="check"><input type="radio" name="host_credential_mode" value="host"><span>Host-specific credential<small>Encrypted in the vault and restricted to this host.</small></span></label>
+      </div>
+      <label data-host-saved>Saved credential<select id="remote-host-credential"></select></label>
+      <div class="form-grid remote-terminal-credential-fields" data-host-specific hidden>
+        <label>Credential name<input id="remote-host-credential-name" maxlength="100" placeholder="Core Switch 01 credentials"></label>
+        <label>SSH username<input id="remote-host-username" maxlength="128" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+        <label>Password <span class="inline-label-note">(write-only)</span><input id="remote-host-password" type="password" autocomplete="new-password" placeholder="Required for a new credential"></label>
+      </div>
+    </fieldset>
+    <div class="remote-terminal-options compact-options">
+      <label class="check"><input id="remote-host-unknown" type="checkbox"><span>Trust this host key on first connection</span></label>
+      <label class="check"><input id="remote-host-legacy" type="checkbox"><span>Allow legacy SSH algorithms</span></label>
+    </div>
+    <label>Notes <span class="inline-label-note">(optional)</span><textarea id="remote-host-notes" rows="3" maxlength="1000" placeholder="Location, role, maintenance context…"></textarea></label>
+    <p class="tool-status" id="remote-host-status" role="status"></p>
+    <footer class="remote-terminal-dialog-footer-split">
+      <span class="button-row" data-host-existing-actions hidden><button class="secondary" type="button" data-duplicate-host>Duplicate</button><button class="danger" type="button" data-delete-host>Delete</button></span>
+      <span class="button-row"><button class="secondary" type="button" data-dialog-close>Cancel</button><button type="submit">Save host</button></span>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="remote-terminal-dialog remote-credential-dialog" id="remote-credential-dialog" aria-labelledby="remote-credential-title">
+  <div class="remote-credential-manager">
+    <header><div><span class="eyebrow">Private encrypted storage</span><h2 id="remote-credential-title">Credential vault</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
+    <p class="remote-terminal-dialog-intro">Save a credential once, then assign it to multiple hosts or select it during Quick Connect. Passwords remain write-only after saving.</p>
+    <div class="remote-credential-manager-body">
+      <aside>
+        <div class="remote-credential-list-head">
+          <div><h3>Saved credentials</h3><span id="remote-credential-count">0 saved</span></div>
+          <button class="secondary compact" type="button" data-new-credential>New</button>
+        </div>
+        <div id="remote-credential-list" class="remote-credential-list"></div>
+      </aside>
+      <form class="form" id="remote-credential-form">
+        <input id="remote-credential-id" type="hidden">
+        <div class="remote-credential-editor-head">
+          <div><h3 id="remote-credential-editor-title">New credential</h3><p>Enter the identity used to authenticate to SSH devices.</p></div>
+        </div>
+        <div class="form-grid remote-credential-core-fields">
+          <label>Credential name<input id="remote-credential-name" maxlength="100" required placeholder="Network administrator"></label>
+          <label>SSH username<input id="remote-credential-username" maxlength="128" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="admin"></label>
+        </div>
+        <label>Password <span class="inline-label-note">(write-only)</span><input id="remote-credential-password" type="password" autocomplete="new-password" placeholder="Required for a new credential"></label>
+        <p class="field-note" id="remote-credential-scope-note">Shared credentials can be assigned to multiple saved hosts or used by Quick Connect.</p>
+        <p class="tool-status" id="remote-credential-status" role="status"></p>
+        <footer class="remote-terminal-dialog-footer-split">
+          <span class="button-row" data-credential-existing-actions hidden><button class="secondary" type="button" data-duplicate-credential>Duplicate</button><button class="danger" type="button" data-delete-credential>Delete</button></span>
+          <span class="button-row"><button class="secondary" type="button" data-dialog-close>Close</button><button id="remote-credential-save" type="submit">Save credential</button></span>
+        </footer>
+      </form>
+    </div>
+  </div>
+</dialog>
+
+<script id="remote-terminal-initial-sessions" type="application/json">{{ remote_sessions|tojson }}</script>
+<script id="remote-connection-library" type="application/json">{{ remote_connection_library|tojson }}</script>
+<script src="{{ url_for('static', filename='terminal-emulator.js', v=app_version) }}"></script>
+<script src="{{ url_for('static', filename='remote-terminal.js', v=app_version) }}"></script>
+<script src="{{ url_for('static', filename='remote-connections.js', v=app_version) }}"></script>
+{% endblock %}
