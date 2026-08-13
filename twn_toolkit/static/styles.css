@@ -2678,7 +2678,7 @@ button.danger:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 14px 0;
+  margin: 14px auto;
   padding: 9px 11px;
 }
 

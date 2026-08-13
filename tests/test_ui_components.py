@@ -86,6 +86,16 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("gap: var(--workspace-section-gap);", stylesheet)
         self.assertIn(".shell > * + * {", stylesheet)
 
+    def test_case_recorded_notice_preserves_shell_centering(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        notice_rule = stylesheet.split(
+            ".investigation-recorded-notice {", 1
+        )[1].split("}", 1)[0]
+
+        self.assertIn("margin: 14px auto;", notice_rule)
+
     def test_every_peer_view_uses_shared_tabs_first_workspace_structure(self) -> None:
         shared_chrome_templates = (
             "automations/index.html",
