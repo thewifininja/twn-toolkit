@@ -6,11 +6,12 @@ import io
 import json
 import os
 import secrets
+import shutil
 import sqlite3
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, BinaryIO, Iterator
+from typing import Any, BinaryIO, Callable, Iterator
 
 from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES
 from .time_settings import TimeSettingsStore, localized_time_values
@@ -22,7 +23,7 @@ EVENT_OUTCOMES = frozenset(
     {"succeeded", "failed", "cancelled", "incomplete", "info"}
 )
 MAX_EVENT_JSON_BYTES = 4 * 1024 * 1024
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class InvestigationError(ValueError):
@@ -133,6 +134,12 @@ class InvestigationStore:
             rows = connection.execute(
                 """
                 SELECT i.*, p.role AS access_role,
+                    imported.source_case_id AS import_source_case_id,
+                    imported.source_toolkit_version AS import_source_toolkit_version,
+                    imported.source_owner_username AS import_source_owner_username,
+                    imported.source_operators_json AS import_source_operators_json,
+                    imported.imported_at AS imported_at,
+                    imported.imported_by_username AS imported_by_username,
                     (SELECT COUNT(*) FROM investigation_events e
                      WHERE e.investigation_id = i.id) AS event_count,
                     (SELECT COUNT(*) FROM investigation_artifacts a
@@ -141,6 +148,8 @@ class InvestigationStore:
                      WHERE members.investigation_id = i.id) AS participant_count
                 FROM investigations i
                 JOIN investigation_participants p ON p.investigation_id = i.id
+                LEFT JOIN investigation_imports imported
+                    ON imported.investigation_id = i.id
                 WHERE p.user_id = ?
                 ORDER BY
                     CASE i.state
@@ -160,6 +169,12 @@ class InvestigationStore:
             row = connection.execute(
                 """
                 SELECT i.*, p.role AS access_role,
+                    imported.source_case_id AS import_source_case_id,
+                    imported.source_toolkit_version AS import_source_toolkit_version,
+                    imported.source_owner_username AS import_source_owner_username,
+                    imported.source_operators_json AS import_source_operators_json,
+                    imported.imported_at AS imported_at,
+                    imported.imported_by_username AS imported_by_username,
                     (SELECT COUNT(*) FROM investigation_events e
                      WHERE e.investigation_id = i.id) AS event_count,
                     (SELECT COUNT(*) FROM investigation_artifacts a
@@ -168,6 +183,8 @@ class InvestigationStore:
                      WHERE members.investigation_id = i.id) AS participant_count
                 FROM investigations i
                 JOIN investigation_participants p ON p.investigation_id = i.id
+                LEFT JOIN investigation_imports imported
+                    ON imported.investigation_id = i.id
                 WHERE p.user_id = ? AND i.state IN ('recording', 'paused')
                 ORDER BY CASE p.role WHEN 'owner' THEN 0 ELSE 1 END, i.updated_at DESC
                 LIMIT 1
@@ -181,6 +198,12 @@ class InvestigationStore:
             row = connection.execute(
                 """
                 SELECT i.*, p.role AS access_role,
+                    imported.source_case_id AS import_source_case_id,
+                    imported.source_toolkit_version AS import_source_toolkit_version,
+                    imported.source_owner_username AS import_source_owner_username,
+                    imported.source_operators_json AS import_source_operators_json,
+                    imported.imported_at AS imported_at,
+                    imported.imported_by_username AS imported_by_username,
                     (SELECT COUNT(*) FROM investigation_events e
                      WHERE e.investigation_id = i.id) AS event_count,
                     (SELECT COUNT(*) FROM investigation_artifacts a
@@ -189,6 +212,8 @@ class InvestigationStore:
                      WHERE members.investigation_id = i.id) AS participant_count
                 FROM investigations i
                 JOIN investigation_participants p ON p.investigation_id = i.id
+                LEFT JOIN investigation_imports imported
+                    ON imported.investigation_id = i.id
                 WHERE i.id = ? AND p.user_id = ?
                 """,
                 (investigation_id, self._clean_identity(user_id, "user")),
@@ -212,6 +237,349 @@ class InvestigationStore:
                 (investigation_id,),
             ).fetchall()
         return [self._participant(row) for row in rows]
+
+    def portable_case_for_user(
+        self, investigation_id: str, user_id: str
+    ) -> dict[str, Any]:
+        investigation = self.get_for_user(investigation_id, user_id)
+        participants = self.participants_for_user(investigation_id, user_id)
+        events = self.events_for_user(investigation_id, user_id)
+        artifacts = self.artifacts_for_user(investigation_id, user_id)
+        source_operators = investigation.get("source_operators") or participants
+        operators: list[dict[str, str]] = []
+        seen_user_ids: set[str] = set()
+
+        def retain_operator(
+            operator_user_id: Any,
+            operator_username: Any,
+            role: str = "collaborator",
+        ) -> None:
+            retained_user_id = str(operator_user_id).strip()
+            retained_username = str(operator_username).strip()
+            if (
+                not retained_user_id
+                or not retained_username
+                or retained_user_id in seen_user_ids
+            ):
+                return
+            seen_user_ids.add(retained_user_id)
+            operators.append(
+                {
+                    "user_id": retained_user_id,
+                    "username": retained_username,
+                    "role": role,
+                }
+            )
+
+        for operator in source_operators:
+            retain_operator(
+                operator.get("user_id"),
+                operator.get("username"),
+                str(operator.get("role") or "collaborator"),
+            )
+        for participant in participants:
+            retain_operator(participant.get("user_id"), participant.get("username"))
+        for collection in (events, artifacts):
+            for item in collection:
+                retain_operator(
+                    item.get("created_by_user_id"), item.get("created_by_username")
+                )
+        return {
+            "investigation": investigation,
+            "operators": operators,
+            "events": events,
+            "artifacts": artifacts,
+            "origin": {
+                "case_id": investigation.get("import_source_case_id")
+                or investigation["id"],
+                "owner_username": investigation.get("import_source_owner_username")
+                or investigation["owner_username"],
+            },
+        }
+
+    def import_portable_case(
+        self,
+        *,
+        payload: dict[str, Any],
+        archive_sha256: str,
+        owner_user_id: str,
+        owner_username: str,
+        open_evidence: Callable[[str], BinaryIO],
+    ) -> dict[str, Any]:
+        """Create a closed local copy without granting access to foreign users."""
+        owner_user_id = self._clean_identity(owner_user_id, "owner")
+        owner_username = self._clean_identity(owner_username, "operator")
+        source = payload["case"]
+        source_case_id = self._clean_text(
+            source["origin_id"], "Source case ID", 200, required=True
+        )
+        with self._connect() as connection:
+            duplicate = connection.execute(
+                """
+                SELECT id FROM investigations WHERE id = ?
+                UNION ALL
+                SELECT investigation_id FROM investigation_imports
+                WHERE source_case_id = ?
+                LIMIT 1
+                """,
+                (source_case_id, source_case_id),
+            ).fetchone()
+        if duplicate:
+            raise InvestigationError(
+                "That portable case has already been imported on this toolkit."
+            )
+
+        investigation_id = f"inv_{secrets.token_hex(12)}"
+        datastore_path = self._prepare_datastore_folders(investigation_id)
+        evidence_folder = f"{datastore_path}/Evidence"
+        saved_artifacts: list[dict[str, Any]] = []
+        now = time.time()
+        try:
+            for artifact in payload["artifacts"]:
+                stored_name = self._available_evidence_name(
+                    datastore_path, artifact["display_name"]
+                )
+                with open_evidence(str(artifact["member"])) as evidence:
+                    saved, size = self.datastore.save_upload(
+                        evidence_folder,
+                        stored_name,
+                        evidence,
+                        max_bytes=int(artifact["byte_count"]),
+                    )
+                digest = self._sha256_file(saved)
+                if (
+                    size != int(artifact["byte_count"])
+                    or digest != str(artifact["sha256"])
+                ):
+                    raise InvestigationError(
+                        f"Evidence file {artifact['display_name']} failed verification."
+                    )
+                saved_artifacts.append(
+                    {
+                        "source": artifact,
+                        "id": f"art_{secrets.token_hex(12)}",
+                        "relative_path": self.datastore.relative(saved),
+                    }
+                )
+
+            with self._connect() as connection, connection:
+                connection.execute("BEGIN IMMEDIATE")
+                duplicate = connection.execute(
+                    """
+                    SELECT id FROM investigations WHERE id = ?
+                    UNION ALL
+                    SELECT investigation_id FROM investigation_imports
+                    WHERE source_case_id = ?
+                    LIMIT 1
+                    """,
+                    (source_case_id, source_case_id),
+                ).fetchone()
+                if duplicate:
+                    raise InvestigationError(
+                        "That portable case has already been imported on this toolkit."
+                    )
+                ended_at = source.get("ended_at")
+                if ended_at is None:
+                    ended_at = float(payload["generated_at"])
+                connection.execute(
+                    """
+                    INSERT INTO investigations (
+                        id, title, description, owner_user_id, owner_username,
+                        state, datastore_path, created_at, started_at, ended_at,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        investigation_id,
+                        source["title"],
+                        source["description"],
+                        owner_user_id,
+                        owner_username,
+                        datastore_path,
+                        float(source["created_at"]),
+                        float(source["started_at"]),
+                        float(ended_at),
+                        now,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO investigation_participants (
+                        investigation_id, user_id, username, role,
+                        added_by_user_id, added_by_username, created_at
+                    ) VALUES (?, ?, ?, 'owner', ?, ?, ?)
+                    """,
+                    (
+                        investigation_id,
+                        owner_user_id,
+                        owner_username,
+                        owner_user_id,
+                        owner_username,
+                        now,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO investigation_imports (
+                        investigation_id, source_case_id, source_toolkit_version,
+                        source_owner_username, source_operators_json,
+                        archive_sha256, imported_by_user_id,
+                        imported_by_username, imported_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        investigation_id,
+                        source_case_id,
+                        payload["toolkit_version"],
+                        source["source_owner_username"],
+                        self._json(source["operators"]),
+                        archive_sha256,
+                        owner_user_id,
+                        owner_username,
+                        now,
+                    ),
+                )
+                event_ids: dict[tuple[str, str], str] = {}
+                for event in payload["events"]:
+                    event_id = self._insert_event(
+                        connection,
+                        investigation_id=investigation_id,
+                        operation_id=event["operation_id"],
+                        event_type=event["event_type"],
+                        tool_id=event["tool_id"],
+                        action=event["action"],
+                        outcome=event["outcome"],
+                        summary=event["summary"],
+                        targets=event["targets"],
+                        parameters=event["parameters"],
+                        metrics=event["metrics"],
+                        details=event["details"],
+                        started_at=float(event["started_at"]),
+                        completed_at=float(event["completed_at"]),
+                        created_by_user_id=event["created_by_user_id"],
+                        created_by_username=event["created_by_username"],
+                    )
+                    connection.execute(
+                        """
+                        UPDATE investigation_events
+                        SET report_placement = ?, important = ?, created_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            event["report_placement"],
+                            int(bool(event["important"])),
+                            float(event["created_at"]),
+                            event_id,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO investigation_event_origins (
+                            investigation_id, event_id, source_case_id,
+                            source_event_id
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            investigation_id,
+                            event_id,
+                            event["origin_case_id"],
+                            event["origin_id"],
+                        ),
+                    )
+                    event_ids[(event["origin_case_id"], event["origin_id"])] = event_id
+
+                for saved_artifact in saved_artifacts:
+                    artifact = saved_artifact["source"]
+                    event_id = None
+                    if artifact.get("event_origin_id") is not None:
+                        event_id = event_ids[
+                            (
+                                artifact["event_origin_case_id"],
+                                artifact["event_origin_id"],
+                            )
+                        ]
+                    connection.execute(
+                        """
+                        INSERT INTO investigation_artifacts (
+                            id, investigation_id, event_id, kind, display_name,
+                            relative_path, content_type, byte_count, sha256,
+                            report_placement, created_by_user_id,
+                            created_by_username, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            saved_artifact["id"],
+                            investigation_id,
+                            event_id,
+                            artifact["kind"],
+                            artifact["display_name"],
+                            saved_artifact["relative_path"],
+                            artifact["content_type"],
+                            int(artifact["byte_count"]),
+                            artifact["sha256"],
+                            artifact["report_placement"],
+                            artifact["created_by_user_id"],
+                            artifact["created_by_username"],
+                            float(artifact["created_at"]),
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO investigation_artifact_origins (
+                            investigation_id, artifact_id, source_case_id,
+                            source_artifact_id
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            investigation_id,
+                            saved_artifact["id"],
+                            artifact["origin_case_id"],
+                            artifact["origin_id"],
+                        ),
+                    )
+                self._insert_event(
+                    connection,
+                    investigation_id=investigation_id,
+                    operation_id=(
+                        f"portable-import:{source_case_id}:{investigation_id}"
+                    ),
+                    event_type="investigation.imported",
+                    tool_id="investigations.workspace",
+                    action="Portable case imported",
+                    outcome="info",
+                    summary=(
+                        f"Imported a closed copy of the case from "
+                        f"{source['source_owner_username']}."
+                    ),
+                    targets=[],
+                    parameters={"source_state": source["source_state"]},
+                    metrics={
+                        "event_count": len(payload["events"]),
+                        "evidence_count": len(payload["artifacts"]),
+                    },
+                    details={
+                        "source_case_id": source_case_id,
+                        "source_toolkit_version": payload["toolkit_version"],
+                        "archive_sha256": archive_sha256,
+                        "source_operators": source["operators"],
+                    },
+                    started_at=now,
+                    completed_at=now,
+                    created_by_user_id=owner_user_id,
+                    created_by_username=owner_username,
+                )
+        except BaseException as exc:
+            try:
+                folder = self.datastore.folder(datastore_path)
+                shutil.rmtree(folder)
+            except (DatastoreError, OSError):
+                pass
+            if isinstance(exc, sqlite3.IntegrityError):
+                raise InvestigationError(
+                    "The portable case conflicts with retained local case data."
+                ) from exc
+            raise
+        return self.get_for_user(investigation_id, owner_user_id)
 
     def add_participant(
         self,
@@ -374,9 +742,13 @@ class InvestigationStore:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT * FROM investigation_events
-                WHERE investigation_id = ?
-                ORDER BY started_at ASC, created_at ASC, id ASC
+                SELECT e.*, origins.source_case_id AS origin_case_id,
+                    origins.source_event_id AS origin_event_id
+                FROM investigation_events e
+                LEFT JOIN investigation_event_origins origins
+                    ON origins.event_id = e.id
+                WHERE e.investigation_id = ?
+                ORDER BY e.started_at ASC, e.created_at ASC, e.id ASC
                 """,
                 (investigation_id,),
             ).fetchall()
@@ -389,9 +761,17 @@ class InvestigationStore:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT * FROM investigation_artifacts
-                WHERE investigation_id = ?
-                ORDER BY created_at DESC, id DESC
+                SELECT a.*, origins.source_case_id AS origin_case_id,
+                    origins.source_artifact_id AS origin_artifact_id,
+                    event_origins.source_case_id AS event_origin_case_id,
+                    event_origins.source_event_id AS event_origin_id
+                FROM investigation_artifacts a
+                LEFT JOIN investigation_artifact_origins origins
+                    ON origins.artifact_id = a.id
+                LEFT JOIN investigation_event_origins event_origins
+                    ON event_origins.event_id = a.event_id
+                WHERE a.investigation_id = ?
+                ORDER BY a.created_at DESC, a.id DESC
                 """,
                 (investigation_id,),
             ).fetchall()
@@ -404,8 +784,16 @@ class InvestigationStore:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT * FROM investigation_artifacts
-                WHERE id = ? AND investigation_id = ?
+                SELECT a.*, origins.source_case_id AS origin_case_id,
+                    origins.source_artifact_id AS origin_artifact_id,
+                    event_origins.source_case_id AS event_origin_case_id,
+                    event_origins.source_event_id AS event_origin_id
+                FROM investigation_artifacts a
+                LEFT JOIN investigation_artifact_origins origins
+                    ON origins.artifact_id = a.id
+                LEFT JOIN investigation_event_origins event_origins
+                    ON event_origins.event_id = a.event_id
+                WHERE a.id = ? AND a.investigation_id = ?
                 """,
                 (artifact_id, investigation_id),
             ).fetchone()
@@ -1306,9 +1694,39 @@ class InvestigationStore:
             );
             CREATE INDEX IF NOT EXISTS investigation_artifacts_investigation_idx
                 ON investigation_artifacts(investigation_id, created_at DESC);
+            CREATE TABLE IF NOT EXISTS investigation_imports (
+                investigation_id TEXT PRIMARY KEY
+                    REFERENCES investigations(id) ON DELETE CASCADE,
+                source_case_id TEXT NOT NULL UNIQUE,
+                source_toolkit_version TEXT NOT NULL DEFAULT '',
+                source_owner_username TEXT NOT NULL,
+                source_operators_json TEXT NOT NULL DEFAULT '[]',
+                archive_sha256 TEXT NOT NULL,
+                imported_by_user_id TEXT NOT NULL,
+                imported_by_username TEXT NOT NULL,
+                imported_at REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS investigation_event_origins (
+                investigation_id TEXT NOT NULL
+                    REFERENCES investigations(id) ON DELETE CASCADE,
+                event_id TEXT PRIMARY KEY
+                    REFERENCES investigation_events(id) ON DELETE CASCADE,
+                source_case_id TEXT NOT NULL,
+                source_event_id TEXT NOT NULL,
+                UNIQUE(investigation_id, source_case_id, source_event_id)
+            );
+            CREATE TABLE IF NOT EXISTS investigation_artifact_origins (
+                investigation_id TEXT NOT NULL
+                    REFERENCES investigations(id) ON DELETE CASCADE,
+                artifact_id TEXT PRIMARY KEY
+                    REFERENCES investigation_artifacts(id) ON DELETE CASCADE,
+                source_case_id TEXT NOT NULL,
+                source_artifact_id TEXT NOT NULL,
+                UNIQUE(investigation_id, source_case_id, source_artifact_id)
+            );
             INSERT OR IGNORE INTO investigation_meta(key, value)
-                VALUES ('schema_version', '2');
-            UPDATE investigation_meta SET value = '2' WHERE key = 'schema_version';
+                VALUES ('schema_version', '3');
+            UPDATE investigation_meta SET value = '3' WHERE key = 'schema_version';
             """
         )
         connection.commit()
@@ -1322,6 +1740,21 @@ class InvestigationStore:
         result["can_manage_case"] = result["access_role"] == "owner"
         result["participant_count"] = int(result.get("participant_count") or 1)
         result["is_shared"] = result["participant_count"] > 1
+        result["is_imported"] = bool(result.get("import_source_case_id"))
+        try:
+            source_operators = json.loads(
+                str(result.get("import_source_operators_json") or "[]")
+            )
+        except (TypeError, json.JSONDecodeError):
+            source_operators = []
+        result["source_operators"] = (
+            source_operators if isinstance(source_operators, list) else []
+        )
+        result["imported_display"] = (
+            self._display_time(float(result["imported_at"]))
+            if result.get("imported_at") is not None
+            else ""
+        )
         result["state_label"] = {
             "recording": "Recording",
             "paused": "Paused",

@@ -58,16 +58,19 @@ precedent.
   retain only aggregate results and latency percentiles rather than every
   response.
 - Investigations is the feature area; individual records are cases. Keep one
-  owner-scoped recording-or-paused case per user, make tool events immutable and
-  idempotent by operation ID, and do not let journal-write failure break the
+  participant-scoped recording-or-paused case per user, make tool events immutable
+  and idempotent by operation ID, and do not let journal-write failure break the
   diagnostic itself. Pausing blocks automatic tool capture but still permits
-  intentional notes and evidence. Closed case source evidence is read-only until
-  an explicit reopening policy is designed; report inclusion is editable
-  presentation metadata and must never mutate that source. Store metadata in owner-only
-  `instance/investigations.sqlite3`; constrain files to managed
+  intentional notes and evidence. Closed case source evidence is read-only;
+  explicit reopening returns a case to paused. Report inclusion is editable
+  presentation metadata and must never mutate that source. Store metadata in
+  owner-only `instance/investigations.sqlite3`; constrain files to managed
   `instance/datastore/Investigations/<investigation-id>/` folders. Reports must
   remain deterministic views of retained evidence; generated narrative or AI
   interpretation must be visibly separate and must never rewrite source events.
+  Portable `.twncase` exports include the complete journal and every evidence
+  file, verify stored hashes during export/import, retain stable source origins,
+  and import as closed local copies without granting access to foreign users.
 - Remote Terminal shells are owner-scoped durable toolkit objects in
   `instance/remote_sessions.sqlite3`. The browser is a reconnectable view, not
   the connection owner. Keep credentials in memory only through SSH

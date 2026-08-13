@@ -56,6 +56,20 @@
     </section>
   {% endif %}
 
+  <details class="panel investigation-import-panel">
+    <summary>
+      <span><strong>Import a portable case</strong><small>Transfer a complete case exported from another toolkit instance.</small></span>
+      <span aria-hidden="true">▾</span>
+    </summary>
+    <form method="post" action="{{ url_for('import_investigation_case') }}" enctype="multipart/form-data" class="investigation-import-form">
+      <label>Portable case archive
+        <input type="file" name="case_archive" accept=".twncase,application/zip" required>
+        <small>The archive and every evidence hash are verified before import. Original attribution is preserved; foreign users are not granted access.</small>
+      </label>
+      <button type="submit">Import case</button>
+    </form>
+  </details>
+
   <section class="panel investigation-library">
     {{ section_header("Case history", "Owned and shared cases remain available as a durable technical record.", "Accessible journal") }}
     {% if investigations %}
@@ -65,6 +79,7 @@
             <header>
               <span class="investigation-state {{ investigation.state }}">{{ investigation.state_label }}</span>
               <span class="investigation-access-role">{{ 'Owner' if investigation.can_manage_case else 'Collaborator' }}</span>
+              {% if investigation.is_imported %}<span class="investigation-imported-badge">Imported</span>{% endif %}
               <h3><a href="{{ url_for('investigation_detail', investigation_id=investigation.id) }}">{{ investigation.title }}</a></h3>
               {% if investigation.description %}<p>{{ investigation.description }}</p>{% endif %}
             </header>
@@ -74,6 +89,7 @@
               <div><dt>Team</dt><dd>{{ investigation.participant_count }}</dd></div>
               <div><dt>Events</dt><dd>{{ investigation.event_count }}</dd></div>
               <div><dt>Evidence</dt><dd>{{ investigation.artifact_count }}</dd></div>
+              {% if investigation.is_imported %}<div><dt>Source owner</dt><dd>{{ investigation.import_source_owner_username }}</dd></div>{% endif %}
             </dl>
             <a class="button-link secondary" href="{{ url_for('investigation_detail', investigation_id=investigation.id) }}">View case</a>
           </article>

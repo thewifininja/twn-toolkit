@@ -23,6 +23,10 @@
       <div><dt>Last activity</dt><dd>{{ investigation.updated_display }}</dd></div>
       <div><dt>Owner</dt><dd>{{ investigation.owner_username }}</dd></div>
       <div><dt>Team</dt><dd>{{ investigation.participant_count }} {{ 'operator' if investigation.participant_count == 1 else 'operators' }}</dd></div>
+      {% if investigation.is_imported %}
+        <div><dt>Source owner</dt><dd>{{ investigation.import_source_owner_username }}</dd></div>
+        <div><dt>Imported</dt><dd>{{ investigation.imported_display }}</dd></div>
+      {% endif %}
     </dl>
     {% if investigation.is_open and investigation.can_manage_case %}
       <div class="button-row investigation-state-actions">
@@ -64,7 +68,7 @@
   </section>
 
   <section class="panel investigation-team-panel">
-    {% call section_header("Case team", "Every note, tool run, and evidence file is attributed to the operator who added it.", "Collaboration") %}
+    {% call section_header("Case team", ("This local copy is owned by the importer; original operators remain attributed throughout the journal." if investigation.is_imported else "Every note, tool run, and evidence file is attributed to the operator who added it."), "Collaboration") %}
       <span class="investigation-team-count">{{ investigation_participants|length }} {{ 'operator' if investigation_participants|length == 1 else 'operators' }}</span>
     {% endcall %}
     <div class="investigation-team-layout{% if not (investigation.can_manage_case and investigation.is_open and collaborator_candidates) %} single{% endif %}">
@@ -220,9 +224,10 @@
       </form>
     </section>
     <section class="investigation-report-toolbar">
-      <p>Download the selected report by itself or package it with the selected original evidence and a verification manifest.</p>
+      <p>The case package follows the report selection. The portable case includes the complete journal and every evidence file for transfer to another toolkit.</p>
       <div class="button-row">
         <a class="button-link" href="{{ url_for('download_investigation_package', investigation_id=investigation.id) }}">Download case package</a>
+        <a class="button-link secondary" href="{{ url_for('download_portable_investigation_case', investigation_id=investigation.id) }}">Export portable case</a>
         <a class="button-link secondary" href="{{ url_for('download_investigation_report_pdf', investigation_id=investigation.id) }}">Download PDF</a>
         <button class="secondary" type="button" onclick="window.print()">Print preview</button>
       </div>

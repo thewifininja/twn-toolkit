@@ -230,12 +230,14 @@ structured events or generated evidence. Operators can also:
 - upload collision-safe evidence files to a managed per-case Datastore
   folder with retained size, content type, and SHA-256 metadata;
 - explicitly add an IP-address snapshot or a collected Automation run ZIP;
-- review a chronological journal and download retained evidence; and
+- review a chronological journal and download retained evidence;
 - curate a deterministic case report without changing source evidence;
 - download its compact timeline, linked detailed-result pages, and evidence
-  appendix as PDF; or
+  appendix as PDF;
 - download a ZIP containing that PDF, the selected original evidence files,
-  and a manifest with sizes, timestamps, and SHA-256 hashes.
+  and a manifest with sizes, timestamps, and SHA-256 hashes; or
+- export a complete `.twncase` archive containing the full journal and every
+  evidence file for verified import into another toolkit instance.
 
 Investigations are explicitly participant-scoped and access-profile controlled.
 The owner manages case state, membership, and report presentation; collaborators
@@ -243,8 +245,11 @@ can add notes, evidence, and supported tool results. Metadata lives in owner-onl
 `instance/investigations.sqlite3`; files live below
 `instance/datastore/Investigations/`. Closed case journals and evidence are
 read-only; report inclusion remains editable because it is presentation
-metadata only. See [Investigation journals](docs/investigations.md) for the
-event contract and extension guidance.
+metadata only. A portable import creates a closed local copy owned by the
+importing operator. Source attribution and stable origin IDs are preserved,
+but users from the source instance are not granted access automatically. See
+[Investigation journals](docs/investigations.md) for the event contract,
+portable archive boundary, and extension guidance.
 
 ### Local Tools
 

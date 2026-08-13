@@ -164,8 +164,9 @@
     <p>Add operator notes for hypotheses, observations, calls, changes, and decisions that happen between tool runs. Paused cases accept notes because those additions are intentional.</p>
   </div></details>
   <details class="help-topic"><summary>Evidence and reports</summary><div class="help-topic-body">
-    <p>Evidence uploads are stored beneath a managed <code>Datastore/Investigations</code> folder with collision-safe names. The library retains size, content type, collection time, and SHA-256 digest. Access to a case is scoped to its owner; opening the underlying folder also requires Datastore access.</p>
+    <p>Evidence uploads are stored beneath a managed <code>Datastore/Investigations</code> folder with collision-safe names. The library retains size, content type, collection time, and SHA-256 digest. Access is limited to explicit case participants; opening the underlying folder also requires Datastore access.</p>
     <p>The case report is deterministic: a compact timeline links to separate detailed-result pages, followed by an optional evidence appendix. Use <strong>Report contents</strong> to include or exclude individual timeline entries and files; these presentation choices remain editable after the case closes and never delete source evidence. A closed case can be reopened in paused mode when no other case is open, preserving the close and reopen events in its journal. Download the generated PDF by itself, or download a case package containing that PDF, the selected original evidence, and a SHA-256 verification manifest.</p>
+    <p>For transfer between toolkit instances, <strong>Export portable case</strong> creates a complete <code>.twncase</code> archive with the full journal and every evidence file, independent of report inclusion. Import verifies the archive and evidence hashes, then creates a closed local copy owned by the importer. Original operator attribution remains visible, but source-instance users are not granted local access automatically.</p>
   </div></details>
 </section>
 

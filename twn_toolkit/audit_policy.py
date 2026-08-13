@@ -33,6 +33,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "clear_tftp_history",
         "create_datastore_folder",
         "create_investigation",
+        "import_investigation_case",
         "create_user",
         "create_recovery_point",
         "delete_access_profile",

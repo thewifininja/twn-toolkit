@@ -2888,6 +2888,104 @@ button.danger:hover {
   margin-left: 8px;
 }
 
+.investigation-imported-badge {
+  background: color-mix(in srgb, var(--panel), var(--depth-secondary) 10%);
+  border: 1px solid color-mix(in srgb, var(--line), var(--depth-secondary) 30%);
+  border-radius: 999px;
+  color: var(--depth-secondary);
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  margin-left: 6px;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+.investigation-import-panel {
+  padding: 0;
+}
+
+.investigation-import-panel > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 17px 20px;
+}
+
+.investigation-import-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.investigation-import-panel > summary > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.investigation-import-panel > summary small,
+.investigation-import-form small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.investigation-import-panel[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.investigation-import-panel[open] > summary > span:last-child {
+  transform: rotate(180deg);
+}
+
+.investigation-import-form {
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid color-mix(in srgb, var(--depth-secondary), transparent 18%);
+  border-radius: 10px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(320px, 900px) auto;
+  justify-content: start;
+  margin: 14px 18px 18px;
+  padding: 14px;
+}
+
+.investigation-import-form label {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.investigation-import-form input[type="file"] {
+  background: var(--panel);
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 4px;
+}
+
+.investigation-import-form > button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.investigation-import-form input[type="file"]::file-selector-button {
+  background: color-mix(in srgb, var(--panel), var(--ink) 4%);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  margin-right: 10px;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
 .investigation-inline-stats,
 .investigation-card-stats,
 .investigation-report-meta,
@@ -2984,6 +3082,10 @@ button.danger:hover {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
 }
 
+.investigation-team-panel {
+  container: investigation-team / inline-size;
+}
+
 .investigation-team-layout.single {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -3059,6 +3161,31 @@ button.danger:hover {
 
 .investigation-team-add-controls select {
   min-width: 0;
+}
+
+@container investigation-team (max-width: 760px) {
+  .investigation-team-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container investigation-team (max-width: 480px) {
+  .investigation-team-member {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .investigation-team-member form {
+    grid-column: 1 / -1;
+  }
+
+  .investigation-team-member button,
+  .investigation-team-add button {
+    width: 100%;
+  }
+
+  .investigation-team-add-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .investigation-reopen-action {
@@ -3295,19 +3422,21 @@ button.danger:hover {
   border: 1px solid var(--line);
   border-radius: 11px;
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   justify-content: space-between;
   padding: 12px 14px;
 }
 
 .investigation-report-toolbar > p {
-  flex: 1 1 260px;
+  flex: 1 1 300px;
   min-width: 0;
 }
 
 .investigation-report-toolbar > .button-row {
-  flex: 0 0 auto;
-  flex-wrap: nowrap;
+  flex: 1 1 520px;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .investigation-report-builder {
@@ -3667,6 +3796,15 @@ button.danger:hover {
 
   .investigation-team-layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .investigation-import-form {
+    grid-template-columns: minmax(0, 1fr);
+    margin: 12px 14px 14px;
+  }
+
+  .investigation-import-form button {
+    width: 100%;
   }
 
   .active-investigation-banner {
