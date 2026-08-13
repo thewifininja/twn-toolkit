@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import section_header %}
+{% block content %}
+<div class="workspace-page investigation-merge-page">
+  <nav class="investigation-return-nav" aria-label="Case merge navigation">
+    <a class="investigation-return-link" href="{{ url_for('investigation_detail', investigation_id=source.id) }}"><span aria-hidden="true">←</span> Back to source case</a>
+  </nav>
+
+  <section class="panel investigation-merge-review">
+    {{ section_header("Review case merge", "Nothing is copied until you confirm. The source remains a separate, unchanged case.", "Non-destructive transfer") }}
+
+    <div class="investigation-merge-route" aria-label="Merge direction">
+      <article>
+        <span class="eyebrow">Closed source</span>
+        <strong>{{ preview.source.title }}</strong>
+        <small>{{ preview.source.started_display }} · {{ preview.source.state_label }}</small>
+      </article>
+      <span class="investigation-merge-arrow" aria-hidden="true">→</span>
+      <article>
+        <span class="eyebrow">Open destination</span>
+        <strong>{{ preview.destination.title }}</strong>
+        <small>{{ preview.destination.state_label }} · owned by {{ preview.destination.owner_username }}</small>
+      </article>
+    </div>
+
+    <dl class="investigation-inline-stats investigation-merge-stats">
+      <div><dt>Journal entries copied</dt><dd>{{ preview.new_event_count }}</dd></div>
+      <div><dt>Evidence files copied</dt><dd>{{ preview.new_artifact_count }}</dd></div>
+      <div><dt>Evidence size</dt><dd>{{ format_bytes(preview.new_artifact_bytes) }}</dd></div>
+      <div><dt>Existing records skipped</dt><dd>{{ preview.duplicate_event_count + preview.duplicate_artifact_count }}</dd></div>
+    </dl>
+
+    <div class="investigation-merge-boundary">
+      <strong>What the merge preserves</strong>
+      <ul>
+        <li>Original operators, timestamps, result details, report choices, and evidence hashes.</li>
+        <li>Event-to-evidence relationships and stable source identities for future deduplication.</li>
+        <li>The source case as a separate technical record; its access and contents do not change.</li>
+      </ul>
+      <p>Case participants and permissions are not copied. Existing destination records with the same source identity are skipped.</p>
+    </div>
+
+    {% if preview.already_merged %}
+      <div class="message warning">This exact source case has already been merged into the destination.</div>
+    {% elif not preview.has_new_content %}
+      <div class="message warning">The destination already contains every transferable record from this case.</div>
+    {% endif %}
+
+    <footer class="investigation-merge-actions">
+      <a class="button-link secondary" href="{{ url_for('investigation_detail', investigation_id=source.id) }}">Cancel</a>
+      {% if not preview.already_merged and preview.has_new_content %}
+        {% set merge_confirmation = 'Merge this closed case into ' ~ preview.destination.title ~ '? The source will remain unchanged.' %}
+        <form method="post" action="{{ url_for('merge_investigation_case', source_investigation_id=source.id) }}" onsubmit='return confirm({{ merge_confirmation|tojson }});'>
+          <input type="hidden" name="destination_id" value="{{ preview.destination.id }}">
+          <button type="submit">Merge into {{ preview.destination.title }}</button>
+        </form>
+      {% endif %}
+    </footer>
+  </section>
+</div>
+{% endblock %}

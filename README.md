@@ -235,9 +235,12 @@ structured events or generated evidence. Operators can also:
 - download its compact timeline, linked detailed-result pages, and evidence
   appendix as PDF;
 - download a ZIP containing that PDF, the selected original evidence files,
-  and a manifest with sizes, timestamps, and SHA-256 hashes; or
+  and a manifest with sizes, timestamps, and SHA-256 hashes;
 - export a complete `.twncase` archive containing the full journal and every
-  evidence file for verified import into another toolkit instance.
+  evidence file for verified import into another toolkit instance; or
+- review and non-destructively merge a closed accessible case into the current
+  open case owned by the operator, preserving attribution, evidence hashes,
+  event relationships, and report choices while suppressing duplicates.
 
 Investigations are explicitly participant-scoped and access-profile controlled.
 The owner manages case state, membership, and report presentation; collaborators
@@ -249,7 +252,7 @@ metadata only. A portable import creates a closed local copy owned by the
 importing operator. Source attribution and stable origin IDs are preserved,
 but users from the source instance are not granted access automatically. See
 [Investigation journals](docs/investigations.md) for the event contract,
-portable archive boundary, and extension guidance.
+portable archive and merge boundaries, and extension guidance.
 
 ### Local Tools
 

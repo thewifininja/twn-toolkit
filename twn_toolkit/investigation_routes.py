@@ -114,6 +114,15 @@ def register_investigation_routes(
                     )
                 ):
                     collaborator_candidates.append(candidate)
+        merge_destinations = []
+        if not investigation.get("is_open"):
+            merge_destinations = [
+                item
+                for item in store.list_for_user(user_id())
+                if item.get("is_open")
+                and item.get("can_manage_case")
+                and item.get("id") != investigation_id
+            ]
         live_store = LiveToolStore(app.instance_path)
         remote_manager = app.extensions.get("remote_session_manager")
         active_remote_session_count = (
@@ -138,6 +147,7 @@ def register_investigation_routes(
             active_investigation_tab=active_tab,
             investigation_participants=participants,
             collaborator_candidates=collaborator_candidates,
+            merge_destinations=merge_destinations,
             active_ping_session_count=sum(
                 live_store.ping_session_count_for_investigation(
                     investigation_id,
@@ -288,6 +298,103 @@ def register_investigation_routes(
     @app.get("/investigations/<investigation_id>")
     def investigation_detail(investigation_id: str):
         return render_workspace(investigation_id, active_tab="journal")
+
+    @app.get("/investigations/<source_investigation_id>/merge")
+    def preview_investigation_merge(source_investigation_id: str):
+        source = investigation_or_404(source_investigation_id)
+        destination_id = request.args.get("destination_id", "").strip()
+        if not destination_id:
+            flash("Choose an open destination case.", "error")
+            return redirect(
+                url_for(
+                    "investigation_detail",
+                    investigation_id=source_investigation_id,
+                )
+            )
+        try:
+            preview = store.preview_case_merge(
+                source_investigation_id=source_investigation_id,
+                destination_investigation_id=destination_id,
+                user_id=user_id(),
+            )
+        except InvestigationError as exc:
+            flash(str(exc), "error")
+            return redirect(
+                url_for(
+                    "investigation_detail",
+                    investigation_id=source_investigation_id,
+                )
+            )
+        return render_template(
+            "investigations/merge.html",
+            source=source,
+            preview=preview,
+            format_bytes=format_bytes,
+        )
+
+    @app.post("/investigations/<source_investigation_id>/merge")
+    def merge_investigation_case(source_investigation_id: str):
+        investigation_or_404(source_investigation_id)
+        destination_id = request.form.get("destination_id", "").strip()
+        try:
+            result = store.merge_case(
+                source_investigation_id=source_investigation_id,
+                destination_investigation_id=destination_id,
+                user_id=user_id(),
+                username=str(user().get("username", "")),
+            )
+        except (DatastoreError, InvestigationError, OSError) as exc:
+            flash(str(exc), "error")
+            return redirect(
+                url_for(
+                    "preview_investigation_merge",
+                    source_investigation_id=source_investigation_id,
+                    destination_id=destination_id,
+                )
+            )
+        destination = result["destination"]
+        annotate_audit_event(
+            category="Investigations",
+            action="investigation.case_merged",
+            summary=(
+                f"Merged case {result['source']['title']} into "
+                f"{destination['title']}."
+            ),
+            resource_type="investigation",
+            resource_id=str(destination["id"]),
+            resource_name=str(destination["title"]),
+            details={
+                "source investigation ID": source_investigation_id,
+                "source case": result["source"]["title"],
+                "journal entries copied": result["event_count"],
+                "evidence files copied": result["artifact_count"],
+                "duplicate journal entries skipped": result[
+                    "duplicate_event_count"
+                ],
+                "duplicate evidence files skipped": result[
+                    "duplicate_artifact_count"
+                ],
+            },
+        )
+        skipped = (
+            int(result["duplicate_event_count"])
+            + int(result["duplicate_artifact_count"])
+        )
+        message = (
+            f"Merged {result['event_count']} journal entries and "
+            f"{result['artifact_count']} evidence files from "
+            f"{result['source']['title']}."
+        )
+        if skipped:
+            message += f" Skipped {skipped} records already in the destination."
+        flash(message, "success")
+        return redirect(
+            url_for(
+                "investigation_detail",
+                investigation_id=destination["id"],
+                _anchor=f"event-{result['boundary_event_id']}",
+            )
+        )
 
     @app.post("/investigations/<investigation_id>/notes")
     def add_investigation_note(investigation_id: str):

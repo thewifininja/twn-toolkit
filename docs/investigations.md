@@ -226,6 +226,32 @@ original origin IDs, establishing the identity boundary needed for a later
 explicit merge workflow. Importing the same source case twice into one toolkit
 is rejected.
 
+## Merging cases
+
+A closed case can be copied into the operator's current open case from the
+closed source's Journal tab. The review screen shows the exact destination,
+the number and size of journal entries and evidence files to be copied, and
+the records that already exist there. Confirmation is required before the
+transfer starts.
+
+The merge is non-destructive. It does not reopen, rename, change access to, or
+remove anything from the source. The destination receives independent copies
+of the full source journal and every evidence file, regardless of either
+case's current report selection. Original operators, timestamps, structured
+details, event-to-evidence relationships, report placements, and evidence
+hashes remain attached to the copied records. A separate
+`investigation.merged` boundary records who performed the transfer and its
+counts in the destination journal.
+
+The operator must be able to access the closed source and must own the open
+destination. Source participants are attribution only and are not added to the
+destination team. Evidence is re-read and checked against its retained size
+and SHA-256 digest before being copied; a changed or missing file aborts the
+whole merge and removes staged files. Stable `(source case, source record)`
+origins suppress records already present through an earlier direct or chained
+merge. A merge ledger also prevents accidentally repeating the same completed
+source-to-destination transfer.
+
 The Report contents editor includes or excludes individual timeline events and
 evidence files. It changes only each item's `report_placement`; the underlying
 event payload, artifact metadata, and stored file remain untouched. This editor
