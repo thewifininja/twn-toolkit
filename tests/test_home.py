@@ -342,7 +342,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn('active" href="/settings"', settings)
         self.assertNotIn('/favorites/tools/admin.settings', settings)
 
-    def test_network_sidebar_uses_purpose_groups_and_tool_icons(self) -> None:
+    def test_network_sidebar_reserves_icons_for_categories_not_leaf_tools(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             client = app.test_client()
@@ -362,8 +362,38 @@ class HomePageTests(unittest.TestCase):
         self.assertIn("Multi-Host Tools", page)
         self.assertIn("Services &amp; Protocols", page)
         self.assertIn("Traffic &amp; Interfaces", page)
-        self.assertIn('<span class="side-nav-icon" aria-hidden="true">↔</span>', page)
+        self.assertIn('<span class="side-nav-icon" aria-hidden="true">⌁</span>', page)
+        self.assertIn('<span class="side-nav-icon" aria-hidden="true">◎</span>', page)
         self.assertNotIn('<span class="side-nav-icon" aria-hidden="true">•</span>', page)
+        ping_link = page.split('href="/tools/ping"', 1)[1].split("</a>", 1)[0]
+        self.assertIn(">Multi-Host Ping</span>", ping_link)
+        self.assertNotIn("side-nav-icon", ping_link)
+
+    def test_sidebar_keeps_icons_for_standalone_links_but_not_favorites(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            client = app.test_client()
+            client.post(
+                "/setup",
+                data={
+                    "username": "admin",
+                    "password": "correct horse battery staple",
+                    "confirm_password": "correct horse battery staple",
+                },
+            )
+            client.post("/favorites/tools/tools.ping")
+
+            page = client.get("/investigations").data.decode()
+
+        singleton = page.split(
+            '<div class="side-nav-section side-nav-singleton">', 1
+        )[1].split("</div>", 1)[0]
+        self.assertIn("side-nav-icon", singleton)
+        favorite = page.split('data-favorite-id="tools.ping"', 1)[1].split(
+            "</li>", 1
+        )[0]
+        self.assertIn(">Multi-Host Ping</span>", favorite)
+        self.assertNotIn("side-nav-icon", favorite)
 
     def test_fortigate_profile_test_uses_loading_animation(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

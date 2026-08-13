@@ -624,6 +624,10 @@ body {
   min-width: 0;
 }
 
+.side-nav-item.text-only > a {
+  gap: 0;
+}
+
 .side-nav-favorite-form {
   align-items: center;
   display: flex;
