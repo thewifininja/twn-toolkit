@@ -391,6 +391,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "tools.syslog_receiver": "tools.syslog_receiver",
             "tools.whats_my_ip": "tools.whats_my_ip",
             "tools.server_public_ip": "tools.whats_my_ip",
+            "tools.record_ip_snapshot": "tools.whats_my_ip",
             "tools.ntp_test": "tools.ntp_test",
             "tools.save_ntp_profile": "tools.ntp_test",
             "tools.duplicate_ntp_profile": "tools.ntp_test",

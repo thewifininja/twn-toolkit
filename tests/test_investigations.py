@@ -7,13 +7,17 @@ import os
 import tempfile
 import unittest
 import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
 from twn_toolkit import create_app
+from twn_toolkit.automation import AutomationStore
+from twn_toolkit.automation_registry import ActionResult, ConditionResult
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.investigations import InvestigationError, InvestigationStore
 from twn_toolkit.live_tools import LiveToolStore
+from twn_toolkit.packet_capture import PacketCaptureStore
 
 
 class InvestigationStoreTests(unittest.TestCase):
@@ -280,6 +284,378 @@ class InvestigationStoreTests(unittest.TestCase):
 
 
 class InvestigationRouteTests(unittest.TestCase):
+    def test_one_off_snmp_is_case_evidence_without_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Switch polling"})
+            client.post(
+                "/tools/snmp-test/profiles/credentials",
+                data={
+                    "name": "Production credential",
+                    "version": "v2c",
+                    "community": "private-community",
+                },
+            )
+            client.post(
+                "/tools/snmp-test/profiles/hosts",
+                data={
+                    "name": "Core Switch",
+                    "host": "192.0.2.10",
+                    "port": "161",
+                    "timeout": "2",
+                    "retries": "1",
+                    "credential_name": "Production credential",
+                },
+            )
+            client.post(
+                "/tools/snmp-test/profiles/oids",
+                data={
+                    "name": "Identity",
+                    "source": "System Name = 1.3.6.1.2.1.1.5.0",
+                },
+            )
+            fake_results = [
+                {
+                    "host_name": "Core Switch",
+                    "host": "192.0.2.10",
+                    "port": 161,
+                    "credential_name": "Production credential",
+                    "profile_name": "Identity",
+                    "status": "success",
+                    "error": "",
+                    "elapsed_ms": 8.1,
+                    "rows": [
+                        {
+                            "label": "System Name",
+                            "operation": "get",
+                            "oid": "1.3.6.1.2.1.1.5.0",
+                            "value": "core-1",
+                            "value_type": "OctetString",
+                            "response_ms": 7.9,
+                        }
+                    ],
+                }
+            ]
+            with patch(
+                "twn_toolkit.snmp_routes.run_snmp_tests", return_value=fake_results
+            ):
+                response = client.post(
+                    "/tools/snmp-test",
+                    data={
+                        "host_names": "Core Switch",
+                        "oid_profile_names": "Identity",
+                    },
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b"Recorded in", response.data)
+
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            event = next(
+                event
+                for event in store.events_for_user(investigation["id"], "test-user")
+                if event["tool_id"] == "tools.snmp_test"
+            )
+            serialized = json.dumps(event)
+            self.assertEqual(event["metrics"]["returned_values"], 1)
+            self.assertEqual(event["details"]["results"][0]["rows"][0]["value"], "core-1")
+            self.assertNotIn("private-community", serialized)
+            self.assertNotIn("credential_name", serialized)
+
+            report = client.get(f"/investigations/{investigation['id']}/report")
+            self.assertIn(b"OID profile", report.data)
+            self.assertIn(b"core-1", report.data)
+
+    def test_certificate_inspection_is_structured_case_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "TLS validation"})
+            now = datetime.now(timezone.utc)
+            result = {
+                "host": "portal.example.org",
+                "port": 443,
+                "elapsed_ms": 18.4,
+                "tls": {
+                    "version": "TLSv1.3",
+                    "cipher": "TLS_AES_256_GCM_SHA384",
+                    "cipher_protocol": "TLSv1.3",
+                    "cipher_bits": 256,
+                    "alpn": "h2",
+                },
+                "certificates": [
+                    {
+                        "position": 1,
+                        "role": "Leaf",
+                        "subject": "CN=portal.example.org",
+                        "common_name": "portal.example.org",
+                        "issuer": "CN=Example Issuing CA",
+                        "serial_number": "A1",
+                        "not_before": now - timedelta(days=1),
+                        "not_after": now + timedelta(days=89),
+                        "time_valid": True,
+                        "not_yet_valid": False,
+                        "expired": False,
+                        "days_remaining": 89,
+                        "is_ca": False,
+                        "is_self_issued": False,
+                        "san_dns": ["portal.example.org"],
+                        "san_ip": [],
+                        "san_uri": [],
+                        "public_key": "EC secp256r1 (256 bits)",
+                        "signature_algorithm": "ecdsa-with-SHA256",
+                        "signature_hash": "sha256",
+                        "sha256_fingerprint": "AA:BB",
+                        "aia_issuers": [],
+                        "ocsp_urls": [],
+                    }
+                ],
+                "presented_count": 1,
+                "chain_order_valid": True,
+                "order_checks": [],
+                "server_sent_self_issued_root": False,
+                "likely_missing_intermediate": False,
+                "hostname": {
+                    "valid": True,
+                    "source": "DNS Subject Alternative Name",
+                    "matched": "portal.example.org",
+                    "error": "",
+                },
+                "trust": {"valid": True, "error": ""},
+                "overall_valid": True,
+            }
+            with patch(
+                "twn_toolkit.certificate_routes.inspect_certificate_chain",
+                return_value=result,
+            ):
+                response = client.post(
+                    "/tools/certificate-inspector",
+                    data={
+                        "target": "portal.example.org",
+                        "port": "443",
+                        "timeout": "8",
+                    },
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b"Recorded in", response.data)
+
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            event = next(
+                event
+                for event in store.events_for_user(investigation["id"], "test-user")
+                if event["tool_id"] == "tools.certificate_inspector"
+            )
+            self.assertTrue(event["metrics"]["overall_valid"])
+            self.assertEqual(
+                event["details"]["result"]["certificates"][0]["not_after"],
+                (now + timedelta(days=89)).isoformat(),
+            )
+            report = client.get(f"/investigations/{investigation['id']}/report")
+            self.assertIn(b"Certificate inspection", report.data)
+            self.assertIn(b"SHA-256", report.data)
+
+    def test_snmp_bandwidth_monitor_records_lifecycle_and_rate_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Uplink saturation"})
+            client.post(
+                "/tools/snmp-test/profiles/credentials",
+                data={"name": "Monitor", "version": "v2c", "community": "secret"},
+            )
+            client.post(
+                "/tools/snmp-test/profiles/hosts",
+                data={
+                    "name": "Core",
+                    "host": "192.0.2.10",
+                    "port": "161",
+                    "timeout": "2",
+                    "retries": "1",
+                    "credential_name": "Monitor",
+                },
+            )
+            started = client.post(
+                "/tools/snmp-test/interface-monitor/start",
+                json={
+                    "title": "WAN uplink",
+                    "targets": [
+                        {
+                            "host_name": "Core",
+                            "interface_index": 2,
+                            "interface_label": "port2 — WAN",
+                            "interface_speed_bps": 1_000_000_000,
+                        }
+                    ],
+                    "interval": 5,
+                },
+            )
+            self.assertEqual(started.status_code, 201)
+            self.assertTrue(started.get_json()["case_recorded"])
+            session = started.get_json()["session"]
+            live_store = LiveToolStore(instance)
+            created = float(session["created_at"])
+            base_sample = {
+                "host_name": "Core",
+                "host": "192.0.2.10",
+                "interface_index": 2,
+                "elapsed_ms": 4.2,
+                "counter_bits": 64,
+                "speed_bps": 1_000_000_000,
+                "admin_status": "up",
+                "oper_status": "up",
+                "sys_uptime": 100,
+                "counter_discontinuity": 0,
+                "input_errors": 0,
+                "output_errors": 0,
+                "input_discards": 0,
+                "output_discards": 0,
+                "poll_count": 1,
+            }
+            self.assertTrue(
+                live_store.record_snmp_interface_round(
+                    session["id"],
+                    revision=1,
+                    sampled_at=created + 1,
+                    duration_ms=5,
+                    results=[
+                        {
+                            "status": "success",
+                            "sample": {
+                                **base_sample,
+                                "sampled_at_ms": int((created + 1) * 1000),
+                                "input_octets": "1000",
+                                "output_octets": "2000",
+                            },
+                        }
+                    ],
+                )
+            )
+            self.assertTrue(
+                live_store.record_snmp_interface_round(
+                    session["id"],
+                    revision=1,
+                    sampled_at=created + 6,
+                    duration_ms=5,
+                    results=[
+                        {
+                            "status": "success",
+                            "sample": {
+                                **base_sample,
+                                "sampled_at_ms": int((created + 6) * 1000),
+                                "sys_uptime": 600,
+                                "input_octets": "2000",
+                                "output_octets": "4000",
+                            },
+                        }
+                    ],
+                )
+            )
+            stopped = client.post(session["stop_url"])
+            self.assertEqual(stopped.status_code, 200)
+
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            events = [
+                event
+                for event in store.events_for_user(investigation["id"], "test-user")
+                if event["tool_id"] == "tools.snmp_test"
+            ]
+            self.assertEqual(
+                [event["event_type"] for event in events],
+                ["snmp.monitor.started", "snmp.monitor.completed"],
+            )
+            completed = events[-1]
+            target = completed["details"]["target_summaries"][0]
+            self.assertEqual(target["peak_download_bps"], 3200.0)
+            self.assertEqual(target["peak_upload_bps"], 1600.0)
+            self.assertNotIn("secret", json.dumps(events))
+            artifacts = store.artifacts_for_user(investigation["id"], "test-user")
+            self.assertEqual(len(artifacts), 1)
+            csv_data = store.datastore.file(artifacts[0]["relative_path"]).read_text()
+            self.assertIn("download_bps", csv_data)
+            self.assertIn("3200.0", csv_data)
+            report = client.get(f"/investigations/{investigation['id']}/report")
+            self.assertIn(b"SNMP bandwidth monitor stopped", report.data)
+            self.assertIn(b"3.20 Kbps", report.data)
+
+    def test_packet_capture_streams_pcap_into_case_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Packet evidence"})
+            capability = {
+                "available": True,
+                "executable": "/usr/sbin/tcpdump",
+                "detail": "tcpdump is available.",
+            }
+            interfaces = [{"index": 7, "name": "en7", "loopback": False}]
+            with (
+                patch("twn_toolkit.packet_capture.capture_capability", return_value=capability),
+                patch("twn_toolkit.packet_capture.capture_interfaces", return_value=interfaces),
+                patch("twn_toolkit.packet_capture._compile_capture_filter"),
+                patch("twn_toolkit.packet_capture_routes.capture_capability", return_value=capability),
+                patch("twn_toolkit.packet_capture_routes.capture_interfaces", return_value=interfaces),
+                patch.object(PacketCaptureStore, "launch"),
+            ):
+                started = client.post(
+                    "/tools/packet-capture/start",
+                    data={
+                        "interface": "en7",
+                        "capture_filter": "port 443",
+                        "duration_seconds": "60",
+                        "packet_count": "0",
+                        "max_size_mib": "25",
+                        "snap_length": "0",
+                        "promiscuous": "on",
+                    },
+                )
+            self.assertEqual(started.status_code, 302)
+            capture_store = PacketCaptureStore(instance)
+            capture = capture_store.recent(1)[0]
+            self.assertTrue(capture["investigation_id"])
+            pcap = b"\xd4\xc3\xb2\xa1\x02\x00\x04\x00" + b"\x00" * 16
+            output = capture_store.output_file(capture)
+            output.write_bytes(pcap)
+            capture_store.finish(
+                capture["id"],
+                status="completed",
+                result={
+                    "elapsed_seconds": 2,
+                    "size_bytes": len(pcap),
+                    "packet_count_captured": 0,
+                    "termination_reason": "duration reached",
+                },
+            )
+            status = client.get(f"/tools/packet-capture/{capture['id']}/status")
+            self.assertEqual(status.status_code, 200)
+
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            events = [
+                event
+                for event in store.events_for_user(investigation["id"], "test-user")
+                if event["tool_id"] == "tools.packet_capture"
+            ]
+            self.assertEqual(
+                [event["event_type"] for event in events],
+                ["packet_capture.started", "packet_capture.completed"],
+            )
+            artifacts = store.artifacts_for_user(investigation["id"], "test-user")
+            self.assertEqual(len(artifacts), 1)
+            self.assertEqual(artifacts[0]["content_type"], "application/vnd.tcpdump.pcap")
+            self.assertEqual(
+                store.datastore.file(artifacts[0]["relative_path"]).read_bytes(), pcap
+            )
+            report = client.get(f"/investigations/{investigation['id']}/report")
+            self.assertIn(b"PCAP evidence", report.data)
+            self.assertIn(artifacts[0]["display_name"].encode(), report.data)
+
     def test_multi_ping_records_lifecycle_summary_and_csv_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)
@@ -996,6 +1372,279 @@ class InvestigationRouteTests(unittest.TestCase):
             ):
                 self.assertIn(value, report.data)
             self.assertEqual(report.data.count(b"Detailed results R-"), 4)
+
+    def test_vendor_exports_and_actions_become_safe_case_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post(
+                "/profiles",
+                data={
+                    "name": "Lab",
+                    "host": "https://fortigate.example",
+                    "api_key": "profile-secret",
+                    "default_vdom": "root",
+                },
+            )
+            client.post("/investigations", data={"title": "Fortinet change review"})
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            investigation_id = str(investigation["id"])
+
+            with patch(
+                "twn_toolkit.fortigate_routes.ExportTask.run",
+                return_value="serial,name\nS124,Private Switch\n",
+            ):
+                export = client.post(
+                    "/tasks/export-switches/run",
+                    data={"profile": "Lab"},
+                )
+            self.assertEqual(export.status_code, 200)
+
+            switches = [
+                {"switch-id": "switch-a", "name": "Switch A"},
+                {"switch-id": "switch-b", "name": "Switch B"},
+            ]
+            with (
+                patch(
+                    "twn_toolkit.fortigate_routes.FortiGateClient.get_managed_switches",
+                    side_effect=[switches, list(reversed(switches))],
+                ),
+                patch(
+                    "twn_toolkit.fortigate_routes.FortiGateClient.move_managed_switch_after"
+                ),
+            ):
+                apply = client.post(
+                    "/fortigate/switch-order/apply",
+                    data={
+                        "profile": "Lab",
+                        "vdom": "root",
+                        "switch_id": ["switch-b", "switch-a"],
+                        "confirmed": "on",
+                    },
+                )
+            self.assertEqual(apply.status_code, 200)
+
+            events = store.events_for_user(investigation_id, "test-user")
+            export_event = next(
+                event for event in events if event["tool_id"] == "fortigate.export_switches"
+            )
+            action_event = next(
+                event for event in events if event["tool_id"] == "fortigate.switch_order"
+            )
+            self.assertEqual(export_event["event_type"], "external.export.completed")
+            self.assertEqual(action_event["event_type"], "external.action")
+            serialized = json.dumps(events)
+            self.assertNotIn("profile-secret", serialized)
+            self.assertNotIn("Private Switch", serialized)
+
+            artifacts = store.artifacts_for_user(investigation_id, "test-user")
+            export_artifact = next(
+                artifact for artifact in artifacts if artifact["event_id"] == export_event["id"]
+            )
+            self.assertEqual(
+                store.datastore.file(export_artifact["relative_path"]).read_text(),
+                "serial,name\nS124,Private Switch\n",
+            )
+            report = client.get(f"/investigations/{investigation_id}/report")
+            self.assertIn(b"Export FortiSwitch Data", report.data)
+            self.assertIn(b"Applied and verified", report.data)
+
+    def test_wireless_history_retains_collapsed_path_not_raw_vendor_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post(
+                "/profiles",
+                data={
+                    "name": "Lab",
+                    "host": "https://fortigate.example",
+                    "api_key": "profile-secret",
+                    "default_vdom": "root",
+                },
+            )
+            client.post("/investigations", data={"title": "Wireless roaming"})
+            result = {
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "vdom": "root",
+                "hours": 24,
+                "source": "Local FortiGate",
+                "timeline": [
+                    {
+                        "ap": "Lobby-AP",
+                        "first_time": "2026-08-12 10:00:00",
+                        "last_time": "2026-08-12 10:02:00",
+                        "event_count": 2,
+                        "ssid": "Corp",
+                        "ip": "192.0.2.20",
+                        "details": "Associated",
+                        "events": [
+                            {
+                                "sort_time": datetime.now(timezone.utc),
+                                "raw_vendor_secret": "do-not-retain",
+                            }
+                        ],
+                    }
+                ],
+                "log_row_count": 8,
+                "raw_event_count": 2,
+                "omitted_unknown_ap_count": 0,
+                "live_clients": [],
+                "log_error": "",
+                "live_error": "",
+                "ap_path": ["Lobby-AP"],
+            }
+            with patch(
+                "twn_toolkit.fortigate_routes.wireless_client_history",
+                return_value=result,
+            ):
+                response = client.post(
+                    "/fortigate/fortiap/client-history",
+                    data={
+                        "profile": "Lab",
+                        "mac": "aabb.ccdd.eeff",
+                        "hours": "24",
+                    },
+                )
+            self.assertIn(b"Recorded in the active case", response.data)
+
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            event = next(
+                event
+                for event in store.events_for_user(investigation["id"], "test-user")
+                if event["tool_id"] == "fortigate.wireless_client_history"
+            )
+            serialized = json.dumps(event)
+            self.assertIn("Lobby-AP", serialized)
+            self.assertNotIn("do-not-retain", serialized)
+            self.assertNotIn("sort_time", serialized)
+            report = client.get(f"/investigations/{investigation['id']}/report")
+            self.assertIn(b"Lobby-AP", report.data)
+            self.assertIn(b"Associated", report.data)
+
+    def test_address_snapshots_and_subnet_calculations_are_deliberate_case_events(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Address plan"})
+
+            snapshot = client.post(
+                "/tools/whats-my-ip/case-snapshot",
+                data={
+                    "browser_public": "198.51.100.8",
+                    "server_public": "203.0.113.9",
+                },
+            )
+            self.assertTrue(snapshot.get_json()["case_recorded"])
+            subnet = client.post(
+                "/tools/subnet-excluder",
+                data={
+                    "supernets": "192.0.2.0/24",
+                    "exclusions": "192.0.2.0/25",
+                },
+            )
+            self.assertIn(b"Recorded in the active case", subnet.data)
+
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            events = store.events_for_user(investigation["id"], "test-user")
+            tools = {event["tool_id"]: event for event in events}
+            self.assertEqual(
+                tools["tools.whats_my_ip"]["targets"]["browser_public"],
+                "198.51.100.8",
+            )
+            self.assertEqual(
+                tools["tools.subnet_excluder"]["details"]["remaining_networks"],
+                ["192.0.2.128/25"],
+            )
+            report = client.get(f"/investigations/{investigation['id']}/report")
+            self.assertIn(b"Browser public address", report.data)
+            self.assertIn(b"192.0.2.128/25", report.data)
+
+    def test_collected_automation_run_can_be_attached_with_its_portable_zip(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            automation_store = AutomationStore(instance, app.config["SECRET_KEY"])
+            automation_id = automation_store.save(
+                name="Collect switch state",
+                interval_seconds=30,
+                trigger_after=1,
+                recover_after=1,
+                cooldown_seconds=0,
+                condition={"type": "manual.trigger", "config": {}},
+                actions=[
+                    {
+                        "type": "ssh.collect",
+                        "config": {
+                            "hosts": "192.0.2.10",
+                            "username": "admin",
+                            "password": "profile-secret",
+                            "commands": "show clock",
+                            "port": 22,
+                            "command_timeout": 300,
+                            "allow_unknown_hosts": False,
+                            "send_ctrl_y": False,
+                        },
+                    }
+                ],
+                created_by="test-user",
+            )
+            run_id = automation_store.record_run(
+                automation_id,
+                ConditionResult(True, "met", "Manual run", {}),
+                [
+                    ActionResult(
+                        "success",
+                        "Collected one host",
+                        {
+                            "_pipeline": {
+                                "stage_name": "Collection",
+                                "action_name": "SSH collect",
+                            },
+                            "hosts": [
+                                {
+                                    "host": "192.0.2.10",
+                                    "host_label": "Core",
+                                    "status": "success",
+                                    "output": "12:34:56 UTC",
+                                }
+                            ],
+                        },
+                    )
+                ],
+            )
+            client.post("/investigations", data={"title": "Automation evidence"})
+            response = client.post(f"/automations/runs/{run_id}/case")
+            self.assertEqual(response.status_code, 302)
+
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            event = next(
+                event
+                for event in store.events_for_user(investigation["id"], "test-user")
+                if event["tool_id"] == "automation.home"
+            )
+            self.assertEqual(event["metrics"]["successful_results"], 1)
+            self.assertNotIn("profile-secret", json.dumps(event))
+            artifact = next(
+                artifact
+                for artifact in store.artifacts_for_user(investigation["id"], "test-user")
+                if artifact["event_id"] == event["id"]
+            )
+            with zipfile.ZipFile(store.datastore.file(artifact["relative_path"])) as archive:
+                host_output = archive.read(
+                    next(name for name in archive.namelist() if name.endswith("-Core.txt"))
+                )
+            self.assertIn(b"12:34:56 UTC", host_output)
+            report = client.get(f"/investigations/{investigation['id']}/report")
+            self.assertIn(b"Collect switch state", report.data)
+            self.assertIn(b"SSH collect", report.data)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import secrets
+import time
+
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
 from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
 from .network_tools import ToolInputError
+from .investigation_context import record_current_investigation_event
 from .profiles import WOLTargetProfileStore
 from .wol_tools import (
     MAX_WOL_TARGETS,
@@ -30,8 +34,12 @@ def register_wol_routes(tools_bp: Blueprint) -> None:
             "verify_timeout": "20",
         }
         outcome = None
+        journal_event = None
         error = ""
         if request.method == "POST":
+            operation_id = f"wake-on-lan:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
+            targets = []
             form = {
                 "targets": request.form.get("targets", "").strip(),
                 "interface": request.form.get("interface", "").strip(),
@@ -99,6 +107,45 @@ def register_wol_routes(tools_bp: Blueprint) -> None:
                     "confirmed awake count": outcome["confirmed_awake"] if outcome else 0,
                 },
             )
+            partial = bool(outcome and outcome.get("send_failures"))
+            journal_event = record_current_investigation_event(
+                operation_id=operation_id,
+                event_type="action.failed" if error else "action.completed",
+                tool_id="tools.wake_on_lan",
+                action="Wake-on-LAN",
+                outcome="failed" if error else "incomplete" if partial else "succeeded",
+                summary=(
+                    f"Wake-on-LAN failed: {error}"
+                    if error
+                    else (
+                        f"Sent {outcome['packets_sent']} Wake-on-LAN packet(s) to "
+                        f"{outcome['device_count']} device(s): "
+                        f"{outcome['confirmed_awake']} confirmed awake."
+                    )
+                ),
+                targets=targets,
+                parameters={
+                    "interface": form["interface"],
+                    "destination_mode": form["destination_mode"],
+                    "custom_destination": form["custom_destination"],
+                    "port": form["port"],
+                    "repeats": form["repeats"],
+                    "verification_requested": form["verify"],
+                    "verification_timeout_seconds": form["verify_timeout"],
+                },
+                metrics={
+                    "device_count": outcome.get("device_count", 0),
+                    "packets_sent": outcome.get("packets_sent", 0),
+                    "send_failures": outcome.get("send_failures", 0),
+                    "confirmed_awake": outcome.get("confirmed_awake", 0),
+                    "elapsed_ms": outcome.get("elapsed_ms"),
+                }
+                if outcome
+                else {},
+                details={"error": error, "outcome": outcome or {}},
+                started_at=journal_started_at,
+                completed_at=time.time(),
+            )
         return render_template(
             "tools/wake_on_lan.html",
             error=error,
@@ -107,6 +154,7 @@ def register_wol_routes(tools_bp: Blueprint) -> None:
             profiles=WOLTargetProfileStore(current_app.instance_path).all(),
             outcome=outcome,
             target_limit=MAX_WOL_TARGETS,
+            journal_event=journal_event,
         )
 
     @tools_bp.post("/wake-on-lan/profiles")

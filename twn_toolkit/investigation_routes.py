@@ -28,10 +28,24 @@ from .investigation_exports import (
 from .investigations import InvestigationError, InvestigationStore
 from .investigation_reporting import case_report_contents
 from .live_tools import LiveToolStore
+from .packet_capture import PacketCaptureStore
 from .ping_investigation import (
     PingInvestigationError,
     stop_and_finalize_case_ping_sessions,
 )
+from .snmp_investigation import (
+    SnmpInvestigationError,
+    stop_and_finalize_case_snmp_sessions,
+)
+from .packet_capture_investigation import (
+    PacketCaptureInvestigationError,
+    stop_and_finalize_case_packet_captures,
+)
+from .iperf_investigation import (
+    IperfInvestigationError,
+    stop_and_finalize_case_iperf_servers,
+)
+from .iperf_server import IperfServerStore
 
 
 def register_investigation_routes(
@@ -72,6 +86,7 @@ def register_investigation_routes(
         investigation_id: str, *, active_tab: str
     ) -> str:
         investigation, events, artifacts, report = load_report(investigation_id)
+        live_store = LiveToolStore(app.instance_path)
         return render_template(
             "investigations/detail.html",
             investigation=investigation,
@@ -80,11 +95,25 @@ def register_investigation_routes(
             **report,
             investigation_tabs=tabs(investigation_id, active_tab),
             active_investigation_tab=active_tab,
-            active_ping_session_count=LiveToolStore(
-                app.instance_path
-            ).ping_session_count_for_investigation(
+            active_ping_session_count=live_store.ping_session_count_for_investigation(
                 investigation_id,
                 user_id=user_id(),
+            ),
+            active_snmp_session_count=live_store.snmp_session_count_for_investigation(
+                investigation_id,
+                user_id=user_id(),
+            ),
+            active_packet_capture_count=len(
+                PacketCaptureStore(app.instance_path).active_for_investigation(
+                    investigation_id,
+                    user_id=user_id(),
+                )
+            ),
+            active_iperf_server_count=len(
+                IperfServerStore(app.instance_path).active_for_investigation(
+                    investigation_id,
+                    user_id=user_id(),
+                )
             ),
             format_bytes=format_bytes,
         )
@@ -179,9 +208,27 @@ def register_investigation_routes(
         state = request.form.get("state", "").strip()
         reopening = investigation["state"] == "completed" and state == "paused"
         ping_result = {"stopped": 0, "finalized": 0}
+        snmp_result = {"stopped": 0, "finalized": 0}
+        capture_result = {"stopped": 0, "finalized": 0}
+        iperf_result = {"stopped": 0, "finalized": 0}
         try:
             if state == "completed":
                 ping_result = stop_and_finalize_case_ping_sessions(
+                    app.instance_path,
+                    investigation_id=investigation_id,
+                    user_id=user_id(),
+                )
+                snmp_result = stop_and_finalize_case_snmp_sessions(
+                    app.instance_path,
+                    investigation_id=investigation_id,
+                    user_id=user_id(),
+                )
+                capture_result = stop_and_finalize_case_packet_captures(
+                    app.instance_path,
+                    investigation_id=investigation_id,
+                    user_id=user_id(),
+                )
+                iperf_result = stop_and_finalize_case_iperf_servers(
                     app.instance_path,
                     investigation_id=investigation_id,
                     user_id=user_id(),
@@ -192,7 +239,13 @@ def register_investigation_routes(
                 str(user().get("username", "")),
                 state,
             )
-        except (InvestigationError, PingInvestigationError) as exc:
+        except (
+            InvestigationError,
+            PingInvestigationError,
+            SnmpInvestigationError,
+            PacketCaptureInvestigationError,
+            IperfInvestigationError,
+        ) as exc:
             flash(str(exc), "error")
         else:
             if reopening:
@@ -216,6 +269,12 @@ def register_investigation_routes(
                     "state": updated["state"],
                     "multi-ping sessions stopped": ping_result["stopped"],
                     "multi-ping results finalized": ping_result["finalized"],
+                    "SNMP monitors stopped": snmp_result["stopped"],
+                    "SNMP monitor results finalized": snmp_result["finalized"],
+                    "packet captures stopped": capture_result["stopped"],
+                    "packet capture results finalized": capture_result["finalized"],
+                    "iPerf3 servers stopped": iperf_result["stopped"],
+                    "iPerf3 server results finalized": iperf_result["finalized"],
                 },
             )
             if reopening:
@@ -227,6 +286,24 @@ def register_investigation_routes(
                     message += (
                         f" Stopped and retained {count} attached Multi-Ping "
                         f"session{'s' if count != 1 else ''}."
+                    )
+                if state == "completed" and snmp_result["stopped"]:
+                    count = snmp_result["stopped"]
+                    message += (
+                        f" Stopped and retained {count} attached SNMP monitor"
+                        f"{'s' if count != 1 else ''}."
+                    )
+                if state == "completed" and capture_result["stopped"]:
+                    count = capture_result["stopped"]
+                    message += (
+                        f" Stopped and retained {count} attached packet capture"
+                        f"{'s' if count != 1 else ''}."
+                    )
+                if state == "completed" and iperf_result["stopped"]:
+                    count = iperf_result["stopped"]
+                    message += (
+                        f" Stopped and retained {count} attached iPerf3 server"
+                        f"{'s' if count != 1 else ''}."
                     )
                 flash(message, "success")
         default_destination = (

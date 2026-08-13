@@ -205,15 +205,17 @@ The sidebar and Network Tools page use the same functional organization.
 ### Investigations
 
 An operator can open one case at a time in the Investigations workspace and
-carry its recording context across toolkit pages. DNS tests, TCP port scans,
-traceroutes, NTP tests, Path MTU tests, and browser-to-toolkit speed tests retain
-their targets, non-secret parameters, outcomes, metrics, and bounded results as
-immutable journal events. Operators can also:
+carry its recording context across toolkit pages. Finite network diagnostics,
+one-off SNMP polls, interface monitoring, certificate inspection, persistent
+Multi-Ping, packet capture, managed iPerf3 listeners, command/transfer runs,
+selected vendor workflows, and other intentional tool actions retain safe
+structured events or generated evidence. Operators can also:
 
 - pause automatic capture without closing the case;
 - add timestamped notes while recording is active or paused;
 - upload collision-safe evidence files to a managed per-case Datastore
   folder with retained size, content type, and SHA-256 metadata;
+- explicitly add an IP-address snapshot or a collected Automation run ZIP;
 - review a chronological journal and download retained evidence; and
 - curate a deterministic case report without changing source evidence;
 - download its compact timeline, linked detailed-result pages, and evidence

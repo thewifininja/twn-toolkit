@@ -578,7 +578,9 @@ class InvestigationStore:
         completed_at: float,
         filename: str,
         content_type: str,
-        content: bytes,
+        content: bytes | None = None,
+        stream: BinaryIO | None = None,
+        max_bytes: int = MAX_UPLOAD_BYTES,
     ) -> dict[str, dict[str, Any]]:
         """Atomically describe generated evidence without adding timeline noise."""
         user_id = self._clean_identity(user_id, "user")
@@ -616,6 +618,10 @@ class InvestigationStore:
                         "artifact": self._artifact(artifact_row),
                     }
 
+        if (content is None) == (stream is None):
+            raise InvestigationError(
+                "Generated evidence requires exactly one content source."
+            )
         stored_name = self._available_evidence_name(
             str(investigation["datastore_path"]), filename
         )
@@ -623,8 +629,8 @@ class InvestigationStore:
         saved, size = self.datastore.save_upload(
             relative_folder,
             stored_name,
-            io.BytesIO(content),
-            max_bytes=MAX_UPLOAD_BYTES,
+            io.BytesIO(content) if content is not None else stream,
+            max_bytes=max_bytes,
         )
         digest = self._sha256_file(saved)
         artifact_id = f"art_{secrets.token_hex(12)}"

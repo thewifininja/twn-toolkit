@@ -2,9 +2,9 @@
 
 Investigations is the toolkit workspace; each individual troubleshooting record
 inside it is a case. Cases turn individual toolkit actions into a durable
-record. The shared persistence and UI contract covers the first finite
-diagnostic set and long-running Multi-Ping sessions; SSH/Telnet capture remains
-a separate lifecycle slice.
+record. The shared persistence and UI contract covers finite diagnostics,
+persistent measurement sessions, generated tool output, selected external
+workflows, operator attachments, reporting, and packaging.
 
 ## Operator workflow
 
@@ -73,18 +73,57 @@ could contain unintended or sensitive content. Credentials, tokens, community
 strings, passwords, and private keys never belong in targets, parameters,
 metrics, details, summaries, or audit records.
 
-## Finite diagnostic integrations
+## Capture policy and coverage
 
-The first finite-result set records DNS Tester, TCP Port Scanner, Traceroute,
-NTP Tester, Path MTU Tester, and Wi-Fi / LAN Speed Test runs while the current
-case is recording. Each route retains normalized targets, non-secret bounded
-settings, summary metrics, and the structured results needed to reproduce the
-screen result in a report without rerunning the diagnostic. Browser speed tests
-are labeled specifically as browser-to-toolkit measurements, not internet speed
+`investigation_policy.py` assigns every registered toolkit entry one capture
+mode, evidence form, and rationale. Tests require exact coverage of the tool
+registry. Every tool classified as finite, lifecycle, hybrid, or consequential
+action must also have an explicit presentation in `investigation_reporting.py`.
+This makes adding a sidebar tool without deciding its case behavior and report
+shape a test failure.
+
+The automatically captured finite-result set includes:
+
+- DNS, TCP port, traceroute, NTP, Path MTU, DHCP, RADIUS, multicast, iPerf3
+  client, browser-to-toolkit speed, API-request, syslog, Wake-on-LAN, and packet
+  replay runs;
+- one-off SNMP OID polling and TLS certificate inspection;
+- submitted subnet-exclusion calculations; and
+- FortiGate wireless-client history with a collapsed AP path rather than raw
+  vendor-log objects.
+
+Multi-SSH stores per-host output as generated text evidence. Multi-Transfer
+stores a result manifest without duplicating each transferred payload. Syslog
+stores full retained messages as JSON evidence while keeping the timeline
+compact. API Request stores the origin, method, timing, sizes, and header names,
+but not URL credentials, query strings, header values, or request/response
+bodies. RADIUS and SNMP never retain passwords, shared secrets, communities, or
+SNMPv3 key material.
+
+FortiGate/FortiAuthenticator exports are copied into the case as their original
+CSV while configuration-changing rename, order, and cleanup workflows use the
+same bounded, secret-sanitized summaries as the audit log. Certificate
+automation records consequential operator boundaries, but certificate/private
+key archives are not silently copied into a case.
+
+Some relationships must remain deliberate rather than inferred. What’s My IP
+has an **Add snapshot to case** action after its browser/server observations are
+available. Completed Automation runs have **Add to case**, which copies the
+portable run ZIP and a compact action summary. Case evidence uploads cover local
+files, received-transfer files, and administrative diagnostic exports. Page
+views, profile editing, settings, schedule definitions, navigation, and
+high-frequency helper/poll requests are not troubleshooting evidence.
+
+Each finite route retains normalized targets, non-secret bounded settings,
+summary metrics, and the structured results needed to reproduce the screen
+result in a report without rerunning the diagnostic. Browser speed tests are
+labeled specifically as browser-to-toolkit measurements, not internet speed
 tests.
 
 Streamed traceroutes record one event when each destination finishes. A client
 disconnect before completion does not invent a completed result.
+
+## Persistent session integrations
 
 Multi-Ping records one start event and one terminal event rather than adding a
 journal entry for every probe or observed reply change. The session is attached
@@ -97,7 +136,22 @@ replies is described as `No replies observed`; the journal does not infer that
 the device itself was down. Closing a case stops and finalizes its attached
 Multi-Ping sessions before the case becomes read-only. Browser lease expiry and
 monitor errors use the same idempotent finalization path with distinct terminal
-outcomes. Terminal sessions will need an equivalent bounded lifecycle contract.
+outcomes.
+
+SNMP interface monitors use the same start/terminal contract. Counter deltas
+produce download/upload rates; the terminal report contains per-interface
+average and peak throughput, and raw plus derived observations are retained as
+CSV. A counter discontinuity or reset starts a new baseline instead of inventing
+a bandwidth spike.
+
+Packet Capture attaches at start, streams the original PCAP into case storage at
+completion without reading a potentially large capture into application memory,
+and reports its bounds, packet count, size, termination, and digest. Managed
+iPerf3 listeners attach at start, retain a bounded JSON result set, and report
+each completed client test and rate. Closing a case stops and finalizes all
+attached Multi-Ping, SNMP monitor, packet-capture, and managed-iPerf3 sessions
+before the journal becomes read-only. Terminal recovery is idempotent and also
+runs from status/page requests and background-worker completion.
 
 ## Reporting
 
@@ -138,11 +192,14 @@ separate from immutable source evidence.
 
 ## Adding another tool
 
-After a meaningful tool run finishes, call
+After registering the tool, first add its entry to `CAPTURE_POLICIES`. After a
+meaningful tool run finishes, call
 `record_current_investigation_event` with a fresh operation ID and the event
 contract above. Record start time before execution and completion time after the
 result is known. Normalize and sanitize data before the call. Add store or route
 tests proving successful and failed outcomes, pause behavior, retained details,
 and deterministic report rendering for any new result presentation. Register
 the tool's report builder in `investigation_reporting.py`; keep presentation
-logic out of the shared Jinja template.
+logic out of the shared Jinja template. Persistent tools must attach the
+case/user identity when they start and finalize with `record_for_case`, so
+pausing does not orphan their terminal evidence.

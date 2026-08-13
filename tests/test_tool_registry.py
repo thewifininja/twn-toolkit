@@ -14,9 +14,26 @@ from twn_toolkit.tool_catalog import (
     grouped_access_tools,
     tool_id_for_endpoint,
 )
+from twn_toolkit.investigation_policy import CAPTURE_POLICIES, CAPTURE_MODES
+from twn_toolkit.investigation_reporting import REPORT_PRESENTATION_TOOL_IDS
 
 
 class ToolRegistryTests(unittest.TestCase):
+    def test_every_registered_tool_has_an_investigation_capture_policy(self) -> None:
+        self.assertEqual(set(CAPTURE_POLICIES), set(TOOL_BY_ID))
+        for tool_id, policy in CAPTURE_POLICIES.items():
+            self.assertIn(policy.mode, CAPTURE_MODES, tool_id)
+            self.assertTrue(policy.evidence, tool_id)
+            self.assertTrue(policy.rationale, tool_id)
+
+    def test_automatic_case_evidence_has_an_explicit_report_presentation(self) -> None:
+        required = {
+            tool_id
+            for tool_id, policy in CAPTURE_POLICIES.items()
+            if policy.mode in {"finite", "lifecycle", "hybrid", "action"}
+        }
+        self.assertEqual(required - REPORT_PRESENTATION_TOOL_IDS, set())
+
     def test_registry_builds_existing_lookup_maps(self) -> None:
         self.assertIn("tools.packet_replay", TOOL_BY_ID)
         self.assertIn("tools.packet_capture", TOOL_BY_ID)

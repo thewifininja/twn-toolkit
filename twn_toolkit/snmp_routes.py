@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+import time
 from typing import Any
 
 from flask import Blueprint, current_app, g, jsonify, render_template, request
@@ -14,6 +16,7 @@ from .audit import (
     suppress_audit_event,
 )
 from .live_tools import LiveToolStore, public_live_session
+from .investigation_context import record_current_investigation_event
 from .network_tools import ToolInputError, validate_hosts
 from .profiles import (
     SNMPCredentialProfileStore,
@@ -28,6 +31,8 @@ from .snmp_tools import (
     run_snmp_tests,
     validate_snmp_credential,
 )
+from .ping_investigation import recording_case_id
+from .snmp_investigation import record_snmp_monitor_started
 
 
 INTERFACE_MONITOR_INTERVALS = {1, 5, 10, 15, 30, 60}
@@ -49,6 +54,40 @@ def _record_snmp_activity(
     )
 
 
+def _journal_snmp_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Retain useful SNMP observations without credential material."""
+    retained = []
+    for result in results:
+        rows = []
+        for raw_row in result.get("rows", []):
+            row = raw_row if isinstance(raw_row, dict) else {}
+            rows.append(
+                {
+                    "label": str(row.get("label", "")),
+                    "operation": str(row.get("operation", "")),
+                    "oid": str(row.get("oid", "")),
+                    "value": str(row.get("value", "")),
+                    "value_type": str(row.get("value_type", "")),
+                    "response_ms": row.get("response_ms"),
+                    "status": str(row.get("status", "")),
+                    "error": str(row.get("error", "")),
+                }
+            )
+        retained.append(
+            {
+                "host_name": str(result.get("host_name", "")),
+                "host": str(result.get("host", "")),
+                "port": result.get("port"),
+                "profile_name": str(result.get("profile_name", "")),
+                "status": str(result.get("status", "")),
+                "error": str(result.get("error", "")),
+                "elapsed_ms": result.get("elapsed_ms"),
+                "rows": rows,
+            }
+        )
+    return retained
+
+
 def register_snmp_routes(tools_bp: Blueprint) -> None:
     @tools_bp.route("/snmp-test", methods=["GET", "POST"])
     def snmp_test():
@@ -58,8 +97,11 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
         selected_hosts: list[str] = []
         selected_oid_profiles: list[str] = []
         results = None
+        journal_event = None
         error = ""
         if request.method == "POST":
+            operation_id = f"snmp:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
             selected_hosts = request.form.getlist("host_names")
             selected_oid_profiles = request.form.getlist("oid_profile_names")
             hosts = [host_store.get(name) for name in selected_hosts]
@@ -126,6 +168,49 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
                     ),
                 },
             )
+            journal_results = _journal_snmp_results(results or [])
+            successful_polls = sum(
+                1 for result in journal_results if result.get("status") == "success"
+            )
+            failed_polls = len(journal_results) - successful_polls
+            returned_values = sum(
+                len(result.get("rows", [])) for result in journal_results
+            )
+            if error:
+                journal_summary = f"SNMP test failed: {error}"
+            else:
+                journal_summary = (
+                    f"Polled {len(selected_hosts)} SNMP host(s) with "
+                    f"{len(selected_oid_profiles)} OID profile(s): "
+                    f"{returned_values} value(s) returned, {failed_polls} poll(s) failed."
+                )
+            journal_event = record_current_investigation_event(
+                operation_id=operation_id,
+                event_type="diagnostic.failed" if error else "diagnostic.completed",
+                tool_id="tools.snmp_test",
+                action="SNMP test",
+                outcome="failed" if error else "succeeded",
+                summary=journal_summary,
+                targets={
+                    "host_profiles": selected_hosts,
+                    "oid_profiles": selected_oid_profiles,
+                },
+                parameters={
+                    "host_profile_count": len(selected_hosts),
+                    "oid_profile_count": len(selected_oid_profiles),
+                },
+                metrics={
+                    "poll_count": len(journal_results),
+                    "successful_polls": successful_polls,
+                    "failed_polls": failed_polls,
+                    "returned_values": returned_values,
+                }
+                if not error
+                else {},
+                details={"error": error, "results": journal_results},
+                started_at=journal_started_at,
+                completed_at=time.time(),
+            )
         credentials = credential_store.all()
         return render_template(
             "tools/snmp_test.html",
@@ -134,11 +219,11 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
             hosts=host_store.all(),
             oid_profiles=oid_store.all(),
             results=results,
+            journal_event=journal_event,
             selected_hosts=selected_hosts,
             selected_oid_profiles=selected_oid_profiles,
             requested_live_session=str(request.args.get("session", "")).strip()[:80],
         )
-
     @tools_bp.post("/snmp-test/profiles/<kind>")
     def save_snmp_profile(kind: str):
         if kind not in {"credentials", "hosts", "oids"}:
@@ -383,6 +468,15 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
             if len(title) > 100:
                 raise ToolInputError("Live tool names must be 100 characters or fewer.")
             user = _current_user()
+            try:
+                investigation_id = recording_case_id(
+                    current_app.instance_path, user["id"]
+                )
+            except Exception:
+                current_app.logger.exception(
+                    "Active case context could not be loaded for SNMP monitoring"
+                )
+                investigation_id = ""
             session = _live_tool_store().create_snmp_interface_session(
                 user_id=user["id"],
                 username=user["username"],
@@ -390,6 +484,7 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
                 targets=targets,
                 interval=interval,
                 round_timeout=round_timeout,
+                investigation_id=investigation_id,
             )
         except (ToolInputError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
@@ -411,8 +506,26 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
             detail,
             count_action=True,
         )
+        case_recorded = False
+        if session.get("investigation_id"):
+            try:
+                case_recorded = bool(
+                    record_snmp_monitor_started(
+                        current_app.instance_path,
+                        session=session,
+                        targets=targets,
+                        interval=interval,
+                    )
+                )
+            except Exception:
+                current_app.logger.exception(
+                    "Unable to record the SNMP monitor start in its attached case"
+                )
         return jsonify(
-            {"session": public_live_session(session, include_config=True)}
+            {
+                "session": public_live_session(session, include_config=True),
+                "case_recorded": case_recorded,
+            }
         ), 201
 
     @tools_bp.get("/snmp-test/interface-monitor/sessions/<session_id>")

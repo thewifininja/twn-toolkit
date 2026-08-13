@@ -7,6 +7,7 @@ import re
 import tempfile
 import time
 import zipfile
+import secrets
 from pathlib import Path
 
 from flask import Blueprint, current_app, g, redirect, render_template, request, send_file, url_for
@@ -20,6 +21,10 @@ from .transfer_tools import (
     fetch_transfer_files as fetch_ssh_files,
     parse_remote_paths as parse_sftp_paths,
     validate_transfer_filename_pattern as validate_sftp_filename_pattern,
+)
+from .investigation_context import (
+    add_current_investigation_generated_evidence_event,
+    record_current_investigation_event,
 )
 
 
@@ -44,6 +49,7 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
         error = ""
         host_count = 0
         path_count = 0
+        journal_event = None
         if request.method == "GET":
             snapshot = _take_download_results(
                 current_app.instance_path,
@@ -54,6 +60,10 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                 form = {**form, **snapshot["form"]}
                 results = snapshot["results"]
         if request.method == "POST":
+            operation_id = f"multi-transfer:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
+            hosts = []
+            paths = []
             form = {
                 "hosts": request.form.get("hosts", "").strip(),
                 "username": request.form.get("username", "").strip(),
@@ -113,6 +123,15 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                             ),
                         )
                         if successes:
+                            journal_event = _record_transfer_investigation(
+                                form,
+                                hosts,
+                                paths,
+                                results,
+                                error="",
+                                operation_id=operation_id,
+                                started_at=journal_started_at,
+                            )
                             archive = _build_archive(output_dir, results)
                             response = send_file(
                                 archive,
@@ -164,6 +183,15 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                             form, results, successes, host_count, path_count
                         ),
                     )
+                    journal_event = _record_transfer_investigation(
+                        form,
+                        hosts,
+                        paths,
+                        results or [],
+                        error=error,
+                        operation_id=operation_id,
+                        started_at=journal_started_at,
+                    )
             except (ToolInputError, DatastoreError, OSError, ValueError) as exc:
                 error = str(exc) or "Enter a valid SFTP port."
                 record_current_activity("Network tools", "Ran Multi-Transfer", "Request failed")
@@ -179,6 +207,25 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                         "remote path count": path_count,
                     },
                 )
+                journal_event = _record_transfer_investigation(
+                    form,
+                    hosts,
+                    paths,
+                    results or [],
+                    error=error,
+                    operation_id=operation_id,
+                    started_at=journal_started_at,
+                )
+            if results is not None and journal_event is None:
+                journal_event = _record_transfer_investigation(
+                    form,
+                    hosts,
+                    paths,
+                    results,
+                    error=error,
+                    operation_id=operation_id,
+                    started_at=journal_started_at,
+                )
         for result in results or []:
             result["size_display"] = format_bytes(int(result.get("size", 0)))
         return render_template(
@@ -187,6 +234,7 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
             form=form,
             results=results,
             datastore_folders=store.folders(),
+            journal_event=journal_event,
         )
 
     @tools_bp.route("/multi-sftp", methods=["GET", "POST"])
@@ -237,6 +285,88 @@ def _transfer_audit_details(
             else False
         ),
     }
+
+
+def _record_transfer_investigation(
+    form: dict[str, object],
+    hosts: list[dict[str, object]],
+    paths: list[str],
+    results: list[dict[str, object]],
+    *,
+    error: str,
+    operation_id: str,
+    started_at: float,
+) -> dict[str, object] | None:
+    safe_results = [
+        {
+            key: result.get(key)
+            for key in (
+                "host",
+                "host_label",
+                "remote_path",
+                "status",
+                "filename",
+                "size",
+                "stored_path",
+                "error",
+            )
+        }
+        for result in results
+    ]
+    successful = sum(result.get("status") == "success" for result in results)
+    transferred_bytes = sum(
+        int(result.get("size") or 0)
+        for result in results
+        if result.get("status") == "success"
+    )
+    event = {
+        "operation_id": operation_id,
+        "event_type": "action.failed" if error and not successful else "action.completed",
+        "tool_id": "tools.multi_sftp",
+        "action": "Multi-Transfer",
+        "outcome": "failed" if error and not successful else "succeeded" if successful == len(results) else "incomplete",
+        "summary": (
+            f"Multi-Transfer failed: {error}"
+            if error and not results
+            else f"Fetched {successful} of {len(results)} requested transfer(s) with {str(form.get('protocol', '')).upper()}."
+        ),
+        "targets": [
+            {"host": host.get("host"), "label": host.get("label")}
+            for host in hosts
+        ],
+        "parameters": {
+            "protocol": form.get("protocol"),
+            "port": form.get("port"),
+            "remote_paths": paths,
+            "output_mode": form.get("output_mode"),
+            "destination": form.get("destination"),
+            "filename_pattern": form.get("filename_pattern"),
+            "unknown_hosts_allowed": bool(form.get("allow_unknown_hosts")),
+            "legacy_algorithms_allowed": bool(form.get("allow_legacy_algorithms")),
+        },
+        "metrics": {
+            "host_count": len(hosts),
+            "remote_path_count": len(paths),
+            "transfer_count": len(results),
+            "successful_transfers": successful,
+            "failed_transfers": len(results) - successful,
+            "transferred_bytes": transferred_bytes,
+        }
+        if results
+        else {},
+        "details": {"error": error, "results": safe_results},
+        "started_at": started_at,
+        "completed_at": time.time(),
+    }
+    if error and not results:
+        return record_current_investigation_event(**event)
+    generated = add_current_investigation_generated_evidence_event(
+        **event,
+        filename=f"multi-transfer-{operation_id.rsplit(':', 1)[-1]}-manifest.json",
+        content_type="application/json",
+        content=json.dumps(safe_results, indent=2, ensure_ascii=False).encode("utf-8"),
+    )
+    return generated["event"] if generated else None
 
 
 def _download_result_directory(instance_path: str) -> Path:

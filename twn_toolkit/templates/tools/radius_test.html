@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import action_row, profile_card, profile_create, profile_section, section_header %}
+{% from "components/ui.html" import action_row, case_recorded_notice, profile_card, profile_create, profile_section, section_header %}
 
 {% block content %}
 <section class="panel tool-panel">
@@ -7,6 +7,7 @@
     <h1>RADIUS Authentication Test</h1>
     <p>Test PAP, CHAP, PEAP with MSCHAPv2, or certificate-based EAP-TLS against one or more saved RADIUS servers.</p>
   </div>
+  {{ case_recorded_notice(journal_event) }}
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {% if not eapol_available %}
     <div class="message warning radius-eap-warning" role="note">

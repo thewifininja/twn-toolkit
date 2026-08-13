@@ -253,7 +253,7 @@
                     <div class="automation-run-body">
                       <div class="automation-run-toolbar">
                         <span>Collected output</span>
-                        <div class="button-row automation-run-actions"><a class="button-link secondary" href="{{ url_for('download_automation_run', run_id=run.id) }}">Download ZIP</a><form method="post" action="{{ url_for('delete_automation_run', run_id=run.id) }}" onsubmit="return confirm('Delete this collected action run?')"><button class="text-danger" type="submit">Delete run</button></form></div>
+                        <div class="button-row automation-run-actions"><a class="button-link secondary" href="{{ url_for('download_automation_run', run_id=run.id) }}">Download ZIP</a><form method="post" action="{{ url_for('add_automation_run_to_case', run_id=run.id) }}"><button class="secondary" type="submit">Add to case</button></form><form method="post" action="{{ url_for('delete_automation_run', run_id=run.id) }}" onsubmit="return confirm('Delete this collected action run?')"><button class="text-danger" type="submit">Delete run</button></form></div>
                       </div>
                       {% for result in run.results %}
                         <section class="automation-result-group">

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import queue
+import secrets
 import threading
+import time
 
 from flask import (
     Blueprint,
@@ -29,6 +31,7 @@ from .multicast_tools import (
     run_multicast_test,
 )
 from .network_tools import ToolInputError
+from .investigation_context import record_current_investigation_event
 
 
 def register_multicast_routes(tools_bp: Blueprint) -> None:
@@ -59,8 +62,11 @@ def register_multicast_routes(tools_bp: Blueprint) -> None:
             "authorized": False,
         }
         result = None
+        journal_event = None
         error = ""
         if request.method == "POST":
+            operation_id = f"multicast:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
             for key in tuple(form):
                 if key in {"loopback", "authorized"}:
                     form[key] = request.form.get(key) == "on"
@@ -75,6 +81,13 @@ def register_multicast_routes(tools_bp: Blueprint) -> None:
             except (ToolInputError, TypeError, ValueError) as exc:
                 error = str(exc) or "Enter valid multicast test settings."
             _record_multicast_activity(result, error, form)
+            journal_event = _record_multicast_investigation(
+                result,
+                error,
+                form,
+                operation_id=operation_id,
+                started_at=journal_started_at,
+            )
 
         return render_template(
             "tools/multicast.html",
@@ -91,10 +104,13 @@ def register_multicast_routes(tools_bp: Blueprint) -> None:
                 "packets_per_second": MULTICAST_MAX_PACKETS_PER_SECOND,
             },
             result=result,
+            journal_event=journal_event,
         )
 
     @tools_bp.post("/multicast/live")
     def multicast_live():
+        operation_id = f"multicast-live:{secrets.token_hex(12)}"
+        journal_started_at = time.time()
         payload = request.get_json(silent=True) or {}
         capability = multicast_capability()
         interfaces = capability["interfaces"]
@@ -109,6 +125,13 @@ def register_multicast_routes(tools_bp: Blueprint) -> None:
         except (ToolInputError, TypeError, ValueError) as exc:
             error = str(exc) or "Enter valid multicast test settings."
             _record_multicast_activity(None, error, payload)
+            _record_multicast_investigation(
+                None,
+                error,
+                payload,
+                operation_id=operation_id,
+                started_at=journal_started_at,
+            )
             return jsonify({"error": error}), 400
 
         annotate_tool_run(
@@ -174,17 +197,41 @@ def register_multicast_routes(tools_bp: Blueprint) -> None:
                     if event["type"] == "complete":
                         result = event["result"]
                         _record_multicast_activity(result, "", payload)
+                        journal_event = _record_multicast_investigation(
+                            result,
+                            "",
+                            payload,
+                            operation_id=operation_id,
+                            started_at=journal_started_at,
+                        )
                         event["html"] = _render_multicast_page(
                             capability=capability,
                             form=payload,
                             macos_pf=_multicast_pf_status(interfaces),
                             result=result,
+                            journal_event=journal_event,
                         )
                     elif event["type"] == "error":
                         _record_multicast_activity(
                             None,
                             str(event.get("error", "")),
                             payload,
+                        )
+                        _record_multicast_investigation(
+                            None,
+                            str(event.get("error", "")),
+                            payload,
+                            operation_id=operation_id,
+                            started_at=journal_started_at,
+                        )
+                    elif event["type"] == "cancelled":
+                        _record_multicast_investigation(
+                            None,
+                            "",
+                            payload,
+                            operation_id=operation_id,
+                            started_at=journal_started_at,
+                            cancelled=True,
                         )
                     yield json.dumps(event, separators=(",", ":")) + "\n"
             finally:
@@ -249,6 +296,70 @@ def _record_multicast_activity(
     )
 
 
+def _record_multicast_investigation(
+    result: dict | None,
+    error: str,
+    form: dict[str, object],
+    *,
+    operation_id: str,
+    started_at: float,
+    cancelled: bool = False,
+) -> dict | None:
+    mode = str((result or {}).get("mode") or form.get("mode", "listen"))[:20]
+    packets_sent = _result_count(result, "packets_sent")
+    packets_received = _result_count(result, "packets_received")
+    bytes_sent = _result_count(result, "bytes_sent")
+    bytes_received = _result_count(result, "bytes_received")
+    if result and mode == "path":
+        bytes_sent = _result_count(result.get("send"), "bytes_sent")
+        bytes_received = _result_count(result.get("receive"), "bytes_received")
+    if cancelled:
+        event_type, outcome = "diagnostic.cancelled", "cancelled"
+        summary = f"Cancelled the {mode} multicast test."
+    elif error:
+        event_type, outcome = "diagnostic.failed", "failed"
+        summary = f"Multicast {mode} test failed: {error}"
+    else:
+        event_type, outcome = "diagnostic.completed", "succeeded"
+        summary = str((result or {}).get("summary") or f"Completed the {mode} multicast test.")
+    target = {
+        "group": str((result or {}).get("group") or form.get("group", "")),
+        "port": (result or {}).get("port") or form.get("port", ""),
+    }
+    return record_current_investigation_event(
+        operation_id=operation_id,
+        event_type=event_type,
+        tool_id="tools.multicast",
+        action=f"Multicast {mode} test",
+        outcome=outcome,
+        summary=summary,
+        targets=target,
+        parameters={
+            key: form.get(key)
+            for key in (
+                "mode", "membership", "source", "receive_interface",
+                "send_interface", "stream_format", "duration", "packet_size",
+                "rate", "rate_unit", "ttl", "dscp", "source_port", "loopback",
+            )
+        },
+        metrics={
+            "packets_sent": packets_sent,
+            "packets_received": packets_received,
+            "bytes_sent": bytes_sent,
+            "bytes_received": bytes_received,
+            "packets_lost": (result or {}).get("packets_lost"),
+            "loss_percent": (result or {}).get("loss_percent"),
+            "average_mbps": (result or {}).get("average_megabits_per_second"),
+            "jitter_ms": (result or {}).get("interarrival_jitter_ms"),
+        }
+        if result
+        else {},
+        details={"error": error, "result": result or {}},
+        started_at=started_at,
+        completed_at=time.time(),
+    )
+
+
 def _result_count(result: dict | None, key: str) -> int:
     try:
         return max(0, int((result or {}).get(key) or 0))
@@ -266,6 +377,7 @@ def _render_multicast_page(
     form: dict,
     macos_pf: dict,
     result: dict,
+    journal_event: dict | None = None,
 ) -> str:
     return render_template(
         "tools/multicast.html",
@@ -286,6 +398,7 @@ def _render_multicast_page(
             "packets_per_second": MULTICAST_MAX_PACKETS_PER_SECOND,
         },
         result=result,
+        journal_event=journal_event,
     )
 
 

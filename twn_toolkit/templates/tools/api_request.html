@@ -1,5 +1,7 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import case_recorded_notice %}
 {% block content %}
+{{ case_recorded_notice(journal_event) }}
 <section class="panel">
   <div class="panel-head">
     <h1>Webhook / API Request Tester</h1>

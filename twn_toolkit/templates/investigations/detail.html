@@ -37,7 +37,8 @@
             <button type="submit">Resume recording</button>
           </form>
         {% endif %}
-        {% set close_case_message = ('Close this case? The toolkit will stop ' ~ active_ping_session_count ~ ' attached Multi-Ping ' ~ ('sessions' if active_ping_session_count != 1 else 'session') ~ ' and retain the results as evidence.') if active_ping_session_count else 'Close this case? Automatic recording will stop.' %}
+        {% set active_live_session_count = active_ping_session_count + active_snmp_session_count + active_packet_capture_count + active_iperf_server_count %}
+        {% set close_case_message = ('Close this case? The toolkit will stop ' ~ active_live_session_count ~ ' attached live ' ~ ('sessions' if active_live_session_count != 1 else 'session') ~ ' and retain their results as evidence.') if active_live_session_count else 'Close this case? Automatic recording will stop.' %}
         <form method="post" action="{{ url_for('update_investigation_state', investigation_id=investigation.id) }}" onsubmit='return confirm({{ close_case_message|tojson }});'>
           <input type="hidden" name="state" value="completed">
           <button class="secondary" type="submit">Close case</button>

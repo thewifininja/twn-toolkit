@@ -98,6 +98,7 @@ class LiveToolStore:
         targets: list[dict[str, Any]],
         interval: int,
         round_timeout: float,
+        investigation_id: str = "",
     ) -> dict[str, Any]:
         now = time.time()
         config = {
@@ -112,8 +113,9 @@ class LiveToolStore:
                 """
                 INSERT INTO live_tool_sessions (
                     id, user_id, username, tool_key, title, state, config_json,
-                    revision, next_run_at, lease_expires_at, created_at, updated_at
-                ) VALUES (?, ?, ?, 'snmp_interface', ?, 'running', ?, 1, ?, ?, ?, ?)
+                    revision, next_run_at, lease_expires_at, investigation_id,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, 'snmp_interface', ?, 'running', ?, 1, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -123,6 +125,7 @@ class LiveToolStore:
                     json.dumps(config, separators=(",", ":")),
                     now,
                     now + LIVE_SESSION_LEASE_SECONDS,
+                    str(investigation_id or ""),
                     now,
                     now,
                 ),
@@ -353,6 +356,40 @@ class LiveToolStore:
             ]
         return [self._session_from_row(row) for row in stopped if row]
 
+    def stop_snmp_sessions_for_investigation(
+        self, investigation_id: str, *, user_id: str
+    ) -> list[dict[str, Any]]:
+        """Stop every running SNMP monitor attached to one case."""
+        now = time.time()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id FROM live_tool_sessions
+                WHERE investigation_id = ? AND user_id = ?
+                    AND tool_key = 'snmp_interface' AND state = 'running'
+                ORDER BY created_at
+                """,
+                (investigation_id, user_id),
+            ).fetchall()
+            session_ids = [str(row["id"]) for row in rows]
+            if session_ids:
+                connection.executemany(
+                    """
+                    UPDATE live_tool_sessions
+                    SET state = 'stopped', stopped_at = ?, busy_until = NULL,
+                        stop_reason = 'case_closed', updated_at = ?
+                    WHERE id = ? AND state = 'running'
+                    """,
+                    [(now, now, session_id) for session_id in session_ids],
+                )
+            stopped = [
+                connection.execute(
+                    "SELECT * FROM live_tool_sessions WHERE id = ?", (session_id,)
+                ).fetchone()
+                for session_id in session_ids
+            ]
+        return [self._session_from_row(row) for row in stopped if row]
+
     def ping_session_count_for_investigation(
         self, investigation_id: str, *, user_id: str, running_only: bool = True
     ) -> int:
@@ -360,6 +397,21 @@ class LiveToolStore:
             query = """
                 SELECT COUNT(*) AS count FROM live_tool_sessions
                 WHERE investigation_id = ? AND user_id = ? AND tool_key = 'ping'
+            """
+            values: tuple[object, ...] = (investigation_id, user_id)
+            if running_only:
+                query += " AND state = 'running'"
+            row = connection.execute(query, values).fetchone()
+        return int(row["count"] if row else 0)
+
+    def snmp_session_count_for_investigation(
+        self, investigation_id: str, *, user_id: str, running_only: bool = True
+    ) -> int:
+        with self._connect() as connection:
+            query = """
+                SELECT COUNT(*) AS count FROM live_tool_sessions
+                WHERE investigation_id = ? AND user_id = ?
+                    AND tool_key = 'snmp_interface'
             """
             values: tuple[object, ...] = (investigation_id, user_id)
             if running_only:
@@ -463,6 +515,86 @@ class LiveToolStore:
                 UPDATE live_tool_sessions
                 SET investigation_finalized_at = ?, updated_at = ?
                 WHERE id = ? AND tool_key = 'ping'
+                """,
+                (now, now, session_id),
+            )
+
+    def pending_snmp_investigation_sessions(
+        self,
+        *,
+        user_id: str = "",
+        investigation_id: str = "",
+        session_id: str = "",
+    ) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            self._expire_abandoned(connection, time.time())
+            clauses = [
+                "tool_key = 'snmp_interface'",
+                "investigation_id != ''",
+                "state IN ('stopped', 'error')",
+                "investigation_finalized_at IS NULL",
+            ]
+            values: list[object] = []
+            for column, value in (
+                ("user_id", user_id),
+                ("investigation_id", investigation_id),
+                ("id", session_id),
+            ):
+                if value:
+                    clauses.append(f"{column} = ?")
+                    values.append(value)
+            rows = connection.execute(
+                f"SELECT * FROM live_tool_sessions WHERE {' AND '.join(clauses)} "
+                "ORDER BY stopped_at, created_at",
+                values,
+            ).fetchall()
+        return [self._session_from_row(row) for row in rows]
+
+    def snmp_investigation_result(self, session_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            session = connection.execute(
+                """
+                SELECT * FROM live_tool_sessions
+                WHERE id = ? AND tool_key = 'snmp_interface'
+                """,
+                (session_id,),
+            ).fetchone()
+            if not session:
+                return None
+            rows = connection.execute(
+                """
+                SELECT id, target_key, sampled_at, status, sample_json, error
+                FROM live_snmp_samples
+                WHERE session_id = ?
+                ORDER BY id
+                """,
+                (session_id,),
+            ).fetchall()
+        return {
+            "session": self._session_from_row(session),
+            "samples": [
+                {
+                    "id": row["id"],
+                    "target_key": row["target_key"],
+                    "sampled_at": row["sampled_at"],
+                    "status": row["status"],
+                    "sample": json.loads(row["sample_json"])
+                    if row["sample_json"]
+                    else None,
+                    "error": row["error"],
+                }
+                for row in rows
+            ],
+        }
+
+    def mark_snmp_investigation_finalized(self, session_id: str) -> None:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE live_tool_sessions
+                SET investigation_finalized_at = ?, updated_at = ?
+                WHERE id = ? AND tool_key = 'snmp_interface'
                 """,
                 (now, now, session_id),
             )

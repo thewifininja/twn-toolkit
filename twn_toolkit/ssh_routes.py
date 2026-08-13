@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hmac
+import secrets
+import time
 
 from flask import (
     Blueprint,
@@ -33,6 +35,10 @@ from .ssh_commandlets import (
     ssh_command_plan_digest,
     ssh_hosts_to_matrix,
 )
+from .investigation_context import (
+    add_current_investigation_generated_evidence_event,
+    record_current_investigation_event,
+)
 
 
 _PREVIEW_TOKEN_SALT = "multi-ssh-advanced-preview-v1"
@@ -57,6 +63,9 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
         preview_token = ""
         error = ""
         success = ""
+        journal_event = None
+        journal_operation_id = ""
+        journal_started_at = 0.0
 
         if request.method == "GET":
             commandlet_name = str(request.args.get("commandlet", "")).strip()
@@ -92,6 +101,9 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
         if request.method == "POST":
             form = _posted_form()
             action = str(request.form.get("action", "run")).strip().lower()
+            if action == "run":
+                journal_operation_id = f"multi-ssh:{secrets.token_hex(12)}"
+                journal_started_at = time.time()
             if _is_legacy_basic_submission():
                 try:
                     form["matrix"] = ssh_hosts_to_matrix(str(form["hosts"]))
@@ -155,11 +167,27 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     error = str(exc) if str(exc) else "Enter a valid SSH port."
                     if action == "run":
                         _record_failed_run(form, preview)
+                        journal_event = _record_ssh_investigation(
+                            form,
+                            preview,
+                            [],
+                            error=str(exc),
+                            operation_id=journal_operation_id,
+                            started_at=journal_started_at,
+                        )
                     else:
                         suppress_audit_event()
                 else:
                     if action == "run":
                         _record_successful_run(form, preview, results or [])
+                        journal_event = _record_ssh_investigation(
+                            form,
+                            preview,
+                            results or [],
+                            error="",
+                            operation_id=journal_operation_id,
+                            started_at=journal_started_at,
+                        )
 
         return render_template(
             "tools/multi_ssh.html",
@@ -174,6 +202,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             ssh_target_limit_label=f"{SSH_TARGET_LIMIT:,}",
             ssh_batch_size=SSH_EXECUTION_BATCH_SIZE,
             ssh_execution_workers=SSH_EXECUTION_WORKERS,
+            journal_event=journal_event,
         )
 
     @tools_bp.post("/multi-ssh/import-hosts")
@@ -355,6 +384,96 @@ def _record_failed_run(
     )
 
 
+def _record_ssh_investigation(
+    form: dict[str, object],
+    preview: dict[str, object] | None,
+    results: list[dict[str, object]],
+    *,
+    error: str,
+    operation_id: str,
+    started_at: float,
+) -> dict[str, object] | None:
+    plans = list((preview or {}).get("plans", []))
+    safe_plans = [
+        {
+            "host": str(plan.get("host", "")),
+            "label": str(plan.get("label", "")),
+            "commands": [str(command) for command in plan.get("commands", [])],
+        }
+        for plan in plans
+        if isinstance(plan, dict)
+    ]
+    safe_results = [
+        {
+            key: result.get(key)
+            for key in (
+                "host",
+                "host_label",
+                "status",
+                "error",
+                "timed_out_command",
+                "command_timeout",
+            )
+        }
+        for result in results
+    ]
+    successful = sum(result.get("status") == "success" for result in results)
+    command_count = sum(len(plan.get("commands", [])) for plan in safe_plans)
+    base_event = {
+        "operation_id": operation_id,
+        "event_type": "action.failed" if error else "action.completed",
+        "tool_id": "tools.multi_ssh",
+        "action": "Multi-SSH",
+        "outcome": "failed" if error else "succeeded" if successful == len(results) else "incomplete",
+        "summary": (
+            f"Multi-SSH failed: {error}"
+            if error
+            else f"Ran {command_count} rendered SSH command(s) across {len(results)} host(s): {successful} succeeded."
+        ),
+        "targets": [
+            {"host": plan["host"], "label": plan["label"]} for plan in safe_plans
+        ],
+        "parameters": {
+            "port": form.get("port"),
+            "command_timeout_seconds": form.get("command_timeout"),
+            "unknown_hosts_allowed": bool(form.get("allow_unknown_hosts")),
+            "legacy_algorithms_allowed": bool(form.get("allow_legacy_algorithms")),
+            "plans": safe_plans,
+        },
+        "metrics": {
+            "host_count": len(results),
+            "successful_hosts": successful,
+            "failed_hosts": len(results) - successful,
+            "rendered_command_count": command_count,
+        }
+        if results
+        else {},
+        "details": {"error": error, "results": safe_results},
+        "started_at": started_at,
+        "completed_at": time.time(),
+    }
+    if error and not results:
+        return record_current_investigation_event(**base_event)
+    generated = add_current_investigation_generated_evidence_event(
+        **base_event,
+        filename=f"multi-ssh-{operation_id.rsplit(':', 1)[-1]}-output.txt",
+        content_type="text/plain",
+        content=_ssh_output(results).encode("utf-8"),
+    )
+    return generated["event"] if generated else None
+
+
+def _ssh_output(results: list[dict[str, object]]) -> str:
+    sections = []
+    for result in results:
+        identity = str(result.get("host_label") or result.get("host") or "Host")
+        host = str(result.get("host") or "")
+        heading = f"=== {identity}{f' ({host})' if host and host != identity else ''} · {result.get('status', '')} ==="
+        body = str(result.get("output") or "No output captured.")
+        if result.get("error"):
+            body += f"\n\nError: {result['error']}"
+        sections.append(f"{heading}\n{body.rstrip()}\n")
+    return "\n".join(sections)
 def _annotate_run(
     mode: str,
     form: dict[str, object],

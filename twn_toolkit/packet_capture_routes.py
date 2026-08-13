@@ -33,6 +33,11 @@ from .packet_capture import (
     normalize_capture_filename,
 )
 from .pcap_viewer import inspect_packet_capture
+from .ping_investigation import recording_case_id
+from .packet_capture_investigation import (
+    finalize_pending_packet_captures,
+    record_packet_capture_started,
+)
 
 
 def register_packet_capture_routes(tools_bp: Blueprint) -> None:
@@ -50,6 +55,10 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.get("/packet-capture")
     def packet_capture():
+        finalize_pending_packet_captures(
+            current_app.instance_path,
+            user_id=str(g.current_user["id"]),
+        )
         form = {
             "interface": request.args.get("interface", ""),
             "capture_filter": "",
@@ -94,8 +103,20 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
         }
         try:
             capture_store = store()
+            try:
+                investigation_id = recording_case_id(
+                    current_app.instance_path, str(g.current_user["id"])
+                )
+            except Exception:
+                current_app.logger.exception(
+                    "Active case context could not be loaded for packet capture"
+                )
+                investigation_id = ""
             capture_id = capture_store.create(
-                config, created_by=str(g.current_user["id"])
+                config,
+                created_by=str(g.current_user["id"]),
+                created_by_username=str(g.current_user.get("username", "")),
+                investigation_id=investigation_id,
             )
             capture_store.launch(capture_id)
         except ToolInputError as exc:
@@ -131,11 +152,33 @@ def register_packet_capture_routes(tools_bp: Blueprint) -> None:
             "Started packet capture",
             f"Capture started on {config['interface']}",
         )
-        flash("Packet capture started.", "success")
+        capture = capture_store.get(capture_id)
+        case_recorded = False
+        if capture and capture.get("investigation_id"):
+            try:
+                case_recorded = bool(
+                    record_packet_capture_started(
+                        current_app.instance_path, capture=capture
+                    )
+                )
+            except Exception:
+                current_app.logger.exception(
+                    "Unable to record the packet capture start in its attached case"
+                )
+        flash(
+            "Packet capture started"
+            + (" and attached to the active case." if case_recorded else "."),
+            "success",
+        )
         return redirect(url_for("tools.packet_capture", focus=capture_id))
 
     @tools_bp.get("/packet-capture/<capture_id>/status")
     def packet_capture_status(capture_id: str):
+        finalize_pending_packet_captures(
+            current_app.instance_path,
+            user_id=str(g.current_user["id"]),
+            capture_id=capture_id,
+        )
         capture = store().get(capture_id)
         if not capture:
             abort(404)

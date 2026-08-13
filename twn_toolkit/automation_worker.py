@@ -15,6 +15,7 @@ from .auth import load_or_create_secret_key
 from .live_tools import LiveToolRunner, LiveToolStore
 from .operational import OperationalSettingsStore
 from .ping_investigation import finalize_pending_ping_sessions
+from .snmp_investigation import finalize_pending_snmp_sessions
 from .pidfiles import (
     acquire_singleton_lock,
     record_lock_owner,
@@ -83,6 +84,13 @@ def main() -> None:
                     for failure in finalized["failures"]:
                         print(
                             "Multi-Ping case evidence finalization failed for "
+                            f"{failure['session_id']}: {failure['error']}",
+                            file=sys.stderr,
+                        )
+                    snmp_finalized = finalize_pending_snmp_sessions(instance_path)
+                    for failure in snmp_finalized["failures"]:
+                        print(
+                            "SNMP monitor case evidence finalization failed for "
                             f"{failure['session_id']}: {failure['error']}",
                             file=sys.stderr,
                         )

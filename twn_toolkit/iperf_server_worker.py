@@ -11,6 +11,7 @@ from .iperf_server import (
     IperfServerStore,
     run_managed_iperf3_server,
 )
+from .iperf_investigation import finalize_pending_iperf_servers
 
 
 def main() -> int:
@@ -61,6 +62,9 @@ def main() -> int:
                 status="stopped",
                 reason="stopped by user",
             )
+            finalize_pending_iperf_servers(
+                args.instance, session_id=args.session_id
+            )
         return 0
     except Exception as exc:
         if store.desired_active(args.session_id):
@@ -77,6 +81,9 @@ def main() -> int:
                 status="stopped",
                 reason="stopped before listener startup",
             )
+        finalize_pending_iperf_servers(
+            args.instance, session_id=args.session_id
+        )
         return 1
 
 

@@ -28,6 +28,7 @@ from .ping_investigation import (
     recording_case_id,
 )
 from .profiles import PingProfileStore
+from .snmp_investigation import finalize_pending_snmp_sessions
 
 
 def register_ping_routes(tools_bp: Blueprint) -> None:
@@ -239,6 +240,10 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                 _finalize_ping_investigations(
                     user_id=user["id"], session_id=str(session["id"])
                 )
+            elif session["tool_key"] == "snmp_interface":
+                _finalize_snmp_investigations(
+                    user_id=user["id"], session_id=str(session["id"])
+                )
             return jsonify({"session": public_live_session(session)})
         if session["tool_key"] == "snmp_interface":
             detail = (
@@ -264,6 +269,9 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                     "polls_sent": session["probes_sent"],
                     "successful_polls": session["replies_received"],
                 },
+            )
+            _finalize_snmp_investigations(
+                user_id=user["id"], session_id=str(session["id"])
             )
         else:
             detail = (
@@ -540,6 +548,24 @@ def _finalize_ping_investigations(*, user_id: str, session_id: str = "") -> None
     for failure in result["failures"]:
         current_app.logger.warning(
             "Unable to finalize Multi-Ping session %s: %s",
+            failure["session_id"],
+            failure["error"],
+        )
+
+
+def _finalize_snmp_investigations(*, user_id: str, session_id: str = "") -> None:
+    try:
+        result = finalize_pending_snmp_sessions(
+            current_app.instance_path,
+            user_id=user_id,
+            session_id=session_id,
+        )
+    except Exception:
+        current_app.logger.exception("Unable to finalize SNMP monitor case evidence")
+        return
+    for failure in result["failures"]:
+        current_app.logger.warning(
+            "Unable to finalize SNMP monitor session %s: %s",
             failure["session_id"],
             failure["error"],
         )

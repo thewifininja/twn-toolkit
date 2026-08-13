@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+import time
 from pathlib import Path
 from typing import BinaryIO
 
@@ -10,6 +12,7 @@ from .audit import annotate_tool_run, suppress_audit_event
 from .datastore import DatastoreError, LocalDatastore, format_bytes
 from .dhcp_tools import available_interfaces
 from .network_tools import ToolInputError
+from .investigation_context import record_current_investigation_event
 from .packet_replay_tools import (
     MAX_UPLOAD_BYTES as MAX_REPLAY_CAPTURE_BYTES,
     encode_prepared_packets,
@@ -76,10 +79,13 @@ def register_packet_replay_routes(tools_bp: Blueprint) -> None:
         }
         plan = None
         send_result = None
+        journal_event = None
         error = ""
         action = "preview"
         send_attempted = False
         if request.method == "POST":
+            operation_id = f"packet-replay:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
             form = {key: request.form.get(key, default).strip() for key, default in form.items()}
             action = request.form.get("action", "preview")
             send_attempted = action == "send"
@@ -158,6 +164,44 @@ def register_packet_replay_routes(tools_bp: Blueprint) -> None:
                         "VLAN action": form["vlan_action"],
                     },
                 )
+                summary = dict(plan.summary) if plan else {}
+                summary.pop("first_replay_header_hex", None)
+                journal_event = record_current_investigation_event(
+                    operation_id=operation_id,
+                    event_type="action.failed" if error else "action.completed",
+                    tool_id="tools.packet_replay",
+                    action="Packet replay",
+                    outcome="failed" if error else "succeeded",
+                    summary=(
+                        f"Packet replay failed: {error}"
+                        if error
+                        else f"Sent {send_result['sent']} replay frame(s) on {form['interface']}."
+                    ),
+                    targets={"interface": form["interface"]},
+                    parameters={
+                        "vlan_action": form["vlan_action"],
+                        "vlan_ids": form["vlan_ids"],
+                        "repeat_count": form["repeat_count"],
+                        "interval_seconds": form["interval_seconds"],
+                        "source_mac_override": form["source_mac"],
+                        "destination_mac_override": form["destination_mac"],
+                    },
+                    metrics={
+                        "frames_sent": send_result.get("sent", 0),
+                        "frames_attempted": send_result.get("attempted", 0),
+                        "elapsed_seconds": send_result.get("elapsed_seconds"),
+                        "total_bytes": summary.get("total_bytes"),
+                    }
+                    if send_result
+                    else {},
+                    details={
+                        "error": error,
+                        "plan": summary,
+                        "send_result": send_result or {},
+                    },
+                    started_at=journal_started_at,
+                    completed_at=time.time(),
+                )
             else:
                 suppress_audit_event()
         return render_template(
@@ -172,4 +216,5 @@ def register_packet_replay_routes(tools_bp: Blueprint) -> None:
             send_result=send_result,
             action=action,
             send_attempted=send_attempted,
+            journal_event=journal_event,
         )

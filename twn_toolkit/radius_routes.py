@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import platform
+import secrets
+import time
+from typing import Any
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
@@ -14,6 +17,7 @@ from .network_tools import (
 )
 from .profiles import RadiusProfileStore
 from .radius_eap_tools import eapol_test_available, radius_eap_authenticate
+from .investigation_context import record_current_investigation_event
 
 
 def _record_radius_activity(
@@ -50,8 +54,11 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
             "private_key_password": "",
         }
         results = None
+        journal_event = None
         error = ""
         if request.method == "POST":
+            operation_id = f"radius:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
             form = {
                 "server_names": request.form.getlist("server_names"),
                 "credential_name": request.form.get("credential_name", "").strip(),
@@ -143,6 +150,43 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
                     ),
                 },
             )
+            safe_results = _journal_radius_results(results or [])
+            successful = sum(
+                1
+                for result in safe_results
+                if not result.get("error")
+                and str(result.get("status", "")).lower() not in {"error", "failed"}
+            )
+            journal_event = record_current_investigation_event(
+                operation_id=operation_id,
+                event_type="diagnostic.failed" if error else "diagnostic.completed",
+                tool_id="tools.radius_test",
+                action="RADIUS authentication test",
+                outcome="failed" if error else "succeeded",
+                summary=(
+                    f"RADIUS authentication test failed: {error}"
+                    if error
+                    else f"Tested {len(safe_results)} RADIUS server attempt(s) with {form['protocol']}: {successful} succeeded."
+                ),
+                targets={"server_profiles": form["server_names"]},
+                parameters={
+                    "protocol": form["protocol"],
+                    "timeout_seconds": form["timeout"],
+                    "retries": form["retries"],
+                    "attribute_profile": form["attribute_profile"],
+                    "server_domain": form["server_domain"],
+                },
+                metrics={
+                    "attempt_count": len(safe_results),
+                    "successful_attempts": successful,
+                    "failed_attempts": len(safe_results) - successful,
+                }
+                if not error
+                else {},
+                details={"error": error, "results": safe_results},
+                started_at=journal_started_at,
+                completed_at=time.time(),
+            )
         return render_template(
             "tools/radius_test.html",
             error=error,
@@ -153,6 +197,7 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
             results=results,
             eapol_available=eapol_test_available(),
             is_macos=platform.system() == "Darwin",
+            journal_event=journal_event,
         )
 
     @tools_bp.post("/radius-test/profiles/<kind>")
@@ -276,3 +321,34 @@ def _radius_profile_store(kind: str) -> RadiusProfileStore:
 def _uploaded_bytes(name: str) -> bytes:
     upload = request.files.get(name)
     return upload.read(2 * 1024 * 1024 + 1) if upload and upload.filename else b""
+
+
+def _journal_radius_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    retained = []
+    for result in results:
+        retained.append(
+            {
+                key: result.get(key)
+                for key in (
+                    "server_name",
+                    "server",
+                    "port",
+                    "status",
+                    "response_ms",
+                    "attempts",
+                    "error",
+                    "protocol",
+                )
+            }
+            | {
+                "attributes": [
+                    {
+                        "name": str(attribute.get("name", "")),
+                        "value": str(attribute.get("value", "")),
+                    }
+                    for attribute in result.get("attributes", [])
+                    if isinstance(attribute, dict)
+                ][:200]
+            }
+        )
+    return retained

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import secrets
+import time
+
 from flask import Blueprint, render_template, request
 
 from .activity_context import record_current_activity
@@ -13,6 +16,7 @@ from .dhcp_tools import (
     parse_parameter_request_list,
 )
 from .network_tools import ToolInputError
+from .investigation_context import record_current_investigation_event
 
 
 def register_dhcp_routes(tools_bp: Blueprint) -> None:
@@ -29,9 +33,12 @@ def register_dhcp_routes(tools_bp: Blueprint) -> None:
             "vendor_class": "",
         }
         offers = None
+        journal_event = None
         requested_codes = list(DEFAULT_PARAMETER_REQUEST_LIST)
         error = ""
         if request.method == "POST":
+            operation_id = f"dhcp-discover:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
             form = {
                 "interface": request.form.get("interface", "").strip(),
                 "mac": request.form.get("mac", "").strip(),
@@ -70,6 +77,29 @@ def register_dhcp_routes(tools_bp: Blueprint) -> None:
                     "offer count": len(offers or []),
                 },
             )
+            journal_event = record_current_investigation_event(
+                operation_id=operation_id,
+                event_type="diagnostic.failed" if error else "diagnostic.completed",
+                tool_id="tools.dhcp_discover",
+                action="DHCP discovery",
+                outcome="failed" if error else "succeeded",
+                summary=(
+                    f"DHCP discovery failed: {error}"
+                    if error
+                    else f"Sent DHCP Discover on {form['interface']}: received {len(offers or [])} offer(s)."
+                ),
+                targets={"interface": form["interface"], "client_mac": form["mac"]},
+                parameters={
+                    "requested_options": requested_codes,
+                    "timeout_seconds": form["timeout"],
+                    "hostname": form["hostname"],
+                    "vendor_class": form["vendor_class"],
+                },
+                metrics={"offer_count": len(offers or [])} if not error else {},
+                details={"error": error, "offers": offers or []},
+                started_at=journal_started_at,
+                completed_at=time.time(),
+            )
         return render_template(
             "tools/dhcp_discover.html",
             error=error,
@@ -78,4 +108,5 @@ def register_dhcp_routes(tools_bp: Blueprint) -> None:
             offers=offers,
             requested_codes=requested_codes,
             option_names=DHCP_OPTIONS,
+            journal_event=journal_event,
         )

@@ -68,8 +68,12 @@ precedent.
   `instance/datastore/Investigations/<investigation-id>/` folders. Reports must
   remain deterministic views of retained evidence; generated narrative or AI
   interpretation must be visibly separate and must never rewrite source events.
-  Tool-specific case-report shaping belongs in `investigation_reporting.py`,
-  not in the shared report template. Finite diagnostics record one completed or
+  `investigation_policy.py` is exhaustive over the registered tool catalog and
+  declares native, finite, lifecycle, hybrid, action, explicit, or excluded
+  behavior plus the intended evidence form. Automatic evidence modes must have
+  a tool-specific case-report presentation in `investigation_reporting.py`,
+  which tests enforce. Presentation logic does not belong in the shared report
+  template. Finite diagnostics record one completed or
   failed event; long-running tools require explicit lifecycle events and bounded
   summaries. Multi-Ping attaches to the case recording at session start, retains
   timestamped configuration revisions and revision-tagged samples, then writes a
