@@ -22,6 +22,7 @@ EVENT_OUTCOMES = frozenset(
     {"succeeded", "failed", "cancelled", "incomplete", "info"}
 )
 MAX_EVENT_JSON_BYTES = 4 * 1024 * 1024
+SCHEMA_VERSION = 2
 
 
 class InvestigationError(ValueError):
@@ -54,10 +55,12 @@ class InvestigationStore:
         now = time.time()
         try:
             with self._connect() as connection, connection:
+                connection.execute("BEGIN IMMEDIATE")
                 existing = connection.execute(
                     """
-                    SELECT id FROM investigations
-                    WHERE owner_user_id = ? AND state IN ('recording', 'paused')
+                    SELECT i.id FROM investigations i
+                    JOIN investigation_participants p ON p.investigation_id = i.id
+                    WHERE p.user_id = ? AND i.state IN ('recording', 'paused')
                     LIMIT 1
                     """,
                     (user_id,),
@@ -82,6 +85,22 @@ class InvestigationStore:
                         datastore_path,
                         now,
                         now,
+                        now,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO investigation_participants (
+                        investigation_id, user_id, username, role,
+                        added_by_user_id, added_by_username, created_at
+                    ) VALUES (?, ?, ?, 'owner', ?, ?, ?)
+                    """,
+                    (
+                        investigation_id,
+                        user_id,
+                        username,
+                        user_id,
+                        username,
                         now,
                     ),
                 )
@@ -113,13 +132,16 @@ class InvestigationStore:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT i.*,
+                SELECT i.*, p.role AS access_role,
                     (SELECT COUNT(*) FROM investigation_events e
                      WHERE e.investigation_id = i.id) AS event_count,
                     (SELECT COUNT(*) FROM investigation_artifacts a
-                     WHERE a.investigation_id = i.id) AS artifact_count
+                     WHERE a.investigation_id = i.id) AS artifact_count,
+                    (SELECT COUNT(*) FROM investigation_participants members
+                     WHERE members.investigation_id = i.id) AS participant_count
                 FROM investigations i
-                WHERE i.owner_user_id = ?
+                JOIN investigation_participants p ON p.investigation_id = i.id
+                WHERE p.user_id = ?
                 ORDER BY
                     CASE i.state
                         WHEN 'recording' THEN 0
@@ -137,13 +159,17 @@ class InvestigationStore:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT i.*,
+                SELECT i.*, p.role AS access_role,
                     (SELECT COUNT(*) FROM investigation_events e
                      WHERE e.investigation_id = i.id) AS event_count,
                     (SELECT COUNT(*) FROM investigation_artifacts a
-                     WHERE a.investigation_id = i.id) AS artifact_count
+                     WHERE a.investigation_id = i.id) AS artifact_count,
+                    (SELECT COUNT(*) FROM investigation_participants members
+                     WHERE members.investigation_id = i.id) AS participant_count
                 FROM investigations i
-                WHERE i.owner_user_id = ? AND i.state IN ('recording', 'paused')
+                JOIN investigation_participants p ON p.investigation_id = i.id
+                WHERE p.user_id = ? AND i.state IN ('recording', 'paused')
+                ORDER BY CASE p.role WHEN 'owner' THEN 0 ELSE 1 END, i.updated_at DESC
                 LIMIT 1
                 """,
                 (self._clean_identity(user_id, "user"),),
@@ -154,19 +180,192 @@ class InvestigationStore:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT i.*,
+                SELECT i.*, p.role AS access_role,
                     (SELECT COUNT(*) FROM investigation_events e
                      WHERE e.investigation_id = i.id) AS event_count,
                     (SELECT COUNT(*) FROM investigation_artifacts a
-                     WHERE a.investigation_id = i.id) AS artifact_count
+                     WHERE a.investigation_id = i.id) AS artifact_count,
+                    (SELECT COUNT(*) FROM investigation_participants members
+                     WHERE members.investigation_id = i.id) AS participant_count
                 FROM investigations i
-                WHERE i.id = ? AND i.owner_user_id = ?
+                JOIN investigation_participants p ON p.investigation_id = i.id
+                WHERE i.id = ? AND p.user_id = ?
                 """,
                 (investigation_id, self._clean_identity(user_id, "user")),
             ).fetchone()
         if not row:
             raise InvestigationError("Case not found.")
         return self._investigation(row)
+
+    def participants_for_user(
+        self, investigation_id: str, user_id: str
+    ) -> list[dict[str, Any]]:
+        self.get_for_user(investigation_id, user_id)
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM investigation_participants
+                WHERE investigation_id = ?
+                ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END,
+                    username COLLATE NOCASE, user_id
+                """,
+                (investigation_id,),
+            ).fetchall()
+        return [self._participant(row) for row in rows]
+
+    def add_participant(
+        self,
+        investigation_id: str,
+        owner_user_id: str,
+        owner_username: str,
+        participant_user_id: str,
+        participant_username: str,
+    ) -> list[dict[str, Any]]:
+        owner_user_id = self._clean_identity(owner_user_id, "owner")
+        owner_username = self._clean_identity(owner_username, "operator")
+        participant_user_id = self._clean_identity(participant_user_id, "user")
+        participant_username = self._clean_identity(
+            participant_username, "operator"
+        )
+        now = time.time()
+        with self._connect() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            investigation = self._require_owner(
+                connection, investigation_id, owner_user_id
+            )
+            if str(investigation["state"]) not in OPEN_STATES:
+                raise InvestigationError(
+                    "Collaborators can only be added while a case is open."
+                )
+            if participant_user_id == owner_user_id:
+                raise InvestigationError("The case owner is already on this case.")
+            existing = connection.execute(
+                """
+                SELECT 1 FROM investigation_participants
+                WHERE investigation_id = ? AND user_id = ?
+                """,
+                (investigation_id, participant_user_id),
+            ).fetchone()
+            if existing:
+                raise InvestigationError("That operator is already on this case.")
+            active = connection.execute(
+                """
+                SELECT i.title FROM investigation_participants p
+                JOIN investigations i ON i.id = p.investigation_id
+                WHERE p.user_id = ? AND i.state IN ('recording', 'paused')
+                LIMIT 1
+                """,
+                (participant_user_id,),
+            ).fetchone()
+            if active:
+                raise InvestigationError(
+                    f'{participant_username} is already active in case '
+                    f'"{active["title"]}".'
+                )
+            connection.execute(
+                """
+                INSERT INTO investigation_participants (
+                    investigation_id, user_id, username, role,
+                    added_by_user_id, added_by_username, created_at
+                ) VALUES (?, ?, ?, 'collaborator', ?, ?, ?)
+                """,
+                (
+                    investigation_id,
+                    participant_user_id,
+                    participant_username,
+                    owner_user_id,
+                    owner_username,
+                    now,
+                ),
+            )
+            self._insert_event(
+                connection,
+                investigation_id=investigation_id,
+                operation_id=f"participant-added:{secrets.token_hex(12)}",
+                event_type="investigation.participant.added",
+                tool_id="investigations.workspace",
+                action="Collaborator added",
+                outcome="info",
+                summary=f"Added {participant_username} to the case.",
+                targets=[],
+                parameters={"role": "collaborator"},
+                metrics={},
+                details={
+                    "participant_user_id": participant_user_id,
+                    "participant_username": participant_username,
+                },
+                started_at=now,
+                completed_at=now,
+                created_by_user_id=owner_user_id,
+                created_by_username=owner_username,
+            )
+            connection.execute(
+                "UPDATE investigations SET updated_at = ? WHERE id = ?",
+                (now, investigation_id),
+            )
+        return self.participants_for_user(investigation_id, owner_user_id)
+
+    def remove_participant(
+        self,
+        investigation_id: str,
+        owner_user_id: str,
+        owner_username: str,
+        participant_user_id: str,
+    ) -> list[dict[str, Any]]:
+        owner_user_id = self._clean_identity(owner_user_id, "owner")
+        owner_username = self._clean_identity(owner_username, "operator")
+        participant_user_id = self._clean_identity(participant_user_id, "user")
+        now = time.time()
+        with self._connect() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            investigation = self._require_owner(
+                connection, investigation_id, owner_user_id
+            )
+            participant = connection.execute(
+                """
+                SELECT * FROM investigation_participants
+                WHERE investigation_id = ? AND user_id = ?
+                """,
+                (investigation_id, participant_user_id),
+            ).fetchone()
+            if not participant:
+                raise InvestigationError("That collaborator is not on this case.")
+            if str(participant["role"]) == "owner":
+                raise InvestigationError("The case owner cannot be removed.")
+            connection.execute(
+                """
+                DELETE FROM investigation_participants
+                WHERE investigation_id = ? AND user_id = ?
+                """,
+                (investigation_id, participant_user_id),
+            )
+            if str(investigation["state"]) in OPEN_STATES:
+                self._insert_event(
+                    connection,
+                    investigation_id=investigation_id,
+                    operation_id=f"participant-removed:{secrets.token_hex(12)}",
+                    event_type="investigation.participant.removed",
+                    tool_id="investigations.workspace",
+                    action="Collaborator removed",
+                    outcome="info",
+                    summary=f'Removed {participant["username"]} from the case.',
+                    targets=[],
+                    parameters={"role": "collaborator"},
+                    metrics={},
+                    details={
+                        "participant_user_id": participant_user_id,
+                        "participant_username": str(participant["username"]),
+                    },
+                    started_at=now,
+                    completed_at=now,
+                    created_by_user_id=owner_user_id,
+                    created_by_username=owner_username,
+                )
+                connection.execute(
+                    "UPDATE investigations SET updated_at = ? WHERE id = ?",
+                    (now, investigation_id),
+                )
+        return self.participants_for_user(investigation_id, owner_user_id)
 
     def events_for_user(
         self, investigation_id: str, user_id: str
@@ -234,12 +433,7 @@ class InvestigationStore:
             raise InvestigationError("The report selection is too large.")
 
         with self._connect() as connection, connection:
-            owner = connection.execute(
-                "SELECT id FROM investigations WHERE id = ? AND owner_user_id = ?",
-                (investigation_id, user_id),
-            ).fetchone()
-            if not owner:
-                raise InvestigationError("Case not found.")
+            self._require_owner(connection, investigation_id, user_id)
             available_events = {
                 str(row["id"])
                 for row in connection.execute(
@@ -310,15 +504,22 @@ class InvestigationStore:
         username = self._clean_identity(username, "operator")
         try:
             with self._connect() as connection, connection:
-                row = connection.execute(
-                    "SELECT * FROM investigations WHERE id = ? AND owner_user_id = ?",
-                    (investigation_id, user_id),
-                ).fetchone()
-                if not row:
-                    raise InvestigationError("Case not found.")
+                connection.execute("BEGIN IMMEDIATE")
+                row = self._require_owner(connection, investigation_id, user_id)
                 current = str(row["state"])
                 if current == state:
-                    return self._investigation(row)
+                    participant_count = connection.execute(
+                        """
+                        SELECT COUNT(*) AS count
+                        FROM investigation_participants
+                        WHERE investigation_id = ?
+                        """,
+                        (investigation_id,),
+                    ).fetchone()
+                    result = self._investigation(row)
+                    result["participant_count"] = int(participant_count["count"])
+                    result["is_shared"] = result["participant_count"] > 1
+                    return result
                 reopening = current == "completed" and state == "paused"
                 if current not in OPEN_STATES and not reopening:
                     if current == "completed" and state == "recording":
@@ -329,17 +530,29 @@ class InvestigationStore:
                 if reopening:
                     existing = connection.execute(
                         """
-                        SELECT title FROM investigations
-                        WHERE owner_user_id = ?
-                          AND state IN ('recording', 'paused')
+                        SELECT current.username, current.role, other_case.title
+                        FROM investigation_participants current
+                        JOIN investigation_participants other
+                          ON other.user_id = current.user_id
+                         AND other.investigation_id != current.investigation_id
+                        JOIN investigations other_case
+                          ON other_case.id = other.investigation_id
+                        WHERE current.investigation_id = ?
+                          AND other_case.state IN ('recording', 'paused')
                         LIMIT 1
                         """,
-                        (user_id,),
+                        (investigation_id,),
                     ).fetchone()
                     if existing:
+                        if str(existing["role"]) == "owner":
+                            raise InvestigationError(
+                                f'Close the current case "{existing["title"]}" '
+                                "before reopening this one."
+                            )
                         raise InvestigationError(
-                            f'Close the current case "{existing["title"]}" '
-                            "before reopening this one."
+                            f'{existing["username"]} is already active in case '
+                            f'"{existing["title"]}". Remove that collaborator or '
+                            "close the other case before reopening this one."
                         )
                 ended_at = now if state == "completed" else None
                 connection.execute(
@@ -408,7 +621,7 @@ class InvestigationStore:
         now = time.time()
         user_id = self._clean_identity(user_id, "user")
         with self._connect() as connection, connection:
-            self._require_open_owner(connection, investigation_id, user_id)
+            self._require_open_member(connection, investigation_id, user_id)
             event_id = self._insert_event(
                 connection,
                 investigation_id=investigation_id,
@@ -458,8 +671,10 @@ class InvestigationStore:
         with self._connect() as connection, connection:
             investigation = connection.execute(
                 """
-                SELECT id FROM investigations
-                WHERE owner_user_id = ? AND state = 'recording'
+                SELECT i.id FROM investigations i
+                JOIN investigation_participants p ON p.investigation_id = i.id
+                WHERE p.user_id = ? AND i.state = 'recording'
+                ORDER BY CASE p.role WHEN 'owner' THEN 0 ELSE 1 END, i.updated_at DESC
                 LIMIT 1
                 """,
                 (user_id,),
@@ -517,10 +732,10 @@ class InvestigationStore:
         started_at: float,
         completed_at: float,
     ) -> dict[str, Any]:
-        """Append an owned lifecycle event, including completion while paused."""
+        """Append a participant lifecycle event, including completion while paused."""
         user_id = self._clean_identity(user_id, "user")
         with self._connect() as connection, connection:
-            investigation = self._require_open_owner(
+            investigation = self._require_open_member(
                 connection, investigation_id, user_id
             )
             if require_recording and str(investigation["state"]) != "recording":
@@ -646,7 +861,7 @@ class InvestigationStore:
         try:
             with self._connect() as connection, connection:
                 connection.execute("BEGIN IMMEDIATE")
-                self._require_open_owner(connection, investigation_id, user_id)
+                self._require_open_member(connection, investigation_id, user_id)
                 existing = connection.execute(
                     """
                     SELECT id FROM investigation_events
@@ -769,7 +984,7 @@ class InvestigationStore:
         relative_path = self.datastore.relative(saved)
         try:
             with self._connect() as connection, connection:
-                self._require_open_owner(connection, investigation_id, user_id)
+                self._require_open_member(connection, investigation_id, user_id)
                 event_id = self._insert_event(
                     connection,
                     investigation_id=investigation_id,
@@ -861,11 +1076,26 @@ class InvestigationStore:
                 return candidate
         raise InvestigationError("Unable to choose an unused evidence filename.")
 
-    def _require_open_owner(
+    def _require_owner(
         self, connection: sqlite3.Connection, investigation_id: str, user_id: str
     ) -> sqlite3.Row:
         row = connection.execute(
             "SELECT * FROM investigations WHERE id = ? AND owner_user_id = ?",
+            (investigation_id, user_id),
+        ).fetchone()
+        if not row:
+            raise InvestigationError("Case not found.")
+        return row
+
+    def _require_open_member(
+        self, connection: sqlite3.Connection, investigation_id: str, user_id: str
+    ) -> sqlite3.Row:
+        row = connection.execute(
+            """
+            SELECT i.* FROM investigations i
+            JOIN investigation_participants p ON p.investigation_id = i.id
+            WHERE i.id = ? AND p.user_id = ?
+            """,
             (investigation_id, user_id),
         ).fetchone()
         if not row:
@@ -958,25 +1188,26 @@ class InvestigationStore:
             self._secure_database_files()
 
     def _ensure_initialized(self, connection: sqlite3.Connection) -> None:
-        if self._database_initialized(connection):
+        if self._schema_version(connection) >= SCHEMA_VERSION:
             return
         with self.initialization_lock_path.open("a+", encoding="utf-8") as lock_handle:
             os.chmod(self.initialization_lock_path, 0o600)
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
             try:
-                if not self._database_initialized(connection):
+                if self._schema_version(connection) < SCHEMA_VERSION:
                     self._initialize(connection)
             finally:
                 fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
 
     @staticmethod
-    def _database_initialized(connection: sqlite3.Connection) -> bool:
+    def _schema_version(connection: sqlite3.Connection) -> int:
         try:
-            return connection.execute(
+            row = connection.execute(
                 "SELECT value FROM investigation_meta WHERE key = 'schema_version'"
-            ).fetchone() is not None
-        except sqlite3.OperationalError:
-            return False
+            ).fetchone()
+            return int(row["value"]) if row else 0
+        except (sqlite3.OperationalError, TypeError, ValueError):
+            return 0
 
     def _initialize(self, connection: sqlite3.Connection) -> None:
         connection.execute("PRAGMA journal_mode = WAL")
@@ -1006,6 +1237,26 @@ class InvestigationStore:
                 WHERE state IN ('recording', 'paused');
             CREATE INDEX IF NOT EXISTS investigations_owner_time_idx
                 ON investigations(owner_user_id, updated_at DESC);
+            CREATE TABLE IF NOT EXISTS investigation_participants (
+                investigation_id TEXT NOT NULL
+                    REFERENCES investigations(id) ON DELETE CASCADE,
+                user_id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                role TEXT NOT NULL CHECK (role IN ('owner', 'collaborator')),
+                added_by_user_id TEXT NOT NULL,
+                added_by_username TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                PRIMARY KEY (investigation_id, user_id)
+            );
+            CREATE INDEX IF NOT EXISTS investigation_participants_user_idx
+                ON investigation_participants(user_id, investigation_id);
+            INSERT OR IGNORE INTO investigation_participants (
+                investigation_id, user_id, username, role,
+                added_by_user_id, added_by_username, created_at
+            )
+            SELECT id, owner_user_id, owner_username, 'owner',
+                owner_user_id, owner_username, created_at
+            FROM investigations;
             CREATE TABLE IF NOT EXISTS investigation_events (
                 id TEXT PRIMARY KEY,
                 investigation_id TEXT NOT NULL
@@ -1056,7 +1307,8 @@ class InvestigationStore:
             CREATE INDEX IF NOT EXISTS investigation_artifacts_investigation_idx
                 ON investigation_artifacts(investigation_id, created_at DESC);
             INSERT OR IGNORE INTO investigation_meta(key, value)
-                VALUES ('schema_version', '1');
+                VALUES ('schema_version', '2');
+            UPDATE investigation_meta SET value = '2' WHERE key = 'schema_version';
             """
         )
         connection.commit()
@@ -1066,6 +1318,10 @@ class InvestigationStore:
         result = dict(row)
         result["is_open"] = result["state"] in OPEN_STATES
         result["is_recording"] = result["state"] == "recording"
+        result["access_role"] = str(result.get("access_role") or "owner")
+        result["can_manage_case"] = result["access_role"] == "owner"
+        result["participant_count"] = int(result.get("participant_count") or 1)
+        result["is_shared"] = result["participant_count"] > 1
         result["state_label"] = {
             "recording": "Recording",
             "paused": "Paused",
@@ -1079,6 +1335,12 @@ class InvestigationStore:
             if result.get("ended_at") is not None
             else ""
         )
+        return result
+
+    def _participant(self, row: sqlite3.Row) -> dict[str, Any]:
+        result = dict(row)
+        result["created_display"] = self._display_time(float(result["created_at"]))
+        result["is_owner"] = result["role"] == "owner"
         return result
 
     def _event(self, row: sqlite3.Row) -> dict[str, Any]:

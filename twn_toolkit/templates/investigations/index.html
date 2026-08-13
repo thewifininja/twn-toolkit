@@ -7,9 +7,9 @@
     "Investigations",
     "Keep tests, evidence, operator notes, and the final troubleshooting narrative together from the first check through the handoff.",
     "Troubleshooting journal",
-    "Your cases",
+    "Cases you can access",
     investigations|length,
-    "One case can be open at a time"
+    "One active case per operator"
   ) }}
 
   {% if open_investigation %}
@@ -25,6 +25,8 @@
         </div>
         <dl class="investigation-inline-stats">
           <div><dt>Started</dt><dd>{{ open_investigation.started_display }}</dd></div>
+          <div><dt>Owner</dt><dd>{{ open_investigation.owner_username }}</dd></div>
+          <div><dt>Team</dt><dd>{{ open_investigation.participant_count }} {{ 'operator' if open_investigation.participant_count == 1 else 'operators' }}</dd></div>
           <div><dt>Journal events</dt><dd>{{ open_investigation.event_count }}</dd></div>
           <div><dt>Evidence files</dt><dd>{{ open_investigation.artifact_count }}</dd></div>
         </dl>
@@ -55,18 +57,21 @@
   {% endif %}
 
   <section class="panel investigation-library">
-    {{ section_header("Case history", "Closed work remains available as a durable technical record.", "Your journal") }}
+    {{ section_header("Case history", "Owned and shared cases remain available as a durable technical record.", "Accessible journal") }}
     {% if investigations %}
       <div class="investigation-card-grid">
         {% for investigation in investigations %}
           <article class="investigation-card">
             <header>
               <span class="investigation-state {{ investigation.state }}">{{ investigation.state_label }}</span>
+              <span class="investigation-access-role">{{ 'Owner' if investigation.can_manage_case else 'Collaborator' }}</span>
               <h3><a href="{{ url_for('investigation_detail', investigation_id=investigation.id) }}">{{ investigation.title }}</a></h3>
               {% if investigation.description %}<p>{{ investigation.description }}</p>{% endif %}
             </header>
             <dl class="investigation-card-stats">
               <div><dt>Started</dt><dd>{{ investigation.started_display }}</dd></div>
+              <div><dt>Owner</dt><dd>{{ investigation.owner_username }}</dd></div>
+              <div><dt>Team</dt><dd>{{ investigation.participant_count }}</dd></div>
               <div><dt>Events</dt><dd>{{ investigation.event_count }}</dd></div>
               <div><dt>Evidence</dt><dd>{{ investigation.artifact_count }}</dd></div>
             </dl>

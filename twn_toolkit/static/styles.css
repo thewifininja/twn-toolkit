@@ -2877,6 +2877,17 @@ button.danger:hover {
   color: color-mix(in srgb, #c9903a, var(--ink) 28%);
 }
 
+.investigation-access-role,
+.investigation-team-count {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.investigation-access-role {
+  margin-left: 8px;
+}
+
 .investigation-inline-stats,
 .investigation-card-stats,
 .investigation-report-meta,
@@ -2949,6 +2960,107 @@ button.danger:hover {
   margin: 0;
 }
 
+.investigation-collaborator-state {
+  align-content: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: grid;
+  gap: 3px;
+  max-width: 340px;
+  padding: 10px 12px;
+}
+
+.investigation-collaborator-state small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.investigation-team-layout {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
+}
+
+.investigation-team-layout.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.investigation-team-list {
+  display: grid;
+  gap: 6px;
+}
+
+.investigation-team-member {
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.investigation-team-avatar {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 12%);
+  border: 1px solid color-mix(in srgb, var(--line), var(--brand-green) 30%);
+  border-radius: 999px;
+  color: var(--depth-primary);
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 900;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.investigation-team-member > span:nth-child(2) {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.investigation-team-member small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.investigation-team-add {
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+}
+
+.investigation-team-add-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.investigation-team-add-copy small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.investigation-team-add-controls {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.investigation-team-add-controls select {
+  min-width: 0;
+}
+
 .investigation-reopen-action {
   align-items: center;
   background: var(--surface-inset);
@@ -2988,19 +3100,70 @@ button.danger:hover {
 
 .investigation-note-form,
 .investigation-upload-form {
-  align-items: end;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 10px;
   display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  padding: 10px;
 }
 
 .investigation-note-form textarea {
-  min-height: 92px;
+  background: var(--panel);
+  min-height: 88px;
   resize: vertical;
 }
 
-.investigation-upload-form label {
+.investigation-upload-field {
+  display: grid;
+  gap: 5px;
   margin: 0;
+}
+
+.investigation-upload-field input[type="file"] {
+  background: var(--panel);
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  min-height: 42px;
+  padding: 4px;
+  width: 100%;
+}
+
+.investigation-upload-field input[type="file"]::file-selector-button {
+  background: color-mix(in srgb, var(--panel), var(--ink) 4%);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  margin-right: 10px;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.investigation-upload-field input[type="file"]::file-selector-button:hover {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 9%);
+  border-color: color-mix(in srgb, var(--line-strong), var(--depth-primary) 36%);
+}
+
+.investigation-form-footer {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.investigation-form-footer small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.investigation-form-footer button {
+  flex: 0 0 auto;
 }
 
 .investigation-timeline {
@@ -3502,6 +3665,10 @@ button.danger:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .investigation-team-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .active-investigation-banner {
     align-items: stretch;
     display: grid;
@@ -3588,6 +3755,28 @@ button.danger:hover {
     width: 100%;
   }
 
+  .investigation-team-member {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .investigation-team-member form {
+    grid-column: 1 / -1;
+  }
+
+  .investigation-team-member button,
+  .investigation-team-add button {
+    width: 100%;
+  }
+
+  .investigation-team-add-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .investigation-form-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .investigation-artifact-card {
     align-items: start;
     grid-template-columns: auto minmax(0, 1fr);
@@ -3641,6 +3830,7 @@ button.danger:hover {
   .investigation-detail-page > .workspace-tabs,
   .investigation-detail-page > .workspace-header,
   .investigation-overview-strip,
+  .investigation-team-panel,
   .investigation-report-builder,
   .investigation-report-toolbar,
   .live-tool-tray {

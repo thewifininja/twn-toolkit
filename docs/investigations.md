@@ -8,7 +8,8 @@ workflows, operator attachments, reporting, and packaging.
 
 ## Operator workflow
 
-Each user may have one open case. An open case is either:
+Each operator may participate in one open case, either as its owner or as an
+explicit collaborator. An open case is either:
 
 - `recording`, which accepts supported tool events automatically; or
 - `paused`, which suppresses automatic tool events while still accepting
@@ -22,6 +23,14 @@ open. Reopening returns it to `paused`, clears its terminal timestamp, and adds
 an immutable `investigation.reopened` journal event; the operator must explicitly
 resume automatic recording. Starting a new case does not alter closed work.
 
+The owner can add other active toolkit users who have Investigations access.
+Collaborators see the same banner, journal, evidence, and report, and their
+supported tool runs automatically record into the shared case. Notes, events,
+and files retain the identity of the operator who added them. Only the owner can
+change case state, manage the team, or choose report contents. Removing a
+collaborator stops and finalizes their attached persistent sessions before
+revoking access; their existing attributed history remains in the case.
+
 The global banner makes the current recording context visible on every permitted
 page. Its **Add note** action opens a focused quick-note dialog and returns the
 operator to the same tool page after saving. Deliberate notes remain available
@@ -33,7 +42,10 @@ Evidence, and Report views on desktop and mobile.
 `instance/investigations.sqlite3` is the source of truth for cases,
 journal events, and evidence metadata. It uses SQLite WAL mode, a busy timeout,
 a fresh-instance initialization lock, foreign keys, and owner-only file modes.
-All queries that expose case data include the owning user ID.
+Every case keeps one owner plus an explicit participant table. Queries that
+expose case data require a matching participant user ID; owner-only mutations
+also verify the owner ID. SQLite immediate transactions prevent one operator
+from being assigned to two open cases concurrently.
 
 Files are stored through `LocalDatastore` beneath:
 
