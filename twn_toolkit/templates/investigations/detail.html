@@ -75,7 +75,7 @@
             <span><strong>{{ participant.username }}</strong><small>{{ 'Case owner' if participant.is_owner else 'Collaborator' }}</small></span>
             {% if investigation.can_manage_case and not participant.is_owner %}
               <form method="post" action="{{ url_for('remove_investigation_participant', investigation_id=investigation.id, participant_user_id=participant.user_id) }}" onsubmit="return confirm('Remove {{ participant.username|e }} from this case? Their existing journal entries and evidence will remain attributed to them.');">
-                <button class="secondary compact" type="submit">Remove</button>
+                <button class="danger compact" type="submit">Remove</button>
               </form>
             {% endif %}
           </div>
@@ -83,14 +83,18 @@
       </div>
       {% if investigation.can_manage_case and investigation.is_open and collaborator_candidates %}
         <form class="investigation-team-add" method="post" action="{{ url_for('add_investigation_participant', investigation_id=investigation.id) }}">
-          <label>Add collaborator
-            <select name="user_id" required>
+          <div class="investigation-team-add-copy">
+            <strong>Add collaborator</strong>
+            <small>Operators can participate in one open case at a time.</small>
+          </div>
+          <div class="investigation-team-add-controls">
+            <label class="sr-only" for="investigation-collaborator">Operator</label>
+            <select id="investigation-collaborator" name="user_id" required>
               <option value="">Choose an operator…</option>
               {% for candidate in collaborator_candidates %}<option value="{{ candidate.id }}">{{ candidate.username }}</option>{% endfor %}
             </select>
-            <small>Operators can participate in one open case at a time.</small>
-          </label>
-          <button type="submit">Add to case</button>
+            <button class="compact" type="submit">Add</button>
+          </div>
         </form>
       {% endif %}
     </div>
@@ -103,7 +107,10 @@
         <form method="post" action="{{ url_for('add_investigation_note', investigation_id=investigation.id) }}" class="investigation-note-form">
           <label for="investigation-note" class="sr-only">Case note</label>
           <textarea id="investigation-note" name="note" maxlength="4000" rows="3" required placeholder="At approximately 09:45, the branch firewall policy was changed…"></textarea>
-          <button type="submit">Add to journal</button>
+          <div class="investigation-form-footer">
+            <small>Recorded as {{ current_user.username }}.</small>
+            <button class="compact" type="submit">Add to journal</button>
+          </div>
         </form>
       </section>
     {% endif %}
@@ -139,11 +146,13 @@
       <section class="panel investigation-evidence-upload">
         {{ section_header("Add evidence", "Files are stored in the managed case folder and retained with a SHA-256 hash.", "Attachments") }}
         <form method="post" action="{{ url_for('upload_investigation_evidence', investigation_id=investigation.id) }}" enctype="multipart/form-data" class="investigation-upload-form">
-          <label>Evidence files
+          <label class="investigation-upload-field">Evidence files
             <input type="file" name="files" multiple required>
-            <small>Upload up to 20 files at once. Report inclusion is separate from evidence retention.</small>
           </label>
-          <button type="submit">Add evidence</button>
+          <div class="investigation-form-footer">
+            <small>Up to 20 files. Report inclusion is managed separately from evidence retention.</small>
+            <button class="compact" type="submit">Add evidence</button>
+          </div>
         </form>
       </section>
     {% endif %}
