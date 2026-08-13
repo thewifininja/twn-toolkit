@@ -43,10 +43,14 @@
         </form>
       </div>
     {% elif investigation.state == 'completed' %}
-      <div class="button-row investigation-state-actions">
+      <div class="investigation-reopen-action">
+        <div class="investigation-reopen-copy">
+          <strong>Case closed</strong>
+          <small>Reopen paused to add follow-up work. Recording will not start automatically.</small>
+        </div>
         <form method="post" action="{{ url_for('update_investigation_state', investigation_id=investigation.id) }}" onsubmit="return confirm('Reopen this case? It will reopen with automatic recording paused.');">
           <input type="hidden" name="state" value="paused">
-          <button type="submit">Reopen case</button>
+          <button class="secondary" type="submit">Reopen case</button>
         </form>
       </div>
     {% endif %}

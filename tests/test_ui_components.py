@@ -278,6 +278,7 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('class="investigation-return-nav"', detail_template)
         self.assertIn("Back to investigations", detail_template)
         self.assertIn("Reopen case", detail_template)
+        self.assertIn('class="investigation-reopen-action"', detail_template)
 
     def test_investigation_print_layout_allows_large_results_to_paginate(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
@@ -309,6 +310,10 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(".investigation-report-event > header > div", print_rules)
         self.assertIn("padding: 4px 0 5px 9px;", print_rules)
         self.assertIn("font-size: 8.3pt;", print_rules)
+        self.assertIn(
+            "scroll-margin-top: calc(var(--topbar-height) + 16px);",
+            stylesheet,
+        )
 
     def test_profile_create_surface_uses_shared_collection_token(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

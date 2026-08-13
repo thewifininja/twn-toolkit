@@ -2853,6 +2853,43 @@ button.danger:hover {
   margin: 0;
 }
 
+.investigation-reopen-action {
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-width: 290px;
+  padding: 10px 12px;
+}
+
+.investigation-reopen-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.investigation-reopen-copy strong {
+  font-size: 0.78rem;
+}
+
+.investigation-reopen-copy small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  max-width: 28ch;
+}
+
+.investigation-reopen-action form {
+  flex: 0 0 auto;
+}
+
+.investigation-reopen-action button {
+  white-space: nowrap;
+}
+
 .investigation-note-form,
 .investigation-upload-form {
   align-items: end;
@@ -3268,6 +3305,11 @@ button.danger:hover {
   gap: 22px;
 }
 
+.investigation-report-timeline,
+.investigation-report-result {
+  scroll-margin-top: calc(var(--topbar-height) + 16px);
+}
+
 .investigation-report-result {
   border: 1px solid #d9dfdc;
   border-radius: 10px;
@@ -3339,6 +3381,11 @@ button.danger:hover {
     justify-content: start;
   }
 
+  .investigation-reopen-action {
+    min-width: 0;
+    width: 100%;
+  }
+
   .investigation-report-choice-list {
     max-height: none;
     overflow: visible;
@@ -3381,6 +3428,19 @@ button.danger:hover {
   .investigation-state-actions,
   .investigation-state-actions form,
   .investigation-state-actions button {
+    width: 100%;
+  }
+
+  .investigation-reopen-action {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .investigation-reopen-copy small {
+    max-width: none;
+  }
+
+  .investigation-reopen-action button {
     width: 100%;
   }
 
