@@ -40,6 +40,7 @@ class LiveToolStore:
         targets: list[dict[str, str]],
         interval: int,
         timeout: float,
+        investigation_id: str = "",
     ) -> dict[str, Any]:
         now = time.time()
         config = {
@@ -54,8 +55,9 @@ class LiveToolStore:
                 """
                 INSERT INTO live_tool_sessions (
                     id, user_id, username, tool_key, title, state, config_json,
-                    revision, next_run_at, lease_expires_at, created_at, updated_at
-                ) VALUES (?, ?, ?, 'ping', ?, 'running', ?, 1, ?, ?, ?, ?)
+                    revision, next_run_at, lease_expires_at, investigation_id,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, 'ping', ?, 'running', ?, 1, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -65,8 +67,21 @@ class LiveToolStore:
                     json.dumps(config, separators=(",", ":")),
                     now,
                     now + LIVE_SESSION_LEASE_SECONDS,
+                    str(investigation_id or ""),
                     now,
                     now,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO live_ping_config_epochs (
+                    session_id, revision, effective_at, config_json
+                ) VALUES (?, 1, ?, ?)
+                """,
+                (
+                    session_id,
+                    now,
+                    json.dumps(config, separators=(",", ":")),
                 ),
             )
         session = self.get_session(session_id, user_id=user_id)
@@ -197,6 +212,7 @@ class LiveToolStore:
             config["targets"] = targets
             config["interval"] = interval
             config["timeout"] = timeout
+            revision = int(row["revision"]) + 1
             connection.execute(
                 """
                 UPDATE live_tool_sessions
@@ -215,6 +231,19 @@ class LiveToolStore:
             updated = connection.execute(
                 "SELECT * FROM live_tool_sessions WHERE id = ?", (session_id,)
             ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO live_ping_config_epochs (
+                    session_id, revision, effective_at, config_json
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    revision,
+                    now,
+                    json.dumps(config, separators=(",", ":")),
+                ),
+            )
         return self._session_from_row(updated)
 
     def update_snmp_interface_session(
@@ -260,7 +289,7 @@ class LiveToolStore:
         return self._session_from_row(updated)
 
     def stop_session(
-        self, session_id: str, *, user_id: str
+        self, session_id: str, *, user_id: str, reason: str = "manual"
     ) -> dict[str, Any] | None:
         now = time.time()
         with self._connect() as connection:
@@ -278,10 +307,10 @@ class LiveToolStore:
                 """
                 UPDATE live_tool_sessions
                 SET state = 'stopped', stopped_at = ?, busy_until = NULL,
-                    updated_at = ?
+                    stop_reason = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (now, now, session_id),
+                (now, str(reason or "manual")[:40], now, session_id),
             )
             stopped = connection.execute(
                 "SELECT * FROM live_tool_sessions WHERE id = ?", (session_id,)
@@ -289,6 +318,154 @@ class LiveToolStore:
         session = self._session_from_row(stopped)
         session["_was_running"] = True
         return session
+
+    def stop_ping_sessions_for_investigation(
+        self, investigation_id: str, *, user_id: str
+    ) -> list[dict[str, Any]]:
+        """Stop every running ping session attached to one case."""
+        now = time.time()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id FROM live_tool_sessions
+                WHERE investigation_id = ? AND user_id = ?
+                    AND tool_key = 'ping' AND state = 'running'
+                ORDER BY created_at
+                """,
+                (investigation_id, user_id),
+            ).fetchall()
+            session_ids = [str(row["id"]) for row in rows]
+            if session_ids:
+                connection.executemany(
+                    """
+                    UPDATE live_tool_sessions
+                    SET state = 'stopped', stopped_at = ?, busy_until = NULL,
+                        stop_reason = 'case_closed', updated_at = ?
+                    WHERE id = ? AND state = 'running'
+                    """,
+                    [(now, now, session_id) for session_id in session_ids],
+                )
+            stopped = [
+                connection.execute(
+                    "SELECT * FROM live_tool_sessions WHERE id = ?", (session_id,)
+                ).fetchone()
+                for session_id in session_ids
+            ]
+        return [self._session_from_row(row) for row in stopped if row]
+
+    def ping_session_count_for_investigation(
+        self, investigation_id: str, *, user_id: str, running_only: bool = True
+    ) -> int:
+        with self._connect() as connection:
+            query = """
+                SELECT COUNT(*) AS count FROM live_tool_sessions
+                WHERE investigation_id = ? AND user_id = ? AND tool_key = 'ping'
+            """
+            values: tuple[object, ...] = (investigation_id, user_id)
+            if running_only:
+                query += " AND state = 'running'"
+            row = connection.execute(query, values).fetchone()
+        return int(row["count"] if row else 0)
+
+    def pending_ping_investigation_sessions(
+        self,
+        *,
+        user_id: str = "",
+        investigation_id: str = "",
+        session_id: str = "",
+    ) -> list[dict[str, Any]]:
+        """Return stopped/error ping sessions whose case result is not retained yet."""
+        with self._connect() as connection:
+            self._expire_abandoned(connection, time.time())
+            clauses = [
+                "tool_key = 'ping'",
+                "investigation_id != ''",
+                "state IN ('stopped', 'error')",
+                "investigation_finalized_at IS NULL",
+            ]
+            values: list[object] = []
+            for column, value in (
+                ("user_id", user_id),
+                ("investigation_id", investigation_id),
+                ("id", session_id),
+            ):
+                if value:
+                    clauses.append(f"{column} = ?")
+                    values.append(value)
+            rows = connection.execute(
+                f"SELECT * FROM live_tool_sessions WHERE {' AND '.join(clauses)} "
+                "ORDER BY stopped_at, created_at",
+                values,
+            ).fetchall()
+        return [self._session_from_row(row) for row in rows]
+
+    def ping_investigation_result(
+        self, session_id: str
+    ) -> dict[str, Any] | None:
+        """Load the retained samples and every configuration epoch for a ping run."""
+        with self._connect() as connection:
+            session = connection.execute(
+                """
+                SELECT * FROM live_tool_sessions
+                WHERE id = ? AND tool_key = 'ping'
+                """,
+                (session_id,),
+            ).fetchone()
+            if not session:
+                return None
+            sample_rows = connection.execute(
+                """
+                SELECT id, revision, host, label, sampled_at, reachable, latency_ms
+                FROM live_ping_samples
+                WHERE session_id = ?
+                ORDER BY id
+                """,
+                (session_id,),
+            ).fetchall()
+            epoch_rows = connection.execute(
+                """
+                SELECT revision, effective_at, config_json
+                FROM live_ping_config_epochs
+                WHERE session_id = ?
+                ORDER BY revision
+                """,
+                (session_id,),
+            ).fetchall()
+        return {
+            "session": self._session_from_row(session),
+            "samples": [
+                {
+                    "id": row["id"],
+                    "revision": row["revision"],
+                    "host": row["host"],
+                    "label": row["label"],
+                    "sampled_at": row["sampled_at"],
+                    "reachable": bool(row["reachable"]),
+                    "latency_ms": row["latency_ms"],
+                }
+                for row in sample_rows
+            ],
+            "configuration_epochs": [
+                {
+                    "revision": row["revision"],
+                    "effective_at": row["effective_at"],
+                    "config": json.loads(row["config_json"]),
+                }
+                for row in epoch_rows
+            ],
+        }
+
+    def mark_ping_investigation_finalized(self, session_id: str) -> None:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE live_tool_sessions
+                SET investigation_finalized_at = ?, updated_at = ?
+                WHERE id = ? AND tool_key = 'ping'
+                """,
+                (now, now, session_id),
+            )
 
     def rename_session(
         self,
@@ -361,7 +538,7 @@ class LiveToolStore:
                 )
             rows = connection.execute(
                 """
-                SELECT id, host, label, sampled_at, reachable, latency_ms
+                SELECT id, revision, host, label, sampled_at, reachable, latency_ms
                 FROM live_ping_samples
                 WHERE session_id = ? AND id > ?
                 ORDER BY id
@@ -379,6 +556,7 @@ class LiveToolStore:
             "samples": [
                 {
                     "id": row["id"],
+                    "revision": row["revision"],
                     "host": row["host"],
                     "label": row["label"],
                     "sampled_at": row["sampled_at"],
@@ -565,12 +743,14 @@ class LiveToolStore:
             connection.executemany(
                 """
                 INSERT INTO live_ping_samples (
-                    session_id, host, label, sampled_at, reachable, latency_ms
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    session_id, revision, host, label, sampled_at, reachable,
+                    latency_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
                         session_id,
+                        revision,
                         str(result.get("host", "")),
                         labels.get(str(result.get("host", "")), ""),
                         sampled_at,
@@ -770,7 +950,7 @@ class LiveToolStore:
                 """
                 UPDATE live_tool_sessions
                 SET state = 'error', last_error = ?, busy_until = NULL,
-                    stopped_at = ?, updated_at = ?
+                    stopped_at = ?, stop_reason = 'error', updated_at = ?
                 WHERE id = ?
                 """,
                 (message[:500], now, now, session_id),
@@ -786,6 +966,10 @@ class LiveToolStore:
                 WHERE state != 'running'
                     AND stopped_at IS NOT NULL
                     AND stopped_at < ?
+                    AND (
+                        investigation_id = ''
+                        OR investigation_finalized_at IS NOT NULL
+                    )
                 """,
                 (now - STOPPED_SESSION_RETENTION_SECONDS,),
             )
@@ -815,7 +999,7 @@ class LiveToolStore:
             UPDATE live_tool_sessions
             SET state = 'stopped', stopped_at = ?, busy_until = NULL,
                 last_error = 'Stopped after the browser lease expired.',
-                updated_at = ?
+                stop_reason = 'lease_expired', updated_at = ?
             WHERE state = 'running' AND lease_expires_at <= ?
             """,
             (now, now, now),
@@ -845,11 +1029,13 @@ class LiveToolStore:
             "last_duration_ms": row["last_duration_ms"],
             "last_engine": row["last_engine"],
             "last_error": row["last_error"],
+            "stop_reason": row["stop_reason"],
             "rounds_completed": row["rounds_completed"],
             "probes_sent": row["probes_sent"],
             "replies_received": row["replies_received"],
             "last_up_count": row["last_up_count"],
             "stopped_at": row["stopped_at"],
+            "investigation_id": row["investigation_id"],
         }
         if include_config:
             session["config"] = config
@@ -944,6 +1130,14 @@ class LiveToolStore:
             );
             CREATE INDEX IF NOT EXISTS live_ping_samples_session
                 ON live_ping_samples(session_id, id);
+            CREATE TABLE IF NOT EXISTS live_ping_config_epochs (
+                session_id TEXT NOT NULL
+                    REFERENCES live_tool_sessions(id) ON DELETE CASCADE,
+                revision INTEGER NOT NULL,
+                effective_at REAL NOT NULL,
+                config_json TEXT NOT NULL,
+                PRIMARY KEY (session_id, revision)
+            );
             CREATE TABLE IF NOT EXISTS live_snmp_samples (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL
@@ -958,6 +1152,50 @@ class LiveToolStore:
                 ON live_snmp_samples(session_id, id);
             """
         )
+        session_columns = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(live_tool_sessions)")
+        }
+        for name, definition in (
+            ("investigation_id", "TEXT NOT NULL DEFAULT ''"),
+            ("investigation_finalized_at", "REAL"),
+            ("stop_reason", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if name not in session_columns:
+                connection.execute(
+                    f"ALTER TABLE live_tool_sessions ADD COLUMN {name} {definition}"
+                )
+        sample_columns = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(live_ping_samples)")
+        }
+        if "revision" not in sample_columns:
+            connection.execute(
+                "ALTER TABLE live_ping_samples ADD COLUMN revision INTEGER NOT NULL DEFAULT 1"
+            )
+        missing_epoch = connection.execute(
+            """
+            SELECT 1
+            FROM live_tool_sessions AS session
+            LEFT JOIN live_ping_config_epochs AS epoch
+                ON epoch.session_id = session.id
+                AND epoch.revision = session.revision
+            WHERE session.tool_key = 'ping' AND epoch.session_id IS NULL
+            LIMIT 1
+            """
+        ).fetchone()
+        if missing_epoch:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO live_ping_config_epochs (
+                    session_id, revision, effective_at, config_json
+                )
+                SELECT id, revision, created_at, config_json
+                FROM live_tool_sessions
+                WHERE tool_key = 'ping'
+                """
+            )
+        connection.commit()
 
 
 class LiveToolRunner:

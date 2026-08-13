@@ -49,6 +49,47 @@ class LiveToolStoreTests(unittest.TestCase):
         self.assertEqual(stopped["state"], "stopped")
         self.assertEqual(self.store.sessions_for_user("operator-1"), [])
 
+    def test_unfinalized_case_ping_survives_transient_session_cleanup(self) -> None:
+        session = self.store.create_ping_session(
+            user_id="operator-1",
+            username="operator",
+            title="Case evidence",
+            targets=self.targets,
+            interval=2,
+            timeout=1,
+            investigation_id="inv_retained",
+        )
+        with self.store._connect() as connection:
+            connection.execute(
+                """
+                UPDATE live_tool_sessions
+                SET state = 'stopped', stopped_at = 1,
+                    stop_reason = 'lease_expired'
+                WHERE id = ?
+                """,
+                (session["id"],),
+            )
+
+        with patch("twn_toolkit.live_tools.time.time", return_value=100_000):
+            self.store.cleanup()
+
+        retained = self.store.get_session(
+            str(session["id"]), user_id="operator-1"
+        )
+        self.assertIsNotNone(retained)
+        self.assertEqual(retained["stop_reason"], "lease_expired")
+        self.assertEqual(
+            [item["id"] for item in self.store.pending_ping_investigation_sessions()],
+            [session["id"]],
+        )
+
+        self.store.mark_ping_investigation_finalized(str(session["id"]))
+        with patch("twn_toolkit.live_tools.time.time", return_value=100_000):
+            self.store.cleanup()
+        self.assertIsNone(
+            self.store.get_session(str(session["id"]), user_id="operator-1")
+        )
+
     def test_active_session_can_be_renamed_by_its_owner(self) -> None:
         session = self.create_session()
 
@@ -131,6 +172,27 @@ class LiveToolStoreTests(unittest.TestCase):
         )
         self.assertEqual(updated["revision"], 2)
         self.assertEqual(updated["config"]["interval"], 5)
+        self.assertTrue(
+            self.store.record_ping_round(
+                str(session["id"]),
+                revision=2,
+                sampled_at=1005.0,
+                duration_ms=30.0,
+                engine="fping",
+                results=[
+                    {"host": "127.0.0.1", "reachable": False, "latency_ms": None}
+                ],
+            )
+        )
+        evidence = self.store.ping_investigation_result(str(session["id"]))
+        self.assertEqual(
+            [epoch["revision"] for epoch in evidence["configuration_epochs"]],
+            [1, 2],
+        )
+        self.assertEqual(
+            [sample["revision"] for sample in evidence["samples"]],
+            [1, 1, 2],
+        )
 
     def test_round_deadlines_stay_anchored_without_replaying_long_pauses(self) -> None:
         session = self.create_session()

@@ -27,6 +27,11 @@ from .investigation_exports import (
 )
 from .investigations import InvestigationError, InvestigationStore
 from .investigation_reporting import case_report_contents
+from .live_tools import LiveToolStore
+from .ping_investigation import (
+    PingInvestigationError,
+    stop_and_finalize_case_ping_sessions,
+)
 
 
 def register_investigation_routes(
@@ -75,6 +80,12 @@ def register_investigation_routes(
             **report,
             investigation_tabs=tabs(investigation_id, active_tab),
             active_investigation_tab=active_tab,
+            active_ping_session_count=LiveToolStore(
+                app.instance_path
+            ).ping_session_count_for_investigation(
+                investigation_id,
+                user_id=user_id(),
+            ),
             format_bytes=format_bytes,
         )
 
@@ -167,14 +178,21 @@ def register_investigation_routes(
         investigation = investigation_or_404(investigation_id)
         state = request.form.get("state", "").strip()
         reopening = investigation["state"] == "completed" and state == "paused"
+        ping_result = {"stopped": 0, "finalized": 0}
         try:
+            if state == "completed":
+                ping_result = stop_and_finalize_case_ping_sessions(
+                    app.instance_path,
+                    investigation_id=investigation_id,
+                    user_id=user_id(),
+                )
             updated = store.set_state(
                 investigation_id,
                 user_id(),
                 str(user().get("username", "")),
                 state,
             )
-        except InvestigationError as exc:
+        except (InvestigationError, PingInvestigationError) as exc:
             flash(str(exc), "error")
         else:
             if reopening:
@@ -196,12 +214,21 @@ def register_investigation_routes(
                 details={
                     "previous_state": investigation["state"],
                     "state": updated["state"],
+                    "multi-ping sessions stopped": ping_result["stopped"],
+                    "multi-ping results finalized": ping_result["finalized"],
                 },
             )
             if reopening:
                 flash("Case reopened with automatic recording paused.", "success")
             else:
-                flash(f"Case {label}.", "success")
+                message = f"Case {label}."
+                if state == "completed" and ping_result["stopped"]:
+                    count = ping_result["stopped"]
+                    message += (
+                        f" Stopped and retained {count} attached Multi-Ping "
+                        f"session{'s' if count != 1 else ''}."
+                    )
+                flash(message, "success")
         default_destination = (
             url_for("investigations")
             if state == "completed"

@@ -71,7 +71,11 @@ precedent.
   Tool-specific case-report shaping belongs in `investigation_reporting.py`,
   not in the shared report template. Finite diagnostics record one completed or
   failed event; long-running tools require explicit lifecycle events and bounded
-  summaries.
+  summaries. Multi-Ping attaches to the case recording at session start, retains
+  timestamped configuration revisions and revision-tagged samples, then writes a
+  compact terminal event plus generated CSV evidence. Pausing must not orphan an
+  attached run, and case closure must stop and finalize it before source evidence
+  becomes read-only. Never infer device-down state from absent ICMP replies.
   `investigation_exports.py` renders the saved selection as a server-side PDF
   and builds the ephemeral case-package ZIP. Package evidence must be resolved
   through `LocalDatastore`, rehashed while it is written, and rejected if its

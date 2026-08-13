@@ -13,6 +13,7 @@ from unittest.mock import patch
 from twn_toolkit import create_app
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.investigations import InvestigationError, InvestigationStore
+from twn_toolkit.live_tools import LiveToolStore
 
 
 class InvestigationStoreTests(unittest.TestCase):
@@ -279,6 +280,184 @@ class InvestigationStoreTests(unittest.TestCase):
 
 
 class InvestigationRouteTests(unittest.TestCase):
+    def test_multi_ping_records_lifecycle_summary_and_csv_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Intermittent branch"})
+            investigation_store = InvestigationStore(instance)
+            investigation = investigation_store.active_for_user("test-user")
+            investigation_id = str(investigation["id"])
+            capability = {
+                "engine": "fping",
+                "accelerated": True,
+                "target_limit": 250,
+                "detail": "available",
+                "path": "/usr/bin/fping",
+            }
+            with patch(
+                "twn_toolkit.ping_routes.ping_engine_capability",
+                return_value=capability,
+            ):
+                started = client.post(
+                    "/tools/ping/sessions",
+                    json={
+                        "hosts": "Router = 192.0.2.1\nCamera = 192.0.2.2",
+                        "interval": 2,
+                        "timeout": 1,
+                        "title": "Branch reachability",
+                    },
+                )
+            self.assertEqual(started.status_code, 201)
+            self.assertTrue(started.get_json()["case_recorded"])
+            session = started.get_json()["session"]
+            self.assertEqual(session["investigation_id"], investigation_id)
+
+            live_store = LiveToolStore(instance)
+            sampled_at = float(session["created_at"]) + 1
+            self.assertTrue(
+                live_store.record_ping_round(
+                    session["id"],
+                    revision=1,
+                    sampled_at=sampled_at,
+                    duration_ms=10,
+                    engine="fping",
+                    results=[
+                        {"host": "192.0.2.1", "reachable": True, "latency_ms": 2.1},
+                        {"host": "192.0.2.2", "reachable": False, "latency_ms": None},
+                    ],
+                )
+            )
+            with patch(
+                "twn_toolkit.ping_routes.ping_engine_capability",
+                return_value=capability,
+            ):
+                updated = client.post(
+                    session["targets_url"],
+                    json={
+                        "hosts": "Router = 192.0.2.1\nCamera = 192.0.2.2",
+                        "interval": 5,
+                        "timeout": 1,
+                    },
+                )
+            self.assertEqual(updated.status_code, 200)
+            self.assertTrue(
+                live_store.record_ping_round(
+                    session["id"],
+                    revision=2,
+                    sampled_at=sampled_at + 5,
+                    duration_ms=11,
+                    engine="fping",
+                    results=[
+                        {"host": "192.0.2.1", "reachable": False, "latency_ms": None},
+                        {"host": "192.0.2.2", "reachable": False, "latency_ms": None},
+                    ],
+                )
+            )
+            paused = client.post(
+                f"/investigations/{investigation_id}/state",
+                data={"state": "paused"},
+            )
+            self.assertEqual(paused.status_code, 302)
+            stopped = client.post(session["stop_url"])
+            self.assertEqual(stopped.status_code, 200)
+
+            events = investigation_store.events_for_user(
+                investigation_id, "test-user"
+            )
+            ping_events = [event for event in events if event["tool_id"] == "tools.ping"]
+            self.assertEqual(
+                [event["event_type"] for event in ping_events],
+                ["ping.session.started", "ping.session.completed"],
+            )
+            completed = ping_events[-1]
+            self.assertIn("No replies were observed from Camera", completed["summary"])
+            self.assertEqual(completed["parameters"]["configuration_revision_count"], 2)
+            camera = next(
+                target
+                for target in completed["details"]["target_summaries"]
+                if target["label"] == "Camera"
+            )
+            self.assertEqual(camera["observation"], "No replies observed")
+            self.assertEqual(camera["reply_interruptions"], 0)
+            router = next(
+                target
+                for target in completed["details"]["target_summaries"]
+                if target["label"] == "Router"
+            )
+            self.assertEqual(router["reply_interruptions"], 1)
+
+            artifacts = investigation_store.artifacts_for_user(
+                investigation_id, "test-user"
+            )
+            self.assertEqual(len(artifacts), 1)
+            self.assertEqual(artifacts[0]["kind"], "generated")
+            self.assertEqual(artifacts[0]["event_id"], completed["id"])
+            csv_evidence = investigation_store.datastore.file(
+                artifacts[0]["relative_path"]
+            ).read_text()
+            self.assertIn("configuration_revision", csv_evidence)
+            self.assertIn("Camera,192.0.2.2,no,", csv_evidence)
+            self.assertIn(",1,Router,192.0.2.1,yes,2.1", csv_evidence)
+            self.assertIn(",2,Router,192.0.2.1,no,", csv_evidence)
+
+            report = client.get(f"/investigations/{investigation_id}/report")
+            self.assertIn(b"Multi-Ping stopped", report.data)
+            self.assertIn(b"No replies observed", report.data)
+            self.assertIn(b"Latency min / avg / max", report.data)
+            self.assertIn(artifacts[0]["display_name"].encode(), report.data)
+
+            package = client.get(f"/investigations/{investigation_id}/package.zip")
+            self.assertEqual(package.status_code, 200)
+            with zipfile.ZipFile(io.BytesIO(package.data)) as archive:
+                self.assertIn(
+                    f"evidence/{artifacts[0]['display_name']}",
+                    archive.namelist(),
+                )
+                packaged_csv = archive.read(
+                    f"evidence/{artifacts[0]['display_name']}"
+                ).decode()
+            self.assertEqual(packaged_csv, csv_evidence)
+
+    def test_closing_case_stops_and_retains_attached_multi_ping(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Close with live ping"})
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            started = client.post(
+                "/tools/ping/sessions",
+                json={"hosts": "192.0.2.9", "interval": 2, "timeout": 1},
+            )
+            session = started.get_json()["session"]
+
+            closed = client.post(
+                f"/investigations/{investigation['id']}/state",
+                data={"state": "completed"},
+            )
+
+            self.assertEqual(closed.status_code, 302)
+            self.assertEqual(
+                LiveToolStore(instance).get_session(
+                    session["id"], user_id="test-user"
+                )["stop_reason"],
+                "case_closed",
+            )
+            events = store.events_for_user(investigation["id"], "test-user")
+            completed_ping = next(
+                event
+                for event in events
+                if event["event_type"] == "ping.session.completed"
+            )
+            self.assertEqual(completed_ping["outcome"], "incomplete")
+            self.assertIn("before any ping probes completed", completed_ping["summary"])
+            self.assertEqual(
+                len(store.artifacts_for_user(investigation["id"], "test-user")), 1
+            )
+
     def test_access_profiles_gate_routes_and_owner_scope_hides_other_journals(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)

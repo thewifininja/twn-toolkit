@@ -22,6 +22,11 @@ from .network_tools import (
     validate_ping_timeout,
 )
 from .live_tools import LiveToolStore, public_live_session
+from .ping_investigation import (
+    finalize_pending_ping_sessions,
+    record_ping_session_started,
+    recording_case_id,
+)
 from .profiles import PingProfileStore
 
 
@@ -41,6 +46,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
     def live_tool_sessions():
         suppress_audit_event()
         user = _current_user()
+        _finalize_ping_investigations(user_id=user["id"])
         sessions = [
             session
             for session in _live_tool_store().sessions_for_user(user["id"])
@@ -81,6 +87,15 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             if len(title) > 100:
                 raise ToolInputError("Live tool names must be 100 characters or fewer.")
             user = _current_user()
+            try:
+                investigation_id = recording_case_id(
+                    current_app.instance_path, user["id"]
+                )
+            except Exception:
+                current_app.logger.exception(
+                    "Active case context could not be loaded for Multi-Ping"
+                )
+                investigation_id = ""
             session = _live_tool_store().create_ping_session(
                 user_id=user["id"],
                 username=user["username"],
@@ -88,6 +103,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                 targets=targets,
                 interval=interval,
                 timeout=timeout,
+                investigation_id=investigation_id,
             )
         except (ToolInputError, TypeError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
@@ -112,8 +128,27 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                 "timeout_seconds": timeout,
             },
         )
+        case_recorded = False
+        if session.get("investigation_id"):
+            try:
+                case_recorded = bool(
+                    record_ping_session_started(
+                        current_app.instance_path,
+                        session=session,
+                        targets=targets,
+                        interval=interval,
+                        timeout=timeout,
+                    )
+                )
+            except Exception:
+                current_app.logger.exception(
+                    "Unable to record the Multi-Ping start in its attached case"
+                )
         return jsonify(
-            {"session": public_live_session(session, include_config=True)}
+            {
+                "session": public_live_session(session, include_config=True),
+                "case_recorded": case_recorded,
+            }
         ), 201
 
     @tools_bp.get("/ping/sessions/<session_id>")
@@ -200,6 +235,10 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": "Live tool session not found."}), 404
         if not session.get("_was_running", False):
             suppress_audit_event()
+            if session["tool_key"] == "ping":
+                _finalize_ping_investigations(
+                    user_id=user["id"], session_id=str(session["id"])
+                )
             return jsonify({"session": public_live_session(session)})
         if session["tool_key"] == "snmp_interface":
             detail = (
@@ -250,6 +289,9 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                     "probes_sent": session["probes_sent"],
                     "replies_received": session["replies_received"],
                 },
+            )
+            _finalize_ping_investigations(
+                user_id=user["id"], session_id=str(session["id"])
             )
         return jsonify({"session": public_live_session(session)})
 
@@ -483,6 +525,24 @@ def _ping_profile_store() -> PingProfileStore:
 
 def _live_tool_store() -> LiveToolStore:
     return LiveToolStore(current_app.instance_path)
+
+
+def _finalize_ping_investigations(*, user_id: str, session_id: str = "") -> None:
+    try:
+        result = finalize_pending_ping_sessions(
+            current_app.instance_path,
+            user_id=user_id,
+            session_id=session_id,
+        )
+    except Exception:
+        current_app.logger.exception("Unable to finalize Multi-Ping case evidence")
+        return
+    for failure in result["failures"]:
+        current_app.logger.warning(
+            "Unable to finalize Multi-Ping session %s: %s",
+            failure["session_id"],
+            failure["error"],
+        )
 
 
 def _current_user() -> dict[str, str]:

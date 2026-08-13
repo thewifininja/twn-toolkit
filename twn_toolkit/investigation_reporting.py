@@ -254,6 +254,85 @@ def _speed_test_presentation(event: dict[str, Any]) -> ReportPresentation:
     return {"facts": facts, "detail": None}
 
 
+def _ping_presentation(event: dict[str, Any]) -> ReportPresentation:
+    parameters = _mapping(event.get("parameters"))
+    metrics = _mapping(event.get("metrics"))
+    details = _mapping(event.get("details"))
+    facts = []
+    _fact(facts, "Session", parameters.get("title"))
+    if event.get("event_type") == "ping.session.started":
+        _fact(facts, "Targets", metrics.get("target_count"))
+        _fact(
+            facts,
+            "Interval",
+            _unit(parameters.get("interval_seconds"), "seconds"),
+        )
+        _fact(
+            facts,
+            "Timeout",
+            _unit(parameters.get("timeout_seconds"), "seconds"),
+        )
+        return {"facts": facts, "detail": None}
+
+    _fact(facts, "Duration", _duration(parameters.get("duration_seconds")))
+    _fact(facts, "Rounds", metrics.get("rounds"))
+    _fact(facts, "Probes", metrics.get("probes_sent"))
+    _fact(facts, "Replies", metrics.get("replies_received"))
+    _fact(facts, "Response rate", _unit(metrics.get("response_rate"), "%"))
+    _fact(
+        facts,
+        "Configuration revisions",
+        parameters.get("configuration_revision_count"),
+    )
+    _fact(facts, "Retained samples", metrics.get("retained_samples"))
+    if metrics.get("omitted_samples"):
+        _fact(facts, "Earlier samples omitted", metrics.get("omitted_samples"))
+    _fact(facts, "Ended by", _termination(parameters.get("termination")))
+    evidence = _mapping(details.get("evidence"))
+    _fact(facts, "Sample evidence", evidence.get("filename"))
+    rows = []
+    for raw_target in _sequence(details.get("target_summaries")):
+        target = _mapping(raw_target)
+        minimum = target.get("minimum_latency_ms")
+        average = target.get("average_latency_ms")
+        maximum = target.get("maximum_latency_ms")
+        latency = "—"
+        if average is not None:
+            latency = (
+                f"{_text(minimum)} / {_text(average)} / {_text(maximum)} ms"
+            )
+        rows.append(
+            [
+                _named_target(target, "label", "host"),
+                _text(target.get("observation")),
+                (
+                    f"{_text(target.get('replies_received'))} / "
+                    f"{_text(target.get('retained_probes'))}\n"
+                    f"{_unit(target.get('response_rate'), '%')}"
+                ),
+                latency,
+                _text(target.get("reply_interruptions")),
+            ]
+        )
+    return {
+        "facts": facts,
+        "detail": _table(
+            [
+                "Target",
+                "Observation",
+                "Replies / retained probes",
+                "Latency min / avg / max",
+                "Reply interruptions",
+            ],
+            rows,
+        )
+        if rows
+        else _metrics(
+            [("Observation", "The session ended before any probes completed.")]
+        ),
+    }
+
+
 def _table(columns: list[str], rows: list[list[str]]) -> ReportPresentation:
     return {"kind": "table", "columns": columns, "rows": rows}
 
@@ -311,7 +390,33 @@ def _optional_text(value: Any) -> str:
     return "" if value is None or value == "" else str(value)
 
 
+def _duration(value: Any) -> str:
+    try:
+        seconds = max(0, int(round(float(value))))
+    except (TypeError, ValueError):
+        return ""
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    parts = []
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes or hours:
+        parts.append(f"{minutes}m")
+    parts.append(f"{seconds}s")
+    return " ".join(parts)
+
+
+def _termination(value: Any) -> str:
+    return {
+        "manual": "Operator stop",
+        "case_closed": "Case closure",
+        "lease_expired": "Browser lease expired",
+        "error": "Monitor error",
+    }.get(str(value or ""), _text(value))
+
+
 _PRESENTATION_BUILDERS: dict[str, PresentationBuilder] = {
+    "tools.ping": _ping_presentation,
     "tools.dns_response": _dns_presentation,
     "tools.port_scanner": _port_scan_presentation,
     "tools.traceroute": _traceroute_presentation,

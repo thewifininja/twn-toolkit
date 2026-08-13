@@ -2,9 +2,9 @@
 
 Investigations is the toolkit workspace; each individual troubleshooting record
 inside it is a case. Cases turn individual toolkit actions into a durable
-record. The shared persistence and UI contract now covers the first finite
-diagnostic set; long-running Multi-Ping and SSH/Telnet session capture remain
-separate lifecycle slices.
+record. The shared persistence and UI contract covers the first finite
+diagnostic set and long-running Multi-Ping sessions; SSH/Telnet capture remains
+a separate lifecycle slice.
 
 ## Operator workflow
 
@@ -84,9 +84,20 @@ are labeled specifically as browser-to-toolkit measurements, not internet speed
 tests.
 
 Streamed traceroutes record one event when each destination finishes. A client
-disconnect before completion does not invent a completed result. Multi-Ping and
-terminal sessions will instead need explicit started, stopped, disconnected,
-and reattached lifecycle events plus bounded rollups.
+disconnect before completion does not invent a completed result.
+
+Multi-Ping records one start event and one terminal event rather than adding a
+journal entry for every probe or observed reply change. The session is attached
+to the case that was recording at Start and remains attached if recording is
+later paused. Configuration edits are retained as timestamped revisions, and
+each sample identifies the revision that produced it. The terminal event keeps
+a bounded per-target summary while the complete retained sample window becomes
+an immutable CSV artifact in the case Evidence folder. A target that never
+replies is described as `No replies observed`; the journal does not infer that
+the device itself was down. Closing a case stops and finalizes its attached
+Multi-Ping sessions before the case becomes read-only. Browser lease expiry and
+monitor errors use the same idempotent finalization path with distinct terminal
+outcomes. Terminal sessions will need an equivalent bounded lifecycle contract.
 
 ## Reporting
 

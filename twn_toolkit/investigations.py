@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
+import io
 import json
 import os
 import secrets
@@ -495,6 +496,240 @@ class InvestigationStore:
                 "SELECT * FROM investigation_events WHERE id = ?", (event_id,)
             ).fetchone()
         return self._event(row)
+
+    def record_for_case(
+        self,
+        *,
+        investigation_id: str,
+        user_id: str,
+        username: str,
+        require_recording: bool = False,
+        operation_id: str,
+        event_type: str,
+        tool_id: str,
+        action: str,
+        outcome: str,
+        summary: str,
+        targets: Any,
+        parameters: Any,
+        metrics: Any,
+        details: Any,
+        started_at: float,
+        completed_at: float,
+    ) -> dict[str, Any]:
+        """Append an owned lifecycle event, including completion while paused."""
+        user_id = self._clean_identity(user_id, "user")
+        with self._connect() as connection, connection:
+            investigation = self._require_open_owner(
+                connection, investigation_id, user_id
+            )
+            if require_recording and str(investigation["state"]) != "recording":
+                raise InvestigationError(
+                    "Automatic case recording is not currently running."
+                )
+            event_id = self._insert_event(
+                connection,
+                investigation_id=investigation_id,
+                operation_id=operation_id,
+                event_type=event_type,
+                tool_id=tool_id,
+                action=action,
+                outcome=outcome,
+                summary=summary,
+                targets=targets,
+                parameters=parameters,
+                metrics=metrics,
+                details=details,
+                started_at=started_at,
+                completed_at=completed_at,
+                created_by_user_id=user_id,
+                created_by_username=self._clean_identity(username, "operator"),
+            )
+            connection.execute(
+                """
+                UPDATE investigations
+                SET updated_at = MAX(updated_at, ?)
+                WHERE id = ?
+                """,
+                (completed_at, investigation_id),
+            )
+            row = connection.execute(
+                "SELECT * FROM investigation_events WHERE id = ?", (event_id,)
+            ).fetchone()
+        return self._event(row)
+
+    def add_generated_evidence_event(
+        self,
+        *,
+        investigation_id: str,
+        user_id: str,
+        username: str,
+        operation_id: str,
+        event_type: str,
+        tool_id: str,
+        action: str,
+        outcome: str,
+        summary: str,
+        targets: Any,
+        parameters: Any,
+        metrics: Any,
+        details: Any,
+        started_at: float,
+        completed_at: float,
+        filename: str,
+        content_type: str,
+        content: bytes,
+    ) -> dict[str, dict[str, Any]]:
+        """Atomically describe generated evidence without adding timeline noise."""
+        user_id = self._clean_identity(user_id, "user")
+        username = self._clean_identity(username, "operator")
+        clean_operation_id = self._clean_text(
+            operation_id, "Operation ID", 200, required=True
+        )
+        investigation = self.get_for_user(investigation_id, user_id)
+        if investigation["state"] not in OPEN_STATES:
+            raise InvestigationError("Closed cases cannot accept new evidence.")
+        with self._connect() as connection:
+            existing = connection.execute(
+                """
+                SELECT id FROM investigation_events
+                WHERE investigation_id = ? AND operation_id = ?
+                """,
+                (investigation_id, clean_operation_id),
+            ).fetchone()
+            if existing:
+                event_row = connection.execute(
+                    "SELECT * FROM investigation_events WHERE id = ?",
+                    (existing["id"],),
+                ).fetchone()
+                artifact_row = connection.execute(
+                    """
+                    SELECT * FROM investigation_artifacts
+                    WHERE investigation_id = ? AND event_id = ?
+                    ORDER BY created_at LIMIT 1
+                    """,
+                    (investigation_id, existing["id"]),
+                ).fetchone()
+                if event_row and artifact_row:
+                    return {
+                        "event": self._event(event_row),
+                        "artifact": self._artifact(artifact_row),
+                    }
+
+        stored_name = self._available_evidence_name(
+            str(investigation["datastore_path"]), filename
+        )
+        relative_folder = f"{investigation['datastore_path']}/Evidence"
+        saved, size = self.datastore.save_upload(
+            relative_folder,
+            stored_name,
+            io.BytesIO(content),
+            max_bytes=MAX_UPLOAD_BYTES,
+        )
+        digest = self._sha256_file(saved)
+        artifact_id = f"art_{secrets.token_hex(12)}"
+        now = time.time()
+        relative_path = self.datastore.relative(saved)
+        retained_details = dict(details) if isinstance(details, dict) else {}
+        retained_details["evidence"] = {
+            "artifact_id": artifact_id,
+            "filename": stored_name,
+            "byte_count": size,
+            "sha256": digest,
+        }
+        try:
+            with self._connect() as connection, connection:
+                connection.execute("BEGIN IMMEDIATE")
+                self._require_open_owner(connection, investigation_id, user_id)
+                existing = connection.execute(
+                    """
+                    SELECT id FROM investigation_events
+                    WHERE investigation_id = ? AND operation_id = ?
+                    """,
+                    (investigation_id, clean_operation_id),
+                ).fetchone()
+                if existing:
+                    event_row = connection.execute(
+                        "SELECT * FROM investigation_events WHERE id = ?",
+                        (existing["id"],),
+                    ).fetchone()
+                    artifact_row = connection.execute(
+                        """
+                        SELECT * FROM investigation_artifacts
+                        WHERE investigation_id = ? AND event_id = ?
+                        ORDER BY created_at LIMIT 1
+                        """,
+                        (investigation_id, existing["id"]),
+                    ).fetchone()
+                    if event_row and artifact_row:
+                        saved.unlink(missing_ok=True)
+                        return {
+                            "event": self._event(event_row),
+                            "artifact": self._artifact(artifact_row),
+                        }
+                event_id = self._insert_event(
+                    connection,
+                    investigation_id=investigation_id,
+                    operation_id=clean_operation_id,
+                    event_type=event_type,
+                    tool_id=tool_id,
+                    action=action,
+                    outcome=outcome,
+                    summary=summary,
+                    targets=targets,
+                    parameters=parameters,
+                    metrics=metrics,
+                    details=retained_details,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    created_by_user_id=user_id,
+                    created_by_username=username,
+                )
+                connection.execute(
+                    """
+                    INSERT INTO investigation_artifacts (
+                        id, investigation_id, event_id, kind, display_name,
+                        relative_path, content_type, byte_count, sha256,
+                        report_placement, created_by_user_id,
+                        created_by_username, created_at
+                    ) VALUES (?, ?, ?, 'generated', ?, ?, ?, ?, ?, 'appendix', ?, ?, ?)
+                    """,
+                    (
+                        artifact_id,
+                        investigation_id,
+                        event_id,
+                        stored_name,
+                        relative_path,
+                        self._clean_text(content_type, "Content type", 160),
+                        size,
+                        digest,
+                        user_id,
+                        username,
+                        now,
+                    ),
+                )
+                connection.execute(
+                    """
+                    UPDATE investigations
+                    SET updated_at = MAX(updated_at, ?)
+                    WHERE id = ?
+                    """,
+                    (completed_at, investigation_id),
+                )
+                event_row = connection.execute(
+                    "SELECT * FROM investigation_events WHERE id = ?", (event_id,)
+                ).fetchone()
+                artifact_row = connection.execute(
+                    "SELECT * FROM investigation_artifacts WHERE id = ?",
+                    (artifact_id,),
+                ).fetchone()
+        except BaseException:
+            saved.unlink(missing_ok=True)
+            raise
+        return {
+            "event": self._event(event_row),
+            "artifact": self._artifact(artifact_row),
+        }
 
     def add_evidence(
         self,
