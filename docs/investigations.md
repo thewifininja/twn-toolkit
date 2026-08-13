@@ -23,8 +23,10 @@ an immutable `investigation.reopened` journal event; the operator must explicitl
 resume automatic recording. Starting a new case does not alter closed work.
 
 The global banner makes the current recording context visible on every permitted
-page. The case workspace uses tabs-first Journal, Evidence, and Report
-views on desktop and mobile.
+page. Its **Add note** action opens a focused quick-note dialog and returns the
+operator to the same tool page after saving. Deliberate notes remain available
+while automatic recording is paused. The case workspace uses tabs-first Journal,
+Evidence, and Report views on desktop and mobile.
 
 ## Persistence and ownership
 

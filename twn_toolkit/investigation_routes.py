@@ -199,7 +199,9 @@ def register_investigation_routes(
             )
             flash("Added the note to the case journal.", "success")
         return redirect(
-            url_for("investigation_detail", investigation_id=investigation_id)
+            _safe_next(
+                url_for("investigation_detail", investigation_id=investigation_id)
+            )
         )
 
     @app.post("/investigations/<investigation_id>/state")

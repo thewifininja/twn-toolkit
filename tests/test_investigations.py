@@ -284,6 +284,52 @@ class InvestigationStoreTests(unittest.TestCase):
 
 
 class InvestigationRouteTests(unittest.TestCase):
+    def test_active_case_banner_adds_notes_without_leaving_the_tool_page(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Quick context"})
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            investigation_id = str(investigation["id"])
+
+            page = client.get("/tools/snmp-test")
+            self.assertEqual(page.status_code, 200)
+            self.assertIn(b'data-case-note-open', page.data)
+            self.assertIn(b'data-case-note-dialog', page.data)
+            self.assertIn(b'Add a quick note', page.data)
+            self.assertIn(b'Quick context', page.data)
+
+            response = client.post(
+                f"/investigations/{investigation_id}/notes",
+                data={
+                    "note": "Packet loss began immediately after the uplink change.",
+                    "next": "/tools/snmp-test?section=monitor",
+                },
+            )
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(
+                response.headers["Location"],
+                "/tools/snmp-test?section=monitor",
+            )
+            events = store.events_for_user(investigation_id, "test-user")
+            self.assertEqual(events[-1]["event_type"], "note.added")
+            self.assertEqual(
+                events[-1]["summary"],
+                "Packet loss began immediately after the uplink change.",
+            )
+
+            unsafe = client.post(
+                f"/investigations/{investigation_id}/notes",
+                data={"note": "Unsafe redirect rejected.", "next": "https://example.com"},
+            )
+            self.assertEqual(unsafe.status_code, 302)
+            self.assertEqual(
+                unsafe.headers["Location"],
+                f"/investigations/{investigation_id}",
+            )
+
     def test_one_off_snmp_is_case_evidence_without_credentials(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)

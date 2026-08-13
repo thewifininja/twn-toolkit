@@ -96,6 +96,24 @@ class UIComponentTests(unittest.TestCase):
 
         self.assertIn("margin: 14px auto;", notice_rule)
 
+    def test_active_case_banner_has_a_responsive_quick_note_dialog(self) -> None:
+        template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        script = (TEMPLATE_ROOT.parent / "static" / "case-note.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("data-case-note-open", template)
+        self.assertIn("data-case-note-dialog", template)
+        self.assertIn('name="next" value="{{ request.full_path }}"', template)
+        self.assertIn(".active-case-note-dialog {", stylesheet)
+        self.assertIn("max-width: calc(100vw - 32px);", stylesheet)
+        self.assertIn("flex-wrap: wrap;", stylesheet)
+        self.assertIn("dialog.showModal()", script)
+        self.assertIn("note.focus()", script)
+
     def test_every_peer_view_uses_shared_tabs_first_workspace_structure(self) -> None:
         shared_chrome_templates = (
             "automations/index.html",

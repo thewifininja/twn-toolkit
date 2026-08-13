@@ -2659,7 +2659,9 @@ button.danger:hover {
   align-items: center;
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .active-investigation-actions a,
@@ -2668,6 +2670,80 @@ button.danger:hover {
   font-size: 0.8rem;
   font-weight: 850;
   padding: 7px 9px;
+}
+
+.active-investigation-actions .active-investigation-note-button {
+  background: color-mix(in srgb, var(--panel), var(--depth-primary) 10%);
+  border: 1px solid color-mix(in srgb, var(--line-strong), var(--depth-primary) 28%);
+  border-radius: 7px;
+  color: var(--ink);
+  display: inline-flex;
+  min-height: 34px;
+  text-decoration: none;
+}
+
+.active-investigation-actions .active-investigation-note-button:hover,
+.active-investigation-actions .active-investigation-note-button:focus {
+  background: color-mix(in srgb, var(--panel), var(--depth-primary) 18%);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.active-case-note-dialog {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgb(10 28 19 / 32%);
+  color: var(--ink);
+  max-width: calc(100vw - 32px);
+  padding: 0;
+  width: 520px;
+}
+
+.active-case-note-dialog::backdrop {
+  backdrop-filter: blur(2px);
+  background: rgb(10 24 17 / 48%);
+}
+
+.active-case-note-form {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.active-case-note-form header {
+  display: grid;
+  gap: 5px;
+}
+
+.active-case-note-form h2,
+.active-case-note-form p {
+  margin: 0;
+}
+
+.active-case-note-form p {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.active-case-note-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.active-case-note-form textarea {
+  min-height: 132px;
+  resize: vertical;
+  width: 100%;
+}
+
+.active-case-note-form footer {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 18px;
 }
 
 .investigation-recorded-notice {
@@ -3462,6 +3538,14 @@ button.danger:hover {
 }
 
 @media (max-width: 520px) {
+  .active-case-note-form {
+    padding: 20px;
+  }
+
+  .active-case-note-form footer > button {
+    flex: 1 1 0;
+  }
+
   .investigation-create-actions {
     align-items: stretch;
     display: grid;

@@ -248,6 +248,7 @@
               <span class="active-investigation-count">{{ active_investigation.event_count }} events</span>
             </a>
             <div class="active-investigation-actions">
+              <button class="link-button active-investigation-note-button" type="button" data-case-note-open>Add note</button>
               <a href="{{ url_for('investigation_detail', investigation_id=active_investigation.id) }}">Open case journal</a>
               <form method="post" action="{{ url_for('update_investigation_state', investigation_id=active_investigation.id) }}">
                 <input type="hidden" name="next" value="{{ request.full_path }}">
@@ -260,6 +261,25 @@
         {% block content %}{% endblock %}
       </main>
     </div>
+    {% if active_investigation %}
+      <dialog class="active-case-note-dialog" data-case-note-dialog aria-labelledby="active-case-note-title">
+        <form method="post" action="{{ url_for('add_investigation_note', investigation_id=active_investigation.id) }}" class="active-case-note-form">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <header>
+            <span class="eyebrow">Case journal</span>
+            <h2 id="active-case-note-title">Add a quick note</h2>
+          </header>
+          <p>Record context in <strong>{{ active_investigation.title }}</strong> without leaving this page.</p>
+          <label for="active-case-note">Note
+            <textarea id="active-case-note" name="note" maxlength="4000" rows="5" required placeholder="What did you observe, change, learn, or decide?"></textarea>
+          </label>
+          <footer>
+            <button class="secondary" type="button" data-case-note-close>Cancel</button>
+            <button type="submit">Add to journal</button>
+          </footer>
+        </form>
+      </dialog>
+    {% endif %}
     {% if current_user and (
       current_user.is_admin
       or allowed_tool_ids is none
@@ -351,6 +371,9 @@
     <script src="{{ url_for('static', filename='saved-profile-manager.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='loading.js') }}"></script>
     <script src="{{ url_for('static', filename='sidebar.js', v=app_version) }}"></script>
+    {% if active_investigation %}
+      <script src="{{ url_for('static', filename='case-note.js', v=app_version) }}"></script>
+    {% endif %}
     {% if current_user %}
       <script src="{{ url_for('static', filename='favorites-order.js', v=app_version) }}"></script>
       <script src="{{ url_for('static', filename='pcap-viewer.js', v=app_version) }}"></script>
