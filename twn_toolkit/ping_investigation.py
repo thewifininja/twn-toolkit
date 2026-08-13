@@ -43,7 +43,7 @@ def record_ping_session_started(
         operation_id=f"ping-live-start:{session['id']}",
         event_type="ping.session.started",
         tool_id="tools.ping",
-        action="Multi-Ping started",
+        action="Ping started",
         outcome="info",
         summary=(
             f"Started monitoring {target_summary} every {interval} seconds."
@@ -106,7 +106,7 @@ def stop_and_finalize_case_ping_sessions(
     if result["failures"]:
         first = result["failures"][0]
         raise PingInvestigationError(
-            "The case remains open because Multi-Ping evidence could not be "
+            "The case remains open because Ping evidence could not be "
             f"retained: {first['error']}"
         )
     return {"stopped": len(stopped), "finalized": len(result["finalized"])}
@@ -119,7 +119,7 @@ def _finalize_ping_session(
 ) -> None:
     result = live_store.ping_investigation_result(str(session["id"]))
     if result is None:
-        raise PingInvestigationError("The Multi-Ping session no longer exists.")
+        raise PingInvestigationError("The Ping session no longer exists.")
     session = result["session"]
     samples = result["samples"]
     epochs = result["configuration_epochs"]
@@ -199,7 +199,7 @@ def _finalize_ping_session(
         content=content,
     )
     if not evidence.get("artifact"):
-        raise PingInvestigationError("Multi-Ping evidence was not retained.")
+        raise PingInvestigationError("Ping evidence was not retained.")
     live_store.mark_ping_investigation_finalized(str(session["id"]))
 
 
@@ -410,10 +410,10 @@ def _completion_summary(
 
 def _completion_action(reason: str) -> str:
     return {
-        "lease_expired": "Multi-Ping automatically stopped",
-        "case_closed": "Multi-Ping stopped for case closure",
-        "error": "Multi-Ping failed",
-    }.get(reason, "Multi-Ping stopped")
+        "lease_expired": "Ping automatically stopped",
+        "case_closed": "Ping stopped for case closure",
+        "error": "Ping failed",
+    }.get(reason, "Ping stopped")
 
 
 def _target_name(target: dict[str, Any]) -> str:

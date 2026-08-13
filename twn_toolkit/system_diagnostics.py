@@ -100,7 +100,7 @@ def command_dependencies(*, system: str | None = None) -> list[dict[str, Any]]:
     dependencies.append(
         {
             "name": "fping",
-            "workflow": "Accelerated Multi-Ping and Ping automations",
+            "workflow": "Accelerated live Ping and ping automations",
             "available": bool(ping_capability["accelerated"]),
             "optional": True,
             "detail": str(ping_capability["detail"]),

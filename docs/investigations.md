@@ -94,7 +94,7 @@ The automatically captured finite-result set includes:
 - FortiGate wireless-client history with a collapsed AP path rather than raw
   vendor-log objects.
 
-Multi-SSH stores per-host output as generated text evidence. Multi-Transfer
+Bulk SSH stores per-host output as generated text evidence. Bulk Transfer
 stores a result manifest without duplicating each transferred payload. Syslog
 stores full retained messages as JSON evidence while keeping the timeline
 compact. API Request stores the origin, method, timing, sizes, and header names,
@@ -136,7 +136,7 @@ disconnect before completion does not invent a completed result.
 
 ## Persistent session integrations
 
-Multi-Ping records one start event and one terminal event rather than adding a
+Ping records one start event and one terminal event rather than adding a
 journal entry for every probe or observed reply change. The session is attached
 to the case that was recording at Start and remains attached if recording is
 later paused. Configuration edits are retained as timestamped revisions, and
@@ -145,7 +145,7 @@ a bounded per-target summary while the complete retained sample window becomes
 an immutable CSV artifact in the case Evidence folder. A target that never
 replies is described as `No replies observed`; the journal does not infer that
 the device itself was down. Closing a case stops and finalizes its attached
-Multi-Ping sessions before the case becomes read-only. Browser lease expiry and
+Ping sessions before the case becomes read-only. Browser lease expiry and
 monitor errors use the same idempotent finalization path with distinct terminal
 outcomes.
 
@@ -160,7 +160,7 @@ completion without reading a potentially large capture into application memory,
 and reports its bounds, packet count, size, termination, and digest. Managed
 iPerf3 listeners attach at start, retain a bounded JSON result set, and report
 each completed client test and rate. Closing a case stops and finalizes all
-attached Multi-Ping, SNMP monitor, packet-capture, and managed-iPerf3 sessions
+attached Ping, SNMP monitor, packet-capture, and managed-iPerf3 sessions
 before the journal becomes read-only. Terminal recovery is idempotent and also
 runs from status/page requests and background-worker completion.
 

@@ -90,7 +90,7 @@ class AccessProfileTests(unittest.TestCase):
             self.assertEqual(client.get("/tools/ping").status_code, 200)
             self.assertEqual(client.get("/tools/dns-response").status_code, 403)
             home = client.get("/")
-            self.assertIn(b"Multi-Host Ping", home.data)
+            self.assertIn(b">Ping</span>", home.data)
             self.assertNotIn(b"DNS Tester", home.data)
 
     def test_access_profile_can_grant_high_risk_tool_without_admin_status(self) -> None:

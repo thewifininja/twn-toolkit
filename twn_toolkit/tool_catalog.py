@@ -139,7 +139,6 @@ TOOL_CATEGORIES = [
 NAVIGATION_SUBGROUPS = {
     "network": (
         {"id": "addressing", "label": "Addressing & Reachability", "icon": "◎"},
-        {"id": "multi-host", "label": "Multi-Host Tools", "icon": "⇄"},
         {"id": "services", "label": "Services & Protocols", "icon": "S"},
         {"id": "traffic", "label": "Traffic & Interfaces", "icon": "≋"},
     ),

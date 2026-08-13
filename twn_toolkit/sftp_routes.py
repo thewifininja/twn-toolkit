@@ -109,14 +109,14 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                     if form["output_mode"] == "download":
                         record_current_activity(
                             "Network tools",
-                            f"Fetched files with Multi-Transfer ({str(form['protocol']).upper()})",
+                            f"Fetched files with Bulk Transfer ({str(form['protocol']).upper()})",
                             f"{len(successes)} of {len(results)} transfer(s)",
                             counters={str(form["protocol"]): {"files": len(successes), "bytes": sum(int(item["size"]) for item in successes)}},
                         )
                         annotate_tool_run(
                             category="Network tools",
                             action_namespace="transfer.multi_host_fetch",
-                            tool_name="Multi-Transfer",
+                            tool_name="Bulk Transfer",
                             outcome="succeeded" if successes else "failed",
                             details=_transfer_audit_details(
                                 form, results, successes, host_count, path_count
@@ -170,14 +170,14 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                 if form["output_mode"] == "datastore":
                     record_current_activity(
                         "Network tools",
-                        f"Stored Multi-Transfer files ({str(form['protocol']).upper()})",
+                        f"Stored Bulk Transfer files ({str(form['protocol']).upper()})",
                         f"{len(successes)} of {len(results)} transfer(s)",
                         counters={str(form["protocol"]): {"files": len(successes), "bytes": sum(int(item["size"]) for item in successes)}},
                     )
                     annotate_tool_run(
                         category="Network tools",
                         action_namespace="transfer.multi_host_fetch",
-                        tool_name="Multi-Transfer",
+                        tool_name="Bulk Transfer",
                         outcome="succeeded" if successes else "failed",
                         details=_transfer_audit_details(
                             form, results, successes, host_count, path_count
@@ -194,11 +194,11 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                     )
             except (ToolInputError, DatastoreError, OSError, ValueError) as exc:
                 error = str(exc) or "Enter a valid SFTP port."
-                record_current_activity("Network tools", "Ran Multi-Transfer", "Request failed")
+                record_current_activity("Network tools", "Ran Bulk Transfer", "Request failed")
                 annotate_tool_run(
                     category="Network tools",
                     action_namespace="transfer.multi_host_fetch",
-                    tool_name="Multi-Transfer",
+                    tool_name="Bulk Transfer",
                     outcome="failed",
                     details={
                         "protocol": str(form["protocol"]),
@@ -249,7 +249,7 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
 def _build_archive(output_dir: Path, results: list[dict[str, object]]) -> io.BytesIO:
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-        report = ["Multi-Transfer report", ""]
+        report = ["Bulk Transfer report", ""]
         for result in results:
             identity = str(result.get("host_label") or result["host"])
             line = f"{result['status'].upper()} | {identity} | {result['remote_path']}"
@@ -323,10 +323,10 @@ def _record_transfer_investigation(
         "operation_id": operation_id,
         "event_type": "action.failed" if error and not successful else "action.completed",
         "tool_id": "tools.multi_sftp",
-        "action": "Multi-Transfer",
+        "action": "Bulk Transfer",
         "outcome": "failed" if error and not successful else "succeeded" if successful == len(results) else "incomplete",
         "summary": (
-            f"Multi-Transfer failed: {error}"
+            f"Bulk Transfer failed: {error}"
             if error and not results
             else f"Fetched {successful} of {len(results)} requested transfer(s) with {str(form.get('protocol', '')).upper()}."
         ),

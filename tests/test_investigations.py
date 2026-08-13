@@ -825,7 +825,7 @@ class InvestigationRouteTests(unittest.TestCase):
             self.assertIn(",2,Router,192.0.2.1,no,", csv_evidence)
 
             report = client.get(f"/investigations/{investigation_id}/report")
-            self.assertIn(b"Multi-Ping stopped", report.data)
+            self.assertIn(b"Ping stopped", report.data)
             self.assertIn(b"No replies observed", report.data)
             self.assertIn(b"Latency min / avg / max", report.data)
             self.assertIn(artifacts[0]["display_name"].encode(), report.data)

@@ -19,14 +19,16 @@ class UIComponentTests(unittest.TestCase):
     def render(self, source: str) -> str:
         return self.environment.from_string(source).render()
 
-    def test_shared_page_shell_uses_wide_responsive_content_cap(self) -> None:
+    def test_shared_page_shell_uses_full_responsive_content_width(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn("--page-content-max-width: 1600px;", stylesheet)
+        self.assertIn("--page-inline-gutter: clamp(14px, 2vw, 28px);", stylesheet)
         self.assertIn(".shell > * {", stylesheet)
-        self.assertIn("max-width: var(--page-content-max-width);", stylesheet)
+        self.assertIn("padding: 24px var(--page-inline-gutter);", stylesheet)
+        self.assertIn("max-width: none;", stylesheet)
+        self.assertIn("width: 100%;", stylesheet)
 
     def test_workspace_section_and_empty_state_contracts(self) -> None:
         html = self.render(
@@ -188,6 +190,20 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('event.key !== "Escape"', remote_script)
         self.assertNotIn("remote-connection-folder-tools", remote_script)
 
+    def test_remote_host_action_stays_a_compact_square(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        rule = stylesheet.rsplit(
+            ".remote-connection-host-manage {", 1
+        )[1].split("}", 1)[0]
+
+        self.assertIn("align-self: center;", rule)
+        self.assertIn("height: 30px;", rule)
+        self.assertIn("min-height: 30px;", rule)
+        self.assertIn("width: 30px;", rule)
+        self.assertIn("padding: 0;", rule)
+
     def test_every_peer_view_uses_shared_tabs_first_workspace_structure(self) -> None:
         shared_chrome_templates = (
             "automations/index.html",
@@ -321,6 +337,8 @@ class UIComponentTests(unittest.TestCase):
         self.assertNotIn(".speed-test-panel {\n  max-width:", stylesheet)
         self.assertNotIn(".speed-test-notes {\n  max-width:", stylesheet)
         self.assertNotIn(".ip-address-panel {\n  max-width:", stylesheet)
+        self.assertNotIn(".switch-order-tool {\n  max-width:", stylesheet)
+        self.assertNotIn(".remote-terminal-popout-shell {\n  max-width:", stylesheet)
         for selector in (".preview-panel {", ".rename-editor {"):
             rule = stylesheet.split(selector, 1)[1].split("}", 1)[0]
             self.assertIn("max-width: none;", rule)

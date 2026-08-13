@@ -308,7 +308,7 @@ def register_investigation_routes(
                 if state == "completed" and ping_result["stopped"]:
                     count = ping_result["stopped"]
                     message += (
-                        f" Stopped and retained {count} attached Multi-Ping "
+                        f" Stopped and retained {count} attached Ping "
                         f"session{'s' if count != 1 else ''}."
                     )
                 if state == "completed" and snmp_result["stopped"]:

@@ -359,14 +359,14 @@ class HomePageTests(unittest.TestCase):
 
         self.assert_sidebar_section_open(page, "Network Tools")
         self.assertIn("Addressing &amp; Reachability", page)
-        self.assertIn("Multi-Host Tools", page)
+        self.assertNotIn("Multi-Host Tools", page)
         self.assertIn("Services &amp; Protocols", page)
         self.assertIn("Traffic &amp; Interfaces", page)
         self.assertIn('<span class="side-nav-icon" aria-hidden="true">⌁</span>', page)
         self.assertIn('<span class="side-nav-icon" aria-hidden="true">◎</span>', page)
         self.assertNotIn('<span class="side-nav-icon" aria-hidden="true">•</span>', page)
         ping_link = page.split('href="/tools/ping"', 1)[1].split("</a>", 1)[0]
-        self.assertIn(">Multi-Host Ping</span>", ping_link)
+        self.assertIn(">Ping</span>", ping_link)
         self.assertNotIn("side-nav-icon", ping_link)
 
     def test_sidebar_keeps_icons_for_standalone_links_but_not_favorites(self) -> None:
@@ -392,7 +392,7 @@ class HomePageTests(unittest.TestCase):
         favorite = page.split('data-favorite-id="tools.ping"', 1)[1].split(
             "</li>", 1
         )[0]
-        self.assertIn(">Multi-Host Ping</span>", favorite)
+        self.assertIn(">Ping</span>", favorite)
         self.assertNotIn("side-nav-icon", favorite)
 
     def test_fortigate_profile_test_uses_loading_animation(self) -> None:
@@ -524,10 +524,10 @@ class HomePageTests(unittest.TestCase):
         )
         self.assertLess(
             favorites_html.index(b"Packet Capture"),
-            favorites_html.index(b"Multi-Host Ping"),
+            favorites_html.index(b">Ping</span>"),
         )
         self.assertLess(
-            favorites_html.index(b"Multi-Host Ping"),
+            favorites_html.index(b">Ping</span>"),
             favorites_html.index(b"DNS Tester"),
         )
         quick_launch_html = page.data.split(b"workspace-quick-grid", 1)[1].split(
@@ -535,7 +535,7 @@ class HomePageTests(unittest.TestCase):
         )[0]
         self.assertLess(
             quick_launch_html.index(b"Packet Capture"),
-            quick_launch_html.index(b"Multi-Host Ping"),
+            quick_launch_html.index(b">Ping<"),
         )
         self.assertEqual(script.status_code, 200)
         self.assertIn(b"ArrowDown", script.data)

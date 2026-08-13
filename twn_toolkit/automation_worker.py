@@ -83,7 +83,7 @@ def main() -> None:
                     finalized = finalize_pending_ping_sessions(instance_path)
                     for failure in finalized["failures"]:
                         print(
-                            "Multi-Ping case evidence finalization failed for "
+                            "Ping case evidence finalization failed for "
                             f"{failure['session_id']}: {failure['error']}",
                             file=sys.stderr,
                         )
@@ -96,7 +96,7 @@ def main() -> None:
                         )
                 except Exception as exc:
                     print(
-                        "Multi-Ping case evidence finalization failed: "
+                        "Ping case evidence finalization failed: "
                         f"{type(exc).__name__}: {exc}",
                         file=sys.stderr,
                     )

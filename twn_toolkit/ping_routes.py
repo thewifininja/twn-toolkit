@@ -100,13 +100,13 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                 )
             except Exception:
                 current_app.logger.exception(
-                    "Active case context could not be loaded for Multi-Ping"
+                    "Active case context could not be loaded for Ping"
                 )
                 investigation_id = ""
             session = _live_tool_store().create_ping_session(
                 user_id=user["id"],
                 username=user["username"],
-                title=title or "Multi-Host Ping",
+                title=title or "Ping",
                 targets=targets,
                 interval=interval,
                 timeout=timeout,
@@ -124,7 +124,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
         annotate_audit_event(
             category="Network tools",
             action="ping.live_session_started",
-            summary="Started a persistent Multi-Host Ping session.",
+            summary="Started a persistent Ping session.",
             resource_type="live_tool_session",
             resource_id=session["id"],
             resource_name=session["title"],
@@ -149,7 +149,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                 )
             except Exception:
                 current_app.logger.exception(
-                    "Unable to record the Multi-Ping start in its attached case"
+                    "Unable to record the Ping start in its attached case"
                 )
         return jsonify(
             {
@@ -213,7 +213,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
         annotate_audit_event(
             category="Network tools",
             action="ping.live_session_targets_updated",
-            summary="Updated persistent Multi-Host Ping targets.",
+            summary="Updated persistent Ping targets.",
             resource_type="live_tool_session",
             resource_id=session["id"],
             resource_name=session["title"],
@@ -294,7 +294,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             annotate_audit_event(
                 category="Network tools",
                 action="ping.live_session_stopped",
-                summary="Stopped a persistent Multi-Host Ping session.",
+                summary="Stopped a persistent Ping session.",
                 resource_type="live_tool_session",
                 resource_id=session["id"],
                 resource_name=session["title"],
@@ -422,10 +422,10 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             annotate_audit_event(
                 category="Network tools",
                 action="ping.session_started",
-                summary="Started Multi-Host Ping.",
+                summary="Started Ping.",
                 resource_type="ping_session",
                 resource_id=run_id,
-                resource_name="Multi-Host Ping",
+                resource_name="Ping",
                 details={
                     "target_count": targets,
                     "targets": target_hosts,
@@ -450,10 +450,10 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             annotate_audit_event(
                 category="Network tools",
                 action="ping.session_stopped",
-                summary="Stopped Multi-Host Ping.",
+                summary="Stopped Ping.",
                 resource_type="ping_session",
                 resource_id=run_id,
-                resource_name="Multi-Host Ping",
+                resource_name="Ping",
             )
         else:
             for counter, amount in counters["ping"].items():
@@ -549,11 +549,11 @@ def _finalize_ping_investigations(*, user_id: str, session_id: str = "") -> None
             session_id=session_id,
         )
     except Exception:
-        current_app.logger.exception("Unable to finalize Multi-Ping case evidence")
+        current_app.logger.exception("Unable to finalize Ping case evidence")
         return
     for failure in result["failures"]:
         current_app.logger.warning(
-            "Unable to finalize Multi-Ping session %s: %s",
+            "Unable to finalize Ping session %s: %s",
             failure["session_id"],
             failure["error"],
         )
