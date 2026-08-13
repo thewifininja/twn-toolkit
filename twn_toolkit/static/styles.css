@@ -2664,29 +2664,18 @@ button.danger:hover {
   justify-content: flex-end;
 }
 
-.active-investigation-actions a,
-.active-investigation-actions .link-button {
-  color: var(--ink);
+.active-investigation-actions form {
+  display: flex;
+  margin: 0;
+}
+
+.active-investigation-actions .active-investigation-action {
+  align-items: center;
   font-size: 0.8rem;
   font-weight: 850;
-  padding: 7px 9px;
-}
-
-.active-investigation-actions .active-investigation-note-button {
-  background: color-mix(in srgb, var(--panel), var(--depth-primary) 10%);
-  border: 1px solid color-mix(in srgb, var(--line-strong), var(--depth-primary) 28%);
-  border-radius: 7px;
-  color: var(--ink);
-  display: inline-flex;
+  line-height: 1.2;
   min-height: 34px;
-  text-decoration: none;
-}
-
-.active-investigation-actions .active-investigation-note-button:hover,
-.active-investigation-actions .active-investigation-note-button:focus {
-  background: color-mix(in srgb, var(--panel), var(--depth-primary) 18%);
-  color: var(--ink);
-  text-decoration: none;
+  padding: 7px 9px;
 }
 
 .active-case-note-dialog {

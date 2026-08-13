@@ -107,10 +107,23 @@ class UIComponentTests(unittest.TestCase):
 
         self.assertIn("data-case-note-open", template)
         self.assertIn("data-case-note-dialog", template)
+        self.assertEqual(template.count("active-investigation-action"), 4)
+        self.assertEqual(
+            template.count('class="secondary active-investigation-action"'), 2
+        )
+        self.assertIn(
+            'class="button-link secondary active-investigation-action"', template
+        )
         self.assertIn('name="next" value="{{ request.full_path }}"', template)
         self.assertIn(".active-case-note-dialog {", stylesheet)
         self.assertIn("max-width: calc(100vw - 32px);", stylesheet)
         self.assertIn("flex-wrap: wrap;", stylesheet)
+        action_rule = stylesheet.split(
+            ".active-investigation-actions .active-investigation-action {", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("min-height: 34px;", action_rule)
+        self.assertNotIn("background:", action_rule)
+        self.assertNotIn("border:", action_rule)
         self.assertIn("dialog.showModal()", script)
         self.assertIn("note.focus()", script)
 

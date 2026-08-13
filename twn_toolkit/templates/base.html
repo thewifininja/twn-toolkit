@@ -248,12 +248,12 @@
               <span class="active-investigation-count">{{ active_investigation.event_count }} events</span>
             </a>
             <div class="active-investigation-actions">
-              <button class="link-button active-investigation-note-button" type="button" data-case-note-open>Add note</button>
-              <a href="{{ url_for('investigation_detail', investigation_id=active_investigation.id) }}">Open case journal</a>
+              <button class="secondary active-investigation-action" type="button" data-case-note-open>Add note</button>
+              <a class="button-link secondary active-investigation-action" href="{{ url_for('investigation_detail', investigation_id=active_investigation.id) }}">Open case journal</a>
               <form method="post" action="{{ url_for('update_investigation_state', investigation_id=active_investigation.id) }}">
                 <input type="hidden" name="next" value="{{ request.full_path }}">
                 <input type="hidden" name="state" value="{{ 'paused' if active_investigation.is_recording else 'recording' }}">
-                <button type="submit" class="link-button">{{ 'Pause' if active_investigation.is_recording else 'Resume' }}</button>
+                <button type="submit" class="secondary active-investigation-action">{{ 'Pause' if active_investigation.is_recording else 'Resume' }}</button>
               </form>
             </div>
           </section>
