@@ -2845,6 +2845,7 @@ button.danger:hover {
 }
 
 .investigation-overview-strip {
+  align-items: stretch;
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
@@ -3122,9 +3123,49 @@ button.danger:hover {
   border-color: color-mix(in srgb, var(--line-strong), var(--depth-primary) 38%);
 }
 
-.investigation-report-choice input {
+.investigation-report-choice input[type="checkbox"] {
+  appearance: none;
+  aspect-ratio: 1;
+  background: var(--panel);
+  border: 2px solid var(--line-strong);
+  border-radius: 5px;
+  box-shadow: none;
+  cursor: pointer;
+  display: inline-grid;
+  height: 1.15rem;
   margin: 3px 0 0;
-  width: auto;
+  min-height: 1.15rem;
+  padding: 0;
+  place-content: center;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  width: 1.15rem;
+}
+
+.investigation-report-choice input[type="checkbox"]::before {
+  border-bottom: 2px solid white;
+  border-right: 2px solid white;
+  content: "";
+  height: 0.48rem;
+  transform: rotate(45deg) scale(0);
+  transform-origin: center;
+  transition: transform 120ms ease;
+  width: 0.24rem;
+}
+
+.investigation-report-choice input[type="checkbox"]:checked {
+  background: var(--depth-primary);
+  border-color: var(--depth-primary);
+}
+
+.investigation-report-choice input[type="checkbox"]:checked::before {
+  transform: rotate(45deg) scale(1);
+}
+
+.investigation-report-choice input[type="checkbox"]:focus,
+.investigation-report-choice input[type="checkbox"]:focus-visible {
+  border-color: var(--depth-primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+  outline: 0;
 }
 
 .investigation-report-choice span,

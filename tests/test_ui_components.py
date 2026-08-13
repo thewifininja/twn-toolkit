@@ -279,6 +279,16 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("Back to investigations", detail_template)
         self.assertIn("Reopen case", detail_template)
         self.assertIn('class="investigation-reopen-action"', detail_template)
+        self.assertIn(
+            ".investigation-overview-strip {\n  align-items: stretch;",
+            stylesheet,
+        )
+        report_checkbox_rule = stylesheet.split(
+            '.investigation-report-choice input[type="checkbox"] {', 1
+        )[1].split("}", 1)[0]
+        self.assertIn("appearance: none;", report_checkbox_rule)
+        self.assertIn("min-height: 1.15rem;", report_checkbox_rule)
+        self.assertIn("padding: 0;", report_checkbox_rule)
 
     def test_investigation_print_layout_allows_large_results_to_paginate(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
