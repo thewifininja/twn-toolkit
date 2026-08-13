@@ -11,6 +11,29 @@ from twn_toolkit.audit import AuditStore
 
 
 class ProfileBackupRouteTests(unittest.TestCase):
+    def test_backup_workspace_uses_balanced_categories_and_guided_import(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+
+            export_page = client.get("/settings/backup")
+            import_page = client.get("/settings/backup?view=import")
+
+        self.assertEqual(export_page.status_code, 200)
+        self.assertEqual(
+            export_page.data.count(
+                b'class="configuration-backup-category-column"'
+            ),
+            2,
+        )
+        self.assertIn(b">Network tools <span>", export_page.data)
+        self.assertEqual(import_page.status_code, 200)
+        self.assertIn(b"Configuration import progress", import_page.data)
+        self.assertIn(b"Choose the backup to inspect", import_page.data)
+        self.assertIn(b"Combine with local configuration", import_page.data)
+        self.assertIn(b"Safe to inspect.", import_page.data)
+
     def test_sensitive_backup_requires_password(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
@@ -105,6 +128,7 @@ class ProfileBackupRouteTests(unittest.TestCase):
                 content_type="multipart/form-data",
             )
             token = inspected.location.rsplit("preview=", 1)[1]
+            preview = client.get(inspected.location)
             response = client.post(
                 "/settings/backup/import",
                 data={
@@ -117,6 +141,9 @@ class ProfileBackupRouteTests(unittest.TestCase):
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
 
         self.assertEqual(response.status_code, 302)
+        self.assertIn(b"Backup validated", preview.data)
+        self.assertIn(b"Review changes", preview.data)
+        self.assertIn(b"configuration-preview-category", preview.data)
         self.assertEqual(
             [event["action"] for event in events],
             ["backup.imported", "backup.exported"],

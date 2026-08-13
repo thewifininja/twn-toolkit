@@ -388,10 +388,25 @@ def register_admin_routes(
                     backup["items"], auth_store.users()
                 ),
             }
+        category_groups = sorted(
+            categories.items(),
+            key=lambda category: (-len(category[1]), category[0].lower()),
+        )
+        category_columns: list[list[tuple[str, list[dict[str, Any]]]]] = [
+            [],
+            [],
+        ]
+        category_column_weights = [0, 0]
+        for category in category_groups:
+            column_index = category_column_weights.index(
+                min(category_column_weights)
+            )
+            category_columns[column_index].append(category)
+            category_column_weights[column_index] += len(category[1]) + 1
         return render_template(
             "auth/backup.html",
             backup_catalog=backup_catalog,
-            backup_categories=list(categories.items()),
+            backup_category_columns=category_columns,
             installed_version=APP_VERSION,
             active_view=active_view,
             preview_token=preview_token,
