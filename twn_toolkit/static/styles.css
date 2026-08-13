@@ -3163,6 +3163,142 @@ button.danger:hover {
   min-width: 0;
 }
 
+.investigation-merge-entry,
+.investigation-merge-review {
+  container: case-merge / inline-size;
+}
+
+.investigation-merge-destination {
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-left: 4px solid color-mix(in srgb, var(--depth-primary), transparent 20%);
+  border-radius: 10px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 13px 14px;
+}
+
+.investigation-merge-destination > div,
+.investigation-merge-route article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.investigation-merge-destination strong,
+.investigation-merge-route strong {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.investigation-merge-destination small,
+.investigation-merge-route small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.investigation-merge-page {
+  max-width: 1180px;
+}
+
+.investigation-merge-review {
+  display: grid;
+  gap: 18px;
+}
+
+.investigation-merge-route {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.investigation-merge-route article {
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  justify-content: center;
+  padding: 15px 16px;
+}
+
+.investigation-merge-route article:last-child {
+  border-left: 4px solid color-mix(in srgb, var(--depth-primary), transparent 20%);
+}
+
+.investigation-merge-arrow {
+  align-items: center;
+  color: var(--depth-primary);
+  display: flex;
+  font-size: 1.4rem;
+  font-weight: 900;
+  justify-content: center;
+}
+
+.investigation-merge-stats {
+  width: 100%;
+}
+
+.investigation-merge-boundary {
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.investigation-merge-boundary ul {
+  line-height: 1.5;
+  margin: 9px 0;
+  padding-left: 20px;
+}
+
+.investigation-merge-boundary p {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.investigation-merge-actions {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 16px;
+}
+
+.investigation-event {
+  scroll-margin-top: calc(var(--topbar-height) + 24px);
+}
+
+@container case-merge (max-width: 600px) {
+  .investigation-merge-destination,
+  .investigation-merge-route {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .investigation-merge-arrow {
+    transform: rotate(90deg);
+  }
+}
+
+@container case-merge (max-width: 420px) {
+  .investigation-merge-destination form,
+  .investigation-merge-destination button,
+  .investigation-merge-actions,
+  .investigation-merge-actions form,
+  .investigation-merge-actions button,
+  .investigation-merge-actions .button-link {
+    width: 100%;
+  }
+
+  .investigation-merge-actions {
+    align-items: stretch;
+    display: grid;
+  }
+}
+
 @container investigation-team (max-width: 760px) {
   .investigation-team-layout {
     grid-template-columns: minmax(0, 1fr);

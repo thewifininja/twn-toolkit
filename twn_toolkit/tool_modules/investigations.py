@@ -21,6 +21,8 @@ def register_tools(registry: ToolRegistry) -> None:
             "create_investigation": "investigations.workspace",
             "import_investigation_case": "investigations.workspace",
             "investigation_detail": "investigations.workspace",
+            "preview_investigation_merge": "investigations.workspace",
+            "merge_investigation_case": "investigations.workspace",
             "add_investigation_note": "investigations.workspace",
             "add_investigation_participant": "investigations.workspace",
             "remove_investigation_participant": "investigations.workspace",

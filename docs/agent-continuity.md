@@ -71,6 +71,12 @@ precedent.
   Portable `.twncase` exports include the complete journal and every evidence
   file, verify stored hashes during export/import, retain stable source origins,
   and import as closed local copies without granting access to foreign users.
+  Case merging is an explicit, non-destructive copy from an accessible closed
+  source into an owner-controlled open destination. Preserve original
+  attribution, timestamps, event-to-artifact relationships, report placements,
+  and stable origin IDs; rehash evidence before copying, clean partial files on
+  failure, never copy case membership, and deduplicate chained merges by source
+  origin.
 - Remote Terminal shells are owner-scoped durable toolkit objects in
   `instance/remote_sessions.sqlite3`. The browser is a reconnectable view, not
   the connection owner. Keep credentials in memory only through SSH

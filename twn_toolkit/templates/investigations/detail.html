@@ -104,6 +104,30 @@
     </div>
   </section>
 
+  {% if active_investigation_tab == 'journal' and not investigation.is_open %}
+    <section class="panel investigation-merge-entry">
+      {{ section_header("Merge this case", "Copy the complete journal and evidence into an open case you own. This source case remains unchanged.", "Case transfer") }}
+      {% if merge_destinations %}
+        {% set merge_destination = merge_destinations[0] %}
+        <div class="investigation-merge-destination">
+          <div>
+            <span class="eyebrow">Open destination</span>
+            <strong>{{ merge_destination.title }}</strong>
+            <small>{{ merge_destination.event_count }} journal {{ 'entry' if merge_destination.event_count == 1 else 'entries' }} · {{ merge_destination.artifact_count }} evidence {{ 'file' if merge_destination.artifact_count == 1 else 'files' }}</small>
+          </div>
+          <form method="get" action="{{ url_for('preview_investigation_merge', source_investigation_id=investigation.id) }}">
+            <input type="hidden" name="destination_id" value="{{ merge_destination.id }}">
+            <button type="submit">Review merge</button>
+          </form>
+        </div>
+      {% else %}
+        {% call empty_state("No destination case is ready", "Open or resume a case you own, then return here to review the merge before anything is copied.") %}
+          <a class="button-link secondary" href="{{ url_for('investigations') }}">Back to investigations</a>
+        {% endcall %}
+      {% endif %}
+    </section>
+  {% endif %}
+
   {% if active_investigation_tab == 'journal' %}
     {% if investigation.is_open %}
       <section class="panel investigation-note-panel">
@@ -124,7 +148,7 @@
       {% if investigation_events %}
         <ol class="investigation-timeline">
           {% for event in investigation_events %}
-            <li class="investigation-event {{ event.event_type|replace('.', '-') }}">
+            <li id="event-{{ event.id }}" class="investigation-event {{ event.event_type|replace('.', '-') }}">
               <div class="investigation-event-marker" aria-hidden="true"></div>
               <article>
                 <header class="investigation-event-head">

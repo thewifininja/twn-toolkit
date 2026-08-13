@@ -96,13 +96,16 @@ def build_portable_case_archive(
                 evidence_records.append(
                     {
                         "origin_case_id": str(
-                            artifact.get("origin_case_id") or origin["case_id"]
+                            artifact.get("origin_case_id")
+                            or origin.get("local_case_id")
+                            or origin["case_id"]
                         ),
                         "origin_id": str(
                             artifact.get("origin_artifact_id") or artifact["id"]
                         ),
                         "event_origin_case_id": (
                             artifact.get("event_origin_case_id")
+                            or origin.get("local_case_id")
                             or origin["case_id"]
                             if artifact.get("event_id")
                             else None
@@ -224,7 +227,11 @@ def _portable_event(
     event: dict[str, Any], origin: dict[str, Any]
 ) -> dict[str, Any]:
     return {
-        "origin_case_id": str(event.get("origin_case_id") or origin["case_id"]),
+        "origin_case_id": str(
+            event.get("origin_case_id")
+            or origin.get("local_case_id")
+            or origin["case_id"]
+        ),
         "origin_id": str(event.get("origin_event_id") or event["id"]),
         "operation_id": str(event["operation_id"]),
         "event_type": str(event["event_type"]),

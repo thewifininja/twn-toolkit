@@ -163,6 +163,12 @@ class InvestigationPortabilityTests(unittest.TestCase):
                     {item["origin_id"] for item in payload["events"]}
                 )
             )
+            imported_boundary = next(
+                item
+                for item in payload["events"]
+                if item["event_type"] == "investigation.imported"
+            )
+            self.assertEqual(imported_boundary["origin_case_id"], imported["id"])
 
             with tempfile.TemporaryDirectory() as second_target:
                 second_app = create_app(second_target)
@@ -295,12 +301,13 @@ class InvestigationPortabilityTests(unittest.TestCase):
                         "SELECT name FROM sqlite_master WHERE type = 'table'"
                     )
                 }
-            self.assertEqual(version, "3")
+            self.assertEqual(version, "4")
             self.assertTrue(
                 {
                     "investigation_imports",
                     "investigation_event_origins",
                     "investigation_artifact_origins",
+                    "investigation_merges",
                 }.issubset(tables)
             )
 

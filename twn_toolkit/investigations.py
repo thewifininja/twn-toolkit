@@ -23,7 +23,7 @@ EVENT_OUTCOMES = frozenset(
     {"succeeded", "failed", "cancelled", "incomplete", "info"}
 )
 MAX_EVENT_JSON_BYTES = 4 * 1024 * 1024
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class InvestigationError(ValueError):
@@ -292,6 +292,7 @@ class InvestigationStore:
             "origin": {
                 "case_id": investigation.get("import_source_case_id")
                 or investigation["id"],
+                "local_case_id": investigation["id"],
                 "owner_username": investigation.get("import_source_owner_username")
                 or investigation["owner_username"],
             },
@@ -580,6 +581,390 @@ class InvestigationStore:
                 ) from exc
             raise
         return self.get_for_user(investigation_id, owner_user_id)
+
+    def preview_case_merge(
+        self,
+        *,
+        source_investigation_id: str,
+        destination_investigation_id: str,
+        user_id: str,
+    ) -> dict[str, Any]:
+        """Describe a non-destructive merge after applying origin-based deduplication."""
+        snapshot = self._case_merge_snapshot(
+            source_investigation_id=source_investigation_id,
+            destination_investigation_id=destination_investigation_id,
+            user_id=user_id,
+        )
+        with self._connect() as connection:
+            existing_events, existing_artifacts = self._merge_origin_indexes(
+                connection, destination_investigation_id
+            )
+            already_merged = connection.execute(
+                """
+                SELECT 1 FROM investigation_merges
+                WHERE destination_investigation_id = ?
+                  AND source_investigation_id = ?
+                """,
+                (destination_investigation_id, source_investigation_id),
+            ).fetchone() is not None
+        new_events = [
+            event
+            for event in snapshot["events"]
+            if event["_merge_origin_key"] not in existing_events
+        ]
+        new_artifacts = [
+            artifact
+            for artifact in snapshot["artifacts"]
+            if artifact["_merge_origin_key"] not in existing_artifacts
+        ]
+        return {
+            "source": snapshot["source"],
+            "destination": snapshot["destination"],
+            "source_event_count": len(snapshot["events"]),
+            "source_artifact_count": len(snapshot["artifacts"]),
+            "new_event_count": len(new_events),
+            "new_artifact_count": len(new_artifacts),
+            "duplicate_event_count": len(snapshot["events"]) - len(new_events),
+            "duplicate_artifact_count": (
+                len(snapshot["artifacts"]) - len(new_artifacts)
+            ),
+            "new_artifact_bytes": sum(
+                int(artifact["byte_count"]) for artifact in new_artifacts
+            ),
+            "already_merged": already_merged,
+            "has_new_content": bool(new_events or new_artifacts),
+        }
+
+    def merge_case(
+        self,
+        *,
+        source_investigation_id: str,
+        destination_investigation_id: str,
+        user_id: str,
+        username: str,
+    ) -> dict[str, Any]:
+        """Copy one closed accessible case into an owned open case."""
+        user_id = self._clean_identity(user_id, "user")
+        username = self._clean_identity(username, "operator")
+        snapshot = self._case_merge_snapshot(
+            source_investigation_id=source_investigation_id,
+            destination_investigation_id=destination_investigation_id,
+            user_id=user_id,
+        )
+        with self._connect() as connection:
+            existing_events, existing_artifacts = self._merge_origin_indexes(
+                connection, destination_investigation_id
+            )
+            already_merged = connection.execute(
+                """
+                SELECT 1 FROM investigation_merges
+                WHERE destination_investigation_id = ?
+                  AND source_investigation_id = ?
+                """,
+                (destination_investigation_id, source_investigation_id),
+            ).fetchone()
+        if already_merged:
+            raise InvestigationError(
+                "This source case has already been merged into that destination."
+            )
+
+        new_events = [
+            event
+            for event in snapshot["events"]
+            if event["_merge_origin_key"] not in existing_events
+        ]
+        new_artifacts = [
+            artifact
+            for artifact in snapshot["artifacts"]
+            if artifact["_merge_origin_key"] not in existing_artifacts
+        ]
+        if not new_events and not new_artifacts:
+            raise InvestigationError(
+                "The destination already contains every transferable record from this case."
+            )
+
+        destination = snapshot["destination"]
+        destination_path = str(destination["datastore_path"])
+        evidence_folder = f"{destination_path}/Evidence"
+        saved_artifacts: dict[tuple[str, str], dict[str, Any]] = {}
+        saved_relative_paths: list[str] = []
+        merge_committed = False
+        try:
+            for artifact in new_artifacts:
+                source_path = self.datastore.file(str(artifact["relative_path"]))
+                if (
+                    source_path.stat().st_size != int(artifact["byte_count"])
+                    or self._sha256_file(source_path) != str(artifact["sha256"])
+                ):
+                    raise InvestigationError(
+                        f"Evidence file {artifact['display_name']} has changed since it was retained."
+                    )
+                stored_name = self._available_evidence_name(
+                    destination_path, str(artifact["display_name"])
+                )
+                with source_path.open("rb") as source_stream:
+                    saved, byte_count = self.datastore.save_upload(
+                        evidence_folder,
+                        stored_name,
+                        source_stream,
+                        max_bytes=int(artifact["byte_count"]),
+                    )
+                digest = self._sha256_file(saved)
+                if (
+                    byte_count != int(artifact["byte_count"])
+                    or digest != str(artifact["sha256"])
+                ):
+                    raise InvestigationError(
+                        f"Evidence file {artifact['display_name']} failed verification."
+                    )
+                relative_path = self.datastore.relative(saved)
+                saved_relative_paths.append(relative_path)
+                saved_artifacts[artifact["_merge_origin_key"]] = {
+                    "id": f"art_{secrets.token_hex(12)}",
+                    "relative_path": relative_path,
+                }
+
+            now = time.time()
+            merge_id = f"mrg_{secrets.token_hex(12)}"
+            with self._connect() as connection, connection:
+                connection.execute("BEGIN IMMEDIATE")
+                source_row = connection.execute(
+                    """
+                    SELECT i.* FROM investigations i
+                    JOIN investigation_participants p
+                      ON p.investigation_id = i.id
+                    WHERE i.id = ? AND p.user_id = ?
+                    """,
+                    (source_investigation_id, user_id),
+                ).fetchone()
+                if not source_row:
+                    raise InvestigationError("Source case not found.")
+                if str(source_row["state"]) in OPEN_STATES:
+                    raise InvestigationError("Close the source case before merging it.")
+                destination_row = self._require_owner(
+                    connection, destination_investigation_id, user_id
+                )
+                if str(destination_row["state"]) not in OPEN_STATES:
+                    raise InvestigationError("The destination case must be open.")
+                if connection.execute(
+                    """
+                    SELECT 1 FROM investigation_merges
+                    WHERE destination_investigation_id = ?
+                      AND source_investigation_id = ?
+                    """,
+                    (destination_investigation_id, source_investigation_id),
+                ).fetchone():
+                    raise InvestigationError(
+                        "This source case has already been merged into that destination."
+                    )
+
+                current_events, current_artifacts = self._merge_origin_indexes(
+                    connection, destination_investigation_id
+                )
+                current_new_event_keys = {
+                    event["_merge_origin_key"]
+                    for event in snapshot["events"]
+                    if event["_merge_origin_key"] not in current_events
+                }
+                current_new_artifact_keys = {
+                    artifact["_merge_origin_key"]
+                    for artifact in snapshot["artifacts"]
+                    if artifact["_merge_origin_key"] not in current_artifacts
+                }
+                if current_new_event_keys != {
+                    event["_merge_origin_key"] for event in new_events
+                } or current_new_artifact_keys != {
+                    artifact["_merge_origin_key"] for artifact in new_artifacts
+                }:
+                    raise InvestigationError(
+                        "The destination changed while the merge was prepared. Review it again."
+                    )
+
+                destination_event_ids = dict(current_events)
+                for event in new_events:
+                    origin_key = event["_merge_origin_key"]
+                    event_id = self._insert_event(
+                        connection,
+                        investigation_id=destination_investigation_id,
+                        operation_id=self._merge_operation_id("event", origin_key),
+                        event_type=event["event_type"],
+                        tool_id=event["tool_id"],
+                        action=event["action"],
+                        outcome=event["outcome"],
+                        summary=event["summary"],
+                        targets=event["targets"],
+                        parameters=event["parameters"],
+                        metrics=event["metrics"],
+                        details=event["details"],
+                        started_at=float(event["started_at"]),
+                        completed_at=float(event["completed_at"]),
+                        created_by_user_id=event["created_by_user_id"],
+                        created_by_username=event["created_by_username"],
+                    )
+                    connection.execute(
+                        """
+                        UPDATE investigation_events
+                        SET report_placement = ?, important = ?, created_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            event["report_placement"],
+                            int(bool(event["important"])),
+                            float(event["created_at"]),
+                            event_id,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO investigation_event_origins (
+                            investigation_id, event_id, source_case_id,
+                            source_event_id
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            destination_investigation_id,
+                            event_id,
+                            origin_key[0],
+                            origin_key[1],
+                        ),
+                    )
+                    destination_event_ids[origin_key] = event_id
+
+                for artifact in new_artifacts:
+                    origin_key = artifact["_merge_origin_key"]
+                    saved_artifact = saved_artifacts[origin_key]
+                    source_event_key = artifact.get("_merge_event_origin_key")
+                    event_id = (
+                        destination_event_ids.get(source_event_key)
+                        if source_event_key is not None
+                        else None
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO investigation_artifacts (
+                            id, investigation_id, event_id, kind, display_name,
+                            relative_path, content_type, byte_count, sha256,
+                            report_placement, created_by_user_id,
+                            created_by_username, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            saved_artifact["id"],
+                            destination_investigation_id,
+                            event_id,
+                            artifact["kind"],
+                            artifact["display_name"],
+                            saved_artifact["relative_path"],
+                            artifact["content_type"],
+                            int(artifact["byte_count"]),
+                            artifact["sha256"],
+                            artifact["report_placement"],
+                            artifact["created_by_user_id"],
+                            artifact["created_by_username"],
+                            float(artifact["created_at"]),
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO investigation_artifact_origins (
+                            investigation_id, artifact_id, source_case_id,
+                            source_artifact_id
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            destination_investigation_id,
+                            saved_artifact["id"],
+                            origin_key[0],
+                            origin_key[1],
+                        ),
+                    )
+
+                duplicate_event_count = len(snapshot["events"]) - len(new_events)
+                duplicate_artifact_count = (
+                    len(snapshot["artifacts"]) - len(new_artifacts)
+                )
+                source_case_id = str(
+                    snapshot["source"].get("import_source_case_id")
+                    or source_investigation_id
+                )
+                connection.execute(
+                    """
+                    INSERT INTO investigation_merges (
+                        id, destination_investigation_id,
+                        source_investigation_id, source_case_id, source_title,
+                        event_count, artifact_count, duplicate_event_count,
+                        duplicate_artifact_count, merged_by_user_id,
+                        merged_by_username, merged_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        merge_id,
+                        destination_investigation_id,
+                        source_investigation_id,
+                        source_case_id,
+                        snapshot["source"]["title"],
+                        len(new_events),
+                        len(new_artifacts),
+                        duplicate_event_count,
+                        duplicate_artifact_count,
+                        user_id,
+                        username,
+                        now,
+                    ),
+                )
+                boundary_event_id = self._insert_event(
+                    connection,
+                    investigation_id=destination_investigation_id,
+                    operation_id=f"case-merge:{merge_id}",
+                    event_type="investigation.merged",
+                    tool_id="investigations.workspace",
+                    action="Case merged",
+                    outcome="info",
+                    summary=f'Merged "{snapshot["source"]["title"]}" into this case.',
+                    targets=[],
+                    parameters={"source_state": snapshot["source"]["state"]},
+                    metrics={
+                        "event_count": len(new_events),
+                        "evidence_count": len(new_artifacts),
+                        "duplicate_event_count": duplicate_event_count,
+                        "duplicate_evidence_count": duplicate_artifact_count,
+                    },
+                    details={
+                        "merge_id": merge_id,
+                        "source_investigation_id": source_investigation_id,
+                        "source_case_id": source_case_id,
+                        "source_title": snapshot["source"]["title"],
+                    },
+                    started_at=now,
+                    completed_at=now,
+                    created_by_user_id=user_id,
+                    created_by_username=username,
+                )
+                connection.execute(
+                    """
+                    UPDATE investigations SET updated_at = ? WHERE id = ?
+                    """,
+                    (now, destination_investigation_id),
+                )
+            merge_committed = True
+            return {
+                "destination": destination,
+                "source": snapshot["source"],
+                "merge_id": merge_id,
+                "boundary_event_id": boundary_event_id,
+                "event_count": len(new_events),
+                "artifact_count": len(new_artifacts),
+                "duplicate_event_count": duplicate_event_count,
+                "duplicate_artifact_count": duplicate_artifact_count,
+            }
+        except BaseException:
+            if not merge_committed:
+                for relative_path in reversed(saved_relative_paths):
+                    try:
+                        self.datastore.delete(relative_path)
+                    except (DatastoreError, OSError):
+                        pass
+            raise
 
     def add_participant(
         self,
@@ -1464,6 +1849,99 @@ class InvestigationStore:
                 return candidate
         raise InvestigationError("Unable to choose an unused evidence filename.")
 
+    def _case_merge_snapshot(
+        self,
+        *,
+        source_investigation_id: str,
+        destination_investigation_id: str,
+        user_id: str,
+    ) -> dict[str, Any]:
+        user_id = self._clean_identity(user_id, "user")
+        if source_investigation_id == destination_investigation_id:
+            raise InvestigationError("A case cannot be merged into itself.")
+        source = self.get_for_user(source_investigation_id, user_id)
+        if source["state"] in OPEN_STATES:
+            raise InvestigationError("Close the source case before merging it.")
+        destination = self.get_for_user(destination_investigation_id, user_id)
+        if not destination["can_manage_case"] or not destination["is_open"]:
+            raise InvestigationError("Choose an open destination case that you own.")
+
+        events = self.events_for_user(source_investigation_id, user_id)
+        event_keys_by_id: dict[str, tuple[str, str]] = {}
+        for event in events:
+            origin_key = (
+                str(event.get("origin_case_id") or source_investigation_id),
+                str(event.get("origin_event_id") or event["id"]),
+            )
+            event["_merge_origin_key"] = origin_key
+            event_keys_by_id[str(event["id"])] = origin_key
+
+        artifacts = self.artifacts_for_user(source_investigation_id, user_id)
+        for artifact in artifacts:
+            artifact["_merge_origin_key"] = (
+                str(artifact.get("origin_case_id") or source_investigation_id),
+                str(artifact.get("origin_artifact_id") or artifact["id"]),
+            )
+            artifact["_merge_event_origin_key"] = (
+                event_keys_by_id.get(str(artifact["event_id"]))
+                if artifact.get("event_id")
+                else None
+            )
+        return {
+            "source": source,
+            "destination": destination,
+            "events": events,
+            "artifacts": artifacts,
+        }
+
+    @staticmethod
+    def _merge_origin_indexes(
+        connection: sqlite3.Connection, destination_investigation_id: str
+    ) -> tuple[dict[tuple[str, str], str], set[tuple[str, str]]]:
+        event_rows = connection.execute(
+            """
+            SELECT e.id,
+                COALESCE(origins.source_case_id, e.investigation_id) AS source_case_id,
+                COALESCE(origins.source_event_id, e.id) AS source_event_id
+            FROM investigation_events e
+            LEFT JOIN investigation_event_origins origins
+              ON origins.event_id = e.id
+            WHERE e.investigation_id = ?
+            """,
+            (destination_investigation_id,),
+        ).fetchall()
+        artifact_rows = connection.execute(
+            """
+            SELECT
+                COALESCE(origins.source_case_id, a.investigation_id) AS source_case_id,
+                COALESCE(origins.source_artifact_id, a.id) AS source_artifact_id
+            FROM investigation_artifacts a
+            LEFT JOIN investigation_artifact_origins origins
+              ON origins.artifact_id = a.id
+            WHERE a.investigation_id = ?
+            """,
+            (destination_investigation_id,),
+        ).fetchall()
+        return (
+            {
+                (str(row["source_case_id"]), str(row["source_event_id"])): str(
+                    row["id"]
+                )
+                for row in event_rows
+            },
+            {
+                (str(row["source_case_id"]), str(row["source_artifact_id"]))
+                for row in artifact_rows
+            },
+        )
+
+    @staticmethod
+    def _merge_operation_id(kind: str, origin_key: tuple[str, str]) -> str:
+        digest = hashlib.sha256(
+            f"{origin_key[0]}\0{origin_key[1]}".encode("utf-8")
+        ).hexdigest()
+        return f"case-merge:{kind}:{digest}"
+
     def _require_owner(
         self, connection: sqlite3.Connection, investigation_id: str, user_id: str
     ) -> sqlite3.Row:
@@ -1724,9 +2202,30 @@ class InvestigationStore:
                 source_artifact_id TEXT NOT NULL,
                 UNIQUE(investigation_id, source_case_id, source_artifact_id)
             );
+            CREATE TABLE IF NOT EXISTS investigation_merges (
+                id TEXT PRIMARY KEY,
+                destination_investigation_id TEXT NOT NULL
+                    REFERENCES investigations(id) ON DELETE CASCADE,
+                source_investigation_id TEXT NOT NULL
+                    REFERENCES investigations(id) ON DELETE RESTRICT,
+                source_case_id TEXT NOT NULL,
+                source_title TEXT NOT NULL,
+                event_count INTEGER NOT NULL CHECK (event_count >= 0),
+                artifact_count INTEGER NOT NULL CHECK (artifact_count >= 0),
+                duplicate_event_count INTEGER NOT NULL
+                    CHECK (duplicate_event_count >= 0),
+                duplicate_artifact_count INTEGER NOT NULL
+                    CHECK (duplicate_artifact_count >= 0),
+                merged_by_user_id TEXT NOT NULL,
+                merged_by_username TEXT NOT NULL,
+                merged_at REAL NOT NULL,
+                UNIQUE(destination_investigation_id, source_investigation_id)
+            );
+            CREATE INDEX IF NOT EXISTS investigation_merges_source_idx
+                ON investigation_merges(source_investigation_id, merged_at DESC);
             INSERT OR IGNORE INTO investigation_meta(key, value)
-                VALUES ('schema_version', '3');
-            UPDATE investigation_meta SET value = '3' WHERE key = 'schema_version';
+                VALUES ('schema_version', '4');
+            UPDATE investigation_meta SET value = '4' WHERE key = 'schema_version';
             """
         )
         connection.commit()
