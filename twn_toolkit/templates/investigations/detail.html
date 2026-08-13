@@ -21,10 +21,10 @@
     <dl class="investigation-inline-stats">
       <div><dt>Started</dt><dd>{{ investigation.started_display }}</dd></div>
       <div><dt>Last activity</dt><dd>{{ investigation.updated_display }}</dd></div>
-      <div><dt>Operator</dt><dd>{{ investigation.owner_username }}</dd></div>
-      <div><dt>Evidence folder</dt><dd><code>{{ investigation.datastore_path }}</code></dd></div>
+      <div><dt>Owner</dt><dd>{{ investigation.owner_username }}</dd></div>
+      <div><dt>Team</dt><dd>{{ investigation.participant_count }} {{ 'operator' if investigation.participant_count == 1 else 'operators' }}</dd></div>
     </dl>
-    {% if investigation.is_open %}
+    {% if investigation.is_open and investigation.can_manage_case %}
       <div class="button-row investigation-state-actions">
         {% if investigation.is_recording %}
           <form method="post" action="{{ url_for('update_investigation_state', investigation_id=investigation.id) }}">
@@ -44,7 +44,7 @@
           <button class="secondary" type="submit">Close case</button>
         </form>
       </div>
-    {% elif investigation.state == 'completed' %}
+    {% elif investigation.state == 'completed' and investigation.can_manage_case %}
       <div class="investigation-reopen-action">
         <div class="investigation-reopen-copy">
           <strong>Case closed</strong>
@@ -55,7 +55,45 @@
           <button class="secondary" type="submit">Reopen case</button>
         </form>
       </div>
+    {% elif not investigation.can_manage_case %}
+      <div class="investigation-collaborator-state">
+        <strong>Shared case</strong>
+        <small>{{ investigation.owner_username }} controls recording, closure, and report contents.</small>
+      </div>
     {% endif %}
+  </section>
+
+  <section class="panel investigation-team-panel">
+    {% call section_header("Case team", "Every note, tool run, and evidence file is attributed to the operator who added it.", "Collaboration") %}
+      <span class="investigation-team-count">{{ investigation_participants|length }} {{ 'operator' if investigation_participants|length == 1 else 'operators' }}</span>
+    {% endcall %}
+    <div class="investigation-team-layout{% if not (investigation.can_manage_case and investigation.is_open and collaborator_candidates) %} single{% endif %}">
+      <div class="investigation-team-list" aria-label="Case participants">
+        {% for participant in investigation_participants %}
+          <div class="investigation-team-member">
+            <span class="investigation-team-avatar" aria-hidden="true">{{ participant.username[:1]|upper }}</span>
+            <span><strong>{{ participant.username }}</strong><small>{{ 'Case owner' if participant.is_owner else 'Collaborator' }}</small></span>
+            {% if investigation.can_manage_case and not participant.is_owner %}
+              <form method="post" action="{{ url_for('remove_investigation_participant', investigation_id=investigation.id, participant_user_id=participant.user_id) }}" onsubmit="return confirm('Remove {{ participant.username|e }} from this case? Their existing journal entries and evidence will remain attributed to them.');">
+                <button class="secondary compact" type="submit">Remove</button>
+              </form>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      {% if investigation.can_manage_case and investigation.is_open and collaborator_candidates %}
+        <form class="investigation-team-add" method="post" action="{{ url_for('add_investigation_participant', investigation_id=investigation.id) }}">
+          <label>Add collaborator
+            <select name="user_id" required>
+              <option value="">Choose an operator…</option>
+              {% for candidate in collaborator_candidates %}<option value="{{ candidate.id }}">{{ candidate.username }}</option>{% endfor %}
+            </select>
+            <small>Operators can participate in one open case at a time.</small>
+          </label>
+          <button type="submit">Add to case</button>
+        </form>
+      {% endif %}
+    </div>
   </section>
 
   {% if active_investigation_tab == 'journal' %}
@@ -136,7 +174,7 @@
       {% endcall %}
       <form method="post" action="{{ url_for('update_investigation_report_contents', investigation_id=investigation.id) }}" class="investigation-report-builder-form">
         <div class="investigation-report-selection-grid">
-          <fieldset>
+          <fieldset{% if not investigation.can_manage_case %} disabled{% endif %}>
             <legend>Timeline entries</legend>
             <p>Select the events that belong in the report timeline. Detailed diagnostic results are linked from their timeline entry.</p>
             <div class="investigation-report-choice-list">
@@ -152,7 +190,7 @@
               {% endfor %}
             </div>
           </fieldset>
-          <fieldset>
+          <fieldset{% if not investigation.can_manage_case %} disabled{% endif %}>
             <legend>Evidence appendix</legend>
             <p>Select the files to list in the evidence appendix and include as originals in the downloadable case package. Unselected files remain in the evidence library.</p>
             {% if investigation_artifacts %}
@@ -169,7 +207,7 @@
             {% endif %}
           </fieldset>
         </div>
-        <footer><p>Report choices remain editable after the case is closed. Source evidence does not.</p><button type="submit">Save report contents</button></footer>
+        <footer><p>{% if investigation.can_manage_case %}Report choices remain editable after the case is closed. Source evidence does not.{% else %}The case owner controls report inclusion; the shared journal and evidence remain available to every collaborator.{% endif %}</p>{% if investigation.can_manage_case %}<button type="submit">Save report contents</button>{% endif %}</footer>
       </form>
     </section>
     <section class="investigation-report-toolbar">
@@ -185,7 +223,7 @@
         <span class="eyebrow">Case report</span><h1>{{ investigation.title }}</h1>
         {% if investigation.description %}<p>{{ investigation.description }}</p>{% endif %}
         <dl class="investigation-report-meta">
-          <div><dt>Started</dt><dd>{{ investigation.started_display }}</dd></div><div><dt>Status</dt><dd>{{ investigation.state_label }}</dd></div><div><dt>Operator</dt><dd>{{ investigation.owner_username }}</dd></div><div><dt>Included</dt><dd>{{ report_events|length }} timeline {{ 'entry' if report_events|length == 1 else 'entries' }} · {{ report_artifacts|length }} {{ 'file' if report_artifacts|length == 1 else 'files' }}</dd></div>
+          <div><dt>Started</dt><dd>{{ investigation.started_display }}</dd></div><div><dt>Status</dt><dd>{{ investigation.state_label }}</dd></div><div><dt>Owner</dt><dd>{{ investigation.owner_username }}</dd></div><div><dt>Operators</dt><dd>{{ investigation.operator_names }}</dd></div><div><dt>Included</dt><dd>{{ report_events|length }} timeline {{ 'entry' if report_events|length == 1 else 'entries' }} · {{ report_artifacts|length }} {{ 'file' if report_artifacts|length == 1 else 'files' }}</dd></div>
         </dl>
       </header>
       <section class="investigation-report-timeline" id="case-timeline"><h2>Case timeline</h2>

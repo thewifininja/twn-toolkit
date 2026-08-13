@@ -2877,6 +2877,17 @@ button.danger:hover {
   color: color-mix(in srgb, #c9903a, var(--ink) 28%);
 }
 
+.investigation-access-role,
+.investigation-team-count {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.investigation-access-role {
+  margin-left: 8px;
+}
+
 .investigation-inline-stats,
 .investigation-card-stats,
 .investigation-report-meta,
@@ -2947,6 +2958,96 @@ button.danger:hover {
 .investigation-state-actions {
   justify-content: end;
   margin: 0;
+}
+
+.investigation-collaborator-state {
+  align-content: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: grid;
+  gap: 3px;
+  max-width: 340px;
+  padding: 10px 12px;
+}
+
+.investigation-collaborator-state small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.investigation-team-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.55fr);
+}
+
+.investigation-team-layout.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.investigation-team-list {
+  display: grid;
+  gap: 8px;
+}
+
+.investigation-team-member {
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.investigation-team-avatar {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 12%);
+  border: 1px solid color-mix(in srgb, var(--line), var(--brand-green) 30%);
+  border-radius: 999px;
+  color: var(--depth-primary);
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 900;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.investigation-team-member > span:nth-child(2) {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.investigation-team-member small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.investigation-team-add {
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.investigation-team-add label {
+  display: grid;
+  gap: 6px;
+}
+
+.investigation-team-add small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
 }
 
 .investigation-reopen-action {
@@ -3502,6 +3603,10 @@ button.danger:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .investigation-team-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .active-investigation-banner {
     align-items: stretch;
     display: grid;
@@ -3588,6 +3693,19 @@ button.danger:hover {
     width: 100%;
   }
 
+  .investigation-team-member {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .investigation-team-member form {
+    grid-column: 1 / -1;
+  }
+
+  .investigation-team-member button,
+  .investigation-team-add button {
+    width: 100%;
+  }
+
   .investigation-artifact-card {
     align-items: start;
     grid-template-columns: auto minmax(0, 1fr);
@@ -3641,6 +3759,7 @@ button.danger:hover {
   .investigation-detail-page > .workspace-tabs,
   .investigation-detail-page > .workspace-header,
   .investigation-overview-strip,
+  .investigation-team-panel,
   .investigation-report-builder,
   .investigation-report-toolbar,
   .live-tool-tray {

@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 import zipfile
@@ -238,7 +239,7 @@ class InvestigationStoreTests(unittest.TestCase):
             [diagnostic["id"]],
         )
 
-    def test_investigations_are_owner_scoped_and_database_is_owner_only(self) -> None:
+    def test_investigations_are_explicitly_shared_and_database_is_owner_only(self) -> None:
         investigation = self.store.create(
             owner_user_id="operator-1",
             owner_username="nelson",
@@ -247,6 +248,68 @@ class InvestigationStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(InvestigationError, "not found"):
             self.store.get_for_user(investigation["id"], "operator-2")
         self.assertEqual(self.store.list_for_user("operator-2"), [])
+
+        participants = self.store.add_participant(
+            investigation["id"],
+            "operator-1",
+            "nelson",
+            "operator-2",
+            "morgan",
+        )
+        self.assertEqual(
+            [(item["username"], item["role"]) for item in participants],
+            [("nelson", "owner"), ("morgan", "collaborator")],
+        )
+        shared = self.store.get_for_user(investigation["id"], "operator-2")
+        self.assertEqual(shared["access_role"], "collaborator")
+        self.assertEqual(shared["participant_count"], 2)
+        self.assertEqual(
+            self.store.active_for_user("operator-2")["id"], investigation["id"]
+        )
+        note = self.store.add_note(
+            investigation["id"], "operator-2", "morgan", "Validated from WAN."
+        )
+        self.assertEqual(note["created_by_username"], "morgan")
+        recorded = self.store.record_for_active(
+            user_id="operator-2",
+            username="morgan",
+            operation_id="shared-dns-run",
+            event_type="diagnostic.completed",
+            tool_id="tools.dns_response",
+            action="DNS lookup",
+            outcome="succeeded",
+            summary="Resolved from the collaborator session.",
+            targets={"hosts": ["example.com"]},
+            parameters={},
+            metrics={"successful": 1},
+            details={},
+            started_at=20,
+            completed_at=21,
+        )
+        self.assertEqual(recorded["created_by_user_id"], "operator-2")
+        with self.assertRaisesRegex(InvestigationError, "Case not found"):
+            self.store.set_state(
+                investigation["id"], "operator-2", "morgan", "paused"
+            )
+        with self.assertRaisesRegex(InvestigationError, "current case"):
+            self.store.create(
+                owner_user_id="operator-2",
+                owner_username="morgan",
+                title="Conflicting case",
+            )
+
+        self.store.remove_participant(
+            investigation["id"], "operator-1", "nelson", "operator-2"
+        )
+        with self.assertRaisesRegex(InvestigationError, "not found"):
+            self.store.get_for_user(investigation["id"], "operator-2")
+        retained = self.store.events_for_user(investigation["id"], "operator-1")
+        self.assertEqual(
+            next(event for event in retained if event["id"] == note["id"])[
+                "created_by_username"
+            ],
+            "morgan",
+        )
         self.assertEqual(os.stat(self.store.path).st_mode & 0o777, 0o600)
 
     def test_evidence_is_hashed_and_collision_safe_in_managed_datastore_folder(self) -> None:
@@ -281,6 +344,23 @@ class InvestigationStoreTests(unittest.TestCase):
         self.assertEqual(len(self.store.artifacts_for_user(investigation["id"], "operator-1")), 2)
         events = self.store.events_for_user(investigation["id"], "operator-1")
         self.assertEqual(sum(event["event_type"] == "evidence.added" for event in events), 2)
+
+    def test_schema_upgrade_adds_existing_case_owners_as_participants(self) -> None:
+        investigation = self.store.create(
+            owner_user_id="operator-1",
+            owner_username="nelson",
+            title="Existing case",
+        )
+        with sqlite3.connect(self.store.path) as connection:
+            connection.execute("DROP TABLE investigation_participants")
+            connection.execute(
+                "UPDATE investigation_meta SET value = '1' WHERE key = 'schema_version'"
+            )
+        migrated = InvestigationStore(self.temporary.name).get_for_user(
+            investigation["id"], "operator-1"
+        )
+        self.assertEqual(migrated["access_role"], "owner")
+        self.assertEqual(migrated["participant_count"], 1)
 
 
 class InvestigationRouteTests(unittest.TestCase):
@@ -880,7 +960,7 @@ class InvestigationRouteTests(unittest.TestCase):
                 len(store.artifacts_for_user(investigation["id"], "test-user")), 1
             )
 
-    def test_access_profiles_gate_routes_and_owner_scope_hides_other_journals(self) -> None:
+    def test_access_profiles_gate_routes_and_explicit_case_collaboration(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)
             client = app.test_client()
@@ -927,6 +1007,16 @@ class InvestigationRouteTests(unittest.TestCase):
             self.assertIsNotNone(investigation)
             investigation_url = f"/investigations/{investigation['id']}"
             self.assertEqual(client.get(investigation_url).status_code, 200)
+            alice_id = auth.get_user("alice")["id"]
+            bob_id = auth.get_user("bob")["id"]
+            added = client.post(
+                f"{investigation_url}/participants",
+                data={"user_id": bob_id},
+                follow_redirects=True,
+            )
+            self.assertEqual(added.status_code, 200)
+            self.assertIn(b"Added bob to the case", added.data)
+            self.assertIn(b"Case team", added.data)
             self.assertNotIn(b"Open folder in Datastore", client.get(
                 f"{investigation_url}/evidence"
             ).data)
@@ -936,7 +1026,70 @@ class InvestigationRouteTests(unittest.TestCase):
                 "/login",
                 data={"username": "bob", "password": "another different password"},
             )
+            shared = client.get(investigation_url)
+            self.assertEqual(shared.status_code, 200)
+            self.assertIn(b"Shared case", shared.data)
+            self.assertIn(b"alice controls recording", shared.data)
+            self.assertNotIn(b"Close case", shared.data)
+            self.assertEqual(
+                client.post(
+                    f"{investigation_url}/notes",
+                    data={"note": "Bob confirmed the failure from another VLAN."},
+                ).status_code,
+                302,
+            )
+            self.assertEqual(
+                client.post(
+                    f"{investigation_url}/state", data={"state": "paused"}
+                ).status_code,
+                403,
+            )
+            self.assertEqual(
+                client.post(
+                    f"{investigation_url}/report/contents", data={}
+                ).status_code,
+                403,
+            )
+            collaborator_report = client.get(f"{investigation_url}/report")
+            self.assertEqual(collaborator_report.status_code, 200)
+            self.assertIn(b"The case owner controls report inclusion", collaborator_report.data)
+            self.assertNotIn(b"Save report contents", collaborator_report.data)
+            store = InvestigationStore(instance)
+            self.assertEqual(store.active_for_user(bob_id)["id"], investigation["id"])
+            bob_note = next(
+                event
+                for event in store.events_for_user(investigation["id"], bob_id)
+                if event["summary"]
+                == "Bob confirmed the failure from another VLAN."
+            )
+            self.assertEqual(bob_note["created_by_username"], "bob")
+
+            client.post("/logout")
+            client.post(
+                "/login",
+                data={"username": "alice", "password": "a different long password"},
+            )
+            removed = client.post(
+                f"{investigation_url}/participants/{bob_id}/remove",
+                follow_redirects=True,
+            )
+            self.assertEqual(removed.status_code, 200)
+            self.assertIn(b"Removed the collaborator", removed.data)
+
+            client.post("/logout")
+            client.post(
+                "/login",
+                data={"username": "bob", "password": "another different password"},
+            )
             self.assertEqual(client.get(investigation_url).status_code, 404)
+            self.assertEqual(store.active_for_user(bob_id), None)
+            retained = store.events_for_user(investigation["id"], alice_id)
+            self.assertEqual(
+                next(event for event in retained if event["id"] == bob_note["id"])[
+                    "created_by_username"
+                ],
+                "bob",
+            )
 
             client.post("/logout")
             client.post(
@@ -1070,6 +1223,16 @@ class InvestigationRouteTests(unittest.TestCase):
                 self.assertEqual(archive.read("evidence/status.txt"), b"show system status")
             self.assertEqual(manifest["schema"], "twn.case-package.v1")
             self.assertEqual(manifest["case"]["id"], investigation_id)
+            self.assertEqual(
+                manifest["case"]["operators"],
+                [
+                    {
+                        "user_id": "test-user",
+                        "username": "test-user",
+                        "role": "owner",
+                    }
+                ],
+            )
             self.assertEqual(manifest["report"]["byte_count"], len(packaged_pdf))
             self.assertEqual(
                 manifest["report"]["sha256"],

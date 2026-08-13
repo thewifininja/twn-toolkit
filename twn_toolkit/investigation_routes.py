@@ -17,6 +17,7 @@ from flask import (
 )
 
 from .audit import annotate_audit_event
+from .auth import AuthStore
 from .datastore import DatastoreError, format_bytes
 from .investigation_exports import (
     InvestigationExportError,
@@ -87,13 +88,36 @@ def register_investigation_routes(
         investigation_id: str, *, active_tab: str
     ) -> str:
         investigation, events, artifacts, report = load_report(investigation_id)
+        participants = list(investigation.get("participants", []))
+        participant_user_ids = [str(item["user_id"]) for item in participants]
+        auth_store = AuthStore(app.instance_path)
+        participant_ids = {str(item["user_id"]) for item in participants}
+        collaborator_candidates = []
+        if investigation.get("can_manage_case") and investigation.get("is_open"):
+            for candidate in auth_store.users():
+                candidate_id = str(candidate.get("id", ""))
+                allowed = auth_store.effective_tool_ids(candidate)
+                if (
+                    candidate_id
+                    and candidate_id not in participant_ids
+                    and candidate.get("enabled", True)
+                    and (
+                        candidate.get("is_admin")
+                        or allowed is None
+                        or "investigations.workspace" in allowed
+                    )
+                ):
+                    collaborator_candidates.append(candidate)
         live_store = LiveToolStore(app.instance_path)
         remote_manager = app.extensions.get("remote_session_manager")
         active_remote_session_count = (
-            len(
-                remote_manager.sessions_for_investigation(
-                    investigation_id, user_id=user_id()
+            sum(
+                len(
+                    remote_manager.sessions_for_investigation(
+                        investigation_id, user_id=participant_user_id
+                    )
                 )
+                for participant_user_id in participant_user_ids
             )
             if isinstance(remote_manager, RemoteSessionManager)
             else 0
@@ -106,25 +130,39 @@ def register_investigation_routes(
             **report,
             investigation_tabs=tabs(investigation_id, active_tab),
             active_investigation_tab=active_tab,
-            active_ping_session_count=live_store.ping_session_count_for_investigation(
-                investigation_id,
-                user_id=user_id(),
-            ),
-            active_snmp_session_count=live_store.snmp_session_count_for_investigation(
-                investigation_id,
-                user_id=user_id(),
-            ),
-            active_packet_capture_count=len(
-                PacketCaptureStore(app.instance_path).active_for_investigation(
+            investigation_participants=participants,
+            collaborator_candidates=collaborator_candidates,
+            active_ping_session_count=sum(
+                live_store.ping_session_count_for_investigation(
                     investigation_id,
-                    user_id=user_id(),
+                    user_id=participant_user_id,
                 )
+                for participant_user_id in participant_user_ids
             ),
-            active_iperf_server_count=len(
-                IperfServerStore(app.instance_path).active_for_investigation(
+            active_snmp_session_count=sum(
+                live_store.snmp_session_count_for_investigation(
                     investigation_id,
-                    user_id=user_id(),
+                    user_id=participant_user_id,
                 )
+                for participant_user_id in participant_user_ids
+            ),
+            active_packet_capture_count=sum(
+                len(
+                    PacketCaptureStore(app.instance_path).active_for_investigation(
+                        investigation_id,
+                        user_id=participant_user_id,
+                    )
+                )
+                for participant_user_id in participant_user_ids
+            ),
+            active_iperf_server_count=sum(
+                len(
+                    IperfServerStore(app.instance_path).active_for_investigation(
+                        investigation_id,
+                        user_id=participant_user_id,
+                    )
+                )
+                for participant_user_id in participant_user_ids
             ),
             active_remote_session_count=active_remote_session_count,
             format_bytes=format_bytes,
@@ -139,6 +177,11 @@ def register_investigation_routes(
         dict[str, object],
     ]:
         investigation = investigation_or_404(investigation_id)
+        participants = store.participants_for_user(investigation_id, user_id())
+        investigation["participants"] = participants
+        investigation["operator_names"] = ", ".join(
+            str(item["username"]) for item in participants
+        )
         events = store.events_for_user(investigation_id, user_id())
         artifacts = store.artifacts_for_user(investigation_id, user_id())
         return (
@@ -216,9 +259,157 @@ def register_investigation_routes(
             )
         )
 
+    @app.post("/investigations/<investigation_id>/participants")
+    def add_investigation_participant(investigation_id: str):
+        investigation = investigation_or_404(investigation_id)
+        if not investigation.get("can_manage_case"):
+            abort(403)
+        auth_store = AuthStore(app.instance_path)
+        participant_id = request.form.get("user_id", "").strip()
+        participant = next(
+            (
+                item
+                for item in auth_store.users()
+                if str(item.get("id", "")) == participant_id
+            ),
+            None,
+        )
+        if not participant or not participant.get("enabled", True):
+            flash("Choose an active toolkit user.", "error")
+        else:
+            allowed = auth_store.effective_tool_ids(participant)
+            if not (
+                participant.get("is_admin")
+                or allowed is None
+                or "investigations.workspace" in allowed
+            ):
+                flash("That user does not have access to Investigations.", "error")
+            else:
+                try:
+                    store.add_participant(
+                        investigation_id,
+                        user_id(),
+                        str(user().get("username", "")),
+                        participant_id,
+                        str(participant.get("username", "")),
+                    )
+                except InvestigationError as exc:
+                    flash(str(exc), "error")
+                else:
+                    annotate_audit_event(
+                        category="Investigations",
+                        action="investigation.participant_added",
+                        summary=(
+                            f"Added {participant['username']} to case "
+                            f"{investigation['title']}."
+                        ),
+                        resource_type="investigation",
+                        resource_id=investigation_id,
+                        resource_name=str(investigation["title"]),
+                        details={
+                            "participant user ID": participant_id,
+                            "participant username": participant["username"],
+                        },
+                    )
+                    flash(
+                        f"Added {participant['username']} to the case.", "success"
+                    )
+        return redirect(
+            url_for("investigation_detail", investigation_id=investigation_id)
+        )
+
+    @app.post(
+        "/investigations/<investigation_id>/participants/<participant_user_id>/remove"
+    )
+    def remove_investigation_participant(
+        investigation_id: str, participant_user_id: str
+    ):
+        investigation = investigation_or_404(investigation_id)
+        if not investigation.get("can_manage_case"):
+            abort(403)
+        participant = next(
+            (
+                item
+                for item in store.participants_for_user(
+                    investigation_id, user_id()
+                )
+                if str(item["user_id"]) == participant_user_id
+            ),
+            None,
+        )
+        if not participant:
+            flash("That collaborator is not on this case.", "error")
+            return redirect(
+                url_for("investigation_detail", investigation_id=investigation_id)
+            )
+        try:
+            stop_and_finalize_case_ping_sessions(
+                app.instance_path,
+                investigation_id=investigation_id,
+                user_id=participant_user_id,
+            )
+            stop_and_finalize_case_snmp_sessions(
+                app.instance_path,
+                investigation_id=investigation_id,
+                user_id=participant_user_id,
+            )
+            stop_and_finalize_case_packet_captures(
+                app.instance_path,
+                investigation_id=investigation_id,
+                user_id=participant_user_id,
+            )
+            stop_and_finalize_case_iperf_servers(
+                app.instance_path,
+                investigation_id=investigation_id,
+                user_id=participant_user_id,
+            )
+            remote_manager = app.extensions.get("remote_session_manager")
+            if isinstance(remote_manager, RemoteSessionManager):
+                remote_manager.stop_case_sessions(
+                    investigation_id=investigation_id,
+                    user_id=participant_user_id,
+                )
+            store.remove_participant(
+                investigation_id,
+                user_id(),
+                str(user().get("username", "")),
+                participant_user_id,
+            )
+        except (
+            InvestigationError,
+            PingInvestigationError,
+            SnmpInvestigationError,
+            PacketCaptureInvestigationError,
+            IperfInvestigationError,
+            RemoteSessionError,
+        ) as exc:
+            flash(str(exc), "error")
+        else:
+            annotate_audit_event(
+                category="Investigations",
+                action="investigation.participant_removed",
+                summary=(
+                    f"Removed {(participant or {}).get('username', participant_user_id)} "
+                    f"from case {investigation['title']}."
+                ),
+                resource_type="investigation",
+                resource_id=investigation_id,
+                resource_name=str(investigation["title"]),
+                details={
+                    "participant user ID": participant_user_id,
+                    "participant username": (participant or {}).get("username", ""),
+                },
+            )
+            flash("Removed the collaborator from the case.", "success")
+        return redirect(
+            url_for("investigation_detail", investigation_id=investigation_id)
+        )
+
     @app.post("/investigations/<investigation_id>/state")
     def update_investigation_state(investigation_id: str):
         investigation = investigation_or_404(investigation_id)
+        if not investigation.get("can_manage_case"):
+            abort(403)
         state = request.form.get("state", "").strip()
         reopening = investigation["state"] == "completed" and state == "paused"
         ping_result = {"stopped": 0, "finalized": 0}
@@ -228,32 +419,54 @@ def register_investigation_routes(
         remote_result = {"stopped": 0, "finalized": 0}
         try:
             if state == "completed":
-                ping_result = stop_and_finalize_case_ping_sessions(
-                    app.instance_path,
-                    investigation_id=investigation_id,
-                    user_id=user_id(),
-                )
-                snmp_result = stop_and_finalize_case_snmp_sessions(
-                    app.instance_path,
-                    investigation_id=investigation_id,
-                    user_id=user_id(),
-                )
-                capture_result = stop_and_finalize_case_packet_captures(
-                    app.instance_path,
-                    investigation_id=investigation_id,
-                    user_id=user_id(),
-                )
-                iperf_result = stop_and_finalize_case_iperf_servers(
-                    app.instance_path,
-                    investigation_id=investigation_id,
-                    user_id=user_id(),
-                )
-                remote_manager = app.extensions.get("remote_session_manager")
-                if isinstance(remote_manager, RemoteSessionManager):
-                    remote_result = remote_manager.stop_case_sessions(
-                        investigation_id=investigation_id,
-                        user_id=user_id(),
-                    )
+                for participant in store.participants_for_user(
+                    investigation_id, user_id()
+                ):
+                    participant_user_id = str(participant["user_id"])
+                    for aggregate, result in (
+                        (
+                            ping_result,
+                            stop_and_finalize_case_ping_sessions(
+                                app.instance_path,
+                                investigation_id=investigation_id,
+                                user_id=participant_user_id,
+                            ),
+                        ),
+                        (
+                            snmp_result,
+                            stop_and_finalize_case_snmp_sessions(
+                                app.instance_path,
+                                investigation_id=investigation_id,
+                                user_id=participant_user_id,
+                            ),
+                        ),
+                        (
+                            capture_result,
+                            stop_and_finalize_case_packet_captures(
+                                app.instance_path,
+                                investigation_id=investigation_id,
+                                user_id=participant_user_id,
+                            ),
+                        ),
+                        (
+                            iperf_result,
+                            stop_and_finalize_case_iperf_servers(
+                                app.instance_path,
+                                investigation_id=investigation_id,
+                                user_id=participant_user_id,
+                            ),
+                        ),
+                    ):
+                        aggregate["stopped"] += result["stopped"]
+                        aggregate["finalized"] += result["finalized"]
+                    remote_manager = app.extensions.get("remote_session_manager")
+                    if isinstance(remote_manager, RemoteSessionManager):
+                        result = remote_manager.stop_case_sessions(
+                            investigation_id=investigation_id,
+                            user_id=participant_user_id,
+                        )
+                        remote_result["stopped"] += result["stopped"]
+                        remote_result["finalized"] += result["finalized"]
             updated = store.set_state(
                 investigation_id,
                 user_id(),
@@ -493,6 +706,8 @@ def register_investigation_routes(
     @app.post("/investigations/<investigation_id>/report/contents")
     def update_investigation_report_contents(investigation_id: str):
         investigation = investigation_or_404(investigation_id)
+        if not investigation.get("can_manage_case"):
+            abort(403)
         try:
             counts = store.set_report_contents(
                 investigation_id,

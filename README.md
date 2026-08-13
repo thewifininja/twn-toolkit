@@ -214,14 +214,18 @@ The sidebar and Network Tools page use the same functional organization.
 
 ### Investigations
 
-An operator can open one case at a time in the Investigations workspace and
-carry its recording context across toolkit pages. Finite network diagnostics,
+An operator can participate in one open case at a time in the Investigations
+workspace and carry its recording context across toolkit pages. A case owner
+can add other eligible toolkit users so multiple operators can troubleshoot the
+same issue simultaneously. Finite network diagnostics,
 one-off SNMP polls, interface monitoring, certificate inspection, persistent
 Ping, remote SSH terminals, packet capture, managed iPerf3 listeners, command/transfer runs,
 selected vendor workflows, and other intentional tool actions retain safe
 structured events or generated evidence. Operators can also:
 
 - pause automatic capture without closing the case;
+- collaborate in one shared journal with every action attributed to its actual
+  operator;
 - add timestamped notes while recording is active or paused;
 - upload collision-safe evidence files to a managed per-case Datastore
   folder with retained size, content type, and SHA-256 metadata;
@@ -233,8 +237,10 @@ structured events or generated evidence. Operators can also:
 - download a ZIP containing that PDF, the selected original evidence files,
   and a manifest with sizes, timestamps, and SHA-256 hashes.
 
-Investigations are owner-scoped and access-profile controlled. Metadata lives in
-owner-only `instance/investigations.sqlite3`; files live below
+Investigations are explicitly participant-scoped and access-profile controlled.
+The owner manages case state, membership, and report presentation; collaborators
+can add notes, evidence, and supported tool results. Metadata lives in owner-only
+`instance/investigations.sqlite3`; files live below
 `instance/datastore/Investigations/`. Closed case journals and evidence are
 read-only; report inclusion remains editable because it is presentation
 metadata only. See [Investigation journals](docs/investigations.md) for the

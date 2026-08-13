@@ -195,7 +195,8 @@ def _title_story(
     meta = [
         ("STARTED", investigation["started_display"]),
         ("STATUS", investigation["state_label"]),
-        ("OPERATOR", investigation["owner_username"]),
+        ("OWNER", investigation["owner_username"]),
+        ("OPERATORS", investigation.get("operator_names", investigation["owner_username"])),
         (
             "INCLUDED",
             f"{event_count} timeline {_word(event_count, 'entry', 'entries')} | "
@@ -211,7 +212,7 @@ def _title_story(
     ]
     table = Table(
         [[cell for cell in cells]],
-        colWidths=[_PAGE_WIDTH / 4] * 4,
+        colWidths=[_PAGE_WIDTH / len(cells)] * len(cells),
         style=TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, -1), _SOFT),
@@ -434,6 +435,14 @@ def _case_manifest(
             "description": investigation["description"],
             "state": investigation["state"],
             "operator": investigation["owner_username"],
+            "operators": [
+                {
+                    "user_id": participant["user_id"],
+                    "username": participant["username"],
+                    "role": participant["role"],
+                }
+                for participant in investigation.get("participants", [])
+            ],
             "started_at": _iso_time(investigation["started_at"]),
             "ended_at": (
                 _iso_time(investigation["ended_at"])
