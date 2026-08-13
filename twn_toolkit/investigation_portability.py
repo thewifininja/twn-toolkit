@@ -172,7 +172,11 @@ def build_portable_case_archive(
 
 def load_portable_case_archive(stream: BinaryIO) -> PortableCaseArchive:
     """Copy and fully validate an untrusted portable-case upload."""
-    copied = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024, mode="w+b")
+    # Python 3.10's SpooledTemporaryFile does not expose the complete seekable
+    # file API expected by zipfile. Always cross the untrusted upload boundary
+    # into a real temporary file so archive validation behaves identically on
+    # every supported Python version without retaining large cases in memory.
+    copied = tempfile.TemporaryFile(mode="w+b")
     digest = hashlib.sha256()
     total = 0
     try:
