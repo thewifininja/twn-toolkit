@@ -244,6 +244,22 @@ class HomePageTests(unittest.TestCase):
             administration.index(b">Updates &amp; Recovery</span>"),
         )
 
+    def test_sidebar_flattens_single_tool_categories(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.testing = True
+            client = app.test_client()
+
+            page = client.get("/investigations").data.decode()
+
+        singleton = page.split(
+            '<div class="side-nav-section side-nav-singleton">', 1
+        )[1].split("</div>", 1)[0]
+        self.assertIn('active" href="/investigations"', singleton)
+        self.assertEqual(singleton.count(">Investigations</span>"), 1)
+        self.assertIn("Add Investigations to favorites", singleton)
+        self.assertNotIn("<summary", singleton)
+
     def test_profile_backup_moves_from_settings_to_updates_and_recovery(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)

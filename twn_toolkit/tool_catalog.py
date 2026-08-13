@@ -106,6 +106,13 @@ TOOL_CATEGORIES = [
         "endpoint": "tools.index",
     },
     {
+        "id": "investigations",
+        "icon": "◎",
+        "label": "Investigations",
+        "description": "Durable troubleshooting journals, evidence, and reports.",
+        "endpoint": "investigations",
+    },
+    {
         "id": "automation",
         "icon": "⚙",
         "label": "Automation",
@@ -144,9 +151,25 @@ def build_registry() -> ToolRegistry:
 
     # Import lazily here so registration modules can import ToolLink/ToolRegistry
     # from this module without creating a circular import during class definition.
-    from .tool_modules import admin, automation, fortiauthenticator, fortigate, local, network
+    from .tool_modules import (
+        admin,
+        automation,
+        fortiauthenticator,
+        fortigate,
+        investigations,
+        local,
+        network,
+    )
 
-    for module in (fortigate, fortiauthenticator, network, automation, local, admin):
+    for module in (
+        fortigate,
+        fortiauthenticator,
+        investigations,
+        network,
+        automation,
+        local,
+        admin,
+    ):
         module.register_tools(registry)
     return registry
 

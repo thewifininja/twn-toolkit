@@ -136,6 +136,15 @@ New tools should inherit the current visual language:
 
 ## Activity and audit expectations
 
+Every registered tool must also receive an investigation disposition in
+`twn_toolkit/investigation_policy.py`. Use finite capture for intentional bounded
+results, lifecycle capture for persistent sessions, action capture for
+consequential external changes, explicit capture when the operator must establish
+the evidence relationship, and excluded only for navigation/configuration that
+is not troubleshooting evidence. Automatic evidence modes require a report
+presentation in `twn_toolkit/investigation_reporting.py`; registry tests enforce
+both decisions. Never copy credentials or unbounded raw payloads into event JSON.
+
 Every new endpoint that accepts a mutating HTTP method must be classified in
 `twn_toolkit/audit_policy.py`. The route-registry audit test is the enforcement
 boundary: the pending set is a temporary burn-down list and should remain empty

@@ -42,7 +42,15 @@
       const upload = await measureUpload(controller.signal);
       values.upload.textContent = formatSpeed(upload.speed);
 
-      await recordCompletion(download.bytes, upload.bytes);
+      const journal = await recordCompletion({
+        downloadBytes: download.bytes,
+        uploadBytes: upload.bytes,
+        downloadMbps: download.speed,
+        uploadMbps: upload.speed,
+        latencyMs: latency.average,
+        jitterMs: latency.jitter,
+      });
+      showCaseRecording(journal);
 
       setProgress(100);
       phase.textContent = "Complete";
@@ -146,18 +154,35 @@
     };
   }
 
-  async function recordCompletion(downloadBytes, uploadBytes) {
-    if (!root.dataset.activityUrl) return;
+  async function recordCompletion(result) {
+    if (!root.dataset.activityUrl) return null;
     try {
-      await fetch(root.dataset.activityUrl, {
+      const response = await fetch(root.dataset.activityUrl, {
         method: "POST",
         cache: "no-store",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({download_bytes: downloadBytes, upload_bytes: uploadBytes}),
+        body: JSON.stringify({
+          download_bytes: result.downloadBytes,
+          upload_bytes: result.uploadBytes,
+          download_mbps: result.downloadMbps,
+          upload_mbps: result.uploadMbps,
+          latency_ms: result.latencyMs,
+          jitter_ms: result.jitterMs,
+        }),
       });
+      return response.ok ? await response.json() : null;
     } catch (_error) {
       // Metrics must never turn a completed speed test into a visible failure.
+      return null;
     }
+  }
+
+  function showCaseRecording(result) {
+    const notice = document.getElementById("speed-case-recorded");
+    const link = document.getElementById("speed-case-link");
+    if (!notice || !result?.case_recorded || !result.investigation_id) return;
+    link.href = `/investigations/${encodeURIComponent(result.investigation_id)}`;
+    notice.hidden = false;
   }
 
   function randomPayload(size) {
@@ -227,5 +252,7 @@
     phase.textContent = "Starting";
     setActiveMeter("");
     setProgress(0);
+    const notice = document.getElementById("speed-case-recorded");
+    if (notice) notice.hidden = true;
   }
 })();

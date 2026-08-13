@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import math
 import os
+import secrets
+import time
 
 from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
 
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run, suppress_audit_event
+from .investigation_context import record_current_investigation_event
 from .route_utils import disable_client_caching
 
 SPEED_TEST_CHUNK_SIZE = 256 * 1024
@@ -74,6 +78,8 @@ def register_speed_test_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.post("/speed-test/activity")
     def speed_test_activity():
+        operation_id = f"speed-test:{secrets.token_hex(12)}"
+        journal_started_at = time.time()
         payload = request.get_json(silent=True) or {}
         try:
             download_bytes = int(payload.get("download_bytes", 0))
@@ -85,9 +91,11 @@ def register_speed_test_routes(tools_bp: Blueprint) -> None:
                 tool_name="speed test",
                 outcome="failed",
             )
-            return jsonify({"error": "Speed test byte counts must be whole numbers."}), 400
+            return jsonify({"error": "Speed test results must be numeric."}), 400
         max_reported_bytes = 100 * 1024 * 1024 * 1024
-        if not 0 <= download_bytes <= max_reported_bytes or not 0 <= upload_bytes <= max_reported_bytes:
+        if not 0 <= download_bytes <= max_reported_bytes or not (
+            0 <= upload_bytes <= max_reported_bytes
+        ):
             annotate_tool_run(
                 category="Network tools",
                 action_namespace="speed_test",
@@ -95,6 +103,33 @@ def register_speed_test_routes(tools_bp: Blueprint) -> None:
                 outcome="failed",
             )
             return jsonify({"error": "Speed test byte counts are outside the allowed range."}), 400
+        measurement_keys = (
+            "download_mbps",
+            "upload_mbps",
+            "latency_ms",
+            "jitter_ms",
+        )
+        raw_measurements = [payload.get(key) for key in measurement_keys]
+        measurements = None
+        if any(value is not None for value in raw_measurements):
+            try:
+                measurements = tuple(float(value) for value in raw_measurements)
+            except (TypeError, ValueError):
+                measurements = ()
+        if measurements is not None and (
+            len(measurements) != len(measurement_keys)
+            or not all(
+                math.isfinite(value) and 0 <= value <= 1_000_000
+                for value in measurements
+            )
+        ):
+            annotate_tool_run(
+                category="Network tools",
+                action_namespace="speed_test",
+                tool_name="speed test",
+                outcome="failed",
+            )
+            return jsonify({"error": "Speed test measurements are outside the allowed range."}), 400
         total_bytes = download_bytes + upload_bytes
         record_current_activity(
             "Throughput",
@@ -112,4 +147,50 @@ def register_speed_test_routes(tools_bp: Blueprint) -> None:
                 "upload byte count": upload_bytes,
             },
         )
-        return jsonify({"ok": True})
+        metrics = {
+            "download_bytes": download_bytes,
+            "upload_bytes": upload_bytes,
+        }
+        if measurements is not None:
+            download_mbps, upload_mbps, latency_ms, jitter_ms = measurements
+            metrics.update(
+                {
+                    "download_mbps": round(download_mbps, 2),
+                    "upload_mbps": round(upload_mbps, 2),
+                    "latency_ms": round(latency_ms, 1),
+                    "jitter_ms": round(jitter_ms, 1),
+                }
+            )
+            journal_summary = (
+                f"Measured {metrics['download_mbps']} Mbps download and "
+                f"{metrics['upload_mbps']} Mbps upload between the browser and "
+                f"toolkit server, with {metrics['latency_ms']} ms latency."
+            )
+        else:
+            journal_summary = (
+                f"Completed a browser-to-toolkit speed test transferring "
+                f"{download_bytes} download bytes and {upload_bytes} upload bytes."
+            )
+        journal_event = record_current_investigation_event(
+            operation_id=operation_id,
+            event_type="diagnostic.completed",
+            tool_id="tools.speed_test",
+            action="Wi-Fi / LAN speed test",
+            outcome="succeeded",
+            summary=journal_summary,
+            targets={"scope": "browser-to-toolkit-server"},
+            parameters={"duration_seconds_per_direction": 8, "streams": 2},
+            metrics=metrics,
+            details={"measurement_scope": "Local browser-to-toolkit connection"},
+            started_at=journal_started_at,
+            completed_at=time.time(),
+        )
+        return jsonify(
+            {
+                "ok": True,
+                "case_recorded": bool(journal_event),
+                "investigation_id": (
+                    journal_event.get("investigation_id") if journal_event else None
+                ),
+            }
+        )

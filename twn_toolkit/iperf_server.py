@@ -47,6 +47,7 @@ class IperfServerStore:
         *,
         created_by: str,
         created_by_username: str,
+        investigation_id: str = "",
     ) -> str:
         normalized = validate_iperf3_server_config(config)
         self._reconcile_workers()
@@ -89,8 +90,9 @@ class IperfServerStore:
                 """
                 INSERT INTO iperf_server_sessions (
                     id, status, bind_address, port, created_by,
-                    created_by_username, desired_active, created_at, updated_at
-                ) VALUES (?, 'queued', ?, ?, ?, ?, 1, ?, ?)
+                    created_by_username, desired_active, investigation_id,
+                    created_at, updated_at
+                ) VALUES (?, 'queued', ?, ?, ?, ?, 1, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -98,6 +100,7 @@ class IperfServerStore:
                     normalized["port"],
                     created_by,
                     created_by_username[:100],
+                    str(investigation_id or "")[:160],
                     now,
                     now,
                 ),
@@ -228,6 +231,77 @@ class IperfServerStore:
                 (user_id,),
             ).fetchone()
         return self._session_from_row(row) if row else None
+
+    def active_for_investigation(
+        self, investigation_id: str, *, user_id: str
+    ) -> list[dict[str, Any]]:
+        self._reconcile_workers()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM iperf_server_sessions
+                WHERE investigation_id = ? AND created_by = ?
+                    AND desired_active = 1
+                    AND status IN ('queued', 'running', 'stopping')
+                ORDER BY created_at
+                """,
+                (investigation_id, user_id),
+            ).fetchall()
+        return [self._session_from_row(row) for row in rows]
+
+    def pending_investigation_sessions(
+        self,
+        *,
+        user_id: str = "",
+        investigation_id: str = "",
+        session_id: str = "",
+    ) -> list[dict[str, Any]]:
+        self._reconcile_workers()
+        clauses = [
+            "investigation_id != ''",
+            "desired_active = 0",
+            "status IN ('stopped', 'error')",
+            "investigation_finalized_at IS NULL",
+        ]
+        values: list[object] = []
+        for column, value in (
+            ("created_by", user_id),
+            ("investigation_id", investigation_id),
+            ("id", session_id),
+        ):
+            if value:
+                clauses.append(f"{column} = ?")
+                values.append(value)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM iperf_server_sessions WHERE {' AND '.join(clauses)} "
+                "ORDER BY stopped_at, created_at",
+                values,
+            ).fetchall()
+        return [self._session_from_row(row) for row in rows]
+
+    def results_for_session(self, session_id: str) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM iperf_server_results
+                WHERE session_id = ? ORDER BY id
+                """,
+                (session_id,),
+            ).fetchall()
+        return [self._result_from_row(row) for row in rows]
+
+    def mark_investigation_finalized(self, session_id: str) -> None:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE iperf_server_sessions
+                SET investigation_finalized_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (now, now, session_id),
+            )
 
     def latest_for_user(self, user_id: str) -> dict[str, Any] | None:
         self._reconcile_workers()
@@ -663,6 +737,8 @@ class IperfServerStore:
                     created_by TEXT NOT NULL,
                     created_by_username TEXT NOT NULL DEFAULT '',
                     desired_active INTEGER NOT NULL DEFAULT 0,
+                    investigation_id TEXT NOT NULL DEFAULT '',
+                    investigation_finalized_at REAL,
                     created_at REAL NOT NULL,
                     started_at REAL,
                     stopped_at REAL,
@@ -709,6 +785,14 @@ class IperfServerStore:
                     WHERE status IN ('queued', 'running', 'stopping')
                     """
                 )
+            for name, definition in (
+                ("investigation_id", "TEXT NOT NULL DEFAULT ''"),
+                ("investigation_finalized_at", "REAL"),
+            ):
+                if name not in columns:
+                    connection.execute(
+                        f"ALTER TABLE iperf_server_sessions ADD COLUMN {name} {definition}"
+                    )
             yield connection
             connection.commit()
         except Exception:

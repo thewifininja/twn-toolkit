@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import case_recorded_notice %}
 
 {% block content %}
 <section class="panel">
@@ -6,6 +7,7 @@
     <h1>DHCP Discover</h1>
     <p>Broadcast one DHCP Discover from the toolkit host and inspect every matching Offer. This tool never sends a DHCP Request, so it does not accept or configure the offered address.</p>
   </div>
+  {{ case_recorded_notice(journal_event) }}
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
   <form class="form" method="post" data-loading-message="Sending DHCP Discover…">

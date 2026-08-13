@@ -146,72 +146,78 @@
               </details>
 
               {% for group in sidebar_tool_groups %}
-                <details class="side-nav-section" {{ 'open' if group.active else '' }}>
-                  <summary title="{{ group.label }}">
-                    <span class="side-nav-section-title"><span class="side-nav-icon" aria-hidden="true">{{ group.icon|default('•') }}</span><span class="side-nav-label">{{ group.label }}</span></span>
-                    <small>{{ group.count|default((group.tools|default([])|length) + (group.children|default([])|length)) }}</small>
-                  </summary>
-                  {% if group.tools %}
-                    <ul class="side-nav-tool-list">
-                      {% for tool in group.tools %}
-                        <li>
-                          {{ sidebar_tool_row(tool) }}
-                        </li>
-                      {% endfor %}
-                    </ul>
-                  {% endif %}
-                  {% if group.children %}
-                    <ul class="side-nav-tree">
-                      {% for child in group.children %}
-                        <li>
-                          {% if child.tool or not child.tools %}<div class="side-nav-parent-row">
-                            {% if child.tool %}
-                              {{ sidebar_tool_row(child.tool, child.label, true, child.favorite_enabled|default(true)) }}
-                            {% elif not child.tools %}
-                              <span class="side-nav-parent-label">
-                                <span class="side-nav-icon" aria-hidden="true">{{ child.icon|default('•') }}</span>
-                                <span class="side-nav-label">{{ child.label }}</span>
-                              </span>
-                            {% endif %}
-                          </div>{% endif %}
+                {% if group.tools|default([])|length == 1 and not group.children|default([]) %}
+                  <div class="side-nav-section side-nav-singleton">
+                    {{ sidebar_tool_row(group.tools[0], group.label) }}
+                  </div>
+                {% else %}
+                  <details class="side-nav-section" {{ 'open' if group.active else '' }}>
+                    <summary title="{{ group.label }}">
+                      <span class="side-nav-section-title"><span class="side-nav-icon" aria-hidden="true">{{ group.icon|default('•') }}</span><span class="side-nav-label">{{ group.label }}</span></span>
+                      <small>{{ group.count|default((group.tools|default([])|length) + (group.children|default([])|length)) }}</small>
+                    </summary>
+                    {% if group.tools %}
+                      <ul class="side-nav-tool-list">
+                        {% for tool in group.tools %}
+                          <li>
+                            {{ sidebar_tool_row(tool) }}
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    {% endif %}
+                    {% if group.children %}
+                      <ul class="side-nav-tree">
+                        {% for child in group.children %}
+                          <li>
+                            {% if child.tool or not child.tools %}<div class="side-nav-parent-row">
+                              {% if child.tool %}
+                                {{ sidebar_tool_row(child.tool, child.label, true, child.favorite_enabled|default(true)) }}
+                              {% elif not child.tools %}
+                                <span class="side-nav-parent-label">
+                                  <span class="side-nav-icon" aria-hidden="true">{{ child.icon|default('•') }}</span>
+                                  <span class="side-nav-label">{{ child.label }}</span>
+                                </span>
+                              {% endif %}
+                            </div>{% endif %}
 
-                          {% if child.children %}
-                            <div class="side-nav-nested-groups">
-                              {% for nested in child.children %}
-                                <details class="side-nav-subsection" {{ 'open' if nested.active else '' }}>
-                                  <summary>
-                                    <span>{{ nested.label }}</span>
-                                    <small>{{ nested.tools|length }}</small>
-                                  </summary>
-                                  <ul>
-                                    {% for tool in nested.tools %}
-                                      <li>
-                                        {{ sidebar_tool_row(tool) }}
-                                      </li>
-                                    {% endfor %}
-                                  </ul>
+                            {% if child.children %}
+                              <div class="side-nav-nested-groups">
+                                {% for nested in child.children %}
+                                  <details class="side-nav-subsection" {{ 'open' if nested.active else '' }}>
+                                    <summary>
+                                      <span>{{ nested.label }}</span>
+                                      <small>{{ nested.tools|length }}</small>
+                                    </summary>
+                                    <ul>
+                                      {% for tool in nested.tools %}
+                                        <li>
+                                          {{ sidebar_tool_row(tool) }}
+                                        </li>
+                                      {% endfor %}
+                                    </ul>
+                                  </details>
+                                {% endfor %}
+                              </div>
+                            {% endif %}
+
+                            {% if child.tools %}
+                              {% if child.tool %}
+                                <ul class="side-nav-child-list">
+                                  {% for tool in child.tools %}<li>{{ sidebar_tool_row(tool) }}</li>{% endfor %}
+                                </ul>
+                              {% else %}
+                                <details class="side-nav-subsection" {{ 'open' if child.active else '' }}>
+                                  <summary><span class="side-nav-subsection-title"><span class="side-nav-icon" aria-hidden="true">{{ child.icon|default('•') }}</span><span>{{ child.label }}</span></span><small>{{ child.tools|length }}</small></summary>
+                                  <ul>{% for tool in child.tools %}<li>{{ sidebar_tool_row(tool) }}</li>{% endfor %}</ul>
                                 </details>
-                              {% endfor %}
-                            </div>
-                          {% endif %}
-
-                          {% if child.tools %}
-                            {% if child.tool %}
-                              <ul class="side-nav-child-list">
-                                {% for tool in child.tools %}<li>{{ sidebar_tool_row(tool) }}</li>{% endfor %}
-                              </ul>
-                            {% else %}
-                              <details class="side-nav-subsection" {{ 'open' if child.active else '' }}>
-                                <summary><span class="side-nav-subsection-title"><span class="side-nav-icon" aria-hidden="true">{{ child.icon|default('•') }}</span><span>{{ child.label }}</span></span><small>{{ child.tools|length }}</small></summary>
-                                <ul>{% for tool in child.tools %}<li>{{ sidebar_tool_row(tool) }}</li>{% endfor %}</ul>
-                              </details>
+                              {% endif %}
                             {% endif %}
-                          {% endif %}
-                        </li>
-                      {% endfor %}
-                    </ul>
-                  {% endif %}
-                </details>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    {% endif %}
+                  </details>
+                {% endif %}
               {% endfor %}
             </div>
             <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}" title="Help &amp; release notes">
@@ -231,9 +237,49 @@
             </section>
           {% endif %}
         {% endwith %}
+        {% if active_investigation %}
+          <section class="active-investigation-banner {{ active_investigation.state }}" aria-label="Active case">
+            <a class="active-investigation-copy" href="{{ url_for('investigation_detail', investigation_id=active_investigation.id) }}">
+              <span class="active-investigation-indicator" aria-hidden="true"></span>
+              <span>
+                <small>{{ 'Recording to' if active_investigation.is_recording else 'Recording paused for' }}</small>
+                <strong>{{ active_investigation.title }}</strong>
+              </span>
+              <span class="active-investigation-count">{{ active_investigation.event_count }} events</span>
+            </a>
+            <div class="active-investigation-actions">
+              <button class="secondary active-investigation-action" type="button" data-case-note-open>Add note</button>
+              <a class="button-link secondary active-investigation-action" href="{{ url_for('investigation_detail', investigation_id=active_investigation.id) }}">Open case journal</a>
+              <form method="post" action="{{ url_for('update_investigation_state', investigation_id=active_investigation.id) }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <input type="hidden" name="state" value="{{ 'paused' if active_investigation.is_recording else 'recording' }}">
+                <button type="submit" class="secondary active-investigation-action">{{ 'Pause' if active_investigation.is_recording else 'Resume' }}</button>
+              </form>
+            </div>
+          </section>
+        {% endif %}
         {% block content %}{% endblock %}
       </main>
     </div>
+    {% if active_investigation %}
+      <dialog class="active-case-note-dialog" data-case-note-dialog aria-labelledby="active-case-note-title">
+        <form method="post" action="{{ url_for('add_investigation_note', investigation_id=active_investigation.id) }}" class="active-case-note-form">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <header>
+            <span class="eyebrow">Case journal</span>
+            <h2 id="active-case-note-title">Add a quick note</h2>
+          </header>
+          <p>Record context in <strong>{{ active_investigation.title }}</strong> without leaving this page.</p>
+          <label for="active-case-note">Note
+            <textarea id="active-case-note" name="note" maxlength="4000" rows="5" required placeholder="What did you observe, change, learn, or decide?"></textarea>
+          </label>
+          <footer>
+            <button class="secondary" type="button" data-case-note-close>Cancel</button>
+            <button type="submit">Add to journal</button>
+          </footer>
+        </form>
+      </dialog>
+    {% endif %}
     {% if current_user and (
       current_user.is_admin
       or allowed_tool_ids is none
@@ -325,6 +371,9 @@
     <script src="{{ url_for('static', filename='saved-profile-manager.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='loading.js') }}"></script>
     <script src="{{ url_for('static', filename='sidebar.js', v=app_version) }}"></script>
+    {% if active_investigation %}
+      <script src="{{ url_for('static', filename='case-note.js', v=app_version) }}"></script>
+    {% endif %}
     {% if current_user %}
       <script src="{{ url_for('static', filename='favorites-order.js', v=app_version) }}"></script>
       <script src="{{ url_for('static', filename='pcap-viewer.js', v=app_version) }}"></script>

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import secrets
+import time
+
 from flask import Blueprint, render_template, request
 
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run
-from .network_tools import ToolInputError, subtract_subnets
+from .investigation_context import record_current_investigation_event
+from .network_tools import RFC1918_NETWORKS, ToolInputError, split_values, subtract_subnets
 
 
 def register_subnet_routes(tools_bp: Blueprint) -> None:
@@ -14,7 +18,10 @@ def register_subnet_routes(tools_bp: Blueprint) -> None:
         exclusions = ""
         results: list[str] | None = None
         error = ""
+        journal_event = None
         if request.method == "POST":
+            operation_id = f"subnet-exclusion:{secrets.token_hex(12)}"
+            started_at = time.time()
             supernets = request.form.get("supernets", "").strip()
             exclusions = request.form.get("exclusions", "").strip()
             try:
@@ -29,6 +36,28 @@ def register_subnet_routes(tools_bp: Blueprint) -> None:
                     f"Produced {len(results)} network(s)",
                     counters={"subnet": {"calculations": 1, "networks": len(results)}},
                 )
+                parent_networks = (
+                    list(RFC1918_NETWORKS)
+                    if supernets.casefold() == "rfc1918"
+                    else split_values(supernets)
+                )
+                journal_event = record_current_investigation_event(
+                    operation_id=operation_id,
+                    event_type="diagnostic.completed",
+                    tool_id="tools.subnet_excluder",
+                    action="Subnet exclusion calculation",
+                    outcome="succeeded",
+                    summary=f"Calculated {len(results)} remaining network(s).",
+                    targets={
+                        "parent_networks": parent_networks,
+                        "excluded_networks": split_values(exclusions),
+                    },
+                    parameters={},
+                    metrics={"remaining_network_count": len(results)},
+                    details={"remaining_networks": results},
+                    started_at=started_at,
+                    completed_at=time.time(),
+                )
             annotate_tool_run(
                 category="Network tools",
                 action_namespace="subnet.exclusion",
@@ -42,4 +71,5 @@ def register_subnet_routes(tools_bp: Blueprint) -> None:
             exclusions=exclusions,
             results=results,
             supernets=supernets,
+            journal_event=journal_event,
         )

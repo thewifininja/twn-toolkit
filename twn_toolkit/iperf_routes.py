@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import secrets
+import time
+
 from flask import (
     Blueprint,
     abort,
@@ -28,6 +31,12 @@ from .iperf_tools import (
     run_iperf3_client,
 )
 from .network_tools import ToolInputError
+from .investigation_context import record_current_investigation_event
+from .ping_investigation import recording_case_id
+from .iperf_investigation import (
+    finalize_pending_iperf_servers,
+    record_iperf_server_started,
+)
 
 
 def register_iperf_routes(tools_bp: Blueprint) -> None:
@@ -36,6 +45,10 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.route("/iperf3", methods=["GET", "POST"])
     def iperf3():
+        finalize_pending_iperf_servers(
+            current_app.instance_path,
+            user_id=str(g.current_user["id"]),
+        )
         client_form = {
             "host": "",
             "port": str(IPERF_DEFAULT_PORT),
@@ -49,8 +62,11 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
             "authorized": "",
         }
         result = None
+        journal_event = None
         error = ""
         if request.method == "POST":
+            operation_id = f"iperf3-client:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
             client_form = {
                 key: request.form.get(f"client_{key}", default).strip()
                 for key, default in client_form.items()
@@ -77,6 +93,46 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
             except (ToolInputError, TypeError, ValueError) as exc:
                 error = str(exc) or "Enter valid iPerf3 client settings."
             _record_client_activity(result, error, client_form)
+            safe_result = _journal_iperf_result(result)
+            metric = (safe_result or {}).get("receiver") or (safe_result or {}).get("sender") or {}
+            journal_event = record_current_investigation_event(
+                operation_id=operation_id,
+                event_type="diagnostic.failed" if error else "diagnostic.completed",
+                tool_id="tools.iperf3",
+                action="iPerf3 client test",
+                outcome="failed" if error else "succeeded",
+                summary=(
+                    f"iPerf3 client test failed: {error}"
+                    if error
+                    else (
+                        f"Ran {safe_result.get('protocol', 'iPerf3')} throughput test to "
+                        f"{client_form['host']}: {metric.get('megabits_per_second', 'unknown')} Mbps."
+                    )
+                ),
+                targets={"host": client_form["host"], "port": client_form["port"]},
+                parameters={
+                    "protocol": client_form["protocol"],
+                    "family": client_form["family"],
+                    "duration_seconds": client_form["duration_seconds"],
+                    "parallel_streams": client_form["parallel_streams"],
+                    "bind_address": client_form["bind_address"],
+                    "reverse": client_form["reverse"] == "on",
+                    "udp_megabits": client_form["udp_megabits"],
+                },
+                metrics={
+                    "transferred_bytes": safe_result.get("transferred_bytes", 0),
+                    "sender_mbps": (safe_result.get("sender") or {}).get("megabits_per_second"),
+                    "receiver_mbps": (safe_result.get("receiver") or {}).get("megabits_per_second"),
+                    "retransmits": (safe_result.get("sender") or {}).get("retransmits"),
+                    "lost_packets": (safe_result.get("receiver") or safe_result.get("sender") or {}).get("lost_packets"),
+                    "jitter_ms": (safe_result.get("receiver") or safe_result.get("sender") or {}).get("jitter_ms"),
+                }
+                if safe_result
+                else {},
+                details={"error": error, "result": safe_result},
+                started_at=journal_started_at,
+                completed_at=time.time(),
+            )
 
         user_id = str(g.current_user["id"])
         managed_store = server_store()
@@ -108,6 +164,7 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
             server_form=server_form,
             server_result_revision=managed_store.result_revision(user_id),
             server_results=server_results,
+            journal_event=journal_event,
         )
 
     @tools_bp.post("/iperf3/server/start")
@@ -128,10 +185,20 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
                     "managed iPerf3 listener."
                 )
             managed_store = server_store()
+            try:
+                investigation_id = recording_case_id(
+                    current_app.instance_path, user_id
+                )
+            except Exception:
+                current_app.logger.exception(
+                    "Active case context could not be loaded for iPerf3 server"
+                )
+                investigation_id = ""
             session_id = managed_store.create(
                 config,
                 created_by=user_id,
                 created_by_username=str(g.current_user.get("username", "")),
+                investigation_id=investigation_id,
             )
             managed_store.launch(session_id)
             session = managed_store.get(session_id, user_id=user_id)
@@ -169,9 +236,22 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
             "Started managed iPerf3 server",
             f"Listening on port {(session or {}).get('port', config['port'])}",
         )
+        case_recorded = False
+        if session and session.get("investigation_id"):
+            try:
+                case_recorded = bool(
+                    record_iperf_server_started(
+                        current_app.instance_path, session=session
+                    )
+                )
+            except Exception:
+                current_app.logger.exception(
+                    "Unable to record the iPerf3 server start in its attached case"
+                )
         flash(
             "Managed iPerf3 server started. It will remain available in the "
-            "background until you stop it.",
+            "background until you stop it."
+            + (" It is attached to the active case." if case_recorded else ""),
             "success",
         )
         return redirect(url_for("tools.iperf3"))
@@ -216,6 +296,11 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.get("/iperf3/server/<session_id>/status")
     def iperf3_server_status(session_id: str):
+        finalize_pending_iperf_servers(
+            current_app.instance_path,
+            user_id=str(g.current_user["id"]),
+            session_id=session_id,
+        )
         user_id = str(g.current_user["id"])
         managed_store = server_store()
         session = managed_store.get(session_id, user_id=user_id)
@@ -332,5 +417,27 @@ def _public_server_session(session: dict) -> dict:
             "last_error",
             "stop_reason",
             "error",
+        )
+    }
+
+
+def _journal_iperf_result(result: dict | None) -> dict:
+    if not result:
+        return {}
+    return {
+        key: result.get(key)
+        for key in (
+            "mode",
+            "protocol",
+            "direction",
+            "version",
+            "system_info",
+            "connection",
+            "sender",
+            "receiver",
+            "intervals",
+            "cpu",
+            "transferred_bytes",
+            "transferred_display",
         )
     }

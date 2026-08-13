@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Callable
+import secrets
+import time
 
 from flask import (
     Flask,
@@ -25,6 +27,7 @@ from .audit import (
     annotate_profile_tested,
     audit_reference,
     suppress_audit_event,
+    suppress_case_bridge_event,
 )
 from .fortigate import FortiGateClient, FortiGateError, normalize_api_key, normalize_host
 from .fortiap_history import (
@@ -32,9 +35,13 @@ from .fortiap_history import (
     normalize_client_mac,
     wireless_client_history,
 )
+from .investigation_context import (
+    add_current_investigation_generated_evidence_event,
+    record_current_investigation_event,
+)
 from .profiles import ProfileStore
 from .tasks import ExportTask, RenameTask, discover_export_fields, get_task
-from .tool_catalog import grouped_visible_tools_for_category
+from .tool_catalog import grouped_visible_tools_for_category, tool_id_for_endpoint
 
 
 def _record_fortinet_api_activity(
@@ -61,6 +68,51 @@ def _switch_audit_references(
         audit_reference("FortiSwitch", switch["id"], switch["name"])
         for switch in switches[:100]
     ]
+
+
+def _journal_wireless_history_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Keep the useful collapsed path without retaining raw vendor log payloads."""
+    fields = (
+        "first_time",
+        "last_time",
+        "ap",
+        "event_count",
+        "event",
+        "ssid",
+        "radio",
+        "channel",
+        "ip",
+        "details",
+    )
+    timeline = [
+        {
+            key: (str(item.get(key, ""))[:2_000] if key == "details" else item.get(key))
+            for key in fields
+            if item.get(key) not in (None, "")
+        }
+        for item in result.get("timeline", [])[:500]
+        if isinstance(item, dict)
+    ]
+    live_fields = ("host", "ap", "ssid", "radio", "channel", "ip", "signal")
+    live_clients = [
+        {key: item.get(key) for key in live_fields if item.get(key) not in (None, "")}
+        for item in result.get("live_clients", [])[:100]
+        if isinstance(item, dict)
+    ]
+    return {
+        "mac": result.get("mac", ""),
+        "vdom": result.get("vdom", ""),
+        "hours": result.get("hours", 0),
+        "source": result.get("source", ""),
+        "log_row_count": result.get("log_row_count", 0),
+        "raw_event_count": result.get("raw_event_count", 0),
+        "omitted_unknown_ap_count": result.get("omitted_unknown_ap_count", 0),
+        "ap_path": result.get("ap_path", [])[:500],
+        "timeline": timeline,
+        "live_clients": live_clients,
+        "log_error": str(result.get("log_error", ""))[:2_000],
+        "live_error": str(result.get("live_error", ""))[:2_000],
+    }
 
 
 def _annotate_switch_order(
@@ -243,8 +295,11 @@ def register_fortigate_routes(
         hours_value = request.form.get("hours", "24") if request.method == "POST" else "24"
         vdom = request.form.get("vdom", "").strip() if request.method == "POST" else ""
         result: dict[str, Any] | None = None
+        journal_event = None
 
         if request.method == "POST":
+            operation_id = f"fortigate-wireless-history:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
             suppress_audit_event()
             profile = profile_store.get(selected_name)
             if not profile:
@@ -268,6 +323,43 @@ def register_fortigate_routes(
                     )
                 except ValueError as exc:
                     flash(str(exc), "error")
+                    journal_event = record_current_investigation_event(
+                        operation_id=operation_id,
+                        event_type="diagnostic.failed",
+                        tool_id="fortigate.wireless_client_history",
+                        action="Wireless client history",
+                        outcome="failed",
+                        summary=f"Wireless client history search failed: {exc}",
+                        targets={"client_mac": mac},
+                        parameters={"profile": selected_name, "VDOM": vdom, "hours": hours_value},
+                        metrics={},
+                        details={"error": str(exc)},
+                        started_at=journal_started_at,
+                        completed_at=time.time(),
+                    )
+                else:
+                    journal_event = record_current_investigation_event(
+                        operation_id=operation_id,
+                        event_type="diagnostic.completed",
+                        tool_id="fortigate.wireless_client_history",
+                        action="Wireless client history",
+                        outcome="succeeded",
+                        summary=(
+                            f"Searched {hours} hour(s) of wireless history for {normalized_mac}: "
+                            f"{result.get('raw_event_count', 0)} matching event(s) across "
+                            f"{len(result.get('ap_path', []))} AP transition(s)."
+                        ),
+                        targets={"client_mac": normalized_mac},
+                        parameters={"profile": selected_name, "VDOM": vdom, "hours": hours},
+                        metrics={
+                            "matching_events": result.get("raw_event_count", 0),
+                            "AP_transitions": len(result.get("ap_path", [])),
+                            "live_clients": len(result.get("live_clients", [])),
+                        },
+                        details={"result": _journal_wireless_history_result(result)},
+                        started_at=journal_started_at,
+                        completed_at=time.time(),
+                    )
 
         return render_template(
             "fortiap_client_history.html",
@@ -277,6 +369,7 @@ def register_fortigate_routes(
             hours=hours_value,
             vdom=vdom,
             result=result,
+            journal_event=journal_event,
         )
 
     @app.post("/fortigate/switch-order/objects")
@@ -630,14 +723,34 @@ def register_fortigate_routes(
                 "Ran FortiGate export",
                 f"{profile['name']}: {task.label}",
             )
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            filename = f"{task.id}-{profile['name']}-{stamp}.csv".replace(" ", "_")
+            suppress_case_bridge_event()
             _annotate_fortigate_export(
                 profile,
                 task,
                 outcome="succeeded",
                 export_size_bytes=len(csv_data.encode("utf-8")),
             )
-            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            filename = f"{task.id}-{profile['name']}-{stamp}.csv".replace(" ", "_")
+            now = time.time()
+            add_current_investigation_generated_evidence_event(
+                operation_id=f"fortigate-export:{secrets.token_hex(12)}",
+                event_type="external.export.completed",
+                tool_id=tool_id_for_endpoint("run_task", {"task_id": task.id})
+                or "fortigate.home",
+                action=task.label,
+                outcome="succeeded",
+                summary=f"Exported {task.label} from FortiGate profile {profile['name']}.",
+                targets={"profile": profile["name"]},
+                parameters={"format": "CSV"},
+                metrics={"export_size_bytes": len(csv_data.encode("utf-8"))},
+                details={},
+                started_at=now,
+                completed_at=now,
+                filename=filename,
+                content_type="text/csv",
+                content=csv_data.encode("utf-8"),
+            )
             return Response(
                 csv_data,
                 mimetype="text/csv",

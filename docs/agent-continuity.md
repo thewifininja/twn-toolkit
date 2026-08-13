@@ -57,6 +57,34 @@ precedent.
   cap duration, per-resolver QPS, resolver count, concurrency, and total queries;
   retain only aggregate results and latency percentiles rather than every
   response.
+- Investigations is the feature area; individual records are cases. Keep one
+  owner-scoped recording-or-paused case per user, make tool events immutable and
+  idempotent by operation ID, and do not let journal-write failure break the
+  diagnostic itself. Pausing blocks automatic tool capture but still permits
+  intentional notes and evidence. Closed case source evidence is read-only until
+  an explicit reopening policy is designed; report inclusion is editable
+  presentation metadata and must never mutate that source. Store metadata in owner-only
+  `instance/investigations.sqlite3`; constrain files to managed
+  `instance/datastore/Investigations/<investigation-id>/` folders. Reports must
+  remain deterministic views of retained evidence; generated narrative or AI
+  interpretation must be visibly separate and must never rewrite source events.
+  `investigation_policy.py` is exhaustive over the registered tool catalog and
+  declares native, finite, lifecycle, hybrid, action, explicit, or excluded
+  behavior plus the intended evidence form. Automatic evidence modes must have
+  a tool-specific case-report presentation in `investigation_reporting.py`,
+  which tests enforce. Presentation logic does not belong in the shared report
+  template. Finite diagnostics record one completed or
+  failed event; long-running tools require explicit lifecycle events and bounded
+  summaries. Multi-Ping attaches to the case recording at session start, retains
+  timestamped configuration revisions and revision-tagged samples, then writes a
+  compact terminal event plus generated CSV evidence. Pausing must not orphan an
+  attached run, and case closure must stop and finalize it before source evidence
+  becomes read-only. Never infer device-down state from absent ICMP replies.
+  `investigation_exports.py` renders the saved selection as a server-side PDF
+  and builds the ephemeral case-package ZIP. Package evidence must be resolved
+  through `LocalDatastore`, rehashed while it is written, and rejected if its
+  retained size or SHA-256 no longer matches; never trust stored paths or emit a
+  partially verified package.
 - iPerf3 support uses only an already installed `iperf3` binary and never
   installs packages or invokes a shell. Client traffic requires explicit
   authorization and fixed duration/stream/rate caps. Server mode runs in a

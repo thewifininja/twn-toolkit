@@ -5,6 +5,7 @@ import signal
 import threading
 
 from .packet_capture import PacketCaptureStore, run_packet_capture
+from .packet_capture_investigation import finalize_pending_packet_captures
 
 
 def main() -> int:
@@ -42,9 +43,15 @@ def main() -> int:
             else "completed"
         )
         store.finish(args.capture_id, status=status, result=result)
+        finalize_pending_packet_captures(
+            args.instance, capture_id=args.capture_id
+        )
         return 0
     except Exception as exc:
         store.finish(args.capture_id, status="error", error=str(exc))
+        finalize_pending_packet_captures(
+            args.instance, capture_id=args.capture_id
+        )
         return 1
 
 

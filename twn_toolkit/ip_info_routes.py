@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import ipaddress
+import secrets
+import time
 
 import requests
 from flask import Blueprint, Response, jsonify, render_template, request
 
 from .activity_context import record_current_activity
+from .audit import annotate_tool_run
+from .investigation_context import record_current_investigation_event
 from .route_utils import disable_client_caching
 
 
@@ -54,3 +58,58 @@ def register_ip_info_routes(tools_bp: Blueprint) -> None:
             response = jsonify({"ip": address, "family": f"IPv{version}"})
         disable_client_caching(response)
         return response
+
+    @tools_bp.post("/whats-my-ip/case-snapshot")
+    def record_ip_snapshot():
+        addresses = {
+            "toolkit_facing": _valid_address(request.remote_addr),
+            "browser_public": _valid_address(request.form.get("browser_public", "")),
+            "server_public": _valid_address(request.form.get("server_public", "")),
+        }
+        addresses = {key: value for key, value in addresses.items() if value}
+        now = time.time()
+        event = record_current_investigation_event(
+            operation_id=f"ip-snapshot:{secrets.token_hex(12)}",
+            event_type="diagnostic.snapshot",
+            tool_id="tools.whats_my_ip",
+            action="IP address snapshot",
+            outcome="succeeded",
+            summary=f"Retained an IP address snapshot with {len(addresses)} observation(s).",
+            targets=addresses,
+            parameters={
+                key: f"IPv{ipaddress.ip_address(value).version}"
+                for key, value in addresses.items()
+            },
+            metrics={"address_count": len(addresses)},
+            details={},
+            started_at=now,
+            completed_at=now,
+        )
+        annotate_tool_run(
+            category="Network tools",
+            action_namespace="ip.snapshot",
+            tool_name="IP address snapshot",
+            outcome="succeeded" if event else "not_recorded",
+            details={"address count": len(addresses)},
+        )
+        response = jsonify(
+            {
+                "case_recorded": bool(event),
+                "message": (
+                    "Recorded this IP snapshot in the active case."
+                    if event
+                    else "Open or resume a recording case before adding a snapshot."
+                ),
+            }
+        )
+        if not event:
+            response.status_code = 409
+        disable_client_caching(response)
+        return response
+
+
+def _valid_address(value: object) -> str:
+    try:
+        return str(ipaddress.ip_address(str(value or "").strip()))
+    except ValueError:
+        return ""

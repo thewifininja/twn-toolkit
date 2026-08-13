@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
+{% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager %}
 
 {% block content %}
 <section class="panel dns-workspace-panel">
@@ -13,6 +13,7 @@
   </header>
 
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  {{ case_recorded_notice(journal_event) }}
 
   <form
     class="dns-workspace-form"

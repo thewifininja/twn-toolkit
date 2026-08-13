@@ -37,6 +37,8 @@ from .dashboard_layout import DashboardLayoutStore
 from .fortiauthenticator_routes import register_fortiauthenticator_routes
 from .fortigate_routes import register_fortigate_routes
 from .iperf_server import IperfServerStore
+from .investigation_routes import register_investigation_routes
+from .investigations import InvestigationStore
 from .live_tools import LiveToolStore
 from .profiles import (
     FortiAuthenticatorProfileStore,
@@ -99,6 +101,8 @@ def create_app(instance_path: str | None = None) -> Flask:
     backup_catalog = build_backup_catalog(app.instance_path)
     audit_store = AuditStore(app.instance_path)
     operational_store = OperationalSettingsStore(app.instance_path)
+    investigation_store = InvestigationStore(app.instance_path)
+    app.extensions["investigation_store"] = investigation_store
 
     @app.before_request
     def require_authentication():
@@ -178,6 +182,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         user = getattr(g, "current_user", None)
         audited_reads = {
             "bulk_download_datastore_files",
+            "download_investigation_evidence",
             "download_automation_artifact",
             "download_automation_run",
             "download_datastore_file",
@@ -350,6 +355,9 @@ def create_app(instance_path: str | None = None) -> Flask:
                 )
 
             network_tools = [tool for tool in visible if tool.category == "network"]
+            investigation_tools = [
+                tool for tool in visible if tool.category == "investigations"
+            ]
             automation_tools = [tool for tool in visible if tool.category == "automation"]
             local_tools = [tool for tool in visible if tool.category == "local"]
             if network_tools:
@@ -378,6 +386,15 @@ def create_app(instance_path: str | None = None) -> Flask:
                         "children": network_subgroups,
                         "count": len(network_tools),
                         "active": active_in_tools(network_tools),
+                    }
+                )
+            if investigation_tools:
+                sidebar_tool_groups.append(
+                    {
+                        "label": "Investigations",
+                        "icon": category_icons["investigations"],
+                        "tools": investigation_tools,
+                        "active": active_in_tools(investigation_tools),
                     }
                 )
             if local_tools:
@@ -416,11 +433,30 @@ def create_app(instance_path: str | None = None) -> Flask:
         else:
             page_title = {
                 "index": "Dashboard",
+                "investigations": "Investigations",
                 "settings": "Settings",
                 "help_page": "Help",
                 "login": "Sign in",
                 "setup": "First launch",
             }.get(request.endpoint or "", "")
+        investigation_access = bool(
+            current_user
+            and (
+                current_user.get("is_admin")
+                or allowed_tool_ids is None
+                or "investigations.workspace" in allowed_tool_ids
+            )
+        )
+        active_investigation = None
+        if investigation_access:
+            try:
+                active_investigation = investigation_store.active_for_user(
+                    str(current_user.get("id", ""))
+                )
+            except Exception:
+                app.logger.exception(
+                    "Active investigation context could not be loaded"
+                )
         return {
             "current_user": current_user,
             "user_theme": current_user.get("theme", "light") if current_user else "system",
@@ -438,6 +474,8 @@ def create_app(instance_path: str | None = None) -> Flask:
             "release_notes": RELEASE_NOTES,
             "min_password_length": password_policy["min_length"],
             "password_policy": password_policy,
+            "investigation_access": investigation_access,
+            "active_investigation": active_investigation,
         }
 
     def _tool_access_allowed(tool_id: str) -> bool:
@@ -464,6 +502,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         tool_access_allowed=_tool_access_allowed,
     )
     register_automation_routes(app, automation_store)
+    register_investigation_routes(app, investigation_store)
     register_datastore_routes(
         app,
         datastore_store,

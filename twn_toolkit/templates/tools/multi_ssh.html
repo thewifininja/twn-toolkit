@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import case_recorded_notice %}
 {% from "components/ui.html" import host_range_guidance %}
 
 {% block shell_classes %} multi-ssh-shell{% endblock %}
 
 {% block content %}
+{{ case_recorded_notice(journal_event) }}
 <section class="panel tool-panel multi-ssh-panel">
   <div class="panel-head">
     <h1>Multi-SSH</h1>

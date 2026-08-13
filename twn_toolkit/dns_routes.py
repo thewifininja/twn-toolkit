@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import secrets
+import time
+
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
 from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
+from .investigation_context import record_current_investigation_event
 from .network_tools import (
     DNS_LOAD_MAX_CONCURRENCY,
     DNS_LOAD_MAX_DURATION_SECONDS,
@@ -38,8 +42,13 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
         results = None
         load_result = None
         lookup_summary = None
+        journal_event = None
         error = ""
         if request.method == "POST":
+            operation_id = f"dns:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
+            hosts: list[dict[str, str]] = []
+            servers: list[dict[str, str]] = []
             form = {
                 key: request.form.get(key, default).strip()
                 for key, default in form.items()
@@ -178,6 +187,65 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
                     ),
                 },
             )
+            journal_completed_at = time.time()
+            action = "DNS load test" if form["mode"] == "load" else "DNS lookup"
+            if error:
+                journal_summary = f"{action} failed: {error}"
+                journal_metrics = {}
+            elif load_result is not None:
+                journal_summary = (
+                    f"Completed {load_result['completed_queries']} DNS queries "
+                    f"across {len(servers)} resolver(s) with a "
+                    f"{load_result['success_rate']}% success rate."
+                )
+                journal_metrics = {
+                    "completed_queries": load_result["completed_queries"],
+                    "failed_queries": load_result["failed_queries"],
+                    "success_rate": load_result["success_rate"],
+                    "achieved_qps": load_result["achieved_qps"],
+                }
+            else:
+                summary = lookup_summary or {}
+                journal_summary = (
+                    f"Completed DNS lookup for {len(hosts)} host(s) across "
+                    f"{len(servers)} resolver(s): {summary.get('successful', 0)} "
+                    f"successful and {summary.get('failed', 0)} failed queries."
+                )
+                journal_metrics = dict(summary)
+            journal_event = record_current_investigation_event(
+                operation_id=operation_id,
+                event_type=(
+                    "diagnostic.failed" if error else "diagnostic.completed"
+                ),
+                tool_id="tools.dns_response",
+                action=action,
+                outcome="failed" if error else "succeeded",
+                summary=journal_summary,
+                targets={"hosts": hosts, "resolvers": servers},
+                parameters={
+                    "mode": form["mode"],
+                    "record_type": form["record_type"],
+                    "timeout_seconds": form["timeout"],
+                    "duration_seconds": (
+                        form["duration"] if form["mode"] == "load" else None
+                    ),
+                    "queries_per_second_per_resolver": (
+                        form["qps"] if form["mode"] == "load" else None
+                    ),
+                    "concurrency": (
+                        form["concurrency"] if form["mode"] == "load" else None
+                    ),
+                },
+                metrics=journal_metrics,
+                details={
+                    "error": error,
+                    "results": results or [],
+                    "lookup_summary": lookup_summary,
+                    "load_result": load_result,
+                },
+                started_at=journal_started_at,
+                completed_at=journal_completed_at,
+            )
         return render_template(
             "tools/dns_response.html",
             error=error,
@@ -194,6 +262,7 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
             load_result=load_result,
             lookup_summary=lookup_summary,
             results=results,
+            journal_event=journal_event,
         )
 
     @tools_bp.post("/dns-response/profiles/<kind>")

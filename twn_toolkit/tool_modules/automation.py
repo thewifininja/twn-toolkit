@@ -103,5 +103,6 @@ def register_tools(registry: ToolRegistry) -> None:
             "clear_automation_runs": "automation.home",
             "delete_automation_run": "automation.home",
             "download_automation_run": "automation.home",
+            "add_automation_run_to_case": "automation.home",
         }
     )

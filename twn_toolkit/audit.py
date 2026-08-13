@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-from flask import g
+from flask import g, request
 
 from .system_diagnostics import readonly_sqlite_connection
 
@@ -26,6 +26,20 @@ _SECRET_FRAGMENTS = (
     "community",
 )
 _REDACTED = "[redacted]"
+_CASE_BRIDGE_ACTION_PREFIXES = (
+    "fortigate.switch_order_",
+    "fortigate.objects_renamed",
+    "fortigate.export_",
+    "fortiauthenticator.mac_devices_export_",
+    "fortiauthenticator.mac_memberships_export_",
+    "fortiauthenticator.mac_cleanup_",
+    "certificate_automation.acme.run_",
+    "certificate_automation.acme_",
+    "certificate_automation.enrollment.run_",
+    "certificate_automation.collection.run_",
+    "certificate_automation.material_downloaded",
+    "certificate_automation.managed_deleted",
+)
 
 
 def audit_reference(
@@ -71,11 +85,71 @@ def annotate_audit_event(
             "changes": audit_changes(before or {}, after or {}),
         }
     g.audit_event = context
+    _record_case_bridge_event(context)
 
 
 def suppress_audit_event() -> None:
     """Exclude high-frequency or otherwise non-administrative request traffic."""
     g.audit_suppressed = True
+
+
+def suppress_case_bridge_event() -> None:
+    """Let a route replace the compact audit bridge with richer case evidence."""
+    g.case_bridge_suppressed = True
+
+
+def _record_case_bridge_event(context: dict[str, Any]) -> None:
+    """Give curated external workflows a compact case boundary.
+
+    Rich diagnostic routes retain their own results. This bridge is deliberately
+    limited to vendor/PKI actions whose existing audit context is already the
+    safest durable representation.
+    """
+    if getattr(g, "case_bridge_suppressed", False):
+        return
+    action = str(context.get("action", ""))
+    if not action.startswith(_CASE_BRIDGE_ACTION_PREFIXES):
+        return
+    try:
+        from .investigation_context import record_current_investigation_event
+        from .tool_catalog import tool_id_for_endpoint
+
+        tool_id = tool_id_for_endpoint(str(request.endpoint or ""), request.view_args)
+        if not tool_id:
+            return
+        details = _sanitize(context.get("details") or {})
+        lowered = action.casefold()
+        outcome_value = str((details or {}).get("outcome", "")).casefold()
+        if any(value in lowered or value in outcome_value for value in ("cancel", "aborted")):
+            outcome = "cancelled"
+        elif any(value in lowered or value in outcome_value for value in ("fail", "error")):
+            outcome = "failed"
+        elif "partial" in lowered or "partial" in outcome_value:
+            outcome = "incomplete"
+        else:
+            outcome = "succeeded"
+        now = time.time()
+        record_current_investigation_event(
+            operation_id=f"audit-bridge:{secrets.token_hex(12)}",
+            event_type="external.action",
+            tool_id=tool_id,
+            action=str(context.get("resource_name") or context.get("summary") or action)[:200],
+            outcome=outcome,
+            summary=str(context.get("summary") or action)[:2_000],
+            targets={
+                "resource_type": context.get("resource_type", ""),
+                "resource_id": context.get("resource_id", ""),
+                "resource_name": context.get("resource_name", ""),
+            },
+            parameters={"external_action": action},
+            metrics=details,
+            details={},
+            started_at=now,
+            completed_at=now,
+        )
+    except Exception:
+        # Audit annotations must never make the operator action fail.
+        return
 
 
 def audit_changes(

@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import secrets
+import time
+
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
+from .audit import (
+    annotate_profile_deleted,
+    annotate_profile_duplicated,
+    annotate_profile_saved,
+    annotate_tool_run,
+)
+from .investigation_context import record_current_investigation_event
 from .network_tools import ToolInputError, parse_ping_targets
 from .ntp_tools import test_ntp_servers
 from .profiles import NTPHostProfileStore
@@ -14,9 +23,16 @@ def register_ntp_routes(tools_bp: Blueprint) -> None:
     def ntp_test():
         form = {"hosts": "", "port": "123", "timeout": "3", "samples": "4"}
         results = None
+        journal_event = None
         error = ""
         if request.method == "POST":
-            submitted_host = request.form.get("hosts", "").strip() or request.form.get("host", "").strip()
+            operation_id = f"ntp:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
+            targets: list[dict[str, str]] = []
+            query_count = 0
+            submitted_host = request.form.get("hosts", "").strip() or request.form.get(
+                "host", ""
+            ).strip()
             form = {
                 "hosts": submitted_host,
                 "port": request.form.get("port", "123").strip(),
@@ -52,12 +68,47 @@ def register_ntp_routes(tools_bp: Blueprint) -> None:
                     "sample count": query_count if not error else 0,
                 },
             )
+            synchronized = sum(
+                bool(result.get("synchronized")) for result in results or []
+            )
+            if error:
+                journal_summary = f"NTP test failed: {error}"
+                journal_metrics = {}
+            else:
+                journal_summary = (
+                    f"Tested {len(targets)} NTP server(s) with {query_count} "
+                    f"sample(s): {synchronized} synchronized."
+                )
+                journal_metrics = {
+                    "server_count": len(targets),
+                    "synchronized": synchronized,
+                    "sample_count": query_count,
+                }
+            journal_event = record_current_investigation_event(
+                operation_id=operation_id,
+                event_type="diagnostic.failed" if error else "diagnostic.completed",
+                tool_id="tools.ntp_test",
+                action="NTP test",
+                outcome="failed" if error else "succeeded",
+                summary=journal_summary,
+                targets={"servers": targets},
+                parameters={
+                    "port": form["port"],
+                    "timeout_seconds": form["timeout"],
+                    "samples_per_server": form["samples"],
+                },
+                metrics=journal_metrics,
+                details={"error": error, "results": results or []},
+                started_at=journal_started_at,
+                completed_at=time.time(),
+            )
         return render_template(
             "tools/ntp_test.html",
             error=error,
             form=form,
             profiles=NTPHostProfileStore(current_app.instance_path).all(),
             results=results,
+            journal_event=journal_event,
         )
 
     @tools_bp.post("/ntp-test/profiles")

@@ -377,7 +377,14 @@ class PacketCaptureStore:
         with self._connect():
             pass
 
-    def create(self, config: dict[str, Any], *, created_by: str) -> str:
+    def create(
+        self,
+        config: dict[str, Any],
+        *,
+        created_by: str,
+        created_by_username: str = "",
+        investigation_id: str = "",
+    ) -> str:
         normalized = validate_capture_config(config, compile_filter=True)
         self._reconcile_workers()
         capture_id = os.urandom(12).hex()
@@ -402,7 +409,8 @@ class PacketCaptureStore:
                     id, status, interface, capture_filter, duration_seconds,
                     packet_limit, max_size_mib, snap_length, promiscuous,
                     output_path, created_by, created_at, updated_at
-                ) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    , created_by_username, investigation_id
+                ) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     capture_id,
@@ -417,6 +425,8 @@ class PacketCaptureStore:
                     created_by,
                     now,
                     now,
+                    str(created_by_username or "")[:160],
+                    str(investigation_id or "")[:160],
                 ),
             )
         return capture_id
@@ -520,6 +530,64 @@ class PacketCaptureStore:
             )
         if not cursor.rowcount:
             raise ToolInputError("That packet capture is no longer running.")
+
+    def active_for_investigation(
+        self, investigation_id: str, *, user_id: str
+    ) -> list[dict[str, Any]]:
+        self._reconcile_workers()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM packet_captures
+                WHERE investigation_id = ? AND created_by = ?
+                    AND status IN ('queued', 'running', 'stopping')
+                ORDER BY created_at
+                """,
+                (investigation_id, user_id),
+            ).fetchall()
+        return [self._from_row(row) for row in rows]
+
+    def pending_investigation_captures(
+        self,
+        *,
+        user_id: str = "",
+        investigation_id: str = "",
+        capture_id: str = "",
+    ) -> list[dict[str, Any]]:
+        self._reconcile_workers()
+        clauses = [
+            "investigation_id != ''",
+            "status IN ('completed', 'stopped', 'error')",
+            "investigation_finalized_at IS NULL",
+        ]
+        values: list[object] = []
+        for column, value in (
+            ("created_by", user_id),
+            ("investigation_id", investigation_id),
+            ("id", capture_id),
+        ):
+            if value:
+                clauses.append(f"{column} = ?")
+                values.append(value)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM packet_captures WHERE {' AND '.join(clauses)} "
+                "ORDER BY finished_at, created_at",
+                values,
+            ).fetchall()
+        return [self._from_row(row) for row in rows]
+
+    def mark_investigation_finalized(self, capture_id: str) -> None:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE packet_captures
+                SET investigation_finalized_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (now, now, capture_id),
+            )
 
     def finish(
         self,
@@ -640,6 +708,9 @@ class PacketCaptureStore:
                     termination_reason TEXT NOT NULL DEFAULT '',
                     error TEXT NOT NULL DEFAULT '',
                     created_by TEXT NOT NULL,
+                    created_by_username TEXT NOT NULL DEFAULT '',
+                    investigation_id TEXT NOT NULL DEFAULT '',
+                    investigation_finalized_at REAL,
                     created_at REAL NOT NULL,
                     started_at REAL,
                     finished_at REAL,
@@ -651,6 +722,19 @@ class PacketCaptureStore:
                     ON packet_captures(interface, status);
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(packet_captures)")
+            }
+            for name, definition in (
+                ("created_by_username", "TEXT NOT NULL DEFAULT ''"),
+                ("investigation_id", "TEXT NOT NULL DEFAULT ''"),
+                ("investigation_finalized_at", "REAL"),
+            ):
+                if name not in columns:
+                    connection.execute(
+                        f"ALTER TABLE packet_captures ADD COLUMN {name} {definition}"
+                    )
             yield connection
             connection.commit()
         except Exception:

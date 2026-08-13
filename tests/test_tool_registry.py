@@ -14,15 +14,33 @@ from twn_toolkit.tool_catalog import (
     grouped_access_tools,
     tool_id_for_endpoint,
 )
+from twn_toolkit.investigation_policy import CAPTURE_POLICIES, CAPTURE_MODES
+from twn_toolkit.investigation_reporting import REPORT_PRESENTATION_TOOL_IDS
 
 
 class ToolRegistryTests(unittest.TestCase):
+    def test_every_registered_tool_has_an_investigation_capture_policy(self) -> None:
+        self.assertEqual(set(CAPTURE_POLICIES), set(TOOL_BY_ID))
+        for tool_id, policy in CAPTURE_POLICIES.items():
+            self.assertIn(policy.mode, CAPTURE_MODES, tool_id)
+            self.assertTrue(policy.evidence, tool_id)
+            self.assertTrue(policy.rationale, tool_id)
+
+    def test_automatic_case_evidence_has_an_explicit_report_presentation(self) -> None:
+        required = {
+            tool_id
+            for tool_id, policy in CAPTURE_POLICIES.items()
+            if policy.mode in {"finite", "lifecycle", "hybrid", "action"}
+        }
+        self.assertEqual(required - REPORT_PRESENTATION_TOOL_IDS, set())
+
     def test_registry_builds_existing_lookup_maps(self) -> None:
         self.assertIn("tools.packet_replay", TOOL_BY_ID)
         self.assertIn("tools.packet_capture", TOOL_BY_ID)
         self.assertIn("tools.iperf3", TOOL_BY_ID)
         self.assertIn("tools.multicast", TOOL_BY_ID)
         self.assertIn("tools.wake_on_lan", TOOL_BY_ID)
+        self.assertIn("investigations.workspace", TOOL_BY_ID)
         self.assertEqual(TOOL_BY_ID["tools.iperf3"].nav_group, "traffic")
         self.assertEqual(TOOL_BY_ID["tools.multicast"].nav_group, "traffic")
         self.assertEqual(TOOL_BY_ID["tools.wake_on_lan"].nav_group, "services")
@@ -42,6 +60,14 @@ class ToolRegistryTests(unittest.TestCase):
         self.assertEqual(
             REGISTRY.tool_id_for_endpoint("fortiap_client_history"),
             "fortigate.wireless_client_history",
+        )
+        self.assertEqual(
+            REGISTRY.tool_id_for_endpoint("investigation_report"),
+            "investigations.workspace",
+        )
+        self.assertEqual(
+            REGISTRY.tool_id_for_endpoint("download_investigation_package"),
+            "investigations.workspace",
         )
 
     def test_registry_rejects_duplicate_tool_ids(self) -> None:

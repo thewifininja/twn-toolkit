@@ -119,6 +119,8 @@ The persistent sidebar is the primary navigation:
   workflows.
 - **Network Tools** is divided into Addressing & Reachability, Multi-Host
   Tools, Services & Protocols, and Traffic & Interfaces.
+- **Investigations** keeps troubleshooting tests, notes, evidence, and reports
+  together.
 - **Local Tools** contains the Datastore and managed File Transfers.
 - **Automation** contains reusable Automations, Schedules, Conditions, and
   Actions.
@@ -131,6 +133,32 @@ Pages with peer views place their tab navigator first. Saved configuration
 panels follow one workflow: select a record to load it, edit and save it, or use
 **Duplicate** to create an independent copy before changing it. Multi-record
 libraries expose the same action on each expandable record.
+
+## Start a troubleshooting case
+
+1. Open **Investigations** and enter a concise title plus the situation already
+   known.
+2. Select **Open case**. A recording banner remains visible as you move
+   through the toolkit.
+3. Run a supported finite diagnostic: DNS Tester, TCP Port Scanner, Traceroute,
+   NTP Tester, Path MTU Tester, or Wi-Fi / LAN Speed Test. Completed and failed
+   runs are added to the journal with structured inputs and results.
+4. Open the journal to add operator context. Use **Pause recording** when tool
+   runs should not be associated automatically; notes and evidence can still be
+   added while paused.
+5. Use **Evidence** for relevant files. The toolkit stores them in a managed
+   case folder and records their SHA-256 hashes.
+6. Use **Report contents** to select individual timeline entries and evidence
+   files. Use **Download PDF** for the report alone or **Download case package**
+   for a ZIP containing the same PDF, the selected original evidence, and a
+   SHA-256 manifest. The report keeps the timeline concise and links each
+   structured diagnostic to its detailed-result page. Select **Close case** when
+   the work is complete; report selection remains editable afterward. A closed
+   case can be reopened in paused mode when there is no other open case.
+
+Long-running Multi-Ping and future terminal sessions use a separate lifecycle:
+their later integration will record start and stop events plus a bounded summary
+rather than treating every sample or terminal byte as a journal event.
 
 ## Run a first network test
 

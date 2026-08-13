@@ -86,12 +86,54 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("gap: var(--workspace-section-gap);", stylesheet)
         self.assertIn(".shell > * + * {", stylesheet)
 
+    def test_case_recorded_notice_preserves_shell_centering(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        notice_rule = stylesheet.split(
+            ".investigation-recorded-notice {", 1
+        )[1].split("}", 1)[0]
+
+        self.assertIn("margin: 14px auto;", notice_rule)
+
+    def test_active_case_banner_has_a_responsive_quick_note_dialog(self) -> None:
+        template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        script = (TEMPLATE_ROOT.parent / "static" / "case-note.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("data-case-note-open", template)
+        self.assertIn("data-case-note-dialog", template)
+        self.assertEqual(template.count("active-investigation-action"), 4)
+        self.assertEqual(
+            template.count('class="secondary active-investigation-action"'), 2
+        )
+        self.assertIn(
+            'class="button-link secondary active-investigation-action"', template
+        )
+        self.assertIn('name="next" value="{{ request.full_path }}"', template)
+        self.assertIn(".active-case-note-dialog {", stylesheet)
+        self.assertIn("max-width: calc(100vw - 32px);", stylesheet)
+        self.assertIn("flex-wrap: wrap;", stylesheet)
+        action_rule = stylesheet.split(
+            ".active-investigation-actions .active-investigation-action {", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("min-height: 34px;", action_rule)
+        self.assertNotIn("background:", action_rule)
+        self.assertNotIn("border:", action_rule)
+        self.assertIn("dialog.showModal()", script)
+        self.assertIn("note.focus()", script)
+
     def test_every_peer_view_uses_shared_tabs_first_workspace_structure(self) -> None:
         shared_chrome_templates = (
             "automations/index.html",
             "auth/settings.html",
             "auth/updates.html",
             "auth/backup.html",
+            "investigations/detail.html",
         )
 
         for template_name in shared_chrome_templates:
@@ -237,6 +279,92 @@ class UIComponentTests(unittest.TestCase):
             "@container saved-profile-manager (max-width: 300px) {", 1
         )[1].split("}", 1)[0]
         self.assertIn("grid-template-columns: minmax(0, 1fr);", compact_profiles)
+
+    def test_investigation_evidence_and_reports_contain_dense_mobile_content(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            ".investigation-evidence-library .section-head p {", stylesheet
+        )
+        self.assertIn("overflow-wrap: anywhere;", stylesheet)
+        self.assertIn(".investigation-report > *", stylesheet)
+        self.assertIn(".investigation-report .table-wrap {", stylesheet)
+        report_table_rule = stylesheet.split(
+            ".investigation-report .table-wrap {", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("max-width: 100%;", report_table_rule)
+        self.assertIn("width: 100%;", report_table_rule)
+
+    def test_investigation_start_form_and_detail_return_navigation_contract(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        index_template = (TEMPLATE_ROOT / "investigations" / "index.html").read_text(
+            encoding="utf-8"
+        )
+        detail_template = (
+            TEMPLATE_ROOT / "investigations" / "detail.html"
+        ).read_text(encoding="utf-8")
+
+        start_form_rule = stylesheet.split(
+            ".form-grid.investigation-create-form {", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("grid-template-columns: minmax(0, 1fr);", start_form_rule)
+        self.assertIn('class="investigation-create-fields"', index_template)
+        self.assertIn('class="investigation-create-actions"', index_template)
+        self.assertIn("Start a case", index_template)
+        self.assertIn("Open case", index_template)
+        self.assertIn('class="investigation-return-nav"', detail_template)
+        self.assertIn("Back to investigations", detail_template)
+        self.assertIn("Reopen case", detail_template)
+        self.assertIn('class="investigation-reopen-action"', detail_template)
+        self.assertIn(
+            ".investigation-overview-strip {\n  align-items: stretch;",
+            stylesheet,
+        )
+        report_checkbox_rule = stylesheet.split(
+            '.investigation-report-choice input[type="checkbox"] {', 1
+        )[1].split("}", 1)[0]
+        self.assertIn("appearance: none;", report_checkbox_rule)
+        self.assertIn("min-height: 1.15rem;", report_checkbox_rule)
+        self.assertIn("padding: 0;", report_checkbox_rule)
+
+    def test_investigation_print_layout_allows_large_results_to_paginate(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        detail_template = (
+            TEMPLATE_ROOT / "investigations" / "detail.html"
+        ).read_text(encoding="utf-8")
+        print_rules = stylesheet.split("@media print {", 1)[1].split(
+            "\n\n.certificate-options", 1
+        )[0]
+
+        self.assertIn('class="investigation-report-evidence"', detail_template)
+        self.assertIn('class="investigation-result-table"', detail_template)
+        self.assertIn('class="panel investigation-report-builder"', detail_template)
+        self.assertIn('href="#report-result-{{ event.id }}"', detail_template)
+        self.assertIn('class="investigation-report-result"', detail_template)
+        self.assertIn("download_investigation_package", detail_template)
+        self.assertIn("download_investigation_report_pdf", detail_template)
+        self.assertIn("display: block;", print_rules)
+        self.assertIn(".investigation-report-builder", print_rules)
+        self.assertIn(".investigation-report-evidence", print_rules)
+        self.assertIn(".investigation-report-result", print_rules)
+        self.assertIn("break-before: page;", print_rules)
+        self.assertIn(".investigation-report table", print_rules)
+        self.assertIn("break-inside: auto;", print_rules)
+        self.assertIn(".investigation-report tr", print_rules)
+        self.assertIn("display: table-header-group;", print_rules)
+        self.assertIn(".investigation-report-event > header > div", print_rules)
+        self.assertIn("padding: 4px 0 5px 9px;", print_rules)
+        self.assertIn("font-size: 8.3pt;", print_rules)
+        self.assertIn(
+            "scroll-margin-top: calc(var(--topbar-height) + 16px);",
+            stylesheet,
+        )
 
     def test_profile_create_surface_uses_shared_collection_token(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

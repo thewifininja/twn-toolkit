@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import saved_profile_manager %}
+{% from "components/ui.html" import case_recorded_notice, saved_profile_manager %}
 
 {% block content %}
 <section class="panel">
@@ -7,6 +7,7 @@
     <h1>Wake-on-LAN</h1>
     <p>Send bounded magic packets from the toolkit host to local devices or to a routed broadcast/relay destination, then optionally confirm that addressed devices respond to ping.</p>
   </div>
+  {{ case_recorded_notice(journal_event) }}
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
   <form

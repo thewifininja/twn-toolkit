@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import secrets
+import time
+
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from .activity_context import record_current_activity
-from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
+from .audit import (
+    annotate_profile_deleted,
+    annotate_profile_duplicated,
+    annotate_profile_saved,
+    annotate_tool_run,
+)
+from .investigation_context import record_current_investigation_event
 from .network_tools import (
     ToolInputError,
     parse_ping_targets,
@@ -25,8 +34,14 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
         }
         results = None
         stats = None
+        journal_event = None
         error = ""
         if request.method == "POST":
+            operation_id = f"port-scan:{secrets.token_hex(12)}"
+            journal_started_at = time.time()
+            targets: list[dict[str, str]] = []
+            ports: list[int] = []
+            all_results: list[dict[str, object]] = []
             form = {
                 "hosts": request.form.get("hosts", "").strip(),
                 "ports": request.form.get("ports", "").strip(),
@@ -77,6 +92,36 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
                     "open port count": int(stats["open"]) if stats else 0,
                 },
             )
+            if error:
+                journal_summary = f"TCP port scan failed: {error}"
+                journal_metrics = {}
+            else:
+                journal_metrics = dict(stats or {})
+                journal_summary = (
+                    f"Scanned {len(targets)} host(s) across {len(ports)} TCP "
+                    f"port(s): {journal_metrics.get('open', 0)} open, "
+                    f"{journal_metrics.get('closed', 0)} closed, and "
+                    f"{journal_metrics.get('timeout', 0)} timed out."
+                )
+            journal_event = record_current_investigation_event(
+                operation_id=operation_id,
+                event_type="diagnostic.failed" if error else "diagnostic.completed",
+                tool_id="tools.port_scanner",
+                action="TCP port scan",
+                outcome="failed" if error else "succeeded",
+                summary=journal_summary,
+                targets={"hosts": targets},
+                parameters={
+                    "ports": ports,
+                    "timeout_seconds": form["timeout"],
+                    "concurrency": form["concurrency"],
+                    "display_open_only": form["open_only"],
+                },
+                metrics=journal_metrics,
+                details={"error": error, "results": all_results},
+                started_at=journal_started_at,
+                completed_at=time.time(),
+            )
         return render_template(
             "tools/port_scanner.html",
             error=error,
@@ -85,6 +130,7 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
             port_profiles=_port_scan_profile_store("ports").all(),
             results=results,
             stats=stats,
+            journal_event=journal_event,
         )
 
     @tools_bp.post("/port-scanner/profiles/<kind>")

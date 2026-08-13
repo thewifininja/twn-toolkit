@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import action_row, profile_card, profile_create, profile_section, section_header, workspace_intro %}
+{% from "components/ui.html" import action_row, case_recorded_notice, profile_card, profile_create, profile_section, section_header, workspace_intro %}
 
 {% block content %}
 {{ workspace_intro("SNMP Tester", "Manage SNMP access, map devices to credentials, build reusable OID collections, and validate multiple hosts.") }}
+{{ case_recorded_notice(journal_event) }}
 
 {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 

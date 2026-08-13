@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import io
 import re
+import secrets
+import time
 from datetime import datetime
 from typing import Any, Callable
 
@@ -28,6 +30,7 @@ from .audit import (
     annotate_profile_tested,
     audit_reference,
     suppress_audit_event,
+    suppress_case_bridge_event,
 )
 from .fortiauthenticator import (
     FortiAuthenticatorClient,
@@ -35,6 +38,7 @@ from .fortiauthenticator import (
     normalize_host as normalize_fortiauthenticator_host,
 )
 from .profiles import FortiAuthenticatorProfileStore
+from .investigation_context import add_current_investigation_generated_evidence_event
 from .tool_catalog import grouped_visible_tools_for_category
 
 
@@ -342,6 +346,7 @@ def register_fortiauthenticator_routes(
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         safe_profile_name = _safe_filename_profile_name(profile["name"])
         filename = f"mac-devices-{safe_profile_name}-{stamp}.csv"
+        suppress_case_bridge_event()
         annotate_audit_event(
             category="FortiAuthenticator",
             action="fortiauthenticator.mac_devices_export_succeeded",
@@ -357,6 +362,24 @@ def register_fortiauthenticator_routes(
                 "record count": len(objects),
                 "format": "CSV",
             },
+        )
+        now = time.time()
+        add_current_investigation_generated_evidence_event(
+            operation_id=f"fortiauthenticator-export:{secrets.token_hex(12)}",
+            event_type="external.export.completed",
+            tool_id="fortiauthenticator.mac_devices",
+            action="Export MAC devices",
+            outcome="succeeded",
+            summary=f"Exported {len(objects)} FortiAuthenticator MAC device(s).",
+            targets={"profile": profile["name"]},
+            parameters={"format": "CSV"},
+            metrics={"record_count": len(objects)},
+            details={},
+            started_at=now,
+            completed_at=now,
+            filename=filename,
+            content_type="text/csv",
+            content=output.getvalue().encode("utf-8"),
         )
         return Response(
             output.getvalue(),
@@ -474,6 +497,7 @@ def register_fortiauthenticator_routes(
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         safe_profile_name = _safe_filename_profile_name(profile["name"])
         filename = f"mac-group-memberships-{safe_profile_name}-{stamp}.csv"
+        suppress_case_bridge_event()
         annotate_audit_event(
             category="FortiAuthenticator",
             action="fortiauthenticator.mac_memberships_export_succeeded",
@@ -489,6 +513,24 @@ def register_fortiauthenticator_routes(
                 "record count": len(objects),
                 "format": "CSV",
             },
+        )
+        now = time.time()
+        add_current_investigation_generated_evidence_event(
+            operation_id=f"fortiauthenticator-export:{secrets.token_hex(12)}",
+            event_type="external.export.completed",
+            tool_id="fortiauthenticator.group_memberships",
+            action="Export MAC group memberships",
+            outcome="succeeded",
+            summary=f"Exported {len(objects)} FortiAuthenticator MAC group membership(s).",
+            targets={"profile": profile["name"]},
+            parameters={"format": "CSV"},
+            metrics={"record_count": len(objects)},
+            details={},
+            started_at=now,
+            completed_at=now,
+            filename=filename,
+            content_type="text/csv",
+            content=output.getvalue().encode("utf-8"),
         )
         return Response(
             output.getvalue(),

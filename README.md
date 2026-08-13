@@ -32,6 +32,7 @@ Current release: **v0.18.1**
   - Multi-Host Tools
   - Services & Protocols
   - Traffic & Interfaces
+- **Investigations** — durable troubleshooting journals, evidence, and reports
 - **Local Tools** — Datastore and managed File Transfers
 - **Automation** — reusable Conditions, Actions, and Automations
 - **Administration** — Settings, access, backups, operational limits, and
@@ -200,6 +201,34 @@ The sidebar and Network Tools page use the same functional organization.
   selected directly from the contained Datastore after explicit authorization
   confirmation; each replay is bounded by capture size, frame count, and
   scheduled duration.
+
+### Investigations
+
+An operator can open one case at a time in the Investigations workspace and
+carry its recording context across toolkit pages. Finite network diagnostics,
+one-off SNMP polls, interface monitoring, certificate inspection, persistent
+Multi-Ping, packet capture, managed iPerf3 listeners, command/transfer runs,
+selected vendor workflows, and other intentional tool actions retain safe
+structured events or generated evidence. Operators can also:
+
+- pause automatic capture without closing the case;
+- add timestamped notes while recording is active or paused;
+- upload collision-safe evidence files to a managed per-case Datastore
+  folder with retained size, content type, and SHA-256 metadata;
+- explicitly add an IP-address snapshot or a collected Automation run ZIP;
+- review a chronological journal and download retained evidence; and
+- curate a deterministic case report without changing source evidence;
+- download its compact timeline, linked detailed-result pages, and evidence
+  appendix as PDF; or
+- download a ZIP containing that PDF, the selected original evidence files,
+  and a manifest with sizes, timestamps, and SHA-256 hashes.
+
+Investigations are owner-scoped and access-profile controlled. Metadata lives in
+owner-only `instance/investigations.sqlite3`; files live below
+`instance/datastore/Investigations/`. Closed case journals and evidence are
+read-only; report inclusion remains editable because it is presentation
+metadata only. See [Investigation journals](docs/investigations.md) for the
+event contract and extension guidance.
 
 ### Local Tools
 
@@ -492,6 +521,8 @@ unrestricted internet exposure.
   installation, permissions, lifecycle, logs, upgrades, and removal
 - [Automation](docs/automations.md) — condition/action contracts, scheduling,
   state, retention, and pipeline behavior
+- [Investigation journals](docs/investigations.md) — lifecycle, event evidence,
+  managed files, reports, and tool-integration guidance
 - [DHCP Discover](docs/dhcp-discover.md) — safe probe behavior, platform
   permissions, interpretation, and troubleshooting
 - [Packet Capture](docs/packet-capture.md) — capture deployment, controls,

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import empty_state, section_header, workspace_chrome %}
+{% block shell_classes %} investigation-shell{% if active_investigation_tab == 'report' %} investigation-report-shell{% endif %}{% endblock %}
+{% block content %}
+<div class="workspace-page investigation-detail-page">
+  <nav class="investigation-return-nav" aria-label="Investigation navigation">
+    <a class="investigation-return-link" href="{{ url_for('investigations') }}"><span aria-hidden="true">←</span> Back to investigations</a>
+  </nav>
+  {{ workspace_chrome(
+    investigation.title,
+    investigation.description or "A durable troubleshooting record with evidence linked to the work that produced it.",
+    "Case",
+    investigation_tabs,
+    "Investigation sections",
+    "Journal state",
+    investigation.state_label,
+    investigation.event_count ~ (" event" if investigation.event_count == 1 else " events") ~ " · " ~ investigation.artifact_count ~ (" evidence file" if investigation.artifact_count == 1 else " evidence files")
+  ) }}
+
+  <section class="panel investigation-overview-strip">
+    <dl class="investigation-inline-stats">
+      <div><dt>Started</dt><dd>{{ investigation.started_display }}</dd></div>
+      <div><dt>Last activity</dt><dd>{{ investigation.updated_display }}</dd></div>
+      <div><dt>Operator</dt><dd>{{ investigation.owner_username }}</dd></div>
+      <div><dt>Evidence folder</dt><dd><code>{{ investigation.datastore_path }}</code></dd></div>
+    </dl>
+    {% if investigation.is_open %}
+      <div class="button-row investigation-state-actions">
+        {% if investigation.is_recording %}
+          <form method="post" action="{{ url_for('update_investigation_state', investigation_id=investigation.id) }}">
+            <input type="hidden" name="state" value="paused">
+            <button class="secondary" type="submit">Pause recording</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('update_investigation_state', investigation_id=investigation.id) }}">
+            <input type="hidden" name="state" value="recording">
+            <button type="submit">Resume recording</button>
+          </form>
+        {% endif %}
+        {% set active_live_session_count = active_ping_session_count + active_snmp_session_count + active_packet_capture_count + active_iperf_server_count %}
+        {% set close_case_message = ('Close this case? The toolkit will stop ' ~ active_live_session_count ~ ' attached live ' ~ ('sessions' if active_live_session_count != 1 else 'session') ~ ' and retain their results as evidence.') if active_live_session_count else 'Close this case? Automatic recording will stop.' %}
+        <form method="post" action="{{ url_for('update_investigation_state', investigation_id=investigation.id) }}" onsubmit='return confirm({{ close_case_message|tojson }});'>
+          <input type="hidden" name="state" value="completed">
+          <button class="secondary" type="submit">Close case</button>
+        </form>
+      </div>
+    {% elif investigation.state == 'completed' %}
+      <div class="investigation-reopen-action">
+        <div class="investigation-reopen-copy">
+          <strong>Case closed</strong>
+          <small>Reopen paused to add follow-up work. Recording will not start automatically.</small>
+        </div>
+        <form method="post" action="{{ url_for('update_investigation_state', investigation_id=investigation.id) }}" onsubmit="return confirm('Reopen this case? It will reopen with automatic recording paused.');">
+          <input type="hidden" name="state" value="paused">
+          <button class="secondary" type="submit">Reopen case</button>
+        </form>
+      </div>
+    {% endif %}
+  </section>
+
+  {% if active_investigation_tab == 'journal' %}
+    {% if investigation.is_open %}
+      <section class="panel investigation-note-panel">
+        {{ section_header("Add context", "Record a hypothesis, change window, phone call, observation, or decision between tool runs.", "Operator note") }}
+        <form method="post" action="{{ url_for('add_investigation_note', investigation_id=investigation.id) }}" class="investigation-note-form">
+          <label for="investigation-note" class="sr-only">Case note</label>
+          <textarea id="investigation-note" name="note" maxlength="4000" rows="3" required placeholder="At approximately 09:45, the branch firewall policy was changed…"></textarea>
+          <button type="submit">Add to journal</button>
+        </form>
+      </section>
+    {% endif %}
+
+    <section class="panel investigation-journal-panel">
+      {{ section_header("Journal", "Meaningful actions are retained in chronological order; page navigation and unfinished forms are not recorded.", "Troubleshooting timeline") }}
+      {% if investigation_events %}
+        <ol class="investigation-timeline">
+          {% for event in investigation_events %}
+            <li class="investigation-event {{ event.event_type|replace('.', '-') }}">
+              <div class="investigation-event-marker" aria-hidden="true"></div>
+              <article>
+                <header class="investigation-event-head">
+                  <div><span class="investigation-event-time">{{ event.started_display }}</span><h3>{{ event.action }}</h3></div>
+                  <span class="pill {{ 'success' if event.outcome == 'succeeded' else 'error' if event.outcome == 'failed' else '' }}">{{ event.outcome }}</span>
+                </header>
+                <p>{{ event.summary }}</p>
+                <footer>
+                  <span>{{ event.created_by_username }}</span>
+                  {% if event.duration_seconds > 0.01 %}<span>{{ event.duration_seconds }} seconds</span>{% endif %}
+                  {% if event.tool_id != 'investigations.workspace' %}<span>{{ event.tool_id }}</span>{% endif %}
+                </footer>
+              </article>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        {% call empty_state("The journal is ready", "Run a supported diagnostic or add the first operator note.") %}{% endcall %}
+      {% endif %}
+    </section>
+  {% elif active_investigation_tab == 'evidence' %}
+    {% if investigation.is_open %}
+      <section class="panel investigation-evidence-upload">
+        {{ section_header("Add evidence", "Files are stored in the managed case folder and retained with a SHA-256 hash.", "Attachments") }}
+        <form method="post" action="{{ url_for('upload_investigation_evidence', investigation_id=investigation.id) }}" enctype="multipart/form-data" class="investigation-upload-form">
+          <label>Evidence files
+            <input type="file" name="files" multiple required>
+            <small>Upload up to 20 files at once. Report inclusion is separate from evidence retention.</small>
+          </label>
+          <button type="submit">Add evidence</button>
+        </form>
+      </section>
+    {% endif %}
+    <section class="panel investigation-evidence-library">
+      {% call section_header("Evidence library", investigation.datastore_path ~ "/Evidence", "Managed datastore folder") %}
+        {% if current_user.is_admin or allowed_tool_ids is none or 'local.datastore' in allowed_tool_ids %}
+          <a class="button-link secondary" href="{{ url_for('local_datastore', path=investigation.datastore_path ~ '/Evidence') }}">Open folder in Datastore</a>
+        {% endif %}
+      {% endcall %}
+      {% if investigation_artifacts %}
+        <div class="investigation-artifact-list">
+          {% for artifact in investigation_artifacts %}
+            <article class="investigation-artifact-card">
+              <div class="investigation-artifact-icon" aria-hidden="true">↧</div>
+              <div><h3>{{ artifact.display_name }}</h3><p>{{ format_bytes(artifact.byte_count) }} · {{ artifact.content_type or 'Unknown type' }} · {{ artifact.created_display }}</p><code>SHA-256 {{ artifact.sha256 }}</code></div>
+              <a class="button-link secondary" href="{{ url_for('download_investigation_evidence', investigation_id=investigation.id, artifact_id=artifact.id) }}">Download</a>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        {% call empty_state("No evidence files yet", "Diagnostic result snapshots can still appear in the journal without creating a separate file.") %}{% endcall %}
+      {% endif %}
+    </section>
+  {% elif active_investigation_tab == 'report' %}
+    <section class="panel investigation-report-builder">
+      {% call section_header("Report contents", "Choose what appears in the case report without deleting or changing anything in the journal or evidence library.", "Presentation only") %}
+        <span class="investigation-report-selection-count">{{ report_events|length }} timeline · {{ report_artifacts|length }} evidence</span>
+      {% endcall %}
+      <form method="post" action="{{ url_for('update_investigation_report_contents', investigation_id=investigation.id) }}" class="investigation-report-builder-form">
+        <div class="investigation-report-selection-grid">
+          <fieldset>
+            <legend>Timeline entries</legend>
+            <p>Select the events that belong in the report timeline. Detailed diagnostic results are linked from their timeline entry.</p>
+            <div class="investigation-report-choice-list">
+              {% for event in investigation_events %}
+                <label class="investigation-report-choice">
+                  <input type="checkbox" name="event_id" value="{{ event.id }}"{% if event.report_placement == 'main' %} checked{% endif %}>
+                  <span>
+                    <strong>{{ event.action }}</strong>
+                    <small>{{ event.started_display }} · {{ event.summary }}</small>
+                    {% if event.id in detailed_result_event_ids %}<em>{% if event.id in report_result_labels %}{{ report_result_labels[event.id] }} detailed results{% else %}Detailed results available{% endif %}</em>{% endif %}
+                  </span>
+                </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Evidence appendix</legend>
+            <p>Select the files to list in the evidence appendix and include as originals in the downloadable case package. Unselected files remain in the evidence library.</p>
+            {% if investigation_artifacts %}
+              <div class="investigation-report-choice-list">
+                {% for artifact in investigation_artifacts %}
+                  <label class="investigation-report-choice">
+                    <input type="checkbox" name="artifact_id" value="{{ artifact.id }}"{% if artifact.report_placement == 'appendix' %} checked{% endif %}>
+                    <span><strong>{{ artifact.display_name }}</strong><small>{{ artifact.created_display }} · {{ format_bytes(artifact.byte_count) }}</small></span>
+                  </label>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="investigation-report-choice-empty">No evidence files have been added to this case.</p>
+            {% endif %}
+          </fieldset>
+        </div>
+        <footer><p>Report choices remain editable after the case is closed. Source evidence does not.</p><button type="submit">Save report contents</button></footer>
+      </form>
+    </section>
+    <section class="investigation-report-toolbar">
+      <p>Download the selected report by itself or package it with the selected original evidence and a verification manifest.</p>
+      <div class="button-row">
+        <a class="button-link" href="{{ url_for('download_investigation_package', investigation_id=investigation.id) }}">Download case package</a>
+        <a class="button-link secondary" href="{{ url_for('download_investigation_report_pdf', investigation_id=investigation.id) }}">Download PDF</a>
+        <button class="secondary" type="button" onclick="window.print()">Print preview</button>
+      </div>
+    </section>
+    <article class="investigation-report" aria-label="Case report">
+      <header class="investigation-report-title">
+        <span class="eyebrow">Case report</span><h1>{{ investigation.title }}</h1>
+        {% if investigation.description %}<p>{{ investigation.description }}</p>{% endif %}
+        <dl class="investigation-report-meta">
+          <div><dt>Started</dt><dd>{{ investigation.started_display }}</dd></div><div><dt>Status</dt><dd>{{ investigation.state_label }}</dd></div><div><dt>Operator</dt><dd>{{ investigation.owner_username }}</dd></div><div><dt>Included</dt><dd>{{ report_events|length }} timeline {{ 'entry' if report_events|length == 1 else 'entries' }} · {{ report_artifacts|length }} {{ 'file' if report_artifacts|length == 1 else 'files' }}</dd></div>
+        </dl>
+      </header>
+      <section class="investigation-report-timeline" id="case-timeline"><h2>Case timeline</h2>
+        {% if report_events %}
+          {% for event in report_events %}
+            <article class="investigation-report-event">
+              <header><div><time>{{ event.started_display }}</time><h3>{{ event.action }}</h3></div><span class="pill {{ 'success' if event.outcome == 'succeeded' else 'error' if event.outcome == 'failed' else '' }}">{{ event.outcome }}</span></header>
+              <p>{{ event.summary }}</p>
+              {% set presentation = event_presentations[event.id] %}
+              {% if presentation.facts %}
+                <dl class="investigation-report-event-facts">
+                  {% for fact in presentation.facts %}<div><dt>{{ fact.label }}</dt><dd>{{ fact.value }}</dd></div>{% endfor %}
+                </dl>
+              {% endif %}
+              {% if event.id in report_result_labels %}<a class="investigation-report-detail-link" href="#report-result-{{ event.id }}">Detailed results {{ report_result_labels[event.id] }} <span aria-hidden="true">→</span></a>{% endif %}
+            </article>
+          {% endfor %}
+        {% else %}<p>No timeline entries are included in this report.</p>{% endif %}
+      </section>
+      {% if report_result_events %}
+        <section class="investigation-report-results"><h2>Detailed results</h2>
+          {% for event in report_result_events %}
+            <article class="investigation-report-result" id="report-result-{{ event.id }}">
+              <header><div><span class="eyebrow">Detailed results · {{ report_result_labels[event.id] }}</span><h2>{{ event.action }}</h2><p>{{ event.started_display }} · {{ event.outcome }}</p></div><a href="#case-timeline">Back to timeline</a></header>
+              <p>{{ event.summary }}</p>
+              {% set detail = event_presentations[event.id].detail %}
+              {% if detail and detail.kind == 'table' %}
+                <div class="table-wrap"><table class="investigation-result-table"><thead><tr>{% for column in detail.columns %}<th>{{ column }}</th>{% endfor %}</tr></thead><tbody>
+                  {% for row in detail.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}
+                </tbody></table></div>
+              {% elif detail and detail.kind == 'metrics' %}
+                <dl class="investigation-result-metrics">{% for metric in detail.values %}<div><dt>{{ metric.label }}</dt><dd>{{ metric.value }}</dd></div>{% endfor %}</dl>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </section>
+      {% endif %}
+      {% if report_artifacts %}
+        <section class="investigation-report-evidence"><h2>Evidence appendix</h2>
+          <div class="table-wrap"><table class="investigation-evidence-table"><thead><tr><th>File</th><th>Collected</th><th>Size</th><th>SHA-256</th></tr></thead><tbody>{% for artifact in report_artifacts %}<tr><td>{{ artifact.display_name }}</td><td>{{ artifact.created_display }}</td><td>{{ format_bytes(artifact.byte_count) }}</td><td><code>{{ artifact.sha256 }}</code></td></tr>{% endfor %}</tbody></table></div>
+        </section>
+      {% endif %}
+    </article>
+  {% endif %}
+</div>
+{% endblock %}

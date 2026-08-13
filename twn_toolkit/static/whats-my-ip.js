@@ -6,6 +6,8 @@
   const serverAddress = document.querySelector("#server-public-ip-address");
   const serverStatus = document.querySelector("#server-public-ip-status");
   const checkAgain = document.querySelector("#check-ip-again");
+  const recordSnapshot = document.querySelector("#record-ip-snapshot");
+  const snapshotStatus = document.querySelector("#ip-snapshot-status");
   checkAgain?.addEventListener("click", () => {
     checkAgain.disabled = true;
     checkAgain.textContent = "Checking…";
@@ -15,6 +17,28 @@
 
   lookupPublicIp(result, address, status, true);
   lookupPublicIp(serverResult, serverAddress, serverStatus, false);
+
+  recordSnapshot?.addEventListener("click", async () => {
+    recordSnapshot.disabled = true;
+    if (snapshotStatus) snapshotStatus.textContent = "Adding snapshot…";
+    const form = new FormData();
+    form.set("browser_public", address?.textContent || "");
+    form.set("server_public", serverAddress?.textContent || "");
+    try {
+      const response = await fetch(recordSnapshot.dataset.recordUrl, {
+        method: "POST",
+        body: form,
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      const payload = await response.json();
+      if (snapshotStatus) snapshotStatus.textContent = payload.message || "Snapshot request completed.";
+    } catch (_error) {
+      if (snapshotStatus) snapshotStatus.textContent = "The snapshot could not be added to the case.";
+    } finally {
+      recordSnapshot.disabled = false;
+    }
+  });
 
   function lookupPublicIp(container, output, detail, directFromBrowser) {
     if (!container || !output || !detail) return;

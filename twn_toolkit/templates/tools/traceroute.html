@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
+{% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager %}
 
 {% block content %}
 <section class="panel">
@@ -8,6 +8,7 @@
     <p>Follow live IPv4 or IPv6 network paths from the toolkit host to as many as 10 destinations.</p>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  {{ case_recorded_notice(journal_event) }}
 
   <form class="form" method="post" id="traceroute-form" data-run-url="{{ url_for('tools.traceroute_run') }}" data-save-profile-url="{{ url_for('tools.save_traceroute_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_traceroute_profile') }}">
     {% call saved_profile_manager("Destination profiles", "Load or maintain reusable traceroute target lists.", profiles|length) %}

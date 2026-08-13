@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import case_recorded_notice %}
 
 {% block content %}
+{{ case_recorded_notice(journal_event) }}
 <section class="panel tool-panel">
   <div class="panel-head">
     <h1>Find Wireless Client History</h1>

@@ -14,6 +14,8 @@ from .automation import AutomationEngine, AutomationStore
 from .auth import load_or_create_secret_key
 from .live_tools import LiveToolRunner, LiveToolStore
 from .operational import OperationalSettingsStore
+from .ping_investigation import finalize_pending_ping_sessions
+from .snmp_investigation import finalize_pending_snmp_sessions
 from .pidfiles import (
     acquire_singleton_lock,
     record_lock_owner,
@@ -65,6 +67,7 @@ def main() -> None:
     next_retention_check = 0.0
     next_lease_renewal = 0.0
     next_startup_check = 0.0
+    next_live_finalization = 0.0
 
     def stop(_signum: int, _frame: object) -> None:
         nonlocal running
@@ -75,6 +78,29 @@ def main() -> None:
     try:
         while running:
             now = time.time()
+            if now >= next_live_finalization:
+                try:
+                    finalized = finalize_pending_ping_sessions(instance_path)
+                    for failure in finalized["failures"]:
+                        print(
+                            "Multi-Ping case evidence finalization failed for "
+                            f"{failure['session_id']}: {failure['error']}",
+                            file=sys.stderr,
+                        )
+                    snmp_finalized = finalize_pending_snmp_sessions(instance_path)
+                    for failure in snmp_finalized["failures"]:
+                        print(
+                            "SNMP monitor case evidence finalization failed for "
+                            f"{failure['session_id']}: {failure['error']}",
+                            file=sys.stderr,
+                        )
+                except Exception as exc:
+                    print(
+                        "Multi-Ping case evidence finalization failed: "
+                        f"{type(exc).__name__}: {exc}",
+                        file=sys.stderr,
+                    )
+                next_live_finalization = now + 1
             if now >= next_retention_check:
                 try:
                     store.prune_history_if_due(now)
