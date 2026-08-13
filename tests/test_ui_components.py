@@ -470,7 +470,7 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("Help &amp; release notes", template)
         self.assertIn("filename='sidebar.js', v=app_version", template)
 
-    def test_sidebar_direct_tools_and_nested_groups_share_one_level_indent(self) -> None:
+    def test_sidebar_nested_tools_are_text_only_and_keep_hierarchy_indent(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
         )
@@ -484,7 +484,12 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("margin-left: 12px !important;", stylesheet)
         self.assertIn("padding-left: 8px !important;", stylesheet)
         self.assertIn(".side-nav-tool-list .side-nav-item > a {", stylesheet)
-        self.assertIn("gap: 8px;", stylesheet)
+        self.assertIn(".side-nav-item.text-only > a {", stylesheet)
+        self.assertIn("gap: 0;", stylesheet)
+        self.assertIn("sidebar_tool_row(tool, show_icon=false)", template)
+        self.assertIn(
+            "{% if show_icon %}<span class=\"side-nav-icon\"", template
+        )
 
     def test_automation_threshold_rows_share_aligned_label_space(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

@@ -62,10 +62,10 @@
     </header>
     <div class="app-layout {{ 'with-sidebar' if current_user else 'without-sidebar' }}">
       {% if current_user %}
-        {% macro sidebar_tool_row(tool, label=none, parent=false, favorite_enabled=true) -%}
-          <div class="side-nav-item {{ 'parent' if parent else '' }}">
+        {% macro sidebar_tool_row(tool, label=none, parent=false, favorite_enabled=true, show_icon=true) -%}
+          <div class="side-nav-item {{ 'parent' if parent else '' }} {{ 'text-only' if not show_icon else '' }}">
             <a class="{{ 'side-nav-parent-link' if parent else '' }} {{ 'active' if tool.id == current_tool_id else '' }}" href="{{ url_for(tool.endpoint, **tool.endpoint_values) }}" title="{{ label or tool.label }}">
-              <span class="side-nav-icon" aria-hidden="true">{{ tool.nav_icon }}</span>
+              {% if show_icon %}<span class="side-nav-icon" aria-hidden="true">{{ tool.nav_icon }}</span>{% endif %}
               <span class="side-nav-label">{{ label or tool.label }}</span>
             </a>
             {% if favorite_enabled and tool.grantable %}
@@ -136,7 +136,7 @@
                             draggable="true"
                           ><span aria-hidden="true">⠿</span></button>
                         {% endif %}
-                        <div>{{ sidebar_tool_row(tool) }}</div>
+                        <div>{{ sidebar_tool_row(tool, show_icon=false) }}</div>
                       </li>
                     {% endfor %}
                   </ul>
@@ -160,7 +160,7 @@
                       <ul class="side-nav-tool-list">
                         {% for tool in group.tools %}
                           <li>
-                            {{ sidebar_tool_row(tool) }}
+                            {{ sidebar_tool_row(tool, show_icon=false) }}
                           </li>
                         {% endfor %}
                       </ul>
@@ -191,7 +191,7 @@
                                     <ul>
                                       {% for tool in nested.tools %}
                                         <li>
-                                          {{ sidebar_tool_row(tool) }}
+                                          {{ sidebar_tool_row(tool, show_icon=false) }}
                                         </li>
                                       {% endfor %}
                                     </ul>
@@ -203,12 +203,12 @@
                             {% if child.tools %}
                               {% if child.tool %}
                                 <ul class="side-nav-child-list">
-                                  {% for tool in child.tools %}<li>{{ sidebar_tool_row(tool) }}</li>{% endfor %}
+                                  {% for tool in child.tools %}<li>{{ sidebar_tool_row(tool, show_icon=false) }}</li>{% endfor %}
                                 </ul>
                               {% else %}
                                 <details class="side-nav-subsection" {{ 'open' if child.active else '' }}>
                                   <summary><span class="side-nav-subsection-title"><span class="side-nav-icon" aria-hidden="true">{{ child.icon|default('•') }}</span><span>{{ child.label }}</span></span><small>{{ child.tools|length }}</small></summary>
-                                  <ul>{% for tool in child.tools %}<li>{{ sidebar_tool_row(tool) }}</li>{% endfor %}</ul>
+                                  <ul>{% for tool in child.tools %}<li>{{ sidebar_tool_row(tool, show_icon=false) }}</li>{% endfor %}</ul>
                                 </details>
                               {% endif %}
                             {% endif %}
