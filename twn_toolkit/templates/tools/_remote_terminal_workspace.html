@@ -1,0 +1,58 @@
+<section
+  class="remote-terminal-workspace"
+  id="remote-terminal-workspace"
+  data-requested-session="{{ requested_session }}"
+  data-popout="{{ 'true' if is_popout|default(false) else 'false' }}"
+  hidden
+>
+  <header class="remote-terminal-workspace-head">
+    <div>
+      <span class="eyebrow">SSH session</span>
+      <h2 id="remote-terminal-session-title">Remote shell</h2>
+      <p id="remote-terminal-session-target"></p>
+    </div>
+    <div class="remote-terminal-session-actions">
+      <span class="status-pill" id="remote-terminal-session-state">Connecting</span>
+      {% if not is_popout|default(false) %}
+        <button class="secondary compact" id="remote-terminal-save-host" type="button">Save connection</button>
+        <button class="secondary compact" id="remote-terminal-popout" type="button">Pop out</button>
+      {% endif %}
+      <a class="button-link secondary compact" id="remote-terminal-download" href="#" download hidden>Download</a>
+      {% if not is_popout|default(false) %}
+        <button class="danger compact" id="remote-terminal-delete" type="button" hidden>Delete</button>
+      {% endif %}
+      <button class="secondary compact" id="remote-terminal-stop" type="button">Stop session</button>
+    </div>
+  </header>
+  {% if is_popout|default(false) %}
+    <p class="remote-terminal-shared-view-note">This window controls the same persistent shell as the main workspace. Closing it does not stop the SSH session.</p>
+  {% endif %}
+  <div class="message warning" id="remote-terminal-session-message" role="status" hidden></div>
+  <div class="remote-terminal-surface" id="remote-terminal-surface">
+    <pre class="remote-terminal-screen" id="remote-terminal-screen" role="log" aria-label="Remote terminal output"></pre>
+    <textarea
+      class="remote-terminal-input-capture"
+      id="remote-terminal-input-capture"
+      rows="1"
+      aria-label="Remote terminal keyboard input"
+      aria-describedby="remote-terminal-input-help"
+      autocomplete="off"
+      autocapitalize="none"
+      autocorrect="off"
+      spellcheck="false"
+    ></textarea>
+    <span class="remote-terminal-focus-state" id="remote-terminal-focus-state" aria-hidden="true">Click or tap to type</span>
+  </div>
+  <div class="remote-terminal-input-tools">
+    <p id="remote-terminal-input-help">Type and paste directly into the terminal. Input is sent to the active SSH shell and is never stored separately.</p>
+    <div class="remote-terminal-control-row" aria-label="Terminal control keys">
+      <button class="secondary" type="button" data-terminal-key="ctrl-c">Ctrl+C</button>
+      <button class="secondary" type="button" data-terminal-key="ctrl-d">Ctrl+D</button>
+      <button class="secondary" type="button" data-terminal-key="backspace">Backspace</button>
+      <button class="secondary" type="button" data-terminal-key="tab">Tab</button>
+      <button class="secondary" type="button" data-terminal-key="up" aria-label="Up arrow">↑</button>
+      <button class="secondary" type="button" data-terminal-key="down" aria-label="Down arrow">↓</button>
+      <button class="secondary" type="button" data-terminal-key="escape">Esc</button>
+    </div>
+  </div>
+</section>

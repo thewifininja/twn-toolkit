@@ -28,6 +28,7 @@ from .ping_investigation import (
     recording_case_id,
 )
 from .profiles import PingProfileStore
+from .remote_sessions import RemoteSessionManager, public_remote_session
 from .snmp_investigation import finalize_pending_snmp_sessions
 
 
@@ -59,6 +60,11 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             ).active_for_user(user["id"])
             if iperf_session:
                 sessions.append(iperf_session)
+        remote_sessions = []
+        if _tool_allowed("tools.remote_terminal"):
+            manager = current_app.extensions.get("remote_session_manager")
+            if isinstance(manager, RemoteSessionManager):
+                remote_sessions = manager.sessions_for_user(user["id"])
         return jsonify(
             {
                 "sessions": [
@@ -68,7 +74,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                         else public_live_session(session)
                     )
                     for session in sessions
-                ]
+                ] + [public_remote_session(session) for session in remote_sessions]
             }
         )
 

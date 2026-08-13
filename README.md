@@ -136,6 +136,13 @@ The sidebar and Network Tools page use the same functional organization.
 
 #### Services & Protocols
 
+- **Remote Terminal** — keep up to six owner-scoped SSH shells running under the
+  toolkit service and restore them from Live Tools after navigation, a closed
+  browser tab, or a brief client disconnect. Each shell has a 10 MiB reconnect
+  scrollback limit, an eight-hour idle limit, and seven-day completed-scrollback
+  retention. Credentials and submitted input are not persisted. A shell started
+  while a case records can retain lifecycle events and an optional sanitized
+  remote-output transcript as case evidence.
 - **RADIUS Authentication Test** — compare PAP and CHAP results and returned
   attributes; optional `eapol_test` support adds PEAP/MSCHAPv2 and EAP-TLS.
 - **Certificate Chain Inspector** — inspect the exact TLS chain presented by a
@@ -207,7 +214,7 @@ The sidebar and Network Tools page use the same functional organization.
 An operator can open one case at a time in the Investigations workspace and
 carry its recording context across toolkit pages. Finite network diagnostics,
 one-off SNMP polls, interface monitoring, certificate inspection, persistent
-Multi-Ping, packet capture, managed iPerf3 listeners, command/transfer runs,
+Multi-Ping, remote SSH terminals, packet capture, managed iPerf3 listeners, command/transfer runs,
 selected vendor workflows, and other intentional tool actions retain safe
 structured events or generated evidence. Operators can also:
 

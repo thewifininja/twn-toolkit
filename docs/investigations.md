@@ -102,6 +102,15 @@ but not URL credentials, query strings, header values, or request/response
 bodies. RADIUS and SNMP never retain passwords, shared secrets, communities, or
 SNMPv3 key material.
 
+Remote Terminal uses lifecycle boundaries. Starting an SSH shell records its
+non-secret destination, remote username, and transcript choice. Stopping it,
+remote closure, connection failure, case closure, idle expiry, or a toolkit
+restart supplies the completion boundary. When transcript capture was selected,
+the case receives a sanitized, bounded remote-output text artifact in the
+appendix. The SSH password and submitted input are never written to the remote
+session database or case; commands echoed by the remote device are output and
+therefore may appear in the transcript.
+
 FortiGate/FortiAuthenticator exports are copied into the case as their original
 CSV while configuration-changing rename, order, and cleanup workflows use the
 same bounded, secret-sanitized summaries as the audit log. Certificate

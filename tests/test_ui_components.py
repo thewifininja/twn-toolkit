@@ -127,6 +127,67 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("dialog.showModal()", script)
         self.assertIn("note.focus()", script)
 
+    def test_active_case_and_remote_terminal_share_the_full_workspace_width(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        remote_template = (
+            TEMPLATE_ROOT / "tools" / "remote_terminal.html"
+        ).read_text(encoding="utf-8")
+
+        case_banner_rule = stylesheet.split(
+            ".active-investigation-banner {", 1
+        )[1].split("}", 1)[0]
+        terminal_manager_rule = stylesheet.split(
+            ".remote-terminal-manager {", 1
+        )[1].split("}", 1)[0]
+        library_actions_rule = stylesheet.split(
+            ".remote-connection-library-actions {", 1
+        )[1].split("}", 1)[0]
+
+        for rule in (case_banner_rule, terminal_manager_rule):
+            self.assertIn("max-width: none;", rule)
+            self.assertIn("width: 100%;", rule)
+        self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", library_actions_rule)
+        self.assertIn(
+            'class="remote-connection-library-actions"',
+            remote_template,
+        )
+        self.assertIn(
+            'class="secondary compact" type="button" data-open-credentials>Credentials',
+            remote_template,
+        )
+        self.assertNotIn(".remote-connection-explorer > footer {", stylesheet)
+
+    def test_remote_terminal_launchers_and_dialogs_have_clear_roles(self) -> None:
+        remote_template = (
+            TEMPLATE_ROOT / "tools" / "remote_terminal.html"
+        ).read_text(encoding="utf-8")
+        remote_script = (
+            TEMPLATE_ROOT.parent / "static" / "remote-connections.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn(">New session</button>", remote_template)
+        self.assertIn(">Quick connect</button>", remote_template)
+        self.assertIn('id="remote-terminal-new-session"', remote_template)
+        terminal_script = (
+            TEMPLATE_ROOT.parent / "static" / "remote-terminal.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "newSessionButton.hidden = !activeSessions.length", terminal_script
+        )
+        self.assertIn('class="remote-terminal-dialog-section"', remote_template)
+        self.assertIn('class="remote-terminal-advanced-options"', remote_template)
+        self.assertIn('id="remote-credential-editor-title"', remote_template)
+        self.assertIn('id="remote-credential-count"', remote_template)
+        self.assertIn('id="remote-credential-save"', remote_template)
+        self.assertIn('openDialog(quickDialog, "remote-terminal-host")', remote_script)
+        self.assertIn('credential ? "Edit credential" : "New credential"', remote_script)
+        self.assertIn('setAttribute("aria-haspopup", "menu")', remote_script)
+        self.assertIn('setAttribute("role", "menuitem")', remote_script)
+        self.assertIn('event.key !== "Escape"', remote_script)
+        self.assertNotIn("remote-connection-folder-tools", remote_script)
+
     def test_every_peer_view_uses_shared_tabs_first_workspace_structure(self) -> None:
         shared_chrome_templates = (
             "automations/index.html",

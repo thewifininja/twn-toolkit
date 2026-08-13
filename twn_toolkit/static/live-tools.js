@@ -223,6 +223,12 @@
           : "listening for a client";
       return `${session.listener} · ${status}`;
     }
+    if (session.tool_key === "remote_terminal") {
+      if (session.state === "connecting") {
+        return `${session.remote_username}@${session.host}:${session.port} · connecting…`;
+      }
+      return `${session.remote_username}@${session.host}:${session.port} · connected`;
+    }
     if (!session.rounds_completed) {
       const noun = session.tool_key === "snmp_interface" ? "interface" : "target";
       return `${session.target_count} ${noun}${session.target_count === 1 ? "" : "s"} · starting…`;

@@ -46,6 +46,7 @@ from .iperf_investigation import (
     stop_and_finalize_case_iperf_servers,
 )
 from .iperf_server import IperfServerStore
+from .remote_sessions import RemoteSessionError, RemoteSessionManager
 
 
 def register_investigation_routes(
@@ -87,6 +88,16 @@ def register_investigation_routes(
     ) -> str:
         investigation, events, artifacts, report = load_report(investigation_id)
         live_store = LiveToolStore(app.instance_path)
+        remote_manager = app.extensions.get("remote_session_manager")
+        active_remote_session_count = (
+            len(
+                remote_manager.sessions_for_investigation(
+                    investigation_id, user_id=user_id()
+                )
+            )
+            if isinstance(remote_manager, RemoteSessionManager)
+            else 0
+        )
         return render_template(
             "investigations/detail.html",
             investigation=investigation,
@@ -115,6 +126,7 @@ def register_investigation_routes(
                     user_id=user_id(),
                 )
             ),
+            active_remote_session_count=active_remote_session_count,
             format_bytes=format_bytes,
         )
 
@@ -213,6 +225,7 @@ def register_investigation_routes(
         snmp_result = {"stopped": 0, "finalized": 0}
         capture_result = {"stopped": 0, "finalized": 0}
         iperf_result = {"stopped": 0, "finalized": 0}
+        remote_result = {"stopped": 0, "finalized": 0}
         try:
             if state == "completed":
                 ping_result = stop_and_finalize_case_ping_sessions(
@@ -235,6 +248,12 @@ def register_investigation_routes(
                     investigation_id=investigation_id,
                     user_id=user_id(),
                 )
+                remote_manager = app.extensions.get("remote_session_manager")
+                if isinstance(remote_manager, RemoteSessionManager):
+                    remote_result = remote_manager.stop_case_sessions(
+                        investigation_id=investigation_id,
+                        user_id=user_id(),
+                    )
             updated = store.set_state(
                 investigation_id,
                 user_id(),
@@ -247,6 +266,7 @@ def register_investigation_routes(
             SnmpInvestigationError,
             PacketCaptureInvestigationError,
             IperfInvestigationError,
+            RemoteSessionError,
         ) as exc:
             flash(str(exc), "error")
         else:
@@ -277,6 +297,8 @@ def register_investigation_routes(
                     "packet capture results finalized": capture_result["finalized"],
                     "iPerf3 servers stopped": iperf_result["stopped"],
                     "iPerf3 server results finalized": iperf_result["finalized"],
+                    "remote sessions stopped": remote_result["stopped"],
+                    "remote transcripts finalized": remote_result["finalized"],
                 },
             )
             if reopening:

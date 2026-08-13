@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" data-theme="{{ user_theme }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ popout_session.title }} · Remote Terminal</title>
+    <meta name="theme-color" content="#151b1a">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png', v=app_version) }}">
+    <script>(() => { const root = document.documentElement; if (root.dataset.theme === "system") root.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; })();</script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=app_version) }}">
+  </head>
+  <body class="remote-terminal-popout-page">
+    <header class="remote-terminal-popout-head">
+      <a class="brand" href="{{ url_for('tools.remote_terminal', session=popout_session.id) }}" target="_blank"><img src="{{ url_for('static', filename='brand/dragon-mark-128.png', v=app_version) }}" alt=""><span>The WiFi Ninja’s Toolkit</span></a>
+      <a class="button-link secondary" href="{{ url_for('tools.remote_terminal', session=popout_session.id) }}">Open full workspace</a>
+    </header>
+    <main class="remote-terminal-popout-shell">
+      {% set is_popout = true %}
+      {% include "tools/_remote_terminal_workspace.html" %}
+    </main>
+    <script id="remote-terminal-initial-sessions" type="application/json">{{ remote_sessions|tojson }}</script>
+    <script src="{{ url_for('static', filename='terminal-emulator.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='remote-terminal.js', v=app_version) }}"></script>
+  </body>
+</html>

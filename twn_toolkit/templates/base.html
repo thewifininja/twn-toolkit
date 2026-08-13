@@ -286,6 +286,7 @@
       or 'tools.ping' in allowed_tool_ids
       or 'tools.snmp_test' in allowed_tool_ids
       or 'tools.iperf3' in allowed_tool_ids
+      or 'tools.remote_terminal' in allowed_tool_ids
     ) %}
       <aside
         class="live-tool-tray"
@@ -378,7 +379,14 @@
       <script src="{{ url_for('static', filename='favorites-order.js', v=app_version) }}"></script>
       <script src="{{ url_for('static', filename='pcap-viewer.js', v=app_version) }}"></script>
     {% endif %}
-    {% if current_user and (current_user.is_admin or allowed_tool_ids is none or 'tools.ping' in allowed_tool_ids) %}
+    {% if current_user and (
+      current_user.is_admin
+      or allowed_tool_ids is none
+      or 'tools.ping' in allowed_tool_ids
+      or 'tools.snmp_test' in allowed_tool_ids
+      or 'tools.iperf3' in allowed_tool_ids
+      or 'tools.remote_terminal' in allowed_tool_ids
+    ) %}
       <script src="{{ url_for('static', filename='live-tools.js', v=app_version) }}"></script>
     {% endif %}
   </body>

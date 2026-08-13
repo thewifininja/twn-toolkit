@@ -68,6 +68,15 @@ precedent.
   `instance/datastore/Investigations/<investigation-id>/` folders. Reports must
   remain deterministic views of retained evidence; generated narrative or AI
   interpretation must be visibly separate and must never rewrite source events.
+- Remote Terminal shells are owner-scoped durable toolkit objects in
+  `instance/remote_sessions.sqlite3`. The browser is a reconnectable view, not
+  the connection owner. Keep credentials in memory only through SSH
+  authentication, never persist submitted input, cap scrollback at 10 MiB per
+  session, expire idle shells after eight hours, and purge completed scrollback
+  after seven days. A toolkit restart marks open shells interrupted because the
+  underlying TCP connection cannot survive process replacement. Case-attached
+  shells use start/completion lifecycle events and optional sanitized transcript
+  evidence; case closure stops and finalizes them before closing the case.
   `investigation_policy.py` is exhaustive over the registered tool catalog and
   declares native, finite, lifecycle, hybrid, action, explicit, or excluded
   behavior plus the intended evidence form. Automatic evidence modes must have
