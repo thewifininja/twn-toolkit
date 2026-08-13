@@ -307,63 +307,93 @@ class InvestigationStore:
         now = time.time()
         user_id = self._clean_identity(user_id, "user")
         username = self._clean_identity(username, "operator")
-        with self._connect() as connection, connection:
-            row = connection.execute(
-                "SELECT * FROM investigations WHERE id = ? AND owner_user_id = ?",
-                (investigation_id, user_id),
-            ).fetchone()
-            if not row:
-                raise InvestigationError("Case not found.")
-            current = str(row["state"])
-            if current == state:
-                return self._investigation(row)
-            if current not in OPEN_STATES:
-                raise InvestigationError("Closed cases cannot be reopened yet.")
-            ended_at = now if state == "completed" else None
-            connection.execute(
-                """
-                UPDATE investigations
-                SET state = ?, ended_at = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (state, ended_at, now, investigation_id),
-            )
-            labels = {
-                "recording": (
-                    "investigation.resumed",
-                    "Case recording resumed",
-                    "Resumed automatic journal recording for the case.",
-                ),
-                "paused": (
-                    "investigation.paused",
-                    "Case recording paused",
-                    "Paused automatic journal recording for the case.",
-                ),
-                "completed": (
-                    "investigation.completed",
-                    "Case closed",
-                    "Closed the troubleshooting case.",
-                ),
-            }
-            event_type, action, summary = labels[state]
-            self._insert_event(
-                connection,
-                investigation_id=investigation_id,
-                operation_id=f"state:{state}:{secrets.token_hex(10)}",
-                event_type=event_type,
-                tool_id="investigations.workspace",
-                action=action,
-                outcome="info",
-                summary=summary,
-                targets=[],
-                parameters={"previous_state": current, "state": state},
-                metrics={},
-                details={},
-                started_at=now,
-                completed_at=now,
-                created_by_user_id=user_id,
-                created_by_username=username,
-            )
+        try:
+            with self._connect() as connection, connection:
+                row = connection.execute(
+                    "SELECT * FROM investigations WHERE id = ? AND owner_user_id = ?",
+                    (investigation_id, user_id),
+                ).fetchone()
+                if not row:
+                    raise InvestigationError("Case not found.")
+                current = str(row["state"])
+                if current == state:
+                    return self._investigation(row)
+                reopening = current == "completed" and state == "paused"
+                if current not in OPEN_STATES and not reopening:
+                    if current == "completed" and state == "recording":
+                        raise InvestigationError(
+                            "Reopen the case in paused mode before resuming recording."
+                        )
+                    raise InvestigationError("Archived cases cannot be reopened.")
+                if reopening:
+                    existing = connection.execute(
+                        """
+                        SELECT title FROM investigations
+                        WHERE owner_user_id = ?
+                          AND state IN ('recording', 'paused')
+                        LIMIT 1
+                        """,
+                        (user_id,),
+                    ).fetchone()
+                    if existing:
+                        raise InvestigationError(
+                            f'Close the current case "{existing["title"]}" '
+                            "before reopening this one."
+                        )
+                ended_at = now if state == "completed" else None
+                connection.execute(
+                    """
+                    UPDATE investigations
+                    SET state = ?, ended_at = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (state, ended_at, now, investigation_id),
+                )
+                if reopening:
+                    event_type = "investigation.reopened"
+                    action = "Case reopened"
+                    summary = "Reopened the case with automatic recording paused."
+                else:
+                    labels = {
+                        "recording": (
+                            "investigation.resumed",
+                            "Case recording resumed",
+                            "Resumed automatic journal recording for the case.",
+                        ),
+                        "paused": (
+                            "investigation.paused",
+                            "Case recording paused",
+                            "Paused automatic journal recording for the case.",
+                        ),
+                        "completed": (
+                            "investigation.completed",
+                            "Case closed",
+                            "Closed the troubleshooting case.",
+                        ),
+                    }
+                    event_type, action, summary = labels[state]
+                self._insert_event(
+                    connection,
+                    investigation_id=investigation_id,
+                    operation_id=f"state:{state}:{secrets.token_hex(10)}",
+                    event_type=event_type,
+                    tool_id="investigations.workspace",
+                    action=action,
+                    outcome="info",
+                    summary=summary,
+                    targets=[],
+                    parameters={"previous_state": current, "state": state},
+                    metrics={},
+                    details={},
+                    started_at=now,
+                    completed_at=now,
+                    created_by_user_id=user_id,
+                    created_by_username=username,
+                )
+        except sqlite3.IntegrityError as exc:
+            raise InvestigationError(
+                "Close the current case before reopening this one."
+            ) from exc
         return self.get_for_user(investigation_id, user_id)
 
     def add_note(

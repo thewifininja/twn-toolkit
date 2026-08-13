@@ -17,7 +17,10 @@ Each user may have one open case. An open case is either:
 Closing moves the case to the internal `completed` state. Closed case journal
 events and evidence metadata are read-only. Report inclusion is presentation
 metadata and remains editable after closure; changing it never changes or
-deletes source evidence. Starting a new case does not alter closed work.
+deletes source evidence. A closed case can be reopened when no other case is
+open. Reopening returns it to `paused`, clears its terminal timestamp, and adds
+an immutable `investigation.reopened` journal event; the operator must explicitly
+resume automatic recording. Starting a new case does not alter closed work.
 
 The global banner makes the current recording context visible on every permitted
 page. The case workspace uses tabs-first Journal, Evidence, and Report

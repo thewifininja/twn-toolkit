@@ -119,12 +119,47 @@ class InvestigationStoreTests(unittest.TestCase):
             self.store.add_note(
                 investigation["id"], "operator-1", "nelson", "Too late"
             )
+        with self.assertRaisesRegex(InvestigationError, "paused mode"):
+            self.store.set_state(
+                investigation["id"], "operator-1", "nelson", "recording"
+            )
+        reopened = self.store.set_state(
+            investigation["id"], "operator-1", "nelson", "paused"
+        )
+        self.assertEqual(reopened["state"], "paused")
+        self.assertIsNone(reopened["ended_at"])
+        reopened_event = self.store.events_for_user(
+            investigation["id"], "operator-1"
+        )[-1]
+        self.assertEqual(reopened_event["event_type"], "investigation.reopened")
+        self.assertEqual(
+            reopened_event["parameters"],
+            {"previous_state": "completed", "state": "paused"},
+        )
+        reopened_note = self.store.add_note(
+            investigation["id"], "operator-1", "nelson", "Follow-up work began."
+        )
+        self.assertEqual(reopened_note["event_type"], "note.added")
+        self.store.set_state(
+            investigation["id"], "operator-1", "nelson", "completed"
+        )
         next_investigation = self.store.create(
             owner_user_id="operator-1",
             owner_username="nelson",
             title="Next issue",
         )
         self.assertEqual(next_investigation["state"], "recording")
+
+        with self.assertRaisesRegex(
+            InvestigationError, 'Close the current case "Next issue"'
+        ):
+            self.store.set_state(
+                investigation["id"], "operator-1", "nelson", "paused"
+            )
+        self.assertEqual(
+            self.store.get_for_user(investigation["id"], "operator-1")["state"],
+            "completed",
+        )
 
     def test_report_contents_are_atomic_and_editable_after_case_closes(self) -> None:
         investigation = self.store.create(
@@ -482,6 +517,36 @@ class InvestigationRouteTests(unittest.TestCase):
                 [dns_event["id"]],
             )
             self.assertEqual(curated_manifest["evidence"], [])
+
+            closed_case = client.get(
+                f"/investigations/{investigation_id}"
+            )
+            self.assertIn(b"Reopen case", closed_case.data)
+            reopened = client.post(
+                f"/investigations/{investigation_id}/state",
+                data={"state": "paused"},
+            )
+            self.assertEqual(reopened.status_code, 302)
+            self.assertEqual(
+                reopened.headers["Location"],
+                f"/investigations/{investigation_id}",
+            )
+            reopened_case = client.get(reopened.headers["Location"])
+            self.assertIn(
+                b"Case reopened with automatic recording paused.",
+                reopened_case.data,
+            )
+            self.assertIn(b"Resume recording", reopened_case.data)
+            self.assertNotIn(b"Reopen case", reopened_case.data)
+            reopened_record = store.get_for_user(investigation_id, "test-user")
+            self.assertEqual(reopened_record["state"], "paused")
+            self.assertIsNone(reopened_record["ended_at"])
+            self.assertEqual(
+                store.events_for_user(investigation_id, "test-user")[-1][
+                    "event_type"
+                ],
+                "investigation.reopened",
+            )
 
     def test_case_package_rejects_evidence_changed_outside_the_journal(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

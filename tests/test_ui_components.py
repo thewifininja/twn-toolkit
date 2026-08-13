@@ -277,6 +277,7 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("Open case", index_template)
         self.assertIn('class="investigation-return-nav"', detail_template)
         self.assertIn("Back to investigations", detail_template)
+        self.assertIn("Reopen case", detail_template)
 
     def test_investigation_print_layout_allows_large_results_to_paginate(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

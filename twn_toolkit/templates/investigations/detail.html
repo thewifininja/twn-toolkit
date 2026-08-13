@@ -42,6 +42,13 @@
           <button class="secondary" type="submit">Close case</button>
         </form>
       </div>
+    {% elif investigation.state == 'completed' %}
+      <div class="button-row investigation-state-actions">
+        <form method="post" action="{{ url_for('update_investigation_state', investigation_id=investigation.id) }}" onsubmit="return confirm('Reopen this case? It will reopen with automatic recording paused.');">
+          <input type="hidden" name="state" value="paused">
+          <button type="submit">Reopen case</button>
+        </form>
+      </div>
     {% endif %}
   </section>
 

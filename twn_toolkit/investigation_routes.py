@@ -166,6 +166,7 @@ def register_investigation_routes(
     def update_investigation_state(investigation_id: str):
         investigation = investigation_or_404(investigation_id)
         state = request.form.get("state", "").strip()
+        reopening = investigation["state"] == "completed" and state == "paused"
         try:
             updated = store.set_state(
                 investigation_id,
@@ -176,12 +177,15 @@ def register_investigation_routes(
         except InvestigationError as exc:
             flash(str(exc), "error")
         else:
-            actions = {
-                "recording": ("resumed", "resumed"),
-                "paused": ("paused", "paused"),
-                "completed": ("completed", "closed"),
-            }
-            action, label = actions[state]
+            if reopening:
+                action, label = "reopened", "reopened"
+            else:
+                actions = {
+                    "recording": ("resumed", "resumed"),
+                    "paused": ("paused", "paused"),
+                    "completed": ("completed", "closed"),
+                }
+                action, label = actions[state]
             annotate_audit_event(
                 category="Investigations",
                 action=f"investigation.{action}",
@@ -189,9 +193,15 @@ def register_investigation_routes(
                 resource_type="investigation",
                 resource_id=investigation_id,
                 resource_name=str(investigation["title"]),
-                details={"state": updated["state"]},
+                details={
+                    "previous_state": investigation["state"],
+                    "state": updated["state"],
+                },
             )
-            flash(f"Case {label}.", "success")
+            if reopening:
+                flash("Case reopened with automatic recording paused.", "success")
+            else:
+                flash(f"Case {label}.", "success")
         default_destination = (
             url_for("investigations")
             if state == "completed"

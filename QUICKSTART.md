@@ -153,7 +153,8 @@ libraries expose the same action on each expandable record.
    for a ZIP containing the same PDF, the selected original evidence, and a
    SHA-256 manifest. The report keeps the timeline concise and links each
    structured diagnostic to its detailed-result page. Select **Close case** when
-   the work is complete; report selection remains editable afterward.
+   the work is complete; report selection remains editable afterward. A closed
+   case can be reopened in paused mode when there is no other open case.
 
 Long-running Multi-Ping and future terminal sessions use a separate lifecycle:
 their later integration will record start and stop events plus a bounded summary
