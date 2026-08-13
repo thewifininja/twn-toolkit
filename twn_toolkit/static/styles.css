@@ -724,6 +724,29 @@ body {
   padding-top: 12px;
 }
 
+.side-nav-singleton > .side-nav-item {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding-right: 5px;
+}
+
+.side-nav-singleton > .side-nav-item > a {
+  font-weight: 900;
+}
+
+.side-nav-singleton > .side-nav-item:hover,
+.side-nav-singleton > .side-nav-item:focus-within,
+.side-nav-singleton > .side-nav-item:has(> a.active) {
+  background: color-mix(in srgb, var(--brand-green), transparent 82%);
+}
+
+.side-nav-singleton > .side-nav-item > a:hover,
+.side-nav-singleton > .side-nav-item > a:focus,
+.side-nav-singleton > .side-nav-item > a.active {
+  background: transparent;
+}
+
 .side-nav-section summary {
   align-items: center;
   border-radius: 10px;
