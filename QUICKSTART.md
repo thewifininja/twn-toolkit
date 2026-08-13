@@ -149,7 +149,9 @@ libraries expose the same action on each expandable record.
 5. Use **Evidence** for relevant files. The toolkit stores them in a managed
    case folder and records their SHA-256 hashes.
 6. Use **Report contents** to select individual timeline entries and evidence
-   files. The printable case report keeps the timeline concise and links each
+   files. Use **Download PDF** for the report alone or **Download case package**
+   for a ZIP containing the same PDF, the selected original evidence, and a
+   SHA-256 manifest. The report keeps the timeline concise and links each
    structured diagnostic to its detailed-result page. Select **Close case** when
    the work is complete; report selection remains editable afterward.
 

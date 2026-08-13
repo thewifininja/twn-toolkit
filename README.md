@@ -215,9 +215,11 @@ immutable journal events. Operators can also:
 - upload collision-safe evidence files to a managed per-case Datastore
   folder with retained size, content type, and SHA-256 metadata;
 - review a chronological journal and download retained evidence; and
-- curate a deterministic case report without changing source evidence, then
-  print a compact timeline, linked detailed-result pages, and an optional
-  evidence appendix or save them as PDF.
+- curate a deterministic case report without changing source evidence;
+- download its compact timeline, linked detailed-result pages, and evidence
+  appendix as PDF; or
+- download a ZIP containing that PDF, the selected original evidence files,
+  and a manifest with sizes, timestamps, and SHA-256 hashes.
 
 Investigations are owner-scoped and access-profile controlled. Metadata lives in
 owner-only `instance/investigations.sqlite3`; files live below

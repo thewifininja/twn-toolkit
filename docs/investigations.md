@@ -87,12 +87,25 @@ and reattached lifecycle events plus bounded rollups.
 
 ## Reporting
 
-The report is deterministic HTML derived from retained journal events and
+The report is a deterministic view derived from retained journal events and
 artifact metadata. Its first layer is a compact chronological case timeline with
 summary facts. Structured diagnostic results appear on individually numbered
 detail pages linked from the timeline, followed by an evidence appendix when at
-least one file is selected. The browser print flow preserves those internal
-links in paper or PDF output.
+least one file is selected. The toolkit renders the saved selection directly as
+a downloadable PDF; browser printing remains available as a convenience.
+
+**Download case package** builds an ephemeral ZIP containing:
+
+- `case-report.pdf`, generated from the same saved selection;
+- each selected original under `evidence/`; and
+- `manifest.json`, with case metadata, included event IDs, result labels, file
+  names, byte counts, UTC timestamps, and SHA-256 hashes for the PDF and every
+  evidence member.
+
+Package creation re-reads and hashes each selected evidence file. A missing or
+changed file stops the export instead of producing a package whose manifest no
+longer matches its contents. The ZIP is streamed from temporary storage and is
+not duplicated into the case's `Reports` folder.
 
 The Report contents editor includes or excludes individual timeline events and
 evidence files. It changes only each item's `report_placement`; the underlying

@@ -48,6 +48,10 @@ class ToolRegistryTests(unittest.TestCase):
             REGISTRY.tool_id_for_endpoint("investigation_report"),
             "investigations.workspace",
         )
+        self.assertEqual(
+            REGISTRY.tool_id_for_endpoint("download_investigation_package"),
+            "investigations.workspace",
+        )
 
     def test_registry_rejects_duplicate_tool_ids(self) -> None:
         registry = ToolRegistry([])

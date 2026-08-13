@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -17,8 +18,15 @@ from flask import (
 
 from .audit import annotate_audit_event
 from .datastore import DatastoreError, format_bytes
+from .investigation_exports import (
+    InvestigationExportError,
+    build_case_package,
+    build_case_report_pdf,
+    case_package_filename,
+    case_report_filename,
+)
 from .investigations import InvestigationError, InvestigationStore
-from .investigation_reporting import event_report_presentation
+from .investigation_reporting import case_report_contents
 
 
 def register_investigation_routes(
@@ -58,47 +66,34 @@ def register_investigation_routes(
     def render_workspace(
         investigation_id: str, *, active_tab: str
     ) -> str:
-        investigation = investigation_or_404(investigation_id)
-        events = store.events_for_user(investigation_id, user_id())
-        artifacts = store.artifacts_for_user(investigation_id, user_id())
-        event_presentations = {
-            event["id"]: event_report_presentation(event) for event in events
-        }
-        report_events = [
-            event for event in events if event["report_placement"] == "main"
-        ]
-        report_artifacts = [
-            artifact
-            for artifact in artifacts
-            if artifact["report_placement"] == "appendix"
-        ]
-        report_result_events = [
-            event
-            for event in report_events
-            if event_presentations[event["id"]]["detail"]
-        ]
-        report_result_labels = {
-            event["id"]: f"R-{index:02d}"
-            for index, event in enumerate(report_result_events, start=1)
-        }
+        investigation, events, artifacts, report = load_report(investigation_id)
         return render_template(
             "investigations/detail.html",
             investigation=investigation,
             investigation_events=events,
             investigation_artifacts=artifacts,
-            report_events=report_events,
-            report_artifacts=report_artifacts,
-            report_result_events=report_result_events,
-            detailed_result_event_ids={
-                event["id"]
-                for event in events
-                if event_presentations[event["id"]]["detail"]
-            },
-            event_presentations=event_presentations,
-            report_result_labels=report_result_labels,
+            **report,
             investigation_tabs=tabs(investigation_id, active_tab),
             active_investigation_tab=active_tab,
             format_bytes=format_bytes,
+        )
+
+    def load_report(
+        investigation_id: str,
+    ) -> tuple[
+        dict[str, object],
+        list[dict[str, object]],
+        list[dict[str, object]],
+        dict[str, object],
+    ]:
+        investigation = investigation_or_404(investigation_id)
+        events = store.events_for_user(investigation_id, user_id())
+        artifacts = store.artifacts_for_user(investigation_id, user_id())
+        return (
+            investigation,
+            events,
+            artifacts,
+            case_report_contents(events, artifacts),
         )
 
     @app.get("/investigations")
@@ -301,6 +296,61 @@ def register_investigation_routes(
     @app.get("/investigations/<investigation_id>/report")
     def investigation_report(investigation_id: str):
         return render_workspace(investigation_id, active_tab="report")
+
+    @app.get("/investigations/<investigation_id>/report.pdf")
+    def download_investigation_report_pdf(investigation_id: str):
+        investigation, _, _, report = load_report(investigation_id)
+        pdf = build_case_report_pdf(investigation, report)
+        annotate_audit_event(
+            category="Investigations",
+            action="investigation.report_pdf_downloaded",
+            summary=f"Downloaded the PDF report for case {investigation['title']}.",
+            resource_type="investigation",
+            resource_id=investigation_id,
+            resource_name=str(investigation["title"]),
+            details={
+                "included event count": len(report["report_events"]),
+                "included evidence count": len(report["report_artifacts"]),
+                "PDF byte count": len(pdf),
+            },
+        )
+        return send_file(
+            io.BytesIO(pdf),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=case_report_filename(investigation),
+        )
+
+    @app.get("/investigations/<investigation_id>/package.zip")
+    def download_investigation_package(investigation_id: str):
+        investigation, _, _, report = load_report(investigation_id)
+        try:
+            archive, manifest = build_case_package(
+                store=store,
+                investigation=investigation,
+                report=report,
+            )
+        except (DatastoreError, InvestigationExportError, OSError) as exc:
+            abort(409, str(exc) or "The case package could not be built.")
+        annotate_audit_event(
+            category="Investigations",
+            action="investigation.package_downloaded",
+            summary=f"Downloaded the selected package for case {investigation['title']}.",
+            resource_type="investigation",
+            resource_id=investigation_id,
+            resource_name=str(investigation["title"]),
+            details={
+                "included event count": len(report["report_events"]),
+                "included evidence count": len(report["report_artifacts"]),
+                "PDF SHA-256": manifest["report"]["sha256"],
+            },
+        )
+        return send_file(
+            archive,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=case_package_filename(investigation),
+        )
 
     @app.post("/investigations/<investigation_id>/report/contents")
     def update_investigation_report_contents(investigation_id: str):

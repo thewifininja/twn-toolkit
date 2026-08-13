@@ -26,6 +26,8 @@ def register_tools(registry: ToolRegistry) -> None:
             "upload_investigation_evidence": "investigations.workspace",
             "download_investigation_evidence": "investigations.workspace",
             "investigation_report": "investigations.workspace",
+            "download_investigation_report_pdf": "investigations.workspace",
+            "download_investigation_package": "investigations.workspace",
             "update_investigation_report_contents": "investigations.workspace",
         }
     )

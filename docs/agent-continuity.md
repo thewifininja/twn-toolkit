@@ -72,6 +72,11 @@ precedent.
   not in the shared report template. Finite diagnostics record one completed or
   failed event; long-running tools require explicit lifecycle events and bounded
   summaries.
+  `investigation_exports.py` renders the saved selection as a server-side PDF
+  and builds the ephemeral case-package ZIP. Package evidence must be resolved
+  through `LocalDatastore`, rehashed while it is written, and rejected if its
+  retained size or SHA-256 no longer matches; never trust stored paths or emit a
+  partially verified package.
 - iPerf3 support uses only an already installed `iperf3` binary and never
   installs packages or invokes a shell. Client traffic requires explicit
   authorization and fixed duration/stream/rate caps. Server mode runs in a

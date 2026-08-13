@@ -8,6 +8,44 @@ ReportPresentation = dict[str, Any]
 PresentationBuilder = Callable[[dict[str, Any]], ReportPresentation]
 
 
+def case_report_contents(
+    events: list[dict[str, Any]], artifacts: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Resolve the saved report selection and its reusable presentations."""
+    presentations = {
+        str(event["id"]): event_report_presentation(event) for event in events
+    }
+    report_events = [
+        event for event in events if event.get("report_placement") == "main"
+    ]
+    report_artifacts = [
+        artifact
+        for artifact in artifacts
+        if artifact.get("report_placement") == "appendix"
+    ]
+    result_events = [
+        event
+        for event in report_events
+        if presentations[str(event["id"])]["detail"]
+    ]
+    result_labels = {
+        str(event["id"]): f"R-{index:02d}"
+        for index, event in enumerate(result_events, start=1)
+    }
+    return {
+        "event_presentations": presentations,
+        "report_events": report_events,
+        "report_artifacts": report_artifacts,
+        "report_result_events": result_events,
+        "report_result_labels": result_labels,
+        "detailed_result_event_ids": {
+            str(event["id"])
+            for event in events
+            if presentations[str(event["id"])]["detail"]
+        },
+    }
+
+
 def event_report_presentation(event: dict[str, Any]) -> ReportPresentation:
     """Build deterministic report data from a retained case event."""
     builder = _PRESENTATION_BUILDERS.get(str(event.get("tool_id", "")))

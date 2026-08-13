@@ -3004,6 +3004,16 @@ button.danger:hover {
   padding: 12px 14px;
 }
 
+.investigation-report-toolbar > p {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.investigation-report-toolbar > .button-row {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
 .investigation-report-builder {
   display: grid;
   gap: 18px;
@@ -3387,6 +3397,15 @@ button.danger:hover {
   .investigation-report-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .investigation-report-toolbar > p {
+    flex: 0 1 auto;
+  }
+
+  .investigation-report-toolbar > .button-row {
+    flex-wrap: wrap;
+    width: 100%;
   }
 
   .investigation-report-builder-form > footer {

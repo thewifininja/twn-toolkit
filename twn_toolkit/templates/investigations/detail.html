@@ -141,7 +141,7 @@
           </fieldset>
           <fieldset>
             <legend>Evidence appendix</legend>
-            <p>Select the files to list in the evidence appendix. The original files remain in the evidence library either way.</p>
+            <p>Select the files to list in the evidence appendix and include as originals in the downloadable case package. Unselected files remain in the evidence library.</p>
             {% if investigation_artifacts %}
               <div class="investigation-report-choice-list">
                 {% for artifact in investigation_artifacts %}
@@ -159,7 +159,14 @@
         <footer><p>Report choices remain editable after the case is closed. Source evidence does not.</p><button type="submit">Save report contents</button></footer>
       </form>
     </section>
-    <section class="investigation-report-toolbar"><p>Preview the compact timeline, linked result pages, and evidence appendix below.</p><button type="button" onclick="window.print()">Print or save as PDF</button></section>
+    <section class="investigation-report-toolbar">
+      <p>Download the selected report by itself or package it with the selected original evidence and a verification manifest.</p>
+      <div class="button-row">
+        <a class="button-link" href="{{ url_for('download_investigation_package', investigation_id=investigation.id) }}">Download case package</a>
+        <a class="button-link secondary" href="{{ url_for('download_investigation_report_pdf', investigation_id=investigation.id) }}">Download PDF</a>
+        <button class="secondary" type="button" onclick="window.print()">Print preview</button>
+      </div>
+    </section>
     <article class="investigation-report" aria-label="Case report">
       <header class="investigation-report-title">
         <span class="eyebrow">Case report</span><h1>{{ investigation.title }}</h1>

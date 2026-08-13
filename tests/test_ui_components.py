@@ -294,6 +294,8 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('class="panel investigation-report-builder"', detail_template)
         self.assertIn('href="#report-result-{{ event.id }}"', detail_template)
         self.assertIn('class="investigation-report-result"', detail_template)
+        self.assertIn("download_investigation_package", detail_template)
+        self.assertIn("download_investigation_report_pdf", detail_template)
         self.assertIn("display: block;", print_rules)
         self.assertIn(".investigation-report-builder", print_rules)
         self.assertIn(".investigation-report-evidence", print_rules)

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 import os
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -405,6 +408,43 @@ class InvestigationRouteTests(unittest.TestCase):
             self.assertIn(b"192.0.2.10", report.data)
             self.assertIn(b"status.txt", report.data)
 
+            pdf = client.get(
+                f"/investigations/{investigation_id}/report.pdf"
+            )
+            self.assertEqual(pdf.status_code, 200)
+            self.assertEqual(pdf.mimetype, "application/pdf")
+            self.assertTrue(pdf.data.startswith(b"%PDF-"))
+            self.assertIn(
+                ".pdf",
+                pdf.headers["Content-Disposition"],
+            )
+
+            package = client.get(
+                f"/investigations/{investigation_id}/package.zip"
+            )
+            self.assertEqual(package.status_code, 200)
+            self.assertEqual(package.mimetype, "application/zip")
+            with zipfile.ZipFile(io.BytesIO(package.data)) as archive:
+                self.assertEqual(
+                    set(archive.namelist()),
+                    {"case-report.pdf", "evidence/status.txt", "manifest.json"},
+                )
+                packaged_pdf = archive.read("case-report.pdf")
+                manifest = json.loads(archive.read("manifest.json"))
+                self.assertEqual(archive.read("evidence/status.txt"), b"show system status")
+            self.assertEqual(manifest["schema"], "twn.case-package.v1")
+            self.assertEqual(manifest["case"]["id"], investigation_id)
+            self.assertEqual(manifest["report"]["byte_count"], len(packaged_pdf))
+            self.assertEqual(
+                manifest["report"]["sha256"],
+                hashlib.sha256(packaged_pdf).hexdigest(),
+            )
+            self.assertEqual(manifest["evidence"][0]["sha256"], artifact["sha256"])
+            self.assertEqual(
+                {item["id"] for item in manifest["timeline"]},
+                {event["id"] for event in events},
+            )
+
             completed = client.post(
                 f"/investigations/{investigation_id}/state",
                 data={"state": "completed"},
@@ -428,6 +468,45 @@ class InvestigationRouteTests(unittest.TestCase):
             self.assertIn(b"portal.example.com", report_preview)
             self.assertNotIn(b"The firewall policy changed at 09:45.", report_preview)
             self.assertNotIn(b"Evidence appendix", report_preview)
+
+            curated_package = client.get(
+                f"/investigations/{investigation_id}/package.zip"
+            )
+            with zipfile.ZipFile(io.BytesIO(curated_package.data)) as archive:
+                curated_manifest = json.loads(archive.read("manifest.json"))
+                self.assertEqual(
+                    set(archive.namelist()), {"case-report.pdf", "manifest.json"}
+                )
+            self.assertEqual(
+                [item["id"] for item in curated_manifest["timeline"]],
+                [dns_event["id"]],
+            )
+            self.assertEqual(curated_manifest["evidence"], [])
+
+    def test_case_package_rejects_evidence_changed_outside_the_journal(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Changed evidence"})
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            artifact = store.add_evidence(
+                investigation_id=investigation["id"],
+                user_id="test-user",
+                username="test-user",
+                filename="status.txt",
+                content_type="text/plain",
+                stream=io.BytesIO(b"original"),
+            )
+            store.datastore.file(artifact["relative_path"]).write_bytes(b"changed")
+
+            response = client.get(
+                f"/investigations/{investigation['id']}/package.zip"
+            )
+
+            self.assertEqual(response.status_code, 409)
+            self.assertIn(b"has changed since upload", response.data)
 
     def test_pause_stops_automatic_tool_recording_but_keeps_manual_context(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
