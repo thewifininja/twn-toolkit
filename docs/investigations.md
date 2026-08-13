@@ -209,6 +209,23 @@ changed file stops the export instead of producing a package whose manifest no
 longer matches its contents. The ZIP is streamed from temporary storage and is
 not duplicated into the case's `Reports` folder.
 
+**Export portable case** is a separate transfer format. The `.twncase` archive
+contains `portable-case.json`, every journal event, every evidence record, and
+every original evidence file, regardless of the saved report selection. Export
+re-reads and verifies each retained file before writing the archive. Import
+accepts only the versioned `twn.portable-case.v1` schema, rejects unsafe,
+unreferenced, encrypted, oversized, or damaged archive members, and verifies
+each evidence size and SHA-256 digest before creating local records.
+
+A successful import creates a new closed case owned by the importing operator.
+It preserves the source case ID, source toolkit version, original operator
+attribution, event and artifact origin IDs, timestamps, report placements, and
+evidence hashes. Source-instance user IDs are attribution only and never become
+local participants automatically. Re-exporting an imported case retains the
+original origin IDs, establishing the identity boundary needed for a later
+explicit merge workflow. Importing the same source case twice into one toolkit
+is rejected.
+
 The Report contents editor includes or excludes individual timeline events and
 evidence files. It changes only each item's `report_placement`; the underlying
 event payload, artifact metadata, and stored file remain untouched. This editor

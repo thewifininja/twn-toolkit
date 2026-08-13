@@ -19,6 +19,7 @@ def register_tools(registry: ToolRegistry) -> None:
         {
             "investigations": "investigations.workspace",
             "create_investigation": "investigations.workspace",
+            "import_investigation_case": "investigations.workspace",
             "investigation_detail": "investigations.workspace",
             "add_investigation_note": "investigations.workspace",
             "add_investigation_participant": "investigations.workspace",
@@ -30,6 +31,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "investigation_report": "investigations.workspace",
             "download_investigation_report_pdf": "investigations.workspace",
             "download_investigation_package": "investigations.workspace",
+            "download_portable_investigation_case": "investigations.workspace",
             "update_investigation_report_contents": "investigations.workspace",
         }
     )

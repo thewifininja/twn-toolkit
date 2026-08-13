@@ -28,6 +28,12 @@ from .investigation_exports import (
 )
 from .investigations import InvestigationError, InvestigationStore
 from .investigation_reporting import case_report_contents
+from .investigation_portability import (
+    PortableCaseError,
+    build_portable_case_archive,
+    load_portable_case_archive,
+    portable_case_filename,
+)
 from .live_tools import LiveToolStore
 from .packet_capture import PacketCaptureStore
 from .ping_investigation import (
@@ -179,10 +185,21 @@ def register_investigation_routes(
         investigation = investigation_or_404(investigation_id)
         participants = store.participants_for_user(investigation_id, user_id())
         investigation["participants"] = participants
-        investigation["operator_names"] = ", ".join(
-            str(item["username"]) for item in participants
-        )
         events = store.events_for_user(investigation_id, user_id())
+        operator_names: list[str] = []
+        for item in (
+            investigation.get("source_operators")
+            if investigation.get("is_imported")
+            else participants
+        ):
+            name = str(item.get("username", "")).strip()
+            if name and name not in operator_names:
+                operator_names.append(name)
+        for event in events:
+            name = str(event.get("created_by_username", "")).strip()
+            if name and name not in operator_names:
+                operator_names.append(name)
+        investigation["operator_names"] = ", ".join(operator_names)
         artifacts = store.artifacts_for_user(investigation_id, user_id())
         return (
             investigation,
@@ -225,6 +242,47 @@ def register_investigation_routes(
         flash(f"Opened case {investigation['title']}.", "success")
         return redirect(
             url_for("investigation_detail", investigation_id=investigation["id"])
+        )
+
+    @app.post("/investigations/import")
+    def import_investigation_case():
+        upload = request.files.get("case_archive")
+        if not upload or not upload.filename:
+            flash("Choose a TWN portable case archive.", "error")
+            return redirect(url_for("investigations"))
+        try:
+            with load_portable_case_archive(upload.stream) as portable:
+                imported = store.import_portable_case(
+                    payload=portable.payload,
+                    archive_sha256=portable.sha256,
+                    owner_user_id=user_id(),
+                    owner_username=str(user().get("username", "")),
+                    open_evidence=portable.open_evidence,
+                )
+        except (DatastoreError, InvestigationError, PortableCaseError, OSError) as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("investigations"))
+        annotate_audit_event(
+            category="Investigations",
+            action="investigation.portable_case_imported",
+            summary=f"Imported portable case {imported['title']}.",
+            resource_type="investigation",
+            resource_id=str(imported["id"]),
+            resource_name=str(imported["title"]),
+            details={
+                "source case ID": imported.get("import_source_case_id", ""),
+                "source owner": imported.get("import_source_owner_username", ""),
+                "event count": imported.get("event_count", 0),
+                "evidence count": imported.get("artifact_count", 0),
+            },
+        )
+        flash(
+            "Imported a verified closed copy. Original operators were preserved "
+            "as attribution, not granted local access.",
+            "success",
+        )
+        return redirect(
+            url_for("investigation_detail", investigation_id=imported["id"])
         )
 
     @app.get("/investigations/<investigation_id>")
@@ -701,6 +759,41 @@ def register_investigation_routes(
             mimetype="application/zip",
             as_attachment=True,
             download_name=case_package_filename(investigation),
+        )
+
+    @app.get("/investigations/<investigation_id>/portable.twncase")
+    def download_portable_investigation_case(investigation_id: str):
+        portable = store.portable_case_for_user(investigation_id, user_id())
+        investigation = portable["investigation"]
+        try:
+            archive, payload = build_portable_case_archive(
+                store=store,
+                investigation=investigation,
+                operators=portable["operators"],
+                events=portable["events"],
+                artifacts=portable["artifacts"],
+                origin=portable["origin"],
+            )
+        except (DatastoreError, PortableCaseError, OSError) as exc:
+            abort(409, str(exc) or "The portable case could not be built.")
+        annotate_audit_event(
+            category="Investigations",
+            action="investigation.portable_case_downloaded",
+            summary=f"Exported a portable copy of case {investigation['title']}.",
+            resource_type="investigation",
+            resource_id=investigation_id,
+            resource_name=str(investigation["title"]),
+            details={
+                "portable schema": payload["schema"],
+                "event count": len(payload["events"]),
+                "evidence count": len(payload["artifacts"]),
+            },
+        )
+        return send_file(
+            archive,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=portable_case_filename(investigation),
         )
 
     @app.post("/investigations/<investigation_id>/report/contents")
