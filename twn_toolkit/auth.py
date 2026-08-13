@@ -248,6 +248,50 @@ class AuthStore:
                 user["session_version"] = int(user.get("session_version", 1)) + 1
         self._write(data)
 
+    def replace_access_profiles(
+        self, profiles: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Replace portable role definitions without importing user assignments."""
+        data = self._read()
+        existing = {
+            str(profile.get("name", "")).casefold(): _normalize_access_profile(profile)
+            for profile in data.get("access_profiles", [])
+            if isinstance(profile, dict)
+        }
+        normalized: list[dict[str, Any]] = []
+        seen_names: set[str] = set()
+        for value in profiles:
+            if not isinstance(value, dict):
+                raise ValueError("Access profile backup data is invalid.")
+            name = _validate_access_profile_name(str(value.get("name", "")))
+            folded = name.casefold()
+            if folded in seen_names:
+                raise ValueError("Access profile backup names must be unique.")
+            seen_names.add(folded)
+            retained_id = str(existing.get(folded, {}).get("id", ""))
+            normalized.append(
+                {
+                    "id": retained_id or secrets.token_hex(12),
+                    "name": name,
+                    "description": str(value.get("description", "")).strip()[:240],
+                    "tool_ids": _clean_tool_ids(value.get("tool_ids", [])),
+                }
+            )
+
+        retained_ids = {profile["id"] for profile in normalized}
+        for user in data.get("users", []):
+            assignments = [
+                profile_id
+                for profile_id in user.get("access_profile_ids", [])
+                if profile_id in retained_ids
+            ]
+            if assignments != user.get("access_profile_ids", []):
+                user["access_profile_ids"] = assignments
+                user["session_version"] = int(user.get("session_version", 1)) + 1
+        data["access_profiles"] = normalized
+        self._write(data)
+        return self.access_profiles()
+
     def effective_tool_ids(self, user: dict[str, Any]) -> set[str] | None:
         if user.get("is_admin"):
             return None

@@ -14,12 +14,11 @@ from twn_toolkit.profiles import (
     TracerouteHostProfileStore,
     WOLTargetProfileStore,
 )
-from twn_toolkit.tool_catalog import ToolLink, ToolRegistry
 from twn_toolkit.ssh_commandlets import SSHCommandletStore
 
 
 def backup_items(instance_path: str) -> list[dict[str, Any]]:
-    return [
+    items = [
         {
             "id": "ping_profiles",
             "label": "Ping profiles",
@@ -126,9 +125,14 @@ def backup_items(instance_path: str) -> list[dict[str, Any]]:
             "sensitive": True,
         },
     ]
+    for item in items:
+        item["category"] = "Network tools"
+    return items
 
 
-def register_tools(registry: ToolRegistry) -> None:
+def register_tools(registry: Any) -> None:
+    from twn_toolkit.tool_catalog import ToolLink
+
     registry.add_tools(
         [
             ToolLink(

@@ -61,6 +61,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "export_fortiauthenticator_mac_devices",
         "export_fortiauthenticator_mac_group_memberships",
         "export_profile_backup",
+        "inspect_configuration_backup",
         "import_profile_backup",
         "install_update",
         "add_investigation_note",

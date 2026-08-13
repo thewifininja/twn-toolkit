@@ -55,10 +55,9 @@ class ProfileBackupRouteTests(unittest.TestCase):
             )
 
             response = client.post(
-                "/settings/backup/import",
+                "/settings/backup/inspect",
                 data={
                     "backup_file": (io.BytesIO(export.data), "backup.json"),
-                    "item": ["fortigate_profiles"],
                     "backup_password": "wrong password",
                     "import_mode": "merge",
                 },
@@ -69,7 +68,7 @@ class ProfileBackupRouteTests(unittest.TestCase):
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
 
         self.assertIn(b"password is incorrect", response.data)
-        self.assertEqual(event["action"], "backup.import_failed")
+        self.assertEqual(event["action"], "backup.inspect_failed")
         self.assertEqual(event["details"]["outcome"], "failed")
         self.assertTrue(event["details"]["encrypted"])
         self.assertNotIn(b"wrong password", audit_database)
@@ -97,14 +96,22 @@ class ProfileBackupRouteTests(unittest.TestCase):
                 data={"item": ["ping_profiles"]},
             )
             self.assertEqual(export.status_code, 200)
-            response = client.post(
-                "/settings/backup/import",
+            inspected = client.post(
+                "/settings/backup/inspect",
                 data={
                     "backup_file": (io.BytesIO(export.data), "backup.json"),
-                    "item": ["ping_profiles"],
                     "import_mode": "replace",
                 },
                 content_type="multipart/form-data",
+            )
+            token = inspected.location.rsplit("preview=", 1)[1]
+            response = client.post(
+                "/settings/backup/import",
+                data={
+                    "preview_token": token,
+                    "item": ["ping_profiles"],
+                    "import_mode": "replace",
+                },
             )
             events = AuditStore(instance).recent(2)
             audit_database = Path(instance, "audit.sqlite3").read_bytes()

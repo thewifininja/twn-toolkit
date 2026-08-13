@@ -102,7 +102,7 @@ class HomePageTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Using The WiFi Ninja", response.data)
-        self.assertIn(b"Profiles, secrets, and backups", response.data)
+        self.assertIn(b"Profiles, secrets, and configuration backups", response.data)
         self.assertIn(b"Packet Replay", response.data)
         self.assertIn(b"Automations, schedules, conditions, and actions", response.data)
         self.assertIn(b"Home FortiGate = gate.example.com | 8443", response.data)
@@ -277,10 +277,10 @@ class HomePageTests(unittest.TestCase):
             updates = client.get("/settings/updates")
             backup = client.get("/settings/backup")
 
-        self.assertNotIn(b">Profile backup</h2>", settings.data)
-        self.assertIn(b">Profile backups</a>", updates.data)
-        self.assertIn(b"Profile backup and restore", backup.data)
-        self.assertIn(b'aria-current="page">Profile backups</a>', backup.data)
+        self.assertNotIn(b">Configuration backup</h2>", settings.data)
+        self.assertIn(b">Configuration backups</a>", updates.data)
+        self.assertIn(b"Create a configuration backup", backup.data)
+        self.assertIn(b'aria-current="page">Configuration backups</a>', backup.data)
         self.assert_sidebar_section_open(backup.data.decode(), "Administration")
 
     def test_fortinet_pages_show_workflows_without_self_profile_card(self) -> None:

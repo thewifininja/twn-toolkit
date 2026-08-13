@@ -1,26 +1,88 @@
 from __future__ import annotations
 
-from twn_toolkit.tool_catalog import ToolLink, ToolRegistry
-
-
 def backup_items(instance_path: str):
+    from twn_toolkit.auth import AuthStore, load_or_create_secret_key
+    from twn_toolkit.certificate_automation import CertificateAutomationStore
+    from twn_toolkit.configuration_backup_stores import (
+        AccessProfilesBackupStore,
+        CertificateAutomationProfilesBackupStore,
+        RemoteConnectionBackupStore,
+        SMTPSettingsBackupStore,
+        TimeSettingsBackupStore,
+    )
     from twn_toolkit.dashboard_layout import (
         DashboardLayoutBackupStore,
         DashboardLayoutStore,
     )
+    from twn_toolkit.remote_connections import RemoteConnectionStore
+    from twn_toolkit.smtp_tools import SMTPSettingsStore
+    from twn_toolkit.time_settings import TimeSettingsStore
 
+    secret_key = load_or_create_secret_key(instance_path)
+    auth_store = AuthStore(instance_path)
     return [
         {
             "id": "dashboard_layout",
             "label": "Dashboard layout",
             "description": "Global metric widget order and visibility. No activity history is included.",
+            "category": "Administration",
             "store": DashboardLayoutBackupStore(DashboardLayoutStore(instance_path)),
             "sensitive": False,
-        }
+        },
+        {
+            "id": "remote_connection_library",
+            "label": "Remote Terminal libraries",
+            "description": "User-owned saved folders, SSH hosts, and credentials. Active sessions and scrollback are excluded.",
+            "category": "Remote access",
+            "store": RemoteConnectionBackupStore(
+                RemoteConnectionStore(instance_path, secret_key), auth_store
+            ),
+            "sensitive": True,
+        },
+        {
+            "id": "certificate_automation_profiles",
+            "label": "Certificate Automation profiles",
+            "description": "PKI credentials, servers, templates, and managed definitions. Issued certificates, private keys, and request history are excluded.",
+            "category": "Network tools",
+            "store": CertificateAutomationProfilesBackupStore(
+                CertificateAutomationStore(instance_path, secret_key)
+            ),
+            "sensitive": True,
+            "supports_replace": False,
+            "atomic_last": True,
+        },
+        {
+            "id": "access_profiles",
+            "label": "Access profiles",
+            "description": "Custom tool-permission definitions. Users, passwords, and profile assignments are excluded.",
+            "category": "Administration",
+            "store": AccessProfilesBackupStore(auth_store),
+            "sensitive": False,
+        },
+        {
+            "id": "smtp_settings",
+            "label": "SMTP delivery settings",
+            "description": "Mail server, sender, TLS configuration, and saved SMTP credentials.",
+            "category": "Administration",
+            "store": SMTPSettingsBackupStore(
+                SMTPSettingsStore(instance_path, secret_key)
+            ),
+            "sensitive": True,
+        },
+        {
+            "id": "time_settings",
+            "label": "Toolkit timezone",
+            "description": "The explicit IANA timezone used for toolkit displays and scheduling context.",
+            "category": "Administration",
+            "store": TimeSettingsBackupStore(TimeSettingsStore(instance_path)),
+            "sensitive": False,
+        },
     ]
 
 
-def register_tools(registry: ToolRegistry) -> None:
+def register_tools(registry) -> None:
+    from twn_toolkit.tool_catalog import ToolLink
+
     registry.add_tool(
         ToolLink(
             "admin.settings",
@@ -45,7 +107,7 @@ def register_tools(registry: ToolRegistry) -> None:
     registry.add_tool(
         ToolLink(
             "admin.updates", "Updates & Recovery",
-            "Manage profile backups, verified releases, recovery points, upgrades, and restores.",
+            "Manage configuration backups, verified releases, recovery points, upgrades, and restores.",
             "updates", "administration", "Administration",
             admin_only=True, grantable=False, nav_icon="↻",
         )
@@ -68,6 +130,7 @@ def register_tools(registry: ToolRegistry) -> None:
             "prune_automation_history": "admin.settings",
             "optimize_automation_database": "admin.settings",
             "export_profile_backup": "admin.updates",
+            "inspect_configuration_backup": "admin.updates",
             "import_profile_backup": "admin.updates",
             "update_operational_settings": "admin.settings",
             "diagnostics": "admin.diagnostics",

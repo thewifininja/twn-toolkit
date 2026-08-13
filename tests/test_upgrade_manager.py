@@ -568,7 +568,7 @@ class UpgradeRouteTests(unittest.TestCase):
             self.assertEqual(page.status_code, 200)
             self.assertIn(b"Updates &amp; recovery", page.data)
             self.assertIn(b"Install from a local bundle", page.data)
-            self.assertIn(b"Profile backups", page.data)
+            self.assertIn(b"Configuration backups", page.data)
             self.assertNotIn(b"Create a recovery point now", page.data)
 
             with patch(
@@ -587,8 +587,8 @@ class UpgradeRouteTests(unittest.TestCase):
 
             backup_page = client.get("/settings/backup")
             self.assertEqual(backup_page.status_code, 200)
-            self.assertIn(b"Profile backup and restore", backup_page.data)
-            self.assertIn(b"Export backup", backup_page.data)
+            self.assertIn(b"Create a configuration backup", backup_page.data)
+            self.assertIn(b"Create backup", backup_page.data)
             self.assertIn(b"Import backup", backup_page.data)
 
             rejected = client.post("/settings/updates/backup", data={})

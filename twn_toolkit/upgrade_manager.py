@@ -364,6 +364,7 @@ def _copy_code(root: Path, destination: Path) -> None:
 _VOLATILE_INSTANCE_NAMES = frozenset(
     {
         "automation-heartbeat.json",
+        ".configuration-imports",
         "packet_capture_locks",
         "supervisor-heartbeat.json",
         "tftp_runtime",

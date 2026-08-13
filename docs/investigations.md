@@ -61,7 +61,7 @@ relative path, byte count, content type, SHA-256 digest, collecting operator,
 timestamp, and the journal event that introduced it.
 
 The toolkit recovery archive already includes top-level SQLite databases and the
-Datastore. Profile backup intentionally does not include operational
+Datastore. Configuration backup intentionally does not include operational
 case data.
 
 ## Event contract
