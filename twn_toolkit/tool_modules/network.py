@@ -507,6 +507,8 @@ def register_tools(registry: ToolRegistry) -> None:
             "tools.remote_terminal_session": "tools.remote_terminal",
             "tools.remote_terminal_output": "tools.remote_terminal",
             "tools.download_remote_terminal_scrollback": "tools.remote_terminal",
+            "tools.attach_remote_terminal_case": "tools.remote_terminal",
+            "tools.save_remote_terminal_scrollback": "tools.remote_terminal",
             "tools.delete_remote_terminal_scrollback": "tools.remote_terminal",
             "tools.remote_terminal_input": "tools.remote_terminal",
             "tools.resize_remote_terminal_session": "tools.remote_terminal",

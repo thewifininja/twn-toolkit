@@ -168,6 +168,9 @@ class UIComponentTests(unittest.TestCase):
         remote_script = (
             TEMPLATE_ROOT.parent / "static" / "remote-connections.js"
         ).read_text(encoding="utf-8")
+        terminal_workspace = (
+            TEMPLATE_ROOT / "tools" / "_remote_terminal_workspace.html"
+        ).read_text(encoding="utf-8")
 
         self.assertNotIn(">New session</button>", remote_template)
         self.assertIn(">Quick connect</button>", remote_template)
@@ -189,6 +192,48 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('setAttribute("role", "menuitem")', remote_script)
         self.assertIn('event.key !== "Escape"', remote_script)
         self.assertNotIn("remote-connection-folder-tools", remote_script)
+        self.assertIn('id="remote-terminal-session-rename"', terminal_workspace)
+        self.assertIn('id="remote-terminal-rename-dialog"', terminal_workspace)
+        self.assertIn("saved host name stays unchanged", terminal_workspace)
+
+    def test_remote_terminal_tabs_can_be_renamed_and_closed(self) -> None:
+        script = (TEMPLATE_ROOT.parent / "static" / "remote-terminal.js").read_text(
+            encoding="utf-8"
+        )
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('tabAction("✎", `Rename ${session.title}`', script)
+        self.assertIn('tabAction("×", `Close ${session.title}`', script)
+        self.assertIn("async function closeSessionTab(session, control)", script)
+        self.assertIn("scrollback will remain in Recent sessions", script)
+        self.assertIn("async function saveSessionName(event)", script)
+        self.assertIn("fetch(session.rename_url", script)
+        self.assertIn(".remote-terminal-tab-shell {", stylesheet)
+        self.assertIn(".remote-terminal-tab-action.close:hover", stylesheet)
+
+    def test_remote_terminal_exposes_case_and_datastore_capture_actions(self) -> None:
+        workspace = (
+            TEMPLATE_ROOT / "tools" / "_remote_terminal_workspace.html"
+        ).read_text(encoding="utf-8")
+        script = (TEMPLATE_ROOT.parent / "static" / "remote-terminal.js").read_text(
+            encoding="utf-8"
+        )
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('data-active-case-id="{{ active_investigation.id', workspace)
+        self.assertIn('id="remote-terminal-attach-case"', workspace)
+        self.assertIn('id="remote-terminal-save-datastore"', workspace)
+        self.assertIn('id="remote-terminal-datastore-dialog"', workspace)
+        self.assertIn("all retained scrollback, including output produced before attachment", script)
+        self.assertIn("This saves the output retained so far as a snapshot", script)
+        self.assertIn('terminalActionIcon("datastore")', script)
+        self.assertIn('terminalActionIcon("case")', script)
+        self.assertIn(".remote-terminal-case-pill {", stylesheet)
+        self.assertIn(".remote-terminal-datastore-dialog {", stylesheet)
 
     def test_remote_host_action_stays_a_compact_square(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

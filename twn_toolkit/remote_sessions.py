@@ -17,7 +17,7 @@ from .investigations import InvestigationError, InvestigationStore
 from .ssh_security import close_ssh_client, format_ssh_connection_error, open_ssh_client
 
 
-REMOTE_SESSION_LIMIT_PER_USER = 6
+REMOTE_SESSION_LIMIT_PER_USER = 12
 REMOTE_SESSION_OUTPUT_LIMIT_BYTES = 10 * 1024 * 1024
 REMOTE_SESSION_INPUT_LIMIT_BYTES = 16 * 1024
 REMOTE_SESSION_OUTPUT_PAGE_LIMIT = 500
@@ -57,6 +57,7 @@ class RemoteSessionStore:
                     state TEXT NOT NULL,
                     record_transcript INTEGER NOT NULL DEFAULT 0,
                     investigation_id TEXT NOT NULL DEFAULT '',
+                    investigation_attached_at REAL,
                     allow_unknown_hosts INTEGER NOT NULL DEFAULT 0,
                     allow_legacy_algorithms INTEGER NOT NULL DEFAULT 0,
                     output_bytes INTEGER NOT NULL DEFAULT 0,
@@ -100,6 +101,10 @@ class RemoteSessionStore:
             if "source_host_id" not in columns:
                 connection.execute(
                     "ALTER TABLE remote_sessions ADD COLUMN source_host_id TEXT NOT NULL DEFAULT ''"
+                )
+            if "investigation_attached_at" not in columns:
+                connection.execute(
+                    "ALTER TABLE remote_sessions ADD COLUMN investigation_attached_at REAL"
                 )
             connection.execute(
                 """
@@ -172,9 +177,10 @@ class RemoteSessionStore:
                 INSERT INTO remote_sessions (
                     id, user_id, username, title, protocol, host, port,
                     remote_username, state, record_transcript, investigation_id,
+                    investigation_attached_at,
                     allow_unknown_hosts, allow_legacy_algorithms, created_at,
                     last_activity_at, owner_pid, control_path, source_host_id
-                ) VALUES (?, ?, ?, ?, 'ssh', ?, ?, ?, 'connecting', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, 'ssh', ?, ?, ?, 'connecting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -186,6 +192,7 @@ class RemoteSessionStore:
                     remote_username,
                     int(record_transcript),
                     investigation_id,
+                    now if investigation_id else None,
                     int(allow_unknown_hosts),
                     int(allow_legacy_algorithms),
                     now,
@@ -420,6 +427,32 @@ class RemoteSessionStore:
             )
         return self.get_session(session_id, user_id=user_id)
 
+    def attach_investigation(
+        self, session_id: str, *, user_id: str, investigation_id: str
+    ) -> dict[str, Any]:
+        session = self.get_session(session_id, user_id=user_id)
+        if not session:
+            raise RemoteSessionError("Remote session not found.")
+        existing_id = str(session.get("investigation_id", ""))
+        if existing_id and existing_id != investigation_id:
+            raise RemoteSessionError(
+                "This remote session is already associated with another case."
+            )
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE remote_sessions
+                SET investigation_id = ?, record_transcript = 1,
+                    investigation_attached_at = ?, evidence_finalized_at = NULL
+                WHERE id = ? AND user_id = ?
+                """,
+                (investigation_id, time.time(), session_id, user_id),
+            )
+        attached = self.get_session(session_id, user_id=user_id)
+        if not attached:  # pragma: no cover - ownership was checked above
+            raise RemoteSessionError("Remote session not found.")
+        return attached
+
     def mark_evidence_finalized(self, session_id: str) -> None:
         with self._connect() as connection:
             connection.execute(
@@ -615,6 +648,119 @@ class RemoteSessionManager:
             {"action": "input", "data": data},
         )
         self.store.touch(session_id)
+
+    def attach_to_case(
+        self,
+        session_id: str,
+        *,
+        user_id: str,
+        username: str,
+        investigation_id: str,
+    ) -> dict[str, Any]:
+        investigation = self.investigation_store.get_for_user(
+            investigation_id, user_id
+        )
+        if not investigation.get("is_open"):
+            raise RemoteSessionError("Closed cases cannot accept terminal evidence.")
+        session = self.store.get_session(session_id, user_id=user_id)
+        if not session:
+            raise RemoteSessionError("Remote session not found.")
+        existing_id = str(session.get("investigation_id", ""))
+        if existing_id and existing_id != investigation_id:
+            raise RemoteSessionError(
+                "This remote session is already associated with another case."
+            )
+        if (
+            existing_id == investigation_id
+            and bool(session.get("record_transcript"))
+            and (
+                session.get("state") in ACTIVE_REMOTE_SESSION_STATES
+                or session.get("evidence_finalized_at")
+            )
+        ):
+            return session
+
+        completed_transcript = ""
+        if session["state"] not in ACTIVE_REMOTE_SESSION_STATES:
+            completed_transcript = self.store.transcript(session_id)
+            if not completed_transcript:
+                raise RemoteSessionError("This session has no retained output to attach.")
+        attached_at = time.time()
+        session = self.store.attach_investigation(
+            session_id,
+            user_id=user_id,
+            investigation_id=investigation_id,
+        )
+        if session["state"] in ACTIVE_REMOTE_SESSION_STATES:
+            self.investigation_store.record_for_case(
+                investigation_id=investigation_id,
+                user_id=user_id,
+                username=username,
+                require_recording=False,
+                operation_id=f"remote-terminal:{session_id}:attached",
+                event_type="remote_terminal.session.attached",
+                tool_id="tools.remote_terminal",
+                action="Attached remote SSH session",
+                outcome="info",
+                summary=(
+                    f"Attached SSH session {session['title']} to the case. "
+                    "Its retained transcript will be added when the session ends."
+                ),
+                targets={"host": session["host"], "port": session["port"]},
+                parameters={
+                    "title": session["title"],
+                    "protocol": "SSH",
+                    "remote_username": session["remote_username"],
+                },
+                metrics={"output_bytes_at_attachment": session["output_bytes"]},
+                details={
+                    "session_id": session_id,
+                    "includes_pre_attachment_scrollback": True,
+                },
+                started_at=attached_at,
+                completed_at=attached_at,
+            )
+            return session
+
+        self.investigation_store.add_generated_evidence_event(
+            investigation_id=investigation_id,
+            user_id=user_id,
+            username=username,
+            operation_id=f"remote-terminal:{session_id}:attached",
+            event_type="remote_terminal.transcript.attached",
+            tool_id="tools.remote_terminal",
+            action="Attached SSH transcript",
+            outcome="info",
+            summary=f"Attached retained output from SSH session {session['title']}.",
+            targets={"host": session["host"], "port": session["port"]},
+            parameters={
+                "title": session["title"],
+                "protocol": "SSH",
+                "remote_username": session["remote_username"],
+                "termination": session["termination"],
+            },
+            metrics={
+                "output_bytes": session["output_bytes"],
+                "output_truncated": bool(session["output_truncated"]),
+            },
+            details={
+                "session_id": session_id,
+                "attached_after_completion": True,
+            },
+            started_at=attached_at,
+            completed_at=attached_at,
+            filename=(
+                f"ssh-{safe_filename(str(session['host']))}-{session_id[:8]}.txt"
+            ),
+            content_type="text/plain; charset=utf-8",
+            content=completed_transcript.encode("utf-8"),
+            max_bytes=REMOTE_SESSION_OUTPUT_LIMIT_BYTES + 1024,
+        )
+        self.store.mark_evidence_finalized(session_id)
+        attached = self.store.get_session(session_id, user_id=user_id)
+        if not attached:  # pragma: no cover - ownership was checked above
+            raise RemoteSessionError("Remote session not found.")
+        return attached
 
     def resize(
         self, session_id: str, *, user_id: str, columns: int, rows: int
@@ -845,10 +991,13 @@ class RemoteSessionManager:
         ):
             return
         try:
+            capture_started_at = float(
+                session.get("investigation_attached_at") or session["created_at"]
+            )
+            completed_at = float(session.get("completed_at") or time.time())
             elapsed = max(
                 0.0,
-                float(session.get("completed_at") or time.time())
-                - float(session["created_at"]),
+                completed_at - capture_started_at,
             )
             event = {
                 "investigation_id": str(session["investigation_id"]),
@@ -879,9 +1028,12 @@ class RemoteSessionManager:
                 "details": {
                     "session_id": session["id"],
                     "error": session["last_error"],
+                    "includes_pre_attachment_scrollback": (
+                        capture_started_at > float(session["created_at"])
+                    ),
                 },
-                "started_at": float(session["created_at"]),
-                "completed_at": float(session.get("completed_at") or time.time()),
+                "started_at": completed_at,
+                "completed_at": completed_at,
             }
             transcript = self.store.transcript(str(session["id"]))
             if bool(session["record_transcript"]) and transcript:
@@ -1217,6 +1369,12 @@ def public_remote_session(session: dict[str, Any]) -> dict[str, Any]:
             ),
             "delete_url": url_for(
                 "tools.delete_remote_terminal_scrollback", session_id=session_id
+            ),
+            "attach_case_url": url_for(
+                "tools.attach_remote_terminal_case", session_id=session_id
+            ),
+            "datastore_url": url_for(
+                "tools.save_remote_terminal_scrollback", session_id=session_id
             ),
             "input_url": url_for(
                 "tools.remote_terminal_input", session_id=session_id

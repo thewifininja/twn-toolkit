@@ -3,24 +3,41 @@
   id="remote-terminal-workspace"
   data-requested-session="{{ requested_session }}"
   data-popout="{{ 'true' if is_popout|default(false) else 'false' }}"
+  data-active-case-id="{{ active_investigation.id if active_investigation else '' }}"
+  data-active-case-title="{{ active_investigation.title if active_investigation else '' }}"
   hidden
 >
   <header class="remote-terminal-workspace-head">
     <div>
       <span class="eyebrow">SSH session</span>
-      <h2 id="remote-terminal-session-title">Remote shell</h2>
+      <div class="remote-terminal-session-title-row">
+        <h2 id="remote-terminal-session-title">Remote shell</h2>
+        <button class="remote-terminal-session-rename" id="remote-terminal-session-rename" type="button" aria-label="Rename session" title="Rename session"><span aria-hidden="true">✎</span></button>
+      </div>
       <p id="remote-terminal-session-target"></p>
+      <a class="remote-terminal-case-pill" id="remote-terminal-case-link" href="#" hidden></a>
     </div>
     <div class="remote-terminal-session-actions">
       <span class="status-pill" id="remote-terminal-session-state">Connecting</span>
+      <button class="secondary compact" id="remote-terminal-attach-case" type="button" hidden>Attach to case</button>
       {% if not is_popout|default(false) %}
-        <button class="secondary compact" id="remote-terminal-save-host" type="button">Save connection</button>
         <button class="secondary compact" id="remote-terminal-popout" type="button">Pop out</button>
       {% endif %}
-      <a class="button-link secondary compact" id="remote-terminal-download" href="#" download hidden>Download</a>
-      {% if not is_popout|default(false) %}
-        <button class="danger compact" id="remote-terminal-delete" type="button" hidden>Delete</button>
-      {% endif %}
+      <details class="remote-terminal-session-menu" id="remote-terminal-session-menu">
+        <summary aria-label="Session actions" title="Session actions"><span aria-hidden="true">•••</span></summary>
+        <div class="remote-terminal-session-menu-items" role="menu">
+          {% if not is_popout|default(false) %}
+            <button id="remote-terminal-save-host" type="button" role="menuitem">Save connection</button>
+          {% endif %}
+          {% if can_save_remote_scrollback %}
+            <button id="remote-terminal-save-datastore" type="button" role="menuitem">Save to Datastore</button>
+          {% endif %}
+          <a id="remote-terminal-download" href="#" download hidden role="menuitem">Download scrollback</a>
+          {% if not is_popout|default(false) %}
+            <button class="danger" id="remote-terminal-delete" type="button" hidden role="menuitem">Delete scrollback</button>
+          {% endif %}
+        </div>
+      </details>
       <button class="secondary compact" id="remote-terminal-stop" type="button">Stop session</button>
     </div>
   </header>
@@ -56,3 +73,41 @@
     </div>
   </div>
 </section>
+
+<dialog class="remote-terminal-dialog remote-terminal-rename-dialog" id="remote-terminal-rename-dialog" aria-labelledby="remote-terminal-rename-title">
+  <form class="form remote-terminal-dialog-form" id="remote-terminal-rename-form">
+    <header>
+      <div><span class="eyebrow">SSH session</span><h2 id="remote-terminal-rename-title">Rename session</h2></div>
+      <button class="dialog-close" id="remote-terminal-rename-dismiss" type="button" aria-label="Close">×</button>
+    </header>
+    <p class="remote-terminal-dialog-intro">This changes only the session tab and retained history. The saved host name stays unchanged.</p>
+    <label>Session name<input id="remote-terminal-rename-input" type="text" maxlength="100" required autocomplete="off"></label>
+    <p class="tool-status" id="remote-terminal-rename-status" role="status"></p>
+    <footer>
+      <button class="secondary" id="remote-terminal-rename-cancel" type="button">Cancel</button>
+      <button id="remote-terminal-rename-save" type="submit">Save name</button>
+    </footer>
+  </form>
+</dialog>
+
+{% if can_save_remote_scrollback %}
+<dialog class="remote-terminal-dialog remote-terminal-datastore-dialog" id="remote-terminal-datastore-dialog" aria-labelledby="remote-terminal-datastore-title">
+  <form class="form remote-terminal-dialog-form" id="remote-terminal-datastore-form">
+    <header>
+      <div><span class="eyebrow">Persistent storage</span><h2 id="remote-terminal-datastore-title">Save terminal output</h2></div>
+      <button class="dialog-close" id="remote-terminal-datastore-dismiss" type="button" aria-label="Close">×</button>
+    </header>
+    <p class="remote-terminal-dialog-intro" id="remote-terminal-datastore-copy">Choose where to keep this terminal output in the Datastore.</p>
+    <label>Destination folder
+      <select id="remote-terminal-datastore-folder">
+        {% for folder in datastore_folders %}<option value="{{ folder.path }}">{{ folder.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <p class="tool-status" id="remote-terminal-datastore-status" role="status"></p>
+    <footer>
+      <button class="secondary" id="remote-terminal-datastore-cancel" type="button">Cancel</button>
+      <button id="remote-terminal-datastore-save" type="submit">Save output</button>
+    </footer>
+  </form>
+</dialog>
+{% endif %}

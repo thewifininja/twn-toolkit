@@ -1,14 +1,27 @@
 from __future__ import annotations
 
-from flask import Blueprint, abort, current_app, g, jsonify, render_template, request
+import io
+
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    g,
+    jsonify,
+    render_template,
+    request,
+    url_for,
+)
 
 from .activity_context import record_current_activity
 from .audit import annotate_audit_event, suppress_audit_event
-from .investigations import InvestigationStore
+from .datastore import DatastoreError, LocalDatastore
+from .investigations import InvestigationError, InvestigationStore
 from .remote_connections import RemoteConnectionError, RemoteConnectionStore
 from .remote_sessions import (
     ACTIVE_REMOTE_SESSION_STATES,
     REMOTE_SESSION_INPUT_LIMIT_BYTES,
+    REMOTE_SESSION_OUTPUT_LIMIT_BYTES,
     RemoteSessionError,
     RemoteSessionManager,
     public_remote_session,
@@ -25,10 +38,12 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         )
         return render_template(
             "tools/remote_terminal.html",
-            remote_sessions=[public_remote_session(item) for item in sessions],
+            remote_sessions=[_public_session(item) for item in sessions],
             remote_connection_library=_connection_store().library_for_user(
                 user["id"]
             ),
+            can_save_remote_scrollback=_can_use_datastore(),
+            datastore_folders=_datastore_folders(),
             requested_session=str(request.args.get("session", "")).strip()[:80],
         )
 
@@ -48,12 +63,14 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         )
         if not session:
             return jsonify({"error": "Remote session not found."}), 404
-        public_session = public_remote_session(session)
+        public_session = _public_session(session)
         return render_template(
             "tools/remote_terminal_popout.html",
             remote_sessions=[public_session],
             requested_session=session_id,
             popout_session=public_session,
+            can_save_remote_scrollback=_can_use_datastore(),
+            datastore_folders=_datastore_folders(),
         )
 
     @tools_bp.post("/remote-terminal/sessions")
@@ -112,6 +129,9 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             columns = _integer(payload.get("columns", 120), "Columns", 40, 300)
             rows = _integer(payload.get("rows", 32), "Rows", 10, 120)
             investigation_id = _recording_case_id(user["id"])
+            record_transcript = bool(
+                payload.get("record_transcript", bool(investigation_id))
+            )
             session = _manager().start_ssh_session(
                 user_id=user["id"],
                 username=user["username"],
@@ -120,7 +140,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 port=port,
                 remote_username=remote_username,
                 password=password,
-                record_transcript=bool(payload.get("record_transcript", False)),
+                record_transcript=record_transcript,
                 investigation_id=investigation_id,
                 allow_unknown_hosts=allow_unknown_hosts,
                 allow_legacy_algorithms=allow_legacy_algorithms,
@@ -154,7 +174,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             f"{host}:{port}",
             count_action=True,
         )
-        return jsonify({"session": public_remote_session(session)}), 201
+        return jsonify({"session": _public_session(session)}), 201
 
     @tools_bp.post("/remote-terminal/folders")
     def create_remote_terminal_folder():
@@ -322,7 +342,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         )
         if not session:
             return jsonify({"error": "Remote session not found."}), 404
-        return jsonify({"session": public_remote_session(session)})
+        return jsonify({"session": _public_session(session)})
 
     @tools_bp.get("/remote-terminal/sessions/<session_id>/output")
     def remote_terminal_output(session_id: str):
@@ -341,7 +361,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         )
         if page is None:
             return jsonify({"error": "Remote session not found."}), 404
-        page["session"] = public_remote_session(page["session"])
+        page["session"] = _public_session(page["session"])
         return jsonify(page)
 
     @tools_bp.get("/remote-terminal/sessions/<session_id>/download")
@@ -377,6 +397,123 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             },
         )
         return response
+
+    @tools_bp.post("/remote-terminal/sessions/<session_id>/case")
+    def attach_remote_terminal_case(session_id: str):
+        user = _current_user()
+        investigation_store = current_app.extensions.get("investigation_store")
+        if not isinstance(investigation_store, InvestigationStore):  # pragma: no cover
+            return jsonify({"error": "Case recording is unavailable."}), 503
+        investigation = investigation_store.active_for_user(user["id"])
+        if not investigation:
+            suppress_audit_event()
+            return jsonify({"error": "Open or reopen a case before attaching this session."}), 409
+        payload = request.get_json(silent=True) or {}
+        requested_id = str(payload.get("investigation_id", "")).strip()
+        if requested_id and requested_id != str(investigation["id"]):
+            suppress_audit_event()
+            return jsonify({"error": "The selected case is no longer active."}), 409
+        existing = _manager().get_session(session_id, user_id=user["id"])
+        if not existing:
+            suppress_audit_event()
+            return jsonify({"error": "Remote session not found."}), 404
+        try:
+            session = _manager().attach_to_case(
+                session_id,
+                user_id=user["id"],
+                username=user["username"],
+                investigation_id=str(investigation["id"]),
+            )
+        except (InvestigationError, RemoteSessionError) as exc:
+            suppress_audit_event()
+            return jsonify({"error": str(exc)}), 409
+        annotate_audit_event(
+            category="Network tools",
+            action="remote_terminal.session_attached_to_case",
+            summary="Attached retained remote-terminal output to a case.",
+            resource_type="remote_session",
+            resource_id=session_id,
+            resource_name=str(session["title"]),
+            details={
+                "case": investigation["id"],
+                "case title": investigation["title"],
+                "session state": session["state"],
+                "output bytes": session["output_bytes"],
+            },
+        )
+        return jsonify({"session": _public_session(session)})
+
+    @tools_bp.post("/remote-terminal/sessions/<session_id>/datastore")
+    def save_remote_terminal_scrollback(session_id: str):
+        user = _current_user()
+        manager = _manager()
+        if not _can_use_datastore():
+            abort(403)
+        session = manager.get_session(session_id, user_id=user["id"])
+        if not session:
+            suppress_audit_event()
+            return jsonify({"error": "Remote session not found."}), 404
+        transcript = manager.store.transcript(session_id)
+        if not transcript:
+            suppress_audit_event()
+            return jsonify({"error": "This session has no retained output to save."}), 409
+        payload = request.get_json(silent=True) or {}
+        destination = str(payload.get("folder", "")).strip()
+        datastore = LocalDatastore(current_app.instance_path)
+        kind = (
+            "live snapshot"
+            if session["state"] in ACTIVE_REMOTE_SESSION_STATES
+            else "completed scrollback"
+        )
+        suffix = "snapshot" if kind == "live snapshot" else "scrollback"
+        base_filename = (
+            f"{safe_filename(str(session['title']))}-{session_id[:8]}-{suffix}.txt"
+        )
+        try:
+            filename = _available_datastore_filename(
+                datastore, destination, base_filename
+            )
+            path, byte_count = datastore.save_upload(
+                destination,
+                filename,
+                io.BytesIO(transcript.encode("utf-8")),
+                max_bytes=REMOTE_SESSION_OUTPUT_LIMIT_BYTES + 1024,
+            )
+        except (DatastoreError, OSError) as exc:
+            suppress_audit_event()
+            return jsonify({"error": str(exc)}), 409
+        relative_path = datastore.relative(path)
+        annotate_audit_event(
+            category="Local storage",
+            action="remote_terminal.scrollback_saved_to_datastore",
+            summary=f"Saved remote-terminal {kind} to the Datastore.",
+            resource_type="datastore_file",
+            resource_id=relative_path,
+            resource_name=filename,
+            details={
+                "session": session_id,
+                "session title": session["title"],
+                "host": session["host"],
+                "kind": kind,
+                "bytes": byte_count,
+            },
+        )
+        record_current_activity(
+            "Local storage",
+            "Saved remote-terminal output",
+            relative_path,
+        )
+        return jsonify(
+            {
+                "saved": {
+                    "name": filename,
+                    "path": relative_path,
+                    "byte_count": byte_count,
+                    "kind": kind,
+                    "folder_url": url_for("local_datastore", path=destination),
+                }
+            }
+        )
 
     @tools_bp.delete("/remote-terminal/sessions/<session_id>")
     def delete_remote_terminal_scrollback(session_id: str):
@@ -468,7 +605,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                     "termination": session["termination"],
                 },
             )
-        return jsonify({"session": public_remote_session(session)})
+        return jsonify({"session": _public_session(session)})
 
     @tools_bp.post("/remote-terminal/sessions/<session_id>/rename")
     def rename_remote_terminal_session(session_id: str):
@@ -499,7 +636,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             resource_name=title,
             details={"previous name": existing["title"], "new name": title},
         )
-        return jsonify({"session": public_remote_session(session)})
+        return jsonify({"session": _public_session(session)})
 
 
 def _save_remote_terminal_credential(credential_id: str = ""):
@@ -634,6 +771,59 @@ def _annotate_library_change(
         resource_name=str(item["name"]),
         details=details or {},
     )
+
+
+def _public_session(session: dict[str, object]) -> dict[str, object]:
+    result = public_remote_session(session)
+    investigation_id = str(session.get("investigation_id", ""))
+    if not investigation_id:
+        return result
+    store = current_app.extensions.get("investigation_store")
+    if not isinstance(store, InvestigationStore):
+        return result
+    try:
+        investigation = store.get_for_user(
+            investigation_id, _current_user()["id"]
+        )
+    except (InvestigationError, OSError):
+        return result
+    result["investigation_title"] = investigation["title"]
+    result["investigation_url"] = url_for(
+        "investigation_detail", investigation_id=investigation_id
+    )
+    return result
+
+
+def _can_use_datastore() -> bool:
+    user = getattr(g, "current_user", {}) or {}
+    allowed_tool_ids = getattr(g, "allowed_tool_ids", None)
+    return bool(
+        user.get("is_admin")
+        or allowed_tool_ids is None
+        or "local.datastore" in allowed_tool_ids
+    )
+
+
+def _datastore_folders() -> list[dict[str, str]]:
+    if not _can_use_datastore():
+        return []
+    return LocalDatastore(current_app.instance_path).folders()
+
+
+def _available_datastore_filename(
+    store: LocalDatastore, folder: str, filename: str
+) -> str:
+    existing = {
+        str(item["name"]).casefold() for item in store.list(folder)["entries"]
+    }
+    if filename.casefold() not in existing:
+        return filename
+    stem = filename[:-4] if filename.casefold().endswith(".txt") else filename
+    for index in range(2, 10_002):
+        candidate = f"{stem[:240]}-{index}.txt"
+        if candidate.casefold() not in existing:
+            return candidate
+    raise DatastoreError("Unable to choose an unused transcript filename.")
 
 
 def _manager() -> RemoteSessionManager:

@@ -133,13 +133,19 @@ The sidebar and Network Tools page use the same functional organization.
 - **TCP Port Scanner** — check individual ports or ranges across authorized
   hosts.
 
-- **Remote Terminal** — keep up to six owner-scoped SSH shells running under the
-  toolkit service and restore them from Live Tools after navigation, a closed
-  browser tab, or a brief client disconnect. Each shell has a 10 MiB reconnect
-  scrollback limit, an eight-hour idle limit, and seven-day completed-scrollback
-  retention. Credentials and submitted input are not persisted. A shell started
-  while a case records can retain lifecycle events and an optional sanitized
-  remote-output transcript as case evidence.
+- **Remote Terminal** — keep up to twelve owner-scoped SSH shells running under
+  the toolkit service, including multiple sessions to the same saved host, and
+  restore them from Live Tools after navigation, a closed browser tab, or a
+  brief client disconnect. Session tabs can be renamed independently from their
+  saved hosts or closed while preserving scrollback in Recent sessions. Each
+  shell has a 10 MiB reconnect scrollback limit, an eight-hour idle limit, and
+  seven-day completed-scrollback retention. Credentials and submitted input
+  are not persisted. Saved-host sessions automatically retain a sanitized
+  transcript when a case is recording; Quick Connect keeps an explicit capture
+  choice. Active or completed sessions can also be attached to the open case
+  afterward. Retained output can be copied independently to any permitted
+  Datastore folder as a live snapshot or completed scrollback without
+  overwriting an earlier copy.
 - **RADIUS Authentication Test** — compare PAP and CHAP results and returned
   attributes; optional `eapol_test` support adds PEAP/MSCHAPv2 and EAP-TLS.
 - **Certificate Chain Inspector** — inspect the exact TLS chain presented by a

@@ -111,6 +111,17 @@ appendix. The SSH password and submitted input are never written to the remote
 session database or case; commands echoed by the remote device are output and
 therefore may appear in the transcript.
 
+Saved-host launches inherit transcript capture automatically while the case is
+recording; Quick Connect preserves its explicit checkbox. An operator may also
+attach a live or completed owner-scoped session to the current open case. A
+live attachment records the attachment boundary and includes retained output
+from before that boundary when the final transcript is created. Attaching
+completed scrollback creates the evidence immediately. Separately, operators
+with Datastore access can save the retained output to a selected folder. An
+active shell produces a point-in-time snapshot and remains connected; a
+completed shell produces a completed-scrollback file. Repeated saves receive
+collision-safe names and never overwrite an earlier copy.
+
 FortiGate/FortiAuthenticator exports are copied into the case as their original
 CSV while configuration-changing rename, order, and cleanup workflows use the
 same bounded, secret-sanitized summaries as the audit log. Certificate

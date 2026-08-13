@@ -7,9 +7,11 @@ from collections import deque
 from pathlib import Path
 
 from twn_toolkit.app import create_app
+from twn_toolkit.datastore import LocalDatastore
 from twn_toolkit.investigations import InvestigationStore
 from twn_toolkit.remote_sessions import (
     REMOTE_SESSION_INPUT_LIMIT_BYTES,
+    REMOTE_SESSION_LIMIT_PER_USER,
     RemoteSessionError,
     RemoteSessionManager,
     RemoteSessionStore,
@@ -83,6 +85,18 @@ def wait_for_state(
             return session
         time.sleep(0.01)
     raise AssertionError(f"Session {session_id} did not reach {state}.")
+
+
+def wait_for_output(
+    store: RemoteSessionStore, session_id: str, timeout: float = 2
+) -> dict[str, object]:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        session = store.get_session(session_id)
+        if session and int(session["output_bytes"]) > 0:
+            return session
+        time.sleep(0.01)
+    raise AssertionError(f"Session {session_id} did not retain output.")
 
 
 class RemoteSessionStoreTests(unittest.TestCase):
@@ -179,6 +193,30 @@ class RemoteSessionStoreTests(unittest.TestCase):
         self.assertIsNone(
             self.store.output_page(session_id, user_id="user-one", after_id=0)
         )
+
+    def test_operator_can_keep_twelve_concurrent_sessions(self) -> None:
+        self.assertEqual(REMOTE_SESSION_LIMIT_PER_USER, 12)
+        for index in range(REMOTE_SESSION_LIMIT_PER_USER):
+            self.store.create_session(
+                user_id="user-one",
+                username="operator",
+                title=f"Shell {index + 1}",
+                host="192.0.2.30",
+                port=22,
+                remote_username="admin",
+                record_transcript=False,
+            )
+
+        with self.assertRaisesRegex(RemoteSessionError, "up to 12"):
+            self.store.create_session(
+                user_id="user-one",
+                username="operator",
+                title="One too many",
+                host="192.0.2.30",
+                port=22,
+                remote_username="admin",
+                record_transcript=False,
+            )
 
 
 class RemoteSessionRouteTests(unittest.TestCase):
@@ -310,6 +348,97 @@ class RemoteSessionRouteTests(unittest.TestCase):
             },
         )
 
+    def test_saved_host_supports_multiple_independently_named_sessions(self) -> None:
+        credential = self.client.post(
+            "/tools/remote-terminal/credentials",
+            json={
+                "name": "Shared admin",
+                "username": "netadmin",
+                "password": "vault-password",
+            },
+        ).get_json()["library"]["credentials"][0]
+        host = self.client.post(
+            "/tools/remote-terminal/hosts",
+            json={
+                "name": "Home FortiGate",
+                "host": "firewall.example.test",
+                "port": 22,
+                "folder_id": "",
+                "credential_mode": "saved",
+                "credential_id": credential["id"],
+                "allow_unknown_hosts": True,
+                "allow_legacy_algorithms": False,
+                "notes": "",
+            },
+        ).get_json()["library"]["hosts"][0]
+
+        first = self.client.post(
+            "/tools/remote-terminal/sessions", json={"host_id": host["id"]}
+        ).get_json()["session"]
+        second = self.client.post(
+            "/tools/remote-terminal/sessions", json={"host_id": host["id"]}
+        ).get_json()["session"]
+        wait_for_state(self.manager.store, first["id"], "running")
+        wait_for_state(self.manager.store, second["id"], "running")
+
+        renamed = self.client.post(
+            first["rename_url"], json={"title": "Firewall maintenance"}
+        )
+        library = self.client.get("/tools/remote-terminal/library").get_json()[
+            "library"
+        ]
+
+        self.assertEqual(renamed.status_code, 200)
+        self.assertNotEqual(first["id"], second["id"])
+        self.assertEqual(first["source_host_id"], second["source_host_id"])
+        self.assertEqual(renamed.get_json()["session"]["title"], "Firewall maintenance")
+        self.assertEqual(
+            self.manager.store.get_session(second["id"])["title"],
+            "Home FortiGate",
+        )
+        self.assertEqual(library["hosts"][0]["name"], "Home FortiGate")
+
+    def test_saved_host_inherits_active_case_transcript_capture(self) -> None:
+        investigation_store = self.app.extensions["investigation_store"]
+        case = investigation_store.create(
+            owner_user_id="test-user",
+            owner_username="test-user",
+            title="Firewall outage",
+            description="",
+        )
+        credential = self.client.post(
+            "/tools/remote-terminal/credentials",
+            json={
+                "name": "Shared admin",
+                "username": "netadmin",
+                "password": "vault-password",
+            },
+        ).get_json()["library"]["credentials"][0]
+        host = self.client.post(
+            "/tools/remote-terminal/hosts",
+            json={
+                "name": "Edge firewall",
+                "host": "firewall.example.test",
+                "port": 22,
+                "folder_id": "",
+                "credential_mode": "saved",
+                "credential_id": credential["id"],
+                "allow_unknown_hosts": True,
+                "allow_legacy_algorithms": False,
+                "notes": "",
+            },
+        ).get_json()["library"]["hosts"][0]
+
+        response = self.client.post(
+            "/tools/remote-terminal/sessions", json={"host_id": host["id"]}
+        )
+
+        self.assertEqual(response.status_code, 201)
+        session = response.get_json()["session"]
+        self.assertEqual(session["investigation_id"], case["id"])
+        self.assertEqual(session["investigation_title"], "Firewall outage")
+        self.assertTrue(session["record_transcript"])
+
     def test_quick_connect_can_use_saved_credential_without_saving_host(self) -> None:
         created = self.client.post(
             "/tools/remote-terminal/credentials",
@@ -384,6 +513,97 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.assertEqual(deleted.status_code, 200)
         self.assertEqual(deleted.get_json()["deleted_id"], session["id"])
         self.assertEqual(self.client.get(session["detail_url"]).status_code, 404)
+
+    def test_active_and_completed_sessions_can_be_attached_to_open_case(self) -> None:
+        investigation_store = self.app.extensions["investigation_store"]
+        active_response = self.start_session()
+        active_session = active_response.get_json()["session"]
+        wait_for_state(self.manager.store, active_session["id"], "running")
+        wait_for_output(self.manager.store, active_session["id"])
+        completed_response = self.start_session(title="Earlier session")
+        completed_session = completed_response.get_json()["session"]
+        wait_for_state(self.manager.store, completed_session["id"], "running")
+        wait_for_output(self.manager.store, completed_session["id"])
+        self.client.post(completed_session["stop_url"])
+        case = investigation_store.create(
+            owner_user_id="test-user",
+            owner_username="test-user",
+            title="Campus outage",
+            description="",
+        )
+
+        active_attached = self.client.post(
+            active_session["attach_case_url"],
+            json={"investigation_id": case["id"]},
+        )
+        completed_attached = self.client.post(
+            completed_session["attach_case_url"],
+            json={"investigation_id": case["id"]},
+        )
+
+        self.assertEqual(active_attached.status_code, 200)
+        self.assertTrue(active_attached.get_json()["session"]["record_transcript"])
+        self.assertEqual(
+            active_attached.get_json()["session"]["investigation_title"],
+            "Campus outage",
+        )
+        self.assertEqual(completed_attached.status_code, 200)
+        self.assertIsNotNone(
+            self.manager.store.get_session(completed_session["id"])[
+                "evidence_finalized_at"
+            ]
+        )
+        self.client.post(active_session["stop_url"])
+        remote_events = [
+            event
+            for event in investigation_store.events_for_user(case["id"], "test-user")
+            if event["tool_id"] == "tools.remote_terminal"
+        ]
+        self.assertEqual(
+            [event["event_type"] for event in remote_events],
+            [
+                "remote_terminal.session.attached",
+                "remote_terminal.transcript.attached",
+                "remote_terminal.session.completed",
+            ],
+        )
+        self.assertEqual(
+            len(investigation_store.artifacts_for_user(case["id"], "test-user")),
+            2,
+        )
+
+    def test_scrollback_can_be_saved_to_datastore_without_overwriting(self) -> None:
+        datastore = LocalDatastore(self.directory.name)
+        datastore.create_folder("", "Terminal captures")
+        response = self.start_session()
+        session = response.get_json()["session"]
+        wait_for_state(self.manager.store, session["id"], "running")
+        wait_for_output(self.manager.store, session["id"])
+
+        snapshot = self.client.post(
+            session["datastore_url"], json={"folder": "Terminal captures"}
+        )
+        self.client.post(session["stop_url"])
+        completed = self.client.post(
+            session["datastore_url"], json={"folder": "Terminal captures"}
+        )
+        repeated = self.client.post(
+            session["datastore_url"], json={"folder": "Terminal captures"}
+        )
+
+        self.assertEqual(snapshot.status_code, 200)
+        self.assertEqual(snapshot.get_json()["saved"]["kind"], "live snapshot")
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(
+            completed.get_json()["saved"]["kind"], "completed scrollback"
+        )
+        self.assertNotEqual(
+            completed.get_json()["saved"]["path"],
+            repeated.get_json()["saved"]["path"],
+        )
+        for item in (snapshot, completed, repeated):
+            saved = datastore.file(item.get_json()["saved"]["path"])
+            self.assertIn("switch# ready", saved.read_text())
 
     def test_second_web_worker_controls_the_owning_worker(self) -> None:
         response = self.start_session()
