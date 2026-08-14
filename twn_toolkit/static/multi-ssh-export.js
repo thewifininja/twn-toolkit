@@ -1,7 +1,27 @@
 (() => {
   const results = [...document.querySelectorAll("[data-ssh-result]")];
+  const toggleAll = document.querySelector("[data-ssh-toggle-all]");
   const downloadAll = document.querySelector("[data-ssh-download-all]");
   if (!results.length || !downloadAll) return;
+
+  function updateToggleAll() {
+    if (!toggleAll) return;
+    const allOpen = results.every((result) => result.open);
+    toggleAll.textContent = allOpen ? "Collapse all" : "Expand all";
+  }
+
+  toggleAll?.addEventListener("click", () => {
+    const shouldOpen = !results.every((result) => result.open);
+    results.forEach((result) => {
+      result.open = shouldOpen;
+    });
+    updateToggleAll();
+  });
+
+  results.forEach((result) => {
+    result.addEventListener("toggle", updateToggleAll);
+  });
+  updateToggleAll();
 
   function timestamp() {
     const now = new Date();

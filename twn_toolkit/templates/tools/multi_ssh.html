@@ -277,7 +277,11 @@
   <section class="panel tool-panel multi-ssh-panel">
     <div class="preview-head">
       <h2>SSH Results</h2>
-      <div class="button-row ssh-export-actions"><span>{{ results | length }} host(s)</span><button class="secondary" type="button" data-ssh-download-all>Download all results</button></div>
+      <div class="button-row ssh-export-actions">
+        <span>{{ results | length }} host(s)</span>
+        <button class="secondary" type="button" data-ssh-toggle-all>Expand all</button>
+        <button class="secondary" type="button" data-ssh-download-all>Download all results</button>
+      </div>
     </div>
     <div class="ssh-results">
       {% for result in results %}

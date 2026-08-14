@@ -1369,6 +1369,8 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"Closet Switch", response.data)
             self.assertIn(b'data-address="switch-1"', response.data)
             self.assertNotIn(b"not-rendered", response.data)
+            self.assertIn(b"Expand all", response.data)
+            self.assertIn(b"data-ssh-toggle-all", response.data)
             self.assertIn(b"Download all results", response.data)
             self.assertIn(b"Download this host", response.data)
             self.assertIn(b"multi-ssh-export.js", response.data)
