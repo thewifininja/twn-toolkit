@@ -307,20 +307,40 @@
                 </div>
               </dl>
               <div class="ssh-host-key-recovery">
-                <p>Only forget the saved key after confirming that this device was replaced or intentionally re-keyed.</p>
+                <p>After verifying that this device was replaced or intentionally re-keyed, retry only this host with the exact signed command plan.</p>
                 <div class="ssh-host-key-recovery-actions">
                   <button
                     class="danger compact"
                     type="button"
-                    data-ssh-forget-host-key
-                    data-url="{{ url_for('tools.forget_multi_ssh_host_key') }}"
-                    data-host="{{ result.host }}"
-                    data-port="{{ form.port }}"
-                    data-expected-fingerprint="{{ result.host_key_mismatch.expected_fingerprint }}"
-                  >Forget saved key</button>
-                  <span class="ssh-host-key-status" data-ssh-host-key-status role="status"></span>
+                    data-ssh-retry-reveal
+                  >Retry this host</button>
                 </div>
               </div>
+              <form
+                class="ssh-host-key-retry-form"
+                data-ssh-host-key-retry
+                data-url="{{ url_for('tools.retry_multi_ssh_host_key') }}"
+                data-retry-token="{{ result.host_key_retry_token }}"
+                data-host="{{ result.host }}"
+                hidden
+              >
+                <div class="ssh-host-key-retry-fields">
+                  <label>
+                    Username
+                    <input name="retry_username" value="{{ form.username }}" autocomplete="username" required>
+                  </label>
+                  <label>
+                    Password
+                    <input name="retry_password" type="password" autocomplete="current-password" required>
+                  </label>
+                </div>
+                <p class="field-note">The password is used only for this one-host retry. The verified presented key will become the new saved identity.</p>
+                <div class="ssh-host-key-retry-controls">
+                  <button class="secondary compact" type="button" data-ssh-retry-cancel>Cancel</button>
+                  <button class="danger compact" type="submit" data-ssh-retry-submit>Verify, replace &amp; retry</button>
+                </div>
+                <span class="ssh-host-key-status" data-ssh-host-key-status role="status" aria-live="polite"></span>
+              </form>
             </div>
           {% elif result.error %}<div class="message error ssh-result-error">{{ result.error }}</div>{% endif %}
           <pre class="result-output">{{ result.output or 'No output captured.' }}</pre>

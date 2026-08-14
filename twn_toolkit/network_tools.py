@@ -1057,8 +1057,22 @@ def run_ssh_host_plans(
             normalized_command_lines,
             SSH_DEFAULT_COMMAND_TIMEOUT,
         )
+        required_host_key_fingerprint = str(
+            plan.get("required_host_key_fingerprint", "")
+        ).strip()
+        if required_host_key_fingerprint and not re.fullmatch(
+            r"SHA256:[A-Za-z0-9+/]{43}", required_host_key_fingerprint
+        ):
+            raise ToolInputError(
+                "The verified SSH host-key fingerprint is invalid."
+            )
         normalized_plans.append(
-            {"host": host, "label": label, "command_specs": command_specs}
+            {
+                "host": host,
+                "label": label,
+                "command_specs": command_specs,
+                "required_host_key_fingerprint": required_host_key_fingerprint,
+            }
         )
     if not normalized_plans:
         raise ToolInputError("Enter at least one IP address or hostname.")
@@ -1090,6 +1104,7 @@ def run_ssh_host_plans(
                     plan["label"],
                     allow_legacy_algorithms,
                     per_host_capture_limit,
+                    plan["required_host_key_fingerprint"],
                 ): batch_start + index
                 for index, plan in enumerate(batch)
             }
@@ -1248,6 +1263,7 @@ def _ssh_host(
     host_label: str = "",
     allow_legacy_algorithms: bool = False,
     capture_limit: int = SSH_OUTPUT_LIMIT,
+    required_host_key_fingerprint: str = "",
 ) -> dict[str, Any]:
     client = None
     output: list[str] = []
@@ -1261,6 +1277,7 @@ def _ssh_host(
             allow_legacy_algorithms=allow_legacy_algorithms,
             connect_timeout=8,
             auth_timeout=8,
+            required_host_key_fingerprint=required_host_key_fingerprint,
         )
         channel = client.invoke_shell(width=200, height=1000)
         channel.settimeout(0.2)

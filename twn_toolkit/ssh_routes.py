@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import re
 import secrets
 import time
 
@@ -26,7 +27,6 @@ from .network_tools import (
     ToolInputError,
     parse_ssh_targets,
     run_ssh_host_plans,
-    validate_ssh_target,
 )
 from .ssh_security import SSHKnownHostsError, forget_ssh_known_host
 from .ssh_commandlets import (
@@ -44,6 +44,7 @@ from .investigation_context import (
 
 
 _PREVIEW_TOKEN_SALT = "multi-ssh-advanced-preview-v1"
+_HOST_KEY_RETRY_TOKEN_SALT = "multi-ssh-host-key-retry-v1"
 _PREVIEW_DISPLAY_LIMIT = 100
 
 
@@ -163,6 +164,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                                 "Confirm that you intend to execute the previewed commands."
                             )
                         results = _run_plans(form, preview)
+                        _attach_host_key_retry_tokens(results, preview, form)
                     else:
                         raise ToolInputError("Choose Preview commands or Run commands.")
                 except (ToolInputError, TypeError, ValueError) as exc:
@@ -220,36 +222,92 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
         suppress_audit_event()
         return jsonify({"count": len(targets), "targets": targets})
 
-    @tools_bp.post("/multi-ssh/host-keys/forget")
-    def forget_multi_ssh_host_key():
+    @tools_bp.post("/multi-ssh/host-keys/retry")
+    def retry_multi_ssh_host_key():
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict):
             suppress_audit_event()
-            return jsonify({"error": "Send a valid host-key request."}), 400
-        host = str(payload.get("host", "")).strip()
-        expected_fingerprint = str(
-            payload.get("expected_fingerprint", "")
-        ).strip()
+            return jsonify({"error": "Send a valid host-key retry request."}), 400
         try:
-            validate_ssh_target(host)
-            port = int(payload.get("port", 22))
+            preview = build_ssh_command_plans(
+                str(payload.get("matrix", "")),
+                str(payload.get("commands", "")),
+                int(payload.get("command_timeout", SSH_DEFAULT_COMMAND_TIMEOUT)),
+            )
+            _validate_preview_token(
+                str(payload.get("preview_token", "")),
+                preview["plans"],
+            )
+            retry_context = _validate_host_key_retry_token(
+                str(payload.get("retry_token", "")),
+                preview["plans"],
+            )
+            username = str(payload.get("username", "")).strip()
+            password = str(payload.get("password", ""))
+            if not username:
+                raise ToolInputError("Enter an SSH username.")
+            if not password:
+                raise ToolInputError("Enter an SSH password.")
         except (ToolInputError, TypeError, ValueError) as exc:
             suppress_audit_event()
-            return jsonify({"error": str(exc) or "Enter a valid SSH port."}), 400
+            return jsonify({"error": str(exc) or "Review the retry details."}), 400
+
+        plan_index = int(retry_context["plan_index"])
+        plan = dict(preview["plans"][plan_index])
+        host = str(plan["host"])
+        port = int(retry_context["port"])
+        expected_fingerprint = str(retry_context["expected_fingerprint"])
+        presented_fingerprint = str(retry_context["presented_fingerprint"])
         try:
             forgotten = forget_ssh_known_host(
                 host,
                 port,
                 expected_fingerprint,
+                allow_missing=True,
+                allow_existing_fingerprint=presented_fingerprint,
             )
         except SSHKnownHostsError as exc:
             suppress_audit_event()
             return jsonify({"error": str(exc)}), 409
 
+        plan["required_host_key_fingerprint"] = presented_fingerprint
+        started_at = time.time()
+        result = run_ssh_host_plans(
+            [plan],
+            username=username,
+            password=password,
+            port=port,
+            allow_unknown_hosts=False,
+            allow_legacy_algorithms=bool(retry_context["allow_legacy_algorithms"]),
+            send_ctrl_y=bool(retry_context["send_ctrl_y"]),
+        )[0]
+        status = str(result.get("status", "error"))
+        record_current_activity(
+            "Automation",
+            "Retried Bulk SSH host",
+            f"{plan.get('label') or host} · {status}",
+            counters={"ssh": {"hosts": 1, "commands": len(plan["commands"])}},
+        )
+        retry_form = {
+            "port": str(port),
+            "command_timeout": str(payload.get("command_timeout", "")),
+            "allow_unknown_hosts": False,
+            "allow_legacy_algorithms": bool(
+                retry_context["allow_legacy_algorithms"]
+            ),
+        }
+        _record_ssh_investigation(
+            retry_form,
+            {"plans": [plan]},
+            [result],
+            error="",
+            operation_id=f"multi-ssh-retry:{secrets.token_hex(12)}",
+            started_at=started_at,
+        )
         annotate_audit_event(
             category="Network tools",
-            action="ssh.saved_host_key_forgotten",
-            summary=f"Forgot the saved SSH host key for {host}:{port}.",
+            action="ssh.host_key_recovery_run",
+            summary=f"Processed verified SSH host-key recovery and retried {host}:{port}.",
             resource_type="ssh_host_key",
             resource_id=f"{host}:{port}",
             resource_name=host,
@@ -257,15 +315,20 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                 "host": host,
                 "port": port,
                 "expected fingerprint": expected_fingerprint,
+                "presented fingerprint": presented_fingerprint,
                 "removed entries": int(forgotten["removed_entries"]),
+                "command count": len(plan["commands"]),
+                "outcome": status,
             },
         )
         return jsonify(
             {
                 "forgotten": forgotten,
+                "result": result,
                 "message": (
-                    "Saved key forgotten. Rerun Bulk SSH with Allow unknown "
-                    "SSH host keys enabled after verifying the device."
+                    "Saved key replaced and this host was rerun."
+                    if status == "success"
+                    else "The stale saved key was cleared, but this host's retry did not complete successfully."
                 ),
             }
         )
@@ -616,6 +679,92 @@ def _preview_serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         current_app.config["SECRET_KEY"], salt=_PREVIEW_TOKEN_SALT
     )
+
+
+def _host_key_retry_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(
+        current_app.config["SECRET_KEY"], salt=_HOST_KEY_RETRY_TOKEN_SALT
+    )
+
+
+def _attach_host_key_retry_tokens(
+    results: list[dict[str, object]],
+    preview: dict[str, object],
+    form: dict[str, object],
+) -> None:
+    plans = list(preview.get("plans", []))
+    digest = ssh_command_plan_digest(plans)
+    for plan_index, result in enumerate(results):
+        mismatch = result.get("host_key_mismatch")
+        if not isinstance(mismatch, dict) or plan_index >= len(plans):
+            continue
+        result["host_key_retry_token"] = _host_key_retry_serializer().dumps(
+            {
+                "digest": digest,
+                "plan_index": plan_index,
+                "host": str(plans[plan_index].get("host", "")),
+                "port": int(str(form["port"])),
+                "expected_fingerprint": str(
+                    mismatch.get("expected_fingerprint", "")
+                ),
+                "presented_fingerprint": str(
+                    mismatch.get("presented_fingerprint", "")
+                ),
+                "allow_legacy_algorithms": bool(
+                    form.get("allow_legacy_algorithms")
+                ),
+                "send_ctrl_y": bool(form.get("send_ctrl_y")),
+            }
+        )
+
+
+def _validate_host_key_retry_token(
+    token: str,
+    plans: list[dict[str, object]],
+) -> dict[str, object]:
+    if not token:
+        raise ToolInputError("Run Bulk SSH again to create a host-key retry.")
+    try:
+        payload = _host_key_retry_serializer().loads(
+            token,
+            max_age=SSH_PREVIEW_MAX_AGE_SECONDS,
+        )
+    except SignatureExpired as exc:
+        raise ToolInputError(
+            "This host-key retry expired. Run Bulk SSH again."
+        ) from exc
+    except BadSignature as exc:
+        raise ToolInputError(
+            "This host-key retry is invalid. Run Bulk SSH again."
+        ) from exc
+    if not isinstance(payload, dict):
+        raise ToolInputError("This host-key retry is invalid. Run Bulk SSH again.")
+    expected_digest = ssh_command_plan_digest(plans)
+    if not hmac.compare_digest(str(payload.get("digest", "")), expected_digest):
+        raise ToolInputError(
+            "The targets or commands changed. Run Bulk SSH again."
+        )
+    try:
+        plan_index = int(payload.get("plan_index", -1))
+        port = int(payload.get("port", 0))
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError("This host-key retry is invalid. Run Bulk SSH again.") from exc
+    if not 0 <= plan_index < len(plans) or not 1 <= port <= 65535:
+        raise ToolInputError("This host-key retry is invalid. Run Bulk SSH again.")
+    if not hmac.compare_digest(
+        str(payload.get("host", "")),
+        str(plans[plan_index].get("host", "")),
+    ):
+        raise ToolInputError("This host-key retry is invalid. Run Bulk SSH again.")
+    for field in ("expected_fingerprint", "presented_fingerprint"):
+        if not re.fullmatch(
+            r"SHA256:[A-Za-z0-9+/]{43}",
+            str(payload.get(field, "")),
+        ):
+            raise ToolInputError(
+                "This host-key retry is invalid. Run Bulk SSH again."
+            )
+    return payload
 
 
 def _validate_preview_token(

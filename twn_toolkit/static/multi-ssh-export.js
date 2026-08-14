@@ -65,48 +65,88 @@
       );
     });
 
-    const forgetButton = result.querySelector("[data-ssh-forget-host-key]");
-    const forgetStatus = result.querySelector("[data-ssh-host-key-status]");
-    forgetButton?.addEventListener("click", async () => {
-      const host = forgetButton.dataset.host || "this host";
+    const retryReveal = result.querySelector("[data-ssh-retry-reveal]");
+    const retryForm = result.querySelector("[data-ssh-host-key-retry]");
+    const retryCancel = result.querySelector("[data-ssh-retry-cancel]");
+    const retrySubmit = result.querySelector("[data-ssh-retry-submit]");
+    const retryStatus = result.querySelector("[data-ssh-host-key-status]");
+    retryReveal?.addEventListener("click", () => {
+      retryForm.hidden = false;
+      retryReveal.hidden = true;
+      retryForm.querySelector('[name="retry_password"]')?.focus();
+    });
+    retryCancel?.addEventListener("click", () => {
+      retryForm.hidden = true;
+      retryReveal.hidden = false;
+      retryForm.querySelector('[name="retry_password"]').value = "";
+      retryStatus.textContent = "";
+    });
+    retryForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!retryForm.reportValidity()) return;
+      const host = retryForm.dataset.host || "this host";
       if (!window.confirm(
-        `Forget the saved SSH key for ${host}?\n\n` +
-        "Continue only if you verified that the device was replaced or intentionally re-keyed."
+        `Replace the saved SSH key and retry only ${host}?\n\n` +
+        "Continue only if you independently verified the presented fingerprint."
       )) return;
 
-      forgetButton.disabled = true;
-      forgetButton.textContent = "Forgetting…";
-      if (forgetStatus) {
-        forgetStatus.className = "ssh-host-key-status";
-        forgetStatus.textContent = "";
-      }
+      const mainForm = document.querySelector("[data-multi-ssh]");
+      if (!mainForm) return;
+      const mainData = new FormData(mainForm);
+      retrySubmit.disabled = true;
+      retrySubmit.textContent = "Replacing & retrying…";
+      retryStatus.className = "ssh-host-key-status";
+      retryStatus.textContent = "Connecting to this host…";
       try {
-        const response = await fetch(forgetButton.dataset.url, {
+        const response = await fetch(retryForm.dataset.url, {
           method: "POST",
           headers: {
             "Accept": "application/json",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            host: forgetButton.dataset.host,
-            port: forgetButton.dataset.port,
-            expected_fingerprint: forgetButton.dataset.expectedFingerprint,
+            retry_token: retryForm.dataset.retryToken,
+            preview_token: mainData.get("preview_token"),
+            matrix: mainData.get("matrix"),
+            commands: mainData.get("commands"),
+            command_timeout: mainData.get("command_timeout"),
+            username: retryForm.querySelector('[name="retry_username"]').value,
+            password: retryForm.querySelector('[name="retry_password"]').value,
           }),
         });
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || "The saved key could not be forgotten.");
-        forgetButton.textContent = "Saved key forgotten";
-        if (forgetStatus) {
-          forgetStatus.classList.add("success");
-          forgetStatus.textContent = payload.message || "Saved key forgotten.";
+        if (!response.ok) throw new Error(payload.error || "This host could not be retried.");
+
+        const retried = payload.result || {};
+        const status = retried.status || "error";
+        result.dataset.status = status;
+        const statusPill = result.querySelector("summary .pill");
+        if (statusPill) {
+          statusPill.className = `pill ${status}`;
+          statusPill.textContent = status;
+        }
+        const output = result.querySelector(".result-output");
+        if (output) output.textContent = retried.output || "No output captured.";
+        retryForm.querySelector('[name="retry_password"]').value = "";
+
+        if (status === "success") {
+          const completed = document.createElement("div");
+          completed.className = "message success ssh-host-key-retry-complete";
+          completed.textContent = payload.message || "Saved key replaced and this host was rerun.";
+          result.querySelector("[data-ssh-host-key-mismatch]")?.replaceWith(completed);
+        } else {
+          result.querySelector(".ssh-host-key-mismatch-head strong").textContent = "Stale key cleared; retry incomplete";
+          result.querySelector(".ssh-result-error").textContent = retried.error || "This host did not complete successfully.";
+          retryStatus.classList.add("error");
+          retryStatus.textContent = payload.message || "Review the error and retry this host again.";
+          retrySubmit.disabled = false;
+          retrySubmit.textContent = "Retry this host again";
         }
       } catch (error) {
-        forgetButton.disabled = false;
-        forgetButton.textContent = "Forget saved key";
-        if (forgetStatus) {
-          forgetStatus.classList.add("error");
-          forgetStatus.textContent = error.message;
-        }
+        retrySubmit.disabled = false;
+        retrySubmit.textContent = "Verify, replace & retry";
+        retryStatus.classList.add("error");
+        retryStatus.textContent = error.message;
       }
     });
   });

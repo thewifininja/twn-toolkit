@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from twn_toolkit.ssh_security import (
+    SSHHostKeyVerificationError,
     SSHKnownHostsError,
     close_ssh_client,
     disabled_ssh_algorithms,
@@ -177,6 +178,103 @@ class SSHSecurityTests(unittest.TestCase):
                 )
 
             self.assertEqual(known_hosts.read_text(encoding="utf-8"), original)
+
+    def test_forget_known_host_can_continue_an_already_cleared_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            known_hosts = Path(directory) / "known_hosts"
+            known_hosts.write_text("", encoding="utf-8")
+
+            result = forget_ssh_known_host(
+                "192.0.2.20",
+                22,
+                self._fingerprint(b"saved-host-key"),
+                known_hosts_path=known_hosts,
+                allow_missing=True,
+            )
+
+            self.assertEqual(result["removed_entries"], 0)
+
+    def test_forget_known_host_can_continue_after_verified_key_was_saved(self) -> None:
+        presented_key = b"presented-host-key"
+        encoded = base64.b64encode(presented_key).decode("ascii")
+        with tempfile.TemporaryDirectory() as directory:
+            known_hosts = Path(directory) / "known_hosts"
+            known_hosts.write_text(
+                f"192.0.2.20 ssh-ed25519 {encoded}\n",
+                encoding="utf-8",
+            )
+
+            result = forget_ssh_known_host(
+                "192.0.2.20",
+                22,
+                self._fingerprint(b"old-saved-key"),
+                known_hosts_path=known_hosts,
+                allow_missing=True,
+                allow_existing_fingerprint=self._fingerprint(presented_key),
+            )
+
+            self.assertEqual(result["removed_entries"], 0)
+            self.assertIn("192.0.2.20", known_hosts.read_text(encoding="utf-8"))
+
+    def test_verified_retry_pins_and_saves_only_the_presented_key(self) -> None:
+        presented = self.FakeKey(b"presented-key")
+        fingerprint = ssh_key_fingerprint(presented)
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            known_hosts = home / ".ssh" / "known_hosts"
+            known_hosts.parent.mkdir()
+            known_hosts.write_text("", encoding="utf-8")
+            client = MagicMock()
+            with patch("paramiko.SSHClient", return_value=client), patch(
+                "twn_toolkit.ssh_security.Path.home", return_value=home
+            ):
+                connected = open_ssh_client(
+                    hostname="192.0.2.20",
+                    port=22,
+                    username="admin",
+                    password="secret",
+                    allow_unknown_hosts=False,
+                    required_host_key_fingerprint=fingerprint,
+                )
+
+            policy = client.set_missing_host_key_policy.call_args.args[0]
+            policy.missing_host_key(client, "192.0.2.20", presented)
+
+            self.assertIs(connected, client)
+            client.load_host_keys.assert_called_once_with(str(known_hosts))
+            client.get_host_keys.return_value.add.assert_called_once_with(
+                "192.0.2.20", "ssh-ed25519", presented
+            )
+            client.save_host_keys.assert_called_once_with(str(known_hosts))
+
+    def test_verified_retry_rejects_a_second_host_key_change(self) -> None:
+        verified = self.FakeKey(b"verified-key")
+        changed = self.FakeKey(b"changed-again")
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            known_hosts = home / ".ssh" / "known_hosts"
+            known_hosts.parent.mkdir()
+            known_hosts.write_text("", encoding="utf-8")
+            client = MagicMock()
+            with patch("paramiko.SSHClient", return_value=client), patch(
+                "twn_toolkit.ssh_security.Path.home", return_value=home
+            ):
+                open_ssh_client(
+                    hostname="192.0.2.20",
+                    port=22,
+                    username="admin",
+                    password="secret",
+                    allow_unknown_hosts=False,
+                    required_host_key_fingerprint=ssh_key_fingerprint(verified),
+                )
+
+            policy = client.set_missing_host_key_policy.call_args.args[0]
+            with self.assertRaisesRegex(
+                SSHHostKeyVerificationError,
+                "changed again",
+            ):
+                policy.missing_host_key(client, "192.0.2.20", changed)
+            client.save_host_keys.assert_not_called()
 
     def test_banner_failure_closes_inactive_socket_and_retries_once(self) -> None:
         first = MagicMock()

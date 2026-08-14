@@ -354,7 +354,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b"targets or commands changed", response.data)
             run.assert_not_called()
 
-    def test_host_key_mismatch_has_readable_recovery_and_forget_endpoint(self) -> None:
+    def test_host_key_mismatch_can_retry_only_the_signed_failed_host(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
@@ -403,11 +403,21 @@ class SSHCommandletRouteTests(unittest.TestCase):
                 )
 
             self.assertIn(b"Host identity changed", response.data)
-            self.assertIn(b"Forget saved key", response.data)
+            self.assertIn(b"Retry this host", response.data)
+            self.assertIn(b"Verify, replace &amp; retry", response.data)
             self.assertIn(("SHA256:" + "E" * 43).encode(), response.data)
             self.assertIn(("SHA256:" + "P" * 43).encode(), response.data)
             self.assertNotIn(b"raw base64", response.data)
+            retry_token = re.search(
+                rb'data-retry-token="([^"]+)"', response.data
+            ).group(1).decode()
 
+            retried_result = {
+                "host": "192.0.2.20",
+                "host_label": "Closet switch",
+                "status": "success",
+                "output": "System status output",
+            }
             with patch(
                 "twn_toolkit.ssh_routes.forget_ssh_known_host",
                 return_value={
@@ -416,25 +426,43 @@ class SSHCommandletRouteTests(unittest.TestCase):
                     "identity": "192.0.2.20",
                     "removed_entries": 1,
                 },
-            ) as forget:
-                forgotten = client.post(
-                    "/tools/multi-ssh/host-keys/forget",
+            ) as forget, patch(
+                "twn_toolkit.ssh_routes.run_ssh_host_plans",
+                return_value=[retried_result],
+            ) as retry:
+                retried = client.post(
+                    "/tools/multi-ssh/host-keys/retry",
                     json={
-                        "host": "192.0.2.20",
-                        "port": 22,
-                        "expected_fingerprint": "SHA256:" + "E" * 43,
+                        "retry_token": retry_token,
+                        "preview_token": token,
+                        "matrix": form["matrix"],
+                        "commands": form["commands"],
+                        "command_timeout": form["command_timeout"],
+                        "username": "admin",
+                        "password": "secret",
                     },
                 )
 
-            self.assertEqual(forgotten.status_code, 200)
-            self.assertIn(b"Saved key forgotten", forgotten.data)
+            self.assertEqual(retried.status_code, 200)
+            self.assertEqual(retried.get_json()["result"], retried_result)
+            self.assertIn(b"Saved key replaced", retried.data)
             forget.assert_called_once_with(
                 "192.0.2.20",
                 22,
                 "SHA256:" + "E" * 43,
+                allow_missing=True,
+                allow_existing_fingerprint="SHA256:" + "P" * 43,
             )
+            retry_plan = retry.call_args.args[0]
+            self.assertEqual(len(retry_plan), 1)
+            self.assertEqual(retry_plan[0]["host"], "192.0.2.20")
+            self.assertEqual(
+                retry_plan[0]["required_host_key_fingerprint"],
+                "SHA256:" + "P" * 43,
+            )
+            self.assertFalse(retry.call_args.kwargs["allow_unknown_hosts"])
 
-    def test_forget_host_key_endpoint_rejects_invalid_host(self) -> None:
+    def test_host_key_retry_endpoint_rejects_invalid_token(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.config["TESTING"] = True
@@ -442,11 +470,15 @@ class SSHCommandletRouteTests(unittest.TestCase):
 
             with patch("twn_toolkit.ssh_routes.forget_ssh_known_host") as forget:
                 response = client.post(
-                    "/tools/multi-ssh/host-keys/forget",
+                    "/tools/multi-ssh/host-keys/retry",
                     json={
-                        "host": "192.0.2.999",
-                        "port": 22,
-                        "expected_fingerprint": "SHA256:" + "E" * 43,
+                        "retry_token": "invalid",
+                        "preview_token": "invalid",
+                        "matrix": "Host\n192.0.2.20",
+                        "commands": "show clock",
+                        "command_timeout": "300",
+                        "username": "admin",
+                        "password": "secret",
                     },
                 )
 

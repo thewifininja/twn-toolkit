@@ -491,7 +491,7 @@ def register_tools(registry: Any) -> None:
             "tools.delete_radius_profile": "tools.radius_test",
             "tools.multi_ssh": "tools.multi_ssh",
             "tools.import_ssh_hosts": "tools.multi_ssh",
-            "tools.forget_multi_ssh_host_key": "tools.multi_ssh",
+            "tools.retry_multi_ssh_host_key": "tools.multi_ssh",
             "tools.delete_ssh_commandlet": "tools.multi_ssh",
             "tools.remote_terminal": "tools.remote_terminal",
             "tools.remote_terminal_library": "tools.remote_terminal",

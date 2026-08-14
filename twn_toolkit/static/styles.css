@@ -10111,6 +10111,37 @@ button.compact,
   gap: 10px;
 }
 
+.ssh-host-key-retry-form {
+  border-top: 1px solid color-mix(in srgb, var(--bad), transparent 75%);
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.ssh-host-key-retry-form[hidden] {
+  display: none;
+}
+
+.ssh-host-key-retry-fields {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ssh-host-key-retry-fields label {
+  min-width: 0;
+}
+
+.ssh-host-key-retry-fields input {
+  width: 100%;
+}
+
+.ssh-host-key-retry-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .ssh-host-key-status {
   color: var(--muted);
   font-size: 0.78rem;
@@ -10139,6 +10170,18 @@ button.compact,
   }
 
   .ssh-host-key-recovery-actions button {
+    width: 100%;
+  }
+
+  .ssh-host-key-retry-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ssh-host-key-retry-controls {
+    flex-direction: column-reverse;
+  }
+
+  .ssh-host-key-retry-controls button {
     width: 100%;
   }
 }

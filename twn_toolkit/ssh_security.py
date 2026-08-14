@@ -28,6 +28,10 @@ class SSHKnownHostsError(ValueError):
     pass
 
 
+class SSHHostKeyVerificationError(ConnectionError):
+    pass
+
+
 def disabled_ssh_algorithms(
     *, allow_legacy_algorithms: bool = False
 ) -> dict[str, list[str]] | None:
@@ -53,18 +57,39 @@ def open_ssh_client(
     allow_legacy_algorithms: bool = False,
     connect_timeout: float = 10,
     auth_timeout: float = 10,
+    required_host_key_fingerprint: str = "",
 ) -> Any:
     """Open an SSH client with one bounded retry for a missing server banner."""
     import paramiko
 
+    required_fingerprint = str(required_host_key_fingerprint).strip()
+    if required_fingerprint and not re.fullmatch(
+        r"SHA256:[A-Za-z0-9+/]{43}", required_fingerprint
+    ):
+        raise SSHHostKeyVerificationError(
+            "The verified SSH host-key fingerprint is invalid."
+        )
+    known_hosts_path = Path.home() / ".ssh" / "known_hosts"
     for attempt in range(SSH_BANNER_ATTEMPTS):
         client = paramiko.SSHClient()
-        client.load_system_host_keys()
-        client.set_missing_host_key_policy(
-            paramiko.AutoAddPolicy()
-            if allow_unknown_hosts
-            else paramiko.RejectPolicy()
-        )
+        if required_fingerprint and known_hosts_path.is_file():
+            client.load_host_keys(str(known_hosts_path))
+        else:
+            client.load_system_host_keys()
+        if required_fingerprint:
+            client.set_missing_host_key_policy(
+                _verified_host_key_policy(
+                    paramiko,
+                    required_fingerprint,
+                    known_hosts_path,
+                )
+            )
+        else:
+            client.set_missing_host_key_policy(
+                paramiko.AutoAddPolicy()
+                if allow_unknown_hosts
+                else paramiko.RejectPolicy()
+            )
         try:
             client.connect(
                 hostname=hostname,
@@ -117,6 +142,8 @@ def _is_banner_failure(exc: BaseException) -> bool:
 
 def format_ssh_connection_error(exc: Exception) -> str:
     """Add actionable guidance to known SSH connection failures."""
+    if isinstance(exc, SSHHostKeyVerificationError):
+        return str(exc)
     mismatch = ssh_host_key_mismatch(exc)
     if mismatch:
         return (
@@ -172,6 +199,8 @@ def forget_ssh_known_host(
     expected_fingerprint: str,
     *,
     known_hosts_path: Path | None = None,
+    allow_missing: bool = False,
+    allow_existing_fingerprint: str = "",
 ) -> dict[str, Any]:
     """Remove one verified host identity from the user's OpenSSH trust file."""
     clean_host = str(hostname).strip()
@@ -213,10 +242,28 @@ def forget_ssh_known_host(
             if (parsed := _known_hosts_line(line, identity)) is not None
         ]
         if not matching:
+            if allow_missing:
+                return {
+                    "hostname": clean_host,
+                    "port": clean_port,
+                    "identity": identity,
+                    "removed_entries": 0,
+                }
             raise SSHKnownHostsError("No saved system SSH key exists for this host.")
-        if clean_fingerprint not in {
+        saved_fingerprints = {
             str(item[1]) for item in matching if item[1]
-        }:
+        }
+        if clean_fingerprint not in saved_fingerprints:
+            if (
+                allow_existing_fingerprint
+                and allow_existing_fingerprint in saved_fingerprints
+            ):
+                return {
+                    "hostname": clean_host,
+                    "port": clean_port,
+                    "identity": identity,
+                    "removed_entries": 0,
+                }
             raise SSHKnownHostsError(
                 "The saved SSH key changed after these results were generated. Run Bulk SSH again before removing it."
             )
@@ -251,6 +298,29 @@ def forget_ssh_known_host(
         "identity": identity,
         "removed_entries": removed_entries,
     }
+
+
+def _verified_host_key_policy(
+    paramiko: Any,
+    required_fingerprint: str,
+    known_hosts_path: Path,
+) -> Any:
+    class VerifiedHostKeyPolicy(paramiko.MissingHostKeyPolicy):
+        def missing_host_key(self, client: Any, hostname: str, key: Any) -> None:
+            presented = ssh_key_fingerprint(key)
+            if not hmac.compare_digest(presented, required_fingerprint):
+                raise SSHHostKeyVerificationError(
+                    "The SSH host key changed again before the retry. Verify the device and run Bulk SSH again."
+                )
+            client.get_host_keys().add(hostname, key.get_name(), key)
+            try:
+                client.save_host_keys(str(known_hosts_path))
+            except OSError as exc:
+                raise SSHHostKeyVerificationError(
+                    "The verified SSH host key could not be saved."
+                ) from exc
+
+    return VerifiedHostKeyPolicy()
 
 
 def _known_hosts_line(line: str, identity: str) -> tuple[list[str], str] | None:
