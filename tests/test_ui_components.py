@@ -136,6 +136,9 @@ class UIComponentTests(unittest.TestCase):
         remote_template = (
             TEMPLATE_ROOT / "tools" / "remote_terminal.html"
         ).read_text(encoding="utf-8")
+        remote_connections = (
+            TEMPLATE_ROOT.parent / "static" / "remote-connections.js"
+        ).read_text(encoding="utf-8")
 
         case_banner_rule = stylesheet.split(
             ".active-investigation-banner {", 1
@@ -150,7 +153,8 @@ class UIComponentTests(unittest.TestCase):
         for rule in (case_banner_rule, terminal_manager_rule):
             self.assertIn("max-width: none;", rule)
             self.assertIn("width: 100%;", rule)
-        self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", library_actions_rule)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr));", library_actions_rule)
+        self.assertIn("const minimumLibraryWidth = 330;", remote_connections)
         self.assertIn(
             'class="remote-connection-library-actions"',
             remote_template,

@@ -32,7 +32,7 @@ def backup_items(instance_path: str):
         {
             "id": "remote_connection_library",
             "label": "Remote Terminal libraries",
-            "description": "User-owned saved folders, SSH hosts, and credentials. Active sessions and scrollback are excluded.",
+            "description": "User-owned saved folders, SSH and Telnet hosts, and credentials. Active sessions and scrollback are excluded.",
             "category": "Remote access",
             "store": RemoteConnectionBackupStore(
                 RemoteConnectionStore(instance_path, secret_key), auth_store

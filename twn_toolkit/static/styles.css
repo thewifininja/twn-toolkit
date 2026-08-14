@@ -393,9 +393,9 @@ body {
   display: inline-grid;
   gap: 4px;
   justify-content: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px;
-  width: 42px;
+  width: 44px;
 }
 
 .sidebar-toggle span {
@@ -403,6 +403,7 @@ body {
   border-radius: 999px;
   display: block;
   height: 2px;
+  pointer-events: none;
   width: 20px;
 }
 
@@ -1364,6 +1365,30 @@ textarea {
   min-height: 42px;
   padding: 9px 11px;
   width: 100%;
+}
+
+button,
+.button-link,
+summary {
+  touch-action: manipulation;
+}
+
+button > [aria-hidden="true"] {
+  pointer-events: none;
+}
+
+@media (max-width: 900px), (any-pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not(.remote-terminal-input-capture),
+  select,
+  textarea:not(.remote-terminal-input-capture) {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  button,
+  .button-link {
+    min-height: 44px;
+  }
 }
 
 input:focus,
@@ -14676,12 +14701,22 @@ th {
 }
 
 .remote-terminal-manager {
+  --remote-connection-width: 330px;
   align-items: start;
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(270px, 330px) minmax(0, 1fr);
+  gap: 8px;
+  grid-template-columns: var(--remote-connection-width) 12px minmax(0, 1fr);
   max-width: none;
   width: 100%;
+}
+
+.remote-terminal-manager.library-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.remote-terminal-manager.library-collapsed .remote-connection-explorer,
+.remote-terminal-manager.library-collapsed .remote-connection-width-resizer {
+  display: none;
 }
 
 .remote-connection-explorer {
@@ -14706,6 +14741,24 @@ th {
   justify-content: space-between;
 }
 
+.remote-connection-header-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.remote-connection-header-actions button {
+  flex: 0 0 auto;
+}
+
+.remote-connection-collapse {
+  font-size: 1.15rem;
+  line-height: 1;
+  min-width: 34px;
+  padding-inline: 8px;
+}
+
 .remote-connection-explorer h2,
 .remote-connection-explorer header span {
   margin: 0;
@@ -14721,7 +14774,7 @@ th {
 .remote-connection-library-actions {
   display: grid;
   gap: 7px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .remote-connection-library-actions button {
@@ -14734,6 +14787,31 @@ th {
 .remote-connection-search input {
   min-height: 40px;
   width: 100%;
+}
+
+.remote-connection-selection-bar {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 8%);
+  border: 1px solid color-mix(in srgb, var(--line-strong), var(--brand-green) 22%);
+  border-radius: 9px;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 7px 8px;
+}
+
+.remote-connection-selection-bar[hidden] {
+  display: none;
+}
+
+.remote-connection-selection-bar strong {
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.remote-connection-selection-bar .button-row {
+  flex-wrap: nowrap;
+  gap: 5px;
 }
 
 .remote-connection-tree {
@@ -14752,6 +14830,55 @@ th {
   align-content: center;
   min-height: 180px;
   padding: 22px 16px;
+}
+
+.remote-connection-width-resizer {
+  align-items: center;
+  align-self: start;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  cursor: col-resize;
+  display: flex;
+  justify-content: center;
+  height: calc(100vh - var(--topbar-height) - 42px);
+  max-height: 720px;
+  min-height: 220px;
+  min-width: 12px;
+  padding: 0;
+  position: sticky;
+  top: calc(var(--topbar-height) + 18px);
+}
+
+.remote-connection-width-resizer span {
+  background: var(--line-strong);
+  border-radius: 999px;
+  height: 72px;
+  transition: background 120ms ease, width 120ms ease;
+  width: 3px;
+}
+
+.remote-connection-width-resizer:hover,
+.remote-connection-width-resizer:focus-visible {
+  background: transparent;
+  box-shadow: none;
+}
+
+.remote-connection-width-resizer:hover span,
+.remote-connection-width-resizer:focus-visible span,
+.remote-terminal-manager.resizing-library .remote-connection-width-resizer span {
+  background: var(--brand-green-dark);
+  width: 5px;
+}
+
+.remote-terminal-manager.resizing-library,
+.remote-terminal-manager.resizing-library * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.remote-connection-show[hidden] {
+  display: none;
 }
 
 .remote-connection-folder {
@@ -14889,12 +15016,104 @@ th {
   border-left: 1px solid var(--line-strong);
   display: grid;
   gap: 3px;
-  margin-left: 16px;
-  padding: 3px 0 4px 8px;
+  margin-left: 11px;
+  padding: 3px 0 4px 5px;
 }
 
 .remote-connection-folder-body:empty {
   display: none;
+}
+
+@container (max-width: 290px) {
+  .remote-connection-selection-bar {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .remote-connection-selection-bar .button-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .remote-connection-selection-bar button {
+    font-size: 0.68rem;
+    min-width: 0;
+    padding-inline: 4px;
+  }
+
+  .remote-connection-folder-head,
+  .remote-connection-explorer .remote-connection-host {
+    grid-template-columns: minmax(0, 1fr) 26px;
+  }
+
+  .remote-connection-folder-toggle {
+    gap: 5px;
+    grid-template-columns: 13px minmax(0, 1fr);
+    padding-left: 4px;
+  }
+
+  .remote-connection-folder-toggle small {
+    display: none;
+  }
+
+  .remote-connection-folder-menu-trigger,
+  .remote-connection-host-manage {
+    width: 26px;
+  }
+
+  .remote-connection-folder-body {
+    margin-left: 4px;
+    padding-left: 2px;
+  }
+
+  .remote-connection-explorer .remote-connection-host-connect {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 4px;
+  }
+
+  .remote-connection-explorer .remote-connection-host-icon {
+    display: none;
+  }
+}
+
+.remote-connection-folder-head.selecting,
+.remote-connection-host.selecting {
+  grid-template-columns: 26px minmax(0, 1fr) 30px;
+}
+
+.remote-connection-item-selector {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  height: 36px;
+  justify-content: center;
+  margin: 0;
+  min-width: 0;
+}
+
+.remote-connection-item-selector input {
+  margin: 0;
+}
+
+.remote-connection-explorer.selection-mode .remote-connection-folder-menu-wrap,
+.remote-connection-explorer.selection-mode .remote-connection-host-manage {
+  visibility: hidden;
+}
+
+.remote-connection-explorer.selection-mode .remote-connection-host-connect {
+  cursor: pointer;
+}
+
+@container (max-width: 290px) {
+  .remote-connection-folder-head.selecting,
+  .remote-connection-explorer .remote-connection-host.selecting {
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+  }
+
+  .remote-connection-explorer.selection-mode .remote-connection-folder-toggle {
+    grid-template-columns: 11px minmax(0, 1fr);
+  }
 }
 
 .remote-connection-host {
@@ -15350,7 +15569,7 @@ th {
 }
 
 .remote-quick-target-grid {
-  grid-template-columns: minmax(0, 1fr) 112px;
+  grid-template-columns: 130px minmax(0, 1fr) 112px;
 }
 
 .remote-quick-target-grid label:last-child {
@@ -15358,12 +15577,20 @@ th {
 }
 
 .remote-terminal-dialog-grid {
-  grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr) minmax(100px, .45fr);
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.35fr) 130px;
 }
 
 .remote-terminal-dialog-grid label:first-child,
 .remote-terminal-dialog-grid label:nth-child(2) {
   grid-column: span 1;
+}
+
+.remote-host-address-field {
+  grid-column: span 2;
+}
+
+.remote-terminal-telnet-warning {
+  margin: 0;
 }
 
 .remote-terminal-credential-choice {
@@ -15375,6 +15602,171 @@ th {
   margin: 0;
   min-width: 0;
   padding: 14px;
+}
+
+.remote-terminal-credential-choice > .field-note {
+  margin: 0;
+}
+
+.remote-library-bulk-dialog {
+  width: min(760px, calc(100vw - 28px));
+}
+
+.remote-host-import-dialog {
+  width: min(900px, calc(100vw - 28px));
+}
+
+.remote-host-import-source,
+.remote-host-import-review {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  display: grid;
+  gap: 13px;
+  padding: 14px;
+}
+
+.remote-host-import-review[hidden] {
+  display: none;
+}
+
+.remote-host-import-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.remote-host-import-source input[type="file"] {
+  background: var(--panel);
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  color: var(--muted);
+  min-height: 42px;
+  padding: 4px;
+  width: 100%;
+}
+
+.remote-host-import-source input[type="file"]::file-selector-button {
+  background: var(--surface-subtle);
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 800;
+  margin-right: 10px;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.remote-host-import-source textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.remote-host-import-source .field-note {
+  margin: -3px 0 0;
+}
+
+.remote-host-import-source code {
+  overflow-wrap: anywhere;
+}
+
+.remote-host-import-review-head {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.remote-host-import-review-head h3,
+.remote-host-import-review-head p {
+  margin: 0;
+}
+
+.remote-host-import-review-head p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-top: 3px;
+}
+
+.remote-host-import-errors {
+  background: color-mix(in srgb, var(--panel), var(--bad) 7%);
+  border: 1px solid color-mix(in srgb, var(--line-strong), var(--bad) 38%);
+  border-radius: 8px;
+  color: var(--bad);
+  display: grid;
+  font-size: 0.82rem;
+  gap: 5px;
+  padding: 10px 12px;
+}
+
+.remote-host-import-errors[hidden] {
+  display: none;
+}
+
+.remote-host-import-errors p {
+  margin: 0;
+}
+
+.remote-host-import-table-wrap {
+  max-height: 300px;
+  overflow: auto;
+}
+
+.remote-host-import-table {
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  min-width: 620px;
+  width: 100%;
+}
+
+.remote-host-import-table th,
+.remote-host-import-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.remote-host-import-table th {
+  background: var(--card-tint);
+  color: var(--muted);
+  font-size: 0.72rem;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
+}
+
+.remote-host-import-table td strong,
+.remote-host-import-table td small {
+  display: block;
+}
+
+.remote-host-import-table td small {
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.remote-library-bulk-section {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+}
+
+.remote-library-bulk-enable {
+  align-items: start;
+  margin: 0;
+}
+
+.remote-library-bulk-enable small {
+  color: var(--muted);
+  display: block;
+  font-weight: 500;
+  line-height: 1.35;
+  margin-top: 2px;
 }
 
 .remote-terminal-credential-choice legend {
@@ -15658,7 +16050,12 @@ th {
 
 @media (max-width: 1050px) {
   .remote-terminal-manager {
+    gap: 18px;
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-connection-width-resizer {
+    display: none;
   }
 
   .remote-connection-explorer {
@@ -15690,10 +16087,15 @@ th {
 
   .remote-terminal-dialog-grid,
   .remote-terminal-credential-fields,
+  .remote-host-import-options,
   .remote-credential-core-fields,
   .compact-options,
   .remote-credential-manager-body {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-host-address-field {
+    grid-column: auto;
   }
 
   .remote-credential-manager-body > aside {
@@ -15729,6 +16131,14 @@ th {
 
   .remote-terminal-tab-shell {
     flex-basis: 210px;
+    grid-template-columns: minmax(0, 1fr) 44px 44px;
+    min-height: 48px;
+  }
+
+  .remote-terminal-tab-action {
+    height: 44px;
+    min-height: 44px;
+    width: 44px;
   }
 
   .remote-terminal-stage-empty {
@@ -15741,7 +16151,7 @@ th {
   }
 
   .remote-quick-target-grid {
-    grid-template-columns: minmax(0, 1fr) 92px;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .remote-terminal-dialog {
@@ -17277,11 +17687,67 @@ button.danger:hover {
   border-radius: 10px;
   cursor: text;
   height: clamp(330px, 52vh, 680px);
-  margin: 16px 0 10px;
+  margin: 16px 0 4px;
   min-height: 0;
   overflow: hidden;
   position: relative;
   transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.remote-terminal-height-resizer {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  cursor: row-resize;
+  display: flex;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  gap: 9px;
+  height: 26px;
+  justify-content: center;
+  margin-bottom: 4px;
+  min-height: 26px;
+  padding: 0;
+  width: 100%;
+}
+
+.remote-terminal-height-resizer-grip {
+  background: var(--line-strong);
+  border-radius: 999px;
+  height: 3px;
+  transition: background 120ms ease, height 120ms ease;
+  width: 72px;
+}
+
+.remote-terminal-height-resizer:hover,
+.remote-terminal-height-resizer:focus-visible {
+  background: transparent;
+  box-shadow: none;
+}
+
+.remote-terminal-height-resizer:hover .remote-terminal-height-resizer-grip,
+.remote-terminal-height-resizer:focus-visible .remote-terminal-height-resizer-grip,
+body.remote-terminal-resizing .remote-terminal-height-resizer-grip {
+  background: var(--brand-green-dark);
+  height: 5px;
+}
+
+.remote-terminal-height-resizer:hover,
+.remote-terminal-height-resizer:focus-visible,
+body.remote-terminal-resizing .remote-terminal-height-resizer {
+  color: var(--brand-green-dark);
+}
+
+.remote-terminal-height-resizer-label {
+  white-space: nowrap;
+}
+
+body.remote-terminal-resizing,
+body.remote-terminal-resizing * {
+  cursor: row-resize !important;
+  user-select: none !important;
 }
 
 .remote-terminal-surface:focus-within {
@@ -17377,6 +17843,7 @@ button.danger:hover {
   caret-color: transparent;
   height: 1px;
   inset: auto auto 12px 12px;
+  min-height: 1px;
   opacity: 0.01;
   overflow: hidden;
   padding: 0;
@@ -17422,6 +17889,29 @@ button.danger:hover {
   font-size: 0.84rem;
   margin: 0;
   max-width: 720px;
+}
+
+.remote-terminal-credential-controls {
+  align-items: center;
+  background: color-mix(in srgb, var(--warn) 9%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--warn) 32%, var(--line));
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 8px;
+}
+
+.remote-terminal-credential-controls > span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding-inline: 4px;
+}
+
+.remote-terminal-credential-controls button {
+  min-height: 36px;
+  padding-block: 7px;
 }
 
 .remote-terminal-control-row {
@@ -17598,6 +18088,15 @@ button.danger:hover {
   .remote-terminal-control-row {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .remote-terminal-credential-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .remote-terminal-credential-controls > span {
+    grid-column: 1 / -1;
   }
 
   .remote-terminal-control-row button {

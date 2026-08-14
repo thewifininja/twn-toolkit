@@ -20,7 +20,7 @@ class RemoteConnectionError(ValueError):
 
 
 class RemoteConnectionStore:
-    """Per-operator folders, SSH hosts, and encrypted credential records."""
+    """Per-operator folders, remote hosts, and encrypted credential records."""
 
     def __init__(self, instance_path: str, secret_key: str) -> None:
         self.instance_path = Path(instance_path)
@@ -48,15 +48,17 @@ class RemoteConnectionStore:
             credentials = connection.execute(
                 """
                 SELECT c.*,
-                       COUNT(h.id) AS usage_count,
+                       (SELECT COUNT(*) FROM remote_connection_hosts h
+                        WHERE h.credential_id = c.id AND h.user_id = c.user_id)
+                         AS usage_count,
+                       (SELECT COUNT(*) FROM remote_connection_folders f
+                        WHERE f.credential_id = c.id AND f.user_id = c.user_id)
+                         AS folder_usage_count,
                        COALESCE(scoped.name, '') AS scoped_host_name
                 FROM remote_connection_credentials c
-                LEFT JOIN remote_connection_hosts h
-                  ON h.credential_id = c.id AND h.user_id = c.user_id
                 LEFT JOIN remote_connection_hosts scoped
                   ON scoped.id = c.scope_host_id AND scoped.user_id = c.user_id
                 WHERE c.user_id = ?
-                GROUP BY c.id
                 ORDER BY c.name COLLATE NOCASE
                 """,
                 (user_id,),
@@ -67,34 +69,34 @@ class RemoteConnectionStore:
                        c.remote_username AS remote_username,
                        c.scope_host_id AS credential_scope_host_id
                 FROM remote_connection_hosts h
-                JOIN remote_connection_credentials c
+                LEFT JOIN remote_connection_credentials c
                   ON c.id = h.credential_id AND c.user_id = h.user_id
                 WHERE h.user_id = ?
                 ORDER BY h.name COLLATE NOCASE
                 """,
                 (user_id,),
             ).fetchall()
+        folder_items = [self._folder(row) for row in folders]
+        credential_items = [self._public_credential(row) for row in credentials]
+        host_items = [self._host(row) for row in hosts]
+        self._annotate_effective_credentials(
+            folder_items, host_items, credential_items
+        )
         return {
-            "folders": [self._folder(row) for row in folders],
-            "credentials": [self._public_credential(row) for row in credentials],
-            "hosts": [self._host(row) for row in hosts],
+            "folders": folder_items,
+            "credentials": credential_items,
+            "hosts": host_items,
         }
 
     def get_host(self, host_id: str, *, user_id: str) -> dict[str, Any] | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT h.*, c.name AS credential_name,
-                       c.remote_username AS remote_username,
-                       c.scope_host_id AS credential_scope_host_id
-                FROM remote_connection_hosts h
-                JOIN remote_connection_credentials c
-                  ON c.id = h.credential_id AND c.user_id = h.user_id
-                WHERE h.id = ? AND h.user_id = ?
-                """,
-                (host_id, user_id),
-            ).fetchone()
-        return self._host(row) if row else None
+        return next(
+            (
+                host
+                for host in self.library_for_user(user_id)["hosts"]
+                if host["id"] == host_id
+            ),
+            None,
+        )
 
     def resolve_credential(
         self, credential_id: str, *, user_id: str, host_id: str = ""
@@ -119,7 +121,7 @@ class RemoteConnectionStore:
                 str(row["secret_encrypted"]).encode("ascii")
             ).decode("utf-8")
         except (InvalidToken, UnicodeDecodeError, ValueError) as exc:
-            raise RuntimeError("Could not decrypt the saved SSH credential.") from exc
+            raise RuntimeError("Could not decrypt the saved remote credential.") from exc
         return {
             "id": str(row["id"]),
             "name": str(row["name"]),
@@ -128,7 +130,13 @@ class RemoteConnectionStore:
         }
 
     def create_folder(
-        self, *, user_id: str, name: str, parent_id: str = ""
+        self,
+        *,
+        user_id: str,
+        name: str,
+        parent_id: str = "",
+        credential_mode: str = "inherit",
+        credential_id: str = "",
     ) -> dict[str, Any]:
         clean_name = self._name(name, "Folder name")
         folder_id = f"rf_{secrets.token_hex(10)}"
@@ -138,13 +146,26 @@ class RemoteConnectionStore:
             self._require_unique_folder_name(
                 connection, user_id, parent_id, clean_name
             )
+            clean_mode, clean_credential_id = self._folder_credential_assignment(
+                connection, user_id, credential_mode, credential_id
+            )
             connection.execute(
                 """
                 INSERT INTO remote_connection_folders
-                    (id, user_id, name, parent_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (id, user_id, name, parent_id, credential_mode,
+                     credential_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (folder_id, user_id, clean_name, parent_id, now, now),
+                (
+                    folder_id,
+                    user_id,
+                    clean_name,
+                    parent_id,
+                    clean_mode,
+                    clean_credential_id,
+                    now,
+                    now,
+                ),
             )
         return self.get_folder(folder_id, user_id=user_id)  # type: ignore[return-value]
 
@@ -157,7 +178,14 @@ class RemoteConnectionStore:
         return self._folder(row) if row else None
 
     def update_folder(
-        self, folder_id: str, *, user_id: str, name: str, parent_id: str
+        self,
+        folder_id: str,
+        *,
+        user_id: str,
+        name: str,
+        parent_id: str,
+        credential_mode: str | None = None,
+        credential_id: str = "",
     ) -> dict[str, Any]:
         clean_name = self._name(name, "Folder name")
         with self._connect() as connection:
@@ -170,13 +198,29 @@ class RemoteConnectionStore:
             self._require_unique_folder_name(
                 connection, user_id, parent_id, clean_name, exclude_id=folder_id
             )
+            if credential_mode is None:
+                clean_mode = str(existing["credential_mode"])
+                clean_credential_id = str(existing["credential_id"])
+            else:
+                clean_mode, clean_credential_id = self._folder_credential_assignment(
+                    connection, user_id, credential_mode, credential_id
+                )
             connection.execute(
                 """
                 UPDATE remote_connection_folders
-                SET name = ?, parent_id = ?, updated_at = ?
+                SET name = ?, parent_id = ?, credential_mode = ?,
+                    credential_id = ?, updated_at = ?
                 WHERE id = ? AND user_id = ?
                 """,
-                (clean_name, parent_id, time.time(), folder_id, user_id),
+                (
+                    clean_name,
+                    parent_id,
+                    clean_mode,
+                    clean_credential_id,
+                    time.time(),
+                    folder_id,
+                    user_id,
+                ),
             )
         return self.get_folder(str(existing["id"]), user_id=user_id)  # type: ignore[return-value]
 
@@ -197,6 +241,8 @@ class RemoteConnectionStore:
             user_id=user_id,
             name=duplicate_name(str(source["name"]), sibling_names),
             parent_id=str(source["parent_id"]),
+            credential_mode=str(source["credential_mode"]),
+            credential_id=str(source["credential_id"]),
         )
         self._copy_folder_children(
             source_id=folder_id, destination_id=str(copied["id"]), user_id=user_id
@@ -268,7 +314,7 @@ class RemoteConnectionStore:
                 )
             else:
                 if not password:
-                    raise RemoteConnectionError("Enter the SSH password.")
+                    raise RemoteConnectionError("Enter the remote password.")
                 credential_id = f"rc_{secrets.token_hex(10)}"
                 connection.execute(
                     """
@@ -339,6 +385,17 @@ class RemoteConnectionStore:
                 raise RemoteConnectionError(
                     "Assign another credential to its saved host before deleting it."
                 )
+            folder_use_count = connection.execute(
+                """
+                SELECT COUNT(*) FROM remote_connection_folders
+                WHERE user_id = ? AND credential_id = ?
+                """,
+                (user_id, credential_id),
+            ).fetchone()[0]
+            if int(folder_use_count):
+                raise RemoteConnectionError(
+                    "Change the folders using this credential before deleting it."
+                )
             connection.execute(
                 "DELETE FROM remote_connection_credentials WHERE id = ? AND user_id = ?",
                 (credential_id, user_id),
@@ -358,12 +415,17 @@ class RemoteConnectionStore:
         notes: str = "",
         host_id: str = "",
         host_credential: dict[str, str] | None = None,
+        protocol: str = "ssh",
+        credential_mode: str = "credential",
     ) -> dict[str, Any]:
         clean_name = self._name(name, "Host name")
         clean_host = self._hostname(host)
         clean_notes = str(notes).strip()[:1000]
+        clean_protocol = str(protocol).strip().lower()
+        if clean_protocol not in {"ssh", "telnet"}:
+            raise RemoteConnectionError("Choose SSH or Telnet.")
         if not 1 <= int(port) <= 65535:
-            raise RemoteConnectionError("SSH port must be between 1 and 65535.")
+            raise RemoteConnectionError("Port must be between 1 and 65535.")
         now = time.time()
         is_update = bool(host_id)
         with self._connect() as connection:
@@ -374,15 +436,18 @@ class RemoteConnectionStore:
             old_scoped_credential_id = ""
             if host_id:
                 existing = self._require_host_row(connection, host_id, user_id)
-                old_credential = self._require_credential_row(
-                    connection, str(existing["credential_id"]), user_id
-                )
-                if str(old_credential["scope_host_id"]) == host_id:
-                    old_scoped_credential_id = str(old_credential["id"])
+                existing_credential_id = str(existing["credential_id"])
+                if existing_credential_id:
+                    old_credential = self._require_credential_row(
+                        connection, existing_credential_id, user_id
+                    )
+                    if str(old_credential["scope_host_id"]) == host_id:
+                        old_scoped_credential_id = str(old_credential["id"])
             else:
                 host_id = f"rh_{secrets.token_hex(10)}"
 
             if host_credential is not None:
+                credential_mode = "credential"
                 credential_name = self._name(
                     host_credential.get("name", "") or f"{clean_name} credentials",
                     "Credential name",
@@ -422,7 +487,7 @@ class RemoteConnectionStore:
                     credential_id = old_scoped_credential_id
                 else:
                     if not password:
-                        raise RemoteConnectionError("Enter the SSH password.")
+                        raise RemoteConnectionError("Enter the remote password.")
                     credential_id = f"rc_{secrets.token_hex(10)}"
                     connection.execute(
                         """
@@ -443,22 +508,42 @@ class RemoteConnectionStore:
                         ),
                     )
             else:
-                credential = self._require_credential_row(
-                    connection, credential_id, user_id
-                )
-                if str(credential["scope_host_id"]) not in {"", host_id}:
+                credential_mode = str(credential_mode).strip().lower()
+                if credential_mode == "inherit":
+                    credential_id = ""
+                elif credential_mode == "none":
+                    credential_id = ""
+                    if clean_protocol != "telnet":
+                        raise RemoteConnectionError(
+                            "Saved SSH hosts must inherit or use a credential."
+                        )
+                elif credential_mode == "credential" and credential_id:
+                    credential = self._require_credential_row(
+                        connection, credential_id, user_id
+                    )
+                    if str(credential["scope_host_id"]) not in {"", host_id}:
+                        raise RemoteConnectionError(
+                            "Select a shared credential or this host's own credential."
+                        )
+                elif credential_mode == "credential" and clean_protocol != "telnet":
                     raise RemoteConnectionError(
-                        "Select a shared credential or this host's own credential."
+                        "Assign a credential to saved SSH hosts."
+                    )
+                elif credential_mode != "credential":
+                    raise RemoteConnectionError(
+                        "Choose inherited, saved, host-specific, or no credentials."
                     )
 
             values = (
                 clean_name,
                 clean_host,
                 int(port),
+                clean_protocol,
                 folder_id,
+                credential_mode,
                 credential_id,
-                int(bool(allow_unknown_hosts)),
-                int(bool(allow_legacy_algorithms)),
+                int(bool(allow_unknown_hosts) and clean_protocol == "ssh"),
+                int(bool(allow_legacy_algorithms) and clean_protocol == "ssh"),
                 clean_notes,
                 now,
             )
@@ -466,8 +551,8 @@ class RemoteConnectionStore:
                 connection.execute(
                     """
                     UPDATE remote_connection_hosts
-                    SET name = ?, host = ?, port = ?, folder_id = ?,
-                        credential_id = ?, allow_unknown_hosts = ?,
+                    SET name = ?, host = ?, port = ?, protocol = ?, folder_id = ?,
+                        credential_mode = ?, credential_id = ?, allow_unknown_hosts = ?,
                         allow_legacy_algorithms = ?, notes = ?, updated_at = ?
                     WHERE id = ? AND user_id = ?
                     """,
@@ -477,10 +562,11 @@ class RemoteConnectionStore:
                 connection.execute(
                     """
                     INSERT INTO remote_connection_hosts
-                        (id, user_id, name, host, port, folder_id, credential_id,
+                        (id, user_id, name, host, port, protocol, folder_id,
+                         credential_mode, credential_id,
                          allow_unknown_hosts, allow_legacy_algorithms, notes,
                          created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (host_id, user_id, *values[:-1], now, now),
                 )
@@ -536,23 +622,236 @@ class RemoteConnectionStore:
             allow_legacy_algorithms=bool(source["allow_legacy_algorithms"]),
             notes=str(source["notes"]),
             host_credential=host_credential,
+            protocol=str(source.get("protocol", "ssh")),
+            credential_mode=str(source.get("credential_mode", "credential")),
         )
+
+    def import_hosts(
+        self,
+        *,
+        user_id: str,
+        folder_id: str,
+        hosts: list[dict[str, Any]],
+    ) -> int:
+        """Atomically add a reviewed host list with folder credential inheritance."""
+        if not hosts:
+            raise RemoteConnectionError("Add at least one host to import.")
+        if len(hosts) > 1000:
+            raise RemoteConnectionError("Import no more than 1,000 hosts at once.")
+
+        prepared: list[dict[str, Any]] = []
+        for index, item in enumerate(hosts, start=1):
+            row_number = int(item.get("row", index))
+            try:
+                protocol = str(item.get("protocol", "ssh")).strip().lower()
+                if protocol not in {"ssh", "telnet"}:
+                    raise RemoteConnectionError("Choose SSH or Telnet.")
+                port = int(item.get("port", 23 if protocol == "telnet" else 22))
+                if not 1 <= port <= 65535:
+                    raise RemoteConnectionError("Port must be between 1 and 65535.")
+                prepared.append(
+                    {
+                        "row": row_number,
+                        "name": self._name(item.get("name", ""), "Host name"),
+                        "host": self._hostname(item.get("host", "")),
+                        "protocol": protocol,
+                        "port": port,
+                    }
+                )
+            except (RemoteConnectionError, TypeError, ValueError) as exc:
+                raise RemoteConnectionError(f"Row {row_number}: {exc}") from exc
+
+        now = time.time()
+        with self._connect() as connection:
+            self._require_folder(connection, folder_id, user_id, allow_root=True)
+            for item in prepared:
+                try:
+                    self._require_unique_host_name(
+                        connection, user_id, folder_id, str(item["name"])
+                    )
+                except RemoteConnectionError as exc:
+                    raise RemoteConnectionError(
+                        f"Row {item['row']}: {exc}"
+                    ) from exc
+                connection.execute(
+                    """
+                    INSERT INTO remote_connection_hosts
+                        (id, user_id, name, host, port, protocol, folder_id,
+                         credential_mode, credential_id,
+                         allow_unknown_hosts, allow_legacy_algorithms, notes,
+                         created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'inherit', '', 0, 0, '', ?, ?)
+                    """,
+                    (
+                        f"rh_{secrets.token_hex(10)}",
+                        user_id,
+                        item["name"],
+                        item["host"],
+                        item["port"],
+                        item["protocol"],
+                        folder_id,
+                        now,
+                        now,
+                    ),
+                )
+        return len(prepared)
 
     def delete_host(self, host_id: str, *, user_id: str) -> None:
         with self._connect() as connection:
             host = self._require_host_row(connection, host_id, user_id)
-            credential = self._require_credential_row(
-                connection, str(host["credential_id"]), user_id
+            credential_id = str(host["credential_id"])
+            credential = (
+                self._require_credential_row(connection, credential_id, user_id)
+                if credential_id
+                else None
             )
             connection.execute(
                 "DELETE FROM remote_connection_hosts WHERE id = ? AND user_id = ?",
                 (host_id, user_id),
             )
-            if str(credential["scope_host_id"]) == host_id:
+            if credential is not None and str(credential["scope_host_id"]) == host_id:
                 connection.execute(
                     "DELETE FROM remote_connection_credentials WHERE id = ? AND user_id = ?",
                     (credential["id"], user_id),
                 )
+
+    def bulk_update(
+        self,
+        *,
+        user_id: str,
+        host_ids: list[str],
+        folder_ids: list[str],
+        destination_id: str | None = None,
+        credential_mode: str | None = None,
+        credential_id: str = "",
+    ) -> dict[str, int]:
+        clean_host_ids = list(dict.fromkeys(str(item) for item in host_ids if item))
+        clean_folder_ids = list(
+            dict.fromkeys(str(item) for item in folder_ids if item)
+        )
+        if not clean_host_ids and not clean_folder_ids:
+            raise RemoteConnectionError("Select at least one host or folder.")
+        if len(clean_host_ids) + len(clean_folder_ids) > 500:
+            raise RemoteConnectionError("Select no more than 500 items at once.")
+        if destination_id is None and credential_mode is None:
+            raise RemoteConnectionError("Choose a location or credential change.")
+
+        now = time.time()
+        with self._connect() as connection:
+            hosts = [
+                self._require_host_row(connection, host_id, user_id)
+                for host_id in clean_host_ids
+            ]
+            folders = [
+                self._require_folder(connection, folder_id, user_id)
+                for folder_id in clean_folder_ids
+            ]
+
+            if destination_id is not None:
+                self._require_folder(
+                    connection, destination_id, user_id, allow_root=True
+                )
+                for folder in folders:
+                    folder_id = str(folder["id"])
+                    if destination_id == folder_id or self._folder_descends_from(
+                        connection, destination_id, folder_id, user_id
+                    ):
+                        raise RemoteConnectionError(
+                            f"'{folder['name']}' cannot be moved inside itself."
+                        )
+                    self._require_unique_folder_name(
+                        connection,
+                        user_id,
+                        destination_id,
+                        str(folder["name"]),
+                        exclude_id=folder_id,
+                    )
+                    connection.execute(
+                        """
+                        UPDATE remote_connection_folders
+                        SET parent_id = ?, updated_at = ?
+                        WHERE id = ? AND user_id = ?
+                        """,
+                        (destination_id, now, folder_id, user_id),
+                    )
+                for host in hosts:
+                    host_id = str(host["id"])
+                    self._require_unique_host_name(
+                        connection,
+                        user_id,
+                        destination_id,
+                        str(host["name"]),
+                        exclude_id=host_id,
+                    )
+                    connection.execute(
+                        """
+                        UPDATE remote_connection_hosts
+                        SET folder_id = ?, updated_at = ?
+                        WHERE id = ? AND user_id = ?
+                        """,
+                        (destination_id, now, host_id, user_id),
+                    )
+
+            if credential_mode is not None:
+                clean_mode, clean_credential_id = self._folder_credential_assignment(
+                    connection, user_id, credential_mode, credential_id
+                )
+                for folder in folders:
+                    connection.execute(
+                        """
+                        UPDATE remote_connection_folders
+                        SET credential_mode = ?, credential_id = ?, updated_at = ?
+                        WHERE id = ? AND user_id = ?
+                        """,
+                        (
+                            clean_mode,
+                            clean_credential_id,
+                            now,
+                            folder["id"],
+                            user_id,
+                        ),
+                    )
+                for host in hosts:
+                    host_mode = clean_mode
+                    if host_mode == "none" and str(host["protocol"]) != "telnet":
+                        raise RemoteConnectionError(
+                            "No credential can only be assigned to Telnet hosts."
+                        )
+                    old_credential_id = str(host["credential_id"])
+                    old_credential = (
+                        self._require_credential_row(
+                            connection, old_credential_id, user_id
+                        )
+                        if old_credential_id
+                        else None
+                    )
+                    connection.execute(
+                        """
+                        UPDATE remote_connection_hosts
+                        SET credential_mode = ?, credential_id = ?, updated_at = ?
+                        WHERE id = ? AND user_id = ?
+                        """,
+                        (
+                            host_mode,
+                            clean_credential_id,
+                            now,
+                            host["id"],
+                            user_id,
+                        ),
+                    )
+                    if (
+                        old_credential is not None
+                        and str(old_credential["scope_host_id"]) == str(host["id"])
+                        and old_credential_id != clean_credential_id
+                    ):
+                        connection.execute(
+                            """
+                            DELETE FROM remote_connection_credentials
+                            WHERE id = ? AND user_id = ?
+                            """,
+                            (old_credential_id, user_id),
+                        )
+        return {"hosts": len(clean_host_ids), "folders": len(clean_folder_ids)}
 
     def clear(self) -> None:
         for path in (
@@ -599,12 +898,16 @@ class RemoteConnectionStore:
                 allow_legacy_algorithms=bool(host["allow_legacy_algorithms"]),
                 notes=str(host["notes"]),
                 host_credential=host_credential,
+                protocol=str(host.get("protocol", "ssh")),
+                credential_mode=str(host.get("credential_mode", "credential")),
             )
         for folder in [item for item in library["folders"] if item["parent_id"] == source_id]:
             copied_folder = self.create_folder(
                 user_id=user_id,
                 name=str(folder["name"]),
                 parent_id=destination_id,
+                credential_mode=str(folder.get("credential_mode", "inherit")),
+                credential_id=str(folder.get("credential_id", "")),
             )
             self._copy_folder_children(
                 source_id=str(folder["id"]),
@@ -619,15 +922,17 @@ class RemoteConnectionStore:
             row = connection.execute(
                 """
                 SELECT c.*,
-                       COUNT(h.id) AS usage_count,
+                       (SELECT COUNT(*) FROM remote_connection_hosts h
+                        WHERE h.credential_id = c.id AND h.user_id = c.user_id)
+                         AS usage_count,
+                       (SELECT COUNT(*) FROM remote_connection_folders f
+                        WHERE f.credential_id = c.id AND f.user_id = c.user_id)
+                         AS folder_usage_count,
                        COALESCE(scoped.name, '') AS scoped_host_name
                 FROM remote_connection_credentials c
-                LEFT JOIN remote_connection_hosts h
-                  ON h.credential_id = c.id AND h.user_id = c.user_id
                 LEFT JOIN remote_connection_hosts scoped
                   ON scoped.id = c.scope_host_id AND scoped.user_id = c.user_id
                 WHERE c.id = ? AND c.user_id = ?
-                GROUP BY c.id
                 """,
                 (credential_id, user_id),
             ).fetchone()
@@ -637,10 +942,110 @@ class RemoteConnectionStore:
 
     def _encrypt_secret(self, password: str) -> str:
         if not password:
-            raise RemoteConnectionError("Enter the SSH password.")
+            raise RemoteConnectionError("Enter the password.")
         if len(password.encode("utf-8")) > 16 * 1024:
-            raise RemoteConnectionError("The SSH password is too large.")
+            raise RemoteConnectionError("The password is too large.")
         return self._cipher.encrypt(password.encode("utf-8")).decode("ascii")
+
+    @classmethod
+    def _folder_credential_assignment(
+        cls,
+        connection: sqlite3.Connection,
+        user_id: str,
+        credential_mode: object,
+        credential_id: object,
+    ) -> tuple[str, str]:
+        clean_mode = str(credential_mode).strip().lower()
+        if clean_mode not in {"inherit", "credential", "none"}:
+            raise RemoteConnectionError(
+                "Choose inherited, saved, or no credentials."
+            )
+        if clean_mode != "credential":
+            return clean_mode, ""
+        clean_credential_id = str(credential_id).strip()
+        if not clean_credential_id:
+            raise RemoteConnectionError("Choose a saved credential.")
+        credential = cls._require_credential_row(
+            connection, clean_credential_id, user_id
+        )
+        if str(credential["scope_host_id"]):
+            raise RemoteConnectionError(
+                "Folder inheritance requires a shared credential."
+            )
+        return clean_mode, clean_credential_id
+
+    @staticmethod
+    def _annotate_effective_credentials(
+        folders: list[dict[str, Any]],
+        hosts: list[dict[str, Any]],
+        credentials: list[dict[str, Any]],
+    ) -> None:
+        folder_map = {str(folder["id"]): folder for folder in folders}
+        credential_map = {
+            str(credential["id"]): credential for credential in credentials
+        }
+        folder_cache: dict[str, tuple[str, str, str]] = {}
+
+        def resolve_folder(folder_id: str) -> tuple[str, str, str]:
+            if not folder_id:
+                return "", "", ""
+            if folder_id in folder_cache:
+                return folder_cache[folder_id]
+            current = folder_map.get(folder_id)
+            visited: set[str] = set()
+            while current and str(current["id"]) not in visited:
+                current_id = str(current["id"])
+                visited.add(current_id)
+                mode = str(current.get("credential_mode", "inherit"))
+                if mode == "credential":
+                    result = (
+                        str(current.get("credential_id", "")),
+                        current_id,
+                        str(current["name"]),
+                    )
+                    folder_cache[folder_id] = result
+                    return result
+                if mode == "none":
+                    result = ("", current_id, str(current["name"]))
+                    folder_cache[folder_id] = result
+                    return result
+                current = folder_map.get(str(current.get("parent_id", "")))
+            folder_cache[folder_id] = ("", "", "")
+            return folder_cache[folder_id]
+
+        def apply_effective(
+            item: dict[str, Any], credential_id: str, source_id: str, source_name: str
+        ) -> None:
+            credential = credential_map.get(credential_id, {})
+            item["effective_credential_id"] = credential_id
+            item["effective_credential_name"] = str(credential.get("name", ""))
+            item["effective_remote_username"] = str(
+                credential.get("username", "")
+            )
+            item["credential_source_folder_id"] = source_id
+            item["credential_source_folder_name"] = source_name
+
+        for folder in folders:
+            effective_id, source_id, source_name = resolve_folder(str(folder["id"]))
+            apply_effective(folder, effective_id, source_id, source_name)
+
+        for host in hosts:
+            mode = str(host.get("credential_mode", "credential"))
+            if mode == "credential":
+                effective_id = str(host.get("credential_id", ""))
+                source_id = ""
+                source_name = ""
+                source = "host" if effective_id else "none"
+            elif mode == "inherit":
+                effective_id, source_id, source_name = resolve_folder(
+                    str(host.get("folder_id", ""))
+                )
+                source = "folder" if effective_id else "none"
+            else:
+                effective_id = source_id = source_name = ""
+                source = "none"
+            apply_effective(host, effective_id, source_id, source_name)
+            host["credential_source"] = source
 
     @staticmethod
     def _name(value: object, label: str) -> str:
@@ -653,7 +1058,7 @@ class RemoteConnectionStore:
     def _username(value: object) -> str:
         clean = str(value).strip()
         if not clean or len(clean) > 128 or any(char in "\r\n\x00" for char in clean):
-            raise RemoteConnectionError("Enter a valid SSH username.")
+            raise RemoteConnectionError("Enter a valid username.")
         return clean
 
     @staticmethod
@@ -674,6 +1079,8 @@ class RemoteConnectionStore:
             "id": str(row["id"]),
             "name": str(row["name"]),
             "parent_id": str(row["parent_id"]),
+            "credential_mode": str(row["credential_mode"]),
+            "credential_id": str(row["credential_id"]),
             "created_at": float(row["created_at"]),
             "updated_at": float(row["updated_at"]),
         }
@@ -687,6 +1094,7 @@ class RemoteConnectionStore:
             "scope_host_id": str(row["scope_host_id"]),
             "scoped_host_name": str(row["scoped_host_name"]),
             "usage_count": int(row["usage_count"]),
+            "folder_usage_count": int(row["folder_usage_count"]),
             "has_secret": bool(row["secret_encrypted"]),
             "created_at": float(row["created_at"]),
             "updated_at": float(row["updated_at"]),
@@ -699,11 +1107,15 @@ class RemoteConnectionStore:
             "name": str(row["name"]),
             "host": str(row["host"]),
             "port": int(row["port"]),
+            "protocol": str(row["protocol"]),
             "folder_id": str(row["folder_id"]),
+            "credential_mode": str(row["credential_mode"]),
             "credential_id": str(row["credential_id"]),
-            "credential_name": str(row["credential_name"]),
-            "remote_username": str(row["remote_username"]),
-            "credential_scope_host_id": str(row["credential_scope_host_id"]),
+            "credential_name": str(row["credential_name"] or ""),
+            "remote_username": str(row["remote_username"] or ""),
+            "credential_scope_host_id": str(
+                row["credential_scope_host_id"] or ""
+            ),
             "allow_unknown_hosts": bool(row["allow_unknown_hosts"]),
             "allow_legacy_algorithms": bool(row["allow_legacy_algorithms"]),
             "notes": str(row["notes"]),
@@ -872,6 +1284,8 @@ class RemoteConnectionStore:
                 user_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 parent_id TEXT NOT NULL DEFAULT '',
+                credential_mode TEXT NOT NULL DEFAULT 'inherit',
+                credential_id TEXT NOT NULL DEFAULT '',
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL
             );
@@ -897,7 +1311,9 @@ class RemoteConnectionStore:
                 name TEXT NOT NULL,
                 host TEXT NOT NULL,
                 port INTEGER NOT NULL,
+                protocol TEXT NOT NULL DEFAULT 'ssh',
                 folder_id TEXT NOT NULL DEFAULT '',
+                credential_mode TEXT NOT NULL DEFAULT 'credential',
                 credential_id TEXT NOT NULL,
                 allow_unknown_hosts INTEGER NOT NULL DEFAULT 0,
                 allow_legacy_algorithms INTEGER NOT NULL DEFAULT 0,
@@ -909,6 +1325,47 @@ class RemoteConnectionStore:
                 ON remote_connection_hosts(user_id, folder_id, name);
             """
         )
+        host_columns = {
+            str(row["name"])
+            for row in connection.execute(
+                "PRAGMA table_info(remote_connection_hosts)"
+            )
+        }
+        if "protocol" not in host_columns:
+            connection.execute(
+                "ALTER TABLE remote_connection_hosts "
+                "ADD COLUMN protocol TEXT NOT NULL DEFAULT 'ssh'"
+            )
+        if "credential_mode" not in host_columns:
+            connection.execute(
+                "ALTER TABLE remote_connection_hosts "
+                "ADD COLUMN credential_mode TEXT NOT NULL DEFAULT 'credential'"
+            )
+            connection.execute(
+                """
+                UPDATE remote_connection_hosts
+                SET credential_mode = CASE
+                    WHEN credential_id = '' THEN 'none'
+                    ELSE 'credential'
+                END
+                """
+            )
+        folder_columns = {
+            str(row["name"])
+            for row in connection.execute(
+                "PRAGMA table_info(remote_connection_folders)"
+            )
+        }
+        if "credential_mode" not in folder_columns:
+            connection.execute(
+                "ALTER TABLE remote_connection_folders "
+                "ADD COLUMN credential_mode TEXT NOT NULL DEFAULT 'inherit'"
+            )
+        if "credential_id" not in folder_columns:
+            connection.execute(
+                "ALTER TABLE remote_connection_folders "
+                "ADD COLUMN credential_id TEXT NOT NULL DEFAULT ''"
+            )
 
 
 __all__ = ["RemoteConnectionError", "RemoteConnectionStore"]

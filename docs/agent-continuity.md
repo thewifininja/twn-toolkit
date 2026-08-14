@@ -264,9 +264,21 @@ accepted replay frames.
 - Current milestone is 0.19.0: investigation cases are shared owner-and-
   collaborator workspaces with attributed journals, managed evidence, compact
   reports, portable cross-instance archives, and non-destructive case merging.
-  Remote Terminal provides persistent owner-scoped interactive SSH sessions,
+  Remote Terminal provides persistent owner-scoped interactive SSH and Telnet sessions,
   reusable host folders and encrypted credential libraries, temporary Quick
-  Connect, retained scrollback, and bounded case transcripts. Configuration
+  Connect, retained scrollback, and bounded case transcripts. Telnet permits
+  credential-free saved hosts and Quick Connect sessions; optional credentials
+  remain server-side and are sent only through explicit username/password
+  controls after the remote device prompts. Transcript capture is automatic
+  only while a case is actively recording; a paused case receives no automatic
+  terminal updates. Folder-level shared credentials provide nearest-ancestor
+  inheritance with explicit host/folder overrides and stop boundaries. An
+  on-demand selection mode applies atomic location or credential changes to as
+  many as 500 selected hosts and folders. The connection explorer is
+  collapsible and width-resizable, the terminal surface is height-resizable,
+  and both preferences persist in the browser. Reviewed pasted or CSV host
+  lists import atomically in batches of up to 1,000 and default to folder
+  credential inheritance. Configuration
   backups use inspect-first versioned manifests and atomic per-group Combine or
   Replace across reusable toolkit settings while legacy v1 imports remain
   supported. The cohesive responsive UI and functional Network Tools navigation

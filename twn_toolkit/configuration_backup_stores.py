@@ -124,7 +124,7 @@ class AccessProfilesBackupStore:
 
 
 class RemoteConnectionBackupStore:
-    """Export owner-name keyed SSH libraries with plaintext only inside the outer cipher."""
+    """Export owner-name keyed remote libraries with plaintext only inside the outer cipher."""
 
     def __init__(
         self,
@@ -209,8 +209,9 @@ class RemoteConnectionBackupStore:
                     connection.execute(
                         """
                         INSERT INTO remote_connection_folders
-                            (id, user_id, name, parent_id, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                            (id, user_id, name, parent_id, credential_mode,
+                             credential_id, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         folder,
                     )
@@ -228,10 +229,10 @@ class RemoteConnectionBackupStore:
                     connection.execute(
                         """
                         INSERT INTO remote_connection_hosts
-                            (id, user_id, name, host, port, folder_id,
-                             credential_id, allow_unknown_hosts,
+                            (id, user_id, name, host, port, protocol, folder_id,
+                             credential_mode, credential_id, allow_unknown_hosts,
                              allow_legacy_algorithms, notes, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         host,
                     )
@@ -325,6 +326,11 @@ class RemoteConnectionBackupStore:
         }
         if len(folder_ids) != len(raw_folders) or len(credential_ids) != len(raw_credentials) or len(host_ids) != len(raw_hosts):
             raise ValueError("Remote Terminal backup record IDs must be present and unique.")
+        scoped_credentials = {
+            str(item["id"])
+            for item in raw_credentials
+            if str(item.get("scope_host_id", ""))
+        }
 
         folder_rows: list[tuple[Any, ...]] = []
         folder_names: set[tuple[str, str]] = set()
@@ -336,12 +342,40 @@ class RemoteConnectionBackupStore:
                 raise ValueError("Remote Terminal backup contains a missing parent folder.")
             name = self.store._name(item.get("name", ""), "Folder name")
             parent_id = folder_ids.get(old_parent, "")
+            credential_mode = str(
+                item.get("credential_mode", "inherit")
+            ).strip().lower()
+            old_credential = str(item.get("credential_id", ""))
+            if credential_mode not in {"inherit", "credential", "none"}:
+                raise ValueError("Remote Terminal folder credential mode is invalid.")
+            if credential_mode == "credential":
+                if old_credential not in credential_ids:
+                    raise ValueError(
+                        "Remote Terminal folder references a missing credential."
+                    )
+                if old_credential in scoped_credentials:
+                    raise ValueError(
+                        "Remote Terminal folders require shared credentials."
+                    )
+            else:
+                old_credential = ""
             unique_key = (parent_id, name.casefold())
             if unique_key in folder_names:
                 raise ValueError("Remote Terminal folders must be unique within a parent.")
             folder_names.add(unique_key)
             parents[old_id] = old_parent
-            folder_rows.append((folder_ids[old_id], user_id, name, parent_id, now, now))
+            folder_rows.append(
+                (
+                    folder_ids[old_id],
+                    user_id,
+                    name,
+                    parent_id,
+                    credential_mode,
+                    credential_ids.get(old_credential, ""),
+                    now,
+                    now,
+                )
+            )
         for folder_id in parents:
             seen: set[str] = set()
             cursor = folder_id
@@ -381,8 +415,6 @@ class RemoteConnectionBackupStore:
             old_credential = str(item.get("credential_id", ""))
             if old_folder and old_folder not in folder_ids:
                 raise ValueError("Remote Terminal host references a missing folder.")
-            if old_credential not in credential_ids:
-                raise ValueError("Remote Terminal host references a missing credential.")
             name = self.store._name(item.get("name", ""), "Host name")
             folder_id = folder_ids.get(old_folder, "")
             unique_key = (folder_id, name.casefold())
@@ -390,19 +422,44 @@ class RemoteConnectionBackupStore:
                 raise ValueError("Remote Terminal host names must be unique within a folder.")
             host_names.add(unique_key)
             host = self.store._hostname(item.get("host", ""))
+            protocol = str(item.get("protocol", "ssh")).strip().lower()
+            if protocol not in {"ssh", "telnet"}:
+                raise ValueError("Remote Terminal protocol must be SSH or Telnet.")
+            credential_mode = str(
+                item.get(
+                    "credential_mode",
+                    "credential" if old_credential else "none",
+                )
+            ).strip().lower()
+            if credential_mode not in {"inherit", "credential", "none"}:
+                raise ValueError("Remote Terminal host credential mode is invalid.")
+            if credential_mode == "credential" and old_credential not in credential_ids:
+                if not (protocol == "telnet" and not old_credential):
+                    raise ValueError(
+                        "Remote Terminal host references a missing credential."
+                    )
+            elif credential_mode == "none" and protocol != "telnet":
+                raise ValueError(
+                    "Remote Terminal SSH hosts must inherit or use a credential."
+                )
+            if credential_mode != "credential":
+                old_credential = ""
             try:
-                port = int(item.get("port", 22))
+                port = int(item.get("port", 23 if protocol == "telnet" else 22))
             except (TypeError, ValueError) as exc:
-                raise ValueError("Remote Terminal SSH ports must be whole numbers.") from exc
+                raise ValueError("Remote Terminal ports must be whole numbers.") from exc
             if not 1 <= port <= 65535:
-                raise ValueError("Remote Terminal SSH ports must be 1–65535.")
+                raise ValueError("Remote Terminal ports must be 1–65535.")
             notes = str(item.get("notes", "")).strip()[:1000]
             host_credentials[old_id] = old_credential
             host_rows.append(
                 (
-                    host_ids[old_id], user_id, name, host, port, folder_id,
-                    credential_ids[old_credential], int(bool(item.get("allow_unknown_hosts"))),
-                    int(bool(item.get("allow_legacy_algorithms"))), notes, now, now,
+                    host_ids[old_id], user_id, name, host, port, protocol, folder_id,
+                    credential_mode,
+                    credential_ids.get(old_credential, ""),
+                    int(bool(item.get("allow_unknown_hosts")) and protocol == "ssh"),
+                    int(bool(item.get("allow_legacy_algorithms")) and protocol == "ssh"),
+                    notes, now, now,
                 )
             )
         for item in raw_credentials:

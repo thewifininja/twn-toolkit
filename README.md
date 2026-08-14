@@ -138,16 +138,27 @@ The sidebar and Network Tools page use the same functional organization.
 - **TCP Port Scanner** — check individual ports or ranges across authorized
   hosts.
 
-- **Remote Terminal** — keep up to twelve owner-scoped SSH shells running under
+- **Remote Terminal** — keep up to twelve owner-scoped SSH or Telnet sessions running under
   the toolkit service, including multiple sessions to the same saved host, and
   restore them from Live Tools after navigation, a closed browser tab, or a
   brief client disconnect. Session tabs can be renamed independently from their
   saved hosts or closed while preserving scrollback in Recent sessions. Each
   shell has a 10 MiB reconnect scrollback limit, an eight-hour idle limit, and
-  seven-day completed-scrollback retention. Credentials and submitted input
-  are not persisted. Saved-host sessions automatically retain a sanitized
-  transcript when a case is recording; Quick Connect keeps an explicit capture
-  choice. Active or completed sessions can also be attached to the open case
+  seven-day completed-scrollback retention. Telnet credentials are optional and
+  are never submitted by prompt guessing; an operator explicitly sends an
+  available username or password after the device prompts. Credentials and
+  submitted input are not persisted. Saved connection folders can assign a
+  shared default credential; nested folders and hosts inherit the nearest
+  assignment unless they explicitly override or stop inheritance. Selection
+  mode can atomically move multiple hosts/folders or change their inheritance
+  behavior without exposing row-level controls all the time. The connection
+  explorer can be widened, collapsed, and restored; pasted lists or CSV files
+  can import up to 1,000 reviewed hosts atomically into one folder, inheriting
+  that folder's credentials by default. The live terminal height is also
+  adjustable and both layout preferences are retained in the browser.
+  Saved-host sessions automatically retain a sanitized
+  transcript while a case is actively recording; capture is automatic for every
+  new remote session. Active or completed sessions can also be attached to the open case
   afterward. Retained output can be copied independently to any permitted
   Datastore folder as a live snapshot or completed scrollback without
   overwriting an earlier copy.
@@ -224,7 +235,7 @@ workspace and carry its recording context across toolkit pages. A case owner
 can add other eligible toolkit users so multiple operators can troubleshoot the
 same issue simultaneously. Finite network diagnostics,
 one-off SNMP polls, interface monitoring, certificate inspection, persistent
-Ping, remote SSH terminals, packet capture, managed iPerf3 listeners, command/transfer runs,
+Ping, remote SSH and Telnet terminals, packet capture, managed iPerf3 listeners, command/transfer runs,
 selected vendor workflows, and other intentional tool actions retain safe
 structured events or generated evidence. Operators can also:
 

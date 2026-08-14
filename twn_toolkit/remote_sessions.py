@@ -15,6 +15,7 @@ from typing import Any, Iterator
 
 from .investigations import InvestigationError, InvestigationStore
 from .ssh_security import close_ssh_client, format_ssh_connection_error, open_ssh_client
+from .telnet_client import open_telnet_channel
 
 
 REMOTE_SESSION_LIMIT_PER_USER = 12
@@ -54,6 +55,8 @@ class RemoteSessionStore:
                     host TEXT NOT NULL,
                     port INTEGER NOT NULL,
                     remote_username TEXT NOT NULL,
+                    telnet_username_available INTEGER NOT NULL DEFAULT 0,
+                    telnet_password_available INTEGER NOT NULL DEFAULT 0,
                     state TEXT NOT NULL,
                     record_transcript INTEGER NOT NULL DEFAULT 0,
                     investigation_id TEXT NOT NULL DEFAULT '',
@@ -106,6 +109,14 @@ class RemoteSessionStore:
                 connection.execute(
                     "ALTER TABLE remote_sessions ADD COLUMN investigation_attached_at REAL"
                 )
+            if "telnet_username_available" not in columns:
+                connection.execute(
+                    "ALTER TABLE remote_sessions ADD COLUMN telnet_username_available INTEGER NOT NULL DEFAULT 0"
+                )
+            if "telnet_password_available" not in columns:
+                connection.execute(
+                    "ALTER TABLE remote_sessions ADD COLUMN telnet_password_available INTEGER NOT NULL DEFAULT 0"
+                )
             connection.execute(
                 """
                 DELETE FROM remote_sessions
@@ -150,13 +161,19 @@ class RemoteSessionStore:
         port: int,
         remote_username: str,
         record_transcript: bool,
+        telnet_username_available: bool = False,
+        telnet_password_available: bool = False,
         investigation_id: str = "",
         allow_unknown_hosts: bool = False,
         allow_legacy_algorithms: bool = False,
         source_host_id: str = "",
         owner_pid: int = 0,
         control_path: str = "",
+        protocol: str = "ssh",
     ) -> dict[str, Any]:
+        clean_protocol = str(protocol).strip().lower()
+        if clean_protocol not in {"ssh", "telnet"}:
+            raise RemoteSessionError("Choose SSH or Telnet.")
         now = time.time()
         with self._connect() as connection:
             active_count = connection.execute(
@@ -176,20 +193,24 @@ class RemoteSessionStore:
                 """
                 INSERT INTO remote_sessions (
                     id, user_id, username, title, protocol, host, port,
-                    remote_username, state, record_transcript, investigation_id,
+                    remote_username, telnet_username_available,
+                    telnet_password_available, state, record_transcript, investigation_id,
                     investigation_attached_at,
                     allow_unknown_hosts, allow_legacy_algorithms, created_at,
                     last_activity_at, owner_pid, control_path, source_host_id
-                ) VALUES (?, ?, ?, ?, 'ssh', ?, ?, ?, 'connecting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'connecting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
                     user_id,
                     username,
                     title,
+                    clean_protocol,
                     host,
                     port,
                     remote_username,
+                    int(telnet_username_available),
+                    int(telnet_password_available),
                     int(record_transcript),
                     investigation_id,
                     now if investigation_id else None,
@@ -500,6 +521,8 @@ class RemoteSessionStore:
             "allow_unknown_hosts",
             "allow_legacy_algorithms",
             "output_truncated",
+            "telnet_username_available",
+            "telnet_password_available",
         ):
             result[key] = bool(result[key])
         result["tool_key"] = "remote_terminal"
@@ -507,7 +530,7 @@ class RemoteSessionStore:
 
 
 class RemoteSessionManager:
-    """Own live SSH clients independently of browser request lifetimes."""
+    """Own live remote terminals independently of browser request lifetimes."""
 
     def __init__(
         self,
@@ -516,11 +539,13 @@ class RemoteSessionManager:
         *,
         logger: Any = None,
         ssh_opener: Any = open_ssh_client,
+        telnet_opener: Any = open_telnet_channel,
     ) -> None:
         self.store = store
         self.investigation_store = investigation_store
         self.logger = logger
         self.ssh_opener = ssh_opener
+        self.telnet_opener = telnet_opener
         self.pid = os.getpid()
         self.instance_digest = hashlib.sha256(
             str(self.store.instance_path.resolve()).encode("utf-8")
@@ -580,9 +605,10 @@ class RemoteSessionManager:
             investigation_id, user_id=user_id
         )
 
-    def start_ssh_session(
+    def start_session(
         self,
         *,
+        protocol: str,
         user_id: str,
         username: str,
         title: str,
@@ -606,6 +632,8 @@ class RemoteSessionManager:
             host=host,
             port=port,
             remote_username=remote_username,
+            telnet_username_available=bool(protocol == "telnet" and remote_username),
+            telnet_password_available=bool(protocol == "telnet" and password),
             record_transcript=record_transcript,
             investigation_id=investigation_id,
             allow_unknown_hosts=allow_unknown_hosts,
@@ -613,6 +641,7 @@ class RemoteSessionManager:
             source_host_id=source_host_id,
             owner_pid=self.pid,
             control_path=self.control_path,
+            protocol=protocol,
         )
         self._record_started(session)
         runtime = {
@@ -620,11 +649,15 @@ class RemoteSessionManager:
             "termination": "manual",
             "client": None,
             "channel": None,
-            "password": password,
+            "password": password if protocol == "ssh" else "",
+            "telnet_credentials": {
+                "username": remote_username if protocol == "telnet" else "",
+                "password": password if protocol == "telnet" else "",
+            },
         }
         thread = threading.Thread(
-            target=self._run_ssh,
-            name=f"remote-ssh-{session['id'][:8]}",
+            target=self._run_session,
+            name=f"remote-{protocol}-{session['id'][:8]}",
             daemon=True,
             args=(session, columns, rows, runtime),
         )
@@ -633,6 +666,10 @@ class RemoteSessionManager:
             self._runtimes[str(session["id"])] = runtime
         thread.start()
         return session
+
+    def start_ssh_session(self, **options: Any) -> dict[str, Any]:
+        """Compatibility wrapper for callers that explicitly start SSH."""
+        return self.start_session(protocol="ssh", **options)
 
     def send_input(self, session_id: str, *, user_id: str, data: str) -> None:
         session = self.store.get_session(session_id, user_id=user_id)
@@ -648,6 +685,24 @@ class RemoteSessionManager:
             {"action": "input", "data": data},
         )
         self.store.touch(session_id)
+
+    def send_telnet_credential(
+        self, session_id: str, *, user_id: str, field: str
+    ) -> int:
+        session = self.store.get_session(session_id, user_id=user_id)
+        if not session or session["state"] != "running":
+            raise RemoteSessionError("That remote session is not connected.")
+        if session.get("protocol") != "telnet":
+            raise RemoteSessionError("Credential controls are available only for Telnet sessions.")
+        clean_field = str(field).strip().lower()
+        if clean_field not in {"username", "password"}:
+            raise RemoteSessionError("Choose the Telnet username or password.")
+        result = self._send_control(
+            session,
+            {"action": "telnet_credential", "field": clean_field},
+        )
+        self.store.touch(session_id)
+        return int(result.get("accepted_bytes", 0))
 
     def attach_to_case(
         self,
@@ -692,6 +747,7 @@ class RemoteSessionManager:
             investigation_id=investigation_id,
         )
         if session["state"] in ACTIVE_REMOTE_SESSION_STATES:
+            protocol_label = str(session.get("protocol", "ssh")).upper()
             self.investigation_store.record_for_case(
                 investigation_id=investigation_id,
                 user_id=user_id,
@@ -700,16 +756,16 @@ class RemoteSessionManager:
                 operation_id=f"remote-terminal:{session_id}:attached",
                 event_type="remote_terminal.session.attached",
                 tool_id="tools.remote_terminal",
-                action="Attached remote SSH session",
+                action=f"Attached remote {protocol_label} session",
                 outcome="info",
                 summary=(
-                    f"Attached SSH session {session['title']} to the case. "
+                    f"Attached {protocol_label} session {session['title']} to the case. "
                     "Its retained transcript will be added when the session ends."
                 ),
                 targets={"host": session["host"], "port": session["port"]},
                 parameters={
                     "title": session["title"],
-                    "protocol": "SSH",
+                    "protocol": protocol_label,
                     "remote_username": session["remote_username"],
                 },
                 metrics={"output_bytes_at_attachment": session["output_bytes"]},
@@ -722,6 +778,7 @@ class RemoteSessionManager:
             )
             return session
 
+        protocol_label = str(session.get("protocol", "ssh")).upper()
         self.investigation_store.add_generated_evidence_event(
             investigation_id=investigation_id,
             user_id=user_id,
@@ -729,13 +786,13 @@ class RemoteSessionManager:
             operation_id=f"remote-terminal:{session_id}:attached",
             event_type="remote_terminal.transcript.attached",
             tool_id="tools.remote_terminal",
-            action="Attached SSH transcript",
+            action=f"Attached {protocol_label} transcript",
             outcome="info",
-            summary=f"Attached retained output from SSH session {session['title']}.",
+            summary=f"Attached retained output from {protocol_label} session {session['title']}.",
             targets={"host": session["host"], "port": session["port"]},
             parameters={
                 "title": session["title"],
-                "protocol": "SSH",
+                "protocol": protocol_label,
                 "remote_username": session["remote_username"],
                 "termination": session["termination"],
             },
@@ -750,7 +807,7 @@ class RemoteSessionManager:
             started_at=attached_at,
             completed_at=attached_at,
             filename=(
-                f"ssh-{safe_filename(str(session['host']))}-{session_id[:8]}.txt"
+                f"{str(session.get('protocol', 'ssh'))}-{safe_filename(str(session['host']))}-{session_id[:8]}.txt"
             ),
             content_type="text/plain; charset=utf-8",
             content=completed_transcript.encode("utf-8"),
@@ -826,7 +883,7 @@ class RemoteSessionManager:
                 time.sleep(0.05)
             if current and not current.get("evidence_finalized_at"):
                 raise RemoteSessionError(
-                    "The SSH session stopped, but its case evidence could not be finalized."
+                    "The remote session stopped, but its case evidence could not be finalized."
                 )
         return current
 
@@ -847,7 +904,7 @@ class RemoteSessionManager:
                 finalized += 1
         return {"stopped": len(sessions), "finalized": finalized}
 
-    def _run_ssh(
+    def _run_session(
         self,
         session: dict[str, Any],
         columns: int,
@@ -855,7 +912,9 @@ class RemoteSessionManager:
         runtime: dict[str, Any],
     ) -> None:
         session_id = str(session["id"])
+        protocol = str(session.get("protocol", "ssh"))
         client = None
+        channel = None
         password = str(runtime.pop("password", ""))
         try:
             if runtime["stop"].is_set():
@@ -866,16 +925,23 @@ class RemoteSessionManager:
                     termination=str(runtime["termination"]),
                 )
                 return
-            client = self.ssh_opener(
-                hostname=session["host"],
-                port=int(session["port"]),
-                username=session["remote_username"],
-                password=password,
-                allow_unknown_hosts=bool(session["allow_unknown_hosts"]),
-                allow_legacy_algorithms=bool(session["allow_legacy_algorithms"]),
-            )
-            password = ""
-            runtime["client"] = client
+            if protocol == "telnet":
+                channel = self.telnet_opener(
+                    hostname=session["host"],
+                    port=int(session["port"]),
+                    width=columns,
+                    height=rows,
+                )
+            else:
+                client = self.ssh_opener(
+                    hostname=session["host"],
+                    port=int(session["port"]),
+                    username=session["remote_username"],
+                    password=password,
+                    allow_unknown_hosts=bool(session["allow_unknown_hosts"]),
+                    allow_legacy_algorithms=bool(session["allow_legacy_algorithms"]),
+                )
+                runtime["client"] = client
             if runtime["stop"].is_set():
                 self.store.finish(
                     session_id,
@@ -883,15 +949,19 @@ class RemoteSessionManager:
                     termination=str(runtime["termination"]),
                 )
                 return
-            channel = client.invoke_shell(
-                term="xterm-256color", width=columns, height=rows
-            )
+            if protocol == "ssh":
+                channel = client.invoke_shell(
+                    term="xterm-256color", width=columns, height=rows
+                )
+            password = ""
             channel.settimeout(0.25)
             runtime["channel"] = channel
             self.store.mark_connected(session_id)
             while not runtime["stop"].is_set():
                 if channel.recv_ready():
                     data = channel.recv(65535)
+                    if data is None:
+                        continue
                     if not data:
                         break
                     self.store.append_output(
@@ -924,7 +994,7 @@ class RemoteSessionManager:
                 session_id,
                 state="error",
                 termination="connection_error",
-                error=format_ssh_connection_error(exc),
+                error=self._connection_error(exc, protocol),
             )
         except Exception as exc:
             if runtime["stop"].is_set():
@@ -938,10 +1008,21 @@ class RemoteSessionManager:
                     session_id,
                     state="error",
                     termination="connection_error",
-                    error=format_ssh_connection_error(exc),
+                    error=self._connection_error(exc, protocol),
                 )
         finally:
-            close_ssh_client(client)
+            credentials = runtime.get("telnet_credentials", {})
+            if isinstance(credentials, dict):
+                credentials["username"] = ""
+                credentials["password"] = ""
+            runtime["password"] = ""
+            if protocol == "telnet" and channel is not None:
+                try:
+                    channel.close()
+                except Exception:
+                    pass
+            else:
+                close_ssh_client(client)
             runtime["client"] = None
             runtime["channel"] = None
             completed = self.store.get_session(session_id)
@@ -949,9 +1030,24 @@ class RemoteSessionManager:
             with self._lock:
                 self._runtimes.pop(session_id, None)
 
+    @staticmethod
+    def _connection_error(exc: Exception, protocol: str) -> str:
+        if protocol == "ssh":
+            return format_ssh_connection_error(exc)
+        if isinstance(exc, socket.gaierror):
+            return "The Telnet host name could not be resolved."
+        if isinstance(exc, ConnectionRefusedError):
+            return "The Telnet service refused the connection."
+        if isinstance(exc, (socket.timeout, TimeoutError)):
+            return "The Telnet connection timed out."
+        if isinstance(exc, OSError):
+            return f"The Telnet connection failed: {exc}."
+        return "The Telnet connection failed."
+
     def _record_started(self, session: dict[str, Any]) -> None:
         if not session.get("investigation_id"):
             return
+        protocol_label = str(session.get("protocol", "ssh")).upper()
         try:
             self.investigation_store.record_for_case(
                 investigation_id=str(session["investigation_id"]),
@@ -961,16 +1057,16 @@ class RemoteSessionManager:
                 operation_id=f"remote-terminal:{session['id']}:started",
                 event_type="remote_terminal.session.started",
                 tool_id="tools.remote_terminal",
-                action="Started remote SSH session",
+                action=f"Started remote {protocol_label} session",
                 outcome="info",
                 summary=(
-                    f"Started SSH session {session['title']} to "
+                    f"Started {protocol_label} session {session['title']} to "
                     f"{session['host']}:{session['port']}."
                 ),
                 targets={"host": session["host"], "port": session["port"]},
                 parameters={
                     "title": session["title"],
-                    "protocol": "SSH",
+                    "protocol": protocol_label,
                     "remote_username": session["remote_username"],
                     "transcript_enabled": bool(session["record_transcript"]),
                 },
@@ -991,6 +1087,8 @@ class RemoteSessionManager:
         ):
             return
         try:
+            protocol = str(session.get("protocol", "ssh"))
+            protocol_label = protocol.upper()
             capture_started_at = float(
                 session.get("investigation_attached_at") or session["created_at"]
             )
@@ -1006,16 +1104,16 @@ class RemoteSessionManager:
                 "operation_id": f"remote-terminal:{session['id']}:completed",
                 "event_type": "remote_terminal.session.completed",
                 "tool_id": "tools.remote_terminal",
-                "action": "Completed remote SSH session",
+                "action": f"Completed remote {protocol_label} session",
                 "outcome": "failed" if session["state"] == "error" else "succeeded",
                 "summary": (
-                    f"SSH session {session['title']} ended: "
+                    f"{protocol_label} session {session['title']} ended: "
                     f"{str(session['termination']).replace('_', ' ')}."
                 ),
                 "targets": {"host": session["host"], "port": session["port"]},
                 "parameters": {
                     "title": session["title"],
-                    "protocol": "SSH",
+                    "protocol": protocol_label,
                     "remote_username": session["remote_username"],
                     "duration_seconds": round(elapsed, 3),
                     "termination": session["termination"],
@@ -1039,7 +1137,7 @@ class RemoteSessionManager:
             if bool(session["record_transcript"]) and transcript:
                 self.investigation_store.add_generated_evidence_event(
                     **event,
-                    filename=f"ssh-{safe_filename(str(session['host']))}-{session['id'][:8]}.txt",
+                    filename=f"{protocol}-{safe_filename(str(session['host']))}-{session['id'][:8]}.txt",
                     content_type="text/plain; charset=utf-8",
                     content=transcript.encode("utf-8"),
                     max_bytes=REMOTE_SESSION_OUTPUT_LIMIT_BYTES + 1024,
@@ -1181,6 +1279,32 @@ class RemoteSessionManager:
             except Exception as exc:
                 raise RemoteSessionError(
                     "Terminal input could not be delivered."
+                ) from exc
+            return {"accepted_bytes": len(encoded)}
+        if action == "telnet_credential":
+            if session.get("protocol") != "telnet":
+                raise RemoteSessionError(
+                    "Credential controls are available only for Telnet sessions."
+                )
+            field = str(message.get("field", "")).strip().lower()
+            if field not in {"username", "password"}:
+                raise RemoteSessionError("Choose the Telnet username or password.")
+            credentials = runtime.get("telnet_credentials", {})
+            value = str(credentials.get(field, "")) if isinstance(credentials, dict) else ""
+            if not value:
+                raise RemoteSessionError(
+                    f"No {field} was provided for this Telnet session."
+                )
+            encoded = (value + "\r").encode("utf-8")
+            if len(encoded) > REMOTE_SESSION_INPUT_LIMIT_BYTES:
+                raise RemoteSessionError(
+                    f"The Telnet {field} is outside the allowed size."
+                )
+            try:
+                channel.sendall(encoded)
+            except Exception as exc:
+                raise RemoteSessionError(
+                    f"The Telnet {field} could not be delivered."
                 ) from exc
             return {"accepted_bytes": len(encoded)}
         if action == "resize":
@@ -1378,6 +1502,9 @@ def public_remote_session(session: dict[str, Any]) -> dict[str, Any]:
             ),
             "input_url": url_for(
                 "tools.remote_terminal_input", session_id=session_id
+            ),
+            "credential_url": url_for(
+                "tools.remote_terminal_credential", session_id=session_id
             ),
             "resize_url": url_for(
                 "tools.resize_remote_terminal_session", session_id=session_id

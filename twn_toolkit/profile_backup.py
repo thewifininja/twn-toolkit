@@ -36,7 +36,7 @@ SAVED_DATA_INVENTORY: tuple[dict[str, str], ...] = (
     {"id": "network_profiles", "boundary": "portable", "reason": "Reusable targets, credentials, and request templates."},
     {"id": "automation_definitions", "boundary": "portable", "reason": "Reusable definitions; runtime history is excluded."},
     {"id": "dashboard_layout", "boundary": "portable", "reason": "Reusable presentation preference without counters."},
-    {"id": "remote_connection_library", "boundary": "portable", "reason": "User-owned reusable SSH hosts and credentials."},
+    {"id": "remote_connection_library", "boundary": "portable", "reason": "User-owned reusable SSH and Telnet hosts and credentials."},
     {"id": "certificate_automation_profiles", "boundary": "portable", "reason": "Reusable PKI connection profiles without issued key material."},
     {"id": "access_profiles", "boundary": "portable", "reason": "Reusable authorization definitions without users or assignments."},
     {"id": "smtp_settings", "boundary": "portable", "reason": "Reusable delivery configuration re-encrypted on import."},

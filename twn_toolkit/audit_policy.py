@@ -103,9 +103,11 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.start_ping_session",
         "tools.start_remote_terminal_session",
         "tools.attach_remote_terminal_case",
+        "tools.bulk_update_remote_terminal_library",
         "tools.create_remote_terminal_credential",
         "tools.create_remote_terminal_folder",
         "tools.create_remote_terminal_host",
+        "tools.import_remote_terminal_hosts",
         "tools.delete_remote_terminal_credential",
         "tools.delete_remote_terminal_folder",
         "tools.delete_remote_terminal_host",
@@ -244,7 +246,9 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
         "tools.snmp_interface_samples",
         "tools.snmp_interfaces",
         "tools.remote_terminal_input",
+        "tools.remote_terminal_credential",
         "tools.resize_remote_terminal_session",
+        "tools.preview_remote_terminal_host_import",
     }
 )
 
