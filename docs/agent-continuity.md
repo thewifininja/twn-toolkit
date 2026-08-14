@@ -264,7 +264,7 @@ accepted replay frames.
 - Current milestone is 0.19.0: investigation cases are shared owner-and-
   collaborator workspaces with attributed journals, managed evidence, compact
   reports, portable cross-instance archives, and non-destructive case merging.
-  Remote Terminal provides persistent owner-scoped interactive SSH sessions,
+  Remote Terminal provides persistent owner-scoped interactive SSH and Telnet sessions,
   reusable host folders and encrypted credential libraries, temporary Quick
   Connect, retained scrollback, and bounded case transcripts. Configuration
   backups use inspect-first versioned manifests and atomic per-group Combine or

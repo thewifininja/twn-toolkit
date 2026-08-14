@@ -179,7 +179,7 @@ def register_tools(registry: Any) -> None:
             ToolLink(
                 "tools.remote_terminal",
                 "Remote Terminal",
-                "Quick-connect or organize encrypted SSH connections while persistent shells preserve their scrollback.",
+                "Quick-connect or organize encrypted SSH and Telnet connections while persistent terminals preserve their scrollback.",
                 "tools.remote_terminal",
                 "network",
                 "Network Tools",

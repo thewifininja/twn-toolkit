@@ -15,6 +15,8 @@
   const folderForm = document.getElementById("remote-folder-form");
   const hostForm = document.getElementById("remote-host-form");
   const credentialForm = document.getElementById("remote-credential-form");
+  const quickProtocol = document.getElementById("remote-terminal-protocol");
+  const hostProtocol = document.getElementById("remote-host-protocol");
   let library = JSON.parse(initial.textContent || "{}");
   let openedFolders = new Set((library.folders || []).map((folder) => folder.id));
 
@@ -62,6 +64,8 @@
   quickForm.querySelectorAll('input[name="quick_credential_mode"]').forEach((input) => {
     input.addEventListener("change", syncQuickCredentialMode);
   });
+  quickProtocol.addEventListener("change", () => syncProtocolControls("quick"));
+  hostProtocol.addEventListener("change", () => syncProtocolControls("host"));
   hostForm.querySelectorAll('input[name="host_credential_mode"]').forEach((input) => {
     input.addEventListener("change", syncHostCredentialMode);
   });
@@ -95,6 +99,8 @@
     renderCredentials();
     syncQuickCredentialMode();
     syncHostCredentialMode();
+    syncProtocolControls("quick", true);
+    syncProtocolControls("host", true);
   }
 
   function renderTree() {
@@ -216,7 +222,7 @@
     const title = document.createElement("strong");
     title.textContent = host.name;
     const target = document.createElement("small");
-    target.textContent = `${host.remote_username}@${host.host}:${host.port}`;
+    target.textContent = `${String(host.protocol || "ssh").toUpperCase()} · ${host.remote_username}@${host.host}:${host.port}`;
     identity.append(title, target);
     connect.append(icon, identity);
     connect.title = `Connect to ${host.name}`;
@@ -431,8 +437,11 @@
     const presetFolderId = typeof host === "string" ? host : "";
     document.getElementById("remote-host-id").value = existing?.id || "";
     document.getElementById("remote-host-name").value = existing?.name || session?.title || "";
+    const protocol = existing?.protocol || session?.protocol || "ssh";
+    hostProtocol.value = protocol;
+    hostProtocol.dataset.previousProtocol = protocol;
     document.getElementById("remote-host-address").value = existing?.host || session?.host || "";
-    document.getElementById("remote-host-port").value = existing?.port || session?.port || 22;
+    document.getElementById("remote-host-port").value = existing?.port || session?.port || defaultPort(protocol);
     document.getElementById("remote-host-folder").value = existing?.folder_id || presetFolderId;
     document.getElementById("remote-host-unknown").checked = Boolean(existing?.allow_unknown_hosts);
     document.getElementById("remote-host-legacy").checked = Boolean(existing?.allow_legacy_algorithms);
@@ -447,6 +456,7 @@
     document.getElementById("remote-host-credential-name").value = isScoped ? existing.credential_name : `${existing?.name || session?.title || "Host"} credentials`;
     document.getElementById("remote-host-username").value = isScoped ? existing.remote_username : session?.remote_username || "";
     syncHostCredentialMode();
+    syncProtocolControls("host", true);
     setStatus("remote-host-status", session ? "Choose a saved credential or re-enter the one-time password; Quick Connect did not retain it." : "");
     openDialog(hostDialog, "remote-host-name");
   }
@@ -460,6 +470,7 @@
         method: id ? "PATCH" : "POST",
         body: {
           name: document.getElementById("remote-host-name").value,
+          protocol: hostProtocol.value,
           host: document.getElementById("remote-host-address").value,
           port: document.getElementById("remote-host-port").value,
           folder_id: document.getElementById("remote-host-folder").value,
@@ -621,12 +632,39 @@
     if (focusId) window.setTimeout(() => document.getElementById(focusId)?.focus(), 0);
   }
 
+  function syncProtocolControls(context, preservePort = false) {
+    const isQuick = context === "quick";
+    const select = isQuick ? quickProtocol : hostProtocol;
+    const port = document.getElementById(isQuick ? "remote-terminal-port" : "remote-host-port");
+    const label = document.getElementById(isQuick ? "remote-terminal-port-label" : "remote-host-port-label");
+    const previous = select.dataset.previousProtocol || "ssh";
+    const protocol = select.value === "telnet" ? "telnet" : "ssh";
+    if (!preservePort && Number(port.value) === defaultPort(previous)) {
+      port.value = String(defaultPort(protocol));
+    }
+    select.dataset.previousProtocol = protocol;
+    label.textContent = `${protocol === "telnet" ? "Telnet" : "SSH"} port`;
+    if (isQuick) {
+      quickForm.querySelectorAll("[data-quick-ssh-option]").forEach((option) => {
+        option.hidden = protocol !== "ssh";
+      });
+      quickForm.querySelector("[data-quick-telnet-warning]").hidden = protocol !== "telnet";
+    } else {
+      hostForm.querySelector("[data-host-ssh-options]").hidden = protocol !== "ssh";
+      hostForm.querySelector("[data-host-telnet-warning]").hidden = protocol !== "telnet";
+    }
+  }
+
+  function defaultPort(protocol) {
+    return protocol === "telnet" ? 23 : 22;
+  }
+
   function setStatus(id, message) {
     document.getElementById(id).textContent = message;
   }
 
   function hostSearchText(host) {
-    return `${host.name} ${host.host} ${host.remote_username} ${host.notes || ""}`.toLocaleLowerCase();
+    return `${host.name} ${host.protocol || "ssh"} ${host.host} ${host.remote_username} ${host.notes || ""}`.toLocaleLowerCase();
   }
 
   function folderDescendants(folderId, output = new Set()) {

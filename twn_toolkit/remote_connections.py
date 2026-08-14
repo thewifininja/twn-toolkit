@@ -20,7 +20,7 @@ class RemoteConnectionError(ValueError):
 
 
 class RemoteConnectionStore:
-    """Per-operator folders, SSH hosts, and encrypted credential records."""
+    """Per-operator folders, remote hosts, and encrypted credential records."""
 
     def __init__(self, instance_path: str, secret_key: str) -> None:
         self.instance_path = Path(instance_path)
@@ -119,7 +119,7 @@ class RemoteConnectionStore:
                 str(row["secret_encrypted"]).encode("ascii")
             ).decode("utf-8")
         except (InvalidToken, UnicodeDecodeError, ValueError) as exc:
-            raise RuntimeError("Could not decrypt the saved SSH credential.") from exc
+            raise RuntimeError("Could not decrypt the saved remote credential.") from exc
         return {
             "id": str(row["id"]),
             "name": str(row["name"]),
@@ -268,7 +268,7 @@ class RemoteConnectionStore:
                 )
             else:
                 if not password:
-                    raise RemoteConnectionError("Enter the SSH password.")
+                    raise RemoteConnectionError("Enter the remote password.")
                 credential_id = f"rc_{secrets.token_hex(10)}"
                 connection.execute(
                     """
@@ -358,12 +358,16 @@ class RemoteConnectionStore:
         notes: str = "",
         host_id: str = "",
         host_credential: dict[str, str] | None = None,
+        protocol: str = "ssh",
     ) -> dict[str, Any]:
         clean_name = self._name(name, "Host name")
         clean_host = self._hostname(host)
         clean_notes = str(notes).strip()[:1000]
+        clean_protocol = str(protocol).strip().lower()
+        if clean_protocol not in {"ssh", "telnet"}:
+            raise RemoteConnectionError("Choose SSH or Telnet.")
         if not 1 <= int(port) <= 65535:
-            raise RemoteConnectionError("SSH port must be between 1 and 65535.")
+            raise RemoteConnectionError("Port must be between 1 and 65535.")
         now = time.time()
         is_update = bool(host_id)
         with self._connect() as connection:
@@ -422,7 +426,7 @@ class RemoteConnectionStore:
                     credential_id = old_scoped_credential_id
                 else:
                     if not password:
-                        raise RemoteConnectionError("Enter the SSH password.")
+                        raise RemoteConnectionError("Enter the remote password.")
                     credential_id = f"rc_{secrets.token_hex(10)}"
                     connection.execute(
                         """
@@ -455,10 +459,11 @@ class RemoteConnectionStore:
                 clean_name,
                 clean_host,
                 int(port),
+                clean_protocol,
                 folder_id,
                 credential_id,
-                int(bool(allow_unknown_hosts)),
-                int(bool(allow_legacy_algorithms)),
+                int(bool(allow_unknown_hosts) and clean_protocol == "ssh"),
+                int(bool(allow_legacy_algorithms) and clean_protocol == "ssh"),
                 clean_notes,
                 now,
             )
@@ -466,7 +471,7 @@ class RemoteConnectionStore:
                 connection.execute(
                     """
                     UPDATE remote_connection_hosts
-                    SET name = ?, host = ?, port = ?, folder_id = ?,
+                    SET name = ?, host = ?, port = ?, protocol = ?, folder_id = ?,
                         credential_id = ?, allow_unknown_hosts = ?,
                         allow_legacy_algorithms = ?, notes = ?, updated_at = ?
                     WHERE id = ? AND user_id = ?
@@ -477,10 +482,10 @@ class RemoteConnectionStore:
                 connection.execute(
                     """
                     INSERT INTO remote_connection_hosts
-                        (id, user_id, name, host, port, folder_id, credential_id,
+                        (id, user_id, name, host, port, protocol, folder_id, credential_id,
                          allow_unknown_hosts, allow_legacy_algorithms, notes,
                          created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (host_id, user_id, *values[:-1], now, now),
                 )
@@ -536,6 +541,7 @@ class RemoteConnectionStore:
             allow_legacy_algorithms=bool(source["allow_legacy_algorithms"]),
             notes=str(source["notes"]),
             host_credential=host_credential,
+            protocol=str(source.get("protocol", "ssh")),
         )
 
     def delete_host(self, host_id: str, *, user_id: str) -> None:
@@ -599,6 +605,7 @@ class RemoteConnectionStore:
                 allow_legacy_algorithms=bool(host["allow_legacy_algorithms"]),
                 notes=str(host["notes"]),
                 host_credential=host_credential,
+                protocol=str(host.get("protocol", "ssh")),
             )
         for folder in [item for item in library["folders"] if item["parent_id"] == source_id]:
             copied_folder = self.create_folder(
@@ -637,9 +644,9 @@ class RemoteConnectionStore:
 
     def _encrypt_secret(self, password: str) -> str:
         if not password:
-            raise RemoteConnectionError("Enter the SSH password.")
+            raise RemoteConnectionError("Enter the password.")
         if len(password.encode("utf-8")) > 16 * 1024:
-            raise RemoteConnectionError("The SSH password is too large.")
+            raise RemoteConnectionError("The password is too large.")
         return self._cipher.encrypt(password.encode("utf-8")).decode("ascii")
 
     @staticmethod
@@ -653,7 +660,7 @@ class RemoteConnectionStore:
     def _username(value: object) -> str:
         clean = str(value).strip()
         if not clean or len(clean) > 128 or any(char in "\r\n\x00" for char in clean):
-            raise RemoteConnectionError("Enter a valid SSH username.")
+            raise RemoteConnectionError("Enter a valid username.")
         return clean
 
     @staticmethod
@@ -699,6 +706,7 @@ class RemoteConnectionStore:
             "name": str(row["name"]),
             "host": str(row["host"]),
             "port": int(row["port"]),
+            "protocol": str(row["protocol"]),
             "folder_id": str(row["folder_id"]),
             "credential_id": str(row["credential_id"]),
             "credential_name": str(row["credential_name"]),
@@ -897,6 +905,7 @@ class RemoteConnectionStore:
                 name TEXT NOT NULL,
                 host TEXT NOT NULL,
                 port INTEGER NOT NULL,
+                protocol TEXT NOT NULL DEFAULT 'ssh',
                 folder_id TEXT NOT NULL DEFAULT '',
                 credential_id TEXT NOT NULL,
                 allow_unknown_hosts INTEGER NOT NULL DEFAULT 0,
@@ -909,6 +918,17 @@ class RemoteConnectionStore:
                 ON remote_connection_hosts(user_id, folder_id, name);
             """
         )
+        columns = {
+            str(row["name"])
+            for row in connection.execute(
+                "PRAGMA table_info(remote_connection_hosts)"
+            )
+        }
+        if "protocol" not in columns:
+            connection.execute(
+                "ALTER TABLE remote_connection_hosts "
+                "ADD COLUMN protocol TEXT NOT NULL DEFAULT 'ssh'"
+            )
 
 
 __all__ = ["RemoteConnectionError", "RemoteConnectionStore"]

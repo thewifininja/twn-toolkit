@@ -224,7 +224,7 @@ workspace and carry its recording context across toolkit pages. A case owner
 can add other eligible toolkit users so multiple operators can troubleshoot the
 same issue simultaneously. Finite network diagnostics,
 one-off SNMP polls, interface monitoring, certificate inspection, persistent
-Ping, remote SSH terminals, packet capture, managed iPerf3 listeners, command/transfer runs,
+Ping, remote SSH and Telnet terminals, packet capture, managed iPerf3 listeners, command/transfer runs,
 selected vendor workflows, and other intentional tool actions retain safe
 structured events or generated evidence. Operators can also:
 

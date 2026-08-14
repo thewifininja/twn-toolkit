@@ -116,6 +116,31 @@ class RemoteConnectionStoreTests(unittest.TestCase):
         self.assertEqual(len(remaining["hosts"]), 1)
         self.assertEqual(len(remaining["credentials"]), 1)
 
+    def test_telnet_host_preserves_protocol_and_ignores_ssh_options(self) -> None:
+        credential = self.store.save_credential(
+            user_id="operator",
+            name="Legacy console",
+            remote_username="operator",
+            password="legacy-secret",
+        )
+        host = self.store.save_host(
+            user_id="operator",
+            name="Legacy switch",
+            host="192.0.2.23",
+            port=23,
+            protocol="telnet",
+            folder_id="",
+            credential_id=credential["id"],
+            allow_unknown_hosts=True,
+            allow_legacy_algorithms=True,
+        )
+        copied = self.store.duplicate_host(host["id"], user_id="operator")
+
+        self.assertEqual(host["protocol"], "telnet")
+        self.assertEqual(copied["protocol"], "telnet")
+        self.assertFalse(host["allow_unknown_hosts"])
+        self.assertFalse(host["allow_legacy_algorithms"])
+
     def test_duplicate_folder_copies_nested_hosts(self) -> None:
         credential = self.store.save_credential(
             user_id="operator",

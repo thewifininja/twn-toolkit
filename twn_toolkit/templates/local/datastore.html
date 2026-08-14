@@ -27,7 +27,7 @@
         <form method="post" action="{{ url_for('create_datastore_folder') }}" class="form">
           <input type="hidden" name="path" value="{{ listing.path }}">
           <label>Folder name
-            <input name="name" maxlength="255" required autofocus>
+            <input name="name" maxlength="255" required>
           </label>
           <button type="submit">Create folder</button>
         </form>

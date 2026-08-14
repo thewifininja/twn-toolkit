@@ -9,7 +9,7 @@
 >
   <header class="remote-terminal-workspace-head">
     <div>
-      <span class="eyebrow">SSH session</span>
+      <span class="eyebrow" id="remote-terminal-session-protocol">Remote session</span>
       <div class="remote-terminal-session-title-row">
         <h2 id="remote-terminal-session-title">Remote shell</h2>
         <button class="remote-terminal-session-rename" id="remote-terminal-session-rename" type="button" aria-label="Rename session" title="Rename session"><span aria-hidden="true">✎</span></button>
@@ -42,7 +42,7 @@
     </div>
   </header>
   {% if is_popout|default(false) %}
-    <p class="remote-terminal-shared-view-note">This window controls the same persistent shell as the main workspace. Closing it does not stop the SSH session.</p>
+    <p class="remote-terminal-shared-view-note">This window controls the same persistent shell as the main workspace. Closing it does not stop the remote session.</p>
   {% endif %}
   <div class="message warning" id="remote-terminal-session-message" role="status" hidden></div>
   <div class="remote-terminal-surface" id="remote-terminal-surface">
@@ -61,14 +61,18 @@
     <span class="remote-terminal-focus-state" id="remote-terminal-focus-state" aria-hidden="true">Click or tap to type</span>
   </div>
   <div class="remote-terminal-input-tools">
-    <p id="remote-terminal-input-help">Type and paste directly into the terminal. Input is sent to the active SSH shell and is never stored separately.</p>
+    <p id="remote-terminal-input-help">Type and paste directly into the terminal. Input is sent to the active remote shell and is never stored separately.</p>
     <div class="remote-terminal-control-row" aria-label="Terminal control keys">
       <button class="secondary" type="button" data-terminal-key="ctrl-c">Ctrl+C</button>
+      <button class="secondary" type="button" data-terminal-key="paste" aria-label="Paste from clipboard">Ctrl+V</button>
+      <button class="secondary" type="button" data-terminal-key="ctrl-y">Ctrl+Y</button>
       <button class="secondary" type="button" data-terminal-key="ctrl-d">Ctrl+D</button>
       <button class="secondary" type="button" data-terminal-key="backspace">Backspace</button>
       <button class="secondary" type="button" data-terminal-key="tab">Tab</button>
       <button class="secondary" type="button" data-terminal-key="up" aria-label="Up arrow">↑</button>
       <button class="secondary" type="button" data-terminal-key="down" aria-label="Down arrow">↓</button>
+      <button class="secondary" type="button" data-terminal-key="left" aria-label="Left arrow">←</button>
+      <button class="secondary" type="button" data-terminal-key="right" aria-label="Right arrow">→</button>
       <button class="secondary" type="button" data-terminal-key="escape">Esc</button>
     </div>
   </div>
@@ -77,7 +81,7 @@
 <dialog class="remote-terminal-dialog remote-terminal-rename-dialog" id="remote-terminal-rename-dialog" aria-labelledby="remote-terminal-rename-title">
   <form class="form remote-terminal-dialog-form" id="remote-terminal-rename-form">
     <header>
-      <div><span class="eyebrow">SSH session</span><h2 id="remote-terminal-rename-title">Rename session</h2></div>
+      <div><span class="eyebrow">Remote session</span><h2 id="remote-terminal-rename-title">Rename session</h2></div>
       <button class="dialog-close" id="remote-terminal-rename-dismiss" type="button" aria-label="Close">×</button>
     </header>
     <p class="remote-terminal-dialog-intro">This changes only the session tab and retained history. The saved host name stays unchanged.</p>

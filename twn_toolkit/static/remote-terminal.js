@@ -26,6 +26,7 @@
   const stateBadge = document.getElementById("remote-terminal-session-state");
   const sessionMessage = document.getElementById("remote-terminal-session-message");
   const sessionTitle = document.getElementById("remote-terminal-session-title");
+  const sessionProtocol = document.getElementById("remote-terminal-session-protocol");
   const sessionRenameButton = document.getElementById("remote-terminal-session-rename");
   const renameDialog = document.getElementById("remote-terminal-rename-dialog");
   const renameForm = document.getElementById("remote-terminal-rename-form");
@@ -61,6 +62,8 @@
   let resizeTimer = null;
   let renameSession = null;
   let datastoreSession = null;
+  let renderedSessionFingerprint = "";
+  const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
   const activeCase = workspace.dataset.activeCaseId
     ? {id: workspace.dataset.activeCaseId, title: workspace.dataset.activeCaseTitle}
     : null;
@@ -153,8 +156,12 @@
     queueInput(terminal.formatPaste(text), true);
   });
   document.querySelectorAll("[data-terminal-key]").forEach((button) => {
-    button.addEventListener("click", () => {
-      queueInput(terminalKey(button.dataset.terminalKey), true);
+    button.addEventListener("click", async () => {
+      if (button.dataset.terminalKey === "paste") {
+        await pasteClipboard();
+      } else {
+        queueInput(terminalKey(button.dataset.terminalKey), true);
+      }
       focusTerminal();
     });
   });
@@ -167,8 +174,24 @@
     window.addEventListener("resize", scheduleResize);
   }
 
-  function renderList() {
+  function renderList(force = false) {
     sessions.sort((left, right) => Number(right.created_at) - Number(left.created_at));
+    const fingerprint = JSON.stringify({
+      selected: selected?.id || "",
+      sessions: sessions.map((session) => [
+        session.id,
+        session.title,
+        session.state,
+        session.protocol,
+        session.host,
+        session.port,
+        session.remote_username,
+        session.investigation_id,
+        session.record_transcript,
+      ]),
+    });
+    if (!force && fingerprint === renderedSessionFingerprint) return;
+    renderedSessionFingerprint = fingerprint;
     if (list) list.replaceChildren(...sessions.map(sessionCard));
     if (empty) empty.hidden = sessions.length > 0;
     if (count) count.textContent = `${sessions.length} retained`;
@@ -194,14 +217,14 @@
     tab.className = "remote-terminal-tab";
     tab.setAttribute("role", "tab");
     tab.setAttribute("aria-selected", String(isSelected));
-    tab.title = `${session.remote_username}@${session.host}:${session.port}`;
+    tab.title = `${protocolLabel(session)} · ${session.remote_username}@${session.host}:${session.port}`;
     const dot = document.createElement("span");
     dot.className = "remote-terminal-tab-dot";
     dot.setAttribute("aria-hidden", "true");
     const label = document.createElement("span");
     label.textContent = session.title;
     tab.append(dot, label);
-    tab.addEventListener("click", () => openSession(session));
+    tab.addEventListener("click", () => openSession(session, {focus: true}));
     const rename = tabAction("✎", `Rename ${session.title}`, "rename");
     rename.addEventListener("click", () => openRenameDialog(session));
     const close = tabAction("×", `Close ${session.title}`, "close");
@@ -230,7 +253,7 @@
     const heading = document.createElement("strong");
     heading.textContent = session.title;
     const target = document.createElement("span");
-    target.textContent = `${session.remote_username}@${session.host}:${session.port}`;
+    target.textContent = `${protocolLabel(session)} · ${session.remote_username}@${session.host}:${session.port}`;
     const metadata = document.createElement("small");
     metadata.textContent = `${stateLabel(session)} · ${formatTime(session.created_at)}`;
     identity.append(heading, target, metadata);
@@ -251,7 +274,7 @@
     open.setAttribute("aria-label", openLabel);
     open.title = openLabel;
     open.append(terminalActionIcon("view"));
-    open.addEventListener("click", () => openSession(session));
+    open.addEventListener("click", () => openSession(session, {reveal: true, focus: true}));
     const download = document.createElement("a");
     download.className = "button-link secondary remote-terminal-history-action";
     download.href = session.download_url;
@@ -332,6 +355,7 @@
     event.preventDefault();
     const credentialMode = form.querySelector('input[name="quick_credential_mode"]:checked')?.value || "temporary";
     const payload = {
+      protocol: document.getElementById("remote-terminal-protocol").value,
       title: document.getElementById("remote-terminal-title").value,
       host: document.getElementById("remote-terminal-host").value,
       port: document.getElementById("remote-terminal-port").value,
@@ -359,7 +383,7 @@
     const status = controls.status || null;
     if (!form?.dataset.startUrl) throw new Error("New sessions must be started from the full workspace.");
     if (button) button.disabled = true;
-    if (status) status.textContent = "Starting secure session…";
+    if (status) status.textContent = "Starting remote session…";
     try {
       const response = await fetch(form.dataset.startUrl, {
         method: "POST",
@@ -367,10 +391,10 @@
         body: JSON.stringify(payload),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "The SSH session could not be started.");
+      if (!response.ok) throw new Error(data.error || "The remote session could not be started.");
       upsert(data.session);
       renderList();
-      await openSession(data.session);
+      await openSession(data.session, {reveal: true, focus: true});
       if (status) {
         status.textContent = data.session.record_transcript
           ? "Started with transcript capture attached to the active case."
@@ -390,17 +414,24 @@
     }
   }
 
-  async function openSession(session) {
+  async function openSession(session, options = {}) {
+    const reveal = Boolean(options.reveal);
+    const requestFocus = Boolean(options.focus);
     clearTimeout(pollTimer);
     selected = session;
     cursor = 0;
     workspace.hidden = false;
     if (stageEmpty) stageEmpty.hidden = true;
     terminal.reset(terminalColumns(), terminalRows());
-    workspace.scrollIntoView({behavior: "smooth", block: "start"});
+    if (reveal) workspace.scrollIntoView({behavior: "smooth", block: "start"});
     updateWorkspace(session);
     await pollOutput();
-    if (selected?.state === "running") focusTerminal();
+    if (
+      requestFocus
+      && finePointer.matches
+      && selected?.state === "running"
+      && !editable(document.activeElement)
+    ) focusTerminal();
     resizeRemote();
   }
 
@@ -529,7 +560,7 @@
     const session = renameSession;
     const title = renameInput.value.trim().replace(/\s+/g, " ");
     if (!title) {
-      renameInput.setCustomValidity("Enter a name for this SSH session.");
+      renameInput.setCustomValidity("Enter a name for this remote session.");
       renameInput.reportValidity();
       return;
     }
@@ -615,7 +646,7 @@
     if (datastoreStatus) datastoreStatus.textContent = "";
     if (datastoreCopy) {
       datastoreCopy.textContent = active(session)
-        ? "This saves the output retained so far as a snapshot. The SSH session remains connected and later output is not added to that file."
+        ? "This saves the output retained so far as a snapshot. The remote session remains connected and later output is not added to that file."
         : "This saves the completed retained scrollback as a text file. Repeated saves receive a new filename and never overwrite an existing file.";
     }
     datastoreDialog.showModal();
@@ -664,7 +695,7 @@
 
   async function stopSession() {
     if (!selected || !active(selected)) return;
-    if (!window.confirm(`Stop '${selected.title}'? The SSH connection will close.`)) return;
+    if (!window.confirm(`Stop '${selected.title}'? The remote connection will close.`)) return;
     stopButton.disabled = true;
     await stopRemoteSession(selected, {dismiss: false, control: stopButton});
   }
@@ -672,7 +703,7 @@
   async function closeSessionTab(session, control) {
     if (!active(session)) return;
     if (!window.confirm(
-      `Close '${session.title}'? The SSH connection will stop, but its scrollback will remain in Recent sessions.`
+      `Close '${session.title}'? The remote connection will stop, but its scrollback will remain in Recent sessions.`
     )) return;
     control.disabled = true;
     await stopRemoteSession(session, {dismiss: true, control});
@@ -697,7 +728,7 @@
           .filter(active)
           .sort((left, right) => Number(left.created_at) - Number(right.created_at));
         const replacement = remaining[Math.min(closedIndex, remaining.length - 1)];
-        if (replacement) await openSession(replacement);
+        if (replacement) await openSession(replacement, {focus: true});
         else clearSelectedSession();
       } else if (closingSelected) {
         selected = data.session;
@@ -756,6 +787,7 @@
 
   function updateWorkspace(session) {
     sessionTitle.textContent = session.title;
+    if (sessionProtocol) sessionProtocol.textContent = `${protocolLabel(session)} session`;
     sessionTarget.textContent = `${session.remote_username}@${session.host}:${session.port}`;
     if (caseLink) {
       caseLink.hidden = !session.investigation_id;
@@ -832,18 +864,45 @@
     return {
       "ctrl-c": "\u0003",
       "ctrl-d": "\u0004",
+      "ctrl-y": "\u0019",
       backspace: terminal.keySequence("Backspace"),
       tab: "\t",
       up: terminal.keySequence("ArrowUp"),
       down: terminal.keySequence("ArrowDown"),
+      left: terminal.keySequence("ArrowLeft"),
+      right: terminal.keySequence("ArrowRight"),
       escape: "\u001b",
     }[name] || "";
+  }
+
+  async function pasteClipboard() {
+    if (!selected || selected.state !== "running") return;
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) {
+        showMessage("The clipboard is empty.");
+        return;
+      }
+      queueInput(terminal.formatPaste(text), true);
+    } catch (_error) {
+      showMessage("Clipboard access was blocked. Tap the terminal and use the device's Paste command.");
+    }
   }
 
   function focusTerminal() {
     if (inputCapture.disabled) return;
     inputCapture.focus({preventScroll: true});
     updateFocusState();
+  }
+
+  function editable(element) {
+    return Boolean(
+      element
+      && (
+        element.matches?.("input, textarea, select")
+        || element.isContentEditable
+      )
+    );
   }
 
   function updateFocusState() {
@@ -866,6 +925,10 @@
     }[session.state] || session.state;
   }
 
+  function protocolLabel(session) {
+    return String(session?.protocol || "ssh").toUpperCase();
+  }
+
   function showMessage(message, category = "warning") {
     sessionMessage.textContent = message;
     sessionMessage.className = `message ${category}`;
@@ -886,7 +949,7 @@
   const requested = workspace.dataset.requestedSession;
   if (requested) {
     const match = sessions.find((session) => session.id === requested);
-    if (match) openSession(match);
+    if (match) openSession(match, {reveal: false, focus: false});
   }
   window.TwnRemoteTerminal = {
     start: startPayload,

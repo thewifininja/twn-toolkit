@@ -75,6 +75,18 @@ class FakeSshOpener:
         return client
 
 
+class FakeTelnetOpener:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+        self.channels: list[FakeChannel] = []
+
+    def __call__(self, **options: object) -> FakeChannel:
+        self.calls.append(options)
+        channel = FakeChannel(b"Username: admin\r\nswitch# ready\r\n")
+        self.channels.append(channel)
+        return channel
+
+
 def wait_for_state(
     store: RemoteSessionStore, session_id: str, state: str, timeout: float = 2
 ) -> dict[str, object]:
@@ -225,10 +237,12 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.app = create_app(self.directory.name)
         self.app.testing = True
         self.opener = FakeSshOpener()
+        self.telnet_opener = FakeTelnetOpener()
         self.manager = RemoteSessionManager(
             RemoteSessionStore(self.directory.name),
             self.app.extensions["investigation_store"],
             ssh_opener=self.opener,
+            telnet_opener=self.telnet_opener,
         )
         self.app.extensions["remote_session_manager"] = self.manager
         self.client = self.app.test_client()
@@ -274,6 +288,59 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.assertEqual(stopped.status_code, 200)
         self.assertEqual(stopped.get_json()["session"]["state"], "stopped")
 
+    def test_telnet_uses_the_same_persistent_terminal_lifecycle(self) -> None:
+        response = self.start_session(
+            protocol="telnet",
+            port=23,
+            allow_unknown_hosts=True,
+            allow_legacy_algorithms=True,
+        )
+        self.assertEqual(response.status_code, 201)
+        session = response.get_json()["session"]
+        wait_for_state(self.manager.store, session["id"], "running")
+
+        self.assertEqual(session["protocol"], "telnet")
+        self.assertFalse(session["allow_unknown_hosts"])
+        self.assertFalse(session["allow_legacy_algorithms"])
+        self.assertEqual(
+            self.telnet_opener.calls[-1],
+            {
+                "hostname": "192.0.2.25",
+                "port": 23,
+                "username": "network-admin",
+                "password": "do-not-persist-this-password",
+                "width": 120,
+                "height": 32,
+            },
+        )
+
+        sent = self.client.post(session["input_url"], json={"data": "show clock\r"})
+        resized = self.client.post(
+            session["resize_url"], json={"columns": 96, "rows": 28}
+        )
+        stopped = self.client.post(session["stop_url"])
+
+        self.assertEqual(sent.status_code, 200)
+        self.assertEqual(self.telnet_opener.channels[0].sent, [b"show clock\r"])
+        self.assertEqual(resized.status_code, 200)
+        self.assertEqual(self.telnet_opener.channels[0].size, (96, 28))
+        self.assertEqual(stopped.get_json()["session"]["state"], "stopped")
+
+    def test_invalid_remote_protocol_is_rejected_before_connecting(self) -> None:
+        response = self.start_session(protocol="rlogin")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "Choose SSH or Telnet.")
+        self.assertEqual(self.opener.calls, [])
+        self.assertEqual(self.telnet_opener.calls, [])
+
+        host_response = self.client.post(
+            "/tools/remote-terminal/hosts",
+            json={"protocol": "rlogin", "credential_mode": "saved"},
+        )
+        self.assertEqual(host_response.status_code, 400)
+        self.assertEqual(host_response.get_json()["error"], "Choose SSH or Telnet.")
+
     def test_terminal_page_captures_keyboard_and_paste_inside_the_shell(self) -> None:
         response = self.client.get("/tools/remote-terminal")
         self.assertEqual(response.status_code, 200)
@@ -285,6 +352,11 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.assertIn(b"Type and paste directly into the terminal", response.data)
         self.assertIn(b'terminal-emulator.js', response.data)
         self.assertIn(b'data-terminal-key="backspace"', response.data)
+        self.assertIn(b'data-terminal-key="paste"', response.data)
+        self.assertIn(b'data-terminal-key="ctrl-y"', response.data)
+        self.assertIn(b'data-terminal-key="left"', response.data)
+        self.assertIn(b'data-terminal-key="right"', response.data)
+        self.assertIn(b'id="remote-terminal-protocol"', response.data)
         self.assertIn(b'id="remote-terminal-download"', response.data)
         self.assertIn(b'id="remote-terminal-delete"', response.data)
         self.assertIn(b"remote-connections.js", response.data)
@@ -347,6 +419,46 @@ class RemoteSessionRouteTests(unittest.TestCase):
                 "allow_legacy_algorithms": True,
             },
         )
+
+    def test_saved_telnet_host_uses_vault_credential_and_telnet_transport(self) -> None:
+        credential = self.client.post(
+            "/tools/remote-terminal/credentials",
+            json={
+                "name": "Legacy admin",
+                "username": "console-user",
+                "password": "vault-telnet-password",
+            },
+        ).get_json()["library"]["credentials"][0]
+        host_response = self.client.post(
+            "/tools/remote-terminal/hosts",
+            json={
+                "name": "Legacy access switch",
+                "host": "legacy.example.test",
+                "protocol": "telnet",
+                "port": 23,
+                "folder_id": "",
+                "credential_mode": "saved",
+                "credential_id": credential["id"],
+                "allow_unknown_hosts": True,
+                "allow_legacy_algorithms": True,
+            },
+        )
+        self.assertEqual(host_response.status_code, 201)
+        host = host_response.get_json()["library"]["hosts"][0]
+
+        response = self.client.post(
+            "/tools/remote-terminal/sessions", json={"host_id": host["id"]}
+        )
+        self.assertEqual(response.status_code, 201)
+        session = response.get_json()["session"]
+        wait_for_state(self.manager.store, session["id"], "running")
+
+        self.assertEqual(session["protocol"], "telnet")
+        self.assertEqual(self.telnet_opener.calls[-1]["username"], "console-user")
+        self.assertEqual(
+            self.telnet_opener.calls[-1]["password"], "vault-telnet-password"
+        )
+        self.assertEqual(self.opener.calls, [])
 
     def test_saved_host_supports_multiple_independently_named_sessions(self) -> None:
         credential = self.client.post(

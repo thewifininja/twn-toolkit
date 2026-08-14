@@ -5,7 +5,7 @@
   <div>
     <span class="eyebrow">Persistent remote access</span>
     <h1>Remote Terminal</h1>
-    <p>Quick-connect without saving anything, or organize reusable SSH connections and encrypted credentials in your private library.</p>
+    <p>Quick-connect without saving anything, or organize reusable SSH and Telnet connections with encrypted credentials in your private library.</p>
   </div>
   <div class="remote-terminal-primary-actions">
     <button type="button" data-open-quick-connect>Quick connect</button>
@@ -20,7 +20,7 @@
   data-credentials-url="{{ url_for('tools.create_remote_terminal_credential') }}"
   data-hosts-url="{{ url_for('tools.create_remote_terminal_host') }}"
 >
-  <aside class="panel remote-connection-explorer" aria-label="Saved SSH connections">
+  <aside class="panel remote-connection-explorer" aria-label="Saved remote connections">
     <header>
       <div>
         <h2>Connections</h2>
@@ -46,7 +46,7 @@
   <div class="remote-terminal-stage">
     <section class="panel remote-terminal-session-stage">
       <div class="remote-terminal-tabs-head">
-        <div class="remote-terminal-tabs" id="remote-terminal-tabs" role="tablist" aria-label="Active SSH sessions"></div>
+        <div class="remote-terminal-tabs" id="remote-terminal-tabs" role="tablist" aria-label="Active remote sessions"></div>
         <button class="secondary compact" id="remote-terminal-new-session" type="button" data-open-quick-connect hidden>Quick connect</button>
       </div>
       <div class="remote-terminal-stage-empty" id="remote-terminal-stage-empty">
@@ -85,16 +85,23 @@
         <p>Enter the destination first. A session name is optional and only helps identify its tab and history.</p>
       </div>
       <div class="form-grid remote-quick-target-grid">
+        <label>Protocol
+          <select id="remote-terminal-protocol">
+            <option value="ssh">SSH</option>
+            <option value="telnet">Telnet</option>
+          </select>
+        </label>
         <label>Host
           <input id="remote-terminal-host" type="text" maxlength="255" required placeholder="switch.example.com" autocomplete="off" autocapitalize="none" spellcheck="false">
         </label>
-        <label>SSH port
+        <label><span id="remote-terminal-port-label">SSH port</span>
           <input id="remote-terminal-port" type="number" min="1" max="65535" value="22" required>
         </label>
         <label>Session name <span class="inline-label-note">(optional)</span>
           <input id="remote-terminal-title" type="text" maxlength="100" placeholder="Core switch maintenance">
         </label>
       </div>
+      <p class="message warning remote-terminal-telnet-warning" data-quick-telnet-warning hidden>Telnet sends credentials and terminal traffic without encryption. Use it only on a trusted network.</p>
     </section>
     <fieldset class="remote-terminal-credential-choice">
       <legend>Credentials for this connection</legend>
@@ -103,7 +110,7 @@
         <label class="check"><input type="radio" name="quick_credential_mode" value="saved"><span>Saved credential<small>Use an existing shared vault entry.</small></span></label>
       </div>
       <div class="form-grid remote-terminal-credential-fields" data-quick-temporary>
-        <label>SSH username
+        <label>Username
           <input id="remote-terminal-username" type="text" maxlength="128" autocomplete="username" autocapitalize="none" spellcheck="false">
         </label>
         <label>Password
@@ -117,8 +124,8 @@
     <details class="remote-terminal-advanced-options">
       <summary>Connection options</summary>
       <div class="remote-terminal-options">
-        <label class="check"><input id="remote-terminal-unknown-host" type="checkbox"><span><strong>Trust this host key on first connection</strong><small>Accept an unknown host key without a separate confirmation.</small></span></label>
-        <label class="check"><input id="remote-terminal-legacy" type="checkbox"><span><strong>Allow legacy SSH algorithms</strong><small>Use only when an older device cannot negotiate modern algorithms.</small></span></label>
+        <label class="check" data-quick-ssh-option><input id="remote-terminal-unknown-host" type="checkbox"><span><strong>Trust this host key on first connection</strong><small>Accept an unknown host key without a separate confirmation.</small></span></label>
+        <label class="check" data-quick-ssh-option><input id="remote-terminal-legacy" type="checkbox"><span><strong>Allow legacy SSH algorithms</strong><small>Use only when an older device cannot negotiate modern algorithms.</small></span></label>
         <label class="check"><input id="remote-terminal-transcript" type="checkbox" {% if active_investigation and active_investigation.is_recording %}checked{% endif %}><span><strong>Retain transcript with the active case</strong><small>Store terminal output as case evidence while recording.</small></span></label>
       </div>
     </details>
@@ -150,10 +157,12 @@
     <input id="remote-host-id" type="hidden">
     <div class="form-grid remote-terminal-dialog-grid">
       <label>Display name<input id="remote-host-name" maxlength="100" required placeholder="Core Switch 01"></label>
-      <label>Host<input id="remote-host-address" maxlength="255" required placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"></label>
-      <label>SSH port<input id="remote-host-port" type="number" min="1" max="65535" value="22" required></label>
       <label>Folder<select id="remote-host-folder"></select></label>
+      <label>Protocol<select id="remote-host-protocol"><option value="ssh">SSH</option><option value="telnet">Telnet</option></select></label>
+      <label class="remote-host-address-field">Host<input id="remote-host-address" maxlength="255" required placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"></label>
+      <label><span id="remote-host-port-label">SSH port</span><input id="remote-host-port" type="number" min="1" max="65535" value="22" required></label>
     </div>
+    <p class="message warning remote-terminal-telnet-warning" data-host-telnet-warning hidden>Telnet sends credentials and terminal traffic without encryption. Use it only on a trusted network.</p>
     <fieldset class="remote-terminal-credential-choice">
       <legend>Credential assignment</legend>
       <div class="remote-terminal-choice-row">
@@ -163,11 +172,11 @@
       <label data-host-saved>Saved credential<select id="remote-host-credential"></select></label>
       <div class="form-grid remote-terminal-credential-fields" data-host-specific hidden>
         <label>Credential name<input id="remote-host-credential-name" maxlength="100" placeholder="Core Switch 01 credentials"></label>
-        <label>SSH username<input id="remote-host-username" maxlength="128" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+        <label>Username<input id="remote-host-username" maxlength="128" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
         <label>Password <span class="inline-label-note">(write-only)</span><input id="remote-host-password" type="password" autocomplete="new-password" placeholder="Required for a new credential"></label>
       </div>
     </fieldset>
-    <div class="remote-terminal-options compact-options">
+    <div class="remote-terminal-options compact-options" data-host-ssh-options>
       <label class="check"><input id="remote-host-unknown" type="checkbox"><span>Trust this host key on first connection</span></label>
       <label class="check"><input id="remote-host-legacy" type="checkbox"><span>Allow legacy SSH algorithms</span></label>
     </div>
@@ -195,11 +204,11 @@
       <form class="form" id="remote-credential-form">
         <input id="remote-credential-id" type="hidden">
         <div class="remote-credential-editor-head">
-          <div><h3 id="remote-credential-editor-title">New credential</h3><p>Enter the identity used to authenticate to SSH devices.</p></div>
+          <div><h3 id="remote-credential-editor-title">New credential</h3><p>Enter the identity used to authenticate to SSH or Telnet devices.</p></div>
         </div>
         <div class="form-grid remote-credential-core-fields">
           <label>Credential name<input id="remote-credential-name" maxlength="100" required placeholder="Network administrator"></label>
-          <label>SSH username<input id="remote-credential-username" maxlength="128" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="admin"></label>
+          <label>Username<input id="remote-credential-username" maxlength="128" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="admin"></label>
         </div>
         <label>Password <span class="inline-label-note">(write-only)</span><input id="remote-credential-password" type="password" autocomplete="new-password" placeholder="Required for a new credential"></label>
         <p class="field-note" id="remote-credential-scope-note">Shared credentials can be assigned to multiple saved hosts or used by Quick Connect.</p>

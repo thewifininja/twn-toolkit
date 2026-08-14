@@ -124,7 +124,7 @@ class AccessProfilesBackupStore:
 
 
 class RemoteConnectionBackupStore:
-    """Export owner-name keyed SSH libraries with plaintext only inside the outer cipher."""
+    """Export owner-name keyed remote libraries with plaintext only inside the outer cipher."""
 
     def __init__(
         self,
@@ -228,10 +228,10 @@ class RemoteConnectionBackupStore:
                     connection.execute(
                         """
                         INSERT INTO remote_connection_hosts
-                            (id, user_id, name, host, port, folder_id,
+                            (id, user_id, name, host, port, protocol, folder_id,
                              credential_id, allow_unknown_hosts,
                              allow_legacy_algorithms, notes, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         host,
                     )
@@ -390,19 +390,24 @@ class RemoteConnectionBackupStore:
                 raise ValueError("Remote Terminal host names must be unique within a folder.")
             host_names.add(unique_key)
             host = self.store._hostname(item.get("host", ""))
+            protocol = str(item.get("protocol", "ssh")).strip().lower()
+            if protocol not in {"ssh", "telnet"}:
+                raise ValueError("Remote Terminal protocol must be SSH or Telnet.")
             try:
-                port = int(item.get("port", 22))
+                port = int(item.get("port", 23 if protocol == "telnet" else 22))
             except (TypeError, ValueError) as exc:
-                raise ValueError("Remote Terminal SSH ports must be whole numbers.") from exc
+                raise ValueError("Remote Terminal ports must be whole numbers.") from exc
             if not 1 <= port <= 65535:
-                raise ValueError("Remote Terminal SSH ports must be 1–65535.")
+                raise ValueError("Remote Terminal ports must be 1–65535.")
             notes = str(item.get("notes", "")).strip()[:1000]
             host_credentials[old_id] = old_credential
             host_rows.append(
                 (
-                    host_ids[old_id], user_id, name, host, port, folder_id,
-                    credential_ids[old_credential], int(bool(item.get("allow_unknown_hosts"))),
-                    int(bool(item.get("allow_legacy_algorithms"))), notes, now, now,
+                    host_ids[old_id], user_id, name, host, port, protocol, folder_id,
+                    credential_ids[old_credential],
+                    int(bool(item.get("allow_unknown_hosts")) and protocol == "ssh"),
+                    int(bool(item.get("allow_legacy_algorithms")) and protocol == "ssh"),
+                    notes, now, now,
                 )
             )
         for item in raw_credentials:

@@ -393,9 +393,9 @@ body {
   display: inline-grid;
   gap: 4px;
   justify-content: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px;
-  width: 42px;
+  width: 44px;
 }
 
 .sidebar-toggle span {
@@ -403,6 +403,7 @@ body {
   border-radius: 999px;
   display: block;
   height: 2px;
+  pointer-events: none;
   width: 20px;
 }
 
@@ -1364,6 +1365,30 @@ textarea {
   min-height: 42px;
   padding: 9px 11px;
   width: 100%;
+}
+
+button,
+.button-link,
+summary {
+  touch-action: manipulation;
+}
+
+button > [aria-hidden="true"] {
+  pointer-events: none;
+}
+
+@media (max-width: 900px), (any-pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not(.remote-terminal-input-capture),
+  select,
+  textarea:not(.remote-terminal-input-capture) {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  button,
+  .button-link {
+    min-height: 44px;
+  }
 }
 
 input:focus,
@@ -15350,7 +15375,7 @@ th {
 }
 
 .remote-quick-target-grid {
-  grid-template-columns: minmax(0, 1fr) 112px;
+  grid-template-columns: 130px minmax(0, 1fr) 112px;
 }
 
 .remote-quick-target-grid label:last-child {
@@ -15358,12 +15383,20 @@ th {
 }
 
 .remote-terminal-dialog-grid {
-  grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr) minmax(100px, .45fr);
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.35fr) 130px;
 }
 
 .remote-terminal-dialog-grid label:first-child,
 .remote-terminal-dialog-grid label:nth-child(2) {
   grid-column: span 1;
+}
+
+.remote-host-address-field {
+  grid-column: span 2;
+}
+
+.remote-terminal-telnet-warning {
+  margin: 0;
 }
 
 .remote-terminal-credential-choice {
@@ -15696,6 +15729,10 @@ th {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .remote-host-address-field {
+    grid-column: auto;
+  }
+
   .remote-credential-manager-body > aside {
     max-height: 250px;
   }
@@ -15729,6 +15766,14 @@ th {
 
   .remote-terminal-tab-shell {
     flex-basis: 210px;
+    grid-template-columns: minmax(0, 1fr) 44px 44px;
+    min-height: 48px;
+  }
+
+  .remote-terminal-tab-action {
+    height: 44px;
+    min-height: 44px;
+    width: 44px;
   }
 
   .remote-terminal-stage-empty {
@@ -15741,7 +15786,7 @@ th {
   }
 
   .remote-quick-target-grid {
-    grid-template-columns: minmax(0, 1fr) 92px;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .remote-terminal-dialog {
@@ -17377,6 +17422,7 @@ button.danger:hover {
   caret-color: transparent;
   height: 1px;
   inset: auto auto 12px 12px;
+  min-height: 1px;
   opacity: 0.01;
   overflow: hidden;
   padding: 0;

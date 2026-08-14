@@ -92,6 +92,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 )
                 host = str(saved_host["host"])
                 port = int(saved_host["port"])
+                protocol = _protocol(saved_host.get("protocol", "ssh"))
                 remote_username = credential["username"]
                 password = credential["password"]
                 default_title = str(saved_host["name"])
@@ -100,8 +101,10 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                     saved_host["allow_legacy_algorithms"]
                 )
             else:
+                protocol = _protocol(payload.get("protocol", "ssh"))
                 host = _host(payload.get("host", ""))
-                port = _integer(payload.get("port", 22), "SSH port", 1, 65535)
+                default_port = 23 if protocol == "telnet" else 22
+                port = _integer(payload.get("port", default_port), "Port", 1, 65535)
                 credential_id = str(payload.get("credential_id", "")).strip()
                 if credential_id:
                     credential = _connection_store().resolve_credential(
@@ -111,14 +114,16 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                     password = credential["password"]
                 else:
                     remote_username = _text(
-                        payload.get("username", ""), "SSH username", 128
+                        payload.get("username", ""), "Username", 128
                     )
                     password = str(payload.get("password", ""))
                     if not password:
-                        raise RemoteSessionError("Enter the SSH password.")
+                        raise RemoteSessionError("Enter the password.")
                 default_title = f"{remote_username}@{host}"
-                allow_unknown_hosts = bool(payload.get("allow_unknown_hosts", False))
-                allow_legacy_algorithms = bool(
+                allow_unknown_hosts = protocol == "ssh" and bool(
+                    payload.get("allow_unknown_hosts", False)
+                )
+                allow_legacy_algorithms = protocol == "ssh" and bool(
                     payload.get("allow_legacy_algorithms", False)
                 )
             title = " ".join(str(payload.get("title", "")).strip().split())
@@ -132,7 +137,8 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             record_transcript = bool(
                 payload.get("record_transcript", bool(investigation_id))
             )
-            session = _manager().start_ssh_session(
+            session = _manager().start_session(
+                protocol=protocol,
                 user_id=user["id"],
                 username=user["username"],
                 title=title or default_title,
@@ -154,12 +160,12 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         annotate_audit_event(
             category="Network tools",
             action="remote_terminal.session_started",
-            summary="Started a persistent remote SSH session.",
+            summary=f"Started a persistent remote {protocol.upper()} session.",
             resource_type="remote_session",
             resource_id=str(session["id"]),
             resource_name=str(session["title"]),
             details={
-                "protocol": "SSH",
+                "protocol": protocol.upper(),
                 "host": host,
                 "port": port,
                 "remote username": remote_username,
@@ -170,7 +176,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         )
         record_current_activity(
             "Network tools",
-            "Started persistent SSH session",
+            f"Started persistent {protocol.upper()} session",
             f"{host}:{port}",
             count_action=True,
         )
@@ -261,7 +267,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": str(exc)}), 404
         _annotate_library_change(
             "credential_duplicated",
-            "Duplicated encrypted SSH credential.",
+            "Duplicated encrypted remote credential.",
             credential,
             resource_type="remote_credential",
         )
@@ -292,7 +298,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": str(exc)}), 409
         _annotate_library_change(
             "credential_deleted",
-            "Deleted encrypted SSH credential.",
+            "Deleted encrypted remote credential.",
             existing,
             resource_type="remote_credential",
         )
@@ -315,7 +321,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             suppress_audit_event()
             return jsonify({"error": str(exc)}), 404
         _annotate_library_change(
-            "host_duplicated", "Duplicated saved SSH host.", host,
+            "host_duplicated", "Duplicated saved remote host.", host,
             resource_type="remote_host",
         )
         return _library_response(user["id"], 201)
@@ -329,7 +335,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": "Saved host not found."}), 404
         _connection_store().delete_host(host_id, user_id=user["id"])
         _annotate_library_change(
-            "host_deleted", "Deleted saved SSH host.", existing,
+            "host_deleted", "Deleted saved remote host.", existing,
             resource_type="remote_host",
         )
         return _library_response(user["id"])
@@ -594,7 +600,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             annotate_audit_event(
                 category="Network tools",
                 action="remote_terminal.session_stopped",
-                summary="Stopped a persistent remote SSH session.",
+                summary="Stopped a persistent remote terminal session.",
                 resource_type="remote_session",
                 resource_id=str(session["id"]),
                 resource_name=str(session["title"]),
@@ -630,7 +636,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         annotate_audit_event(
             category="Network tools",
             action="remote_terminal.session_renamed",
-            summary="Renamed a remote SSH session.",
+            summary="Renamed a remote terminal session.",
             resource_type="remote_session",
             resource_id=session_id,
             resource_name=title,
@@ -673,9 +679,9 @@ def _save_remote_terminal_credential(credential_id: str = ""):
     _annotate_library_change(
         "credential_updated" if credential_id else "credential_created",
         (
-            "Updated encrypted SSH credential."
+            "Updated encrypted remote credential."
             if credential_id
-            else "Created encrypted SSH credential."
+            else "Created encrypted remote credential."
         ),
         credential,
         resource_type="remote_credential",
@@ -703,12 +709,19 @@ def _save_remote_terminal_host(host_id: str = ""):
         suppress_audit_event()
         return jsonify({"error": "Choose saved or host-specific credentials."}), 400
     try:
+        protocol = _protocol(payload.get("protocol", "ssh"))
         host = _connection_store().save_host(
             user_id=user["id"],
             host_id=host_id,
             name=str(payload.get("name", "")),
             host=str(payload.get("host", "")),
-            port=_integer(payload.get("port", 22), "SSH port", 1, 65535),
+            port=_integer(
+                payload.get("port", 23 if protocol == "telnet" else 22),
+                "Port",
+                1,
+                65535,
+            ),
+            protocol=protocol,
             folder_id=str(payload.get("folder_id", "")),
             credential_id=str(payload.get("credential_id", "")),
             allow_unknown_hosts=bool(payload.get("allow_unknown_hosts", False)),
@@ -723,12 +736,13 @@ def _save_remote_terminal_host(host_id: str = ""):
         return jsonify({"error": str(exc)}), 400
     _annotate_library_change(
         "host_updated" if host_id else "host_created",
-        "Updated saved SSH host." if host_id else "Created saved SSH host.",
+        "Updated saved remote host." if host_id else "Created saved remote host.",
         host,
         resource_type="remote_host",
         details={
             "host": host["host"],
             "port": host["port"],
+            "protocol": str(host["protocol"]).upper(),
             "folder assigned": bool(host["folder_id"]),
             "credential mode": (
                 "host-specific"
@@ -869,6 +883,13 @@ def _host(value: object) -> str:
     ):
         raise RemoteSessionError("Enter a valid host name or IP address.")
     return host
+
+
+def _protocol(value: object) -> str:
+    protocol = str(value).strip().lower()
+    if protocol not in {"ssh", "telnet"}:
+        raise RemoteSessionError("Choose SSH or Telnet.")
+    return protocol
 
 
 def _text(value: object, label: str, maximum: int) -> str:

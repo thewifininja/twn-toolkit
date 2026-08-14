@@ -121,11 +121,12 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
                 user_id=source_user["id"],
                 name="Branch router",
                 host="192.0.2.10",
-                port=22,
+                port=23,
+                protocol="telnet",
                 folder_id=folder["id"],
                 credential_id=credential["id"],
-                allow_unknown_hosts=False,
-                allow_legacy_algorithms=False,
+                allow_unknown_hosts=True,
+                allow_legacy_algorithms=True,
             )
 
             source_item = selected_backup_items(
@@ -156,6 +157,10 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
 
             self.assertEqual(imported, [("Remote Terminal libraries", 1)])
             self.assertEqual(resolved["password"], "source-only-secret")
+            self.assertEqual(library["hosts"][0]["protocol"], "telnet")
+            self.assertEqual(library["hosts"][0]["port"], 23)
+            self.assertFalse(library["hosts"][0]["allow_unknown_hosts"])
+            self.assertFalse(library["hosts"][0]["allow_legacy_algorithms"])
             self.assertNotIn(
                 b"source-only-secret",
                 Path(destination, "remote_connections.sqlite3").read_bytes(),
