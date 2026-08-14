@@ -244,6 +244,7 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
         "tools.snmp_interface_samples",
         "tools.snmp_interfaces",
         "tools.remote_terminal_input",
+        "tools.remote_terminal_credential",
         "tools.resize_remote_terminal_session",
     }
 )

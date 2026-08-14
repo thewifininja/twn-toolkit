@@ -14922,6 +14922,42 @@ th {
   display: none;
 }
 
+@container (max-width: 290px) {
+  .remote-connection-folder-head,
+  .remote-connection-explorer .remote-connection-host {
+    grid-template-columns: minmax(0, 1fr) 26px;
+  }
+
+  .remote-connection-folder-toggle {
+    gap: 5px;
+    grid-template-columns: 13px minmax(0, 1fr);
+    padding-left: 4px;
+  }
+
+  .remote-connection-folder-toggle small {
+    display: none;
+  }
+
+  .remote-connection-folder-menu-trigger,
+  .remote-connection-host-manage {
+    width: 26px;
+  }
+
+  .remote-connection-folder-body {
+    margin-left: 6px;
+    padding-left: 3px;
+  }
+
+  .remote-connection-explorer .remote-connection-host-connect {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 4px;
+  }
+
+  .remote-connection-explorer .remote-connection-host-icon {
+    display: none;
+  }
+}
+
 .remote-connection-host {
   align-items: stretch;
   border-radius: 8px;
@@ -17470,6 +17506,29 @@ button.danger:hover {
   max-width: 720px;
 }
 
+.remote-terminal-credential-controls {
+  align-items: center;
+  background: color-mix(in srgb, var(--warn) 9%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--warn) 32%, var(--line));
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 8px;
+}
+
+.remote-terminal-credential-controls > span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding-inline: 4px;
+}
+
+.remote-terminal-credential-controls button {
+  min-height: 36px;
+  padding-block: 7px;
+}
+
 .remote-terminal-control-row {
   display: flex;
   flex-wrap: wrap;
@@ -17644,6 +17703,15 @@ button.danger:hover {
   .remote-terminal-control-row {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .remote-terminal-credential-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .remote-terminal-credential-controls > span {
+    grid-column: 1 / -1;
   }
 
   .remote-terminal-control-row button {

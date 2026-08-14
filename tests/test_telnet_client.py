@@ -47,15 +47,13 @@ class TelnetChannelTests(unittest.TestCase):
         return (
             TelnetChannel(
                 connection,  # type: ignore[arg-type]
-                username="netadmin",
-                password="cleartext-secret",
                 width=100,
                 height=32,
             ),
             connection,
         )
 
-    def test_negotiates_options_and_answers_common_login_prompts(self) -> None:
+    def test_negotiates_options_without_guessing_login_prompts(self) -> None:
         channel, connection = self.channel(
             bytes((IAC, WILL, ECHO, IAC, DO, WINDOW_SIZE)) + b"Username: ",
             b"Password: ",
@@ -64,10 +62,10 @@ class TelnetChannelTests(unittest.TestCase):
         self.assertEqual(channel.recv(4096), b"Username: ")
         self.assertIn(bytes((IAC, DO, ECHO)), connection.sent)
         self.assertIn(bytes((IAC, WILL, WINDOW_SIZE)), connection.sent)
-        self.assertIn(b"netadmin\r\n", connection.sent)
+        self.assertNotIn(b"netadmin\r\n", connection.sent)
 
         self.assertEqual(channel.recv(4096), b"Password: ")
-        self.assertIn(b"cleartext-secret\r\n", connection.sent)
+        self.assertNotIn(b"cleartext-secret\r\n", connection.sent)
 
     def test_terminal_type_and_resize_subnegotiation(self) -> None:
         channel, connection = self.channel(

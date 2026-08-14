@@ -141,6 +141,39 @@ class RemoteConnectionStoreTests(unittest.TestCase):
         self.assertFalse(host["allow_unknown_hosts"])
         self.assertFalse(host["allow_legacy_algorithms"])
 
+    def test_telnet_host_can_be_saved_without_a_credential(self) -> None:
+        host = self.store.save_host(
+            user_id="operator",
+            name="Manual login switch",
+            host="192.0.2.24",
+            port=23,
+            protocol="telnet",
+            folder_id="",
+            credential_id="",
+            allow_unknown_hosts=False,
+            allow_legacy_algorithms=False,
+        )
+        copied = self.store.duplicate_host(host["id"], user_id="operator")
+
+        self.assertEqual(host["credential_id"], "")
+        self.assertEqual(host["remote_username"], "")
+        self.assertEqual(copied["credential_id"], "")
+        self.assertEqual(len(self.store.library_for_user("operator")["hosts"]), 2)
+        self.store.delete_host(host["id"], user_id="operator")
+
+        with self.assertRaisesRegex(RemoteConnectionError, "saved SSH hosts"):
+            self.store.save_host(
+                user_id="operator",
+                name="Invalid SSH host",
+                host="192.0.2.25",
+                port=22,
+                protocol="ssh",
+                folder_id="",
+                credential_id="",
+                allow_unknown_hosts=False,
+                allow_legacy_algorithms=False,
+            )
+
     def test_duplicate_folder_copies_nested_hosts(self) -> None:
         credential = self.store.save_credential(
             user_id="operator",

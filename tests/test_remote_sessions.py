@@ -302,18 +302,24 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.assertEqual(session["protocol"], "telnet")
         self.assertFalse(session["allow_unknown_hosts"])
         self.assertFalse(session["allow_legacy_algorithms"])
+        self.assertTrue(session["telnet_username_available"])
+        self.assertTrue(session["telnet_password_available"])
         self.assertEqual(
             self.telnet_opener.calls[-1],
             {
                 "hostname": "192.0.2.25",
                 "port": 23,
-                "username": "network-admin",
-                "password": "do-not-persist-this-password",
                 "width": 120,
                 "height": 32,
             },
         )
 
+        sent_username = self.client.post(
+            session["credential_url"], json={"field": "username"}
+        )
+        sent_password = self.client.post(
+            session["credential_url"], json={"field": "password"}
+        )
         sent = self.client.post(session["input_url"], json={"data": "show clock\r"})
         resized = self.client.post(
             session["resize_url"], json={"columns": 96, "rows": 28}
@@ -321,7 +327,21 @@ class RemoteSessionRouteTests(unittest.TestCase):
         stopped = self.client.post(session["stop_url"])
 
         self.assertEqual(sent.status_code, 200)
-        self.assertEqual(self.telnet_opener.channels[0].sent, [b"show clock\r"])
+        self.assertEqual(sent_username.status_code, 200)
+        self.assertEqual(sent_password.status_code, 200)
+        self.assertNotIn(
+            "do-not-persist-this-password", str(sent_password.get_json())
+        )
+        retained = b"".join(
+            path.read_bytes()
+            for path in Path(self.directory.name).iterdir()
+            if path.is_file()
+        )
+        self.assertNotIn(b"do-not-persist-this-password", retained)
+        self.assertEqual(
+            self.telnet_opener.channels[0].sent,
+            [b"network-admin\r", b"do-not-persist-this-password\r", b"show clock\r"],
+        )
         self.assertEqual(resized.status_code, 200)
         self.assertEqual(self.telnet_opener.channels[0].size, (96, 28))
         self.assertEqual(stopped.get_json()["session"]["state"], "stopped")
@@ -356,6 +376,9 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.assertIn(b'data-terminal-key="ctrl-y"', response.data)
         self.assertIn(b'data-terminal-key="left"', response.data)
         self.assertIn(b'data-terminal-key="right"', response.data)
+        self.assertIn(b'data-telnet-credential="username"', response.data)
+        self.assertIn(b'data-telnet-credential="password"', response.data)
+        self.assertIn(b'value="none"', response.data)
         self.assertIn(b'id="remote-terminal-protocol"', response.data)
         self.assertIn(b'id="remote-terminal-download"', response.data)
         self.assertIn(b'id="remote-terminal-delete"', response.data)
@@ -454,11 +477,64 @@ class RemoteSessionRouteTests(unittest.TestCase):
         wait_for_state(self.manager.store, session["id"], "running")
 
         self.assertEqual(session["protocol"], "telnet")
-        self.assertEqual(self.telnet_opener.calls[-1]["username"], "console-user")
+        self.assertNotIn("username", self.telnet_opener.calls[-1])
+        self.assertNotIn("password", self.telnet_opener.calls[-1])
+        sent_username = self.client.post(
+            session["credential_url"], json={"field": "username"}
+        )
+        sent_password = self.client.post(
+            session["credential_url"], json={"field": "password"}
+        )
+        self.assertEqual(sent_username.status_code, 200)
+        self.assertEqual(sent_password.status_code, 200)
         self.assertEqual(
-            self.telnet_opener.calls[-1]["password"], "vault-telnet-password"
+            self.telnet_opener.channels[-1].sent,
+            [b"console-user\r", b"vault-telnet-password\r"],
         )
         self.assertEqual(self.opener.calls, [])
+
+    def test_telnet_can_connect_without_credentials(self) -> None:
+        response = self.start_session(
+            protocol="telnet", port=23, username="", password=""
+        )
+        self.assertEqual(response.status_code, 201)
+        session = response.get_json()["session"]
+        wait_for_state(self.manager.store, session["id"], "running")
+
+        self.assertEqual(session["remote_username"], "")
+        self.assertFalse(session["telnet_username_available"])
+        self.assertFalse(session["telnet_password_available"])
+        self.assertNotIn("@", session["title"])
+        unavailable = self.client.post(
+            session["credential_url"], json={"field": "password"}
+        )
+        self.assertEqual(unavailable.status_code, 409)
+        self.assertIn("No password was provided", unavailable.get_json()["error"])
+
+        host_response = self.client.post(
+            "/tools/remote-terminal/hosts",
+            json={
+                "name": "Manual Telnet",
+                "host": "manual.example.test",
+                "protocol": "telnet",
+                "port": 23,
+                "folder_id": "",
+                "credential_mode": "none",
+            },
+        )
+        self.assertEqual(host_response.status_code, 201)
+        host = host_response.get_json()["library"]["hosts"][0]
+        self.assertEqual(host["credential_id"], "")
+        saved_response = self.client.post(
+            "/tools/remote-terminal/sessions", json={"host_id": host["id"]}
+        )
+        self.assertEqual(saved_response.status_code, 201)
+        saved_session = saved_response.get_json()["session"]
+        self.assertFalse(saved_session["telnet_username_available"])
+        self.assertFalse(saved_session["telnet_password_available"])
+
+        ssh_response = self.start_session(username="", password="")
+        self.assertEqual(ssh_response.status_code, 400)
 
     def test_saved_host_supports_multiple_independently_named_sessions(self) -> None:
         credential = self.client.post(
@@ -550,6 +626,31 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.assertEqual(session["investigation_id"], case["id"])
         self.assertEqual(session["investigation_title"], "Firewall outage")
         self.assertTrue(session["record_transcript"])
+        recording_page = self.client.get("/tools/remote-terminal")
+        self.assertNotIn(b'id="remote-terminal-transcript"', recording_page.data)
+
+        recording_cannot_opt_out = self.client.post(
+            "/tools/remote-terminal/sessions",
+            json={"host_id": host["id"], "record_transcript": False},
+        ).get_json()["session"]
+        self.assertEqual(recording_cannot_opt_out["investigation_id"], case["id"])
+        self.assertTrue(recording_cannot_opt_out["record_transcript"])
+
+        investigation_store.set_state(
+            case["id"], "test-user", "test-user", "paused"
+        )
+        paused_default = self.client.post(
+            "/tools/remote-terminal/sessions", json={"host_id": host["id"]}
+        ).get_json()["session"]
+        self.assertEqual(paused_default["investigation_id"], "")
+        self.assertFalse(paused_default["record_transcript"])
+
+        paused_explicit_capture = self.client.post(
+            "/tools/remote-terminal/sessions",
+            json={"host_id": host["id"], "record_transcript": True},
+        ).get_json()["session"]
+        self.assertEqual(paused_explicit_capture["investigation_id"], "")
+        self.assertFalse(paused_explicit_capture["record_transcript"])
 
     def test_quick_connect_can_use_saved_credential_without_saving_host(self) -> None:
         created = self.client.post(
@@ -741,6 +842,30 @@ class RemoteSessionRouteTests(unittest.TestCase):
             session["id"], user_id="test-user"
         )
         self.assertEqual(stopped["state"], "stopped")
+
+    def test_second_web_worker_requests_telnet_credential_from_owner(self) -> None:
+        response = self.start_session(protocol="telnet", port=23)
+        session = response.get_json()["session"]
+        wait_for_state(self.manager.store, session["id"], "running")
+        owned = self.manager.store.get_session(session["id"])
+        if not owned or not owned.get("_control_path"):
+            self.skipTest("Unix-domain sockets are blocked in this test sandbox.")
+        second_worker = RemoteSessionManager(
+            RemoteSessionStore(self.directory.name),
+            self.app.extensions["investigation_store"],
+            telnet_opener=FakeTelnetOpener(),
+        )
+
+        accepted = second_worker.send_telnet_credential(
+            session["id"], user_id="test-user", field="password"
+        )
+
+        self.assertEqual(accepted, len(b"do-not-persist-this-password\r"))
+        self.assertEqual(
+            self.telnet_opener.channels[0].sent,
+            [b"do-not-persist-this-password\r"],
+        )
+        second_worker.close()
 
     def test_credentials_and_terminal_input_are_not_persisted(self) -> None:
         response = self.start_session()

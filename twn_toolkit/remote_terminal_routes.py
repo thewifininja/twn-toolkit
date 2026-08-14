@@ -85,16 +85,23 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 )
                 if not saved_host:
                     raise RemoteSessionError("Saved host not found.")
-                credential = _connection_store().resolve_credential(
-                    str(saved_host["credential_id"]),
-                    user_id=user["id"],
-                    host_id=source_host_id,
-                )
                 host = str(saved_host["host"])
                 port = int(saved_host["port"])
                 protocol = _protocol(saved_host.get("protocol", "ssh"))
-                remote_username = credential["username"]
-                password = credential["password"]
+                credential_id = str(saved_host.get("credential_id", ""))
+                if credential_id:
+                    credential = _connection_store().resolve_credential(
+                        credential_id,
+                        user_id=user["id"],
+                        host_id=source_host_id,
+                    )
+                    remote_username = credential["username"]
+                    password = credential["password"]
+                elif protocol == "telnet":
+                    remote_username = ""
+                    password = ""
+                else:  # pragma: no cover - the saved-host store rejects this
+                    raise RemoteSessionError("The saved SSH host has no credential.")
                 default_title = str(saved_host["name"])
                 allow_unknown_hosts = bool(saved_host["allow_unknown_hosts"])
                 allow_legacy_algorithms = bool(
@@ -113,13 +120,22 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                     remote_username = credential["username"]
                     password = credential["password"]
                 else:
-                    remote_username = _text(
-                        payload.get("username", ""), "Username", 128
-                    )
                     password = str(payload.get("password", ""))
-                    if not password:
-                        raise RemoteSessionError("Enter the password.")
-                default_title = f"{remote_username}@{host}"
+                    if protocol == "telnet":
+                        remote_username = _optional_remote_username(
+                            payload.get("username", "")
+                        )
+                    else:
+                        remote_username = _text(
+                            payload.get("username", ""), "Username", 128
+                        )
+                        if not password:
+                            raise RemoteSessionError("Enter the password.")
+                if len(password.encode("utf-8")) > REMOTE_SESSION_INPUT_LIMIT_BYTES:
+                    raise RemoteSessionError("The password is too large.")
+                default_title = (
+                    f"{remote_username}@{host}" if remote_username else host
+                )
                 allow_unknown_hosts = protocol == "ssh" and bool(
                     payload.get("allow_unknown_hosts", False)
                 )
@@ -134,9 +150,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             columns = _integer(payload.get("columns", 120), "Columns", 40, 300)
             rows = _integer(payload.get("rows", 32), "Rows", 10, 120)
             investigation_id = _recording_case_id(user["id"])
-            record_transcript = bool(
-                payload.get("record_transcript", bool(investigation_id))
-            )
+            record_transcript = bool(investigation_id)
             session = _manager().start_session(
                 protocol=protocol,
                 user_id=user["id"],
@@ -563,6 +577,20 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": str(exc)}), 409
         return jsonify({"accepted_bytes": len(data.encode("utf-8"))})
 
+    @tools_bp.post("/remote-terminal/sessions/<session_id>/credential")
+    def remote_terminal_credential(session_id: str):
+        suppress_audit_event()
+        payload = request.get_json(silent=True) or {}
+        try:
+            accepted_bytes = _manager().send_telnet_credential(
+                session_id,
+                user_id=_current_user()["id"],
+                field=str(payload.get("field", "")),
+            )
+        except RemoteSessionError as exc:
+            return jsonify({"error": str(exc)}), 409
+        return jsonify({"accepted_bytes": accepted_bytes})
+
     @tools_bp.post("/remote-terminal/sessions/<session_id>/resize")
     def resize_remote_terminal_session(session_id: str):
         suppress_audit_event()
@@ -705,9 +733,13 @@ def _save_remote_terminal_host(host_id: str = ""):
             "username": str(payload.get("host_username", "")),
             "password": str(payload.get("host_password", "")),
         }
+    elif credential_mode == "none":
+        pass
     elif credential_mode != "saved":
         suppress_audit_event()
-        return jsonify({"error": "Choose saved or host-specific credentials."}), 400
+        return jsonify(
+            {"error": "Choose saved, host-specific, or no credentials."}
+        ), 400
     try:
         protocol = _protocol(payload.get("protocol", "ssh"))
         host = _connection_store().save_host(
@@ -723,7 +755,11 @@ def _save_remote_terminal_host(host_id: str = ""):
             ),
             protocol=protocol,
             folder_id=str(payload.get("folder_id", "")),
-            credential_id=str(payload.get("credential_id", "")),
+            credential_id=(
+                ""
+                if credential_mode == "none"
+                else str(payload.get("credential_id", ""))
+            ),
             allow_unknown_hosts=bool(payload.get("allow_unknown_hosts", False)),
             allow_legacy_algorithms=bool(
                 payload.get("allow_legacy_algorithms", False)
@@ -747,7 +783,7 @@ def _save_remote_terminal_host(host_id: str = ""):
             "credential mode": (
                 "host-specific"
                 if host["credential_scope_host_id"] == host["id"]
-                else "shared"
+                else "shared" if host["credential_id"] else "none"
             ),
         },
     )
@@ -898,6 +934,13 @@ def _text(value: object, label: str, maximum: int) -> str:
         raise RemoteSessionError(f"Enter the {label.lower()}.")
     if len(clean) > maximum:
         raise RemoteSessionError(f"{label} must be {maximum} characters or fewer.")
+    return clean
+
+
+def _optional_remote_username(value: object) -> str:
+    clean = str(value).strip()
+    if len(clean) > 128 or any(character in "\r\n\x00" for character in clean):
+        raise RemoteSessionError("Enter a valid username.")
     return clean
 
 

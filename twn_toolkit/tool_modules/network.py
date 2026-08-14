@@ -516,6 +516,7 @@ def register_tools(registry: Any) -> None:
             "tools.save_remote_terminal_scrollback": "tools.remote_terminal",
             "tools.delete_remote_terminal_scrollback": "tools.remote_terminal",
             "tools.remote_terminal_input": "tools.remote_terminal",
+            "tools.remote_terminal_credential": "tools.remote_terminal",
             "tools.resize_remote_terminal_session": "tools.remote_terminal",
             "tools.stop_remote_terminal_session": "tools.remote_terminal",
             "tools.rename_remote_terminal_session": "tools.remote_terminal",

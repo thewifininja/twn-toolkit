@@ -101,13 +101,14 @@
           <input id="remote-terminal-title" type="text" maxlength="100" placeholder="Core switch maintenance">
         </label>
       </div>
-      <p class="message warning remote-terminal-telnet-warning" data-quick-telnet-warning hidden>Telnet sends credentials and terminal traffic without encryption. Use it only on a trusted network.</p>
+      <p class="message warning remote-terminal-telnet-warning" data-quick-telnet-warning hidden>Telnet sends terminal traffic without encryption. Credentials are never submitted automatically; use the explicit Send controls after the device prompts. Use Telnet only on a trusted network.</p>
     </section>
     <fieldset class="remote-terminal-credential-choice">
       <legend>Credentials for this connection</legend>
       <div class="remote-terminal-choice-row">
         <label class="check"><input type="radio" name="quick_credential_mode" value="temporary" checked><span>One-time credentials<small>Used only for this connection attempt.</small></span></label>
         <label class="check"><input type="radio" name="quick_credential_mode" value="saved"><span>Saved credential<small>Use an existing shared vault entry.</small></span></label>
+        <label class="check" data-quick-telnet-only hidden><input type="radio" name="quick_credential_mode" value="none"><span>No credential<small>Connect first and enter credentials manually in the terminal.</small></span></label>
       </div>
       <div class="form-grid remote-terminal-credential-fields" data-quick-temporary>
         <label>Username
@@ -121,12 +122,11 @@
         <select id="remote-terminal-credential"></select>
       </label>
     </fieldset>
-    <details class="remote-terminal-advanced-options">
+    <details class="remote-terminal-advanced-options" data-quick-ssh-options>
       <summary>Connection options</summary>
       <div class="remote-terminal-options">
         <label class="check" data-quick-ssh-option><input id="remote-terminal-unknown-host" type="checkbox"><span><strong>Trust this host key on first connection</strong><small>Accept an unknown host key without a separate confirmation.</small></span></label>
         <label class="check" data-quick-ssh-option><input id="remote-terminal-legacy" type="checkbox"><span><strong>Allow legacy SSH algorithms</strong><small>Use only when an older device cannot negotiate modern algorithms.</small></span></label>
-        <label class="check"><input id="remote-terminal-transcript" type="checkbox" {% if active_investigation and active_investigation.is_recording %}checked{% endif %}><span><strong>Retain transcript with the active case</strong><small>Store terminal output as case evidence while recording.</small></span></label>
       </div>
     </details>
     <footer>
@@ -162,12 +162,13 @@
       <label class="remote-host-address-field">Host<input id="remote-host-address" maxlength="255" required placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"></label>
       <label><span id="remote-host-port-label">SSH port</span><input id="remote-host-port" type="number" min="1" max="65535" value="22" required></label>
     </div>
-    <p class="message warning remote-terminal-telnet-warning" data-host-telnet-warning hidden>Telnet sends credentials and terminal traffic without encryption. Use it only on a trusted network.</p>
+    <p class="message warning remote-terminal-telnet-warning" data-host-telnet-warning hidden>Telnet sends terminal traffic without encryption. Assigned credentials are sent only when an operator selects the explicit terminal controls. Use Telnet only on a trusted network.</p>
     <fieldset class="remote-terminal-credential-choice">
       <legend>Credential assignment</legend>
       <div class="remote-terminal-choice-row">
         <label class="check"><input type="radio" name="host_credential_mode" value="saved" checked><span>Shared saved credential<small>Reuse a separately managed vault entry.</small></span></label>
         <label class="check"><input type="radio" name="host_credential_mode" value="host"><span>Host-specific credential<small>Encrypted in the vault and restricted to this host.</small></span></label>
+        <label class="check" data-host-telnet-only hidden><input type="radio" name="host_credential_mode" value="none"><span>No assigned credential<small>Connect first and enter credentials manually in the terminal.</small></span></label>
       </div>
       <label data-host-saved>Saved credential<select id="remote-host-credential"></select></label>
       <div class="form-grid remote-terminal-credential-fields" data-host-specific hidden>

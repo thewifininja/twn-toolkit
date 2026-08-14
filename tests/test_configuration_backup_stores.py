@@ -128,6 +128,17 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
                 allow_unknown_hosts=True,
                 allow_legacy_algorithms=True,
             )
+            source_remote.save_host(
+                user_id=source_user["id"],
+                name="Manual login switch",
+                host="192.0.2.11",
+                port=23,
+                protocol="telnet",
+                folder_id=folder["id"],
+                credential_id="",
+                allow_unknown_hosts=False,
+                allow_legacy_algorithms=False,
+            )
 
             source_item = selected_backup_items(
                 build_backup_catalog(source), {"remote_connection_library"}
@@ -149,18 +160,26 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
                 destination, load_or_create_secret_key(destination)
             )
             library = destination_remote.library_for_user(destination_user["id"])
+            credential_host = next(
+                host for host in library["hosts"] if host["credential_id"]
+            )
+            manual_host = next(
+                host for host in library["hosts"] if not host["credential_id"]
+            )
             resolved = destination_remote.resolve_credential(
                 library["credentials"][0]["id"],
                 user_id=destination_user["id"],
-                host_id=library["hosts"][0]["id"],
+                host_id=credential_host["id"],
             )
 
             self.assertEqual(imported, [("Remote Terminal libraries", 1)])
             self.assertEqual(resolved["password"], "source-only-secret")
-            self.assertEqual(library["hosts"][0]["protocol"], "telnet")
-            self.assertEqual(library["hosts"][0]["port"], 23)
-            self.assertFalse(library["hosts"][0]["allow_unknown_hosts"])
-            self.assertFalse(library["hosts"][0]["allow_legacy_algorithms"])
+            self.assertEqual(credential_host["protocol"], "telnet")
+            self.assertEqual(credential_host["port"], 23)
+            self.assertFalse(credential_host["allow_unknown_hosts"])
+            self.assertFalse(credential_host["allow_legacy_algorithms"])
+            self.assertEqual(manual_host["name"], "Manual login switch")
+            self.assertEqual(manual_host["credential_id"], "")
             self.assertNotIn(
                 b"source-only-secret",
                 Path(destination, "remote_connections.sqlite3").read_bytes(),

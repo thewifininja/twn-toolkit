@@ -381,8 +381,6 @@ class RemoteConnectionBackupStore:
             old_credential = str(item.get("credential_id", ""))
             if old_folder and old_folder not in folder_ids:
                 raise ValueError("Remote Terminal host references a missing folder.")
-            if old_credential not in credential_ids:
-                raise ValueError("Remote Terminal host references a missing credential.")
             name = self.store._name(item.get("name", ""), "Host name")
             folder_id = folder_ids.get(old_folder, "")
             unique_key = (folder_id, name.casefold())
@@ -393,6 +391,10 @@ class RemoteConnectionBackupStore:
             protocol = str(item.get("protocol", "ssh")).strip().lower()
             if protocol not in {"ssh", "telnet"}:
                 raise ValueError("Remote Terminal protocol must be SSH or Telnet.")
+            if old_credential not in credential_ids and not (
+                protocol == "telnet" and not old_credential
+            ):
+                raise ValueError("Remote Terminal host references a missing credential.")
             try:
                 port = int(item.get("port", 23 if protocol == "telnet" else 22))
             except (TypeError, ValueError) as exc:
@@ -404,7 +406,7 @@ class RemoteConnectionBackupStore:
             host_rows.append(
                 (
                     host_ids[old_id], user_id, name, host, port, protocol, folder_id,
-                    credential_ids[old_credential],
+                    credential_ids.get(old_credential, ""),
                     int(bool(item.get("allow_unknown_hosts")) and protocol == "ssh"),
                     int(bool(item.get("allow_legacy_algorithms")) and protocol == "ssh"),
                     notes, now, now,

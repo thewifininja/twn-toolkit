@@ -44,6 +44,10 @@
   const datastoreCancel = document.getElementById("remote-terminal-datastore-cancel");
   const datastoreDismiss = document.getElementById("remote-terminal-datastore-dismiss");
   const sessionTarget = document.getElementById("remote-terminal-session-target");
+  const telnetCredentialControls = document.querySelector("[data-telnet-credential-controls]");
+  const telnetCredentialButtons = Array.from(
+    document.querySelectorAll("[data-telnet-credential]")
+  );
   const empty = document.getElementById("remote-terminal-empty");
   const count = document.getElementById("remote-terminal-session-count");
   if (!screen || !window.TwnTerminalEmulator) return;
@@ -165,6 +169,9 @@
       focusTerminal();
     });
   });
+  telnetCredentialButtons.forEach((button) => {
+    button.addEventListener("click", () => sendTelnetCredential(button));
+  });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && selected) pollOutput();
   });
@@ -186,6 +193,8 @@
         session.host,
         session.port,
         session.remote_username,
+        session.telnet_username_available,
+        session.telnet_password_available,
         session.investigation_id,
         session.record_transcript,
       ]),
@@ -217,7 +226,7 @@
     tab.className = "remote-terminal-tab";
     tab.setAttribute("role", "tab");
     tab.setAttribute("aria-selected", String(isSelected));
-    tab.title = `${protocolLabel(session)} · ${session.remote_username}@${session.host}:${session.port}`;
+    tab.title = `${protocolLabel(session)} · ${remoteTarget(session)}`;
     const dot = document.createElement("span");
     dot.className = "remote-terminal-tab-dot";
     dot.setAttribute("aria-hidden", "true");
@@ -253,7 +262,7 @@
     const heading = document.createElement("strong");
     heading.textContent = session.title;
     const target = document.createElement("span");
-    target.textContent = `${protocolLabel(session)} · ${session.remote_username}@${session.host}:${session.port}`;
+    target.textContent = `${protocolLabel(session)} · ${remoteTarget(session)}`;
     const metadata = document.createElement("small");
     metadata.textContent = `${stateLabel(session)} · ${formatTime(session.created_at)}`;
     identity.append(heading, target, metadata);
@@ -359,14 +368,17 @@
       title: document.getElementById("remote-terminal-title").value,
       host: document.getElementById("remote-terminal-host").value,
       port: document.getElementById("remote-terminal-port").value,
-      username: document.getElementById("remote-terminal-username").value,
-      password: document.getElementById("remote-terminal-password").value,
+      username: credentialMode === "temporary"
+        ? document.getElementById("remote-terminal-username").value
+        : "",
+      password: credentialMode === "temporary"
+        ? document.getElementById("remote-terminal-password").value
+        : "",
       credential_id: credentialMode === "saved"
         ? document.getElementById("remote-terminal-credential").value
         : "",
       allow_unknown_hosts: document.getElementById("remote-terminal-unknown-host").checked,
       allow_legacy_algorithms: document.getElementById("remote-terminal-legacy").checked,
-      record_transcript: document.getElementById("remote-terminal-transcript").checked,
       columns: terminalColumns(),
       rows: 32,
     };
@@ -700,6 +712,27 @@
     await stopRemoteSession(selected, {dismiss: false, control: stopButton});
   }
 
+  async function sendTelnetCredential(button) {
+    if (!selected || selected.state !== "running" || selected.protocol !== "telnet") return;
+    const field = button.dataset.telnetCredential;
+    button.disabled = true;
+    try {
+      const response = await fetch(selected.credential_url, {
+        method: "POST",
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: JSON.stringify({field}),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `The Telnet ${field} could not be sent.`);
+      showMessage(`${field === "username" ? "Username" : "Password"} sent to the Telnet session.`, "success");
+      focusTerminal();
+    } catch (error) {
+      showMessage(error.message);
+    } finally {
+      button.disabled = !selected || selected.state !== "running";
+    }
+  }
+
   async function closeSessionTab(session, control) {
     if (!active(session)) return;
     if (!window.confirm(
@@ -788,7 +821,7 @@
   function updateWorkspace(session) {
     sessionTitle.textContent = session.title;
     if (sessionProtocol) sessionProtocol.textContent = `${protocolLabel(session)} session`;
-    sessionTarget.textContent = `${session.remote_username}@${session.host}:${session.port}`;
+    sessionTarget.textContent = remoteTarget(session);
     if (caseLink) {
       caseLink.hidden = !session.investigation_id;
       if (session.investigation_id) {
@@ -816,6 +849,17 @@
     document.querySelectorAll("[data-terminal-key]").forEach((button) => {
       button.disabled = inputCapture.disabled;
     });
+    const telnetCredentialAvailable = session.protocol === "telnet"
+      && session.state === "running"
+      && (session.telnet_username_available || session.telnet_password_available);
+    if (telnetCredentialControls) telnetCredentialControls.hidden = !telnetCredentialAvailable;
+    telnetCredentialButtons.forEach((button) => {
+      const available = button.dataset.telnetCredential === "username"
+        ? session.telnet_username_available
+        : session.telnet_password_available;
+      button.hidden = !available;
+      button.disabled = !telnetCredentialAvailable || !available;
+    });
     stopButton.hidden = !isActive;
     stopButton.disabled = !isActive;
     if (popoutButton) popoutButton.hidden = !isActive;
@@ -833,6 +877,11 @@
 
   function appendOutput(chunk) {
     terminal.write(chunk);
+  }
+
+  function remoteTarget(session) {
+    const username = String(session.remote_username || "").trim();
+    return `${username ? `${username}@` : ""}${session.host}:${session.port}`;
   }
 
   function resizeRemote() {

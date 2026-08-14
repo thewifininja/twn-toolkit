@@ -222,7 +222,8 @@
     const title = document.createElement("strong");
     title.textContent = host.name;
     const target = document.createElement("small");
-    target.textContent = `${String(host.protocol || "ssh").toUpperCase()} · ${host.remote_username}@${host.host}:${host.port}`;
+    const remoteUsername = String(host.remote_username || "").trim();
+    target.textContent = `${String(host.protocol || "ssh").toUpperCase()} · ${remoteUsername ? `${remoteUsername}@` : ""}${host.host}:${host.port}`;
     identity.append(title, target);
     connect.append(icon, identity);
     connect.title = `Connect to ${host.name}`;
@@ -334,26 +335,36 @@
 
   function syncQuickCredentialMode() {
     const savedRadio = quickForm.querySelector('input[name="quick_credential_mode"][value="saved"]');
-    if (!library.credentials.some((credential) => !credential.scope_host_id) && savedRadio.checked) {
-      quickForm.querySelector('input[name="quick_credential_mode"][value="temporary"]').checked = true;
+    const temporaryRadio = quickForm.querySelector('input[name="quick_credential_mode"][value="temporary"]');
+    const noneRadio = quickForm.querySelector('input[name="quick_credential_mode"][value="none"]');
+    const hasSaved = library.credentials.some((credential) => !credential.scope_host_id);
+    const isTelnet = quickProtocol.value === "telnet";
+    if (!isTelnet && noneRadio.checked) temporaryRadio.checked = true;
+    if (!hasSaved && savedRadio.checked) {
+      (isTelnet ? noneRadio : temporaryRadio).checked = true;
     }
-    savedRadio.disabled = !library.credentials.some((credential) => !credential.scope_host_id);
+    savedRadio.disabled = !hasSaved;
     const mode = quickForm.querySelector('input[name="quick_credential_mode"]:checked').value;
     const temporary = quickForm.querySelector("[data-quick-temporary]");
     const saved = quickForm.querySelector("[data-quick-saved]");
     temporary.hidden = mode !== "temporary";
     saved.hidden = mode !== "saved";
-    document.getElementById("remote-terminal-username").required = mode === "temporary";
-    document.getElementById("remote-terminal-password").required = mode === "temporary";
+    document.getElementById("remote-terminal-username").required = mode === "temporary" && !isTelnet;
+    document.getElementById("remote-terminal-password").required = mode === "temporary" && !isTelnet;
     document.getElementById("remote-terminal-credential").required = mode === "saved";
   }
 
   function syncHostCredentialMode() {
     const savedRadio = hostForm.querySelector('input[name="host_credential_mode"][value="saved"]');
-    if (!library.credentials.some((credential) => !credential.scope_host_id) && savedRadio.checked) {
-      hostForm.querySelector('input[name="host_credential_mode"][value="host"]').checked = true;
+    const hostRadio = hostForm.querySelector('input[name="host_credential_mode"][value="host"]');
+    const noneRadio = hostForm.querySelector('input[name="host_credential_mode"][value="none"]');
+    const hasSaved = library.credentials.some((credential) => !credential.scope_host_id);
+    const isTelnet = hostProtocol.value === "telnet";
+    if (!isTelnet && noneRadio.checked) (hasSaved ? savedRadio : hostRadio).checked = true;
+    if (!hasSaved && savedRadio.checked) {
+      (isTelnet ? noneRadio : hostRadio).checked = true;
     }
-    savedRadio.disabled = !library.credentials.some((credential) => !credential.scope_host_id);
+    savedRadio.disabled = !hasSaved;
     const mode = hostForm.querySelector('input[name="host_credential_mode"]:checked').value;
     hostForm.querySelector("[data-host-saved]").hidden = mode !== "saved";
     hostForm.querySelector("[data-host-specific]").hidden = mode !== "host";
@@ -450,7 +461,18 @@
     document.getElementById("remote-host-title").textContent = existing ? "Manage saved host" : "New saved host";
     document.querySelector("[data-host-existing-actions]").hidden = !existing;
     const isScoped = existing && existing.credential_scope_host_id === existing.id;
-    const desiredMode = isScoped || !library.credentials.some((credential) => !credential.scope_host_id) ? "host" : "saved";
+    const hasShared = library.credentials.some((credential) => !credential.scope_host_id);
+    const desiredMode = existing && !existing.credential_id && protocol === "telnet"
+      ? "none"
+      : isScoped
+        ? "host"
+        : existing?.credential_id
+          ? "saved"
+          : session?.remote_username
+            ? "host"
+            : protocol === "telnet"
+              ? "none"
+              : hasShared ? "saved" : "host";
     hostForm.querySelector(`input[name="host_credential_mode"][value="${desiredMode}"]`).checked = true;
     document.getElementById("remote-host-credential").value = isScoped ? "" : existing?.credential_id || "";
     document.getElementById("remote-host-credential-name").value = isScoped ? existing.credential_name : `${existing?.name || session?.title || "Host"} credentials`;
@@ -648,10 +670,19 @@
       quickForm.querySelectorAll("[data-quick-ssh-option]").forEach((option) => {
         option.hidden = protocol !== "ssh";
       });
+      quickForm.querySelector("[data-quick-ssh-options]").hidden = protocol !== "ssh";
       quickForm.querySelector("[data-quick-telnet-warning]").hidden = protocol !== "telnet";
+      quickForm.querySelectorAll("[data-quick-telnet-only]").forEach((option) => {
+        option.hidden = protocol !== "telnet";
+      });
+      syncQuickCredentialMode();
     } else {
       hostForm.querySelector("[data-host-ssh-options]").hidden = protocol !== "ssh";
       hostForm.querySelector("[data-host-telnet-warning]").hidden = protocol !== "telnet";
+      hostForm.querySelectorAll("[data-host-telnet-only]").forEach((option) => {
+        option.hidden = protocol !== "telnet";
+      });
+      syncHostCredentialMode();
     }
   }
 

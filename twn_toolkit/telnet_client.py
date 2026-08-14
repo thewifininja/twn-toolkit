@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import select
 import socket
 from typing import Callable
@@ -23,12 +22,6 @@ WINDOW_SIZE = 31
 TERMINAL_TYPE_IS = 0
 TERMINAL_TYPE_SEND = 1
 
-_USERNAME_PROMPT = re.compile(
-    r"(?:login|user(?:\s*name)?)\s*[:>]\s*$", re.IGNORECASE
-)
-_PASSWORD_PROMPT = re.compile(r"password\s*[:>]\s*$", re.IGNORECASE)
-
-
 class TelnetChannel:
     """Small synchronous Telnet client shaped like an interactive SSH channel."""
 
@@ -36,23 +29,16 @@ class TelnetChannel:
         self,
         connection: socket.socket,
         *,
-        username: str,
-        password: str,
         width: int,
         height: int,
     ) -> None:
         self.connection = connection
-        self.username = username
-        self._password = password
         self.width = width
         self.height = height
         self.closed = False
         self._pending = bytearray()
         self._local_options: set[int] = set()
         self._remote_options: set[int] = set()
-        self._login_tail = ""
-        self._username_sent = False
-        self._password_sent = False
 
     def settimeout(self, timeout: float) -> None:
         self.connection.settimeout(timeout)
@@ -72,7 +58,6 @@ class TelnetChannel:
             return b""
         visible = self._consume(raw)
         if visible:
-            self._answer_login_prompt(visible)
             return visible
         return None
 
@@ -98,7 +83,6 @@ class TelnetChannel:
         if self.closed:
             return
         self.closed = True
-        self._password = ""
         try:
             self.connection.shutdown(socket.SHUT_RDWR)
         except OSError:
@@ -184,27 +168,6 @@ class TelnetChannel:
                 + bytes((IAC, SE))
             )
 
-    def _answer_login_prompt(self, visible: bytes) -> None:
-        text = visible.decode("utf-8", errors="ignore").replace("\x00", "")
-        self._login_tail = (self._login_tail + text)[-1024:]
-        line = re.split(r"[\r\n]", self._login_tail)[-1]
-        if not self._username_sent and self.username and _USERNAME_PROMPT.search(line):
-            self._send_credentials(self.username)
-            self._username_sent = True
-            self._login_tail = ""
-            return
-        if not self._password_sent and self._password and _PASSWORD_PROMPT.search(line):
-            self._send_credentials(self._password)
-            self._password = ""
-            self._password_sent = True
-            self._login_tail = ""
-
-    def _send_credentials(self, value: str) -> None:
-        encoded = value.encode("utf-8").replace(
-            bytes((IAC,)), bytes((IAC, IAC))
-        )
-        self._send_raw(encoded + b"\r\n")
-
     def _send_command(self, command: int, option: int) -> None:
         self._send_raw(bytes((IAC, command, option)))
 
@@ -223,8 +186,6 @@ def open_telnet_channel(
     *,
     hostname: str,
     port: int,
-    username: str,
-    password: str,
     width: int,
     height: int,
     timeout: float = 15,
@@ -235,8 +196,6 @@ def open_telnet_channel(
     connection.settimeout(0.25)
     return TelnetChannel(
         connection,
-        username=username,
-        password=password,
         width=width,
         height=height,
     )

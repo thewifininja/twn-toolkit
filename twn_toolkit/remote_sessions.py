@@ -55,6 +55,8 @@ class RemoteSessionStore:
                     host TEXT NOT NULL,
                     port INTEGER NOT NULL,
                     remote_username TEXT NOT NULL,
+                    telnet_username_available INTEGER NOT NULL DEFAULT 0,
+                    telnet_password_available INTEGER NOT NULL DEFAULT 0,
                     state TEXT NOT NULL,
                     record_transcript INTEGER NOT NULL DEFAULT 0,
                     investigation_id TEXT NOT NULL DEFAULT '',
@@ -107,6 +109,14 @@ class RemoteSessionStore:
                 connection.execute(
                     "ALTER TABLE remote_sessions ADD COLUMN investigation_attached_at REAL"
                 )
+            if "telnet_username_available" not in columns:
+                connection.execute(
+                    "ALTER TABLE remote_sessions ADD COLUMN telnet_username_available INTEGER NOT NULL DEFAULT 0"
+                )
+            if "telnet_password_available" not in columns:
+                connection.execute(
+                    "ALTER TABLE remote_sessions ADD COLUMN telnet_password_available INTEGER NOT NULL DEFAULT 0"
+                )
             connection.execute(
                 """
                 DELETE FROM remote_sessions
@@ -151,6 +161,8 @@ class RemoteSessionStore:
         port: int,
         remote_username: str,
         record_transcript: bool,
+        telnet_username_available: bool = False,
+        telnet_password_available: bool = False,
         investigation_id: str = "",
         allow_unknown_hosts: bool = False,
         allow_legacy_algorithms: bool = False,
@@ -181,11 +193,12 @@ class RemoteSessionStore:
                 """
                 INSERT INTO remote_sessions (
                     id, user_id, username, title, protocol, host, port,
-                    remote_username, state, record_transcript, investigation_id,
+                    remote_username, telnet_username_available,
+                    telnet_password_available, state, record_transcript, investigation_id,
                     investigation_attached_at,
                     allow_unknown_hosts, allow_legacy_algorithms, created_at,
                     last_activity_at, owner_pid, control_path, source_host_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'connecting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'connecting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -196,6 +209,8 @@ class RemoteSessionStore:
                     host,
                     port,
                     remote_username,
+                    int(telnet_username_available),
+                    int(telnet_password_available),
                     int(record_transcript),
                     investigation_id,
                     now if investigation_id else None,
@@ -506,6 +521,8 @@ class RemoteSessionStore:
             "allow_unknown_hosts",
             "allow_legacy_algorithms",
             "output_truncated",
+            "telnet_username_available",
+            "telnet_password_available",
         ):
             result[key] = bool(result[key])
         result["tool_key"] = "remote_terminal"
@@ -615,6 +632,8 @@ class RemoteSessionManager:
             host=host,
             port=port,
             remote_username=remote_username,
+            telnet_username_available=bool(protocol == "telnet" and remote_username),
+            telnet_password_available=bool(protocol == "telnet" and password),
             record_transcript=record_transcript,
             investigation_id=investigation_id,
             allow_unknown_hosts=allow_unknown_hosts,
@@ -630,7 +649,11 @@ class RemoteSessionManager:
             "termination": "manual",
             "client": None,
             "channel": None,
-            "password": password,
+            "password": password if protocol == "ssh" else "",
+            "telnet_credentials": {
+                "username": remote_username if protocol == "telnet" else "",
+                "password": password if protocol == "telnet" else "",
+            },
         }
         thread = threading.Thread(
             target=self._run_session,
@@ -662,6 +685,24 @@ class RemoteSessionManager:
             {"action": "input", "data": data},
         )
         self.store.touch(session_id)
+
+    def send_telnet_credential(
+        self, session_id: str, *, user_id: str, field: str
+    ) -> int:
+        session = self.store.get_session(session_id, user_id=user_id)
+        if not session or session["state"] != "running":
+            raise RemoteSessionError("That remote session is not connected.")
+        if session.get("protocol") != "telnet":
+            raise RemoteSessionError("Credential controls are available only for Telnet sessions.")
+        clean_field = str(field).strip().lower()
+        if clean_field not in {"username", "password"}:
+            raise RemoteSessionError("Choose the Telnet username or password.")
+        result = self._send_control(
+            session,
+            {"action": "telnet_credential", "field": clean_field},
+        )
+        self.store.touch(session_id)
+        return int(result.get("accepted_bytes", 0))
 
     def attach_to_case(
         self,
@@ -888,8 +929,6 @@ class RemoteSessionManager:
                 channel = self.telnet_opener(
                     hostname=session["host"],
                     port=int(session["port"]),
-                    username=session["remote_username"],
-                    password=password,
                     width=columns,
                     height=rows,
                 )
@@ -972,6 +1011,11 @@ class RemoteSessionManager:
                     error=self._connection_error(exc, protocol),
                 )
         finally:
+            credentials = runtime.get("telnet_credentials", {})
+            if isinstance(credentials, dict):
+                credentials["username"] = ""
+                credentials["password"] = ""
+            runtime["password"] = ""
             if protocol == "telnet" and channel is not None:
                 try:
                     channel.close()
@@ -1237,6 +1281,32 @@ class RemoteSessionManager:
                     "Terminal input could not be delivered."
                 ) from exc
             return {"accepted_bytes": len(encoded)}
+        if action == "telnet_credential":
+            if session.get("protocol") != "telnet":
+                raise RemoteSessionError(
+                    "Credential controls are available only for Telnet sessions."
+                )
+            field = str(message.get("field", "")).strip().lower()
+            if field not in {"username", "password"}:
+                raise RemoteSessionError("Choose the Telnet username or password.")
+            credentials = runtime.get("telnet_credentials", {})
+            value = str(credentials.get(field, "")) if isinstance(credentials, dict) else ""
+            if not value:
+                raise RemoteSessionError(
+                    f"No {field} was provided for this Telnet session."
+                )
+            encoded = (value + "\r").encode("utf-8")
+            if len(encoded) > REMOTE_SESSION_INPUT_LIMIT_BYTES:
+                raise RemoteSessionError(
+                    f"The Telnet {field} is outside the allowed size."
+                )
+            try:
+                channel.sendall(encoded)
+            except Exception as exc:
+                raise RemoteSessionError(
+                    f"The Telnet {field} could not be delivered."
+                ) from exc
+            return {"accepted_bytes": len(encoded)}
         if action == "resize":
             columns = int(message.get("columns", 0))
             rows = int(message.get("rows", 0))
@@ -1432,6 +1502,9 @@ def public_remote_session(session: dict[str, Any]) -> dict[str, Any]:
             ),
             "input_url": url_for(
                 "tools.remote_terminal_input", session_id=session_id
+            ),
+            "credential_url": url_for(
+                "tools.remote_terminal_credential", session_id=session_id
             ),
             "resize_url": url_for(
                 "tools.resize_remote_terminal_session", session_id=session_id

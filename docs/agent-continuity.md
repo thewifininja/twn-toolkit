@@ -266,7 +266,12 @@ accepted replay frames.
   reports, portable cross-instance archives, and non-destructive case merging.
   Remote Terminal provides persistent owner-scoped interactive SSH and Telnet sessions,
   reusable host folders and encrypted credential libraries, temporary Quick
-  Connect, retained scrollback, and bounded case transcripts. Configuration
+  Connect, retained scrollback, and bounded case transcripts. Telnet permits
+  credential-free saved hosts and Quick Connect sessions; optional credentials
+  remain server-side and are sent only through explicit username/password
+  controls after the remote device prompts. Transcript capture is automatic
+  only while a case is actively recording; a paused case receives no automatic
+  terminal updates. Configuration
   backups use inspect-first versioned manifests and atomic per-group Combine or
   Replace across reusable toolkit settings while legacy v1 imports remain
   supported. The cohesive responsive UI and functional Network Tools navigation

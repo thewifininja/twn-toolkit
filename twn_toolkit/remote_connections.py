@@ -67,7 +67,7 @@ class RemoteConnectionStore:
                        c.remote_username AS remote_username,
                        c.scope_host_id AS credential_scope_host_id
                 FROM remote_connection_hosts h
-                JOIN remote_connection_credentials c
+                LEFT JOIN remote_connection_credentials c
                   ON c.id = h.credential_id AND c.user_id = h.user_id
                 WHERE h.user_id = ?
                 ORDER BY h.name COLLATE NOCASE
@@ -88,7 +88,7 @@ class RemoteConnectionStore:
                        c.remote_username AS remote_username,
                        c.scope_host_id AS credential_scope_host_id
                 FROM remote_connection_hosts h
-                JOIN remote_connection_credentials c
+                LEFT JOIN remote_connection_credentials c
                   ON c.id = h.credential_id AND c.user_id = h.user_id
                 WHERE h.id = ? AND h.user_id = ?
                 """,
@@ -378,11 +378,13 @@ class RemoteConnectionStore:
             old_scoped_credential_id = ""
             if host_id:
                 existing = self._require_host_row(connection, host_id, user_id)
-                old_credential = self._require_credential_row(
-                    connection, str(existing["credential_id"]), user_id
-                )
-                if str(old_credential["scope_host_id"]) == host_id:
-                    old_scoped_credential_id = str(old_credential["id"])
+                existing_credential_id = str(existing["credential_id"])
+                if existing_credential_id:
+                    old_credential = self._require_credential_row(
+                        connection, existing_credential_id, user_id
+                    )
+                    if str(old_credential["scope_host_id"]) == host_id:
+                        old_scoped_credential_id = str(old_credential["id"])
             else:
                 host_id = f"rh_{secrets.token_hex(10)}"
 
@@ -447,12 +449,17 @@ class RemoteConnectionStore:
                         ),
                     )
             else:
-                credential = self._require_credential_row(
-                    connection, credential_id, user_id
-                )
-                if str(credential["scope_host_id"]) not in {"", host_id}:
+                if credential_id:
+                    credential = self._require_credential_row(
+                        connection, credential_id, user_id
+                    )
+                    if str(credential["scope_host_id"]) not in {"", host_id}:
+                        raise RemoteConnectionError(
+                            "Select a shared credential or this host's own credential."
+                        )
+                elif clean_protocol != "telnet":
                     raise RemoteConnectionError(
-                        "Select a shared credential or this host's own credential."
+                        "Assign a credential to saved SSH hosts."
                     )
 
             values = (
@@ -547,14 +554,17 @@ class RemoteConnectionStore:
     def delete_host(self, host_id: str, *, user_id: str) -> None:
         with self._connect() as connection:
             host = self._require_host_row(connection, host_id, user_id)
-            credential = self._require_credential_row(
-                connection, str(host["credential_id"]), user_id
+            credential_id = str(host["credential_id"])
+            credential = (
+                self._require_credential_row(connection, credential_id, user_id)
+                if credential_id
+                else None
             )
             connection.execute(
                 "DELETE FROM remote_connection_hosts WHERE id = ? AND user_id = ?",
                 (host_id, user_id),
             )
-            if str(credential["scope_host_id"]) == host_id:
+            if credential is not None and str(credential["scope_host_id"]) == host_id:
                 connection.execute(
                     "DELETE FROM remote_connection_credentials WHERE id = ? AND user_id = ?",
                     (credential["id"], user_id),
@@ -709,9 +719,11 @@ class RemoteConnectionStore:
             "protocol": str(row["protocol"]),
             "folder_id": str(row["folder_id"]),
             "credential_id": str(row["credential_id"]),
-            "credential_name": str(row["credential_name"]),
-            "remote_username": str(row["remote_username"]),
-            "credential_scope_host_id": str(row["credential_scope_host_id"]),
+            "credential_name": str(row["credential_name"] or ""),
+            "remote_username": str(row["remote_username"] or ""),
+            "credential_scope_host_id": str(
+                row["credential_scope_host_id"] or ""
+            ),
             "allow_unknown_hosts": bool(row["allow_unknown_hosts"]),
             "allow_legacy_algorithms": bool(row["allow_legacy_algorithms"]),
             "notes": str(row["notes"]),
