@@ -287,7 +287,42 @@
             <span class="pill {{ result.status }}">{{ result.status }}</span>
           </summary>
           <div class="button-row ssh-result-actions"><button class="link-button subtle" type="button" data-ssh-download-host>Download this host</button></div>
-          {% if result.error %}<div class="message error">{{ result.error }}</div>{% endif %}
+          {% if result.host_key_mismatch %}
+            <div class="ssh-host-key-mismatch" data-ssh-host-key-mismatch>
+              <div class="ssh-host-key-mismatch-head">
+                <div>
+                  <strong>Host identity changed</strong>
+                  <p class="ssh-result-error">{{ result.error }}</p>
+                </div>
+                <span class="pill error">Verification required</span>
+              </div>
+              <dl class="ssh-host-key-fingerprints">
+                <div>
+                  <dt>Saved {{ result.host_key_mismatch.expected_key_type }} key</dt>
+                  <dd data-ssh-expected-fingerprint>{{ result.host_key_mismatch.expected_fingerprint }}</dd>
+                </div>
+                <div>
+                  <dt>Presented {{ result.host_key_mismatch.presented_key_type }} key</dt>
+                  <dd data-ssh-presented-fingerprint>{{ result.host_key_mismatch.presented_fingerprint }}</dd>
+                </div>
+              </dl>
+              <div class="ssh-host-key-recovery">
+                <p>Only forget the saved key after confirming that this device was replaced or intentionally re-keyed.</p>
+                <div class="ssh-host-key-recovery-actions">
+                  <button
+                    class="danger compact"
+                    type="button"
+                    data-ssh-forget-host-key
+                    data-url="{{ url_for('tools.forget_multi_ssh_host_key') }}"
+                    data-host="{{ result.host }}"
+                    data-port="{{ form.port }}"
+                    data-expected-fingerprint="{{ result.host_key_mismatch.expected_fingerprint }}"
+                  >Forget saved key</button>
+                  <span class="ssh-host-key-status" data-ssh-host-key-status role="status"></span>
+                </div>
+              </div>
+            </div>
+          {% elif result.error %}<div class="message error ssh-result-error">{{ result.error }}</div>{% endif %}
           <pre class="result-output">{{ result.output or 'No output captured.' }}</pre>
         </details>
       {% endfor %}

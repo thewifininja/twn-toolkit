@@ -336,6 +336,46 @@ class NetworkToolTests(unittest.TestCase):
             )
         self.assertIsNone(client.connect.call_args.kwargs["disabled_algorithms"])
 
+    def test_ssh_host_returns_structured_host_key_mismatch(self) -> None:
+        class FakeKey:
+            def __init__(self, value: bytes) -> None:
+                self.value = value
+
+            def asbytes(self) -> bytes:
+                return self.value
+
+            def get_name(self) -> str:
+                return "ssh-ed25519"
+
+        class BadHostKeyException(Exception):
+            def __init__(self) -> None:
+                super().__init__("raw key material")
+                self.hostname = "192.0.2.20"
+                self.key = FakeKey(b"presented")
+                self.expected_key = FakeKey(b"saved")
+
+        with patch(
+            "twn_toolkit.network_tools.open_ssh_client",
+            side_effect=BadHostKeyException(),
+        ):
+            result = _ssh_host(
+                "192.0.2.20",
+                "admin",
+                "secret",
+                [{"command": "show clock", "timeout": 30}],
+                22,
+                False,
+                False,
+                0,
+            )
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(
+            result["host_key_mismatch"]["hostname"], "192.0.2.20"
+        )
+        self.assertIn("SSH host identity changed", result["error"])
+        self.assertNotIn("raw key material", result["error"])
+
     def test_switch_order_keeps_name_primary_and_description_separate(self) -> None:
         switches = managed_switch_order(
             [

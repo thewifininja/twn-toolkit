@@ -17,6 +17,7 @@ from .ssh_security import (
     close_ssh_client,
     format_ssh_connection_error,
     open_ssh_client,
+    ssh_host_key_mismatch,
 )
 
 
@@ -1304,13 +1305,17 @@ def _ssh_host(
             "output": _bounded_output("".join(output), limit=capture_limit),
         }
     except Exception as exc:
-        return {
+        result = {
             "host": host,
             "host_label": host_label,
             "status": "error",
             "output": _bounded_output("".join(output), limit=capture_limit),
             "error": format_ssh_connection_error(exc),
         }
+        mismatch = ssh_host_key_mismatch(exc)
+        if mismatch:
+            result["host_key_mismatch"] = mismatch
+        return result
     finally:
         close_ssh_client(client)
 

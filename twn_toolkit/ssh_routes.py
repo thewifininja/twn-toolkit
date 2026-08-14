@@ -26,7 +26,9 @@ from .network_tools import (
     ToolInputError,
     parse_ssh_targets,
     run_ssh_host_plans,
+    validate_ssh_target,
 )
+from .ssh_security import SSHKnownHostsError, forget_ssh_known_host
 from .ssh_commandlets import (
     SSH_PREVIEW_MAX_AGE_SECONDS,
     SSHCommandletStore,
@@ -217,6 +219,56 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": str(exc)}), 400
         suppress_audit_event()
         return jsonify({"count": len(targets), "targets": targets})
+
+    @tools_bp.post("/multi-ssh/host-keys/forget")
+    def forget_multi_ssh_host_key():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            suppress_audit_event()
+            return jsonify({"error": "Send a valid host-key request."}), 400
+        host = str(payload.get("host", "")).strip()
+        expected_fingerprint = str(
+            payload.get("expected_fingerprint", "")
+        ).strip()
+        try:
+            validate_ssh_target(host)
+            port = int(payload.get("port", 22))
+        except (ToolInputError, TypeError, ValueError) as exc:
+            suppress_audit_event()
+            return jsonify({"error": str(exc) or "Enter a valid SSH port."}), 400
+        try:
+            forgotten = forget_ssh_known_host(
+                host,
+                port,
+                expected_fingerprint,
+            )
+        except SSHKnownHostsError as exc:
+            suppress_audit_event()
+            return jsonify({"error": str(exc)}), 409
+
+        annotate_audit_event(
+            category="Network tools",
+            action="ssh.saved_host_key_forgotten",
+            summary=f"Forgot the saved SSH host key for {host}:{port}.",
+            resource_type="ssh_host_key",
+            resource_id=f"{host}:{port}",
+            resource_name=host,
+            details={
+                "host": host,
+                "port": port,
+                "expected fingerprint": expected_fingerprint,
+                "removed entries": int(forgotten["removed_entries"]),
+            },
+        )
+        return jsonify(
+            {
+                "forgotten": forgotten,
+                "message": (
+                    "Saved key forgotten. Rerun Bulk SSH with Allow unknown "
+                    "SSH host keys enabled after verifying the device."
+                ),
+            }
+        )
 
     @tools_bp.post("/multi-ssh/commandlets/delete")
     def delete_ssh_commandlet():

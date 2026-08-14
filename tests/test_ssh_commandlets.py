@@ -354,6 +354,105 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b"targets or commands changed", response.data)
             run.assert_not_called()
 
+    def test_host_key_mismatch_has_readable_recovery_and_forget_endpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            form = {
+                "matrix": "Name | Host\nCloset switch | 192.0.2.20",
+                "commands": "show clock",
+                "command_timeout": "300",
+                "port": "22",
+            }
+            preview = client.post(
+                "/tools/multi-ssh", data={**form, "action": "preview"}
+            )
+            token = re.search(
+                rb'name="preview_token" type="hidden" value="([^"]+)"',
+                preview.data,
+            ).group(1).decode()
+            mismatch = {
+                "host": "192.0.2.20",
+                "host_label": "Closet switch",
+                "status": "error",
+                "output": "",
+                "error": "SSH host identity changed for 192.0.2.20.",
+                "host_key_mismatch": {
+                    "hostname": "192.0.2.20",
+                    "presented_key_type": "ssh-ed25519",
+                    "presented_fingerprint": "SHA256:" + "P" * 43,
+                    "expected_key_type": "ssh-ed25519",
+                    "expected_fingerprint": "SHA256:" + "E" * 43,
+                },
+            }
+            with patch(
+                "twn_toolkit.ssh_routes.run_ssh_host_plans",
+                return_value=[mismatch],
+            ):
+                response = client.post(
+                    "/tools/multi-ssh",
+                    data={
+                        **form,
+                        "action": "run",
+                        "preview_token": token,
+                        "username": "admin",
+                        "password": "secret",
+                        "confirm_execution": "on",
+                    },
+                )
+
+            self.assertIn(b"Host identity changed", response.data)
+            self.assertIn(b"Forget saved key", response.data)
+            self.assertIn(("SHA256:" + "E" * 43).encode(), response.data)
+            self.assertIn(("SHA256:" + "P" * 43).encode(), response.data)
+            self.assertNotIn(b"raw base64", response.data)
+
+            with patch(
+                "twn_toolkit.ssh_routes.forget_ssh_known_host",
+                return_value={
+                    "hostname": "192.0.2.20",
+                    "port": 22,
+                    "identity": "192.0.2.20",
+                    "removed_entries": 1,
+                },
+            ) as forget:
+                forgotten = client.post(
+                    "/tools/multi-ssh/host-keys/forget",
+                    json={
+                        "host": "192.0.2.20",
+                        "port": 22,
+                        "expected_fingerprint": "SHA256:" + "E" * 43,
+                    },
+                )
+
+            self.assertEqual(forgotten.status_code, 200)
+            self.assertIn(b"Saved key forgotten", forgotten.data)
+            forget.assert_called_once_with(
+                "192.0.2.20",
+                22,
+                "SHA256:" + "E" * 43,
+            )
+
+    def test_forget_host_key_endpoint_rejects_invalid_host(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+
+            with patch("twn_toolkit.ssh_routes.forget_ssh_known_host") as forget:
+                response = client.post(
+                    "/tools/multi-ssh/host-keys/forget",
+                    json={
+                        "host": "192.0.2.999",
+                        "port": 22,
+                        "expected_fingerprint": "SHA256:" + "E" * 43,
+                    },
+                )
+
+            self.assertEqual(response.status_code, 400)
+            forget.assert_not_called()
+
     def test_commandlet_save_load_delete_and_audit_exclude_command_body(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
