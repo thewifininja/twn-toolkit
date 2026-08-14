@@ -1,6 +1,62 @@
-APP_VERSION = "0.18.1"
+APP_VERSION = "0.19.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.19.0",
+        "date": "2026-08-13",
+        "title": "Collaborative investigations and portable operations",
+        "summary": (
+            "Turns troubleshooting into a shared, evidence-backed workflow with "
+            "persistent remote shells and broad, inspect-first configuration "
+            "portability across toolkit installations."
+        ),
+        "groups": (
+            {
+                "title": "Shared investigation cases",
+                "items": (
+                    "Adds durable cases with a toolkit-wide recording banner, quick operator notes, immutable attributed journal events, managed evidence, selectable reports, compact PDFs, and downloadable evidence packages.",
+                    "Lets an owner invite collaborators into the same open case so multiple operators can run tools, add notes, and contribute evidence simultaneously while ownership controls case state, membership, and report presentation.",
+                    "Captures finite diagnostics and lifecycle-based Ping, SNMP bandwidth, packet-capture, iPerf3, and Remote Terminal work with bounded summaries and original evidence instead of flooding the timeline with samples or terminal bytes.",
+                    "Exports complete portable case archives for verified cross-instance import and non-destructively merges an accessible closed case into the owner's current open case while preserving attribution, timestamps, hashes, and source lineage.",
+                    "Reopens closed cases in paused mode for intentional follow-up work and keeps report selection editable without mutating the source journal or evidence library.",
+                ),
+            },
+            {
+                "title": "Persistent Remote Terminal",
+                "items": (
+                    "Adds interactive browser SSH terminals with natural keyboard input, paste, resize, retained scrollback, reconnectable sessions, multiple sessions to one host, renameable tabs, pop-out windows, and explicit stop controls.",
+                    "Organizes reusable hosts in a folder tree, stores encrypted shared credentials separately from host definitions, supports host-specific credentials, and keeps Quick Connect temporary.",
+                    "Lets operators view, download, delete, or save completed scrollback to the Datastore and automatically or explicitly attach a sanitized bounded transcript to an open case.",
+                    "Keeps owner-scoped sessions alive independently of a browser tab within bounded concurrency, idle, lifetime, and retention limits.",
+                ),
+            },
+            {
+                "title": "Cohesive responsive interface",
+                "items": (
+                    "Extends the shared full-width workspace, tab placement, spacing, nested-card, form, menu, action, and mobile behavior across investigations, Remote Terminal, backups, and the remaining toolkit routes.",
+                    "Reorganizes Network Tools by function, removes the ambiguous Multi-Host section, renames Multi-Ping to Ping, Multi-SSH to Bulk SSH, and Multi-Transfer to Bulk Transfer, and reserves sidebar icons for top-level destinations and categories.",
+                    "Uses compact terminal session rows, consistent button hierarchy, unobtrusive folder menus, and responsive layouts that avoid clipped actions or horizontal document overflow.",
+                ),
+            },
+            {
+                "title": "Inspect-first configuration portability",
+                "items": (
+                    "Expands configuration backups to reusable Fortinet, network, automation, Remote Terminal, access, dashboard, email, timezone, and certificate-automation groups while explicitly excluding instance identity, runtime history, cases, datastore content, and issued key material.",
+                    "Introduces a versioned manifest, mandatory encryption for secret-bearing exports, temporary encrypted staging, a two-step review-and-import workflow, balanced per-group change previews, and explicit Remote Terminal owner mapping.",
+                    "Supports Combine and Replace semantics per group, validates data before applying it, and rolls every selected group back atomically if any import fails.",
+                    "Continues to accept legacy v1 backups and names the failing group in import errors instead of exposing a contextless internal exception.",
+                ),
+            },
+            {
+                "title": "Upgrade compatibility",
+                "items": (
+                    "Applies numbered transactional migrations for the new investigation collaboration and transfer metadata while preserving existing cases, profiles, automation data, terminal history, and operator accounts.",
+                    "Requires no dependency, installer, service-topology, native-helper, or operating-system configuration change; a normal verified upgrade and process restart are sufficient.",
+                    "Carries forward the v0.18.1 macOS launchd HTTPS relay repair and the v0.18.0 reusable workspace and duplication behavior.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.18.1",
         "date": "2026-08-11",

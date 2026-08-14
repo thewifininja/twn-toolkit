@@ -261,7 +261,19 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.18.1: launchd-managed macOS HTTPS clients now treat
+- Current milestone is 0.19.0: investigation cases are shared owner-and-
+  collaborator workspaces with attributed journals, managed evidence, compact
+  reports, portable cross-instance archives, and non-destructive case merging.
+  Remote Terminal provides persistent owner-scoped interactive SSH sessions,
+  reusable host folders and encrypted credential libraries, temporary Quick
+  Connect, retained scrollback, and bounded case transcripts. Configuration
+  backups use inspect-first versioned manifests and atomic per-group Combine or
+  Replace across reusable toolkit settings while legacy v1 imports remain
+  supported. The cohesive responsive UI and functional Network Tools navigation
+  cover these workflows at desktop and mobile widths. Numbered transactional
+  migrations preserve existing data; no dependency, installer, service-
+  topology, native-helper, or operating-system configuration change is needed.
+- The 0.18.1 milestone made launchd-managed macOS HTTPS clients treat
   the broker-provided AF_UNIX descriptor as a relay endpoint instead of applying
   TCP-only options to it, while the native helper applies TCP_NODELAY to the
   actual remote stream. The repair works with the helper already installed by

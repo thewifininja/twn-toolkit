@@ -13,7 +13,12 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.18.1**
+Current release: **v0.19.0**
+
+v0.19.0 adds collaborative investigation cases with portable transfer and
+non-destructive merging, persistent browser-based Remote Terminal workspaces,
+and inspect-first configuration backups spanning the toolkit's reusable
+settings.
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
