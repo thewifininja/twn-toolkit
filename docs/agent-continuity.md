@@ -145,7 +145,7 @@ precedent.
   never accept arbitrary server filesystem paths. The managed TFTP worker uses
   this boundary, is disabled by default, and exposes admin-only listener/write/
   CIDR policy. Datastore contents, TFTP settings, and transfer history are not
-  profile-backup data.
+  portable configuration-backup data.
 - Datastore list/grid preference is browser-local. Multi-file moves and deletes
   use server-validated batch endpoints; validate the complete batch before any
   mutation and roll back completed moves after filesystem failure. Internal
@@ -199,7 +199,7 @@ precedent.
   below a clear divider; Cancel restores the pre-edit DOM order and visibility,
   while Save persists both. Reordering supports mouse drag, touch/pointer drag,
   and arrow keys from the widget drag handle.
-- The global dashboard layout is a selectable, non-sensitive backup item.
+- The global dashboard layout is a selectable, non-sensitive configuration-backup item.
   Activity counters, scoreboard data, and recent history are not included.
 - New metrics should be attributable to the current user whenever the action is
   authenticated.
@@ -547,7 +547,7 @@ make state, risk, and the next action obvious.
   Before an upgrade, stop every managed process and copy managed code plus the
   complete stopped instance into one recovery point. Write an integrity manifest
   and verify it before every restore. Retain the five newest recovery points;
-  never put them inside the instance or profile backups.
+  never put them inside the instance or configuration backups.
 - Success requires the target version, web/scheduler/supervisor and every enabled
   transfer worker to be healthy, and all SQLite quick checks to pass. Any failure
   after backup restores code and instance data together and validates the old
@@ -754,7 +754,7 @@ make state, risk, and the next action obvious.
 - `certificate.health` monitors up to 20 TLS targets and can enforce expiration,
   hostname/IP SAN, system trust, chain order, likely missing intermediates, and
   endpoint availability.
-- Automation definitions are a sensitive backup group. History/output is not
+- Automation definitions are a sensitive configuration-backup group. History/output is not
   backed up, and imported definitions remain paused.
 - Automations use ordered action stages. Actions inside a stage run concurrently;
   stages run sequentially. Each stage has a stable ID, display name, and

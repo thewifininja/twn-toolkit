@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 
 from twn_toolkit.profile_backup import (
+    CONFIGURATION_BACKUP_FORMAT,
+    ConfigurationImportStore,
+    ENCRYPTED_CONFIGURATION_BACKUP_FORMAT,
+    LEGACY_BACKUP_FORMAT,
     build_backup_catalog,
     build_profile_backup,
     decrypt_backup,
@@ -53,6 +58,11 @@ class ProfileBackupTests(unittest.TestCase):
                 "ssh_commandlets",
                 "automation_definitions",
                 "dashboard_layout",
+                "remote_connection_library",
+                "certificate_automation_profiles",
+                "access_profiles",
+                "smtp_settings",
+                "time_settings",
             ],
         )
         self.assertEqual(len(ids), len(set(ids)))
@@ -81,7 +91,7 @@ class ProfileBackupTests(unittest.TestCase):
     def test_encrypt_decrypt_round_trip_and_wrong_password_message(self) -> None:
         encrypted = encrypt_backup(b'{"format": "twn-toolkit-profile-backup", "version": 1, "items": {}}', "correct")
 
-        self.assertEqual(encrypted["format"], "twn-toolkit-encrypted-profile-backup")
+        self.assertEqual(encrypted["format"], ENCRYPTED_CONFIGURATION_BACKUP_FORMAT)
         self.assertEqual(decrypt_backup(encrypted, "correct")["items"], {})
         with self.assertRaisesRegex(ValueError, "password is incorrect"):
             decrypt_backup(encrypted, "wrong")
@@ -95,8 +105,64 @@ class ProfileBackupTests(unittest.TestCase):
             backup = build_profile_backup(selected)
             validate_profile_backup(backup)
 
-        self.assertEqual(backup["format"], "twn-toolkit-profile-backup")
+        self.assertEqual(backup["format"], CONFIGURATION_BACKUP_FORMAT)
+        self.assertEqual(backup["version"], 2)
+        self.assertEqual(backup["groups"][0]["record_count"], 1)
         self.assertEqual(backup["items"]["ping_profiles"][0]["name"], "WAN")
+
+    def test_legacy_v1_plain_and_encrypted_backups_remain_readable(self) -> None:
+        legacy = {
+            "format": LEGACY_BACKUP_FORMAT,
+            "version": 1,
+            "items": {"ping_profiles": [{"name": "WAN"}]},
+        }
+        validate_profile_backup(legacy)
+        encrypted = encrypt_backup(json.dumps(legacy).encode("utf-8"), "password")
+        encrypted["format"] = "twn-toolkit-encrypted-profile-backup"
+        encrypted["version"] = 1
+        restored = decrypt_backup(encrypted, "password")
+        self.assertEqual(restored, legacy)
+
+    def test_v2_manifest_rejects_tampered_group_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            selected = selected_backup_items(
+                build_backup_catalog(instance), {"ping_profiles"}
+            )
+            backup = build_profile_backup(selected)
+        backup["groups"][0]["record_count"] += 1
+        with self.assertRaisesRegex(ValueError, "count does not match"):
+            validate_profile_backup(backup)
+
+    def test_import_preview_staging_is_encrypted_and_user_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = ConfigurationImportStore(instance, "installation secret")
+            backup = {
+                "format": LEGACY_BACKUP_FORMAT,
+                "version": 1,
+                "items": {
+                    "fortigate_profiles": [
+                        {"name": "Secret device", "api_key": "not-plaintext"}
+                    ]
+                },
+            }
+            token = store.create(
+                backup,
+                user_id="admin-one",
+                encrypted_input=True,
+                import_mode="merge",
+            )
+            staged = next(store.directory.glob("*.token")).read_bytes()
+
+            self.assertNotIn(b"not-plaintext", staged)
+            self.assertEqual(
+                store.get(token, user_id="admin-one")["backup"], backup
+            )
+            with self.assertRaisesRegex(ValueError, "expired"):
+                store.get(token, user_id="admin-two")
+
+    def test_invalid_non_object_backup_fails_cleanly(self) -> None:
+        with self.assertRaisesRegex(ValueError, "does not look"):
+            validate_profile_backup([])  # type: ignore[arg-type]
 
     def test_merge_profiles_by_name_replaces_overlaps_and_moves_default(self) -> None:
         merged = merge_profiles_by_name(
@@ -142,6 +208,52 @@ class ProfileBackupTests(unittest.TestCase):
 
             self.assertEqual(imported, [("Ping profiles", 1)])
             self.assertEqual([profile["name"] for profile in store.all()], ["Replacement"])
+
+    def test_import_rolls_back_a_completed_group_when_a_later_group_fails(self) -> None:
+        class MemoryStore:
+            def __init__(self, values, *, fail=False):
+                self.values = values
+                self.fail = fail
+
+            def all(self):
+                return self.values
+
+            def replace_all(self, values):
+                if self.fail:
+                    self.fail = False
+                    raise ValueError("planned failure")
+                self.values = values
+
+        first = MemoryStore([{"name": "Original"}])
+        second = MemoryStore([{"name": "Second original"}], fail=True)
+        items = [
+            {
+                "id": "first",
+                "label": "First",
+                "store": first,
+                "supports_merge": True,
+                "supports_replace": True,
+            },
+            {
+                "id": "second",
+                "label": "Second",
+                "store": second,
+                "supports_merge": True,
+                "supports_replace": True,
+            },
+        ]
+
+        with self.assertRaisesRegex(ValueError, "planned failure"):
+            import_backup_items(
+                {
+                    "first": [{"name": "Imported"}],
+                    "second": [{"name": "Failure"}],
+                },
+                items,
+                "replace",
+            )
+
+        self.assertEqual(first.all(), [{"name": "Original"}])
 
 
 if __name__ == "__main__":

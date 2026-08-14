@@ -25,10 +25,17 @@ from flask import (
 from .auth import AuthStore
 from .automation import AutomationStore
 from .profile_backup import (
+    ConfigurationImportStore,
+    apply_remote_connection_owner_mappings,
+    backup_entry_count,
     build_profile_backup,
     decrypt_backup,
     encrypt_backup,
     import_backup_items,
+    inspect_profile_backup,
+    is_encrypted_backup,
+    preview_import_items,
+    remote_connection_owner_mappings,
     selected_backup_items,
     validate_profile_backup,
 )
@@ -340,6 +347,79 @@ def register_admin_routes(
     upgrade_manager = UpgradeManager(project_root, Path(app.instance_path), APP_VERSION)
     smtp_store = SMTPSettingsStore(app.instance_path, app.config["SECRET_KEY"])
     time_store = TimeSettingsStore(app.instance_path)
+    configuration_import_store = ConfigurationImportStore(
+        app.instance_path, str(app.config["SECRET_KEY"])
+    )
+
+    def _balanced_category_columns(
+        values: list[dict[str, Any]],
+    ) -> list[list[tuple[str, list[dict[str, Any]]]]]:
+        categories: dict[str, list[dict[str, Any]]] = {}
+        for value in values:
+            categories.setdefault(str(value["category"]), []).append(value)
+        category_groups = sorted(
+            categories.items(),
+            key=lambda category: (-len(category[1]), category[0].lower()),
+        )
+        columns: list[list[tuple[str, list[dict[str, Any]]]]] = [[], []]
+        column_weights = [0, 0]
+        for category in category_groups:
+            column_index = column_weights.index(min(column_weights))
+            columns[column_index].append(category)
+            column_weights[column_index] += len(category[1]) + 1
+        return columns
+
+    def _configuration_backup_page(
+        *,
+        active_view: str = "export",
+        preview_token: str = "",
+        pending_import: dict[str, Any] | None = None,
+    ) -> str:
+        catalog_display: list[dict[str, Any]] = []
+        for catalog_item in backup_catalog:
+            catalog_display.append(
+                {
+                    **catalog_item,
+                    "record_count": backup_entry_count(catalog_item["store"]),
+                }
+            )
+        preview = None
+        if pending_import:
+            backup = pending_import["backup"]
+            inspection = inspect_profile_backup(backup, backup_catalog)
+            import_mode = str(pending_import.get("import_mode", "merge"))
+            available_ids = {
+                group["id"]
+                for group in inspection["groups"]
+                if group["available"]
+            }
+            selected = selected_backup_items(backup_catalog, available_ids)
+            effects = {
+                item["id"]: item
+                for item in preview_import_items(backup["items"], selected, import_mode)
+            }
+            preview = {
+                **inspection,
+                "effects": effects,
+                "category_columns": _balanced_category_columns(
+                    inspection["groups"]
+                ),
+                "import_mode": import_mode,
+                "encrypted_input": bool(pending_import.get("encrypted_input")),
+                "owners": remote_connection_owner_mappings(
+                    backup["items"], auth_store.users()
+                ),
+            }
+        return render_template(
+            "auth/backup.html",
+            backup_catalog=backup_catalog,
+            backup_category_columns=_balanced_category_columns(catalog_display),
+            installed_version=APP_VERSION,
+            active_view=active_view,
+            preview_token=preview_token,
+            import_preview=preview,
+            local_users=auth_store.users(),
+        )
 
     @app.post("/settings/theme")
     def update_theme():
@@ -1246,10 +1326,24 @@ def register_admin_routes(
     def backup_settings():
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
-        return render_template(
-            "auth/backup.html",
-            backup_catalog=backup_catalog,
-            installed_version=APP_VERSION,
+        active_view = (
+            "import" if request.args.get("view") == "import" else "export"
+        )
+        preview_token = str(request.args.get("preview", ""))
+        pending = None
+        if preview_token:
+            try:
+                pending = configuration_import_store.get(
+                    preview_token, user_id=str(g.current_user["id"])
+                )
+                active_view = "import"
+            except ValueError as exc:
+                flash(str(exc), "error")
+                preview_token = ""
+        return _configuration_backup_page(
+            active_view=active_view,
+            preview_token=preview_token,
+            pending_import=pending,
         )
 
     @app.post("/settings/backup/export")
@@ -1276,17 +1370,17 @@ def register_admin_routes(
 
         backup = build_profile_backup(selected_items)
         payload = json.dumps(backup, indent=2).encode("utf-8")
-        filename_prefix = "twn-toolkit-backup"
+        filename_prefix = "twn-toolkit-configuration-backup"
         if encrypt_requested:
             payload = json.dumps(encrypt_backup(payload, password), indent=2).encode("utf-8")
-            filename_prefix = "twn-toolkit-encrypted-backup"
+            filename_prefix = "twn-toolkit-encrypted-configuration-backup"
         annotate_audit_event(
             category="Backup and restore",
             action="backup.exported",
             summary=f"Exported {len(selected_items)} backup group(s).",
-            resource_type="profile_backup",
+            resource_type="configuration_backup",
             resource_id="export",
-            resource_name="Profile backup export",
+            resource_name="Configuration backup export",
             details={
                 "selected groups": _backup_audit_references(selected_items),
                 "group count": len(selected_items),
@@ -1304,45 +1398,104 @@ def register_admin_routes(
             },
         )
 
-    @app.post("/settings/backup/import")
-    def import_profile_backup():
+    @app.post("/settings/backup/inspect")
+    def inspect_configuration_backup():
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
         upload = request.files.get("backup_file")
         if not upload or not upload.filename:
-            flash("Choose a toolkit backup JSON file to import.", "error")
-            return redirect(url_for("backup_settings"))
-
-        selected_ids = set(request.form.getlist("item"))
-        selected_items = selected_backup_items(backup_catalog, selected_ids)
-        if not selected_items:
-            flash("Choose at least one profile group to import.", "error")
-            return redirect(url_for("backup_settings"))
-
+            flash("Choose a toolkit configuration backup to inspect.", "error")
+            return redirect(url_for("backup_settings", view="import"))
         import_mode = request.form.get("import_mode", "merge")
         if import_mode not in {"merge", "replace"}:
-            flash("Choose combine or replace for the import mode.", "error")
-            return redirect(url_for("backup_settings"))
-
+            flash("Choose Combine or Replace for the import mode.", "error")
+            return redirect(url_for("backup_settings", view="import"))
         encrypted_input = False
         try:
-            backup = json.loads(upload.read().decode("utf-8"))
-            if backup.get("format") == "twn-toolkit-encrypted-profile-backup":
+            raw = upload.read(64 * 1024 * 1024 + 1)
+            if len(raw) > 64 * 1024 * 1024:
+                raise ValueError("Configuration backups may not exceed 64 MiB.")
+            backup = json.loads(raw.decode("utf-8"))
+            if is_encrypted_backup(backup):
                 encrypted_input = True
                 backup_password = request.form.get("backup_password", "")
                 if not backup_password:
                     raise ValueError("Enter the password for this encrypted backup.")
                 backup = decrypt_backup(backup, backup_password)
             validate_profile_backup(backup)
-            imported = import_backup_items(backup["items"], selected_items, import_mode)
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            inspection = inspect_profile_backup(backup, backup_catalog)
+            if inspection["unavailable_count"] == len(inspection["groups"]):
+                raise ValueError("This backup does not contain any groups available in this toolkit version.")
+            preview_token = configuration_import_store.create(
+                backup,
+                user_id=str(g.current_user["id"]),
+                encrypted_input=encrypted_input,
+                import_mode=import_mode,
+            )
+        except (OSError, TypeError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            annotate_audit_event(
+                category="Backup and restore",
+                action="backup.inspect_failed",
+                summary="Configuration backup inspection failed.",
+                resource_type="configuration_backup",
+                resource_id="inspect",
+                resource_name="Configuration backup inspection",
+                details={
+                    "import mode": import_mode,
+                    "encrypted": encrypted_input,
+                    "outcome": "failed",
+                    "error": str(exc)[:500],
+                },
+            )
+            flash(f"Backup inspection failed: {exc}", "error")
+            return redirect(url_for("backup_settings", view="import"))
+        return redirect(
+            url_for("backup_settings", view="import", preview=preview_token)
+        )
+
+    @app.post("/settings/backup/import")
+    def import_profile_backup():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        preview_token = str(request.form.get("preview_token", ""))
+        selected_ids = set(request.form.getlist("item"))
+        selected_items = selected_backup_items(backup_catalog, selected_ids)
+        import_mode = request.form.get("import_mode", "merge")
+        encrypted_input = False
+        try:
+            pending = configuration_import_store.get(
+                preview_token, user_id=str(g.current_user["id"])
+            )
+            encrypted_input = bool(pending.get("encrypted_input"))
+            backup = pending["backup"]
+            if not selected_items:
+                raise ValueError("Choose at least one configuration group to import.")
+            if import_mode != pending.get("import_mode"):
+                raise ValueError("The import mode changed. Inspect the backup again before importing.")
+            owner_mappings = remote_connection_owner_mappings(
+                backup["items"], auth_store.users()
+            )
+            if "remote_connection_library" in selected_ids:
+                mapping_values = {
+                    owner["index"]: str(
+                        request.form.get(f"owner_map_{owner['index']}", "")
+                    )
+                    for owner in owner_mappings
+                }
+                backup_items = apply_remote_connection_owner_mappings(
+                    backup["items"], mapping_values
+                )
+            else:
+                backup_items = backup["items"]
+            imported = import_backup_items(backup_items, selected_items, import_mode)
+        except (OSError, TypeError, UnicodeError, sqlite3.Error, ValueError, RuntimeError) as exc:
             annotate_audit_event(
                 category="Backup and restore",
                 action="backup.import_failed",
-                summary="Profile backup import failed.",
-                resource_type="profile_backup",
+                summary="Configuration backup import failed.",
+                resource_type="configuration_backup",
                 resource_id="import",
-                resource_name="Profile backup import",
+                resource_name="Configuration backup import",
                 details={
                     "selected groups": _backup_audit_references(selected_items),
                     "group count": len(selected_items),
@@ -1353,7 +1506,11 @@ def register_admin_routes(
                 },
             )
             flash(f"Backup import failed: {exc}", "error")
+            return redirect(
+                url_for("backup_settings", view="import", preview=preview_token)
+            )
         else:
+            configuration_import_store.delete(preview_token)
             imported_counts = [
                 {"group": label, "record count": count}
                 for label, count in imported
@@ -1362,9 +1519,9 @@ def register_admin_routes(
                 category="Backup and restore",
                 action="backup.imported",
                 summary=f"Imported {len(imported)} backup group(s) in {import_mode} mode.",
-                resource_type="profile_backup",
+                resource_type="configuration_backup",
                 resource_id="import",
-                resource_name="Profile backup import",
+                resource_name="Configuration backup import",
                 details={
                     "selected groups": _backup_audit_references(selected_items),
                     "group count": len(selected_items),
@@ -1383,4 +1540,4 @@ def register_admin_routes(
                 + ".",
                 "success",
             )
-        return redirect(url_for("backup_settings"))
+        return redirect(url_for("backup_settings", view="import"))

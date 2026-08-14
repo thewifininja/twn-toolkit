@@ -342,7 +342,7 @@ Automation administration is initially system-administrator-only. SSH action con
 is encrypted at rest with a key derived from the installation's private
 `instance/session_secret`. Passwords are never rendered back into the page.
 
-Automation definitions participate in profile backup and restore. Because the
+Automation definitions participate in configuration backup and restore. Because the
 definitions can contain credentials, selecting them makes backup encryption
 mandatory. Runtime check history and captured SSH output are intentionally not
 included in backups. Imported automations are paused.
@@ -352,7 +352,7 @@ once per day. Settings previews the currently eligible check/run counts before
 manual pruning. Database optimization is a separate manual operation because
 SQLite compaction can briefly pause writers; ordinary pruning does not run
 `VACUUM`. Runtime check history, retained output, and the local retention policy
-are intentionally not included in profile backups.
+are intentionally not included in configuration backups.
 
 Editing a reusable condition or action pauses every automation that references
 it. Definitions cannot be deleted while an automation still references them.

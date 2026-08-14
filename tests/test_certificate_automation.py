@@ -778,7 +778,7 @@ class CertificateAutomationRouteTests(unittest.TestCase):
             password="secret",
         )
         catalog_ids = {item["id"] for item in build_backup_catalog(self.directory.name)}
-        self.assertFalse(any("certificate" in item_id or "pki" in item_id for item_id in catalog_ids))
+        self.assertIn("certificate_automation_profiles", catalog_ids)
         result = self.app.test_cli_runner().invoke(args=["reset-data", "--yes"])
         self.assertEqual(result.exit_code, 0)
         self.assertFalse(store.path.exists())

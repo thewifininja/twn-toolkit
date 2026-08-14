@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from twn_toolkit.tool_catalog import ToolLink, ToolRegistry
-
-
 def backup_items(instance_path: str):
     from twn_toolkit.auth import load_or_create_secret_key
     from twn_toolkit.automation import AutomationBackupStore, AutomationStore
@@ -13,13 +10,17 @@ def backup_items(instance_path: str):
             "id": "automation_definitions",
             "label": "Automation definitions",
             "description": "Schedules, conditions, actions, and saved credentials. Runtime history is excluded.",
+            "category": "Automation",
             "store": AutomationBackupStore(store),
             "sensitive": True,
+            "supports_replace": False,
         }
     ]
 
 
-def register_tools(registry: ToolRegistry) -> None:
+def register_tools(registry) -> None:
+    from twn_toolkit.tool_catalog import ToolLink
+
     registry.add_tool(
         ToolLink(
             "automation.home",

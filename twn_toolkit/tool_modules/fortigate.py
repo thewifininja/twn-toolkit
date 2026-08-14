@@ -3,22 +3,22 @@ from __future__ import annotations
 from typing import Any
 
 from twn_toolkit.profiles import ProfileStore
-from twn_toolkit.tool_catalog import ToolLink, ToolRegistry
-
-
 def backup_items(instance_path: str) -> list[dict[str, Any]]:
     return [
         {
             "id": "fortigate_profiles",
             "label": "FortiGate profiles",
             "description": "Saved FortiGate URLs, default VDOMs, TLS choices, and API keys.",
+            "category": "Fortinet",
             "store": ProfileStore(instance_path),
             "sensitive": True,
         },
     ]
 
 
-def register_tools(registry: ToolRegistry) -> None:
+def register_tools(registry: Any) -> None:
+    from twn_toolkit.tool_catalog import ToolLink
+
     registry.add_tools(
         [
             ToolLink(

@@ -478,7 +478,7 @@ def test_admin_can_export_and_import_selected_profile_backups(tmp_path):
     page = client.get("/settings/backup")
     assert page.status_code == 200
     assert b"FortiGate profiles" in page.data
-    assert b"May restore stored secrets/API keys." in page.data
+    assert b"Requires encrypted backup" not in page.data
 
     export = client.post(
         "/settings/backup/export",
@@ -490,21 +490,28 @@ def test_admin_can_export_and_import_selected_profile_backups(tmp_path):
     )
     assert export.status_code == 200
     backup = json.loads(export.data)
-    assert backup["format"] == "twn-toolkit-encrypted-profile-backup"
+    assert backup["format"] == "twn-toolkit-encrypted-configuration-backup"
     assert b"secret-token" not in export.data
 
     profiles.write_text(json.dumps([]), encoding="utf-8")
     ping_profiles.write_text(json.dumps([]), encoding="utf-8")
 
-    imported = client.post(
-        "/settings/backup/import",
+    inspected = client.post(
+        "/settings/backup/inspect",
         data={
             "backup_file": (io.BytesIO(export.data), "backup.json"),
-            "item": ["fortigate_profiles"],
             "backup_password": "backup password",
             "import_mode": "replace",
         },
         content_type="multipart/form-data",
+    )
+    imported = client.post(
+        "/settings/backup/import",
+        data={
+            "preview_token": inspected.location.rsplit("preview=", 1)[1],
+            "item": ["fortigate_profiles"],
+            "import_mode": "replace",
+        },
     )
     assert imported.status_code == 302
     assert json.loads(profiles.read_text(encoding="utf-8"))[0]["name"] == "Lab"
@@ -547,7 +554,7 @@ def test_sensitive_backup_requires_password_and_plain_backup_can_merge(tmp_path)
         data={"item": ["ping_profiles"]},
     )
     backup = json.loads(export.data)
-    assert backup["format"] == "twn-toolkit-profile-backup"
+    assert backup["format"] == "twn-toolkit-configuration-backup"
     assert backup["items"]["ping_profiles"][0]["name"] == "WAN"
 
     ping_profiles.write_text(
@@ -559,14 +566,21 @@ def test_sensitive_backup_requires_password_and_plain_backup_can_merge(tmp_path)
         ),
         encoding="utf-8",
     )
-    imported = client.post(
-        "/settings/backup/import",
+    inspected = client.post(
+        "/settings/backup/inspect",
         data={
             "backup_file": (io.BytesIO(export.data), "backup.json"),
-            "item": ["ping_profiles"],
             "import_mode": "merge",
         },
         content_type="multipart/form-data",
+    )
+    imported = client.post(
+        "/settings/backup/import",
+        data={
+            "preview_token": inspected.location.rsplit("preview=", 1)[1],
+            "item": ["ping_profiles"],
+            "import_mode": "merge",
+        },
     )
     assert imported.status_code == 302
     restored = {

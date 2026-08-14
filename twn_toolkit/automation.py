@@ -7,9 +7,11 @@ import os
 import secrets
 import shutil
 import sqlite3
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -3263,6 +3265,13 @@ class AutomationBackupStore:
         ]
         return [*sources, *actions, *automations]
 
+    def count(self) -> int:
+        return (
+            len(self.store.source_definitions())
+            + len(self.store.action_definitions())
+            + len(self.store.all())
+        )
+
     def replace_all(self, definitions: list[dict[str, Any]]) -> None:
         conditions: dict[str, tuple[str, dict[str, Any]]] = {}
         actions: dict[str, tuple[str, dict[str, Any]]] = {}
@@ -3391,6 +3400,229 @@ class AutomationBackupStore:
                     for stage in stage_definitions
                 ],
                 created_by="backup-import",
+            )
+
+    def import_records(
+        self, definitions: list[dict[str, Any]], import_mode: str
+    ) -> int:
+        if import_mode != "merge":
+            raise ValueError(
+                "Automation definitions support Combine only so runtime history remains attached to its local automation."
+            )
+
+        # Fully exercise the existing compatibility parser and validators in an
+        # isolated store before changing the destination database.
+        with tempfile.TemporaryDirectory() as directory:
+            validation_store = AutomationBackupStore(
+                AutomationStore(directory, secrets.token_urlsafe(48))
+            )
+            validation_store.replace_all(deepcopy(definitions))
+            validated = validation_store.all()
+
+        source_definitions = [
+            item
+            for item in validated
+            if item.get("kind")
+            in {"condition", "trigger", "schedule", "manual", "startup"}
+        ]
+        action_definitions = [
+            item for item in validated if item.get("kind") == "action"
+        ]
+        automations = [
+            item for item in validated if item.get("kind") == "automation"
+        ]
+
+        existing_sources = {
+            str(item["name"]).casefold(): item
+            for item in self.store.source_definitions()
+        }
+        condition_ids: dict[str, str] = {}
+        for item in source_definitions:
+            name = str(item["definition_name"])
+            existing = existing_sources.get(name.casefold())
+            condition_ids[name] = self.store.save_condition_definition(
+                name=name,
+                type_id=str(item["type"]),
+                config=dict(item["config"]),
+                definition_id=str(existing["id"]) if existing else "",
+            )
+
+        existing_actions = {
+            str(item["name"]).casefold(): item
+            for item in self.store.action_definitions(include_secrets=True)
+        }
+        action_ids: dict[str, str] = {}
+        for item in action_definitions:
+            name = str(item["definition_name"])
+            existing = existing_actions.get(name.casefold())
+            action_ids[name] = self.store.save_action_definition(
+                name=name,
+                type_id=str(item["type"]),
+                config=dict(item["config"]),
+                definition_id=str(existing["id"]) if existing else "",
+            )
+
+        existing_automations = {
+            str(item["name"]).casefold(): item
+            for item in self.store.all(include_secrets=True)
+        }
+        for definition in automations:
+            condition_names = [
+                str(name)
+                for name in definition.get("condition_names", [])
+                if str(name)
+            ] or [str(definition.get("condition_name", ""))]
+            selected_action_names = [
+                str(name) for name in definition.get("action_names", [])
+            ]
+            if any(name not in condition_ids for name in condition_names) or any(
+                name not in action_ids for name in selected_action_names
+            ):
+                raise ValueError(
+                    "Automation backup references a missing condition or action."
+                )
+            action_stages = [
+                {
+                    "id": str(stage.get("id", "")),
+                    "name": str(stage.get("name", "")),
+                    "continue_policy": str(
+                        stage.get("continue_policy", "all_completed")
+                    ),
+                    "delay_seconds": int(stage.get("delay_seconds", 0)),
+                    "action_definition_ids": [
+                        action_ids[str(name)]
+                        for name in stage.get("action_names", [])
+                    ],
+                }
+                for stage in definition.get("action_stages", [])
+            ]
+            automation_name = str(definition["automation_name"])
+            existing = existing_automations.get(automation_name.casefold())
+            self.store.save(
+                name=automation_name,
+                interval_seconds=int(definition["interval_seconds"]),
+                trigger_after=int(definition["trigger_after"]),
+                recover_after=int(definition["recover_after"]),
+                cooldown_seconds=int(definition["cooldown_seconds"]),
+                condition_definition_ids=[
+                    condition_ids[name] for name in condition_names
+                ],
+                condition_operator=str(
+                    definition.get("condition_operator", "all")
+                ),
+                action_stages=action_stages,
+                created_by="backup-import",
+                automation_id=str(existing["id"]) if existing else "",
+            )
+        return len(validated)
+
+    def backup_snapshot(self) -> dict[str, list[dict[str, Any]]]:
+        with self.store._connect() as connection:
+            return {
+                table: [
+                    dict(row)
+                    for row in connection.execute(f"SELECT * FROM {table}")
+                ]
+                for table in (
+                    "automation_conditions",
+                    "automation_actions",
+                    "automations",
+                    "automation_event_state",
+                )
+            }
+
+    def restore_backup_snapshot(
+        self, snapshot: dict[str, list[dict[str, Any]]]
+    ) -> None:
+        with self.store._connect() as connection:
+            self._remove_added_rows(
+                connection,
+                "automations",
+                "id",
+                snapshot["automations"],
+            )
+            self._upsert_snapshot_rows(
+                connection,
+                "automation_conditions",
+                "id",
+                snapshot["automation_conditions"],
+            )
+            self._upsert_snapshot_rows(
+                connection,
+                "automation_actions",
+                "id",
+                snapshot["automation_actions"],
+            )
+            self._upsert_snapshot_rows(
+                connection,
+                "automations",
+                "id",
+                snapshot["automations"],
+            )
+            self._remove_added_rows(
+                connection,
+                "automation_conditions",
+                "id",
+                snapshot["automation_conditions"],
+            )
+            self._remove_added_rows(
+                connection,
+                "automation_actions",
+                "id",
+                snapshot["automation_actions"],
+            )
+            automation_ids = [str(row["id"]) for row in snapshot["automations"]]
+            if automation_ids:
+                connection.execute(
+                    "DELETE FROM automation_event_state WHERE automation_id IN "
+                    f"({', '.join('?' for _ in automation_ids)})",
+                    tuple(automation_ids),
+                )
+            self._upsert_snapshot_rows(
+                connection,
+                "automation_event_state",
+                "automation_id",
+                snapshot["automation_event_state"],
+            )
+
+    @staticmethod
+    def _remove_added_rows(
+        connection: sqlite3.Connection,
+        table: str,
+        key: str,
+        snapshot_rows: list[dict[str, Any]],
+    ) -> None:
+        snapshot_ids = {str(row[key]) for row in snapshot_rows}
+        current_ids = {
+            str(row[0])
+            for row in connection.execute(f"SELECT {key} FROM {table}")
+        }
+        added_ids = current_ids - snapshot_ids
+        if added_ids:
+            connection.execute(
+                f"DELETE FROM {table} WHERE {key} IN "
+                f"({', '.join('?' for _ in added_ids)})",
+                tuple(added_ids),
+            )
+
+    @staticmethod
+    def _upsert_snapshot_rows(
+        connection: sqlite3.Connection,
+        table: str,
+        key: str,
+        rows: list[dict[str, Any]],
+    ) -> None:
+        for row in rows:
+            columns = list(row)
+            updated = [column for column in columns if column != key]
+            connection.execute(
+                f"INSERT INTO {table} ({', '.join(columns)}) "
+                f"VALUES ({', '.join('?' for _ in columns)}) "
+                f"ON CONFLICT({key}) DO UPDATE SET "
+                + ", ".join(
+                    f"{column} = excluded.{column}" for column in updated
+                ),
+                tuple(row[column] for column in columns),
             )
 
     def clear(self) -> None:

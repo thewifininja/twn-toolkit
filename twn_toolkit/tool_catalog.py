@@ -130,7 +130,7 @@ TOOL_CATEGORIES = [
         "id": "administration",
         "icon": "⚙",
         "label": "Administration",
-        "description": "User settings, access controls, profile backup, and server listener settings.",
+        "description": "User settings, access controls, configuration backups, and server listener settings.",
         "endpoint": "settings",
     },
 ]

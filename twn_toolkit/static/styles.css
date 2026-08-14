@@ -1609,7 +1609,7 @@ button.danger:hover {
   padding: 0.75rem;
 }
 
-.backup-choice span {
+.backup-choice > span {
   display: grid;
   gap: 0.2rem;
 }
@@ -1643,6 +1643,678 @@ button.danger:hover {
   line-height: 1.4;
   margin: 2px 0 0;
   max-width: 720px;
+}
+
+.configuration-backup-page {
+  container-name: configuration-backup;
+  container-type: inline-size;
+}
+
+.configuration-backup-nav {
+  background: var(--surface-inset);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 5px;
+}
+
+.configuration-backup-nav a {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.9rem;
+  font-weight: 850;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 14px;
+  text-decoration: none;
+}
+
+.configuration-backup-nav a:hover {
+  color: var(--ink);
+}
+
+.configuration-backup-nav a.active {
+  background: var(--panel);
+  border-color: color-mix(in srgb, var(--line-strong), var(--depth-primary) 22%);
+  box-shadow: 0 1px 4px rgb(25 33 31 / 8%), inset 0 -3px 0 var(--depth-primary);
+  color: var(--ink);
+}
+
+.configuration-backup-workspace {
+  display: grid;
+  gap: 0;
+  max-width: none;
+}
+
+.configuration-backup-toolbar,
+.configuration-backup-submit,
+.configuration-preview-heading {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.configuration-backup-toolbar > div:first-child,
+.configuration-encryption-card > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.configuration-backup-toolbar small,
+.configuration-encryption-card small {
+  color: var(--muted);
+}
+
+.configuration-backup-toolbar .checkbox-actions .link-button {
+  background: var(--surface-inset);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.configuration-backup-toolbar .checkbox-actions .link-button:hover,
+.configuration-backup-toolbar .checkbox-actions .link-button:focus {
+  background: color-mix(in srgb, var(--surface-inset), var(--brand-green) 10%);
+  color: var(--ink);
+}
+
+.configuration-backup-categories {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.configuration-backup-category-column {
+  align-content: start;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.configuration-preview-categories {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.configuration-preview-category-column {
+  align-content: start;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.configuration-backup-category,
+.configuration-preview-category,
+.configuration-owner-mapping {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.configuration-preview-category {
+  box-sizing: border-box;
+  margin: 0;
+  width: 100%;
+}
+
+.configuration-backup-category {
+  box-sizing: border-box;
+  margin: 0;
+  width: 100%;
+}
+
+.configuration-backup-category legend,
+.configuration-preview-category legend,
+.configuration-import-mode legend,
+.configuration-owner-mapping legend {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 850;
+  padding: 0 7px;
+}
+
+.configuration-backup-category legend span,
+.configuration-preview-category legend span,
+.backup-count {
+  align-items: center;
+  background: var(--surface-inset);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 850;
+  justify-content: center;
+  min-height: 22px;
+  min-width: 22px;
+  padding: 2px 7px;
+}
+
+.configuration-backup-category .backup-choice-list {
+  gap: 8px;
+}
+
+.configuration-preview-category-list {
+  display: grid;
+  gap: 8px;
+}
+
+.configuration-backup-category .backup-choice,
+.configuration-preview-group {
+  background: var(--panel);
+  border-radius: 9px;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.configuration-backup-category .backup-choice {
+  min-height: 68px;
+}
+
+.configuration-preview-group {
+  min-height: 56px;
+  padding-block: 8px;
+}
+
+.backup-choice-copy,
+.configuration-preview-group > span {
+  min-width: 0;
+}
+
+.backup-choice-title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.backup-secret-badge {
+  background: color-mix(in srgb, var(--bad), transparent 88%);
+  border: 1px solid color-mix(in srgb, var(--bad), transparent 68%);
+  border-radius: 999px;
+  color: var(--bad);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  text-transform: uppercase;
+}
+
+.configuration-encryption-card {
+  align-items: start;
+  background: color-mix(in srgb, var(--surface-inset), var(--brand-green) 3%);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1fr);
+  padding: 16px;
+}
+
+.configuration-encryption-card > div:first-child,
+.configuration-encryption-toggle {
+  grid-column: 1 / -1;
+}
+
+.configuration-encryption-toggle {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 11px 12px;
+}
+
+.configuration-encryption-card .backup-password-fields {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.configuration-backup-submit {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.configuration-backup-submit p {
+  line-height: 1.45;
+  margin: 0;
+  max-width: 72ch;
+}
+
+.configuration-import-form,
+.configuration-preview-form {
+  gap: 18px;
+}
+
+.configuration-import-progress {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.configuration-import-progress li {
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.configuration-import-progress li > span {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 28px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  height: 28px;
+  justify-content: center;
+}
+
+.configuration-import-progress li > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.configuration-import-progress strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+}
+
+.configuration-import-progress small {
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.configuration-import-progress li.active {
+  background: color-mix(in srgb, var(--surface-inset), var(--brand-green) 8%);
+  border-color: color-mix(in srgb, var(--line-strong), var(--brand-green) 34%);
+  box-shadow: inset 0 -3px 0 var(--depth-primary);
+}
+
+.configuration-import-progress li.active > span,
+.configuration-import-progress li.complete > span {
+  background: var(--depth-primary);
+  border-color: var(--depth-primary);
+  color: white;
+}
+
+.configuration-import-progress li.complete {
+  border-color: color-mix(in srgb, var(--line), var(--brand-green) 25%);
+}
+
+.configuration-import-setup {
+  background: var(--card-tint);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.configuration-import-source {
+  align-items: start;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(220px, 0.6fr) minmax(0, 1.4fr);
+  padding: 16px;
+}
+
+.configuration-import-source-fields {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.75fr);
+  min-width: 0;
+}
+
+.configuration-import-card-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.configuration-import-card-heading h3 {
+  color: var(--ink);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.configuration-import-card-heading p {
+  font-size: 0.86rem;
+  line-height: 1.42;
+  margin: 0;
+}
+
+.configuration-file-field,
+.configuration-password-field {
+  align-self: start;
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.configuration-file-field > span,
+.configuration-password-field > span {
+  align-items: flex-end;
+  color: var(--field-label);
+  display: flex;
+  font-size: 0.86rem;
+  font-weight: 800;
+  min-height: 32px;
+}
+
+.configuration-file-field > small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.configuration-password-field .optional-label {
+  margin-left: 5px;
+}
+
+.configuration-file-field input[type="file"] {
+  background: var(--panel);
+  border: 1px solid var(--control-border);
+  border-radius: 9px;
+  color: var(--muted);
+  cursor: pointer;
+  min-height: 48px;
+  padding: 5px;
+  width: 100%;
+}
+
+.configuration-password-field input[type="password"] {
+  min-height: 48px;
+}
+
+.configuration-file-field input[type="file"]::file-selector-button {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 7%);
+  border: 1px solid color-mix(in srgb, var(--line-strong), var(--brand-green) 26%);
+  border-radius: 7px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 850;
+  margin-right: 10px;
+  min-height: 36px;
+  padding: 7px 12px;
+}
+
+.configuration-file-field input[type="file"]::file-selector-button:hover {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 13%);
+}
+
+.configuration-staging-note {
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  border-left: 3px solid var(--depth-primary);
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin: 0;
+  padding: 10px 16px;
+}
+
+.configuration-import-mode {
+  align-items: start;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(220px, 0.6fr) minmax(0, 1.4fr);
+  margin: 0;
+  min-width: 0;
+  padding: 16px;
+}
+
+.configuration-import-mode > legend {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.configuration-mode-options {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.configuration-mode-option {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  margin: 0;
+  padding: 12px;
+}
+
+.configuration-mode-option > input[type="radio"] {
+  accent-color: var(--depth-primary);
+  height: 18px;
+  margin: 0;
+  min-height: 18px;
+  padding: 0;
+  width: 18px;
+}
+
+.configuration-mode-option:has(input:checked) {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 8%);
+  border-color: color-mix(in srgb, var(--line-strong), var(--brand-green) 32%);
+}
+
+.configuration-mode-option span {
+  display: grid;
+  gap: 4px;
+}
+
+.configuration-mode-title {
+  align-items: center;
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 7px !important;
+}
+
+.configuration-mode-title em {
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-style: normal;
+  font-weight: 850;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  text-transform: uppercase;
+}
+
+.configuration-mode-option:has(input:checked) .configuration-mode-title em {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 12%);
+  border-color: color-mix(in srgb, var(--line), var(--brand-green) 28%);
+  color: var(--depth-primary);
+}
+
+.configuration-mode-option small,
+.configuration-preview-group small,
+.configuration-owner-mapping p,
+.configuration-owner-list small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.configuration-preview-heading {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+}
+
+.configuration-preview-heading h2 {
+  font-size: 1.3rem;
+  margin-top: 4px;
+}
+
+.configuration-preview-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.configuration-preview-status span {
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+.configuration-preview-warning {
+  background: color-mix(in srgb, var(--warn), transparent 90%);
+  border: 1px solid color-mix(in srgb, var(--warn), transparent 58%);
+  border-radius: 10px;
+  color: var(--ink);
+  display: grid;
+  gap: 3px;
+  padding: 11px 13px;
+}
+
+.configuration-preview-warning span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.configuration-preview-group.unavailable {
+  background: var(--surface-inset);
+  opacity: 0.68;
+}
+
+.configuration-owner-mapping > p {
+  margin: 0 0 12px;
+}
+
+.configuration-owner-list {
+  display: grid;
+  gap: 10px;
+}
+
+.configuration-owner-list > label {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(220px, 1.3fr);
+  padding: 11px 12px;
+}
+
+.configuration-owner-list label > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.configuration-import-confirm .actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@container configuration-backup (max-width: 760px) {
+  .configuration-backup-toolbar,
+  .configuration-backup-submit,
+  .configuration-preview-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .configuration-backup-toolbar .checkbox-actions,
+  .configuration-preview-status {
+    justify-content: flex-start;
+  }
+
+  .configuration-file-picker,
+  .configuration-backup-categories,
+  .configuration-preview-categories,
+  .configuration-import-source,
+  .configuration-import-source-fields,
+  .configuration-import-mode,
+  .configuration-mode-options,
+  .configuration-encryption-card,
+  .configuration-encryption-card .backup-password-fields,
+  .configuration-owner-list > label {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .configuration-backup-submit button,
+  .configuration-import-confirm .actions,
+  .configuration-import-confirm .actions > * {
+    width: 100%;
+  }
+}
+
+@container configuration-backup (max-width: 440px) {
+  .configuration-backup-nav {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .configuration-backup-workspace {
+    padding: 16px;
+  }
+
+  .configuration-backup-category,
+  .configuration-preview-category,
+  .configuration-owner-mapping {
+    padding: 11px;
+  }
+
+  .configuration-import-progress {
+    gap: 5px;
+  }
+
+  .configuration-import-progress li {
+    align-items: flex-start;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .configuration-import-progress li > span {
+    flex-basis: 24px;
+    height: 24px;
+  }
+
+  .configuration-import-progress small {
+    display: none;
+  }
 }
 
 .fortiap-history-summary {

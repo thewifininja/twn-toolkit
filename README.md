@@ -59,7 +59,7 @@ what can I run, what needs attention, and what happened recently. It provides:
   and drag-and-drop ordering; and
 - an optional team activity view when more than one operator contributes.
 
-Dashboard layout can be included in profile backups. Activity history and
+Dashboard layout can be included in configuration backups. Activity history and
 counters are intentionally excluded.
 
 ### Fortinet Tools
@@ -271,7 +271,7 @@ supports:
 Paths cannot escape the Datastore root, symbolic links are ignored, partial
 uploads are cleaned up, and configured storage/free-space limits are enforced
 at write time. Datastore content is operational data and is not included in
-profile backups.
+configuration backups.
 
 #### File Transfers
 
@@ -362,7 +362,7 @@ The built-in system administrator can manage:
   new operator role;
 - server bind addresses, client allowlists, instance name, and preferred FQDN;
 - installation-wide SMTP delivery for automation email notifications;
-- selectable profile backup/restore with combine or replace behavior;
+- inspect-first configuration backup/import with per-group Combine or Replace behavior;
 - mandatory encryption whenever an export contains credentials or secrets;
 - automation retention, worker/queue limits, quotas, and free-disk reserve; and
 - System Diagnostics with manual/boot-service mode, service-manager and process
@@ -379,7 +379,7 @@ System Settings is separated into System, Email, Operations, and Accounts &
 access views. System settings include a host-detected or explicit IANA toolkit
 timezone for localized automation notifications; internal records and legacy
 integration timestamps remain UTC. Updates & Recovery is separated into
-Updates, Recovery points, and Profile backups so advanced and destructive
+Updates, Recovery points, and Configuration backups so advanced and destructive
 controls remain available without crowding routine administration.
 
 Operators receive the union of their assigned custom profiles. Unauthorized tools
@@ -524,10 +524,13 @@ Fortinet API tokens and several reusable credential stores remain sensitive
 local instance data rather than entries in an external secrets vault. Protect
 the host and the ignored `instance/` directory accordingly.
 
-Profile backup/restore is selectable. Backups containing credentials require a
-password-encrypted file; non-secret selections may be encrypted optionally.
-Runtime activity, automation history/output, transfer history, and Datastore
-files are not included.
+Configuration backup/restore is selectable and inspect-first. Backups containing
+credentials require a password-encrypted file; non-secret selections may be
+encrypted optionally. Runtime activity, users, cases, issued certificate keys,
+automation history/output, transfer history, and Datastore files are not
+included. Recovery points remain the complete matched code-and-instance safety
+mechanism. See [Configuration backups](docs/configuration-backups.md) for the
+scope and import model.
 
 SQLite stores activity, automation state, retained run metadata, and migration
 ledgers. Numbered transactional migrations create local pre-change snapshots
@@ -557,6 +560,8 @@ unrestricted internet exposure.
   behavior, and troubleshooting
 - [Upgrade and Recovery](docs/upgrade-recovery.md) — pre-upgrade backup,
   verification, and rollback procedure
+- [Configuration backups](docs/configuration-backups.md) — portable settings,
+  exclusions, encryption, inspection, and import behavior
 - [Security Advisories](docs/security-advisories.md) — dependency-audit policy,
   active mitigations, and reviewed exceptions
 - [Adding a Tool](docs/adding-a-tool.md) — internal module registration and

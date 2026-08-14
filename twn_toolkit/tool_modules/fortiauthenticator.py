@@ -3,22 +3,22 @@ from __future__ import annotations
 from typing import Any
 
 from twn_toolkit.profiles import FortiAuthenticatorProfileStore
-from twn_toolkit.tool_catalog import ToolLink, ToolRegistry
-
-
 def backup_items(instance_path: str) -> list[dict[str, Any]]:
     return [
         {
             "id": "fortiauthenticator_profiles",
             "label": "FortiAuthenticator profiles",
             "description": "Saved FortiAuthenticator URLs, users, TLS choices, timeouts, and passwords.",
+            "category": "Fortinet",
             "store": FortiAuthenticatorProfileStore(instance_path),
             "sensitive": True,
         },
     ]
 
 
-def register_tools(registry: ToolRegistry) -> None:
+def register_tools(registry: Any) -> None:
+    from twn_toolkit.tool_catalog import ToolLink
+
     registry.add_tools(
         [
             ToolLink(
