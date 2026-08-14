@@ -8,6 +8,7 @@ from pathlib import Path
 
 from twn_toolkit import create_app
 from twn_toolkit.audit import AuditStore
+from twn_toolkit.auth import AuthStore
 
 
 class ProfileBackupRouteTests(unittest.TestCase):
@@ -30,8 +31,14 @@ class ProfileBackupRouteTests(unittest.TestCase):
         self.assertIn(b">Network tools <span>", export_page.data)
         self.assertEqual(import_page.status_code, 200)
         self.assertIn(b"Configuration import progress", import_page.data)
+        self.assertEqual(
+            import_page.data.count(b'<li class="active" aria-current="step">'),
+            1,
+        )
         self.assertIn(b"Choose the backup to inspect", import_page.data)
         self.assertIn(b"Combine with local configuration", import_page.data)
+        self.assertIn(b"Review &amp; import", import_page.data)
+        self.assertNotIn(b"Apply the validated selection", import_page.data)
         self.assertIn(b"Safe to inspect.", import_page.data)
 
     def test_sensitive_backup_requires_password(self) -> None:
@@ -142,8 +149,14 @@ class ProfileBackupRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn(b"Backup validated", preview.data)
-        self.assertIn(b"Review changes", preview.data)
-        self.assertIn(b"configuration-preview-category", preview.data)
+        self.assertIn(b"Review &amp; import", preview.data)
+        self.assertNotIn(b"Apply the validated selection", preview.data)
+        self.assertEqual(
+            preview.data.count(
+                b'class="configuration-preview-category-column"'
+            ),
+            2,
+        )
         self.assertEqual(
             [event["action"] for event in events],
             ["backup.imported", "backup.exported"],
@@ -165,6 +178,46 @@ class ProfileBackupRouteTests(unittest.TestCase):
         self.assertFalse(exported["details"]["encrypted"])
         self.assertFalse(exported["details"]["contains sensitive groups"])
         self.assertNotIn(b"sensitive-target.internal", audit_database)
+
+    def test_access_profile_combine_completes_through_backup_routes(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            auth_store = AuthStore(instance)
+            auth_store.save_access_profile(
+                name="Local operations",
+                description="Existing local profile",
+                tool_ids=["tools.dns_response"],
+            )
+            client = app.test_client()
+
+            export = client.post(
+                "/settings/backup/export",
+                data={"item": ["access_profiles"]},
+            )
+            self.assertEqual(export.status_code, 200)
+            inspected = client.post(
+                "/settings/backup/inspect",
+                data={
+                    "backup_file": (io.BytesIO(export.data), "backup.json"),
+                    "import_mode": "merge",
+                },
+                content_type="multipart/form-data",
+            )
+            token = inspected.location.rsplit("preview=", 1)[1]
+            imported = client.post(
+                "/settings/backup/import",
+                data={
+                    "preview_token": token,
+                    "item": ["access_profiles"],
+                    "import_mode": "merge",
+                },
+                follow_redirects=True,
+            )
+
+        self.assertEqual(imported.status_code, 200)
+        self.assertIn(b"Combined 1 Access profiles", imported.data)
+        self.assertNotIn(b"Backup import failed", imported.data)
 
 
 if __name__ == "__main__":

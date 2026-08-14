@@ -99,31 +99,28 @@
       </li>
       <li>
         <span aria-hidden="true">2</span>
-        <div><strong>Review changes</strong><small>Confirm groups, effects, and owners</small></div>
-      </li>
-      <li>
-        <span aria-hidden="true">3</span>
-        <div><strong>Import</strong><small>Apply the validated selection</small></div>
+        <div><strong>Review &amp; import</strong><small>Choose groups and apply changes</small></div>
       </li>
     </ol>
     <form method="post" action="{{ url_for('inspect_configuration_backup') }}" enctype="multipart/form-data" class="form configuration-import-form" data-loading-message="Inspecting configuration backup…">
-      <div class="configuration-import-layout">
-        <section class="configuration-import-card configuration-import-source" aria-labelledby="configuration-source-heading">
+      <div class="configuration-import-setup">
+        <section class="configuration-import-source" aria-labelledby="configuration-source-heading">
           <div class="configuration-import-card-heading">
             <span class="eyebrow">Source file</span>
             <h3 id="configuration-source-heading">Choose the backup to inspect</h3>
             <p>Use a configuration backup exported by this toolkit. Legacy v1 files remain supported.</p>
           </div>
-          <label class="configuration-file-field">
-            <span>Configuration backup</span>
-            <input type="file" name="backup_file" accept="application/json,.json" required>
-            <small>Toolkit JSON backup · maximum 64 MiB</small>
-          </label>
-          <label class="configuration-password-field">
-            <span>Backup password <span class="optional-label">Encrypted files only</span></span>
-            <input type="password" name="backup_password" autocomplete="current-password" placeholder="Leave blank for an unencrypted backup">
-          </label>
-          <p class="configuration-staging-note"><strong>Safe to inspect.</strong> Uploaded content is encrypted in temporary local staging and expires automatically.</p>
+          <div class="configuration-import-source-fields">
+            <label class="configuration-file-field">
+              <span>Configuration backup</span>
+              <input type="file" name="backup_file" accept="application/json,.json" required>
+              <small>Toolkit JSON backup · maximum 64 MiB</small>
+            </label>
+            <label class="configuration-password-field">
+              <span>Backup password <span class="optional-label">Encrypted files only</span></span>
+              <input type="password" name="backup_password" autocomplete="current-password" placeholder="Leave blank for an unencrypted backup">
+            </label>
+          </div>
         </section>
         <fieldset class="configuration-import-mode">
           <legend>Import behavior</legend>
@@ -132,21 +129,24 @@
             <h3>How should local configuration change?</h3>
             <p>You will review the exact effect on each available group before anything is applied.</p>
           </div>
-          <label class="configuration-mode-option">
-            <input type="radio" name="import_mode" value="merge" checked>
-            <span>
-              <span class="configuration-mode-title"><strong>Combine with local configuration</strong><em>Recommended</em></span>
-              <small>Add new names and update matches while preserving every local-only record.</small>
-            </span>
-          </label>
-          <label class="configuration-mode-option">
-            <input type="radio" name="import_mode" value="replace">
-            <span>
-              <span class="configuration-mode-title"><strong>Replace selected groups</strong><em>Destructive</em></span>
-              <small>Make supported groups match the backup. The review identifies local-only records that would be removed.</small>
-            </span>
-          </label>
+          <div class="configuration-mode-options">
+            <label class="configuration-mode-option">
+              <input type="radio" name="import_mode" value="merge" checked>
+              <span>
+                <span class="configuration-mode-title"><strong>Combine with local configuration</strong><em>Recommended</em></span>
+                <small>Add new names and update matches while preserving every local-only record.</small>
+              </span>
+            </label>
+            <label class="configuration-mode-option">
+              <input type="radio" name="import_mode" value="replace">
+              <span>
+                <span class="configuration-mode-title"><strong>Replace selected groups</strong><em>Destructive</em></span>
+                <small>Make supported groups match the backup. The review identifies local-only records that would be removed.</small>
+              </span>
+            </label>
+          </div>
         </fieldset>
+        <p class="configuration-staging-note"><strong>Safe to inspect.</strong> The file is encrypted in temporary local staging and expires automatically. No configuration changes until the final import step.</p>
       </div>
       <div class="configuration-backup-submit">
         <p><strong>Next: review only.</strong> Inspecting validates the file and prepares a change preview; it does not import configuration.</p>
@@ -163,11 +163,7 @@
       </li>
       <li class="active" aria-current="step">
         <span aria-hidden="true">2</span>
-        <div><strong>Review changes</strong><small>Confirm groups, effects, and owners</small></div>
-      </li>
-      <li>
-        <span aria-hidden="true">3</span>
-        <div><strong>Import</strong><small>Apply the validated selection</small></div>
+        <div><strong>Review &amp; import</strong><small>Choose groups and apply changes</small></div>
       </li>
     </ol>
     <div class="configuration-preview-heading">
@@ -202,33 +198,37 @@
         </div>
       </div>
       <div class="configuration-preview-categories" id="configuration-preview-groups">
-        {% for category, groups in import_preview.groups|groupby('category') %}
-          <fieldset class="configuration-preview-category">
-            <legend>{{ category }} <span>{{ groups|length }}</span></legend>
-            <div class="configuration-preview-category-list">
-              {% for group in groups %}
-                {% set effect = import_preview.effects.get(group.id) %}
-                {% set supported = group.available and ((group.supports_merge and import_preview.import_mode == 'merge') or (group.supports_replace and import_preview.import_mode == 'replace')) %}
-                <label class="check configuration-preview-group {{ 'unavailable' if not supported else '' }}">
-                  <input type="checkbox" name="item" value="{{ group.id }}" {{ 'checked' if supported else 'disabled' }}>
-                  <span>
-                    <span class="backup-choice-title">
-                      <strong>{{ group.label }}</strong>
-                      <span class="backup-count">{{ group.record_count }}</span>
-                      {% if group.sensitive %}<span class="backup-secret-badge">Secrets</span>{% endif %}
-                    </span>
-                    {% if not group.available %}
-                      <small>Not available in this toolkit version.</small>
-                    {% elif not supported %}
-                      <small>Does not support {{ 'Combine' if import_preview.import_mode == 'merge' else 'Replace' }}. Inspect again using the other mode.</small>
-                    {% elif effect %}
-                      <small>{{ effect.added }} new · {{ effect.updated }} matching{% if import_preview.import_mode == 'replace' %} · {{ effect.removed }} local-only removed{% endif %}</small>
-                    {% endif %}
-                  </span>
-                </label>
-              {% endfor %}
-            </div>
-          </fieldset>
+        {% for column in import_preview.category_columns %}
+          <div class="configuration-preview-category-column">
+            {% for category, groups in column %}
+              <fieldset class="configuration-preview-category">
+                <legend>{{ category }} <span>{{ groups|length }}</span></legend>
+                <div class="configuration-preview-category-list">
+                  {% for group in groups %}
+                    {% set effect = import_preview.effects.get(group.id) %}
+                    {% set supported = group.available and ((group.supports_merge and import_preview.import_mode == 'merge') or (group.supports_replace and import_preview.import_mode == 'replace')) %}
+                    <label class="check configuration-preview-group {{ 'unavailable' if not supported else '' }}">
+                      <input type="checkbox" name="item" value="{{ group.id }}" {{ 'checked' if supported else 'disabled' }}>
+                      <span>
+                        <span class="backup-choice-title">
+                          <strong>{{ group.label }}</strong>
+                          <span class="backup-count">{{ group.record_count }}</span>
+                          {% if group.sensitive %}<span class="backup-secret-badge">Secrets</span>{% endif %}
+                        </span>
+                        {% if not group.available %}
+                          <small>Not available in this toolkit version.</small>
+                        {% elif not supported %}
+                          <small>Does not support {{ 'Combine' if import_preview.import_mode == 'merge' else 'Replace' }}. Inspect again using the other mode.</small>
+                        {% elif effect %}
+                          <small>{{ effect.added }} new · {{ effect.updated }} matching{% if import_preview.import_mode == 'replace' %} · {{ effect.removed }} local-only removed{% endif %}</small>
+                        {% endif %}
+                      </span>
+                    </label>
+                  {% endfor %}
+                </div>
+              </fieldset>
+            {% endfor %}
+          </div>
         {% endfor %}
       </div>
 

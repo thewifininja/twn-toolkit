@@ -219,6 +219,52 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
                 b"mail-secret", Path(destination, "smtp_settings.json").read_bytes()
             )
 
+    def test_access_profile_combine_uses_portable_records_not_rollback_state(self) -> None:
+        with tempfile.TemporaryDirectory() as source, tempfile.TemporaryDirectory() as destination:
+            source_auth = AuthStore(source)
+            source_auth.create_user(
+                "source-admin", "correct horse battery staple", is_admin=True
+            )
+            source_auth.save_access_profile(
+                name="Help desk",
+                description="Imported diagnostics",
+                tool_ids=["tools.ping"],
+            )
+            exported = selected_backup_items(
+                build_backup_catalog(source), {"access_profiles"}
+            )[0]["store"].all()
+
+            destination_auth = AuthStore(destination)
+            destination_auth.create_user(
+                "destination-admin", "another correct password", is_admin=True
+            )
+            retained = destination_auth.save_access_profile(
+                name="Local operations",
+                description="Must remain local",
+                tool_ids=["tools.dns_response"],
+            )
+            destination_auth.create_user(
+                "operator",
+                "operator correct password",
+                access_profile_ids=[retained["id"]],
+            )
+
+            imported = import_backup_items(
+                {"access_profiles": exported},
+                selected_backup_items(
+                    build_backup_catalog(destination), {"access_profiles"}
+                ),
+                "merge",
+            )
+
+            self.assertEqual(imported, [("Access profiles", 2)])
+            self.assertEqual(
+                [profile["name"] for profile in destination_auth.access_profiles()],
+                ["Help desk", "Local operations"],
+            )
+            operator = destination_auth.get_user("operator")
+            self.assertEqual(operator["access_profile_ids"], [retained["id"]])
+
     def test_certificate_profiles_round_trip_without_issued_key_material(self) -> None:
         with tempfile.TemporaryDirectory() as source, tempfile.TemporaryDirectory() as destination:
             source_store = CertificateAutomationStore(

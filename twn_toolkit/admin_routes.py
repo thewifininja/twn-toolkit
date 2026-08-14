@@ -351,19 +351,38 @@ def register_admin_routes(
         app.instance_path, str(app.config["SECRET_KEY"])
     )
 
+    def _balanced_category_columns(
+        values: list[dict[str, Any]],
+    ) -> list[list[tuple[str, list[dict[str, Any]]]]]:
+        categories: dict[str, list[dict[str, Any]]] = {}
+        for value in values:
+            categories.setdefault(str(value["category"]), []).append(value)
+        category_groups = sorted(
+            categories.items(),
+            key=lambda category: (-len(category[1]), category[0].lower()),
+        )
+        columns: list[list[tuple[str, list[dict[str, Any]]]]] = [[], []]
+        column_weights = [0, 0]
+        for category in category_groups:
+            column_index = column_weights.index(min(column_weights))
+            columns[column_index].append(category)
+            column_weights[column_index] += len(category[1]) + 1
+        return columns
+
     def _configuration_backup_page(
         *,
         active_view: str = "export",
         preview_token: str = "",
         pending_import: dict[str, Any] | None = None,
     ) -> str:
-        categories: dict[str, list[dict[str, Any]]] = {}
+        catalog_display: list[dict[str, Any]] = []
         for catalog_item in backup_catalog:
-            item = {
-                **catalog_item,
-                "record_count": backup_entry_count(catalog_item["store"]),
-            }
-            categories.setdefault(str(item["category"]), []).append(item)
+            catalog_display.append(
+                {
+                    **catalog_item,
+                    "record_count": backup_entry_count(catalog_item["store"]),
+                }
+            )
         preview = None
         if pending_import:
             backup = pending_import["backup"]
@@ -382,31 +401,19 @@ def register_admin_routes(
             preview = {
                 **inspection,
                 "effects": effects,
+                "category_columns": _balanced_category_columns(
+                    inspection["groups"]
+                ),
                 "import_mode": import_mode,
                 "encrypted_input": bool(pending_import.get("encrypted_input")),
                 "owners": remote_connection_owner_mappings(
                     backup["items"], auth_store.users()
                 ),
             }
-        category_groups = sorted(
-            categories.items(),
-            key=lambda category: (-len(category[1]), category[0].lower()),
-        )
-        category_columns: list[list[tuple[str, list[dict[str, Any]]]]] = [
-            [],
-            [],
-        ]
-        category_column_weights = [0, 0]
-        for category in category_groups:
-            column_index = category_column_weights.index(
-                min(category_column_weights)
-            )
-            category_columns[column_index].append(category)
-            category_column_weights[column_index] += len(category[1]) + 1
         return render_template(
             "auth/backup.html",
             backup_catalog=backup_catalog,
-            backup_category_columns=category_columns,
+            backup_category_columns=_balanced_category_columns(catalog_display),
             installed_version=APP_VERSION,
             active_view=active_view,
             preview_token=preview_token,

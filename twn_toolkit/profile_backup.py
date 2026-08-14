@@ -498,8 +498,10 @@ def import_backup_items(
             else:
                 imported_profiles = deepcopy(profiles)
                 if import_mode == "merge":
+                    # A custom snapshot may contain private rollback state
+                    # rather than the portable records exposed by all().
                     imported_profiles = merge_profiles_by_name(
-                        snapshot, imported_profiles
+                        deepcopy(store.all()), imported_profiles
                     )
                 store.replace_all(imported_profiles)
                 count = len(imported_profiles)
@@ -518,6 +520,10 @@ def import_backup_items(
             raise RuntimeError(
                 "Configuration import failed and its rollback was incomplete: "
                 + "; ".join(rollback_errors)
+            ) from exc
+        if isinstance(exc, Exception):
+            raise ValueError(
+                f"{item['label']} could not be imported: {exc}"
             ) from exc
         raise
     return imported
