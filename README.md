@@ -147,7 +147,16 @@ The sidebar and Network Tools page use the same functional organization.
   seven-day completed-scrollback retention. Telnet credentials are optional and
   are never submitted by prompt guessing; an operator explicitly sends an
   available username or password after the device prompts. Credentials and
-  submitted input are not persisted. Saved-host sessions automatically retain a sanitized
+  submitted input are not persisted. Saved connection folders can assign a
+  shared default credential; nested folders and hosts inherit the nearest
+  assignment unless they explicitly override or stop inheritance. Selection
+  mode can atomically move multiple hosts/folders or change their inheritance
+  behavior without exposing row-level controls all the time. The connection
+  explorer can be widened, collapsed, and restored; pasted lists or CSV files
+  can import up to 1,000 reviewed hosts atomically into one folder, inheriting
+  that folder's credentials by default. The live terminal height is also
+  adjustable and both layout preferences are retained in the browser.
+  Saved-host sessions automatically retain a sanitized
   transcript while a case is actively recording; capture is automatic for every
   new remote session. Active or completed sessions can also be attached to the open case
   afterward. Retained output can be copied independently to any permitted

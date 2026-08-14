@@ -9,6 +9,7 @@
   const newSessionButton = document.getElementById("remote-terminal-new-session");
   const stageEmpty = document.getElementById("remote-terminal-stage-empty");
   const surface = document.getElementById("remote-terminal-surface");
+  const heightResizer = document.getElementById("remote-terminal-height-resizer");
   const screen = document.getElementById("remote-terminal-screen");
   const inputCapture = document.getElementById("remote-terminal-input-capture");
   const focusState = document.getElementById("remote-terminal-focus-state");
@@ -175,8 +176,12 @@
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && selected) pollOutput();
   });
+  initializeTerminalHeight();
   if (window.ResizeObserver) {
-    new ResizeObserver(scheduleResize).observe(surface);
+    new ResizeObserver(() => {
+      updateTerminalHeightAccessibility();
+      scheduleResize();
+    }).observe(surface);
   } else {
     window.addEventListener("resize", scheduleResize);
   }
@@ -899,6 +904,96 @@
   function scheduleResize() {
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(resizeRemote, 150);
+  }
+
+  function initializeTerminalHeight() {
+    if (!heightResizer) return;
+    const storageKey = "twn.remote-terminal.height.v1";
+    const minimum = 260;
+    const maximum = 1000;
+    try {
+      const saved = Number(window.localStorage.getItem(storageKey));
+      if (saved) surface.style.height = `${Math.max(minimum, Math.min(maximum, saved))}px`;
+    } catch (_error) {
+      // The terminal still works when browser policy disables layout storage.
+    }
+
+    let startY = 0;
+    let startHeight = 0;
+    heightResizer.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      startY = event.clientY;
+      startHeight = surface.getBoundingClientRect().height;
+      document.body.classList.add("remote-terminal-resizing");
+      heightResizer.setPointerCapture(event.pointerId);
+    });
+    heightResizer.addEventListener("pointermove", (event) => {
+      if (!document.body.classList.contains("remote-terminal-resizing")) return;
+      setTerminalHeight(startHeight + event.clientY - startY, false);
+    });
+    const finishResize = (event) => {
+      if (!document.body.classList.contains("remote-terminal-resizing")) return;
+      document.body.classList.remove("remote-terminal-resizing");
+      if (heightResizer.hasPointerCapture(event.pointerId)) {
+        heightResizer.releasePointerCapture(event.pointerId);
+      }
+      saveTerminalHeight();
+    };
+    heightResizer.addEventListener("pointerup", finishResize);
+    heightResizer.addEventListener("pointercancel", finishResize);
+    heightResizer.addEventListener("dblclick", () => {
+      surface.style.removeProperty("height");
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch (_error) {
+        // Layout persistence is optional.
+      }
+      updateTerminalHeightAccessibility();
+      scheduleResize();
+    });
+    heightResizer.addEventListener("keydown", (event) => {
+      const step = event.shiftKey ? 64 : 24;
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        setTerminalHeight(
+          surface.getBoundingClientRect().height + (event.key === "ArrowDown" ? step : -step)
+        );
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        surface.style.removeProperty("height");
+        try {
+          window.localStorage.removeItem(storageKey);
+        } catch (_error) {
+          // Layout persistence is optional.
+        }
+        updateTerminalHeightAccessibility();
+        scheduleResize();
+      }
+    });
+
+    function setTerminalHeight(value, persist = true) {
+      const height = Math.round(Math.max(minimum, Math.min(maximum, Number(value) || 500)));
+      surface.style.height = `${height}px`;
+      heightResizer.setAttribute("aria-valuenow", String(height));
+      scheduleResize();
+      if (persist) saveTerminalHeight();
+    }
+
+    function saveTerminalHeight() {
+      const height = Math.round(surface.getBoundingClientRect().height);
+      try {
+        window.localStorage.setItem(storageKey, String(height));
+      } catch (_error) {
+        // Layout persistence is optional.
+      }
+    }
+  }
+
+  function updateTerminalHeightAccessibility() {
+    if (!heightResizer) return;
+    const height = Math.round(surface.getBoundingClientRect().height);
+    if (height > 0) heightResizer.setAttribute("aria-valuenow", String(height));
   }
 
   function terminalColumns() {

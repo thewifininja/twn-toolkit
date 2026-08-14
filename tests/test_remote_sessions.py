@@ -365,6 +365,10 @@ class RemoteSessionRouteTests(unittest.TestCase):
         response = self.client.get("/tools/remote-terminal")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'id="remote-connection-tree"', response.data)
+        self.assertIn(b'id="remote-connection-width-resizer"', response.data)
+        self.assertIn(b'id="remote-terminal-height-resizer"', response.data)
+        self.assertIn(b"Resize terminal", response.data)
+        self.assertIn(b'id="remote-host-import-dialog"', response.data)
         self.assertIn(b'id="remote-quick-connect-dialog"', response.data)
         self.assertIn(b'id="remote-credential-dialog"', response.data)
         self.assertIn(b'id="remote-terminal-surface"', response.data)
@@ -385,6 +389,57 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.assertIn(b"remote-connections.js", response.data)
         self.assertNotIn(b"Command input", response.data)
         self.assertNotIn(b'id="remote-terminal-send"', response.data)
+
+    def test_saved_host_import_previews_and_atomically_adds_inherited_hosts(self) -> None:
+        folder = self.client.post(
+            "/tools/remote-terminal/folders",
+            json={"name": "Imported", "parent_id": ""},
+        ).get_json()["library"]["folders"][0]
+        payload = {
+            "folder_id": folder["id"],
+            "default_protocol": "ssh",
+            "text": (
+                "name,host,protocol,port\n"
+                "Core switch,192.0.2.10,,\n"
+                "Legacy console,192.0.2.11,telnet,2323\n"
+            ),
+        }
+
+        preview = self.client.post(
+            "/tools/remote-terminal/hosts/import/preview", json=payload
+        )
+        self.assertEqual(preview.status_code, 200)
+        reviewed = preview.get_json()["preview"]
+        self.assertTrue(reviewed["ready"])
+        self.assertEqual(reviewed["count"], 2)
+        self.assertEqual(reviewed["rows"][0]["port"], 22)
+        self.assertEqual(reviewed["rows"][1]["protocol"], "telnet")
+
+        imported = self.client.post(
+            "/tools/remote-terminal/hosts/import", json=payload
+        )
+        self.assertEqual(imported.status_code, 201)
+        hosts = imported.get_json()["library"]["hosts"]
+        self.assertEqual(len(hosts), 2)
+        self.assertTrue(all(host["credential_mode"] == "inherit" for host in hosts))
+        self.assertTrue(all(host["folder_id"] == folder["id"] for host in hosts))
+
+        duplicate = self.client.post(
+            "/tools/remote-terminal/hosts/import",
+            json={
+                "folder_id": folder["id"],
+                "default_protocol": "ssh",
+                "text": "New switch,192.0.2.12\nCore switch,192.0.2.13",
+            },
+        )
+        self.assertEqual(duplicate.status_code, 400)
+        self.assertEqual(
+            len(
+                self.client.get("/tools/remote-terminal/library")
+                .get_json()["library"]["hosts"]
+            ),
+            2,
+        )
 
     def test_saved_library_connects_with_encrypted_vault_credential(self) -> None:
         credential_response = self.client.post(
@@ -585,6 +640,69 @@ class RemoteSessionRouteTests(unittest.TestCase):
             "Home FortiGate",
         )
         self.assertEqual(library["hosts"][0]["name"], "Home FortiGate")
+
+    def test_saved_host_uses_inherited_folder_credential_and_bulk_route(self) -> None:
+        store = self.app.extensions["remote_connection_store"]
+        credential = store.save_credential(
+            user_id="test-user",
+            name="Inherited administrator",
+            remote_username="inherited-admin",
+            password="inherited-secret",
+        )
+        source = store.create_folder(
+            user_id="test-user",
+            name="Branches",
+            credential_mode="credential",
+            credential_id=credential["id"],
+        )
+        destination = store.create_folder(
+            user_id="test-user", name="Datacenter"
+        )
+        host = store.save_host(
+            user_id="test-user",
+            name="Branch switch",
+            host="192.0.2.90",
+            port=22,
+            folder_id=source["id"],
+            credential_id="",
+            credential_mode="inherit",
+            allow_unknown_hosts=False,
+            allow_legacy_algorithms=False,
+        )
+
+        started = self.client.post(
+            "/tools/remote-terminal/sessions", json={"host_id": host["id"]}
+        )
+        self.assertEqual(started.status_code, 201)
+        session = started.get_json()["session"]
+        wait_for_state(self.manager.store, session["id"], "running")
+        self.assertEqual(self.opener.calls[-1]["username"], "inherited-admin")
+        self.assertEqual(self.opener.calls[-1]["password"], "inherited-secret")
+
+        moved = self.client.post(
+            "/tools/remote-terminal/library/bulk",
+            json={
+                "host_ids": [host["id"]],
+                "folder_ids": [],
+                "change_location": True,
+                "destination_id": destination["id"],
+                "change_credential": True,
+                "credential_mode": "credential",
+                "credential_id": credential["id"],
+            },
+        )
+        self.assertEqual(moved.status_code, 200)
+        moved_host = next(
+            item
+            for item in moved.get_json()["library"]["hosts"]
+            if item["id"] == host["id"]
+        )
+        self.assertEqual(moved_host["folder_id"], destination["id"])
+        self.assertEqual(moved_host["credential_mode"], "credential")
+
+        page = self.client.get("/tools/remote-terminal")
+        self.assertIn(b"Credential inheritance", page.data)
+        self.assertIn(b"Edit selected items", page.data)
 
     def test_saved_host_inherits_active_case_transcript_capture(self) -> None:
         investigation_store = self.app.extensions["investigation_store"]

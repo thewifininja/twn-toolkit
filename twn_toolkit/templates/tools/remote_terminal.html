@@ -19,6 +19,9 @@
   data-folders-url="{{ url_for('tools.create_remote_terminal_folder') }}"
   data-credentials-url="{{ url_for('tools.create_remote_terminal_credential') }}"
   data-hosts-url="{{ url_for('tools.create_remote_terminal_host') }}"
+  data-import-preview-url="{{ url_for('tools.preview_remote_terminal_host_import') }}"
+  data-import-url="{{ url_for('tools.import_remote_terminal_hosts') }}"
+  data-bulk-url="{{ url_for('tools.bulk_update_remote_terminal_library') }}"
 >
   <aside class="panel remote-connection-explorer" aria-label="Saved remote connections">
     <header>
@@ -26,16 +29,29 @@
         <h2>Connections</h2>
         <span id="remote-connection-count">0 hosts</span>
       </div>
+      <span class="remote-connection-header-actions">
+        <button class="secondary compact" type="button" data-toggle-library-selection>Select</button>
+        <button class="secondary compact remote-connection-collapse" type="button" data-collapse-connection-library aria-label="Hide connections" title="Hide connections">‹</button>
+      </span>
     </header>
     <div class="remote-connection-library-actions" aria-label="Saved connection actions">
       <button class="compact" type="button" data-open-host>New host</button>
       <button class="secondary compact" type="button" data-open-folder>New folder</button>
+      <button class="secondary compact" type="button" data-open-host-import>Import</button>
       <button class="secondary compact" type="button" data-open-credentials>Credentials</button>
     </div>
     <label class="remote-connection-search">
       <span class="sr-only">Find a saved connection</span>
       <input id="remote-connection-search" type="search" placeholder="Find a connection…" autocomplete="off">
     </label>
+    <div class="remote-connection-selection-bar" data-library-selection-bar hidden>
+      <strong id="remote-connection-selection-count">0 selected</strong>
+      <span class="button-row">
+        <button class="secondary compact" type="button" data-select-visible title="Select every visible item">All</button>
+        <button class="secondary compact" type="button" data-clear-selection disabled>Clear</button>
+        <button class="compact" type="button" data-edit-selection disabled>Edit selected</button>
+      </span>
+    </div>
     <nav class="remote-connection-tree" id="remote-connection-tree" aria-label="Connection folders"></nav>
     <div class="empty-state remote-connection-empty" id="remote-connection-empty" hidden>
       <strong>No saved connections yet.</strong>
@@ -43,9 +59,23 @@
     </div>
   </aside>
 
+  <button
+    class="remote-connection-width-resizer"
+    id="remote-connection-width-resizer"
+    type="button"
+    role="separator"
+    aria-label="Resize saved connections"
+    aria-orientation="vertical"
+    aria-valuemin="330"
+    aria-valuemax="620"
+    aria-valuenow="330"
+    title="Drag to resize connections; double-click to reset"
+  ><span aria-hidden="true"></span></button>
+
   <div class="remote-terminal-stage">
     <section class="panel remote-terminal-session-stage">
       <div class="remote-terminal-tabs-head">
+        <button class="secondary compact remote-connection-show" type="button" data-show-connection-library hidden>Connections</button>
         <div class="remote-terminal-tabs" id="remote-terminal-tabs" role="tablist" aria-label="Active remote sessions"></div>
         <button class="secondary compact" id="remote-terminal-new-session" type="button" data-open-quick-connect hidden>Quick connect</button>
       </div>
@@ -143,6 +173,16 @@
     <input id="remote-folder-id" type="hidden">
     <label>Folder name<input id="remote-folder-name" maxlength="100" required></label>
     <label>Parent folder<select id="remote-folder-parent"></select></label>
+    <fieldset class="remote-terminal-credential-choice">
+      <legend>Credential inheritance</legend>
+      <div class="remote-terminal-choice-row">
+        <label class="check"><input type="radio" name="folder_credential_mode" value="inherit" checked><span>Inherit from parent<small>Use the nearest credential assigned above this folder.</small></span></label>
+        <label class="check"><input type="radio" name="folder_credential_mode" value="credential"><span>Use saved credential<small>Make this the default for inheriting hosts and subfolders.</small></span></label>
+        <label class="check"><input type="radio" name="folder_credential_mode" value="none"><span>Stop inheritance<small>Require child hosts to provide their own credential.</small></span></label>
+      </div>
+      <label data-folder-saved hidden>Saved credential<select id="remote-folder-credential"></select></label>
+      <p class="field-note" id="remote-folder-credential-preview"></p>
+    </fieldset>
     <p class="tool-status" id="remote-folder-status" role="status"></p>
     <footer class="remote-terminal-dialog-footer-split">
       <span class="button-row" data-folder-existing-actions hidden><button class="secondary" type="button" data-duplicate-folder>Duplicate</button><button class="danger" type="button" data-delete-folder>Delete</button></span>
@@ -166,6 +206,7 @@
     <fieldset class="remote-terminal-credential-choice">
       <legend>Credential assignment</legend>
       <div class="remote-terminal-choice-row">
+        <label class="check"><input type="radio" name="host_credential_mode" value="inherit"><span>Inherit from folder<small>Use the nearest credential assigned in the folder tree.</small></span></label>
         <label class="check"><input type="radio" name="host_credential_mode" value="saved" checked><span>Shared saved credential<small>Reuse a separately managed vault entry.</small></span></label>
         <label class="check"><input type="radio" name="host_credential_mode" value="host"><span>Host-specific credential<small>Encrypted in the vault and restricted to this host.</small></span></label>
         <label class="check" data-host-telnet-only hidden><input type="radio" name="host_credential_mode" value="none"><span>No assigned credential<small>Connect first and enter credentials manually in the terminal.</small></span></label>
@@ -176,6 +217,7 @@
         <label>Username<input id="remote-host-username" maxlength="128" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
         <label>Password <span class="inline-label-note">(write-only)</span><input id="remote-host-password" type="password" autocomplete="new-password" placeholder="Required for a new credential"></label>
       </div>
+      <p class="field-note" id="remote-host-credential-preview"></p>
     </fieldset>
     <div class="remote-terminal-options compact-options" data-host-ssh-options>
       <label class="check"><input id="remote-host-unknown" type="checkbox"><span>Trust this host key on first connection</span></label>
@@ -221,6 +263,65 @@
       </form>
     </div>
   </div>
+</dialog>
+
+<dialog class="remote-terminal-dialog remote-library-bulk-dialog" id="remote-library-bulk-dialog" aria-labelledby="remote-library-bulk-title">
+  <form class="form remote-terminal-dialog-form" id="remote-library-bulk-form">
+    <header><div><span class="eyebrow">Connection library</span><h2 id="remote-library-bulk-title">Edit selected items</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
+    <p class="remote-terminal-dialog-intro" id="remote-library-bulk-summary">Choose a location, a credential behavior, or both. Explicit child overrides remain unchanged unless they are selected.</p>
+    <section class="remote-library-bulk-section">
+      <label class="check remote-library-bulk-enable"><input id="remote-library-change-location" type="checkbox"><span><strong>Move selected items</strong><small>Hosts move into the destination folder; folders and their contents move as a unit.</small></span></label>
+      <label data-bulk-location-fields hidden>Destination folder<select id="remote-library-destination"></select></label>
+    </section>
+    <section class="remote-library-bulk-section">
+      <label class="check remote-library-bulk-enable"><input id="remote-library-change-credential" type="checkbox"><span><strong>Change credential behavior</strong><small>Apply one inheritance rule to every selected host and folder.</small></span></label>
+      <fieldset class="remote-terminal-credential-choice" data-bulk-credential-fields hidden>
+        <legend>Credential behavior</legend>
+        <div class="remote-terminal-choice-row">
+          <label class="check"><input type="radio" name="bulk_credential_mode" value="inherit" checked><span>Inherit<small>Hosts inherit from their folder; folders inherit from their parent.</small></span></label>
+          <label class="check"><input type="radio" name="bulk_credential_mode" value="credential"><span>Use saved credential<small>Apply one shared vault credential to the selection.</small></span></label>
+          <label class="check"><input type="radio" name="bulk_credential_mode" value="none"><span>No credential<small>Stops folder inheritance; available only for selected Telnet hosts.</small></span></label>
+        </div>
+        <label data-bulk-saved hidden>Saved credential<select id="remote-library-credential"></select></label>
+      </fieldset>
+    </section>
+    <p class="tool-status" id="remote-library-bulk-status" role="status"></p>
+    <footer><span></span><button class="secondary" type="button" data-dialog-close>Cancel</button><button type="submit">Apply changes</button></footer>
+  </form>
+</dialog>
+
+<dialog class="remote-terminal-dialog remote-host-import-dialog" id="remote-host-import-dialog" aria-labelledby="remote-host-import-title">
+  <form class="form remote-terminal-dialog-form" id="remote-host-import-form">
+    <header><div><span class="eyebrow">Connection library</span><h2 id="remote-host-import-title">Import saved hosts</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
+    <p class="remote-terminal-dialog-intro">Paste a list or choose a CSV file, review the parsed hosts, then add the entire batch at once. Every imported host inherits credentials from its destination folder.</p>
+    <section class="remote-host-import-source">
+      <div class="form-grid remote-host-import-options">
+        <label>Destination folder<select id="remote-host-import-folder"></select></label>
+        <label>Default protocol<select id="remote-host-import-protocol"><option value="ssh">SSH · port 22</option><option value="telnet">Telnet · port 23</option></select></label>
+      </div>
+      <label>Choose CSV file <span class="inline-label-note">(optional)</span><input id="remote-host-import-file" type="file" accept=".csv,.txt,text/csv,text/plain"></label>
+      <label>Hosts to import
+        <textarea id="remote-host-import-text" rows="6" maxlength="524288" placeholder="192.0.2.10&#10;Core switch,192.0.2.11&#10;Legacy console,192.0.2.12,telnet,23"></textarea>
+      </label>
+      <p class="field-note">Accepted rows: <code>host</code>, <code>name = host</code>, or <code>name,host,protocol,port</code>. A header row such as <code>name,host,protocol,port</code> is also supported. Blank lines and lines starting with # are ignored.</p>
+    </section>
+    <section class="remote-host-import-review" id="remote-host-import-review" hidden>
+      <div class="remote-host-import-review-head"><div><h3>Import preview</h3><p id="remote-host-import-summary"></p></div><span class="status-pill" id="remote-host-import-readiness"></span></div>
+      <div class="remote-host-import-errors" id="remote-host-import-errors" hidden></div>
+      <div class="remote-host-import-table-wrap">
+        <table class="remote-host-import-table">
+          <thead><tr><th>Name</th><th>Destination</th><th>Protocol</th><th>Credentials</th></tr></thead>
+          <tbody id="remote-host-import-rows"></tbody>
+        </table>
+      </div>
+    </section>
+    <p class="tool-status" id="remote-host-import-status" role="status"></p>
+    <footer>
+      <span></span>
+      <button class="secondary" type="button" data-dialog-close>Cancel</button>
+      <button type="submit" id="remote-host-import-submit">Review hosts</button>
+    </footer>
+  </form>
 </dialog>
 
 <script id="remote-terminal-initial-sessions" type="application/json">{{ remote_sessions|tojson }}</script>

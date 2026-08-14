@@ -271,7 +271,14 @@ accepted replay frames.
   remain server-side and are sent only through explicit username/password
   controls after the remote device prompts. Transcript capture is automatic
   only while a case is actively recording; a paused case receives no automatic
-  terminal updates. Configuration
+  terminal updates. Folder-level shared credentials provide nearest-ancestor
+  inheritance with explicit host/folder overrides and stop boundaries. An
+  on-demand selection mode applies atomic location or credential changes to as
+  many as 500 selected hosts and folders. The connection explorer is
+  collapsible and width-resizable, the terminal surface is height-resizable,
+  and both preferences persist in the browser. Reviewed pasted or CSV host
+  lists import atomically in batches of up to 1,000 and default to folder
+  credential inheritance. Configuration
   backups use inspect-first versioned manifests and atomic per-group Combine or
   Replace across reusable toolkit settings while legacy v1 imports remain
   supported. The cohesive responsive UI and functional Network Tools navigation

@@ -117,6 +117,14 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
                 remote_username="netadmin",
                 password="source-only-secret",
             )
+            source_remote.update_folder(
+                folder["id"],
+                user_id=source_user["id"],
+                name="Branches",
+                parent_id="",
+                credential_mode="credential",
+                credential_id=credential["id"],
+            )
             source_remote.save_host(
                 user_id=source_user["id"],
                 name="Branch router",
@@ -136,6 +144,17 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
                 protocol="telnet",
                 folder_id=folder["id"],
                 credential_id="",
+                allow_unknown_hosts=False,
+                allow_legacy_algorithms=False,
+            )
+            source_remote.save_host(
+                user_id=source_user["id"],
+                name="Inherited SSH switch",
+                host="192.0.2.12",
+                port=22,
+                folder_id=folder["id"],
+                credential_id="",
+                credential_mode="inherit",
                 allow_unknown_hosts=False,
                 allow_legacy_algorithms=False,
             )
@@ -164,7 +183,10 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
                 host for host in library["hosts"] if host["credential_id"]
             )
             manual_host = next(
-                host for host in library["hosts"] if not host["credential_id"]
+                host for host in library["hosts"] if host["name"] == "Manual login switch"
+            )
+            inherited_host = next(
+                host for host in library["hosts"] if host["name"] == "Inherited SSH switch"
             )
             resolved = destination_remote.resolve_credential(
                 library["credentials"][0]["id"],
@@ -180,6 +202,10 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
             self.assertFalse(credential_host["allow_legacy_algorithms"])
             self.assertEqual(manual_host["name"], "Manual login switch")
             self.assertEqual(manual_host["credential_id"], "")
+            self.assertEqual(inherited_host["credential_mode"], "inherit")
+            self.assertEqual(
+                inherited_host["effective_credential_name"], "Network admin"
+            )
             self.assertNotIn(
                 b"source-only-secret",
                 Path(destination, "remote_connections.sqlite3").read_bytes(),

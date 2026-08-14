@@ -60,6 +60,21 @@
     ></textarea>
     <span class="remote-terminal-focus-state" id="remote-terminal-focus-state" aria-hidden="true">Click or tap to type</span>
   </div>
+  <button
+    class="remote-terminal-height-resizer"
+    id="remote-terminal-height-resizer"
+    type="button"
+    role="separator"
+    aria-label="Resize terminal height"
+    aria-orientation="horizontal"
+    aria-valuemin="260"
+    aria-valuemax="1000"
+    aria-valuenow="500"
+    title="Drag to resize terminal; double-click to reset"
+  >
+    <span class="remote-terminal-height-resizer-grip" aria-hidden="true"></span>
+    <span class="remote-terminal-height-resizer-label">Resize terminal</span>
+  </button>
   <div class="remote-terminal-input-tools">
     <p id="remote-terminal-input-help">Type and paste directly into the terminal. Input is sent to the active remote shell and is never stored separately.</p>
     <div class="remote-terminal-credential-controls" data-telnet-credential-controls hidden aria-label="Telnet credential controls">

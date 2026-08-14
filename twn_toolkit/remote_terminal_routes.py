@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import io
 
 from flask import (
@@ -88,7 +89,9 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 host = str(saved_host["host"])
                 port = int(saved_host["port"])
                 protocol = _protocol(saved_host.get("protocol", "ssh"))
-                credential_id = str(saved_host.get("credential_id", ""))
+                credential_id = str(
+                    saved_host.get("effective_credential_id", "")
+                )
                 if credential_id:
                     credential = _connection_store().resolve_credential(
                         credential_id,
@@ -100,8 +103,10 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 elif protocol == "telnet":
                     remote_username = ""
                     password = ""
-                else:  # pragma: no cover - the saved-host store rejects this
-                    raise RemoteSessionError("The saved SSH host has no credential.")
+                else:
+                    raise RemoteSessionError(
+                        "Assign a credential to this host or one of its parent folders."
+                    )
                 default_title = str(saved_host["name"])
                 allow_unknown_hosts = bool(saved_host["allow_unknown_hosts"])
                 allow_legacy_algorithms = bool(
@@ -205,6 +210,8 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 user_id=user["id"],
                 name=str(payload.get("name", "")),
                 parent_id=str(payload.get("parent_id", "")),
+                credential_mode=str(payload.get("credential_mode", "inherit")),
+                credential_id=str(payload.get("credential_id", "")),
             )
         except RemoteConnectionError as exc:
             suppress_audit_event()
@@ -222,6 +229,12 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 user_id=user["id"],
                 name=str(payload.get("name", "")),
                 parent_id=str(payload.get("parent_id", "")),
+                credential_mode=(
+                    str(payload.get("credential_mode", ""))
+                    if "credential_mode" in payload
+                    else None
+                ),
+                credential_id=str(payload.get("credential_id", "")),
             )
         except RemoteConnectionError as exc:
             suppress_audit_event()
@@ -321,6 +334,91 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
     @tools_bp.post("/remote-terminal/hosts")
     def create_remote_terminal_host():
         return _save_remote_terminal_host()
+
+    @tools_bp.post("/remote-terminal/hosts/import/preview")
+    def preview_remote_terminal_host_import():
+        suppress_audit_event()
+        payload = request.get_json(silent=True) or {}
+        preview = _remote_host_import_preview(payload, _current_user()["id"])
+        return jsonify({"preview": preview})
+
+    @tools_bp.post("/remote-terminal/hosts/import")
+    def import_remote_terminal_hosts():
+        payload = request.get_json(silent=True) or {}
+        user = _current_user()
+        preview = _remote_host_import_preview(payload, user["id"])
+        if preview["errors"]:
+            suppress_audit_event()
+            return jsonify(
+                {
+                    "error": "Fix the highlighted import rows before saving.",
+                    "preview": preview,
+                }
+            ), 400
+        try:
+            imported = _connection_store().import_hosts(
+                user_id=user["id"],
+                folder_id=str(payload.get("folder_id", "")),
+                hosts=list(preview["rows"]),
+            )
+        except (RemoteConnectionError, TypeError, ValueError) as exc:
+            suppress_audit_event()
+            return jsonify({"error": str(exc)}), 400
+        protocols = sorted(
+            {str(item["protocol"]).upper() for item in preview["rows"]}
+        )
+        _annotate_library_change(
+            "hosts_imported",
+            f"Imported {imported} saved remote host{'s' if imported != 1 else ''}.",
+            {"id": "host-import", "name": "Imported saved hosts"},
+            resource_type="remote_host_collection",
+            details={
+                "hosts": imported,
+                "folder assigned": bool(payload.get("folder_id")),
+                "protocols": ", ".join(protocols),
+                "credential mode": "inherited",
+            },
+        )
+        return _library_response(user["id"], 201)
+
+    @tools_bp.post("/remote-terminal/library/bulk")
+    def bulk_update_remote_terminal_library():
+        payload = request.get_json(silent=True) or {}
+        user = _current_user()
+        destination_id = (
+            str(payload.get("destination_id", ""))
+            if bool(payload.get("change_location"))
+            else None
+        )
+        credential_mode = (
+            str(payload.get("credential_mode", ""))
+            if bool(payload.get("change_credential"))
+            else None
+        )
+        try:
+            changed = _connection_store().bulk_update(
+                user_id=user["id"],
+                host_ids=list(payload.get("host_ids", [])),
+                folder_ids=list(payload.get("folder_ids", [])),
+                destination_id=destination_id,
+                credential_mode=credential_mode,
+                credential_id=str(payload.get("credential_id", "")),
+            )
+        except (RemoteConnectionError, TypeError, ValueError) as exc:
+            suppress_audit_event()
+            return jsonify({"error": str(exc)}), 400
+        _annotate_library_change(
+            "library_bulk_updated",
+            "Updated selected Remote Terminal library items.",
+            {"id": "bulk-selection", "name": "Selected connection items"},
+            details={
+                "hosts": changed["hosts"],
+                "folders": changed["folders"],
+                "location changed": destination_id is not None,
+                "credential changed": credential_mode is not None,
+            },
+        )
+        return _library_response(user["id"])
 
     @tools_bp.patch("/remote-terminal/hosts/<host_id>")
     def update_remote_terminal_host(host_id: str):
@@ -733,12 +831,16 @@ def _save_remote_terminal_host(host_id: str = ""):
             "username": str(payload.get("host_username", "")),
             "password": str(payload.get("host_password", "")),
         }
-    elif credential_mode == "none":
+    elif credential_mode in {"none", "inherit"}:
         pass
     elif credential_mode != "saved":
         suppress_audit_event()
         return jsonify(
-            {"error": "Choose saved, host-specific, or no credentials."}
+            {
+                "error": (
+                    "Choose inherited, saved, host-specific, or no credentials."
+                )
+            }
         ), 400
     try:
         protocol = _protocol(payload.get("protocol", "ssh"))
@@ -757,8 +859,13 @@ def _save_remote_terminal_host(host_id: str = ""):
             folder_id=str(payload.get("folder_id", "")),
             credential_id=(
                 ""
-                if credential_mode == "none"
+                if credential_mode in {"none", "inherit"}
                 else str(payload.get("credential_id", ""))
+            ),
+            credential_mode=(
+                credential_mode
+                if credential_mode in {"none", "inherit"}
+                else "credential"
             ),
             allow_unknown_hosts=bool(payload.get("allow_unknown_hosts", False)),
             allow_legacy_algorithms=bool(
@@ -783,11 +890,169 @@ def _save_remote_terminal_host(host_id: str = ""):
             "credential mode": (
                 "host-specific"
                 if host["credential_scope_host_id"] == host["id"]
-                else "shared" if host["credential_id"] else "none"
+                else "inherited"
+                if host["credential_mode"] == "inherit"
+                else "shared"
+                if host["credential_id"]
+                else "none"
             ),
         },
     )
     return _library_response(user["id"], 200 if host_id else 201)
+
+
+def _remote_host_import_preview(
+    payload: dict[str, object], user_id: str
+) -> dict[str, object]:
+    folder_id = str(payload.get("folder_id", ""))
+    errors: list[dict[str, object]] = []
+    if folder_id and not _connection_store().get_folder(folder_id, user_id=user_id):
+        errors.append({"row": 0, "message": "Choose a valid destination folder."})
+    rows, parse_errors = _parse_remote_host_import(
+        payload.get("text", ""), payload.get("default_protocol", "ssh")
+    )
+    errors.extend(parse_errors)
+
+    existing_names = {
+        str(item["name"]).casefold()
+        for item in _connection_store().library_for_user(user_id)["hosts"]
+        if str(item["folder_id"]) == folder_id
+    }
+    for item in rows:
+        if str(item["name"]).casefold() in existing_names:
+            errors.append(
+                {
+                    "row": item["row"],
+                    "message": "That host name is already used in the destination folder.",
+                }
+            )
+    return {
+        "rows": rows,
+        "errors": errors,
+        "count": len(rows),
+        "ready": bool(rows) and not errors,
+    }
+
+
+def _parse_remote_host_import(
+    value: object, default_protocol: object = "ssh"
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    text = str(value)
+    if len(text.encode("utf-8")) > 512 * 1024:
+        return [], [{"row": 0, "message": "Host import text must be 512 KiB or smaller."}]
+    protocol_default = str(default_protocol).strip().lower()
+    if protocol_default not in {"ssh", "telnet"}:
+        return [], [{"row": 0, "message": "Choose SSH or Telnet as the default protocol."}]
+
+    source_rows: list[tuple[int, list[str]]] = []
+    errors: list[dict[str, object]] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        try:
+            parsed = next(csv.reader([line], skipinitialspace=True))
+        except csv.Error as exc:
+            errors.append({"row": line_number, "message": f"Invalid CSV: {exc}"})
+            continue
+        source_rows.append(
+            (
+                line_number,
+                [
+                    field.strip().lstrip("\ufeff") if index == 0 else field.strip()
+                    for index, field in enumerate(parsed)
+                ],
+            )
+        )
+    if not source_rows:
+        errors.append({"row": 0, "message": "Paste or choose at least one host."})
+        return [], errors
+    if len(source_rows) > 1000:
+        errors.append({"row": 0, "message": "Import no more than 1,000 hosts at once."})
+        return [], errors
+
+    header_aliases = {
+        "name": {"name", "display name", "label"},
+        "host": {
+            "host",
+            "host/ip",
+            "hostname",
+            "ip",
+            "ip address",
+            "address",
+        },
+        "protocol": {"protocol", "type"},
+        "port": {"port"},
+    }
+    first_values = [field.casefold() for field in source_rows[0][1]]
+    has_header = any(field in header_aliases["host"] for field in first_values)
+    header_map: dict[str, int] = {}
+    if has_header:
+        for index, field in enumerate(first_values):
+            for key, aliases in header_aliases.items():
+                if field in aliases and key not in header_map:
+                    header_map[key] = index
+        source_rows = source_rows[1:]
+
+    parsed_rows: list[dict[str, object]] = []
+    seen_names: set[str] = set()
+    for line_number, values in source_rows:
+        try:
+            if has_header:
+                def column(name: str) -> str:
+                    index = header_map.get(name)
+                    return values[index].strip() if index is not None and index < len(values) else ""
+
+                host = column("host")
+                name = column("name") or host
+                protocol = column("protocol") or protocol_default
+                raw_port = column("port")
+            else:
+                if len(values) == 1:
+                    if "=" in values[0]:
+                        name, host = [part.strip() for part in values[0].split("=", 1)]
+                    else:
+                        host = values[0]
+                        name = host
+                    protocol = protocol_default
+                    raw_port = ""
+                elif 2 <= len(values) <= 4:
+                    name, host = values[:2]
+                    name = name or host
+                    protocol = values[2] if len(values) >= 3 and values[2] else protocol_default
+                    raw_port = values[3] if len(values) == 4 else ""
+                else:
+                    raise RemoteConnectionError(
+                        "Use host, name = host, or name,host,protocol,port."
+                    )
+            clean_protocol = str(protocol).strip().lower()
+            if clean_protocol not in {"ssh", "telnet"}:
+                raise RemoteConnectionError("Protocol must be SSH or Telnet.")
+            clean_name = RemoteConnectionStore._name(name, "Host name")
+            clean_host = RemoteConnectionStore._hostname(host)
+            try:
+                port = int(raw_port) if str(raw_port).strip() else (
+                    23 if clean_protocol == "telnet" else 22
+                )
+            except (TypeError, ValueError) as exc:
+                raise RemoteConnectionError("Port must be a whole number.") from exc
+            if not 1 <= port <= 65535:
+                raise RemoteConnectionError("Port must be between 1 and 65535.")
+            if clean_name.casefold() in seen_names:
+                raise RemoteConnectionError("That host name appears more than once in this import.")
+            seen_names.add(clean_name.casefold())
+            parsed_rows.append(
+                {
+                    "row": line_number,
+                    "name": clean_name,
+                    "host": clean_host,
+                    "protocol": clean_protocol,
+                    "port": port,
+                    "credential_mode": "inherit",
+                }
+            )
+        except (RemoteConnectionError, TypeError, ValueError) as exc:
+            errors.append({"row": line_number, "message": str(exc)})
+    return parsed_rows, errors
 
 
 def _connection_store() -> RemoteConnectionStore:
