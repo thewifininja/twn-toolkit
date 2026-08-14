@@ -129,6 +129,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.delete_snmp_profile",
         "tools.delete_ssh_commandlet",
         "tools.delete_traceroute_profile",
+        "tools.retry_multi_ssh_host_key",
         "tools.api_request",
         "tools.cancel_acme_dns_request",
         "tools.certificate_inspector",

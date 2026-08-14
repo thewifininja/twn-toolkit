@@ -9991,6 +9991,8 @@ button.compact,
 .ssh-result {
   border: 1px solid var(--line);
   border-radius: 6px;
+  min-width: 0;
+  overflow: hidden;
   padding: 12px;
 }
 
@@ -10000,11 +10002,13 @@ button.compact,
   display: flex;
   gap: 10px;
   justify-content: space-between;
+  min-width: 0;
 }
 
 .ssh-result-identity {
   display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
 .ssh-result-identity small {
@@ -10015,6 +10019,171 @@ button.compact,
 
 .ssh-result[open] summary {
   margin-bottom: 12px;
+}
+
+.ssh-result .message,
+.ssh-result-error {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ssh-result .result-output {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: auto;
+}
+
+.ssh-host-key-mismatch {
+  background: color-mix(in srgb, var(--bad), transparent 94%);
+  border: 1px solid color-mix(in srgb, var(--bad), transparent 65%);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.ssh-host-key-mismatch-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.ssh-host-key-mismatch-head > div {
+  min-width: 0;
+}
+
+.ssh-host-key-mismatch-head strong {
+  color: var(--bad);
+}
+
+.ssh-host-key-mismatch-head p,
+.ssh-host-key-recovery p {
+  margin: 4px 0 0;
+}
+
+.ssh-host-key-fingerprints {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.ssh-host-key-fingerprints > div {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.ssh-host-key-fingerprints dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ssh-host-key-fingerprints dd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.ssh-host-key-recovery {
+  align-items: center;
+  border-top: 1px solid color-mix(in srgb, var(--bad), transparent 75%);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-width: 0;
+  padding-top: 12px;
+}
+
+.ssh-host-key-recovery-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.ssh-host-key-retry-form {
+  border-top: 1px solid color-mix(in srgb, var(--bad), transparent 75%);
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.ssh-host-key-retry-form[hidden] {
+  display: none;
+}
+
+.ssh-host-key-retry-fields {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ssh-host-key-retry-fields label {
+  min-width: 0;
+}
+
+.ssh-host-key-retry-fields input {
+  width: 100%;
+}
+
+.ssh-host-key-retry-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ssh-host-key-status {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  max-width: 360px;
+}
+
+.ssh-host-key-status.success {
+  color: var(--ok);
+}
+
+.ssh-host-key-status.error {
+  color: var(--bad);
+}
+
+@media (max-width: 700px) {
+  .ssh-host-key-fingerprints {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ssh-host-key-mismatch-head,
+  .ssh-host-key-recovery,
+  .ssh-host-key-recovery-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ssh-host-key-recovery-actions button {
+    width: 100%;
+  }
+
+  .ssh-host-key-retry-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ssh-host-key-retry-controls {
+    flex-direction: column-reverse;
+  }
+
+  .ssh-host-key-retry-controls button {
+    width: 100%;
+  }
 }
 
 .messages {

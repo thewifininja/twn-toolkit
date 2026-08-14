@@ -354,6 +354,137 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b"targets or commands changed", response.data)
             run.assert_not_called()
 
+    def test_host_key_mismatch_can_retry_only_the_signed_failed_host(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            form = {
+                "matrix": "Name | Host\nCloset switch | 192.0.2.20",
+                "commands": "show clock",
+                "command_timeout": "300",
+                "port": "22",
+            }
+            preview = client.post(
+                "/tools/multi-ssh", data={**form, "action": "preview"}
+            )
+            token = re.search(
+                rb'name="preview_token" type="hidden" value="([^"]+)"',
+                preview.data,
+            ).group(1).decode()
+            mismatch = {
+                "host": "192.0.2.20",
+                "host_label": "Closet switch",
+                "status": "error",
+                "output": "",
+                "error": "SSH host identity changed for 192.0.2.20.",
+                "host_key_mismatch": {
+                    "hostname": "192.0.2.20",
+                    "presented_key_type": "ssh-ed25519",
+                    "presented_fingerprint": "SHA256:" + "P" * 43,
+                    "expected_key_type": "ssh-ed25519",
+                    "expected_fingerprint": "SHA256:" + "E" * 43,
+                },
+            }
+            with patch(
+                "twn_toolkit.ssh_routes.run_ssh_host_plans",
+                return_value=[mismatch],
+            ):
+                response = client.post(
+                    "/tools/multi-ssh",
+                    data={
+                        **form,
+                        "action": "run",
+                        "preview_token": token,
+                        "username": "admin",
+                        "password": "secret",
+                        "confirm_execution": "on",
+                    },
+                )
+
+            self.assertIn(b"Host identity changed", response.data)
+            self.assertIn(b"Retry this host", response.data)
+            self.assertIn(b"Verify, replace &amp; retry", response.data)
+            self.assertIn(("SHA256:" + "E" * 43).encode(), response.data)
+            self.assertIn(("SHA256:" + "P" * 43).encode(), response.data)
+            self.assertNotIn(b"raw base64", response.data)
+            retry_token = re.search(
+                rb'data-retry-token="([^"]+)"', response.data
+            ).group(1).decode()
+
+            retried_result = {
+                "host": "192.0.2.20",
+                "host_label": "Closet switch",
+                "status": "success",
+                "output": "System status output",
+            }
+            with patch(
+                "twn_toolkit.ssh_routes.forget_ssh_known_host",
+                return_value={
+                    "hostname": "192.0.2.20",
+                    "port": 22,
+                    "identity": "192.0.2.20",
+                    "removed_entries": 1,
+                },
+            ) as forget, patch(
+                "twn_toolkit.ssh_routes.run_ssh_host_plans",
+                return_value=[retried_result],
+            ) as retry:
+                retried = client.post(
+                    "/tools/multi-ssh/host-keys/retry",
+                    json={
+                        "retry_token": retry_token,
+                        "preview_token": token,
+                        "matrix": form["matrix"],
+                        "commands": form["commands"],
+                        "command_timeout": form["command_timeout"],
+                        "username": "admin",
+                        "password": "secret",
+                    },
+                )
+
+            self.assertEqual(retried.status_code, 200)
+            self.assertEqual(retried.get_json()["result"], retried_result)
+            self.assertIn(b"Saved key replaced", retried.data)
+            forget.assert_called_once_with(
+                "192.0.2.20",
+                22,
+                "SHA256:" + "E" * 43,
+                allow_missing=True,
+                allow_existing_fingerprint="SHA256:" + "P" * 43,
+            )
+            retry_plan = retry.call_args.args[0]
+            self.assertEqual(len(retry_plan), 1)
+            self.assertEqual(retry_plan[0]["host"], "192.0.2.20")
+            self.assertEqual(
+                retry_plan[0]["required_host_key_fingerprint"],
+                "SHA256:" + "P" * 43,
+            )
+            self.assertFalse(retry.call_args.kwargs["allow_unknown_hosts"])
+
+    def test_host_key_retry_endpoint_rejects_invalid_token(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+
+            with patch("twn_toolkit.ssh_routes.forget_ssh_known_host") as forget:
+                response = client.post(
+                    "/tools/multi-ssh/host-keys/retry",
+                    json={
+                        "retry_token": "invalid",
+                        "preview_token": "invalid",
+                        "matrix": "Host\n192.0.2.20",
+                        "commands": "show clock",
+                        "command_timeout": "300",
+                        "username": "admin",
+                        "password": "secret",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 400)
+            forget.assert_not_called()
+
     def test_commandlet_save_load_delete_and_audit_exclude_command_body(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
