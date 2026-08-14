@@ -117,8 +117,8 @@ The persistent sidebar is the primary navigation:
   name or category path without changing which menu sections are expanded.
 - **Fortinet Tools** contains FortiGate and FortiAuthenticator profiles and
   workflows.
-- **Network Tools** is divided into Addressing & Reachability, Multi-Host
-  Tools, Services & Protocols, and Traffic & Interfaces.
+- **Network Tools** is divided into Addressing & Reachability, Services &
+  Protocols, and Traffic & Interfaces.
 - **Investigations** keeps troubleshooting tests, notes, evidence, and reports
   together.
 - **Local Tools** contains the Datastore and managed File Transfers.
@@ -140,12 +140,14 @@ libraries expose the same action on each expandable record.
    known.
 2. Select **Open case**. A recording banner remains visible as you move
    through the toolkit.
-3. Run a supported finite diagnostic: DNS Tester, TCP Port Scanner, Traceroute,
-   NTP Tester, Path MTU Tester, or Wi-Fi / LAN Speed Test. Completed and failed
-   runs are added to the journal with structured inputs and results.
-4. Open the journal to add operator context. Use **Pause recording** when tool
-   runs should not be associated automatically; notes and evidence can still be
-   added while paused.
+3. Use **Add note** in the recording banner for quick context, or open the
+   journal for the complete case workspace. The owner can add collaborators so
+   multiple operators can contribute to the same open case.
+4. Run finite diagnostics or start a supported long-running Ping, SNMP
+   bandwidth, packet-capture, iPerf3, or Remote Terminal session. The toolkit
+   records structured results or lifecycle boundaries plus bounded evidence.
+   Use **Pause recording** when new tool runs should not attach automatically;
+   intentional notes and evidence remain available while paused.
 5. Use **Evidence** for relevant files. The toolkit stores them in a managed
    case folder and records their SHA-256 hashes.
 6. Use **Report contents** to select individual timeline entries and evidence
@@ -155,10 +157,13 @@ libraries expose the same action on each expandable record.
    structured diagnostic to its detailed-result page. Select **Close case** when
    the work is complete; report selection remains editable afterward. A closed
    case can be reopened in paused mode when there is no other open case.
+7. Use **Export portable case** to move a verified complete case to another
+   toolkit. An owner can also review and non-destructively merge an accessible
+   closed case into their current open case without changing the source.
 
-Long-running Ping and future terminal sessions use a separate lifecycle:
-their later integration will record start and stop events plus a bounded summary
-rather than treating every sample or terminal byte as a journal event.
+Long-running tools record start and stop events plus bounded summaries and
+original artifacts rather than treating every sample or terminal byte as a
+journal event.
 
 ## Run a first network test
 
