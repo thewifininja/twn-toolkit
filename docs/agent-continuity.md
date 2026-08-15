@@ -261,14 +261,14 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.19.2: the v0.19.1 investigation and Remote Terminal
-  milestone remains intact, while systemd-managed upgrades now sanitize the
-  detached worker environment, preserve an active pause across service
-  supervisor restarts, bypass transient launcher-PID rediscovery during target
-  validation, and retain bounded failed-target logs outside the restored
-  instance. Existing v0.19.0/v0.19.1 systemd hosts require one CLI upgrade to
-  v0.19.2 because their already-running web updater cannot retroactively use
-  the corrected environment. Investigation cases are shared owner-and-
+- Current milestone is 0.19.3: the v0.19.1 investigation and Remote Terminal
+  milestone remains intact, while the v0.19.2 systemd lifecycle repair now
+  combines with a serialized Remote Terminal schema migration so concurrent
+  Gunicorn workers cannot race while adding `credential_mode`. Existing
+  v0.19.0/v0.19.1 systemd hosts require one CLI upgrade directly to v0.19.3
+  because their already-running web updater cannot retroactively use the
+  corrected environment; no stepped v0.19.2 install is required. Existing
+  v0.19.2 hosts use the normal updater. Investigation cases are shared owner-and-
   collaborator workspaces with attributed journals, managed evidence, compact
   reports, portable cross-instance archives, and non-destructive case merging.
   Remote Terminal provides persistent owner-scoped interactive SSH and Telnet sessions,

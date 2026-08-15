@@ -10,19 +10,20 @@ or CLI workflow below. The updater cannot retroactively create the pre-upgrade
 instance backup that an older installation did not make.
 
 Existing v0.19.0 or v0.19.1 **systemd-managed** installations need one CLI
-transition to v0.19.2:
+transition directly to v0.19.3:
 
 ```bash
-./twn upgrade --version 0.19.2 --yes
+./twn upgrade --version 0.19.3 --yes
 ```
 
 The already-installed web updater inherits the old service-run environment
 before replacement code is available, so it cannot retroactively apply the
-v0.19.2 worker fix. Launching the same upgrade from a shell places that old
-worker outside the systemd service cgroup; the v0.19.2 target then completes
-the corrected validation handoff. After this transition, app and CLI upgrades
-are equivalent again. This exception does not apply to manual or macOS
-installations.
+detached-worker fix. Launching the same upgrade from a shell places that old
+worker outside the systemd service cgroup; the v0.19.3 target then completes
+the corrected validation handoff and serializes its Remote Terminal schema
+migration across concurrent web workers. No stepped upgrade through v0.19.2 is
+required. After this transition, app and CLI upgrades are equivalent again.
+Existing v0.19.2, manual, and macOS installations can use the normal workflow.
 
 ## What a supported release contains
 
