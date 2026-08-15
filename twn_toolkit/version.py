@@ -1,6 +1,50 @@
-APP_VERSION = "0.19.0"
+APP_VERSION = "0.19.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.19.1",
+        "date": "2026-08-14",
+        "title": "Flexible remote access and safer bulk SSH",
+        "summary": (
+            "Extends the Remote Terminal into an organized SSH and Telnet "
+            "workspace and lets operators recover a changed Bulk SSH host key "
+            "without repeating successful work."
+        ),
+        "groups": (
+            {
+                "title": "SSH and Telnet Remote Terminal",
+                "items": (
+                    "Adds persistent interactive Telnet sessions alongside SSH while keeping optional Telnet credentials server-side until the operator explicitly sends the username or password after the device prompts.",
+                    "Adds paste, Ctrl+Y, and directional mobile controls, prevents background refreshes from stealing focus or scrolling the page, and keeps live sessions usable from multiple browser devices.",
+                    "Automatically retains bounded terminal transcripts only while a case is actively recording; paused cases receive no automatic journal entry or evidence file.",
+                ),
+            },
+            {
+                "title": "Organized connection libraries",
+                "items": (
+                    "Lets folders provide an inherited shared credential to descendant folders and hosts, with nearest-ancestor inheritance, explicit overrides, and stop-inheritance boundaries.",
+                    "Adds atomic multi-select moves and credential changes plus reviewed paste or CSV imports of up to 1,000 hosts that default to folder credential inheritance.",
+                    "Makes the connection explorer collapsible and width-resizable, makes the terminal height resizable, persists both preferences in the browser, and keeps deeply nested connection trees readable.",
+                    "Includes folder credential behavior and expanded host metadata in encrypted configuration backup review, import, and rollback.",
+                ),
+            },
+            {
+                "title": "Recoverable Bulk SSH results",
+                "items": (
+                    "Recognizes host-key mismatches, presents the saved and newly offered fingerprints for independent verification, and requires explicit confirmation before replacing a trusted identity.",
+                    "Replays the exact signed command plan against only the recovered host and updates that result in place, preserving successful output from every other host.",
+                    "Wraps long SSH errors within their result cards and adds Expand all and Collapse all controls for large result sets.",
+                ),
+            },
+            {
+                "title": "Upgrade compatibility",
+                "items": (
+                    "Preserves existing SSH hosts, credentials, folders, sessions, cases, and configuration backups while adding optional protocol and inheritance metadata with backward-compatible defaults.",
+                    "Requires no dependency, database migration, installer, service-topology, native-helper, or operating-system configuration change; a normal verified upgrade and process restart are sufficient.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.19.0",
         "date": "2026-08-13",
