@@ -231,6 +231,11 @@ service_launcher_is_running() {
   [ -f "$SERVICE_LAUNCHER_PIDFILE" ] && pid_is_running "$(cat "$SERVICE_LAUNCHER_PIDFILE")"
 }
 
+deferred_service_reload_is_running() {
+  [ -f "$SERVICE_DEFERRED_RELOAD_PIDFILE" ] \
+    && pid_is_running "$(cat "$SERVICE_DEFERRED_RELOAD_PIDFILE" 2>/dev/null || true)"
+}
+
 service_boot_generation() {
   "$PYTHON" -c 'import time; print(max(0, int((time.time() - time.monotonic()) // 10) * 10))'
 }
@@ -1108,7 +1113,20 @@ offer_permission_repair() {
 }
 
 start() {
-  if [ "$SERVICE_RUN_MODE" != "1" ] && service_launcher_is_running; then
+  validation_direct_start=0
+  if [ "$SERVICE_RUN_MODE" != "1" ] \
+    && [ "$SERVICE_RELOAD_REQUESTED" = "1" ] \
+    && upgrade_reload_should_be_deferred \
+    && deferred_service_reload_is_running; then
+    # A prepared upgrade already has a helper withholding the OS launcher.
+    # Start validation directly even if systemd or launchd briefly republishes
+    # its launcher PID between helper passes.
+    validation_direct_start=1
+  fi
+
+  if [ "$validation_direct_start" != "1" ] \
+    && [ "$SERVICE_RUN_MODE" != "1" ] \
+    && service_launcher_is_running; then
     if [ "$SERVICE_RELOAD_REQUESTED" = "1" ]; then
       if upgrade_reload_should_be_deferred; then
         request_deferred_service_reload
@@ -1810,6 +1828,13 @@ service_run_cleanup() {
     exit "$service_exit_status"
   fi
   SERVICE_RUN_MODE=1
+  if [ -f "$UPGRADE_OPERATION_LOCK" ] && [ -f "$SERVICE_PAUSE_FILE" ]; then
+    # An upgrade validation process set may be running outside this service
+    # cgroup. Do not tear it down or discard the durable pause if the OS
+    # supervisor itself is restarted during the handoff.
+    remove_own_service_launcher_pid
+    exit "$service_exit_status"
+  fi
   stop || true
   rm -f "$SERVICE_LAUNCHER_PIDFILE" "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE" \
     "$SERVICE_DEFERRED_RELOAD_PIDFILE"
@@ -1829,6 +1854,9 @@ service_run() {
   chmod 600 "$SERVICE_LAUNCHER_PIDFILE"
   if launchd_direct_job; then
     rm -f "$SERVICE_DEFERRED_RELOAD_PIDFILE"
+  elif [ -f "$UPGRADE_OPERATION_LOCK" ]; then
+    write_service_pause_marker
+    rm -f "$SERVICE_RESUME_FILE"
   else
     rm -f "$SERVICE_PAUSE_FILE" "$SERVICE_RESUME_FILE" "$SERVICE_DEFERRED_RELOAD_PIDFILE"
   fi
