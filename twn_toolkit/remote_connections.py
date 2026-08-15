@@ -1325,47 +1325,58 @@ class RemoteConnectionStore:
                 ON remote_connection_hosts(user_id, folder_id, name);
             """
         )
-        host_columns = {
-            str(row["name"])
-            for row in connection.execute(
-                "PRAGMA table_info(remote_connection_hosts)"
-            )
-        }
-        if "protocol" not in host_columns:
-            connection.execute(
-                "ALTER TABLE remote_connection_hosts "
-                "ADD COLUMN protocol TEXT NOT NULL DEFAULT 'ssh'"
-            )
-        if "credential_mode" not in host_columns:
-            connection.execute(
-                "ALTER TABLE remote_connection_hosts "
-                "ADD COLUMN credential_mode TEXT NOT NULL DEFAULT 'credential'"
-            )
-            connection.execute(
-                """
-                UPDATE remote_connection_hosts
-                SET credential_mode = CASE
-                    WHEN credential_id = '' THEN 'none'
-                    ELSE 'credential'
-                END
-                """
-            )
-        folder_columns = {
-            str(row["name"])
-            for row in connection.execute(
-                "PRAGMA table_info(remote_connection_folders)"
-            )
-        }
-        if "credential_mode" not in folder_columns:
-            connection.execute(
-                "ALTER TABLE remote_connection_folders "
-                "ADD COLUMN credential_mode TEXT NOT NULL DEFAULT 'inherit'"
-            )
-        if "credential_id" not in folder_columns:
-            connection.execute(
-                "ALTER TABLE remote_connection_folders "
-                "ADD COLUMN credential_id TEXT NOT NULL DEFAULT ''"
-            )
+        # Gunicorn workers can initialize this store concurrently on the first
+        # boot after an upgrade. Serialize the inspect-and-alter sequence so a
+        # second worker re-reads the completed schema instead of attempting the
+        # same ALTER TABLE and failing with a duplicate-column error.
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            host_columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(remote_connection_hosts)"
+                )
+            }
+            if "protocol" not in host_columns:
+                connection.execute(
+                    "ALTER TABLE remote_connection_hosts "
+                    "ADD COLUMN protocol TEXT NOT NULL DEFAULT 'ssh'"
+                )
+            if "credential_mode" not in host_columns:
+                connection.execute(
+                    "ALTER TABLE remote_connection_hosts "
+                    "ADD COLUMN credential_mode TEXT NOT NULL DEFAULT 'credential'"
+                )
+                connection.execute(
+                    """
+                    UPDATE remote_connection_hosts
+                    SET credential_mode = CASE
+                        WHEN credential_id = '' THEN 'none'
+                        ELSE 'credential'
+                    END
+                    """
+                )
+            folder_columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(remote_connection_folders)"
+                )
+            }
+            if "credential_mode" not in folder_columns:
+                connection.execute(
+                    "ALTER TABLE remote_connection_folders "
+                    "ADD COLUMN credential_mode TEXT NOT NULL DEFAULT 'inherit'"
+                )
+            if "credential_id" not in folder_columns:
+                connection.execute(
+                    "ALTER TABLE remote_connection_folders "
+                    "ADD COLUMN credential_id TEXT NOT NULL DEFAULT ''"
+                )
+        except Exception:
+            connection.rollback()
+            raise
+        else:
+            connection.commit()
 
 
 __all__ = ["RemoteConnectionError", "RemoteConnectionStore"]
