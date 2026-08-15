@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.upgrade_manager import (
+    FAILED_VALIDATION_LOG_BYTES,
     ReleaseClient,
     UpgradeError,
     UpgradeManager,
@@ -21,11 +22,13 @@ from twn_toolkit.upgrade_manager import (
     _integrity_manifest,
     _ignore_volatile_instance_artifacts,
     _prepare_service_reload,
+    _preserve_failed_validation_diagnostics,
     _preserve_prepared_service_reload,
     _run,
     _create_backup,
     _restore_backup,
     _verify_backup,
+    _upgrade_worker_environment,
     build_release_bundle,
     bundle_name,
     execute_request,
@@ -49,6 +52,21 @@ def release_root(path: Path, version: str, marker: str) -> None:
 
 
 class UpgradeBundleTests(unittest.TestCase):
+    def test_upgrade_worker_does_not_inherit_service_control_environment(self) -> None:
+        internal = {
+            "TWN_TOOLKIT_SERVICE_RUN": "1",
+            "TWN_TOOLKIT_LAUNCHD_DIRECT": "1",
+            "TWN_TOOLKIT_LAUNCHD_ROLE": "web",
+            "TWN_TOOLKIT_UPGRADE_REQUEST_ID": "previous-request",
+            "TWN_TOOLKIT_SUPPRESS_START_EVENT": "1",
+            "TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER": "1",
+        }
+        with patch.dict(os.environ, {**internal, "TWN_TEST_KEEP": "yes"}):
+            environment = _upgrade_worker_environment()
+
+        self.assertTrue(all(name not in environment for name in internal))
+        self.assertEqual(environment["TWN_TEST_KEEP"], "yes")
+
     def test_installer_execution_does_not_create_captured_output_pipes(self) -> None:
         completed = subprocess.CompletedProcess(["installer"], 0)
         with patch(
@@ -176,6 +194,35 @@ class UpgradeBundleTests(unittest.TestCase):
             self.assertFalse((instance / "twn-service-launcher.pid").exists())
             self.assertFalse((instance / "twn-service-resume").exists())
             self.assertTrue(all(not (instance / marker).exists() for marker in launchd_markers))
+
+    def test_failed_validation_diagnostics_survive_with_bounded_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "toolkit"
+            instance = root / "instance"
+            workspace = root / ".twn-upgrades"
+            instance.mkdir(parents=True)
+            workspace.mkdir()
+            error_log = instance / "twn-toolkit-error.log"
+            error_log.write_bytes(b"old" + b"x" * FAILED_VALIDATION_LOG_BYTES + b"new")
+            (workspace / "service-reload.log").write_text("handoff details\n")
+
+            status = subprocess.CompletedProcess(
+                [str(root / "twn"), "status"], 1, "", "Toolkit is not running.\n",
+            )
+            with patch("twn_toolkit.upgrade_manager._run", return_value=status):
+                diagnostics = _preserve_failed_validation_diagnostics(
+                    root, instance, workspace, "upgrade/unsafe", "startup failed",
+                )
+
+            self.assertEqual(diagnostics, workspace / "diagnostics" / "upgrade-unsafe")
+            self.assertEqual((diagnostics / "failure.txt").read_text(), "startup failed\n")
+            retained = (diagnostics / error_log.name).read_bytes()
+            self.assertEqual(len(retained), FAILED_VALIDATION_LOG_BYTES)
+            self.assertTrue(retained.endswith(b"new"))
+            self.assertIn("Toolkit is not running", (diagnostics / "status.txt").read_text())
+            self.assertEqual(
+                (diagnostics / "service-reload.log").read_text(), "handoff details\n",
+            )
 
     def test_build_and_validate_verified_release_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -444,6 +491,8 @@ class UpgradeRecoveryTests(unittest.TestCase):
                 request = manager.launch_backup({"id": "1", "username": "admin", "remote_ip": "127.0.0.1"})
             process.assert_called_once()
             self.assertEqual(process.call_args.kwargs["cwd"], root.resolve())
+            self.assertTrue(process.call_args.kwargs["start_new_session"])
+            self.assertIn("env", process.call_args.kwargs)
             self.assertEqual(manager.status()["state"], "starting")
             self.assertEqual(request["operation"], "backup")
 
@@ -480,6 +529,10 @@ class UpgradeRecoveryTests(unittest.TestCase):
             status = json.loads((workspace / "status.json").read_text())
             self.assertEqual(status["state"], "rolled_back")
             self.assertIn("simulated startup failure", status["error"])
+            self.assertIn("Diagnostics:", status["error"])
+            self.assertTrue(
+                (workspace / "diagnostics" / "upgrade-failure" / "failure.txt").is_file()
+            )
             self.assertIn("old", (root / "twn_toolkit" / "version.py").read_text())
             self.assertEqual((instance / "saved.txt").read_text(), "before")
             self.assertEqual(

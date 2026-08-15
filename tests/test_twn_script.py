@@ -212,6 +212,7 @@ class TwnScriptTests(unittest.TestCase):
         self.assertIn("service_run_cleanup() {", source)
         self.assertIn("service_run() {", source)
         self.assertIn("trap service_run_cleanup EXIT", source)
+        self.assertIn("deferred_service_reload_is_running() {", source)
         self.assertIn("if [ -f \"$SERVICE_PAUSE_FILE\" ]; then", source)
         self.assertIn("if [ -f \"$SERVICE_RESUME_FILE\" ]; then", source)
         self.assertIn("twn_toolkit.service_cli --root \"$ROOT\"", source)
@@ -267,6 +268,38 @@ class TwnScriptTests(unittest.TestCase):
             'SERVICE_RELOAD_LOG="$UPGRADE_WORKSPACE/service-reload.log"', source
         )
         self.assertIn("prepare-upgrade-service-reload)", source)
+
+        start = re.search(
+            r"^start\(\) \{(?P<body>.*?)^\}",
+            source,
+            re.DOTALL | re.MULTILINE,
+        )
+        cleanup = re.search(
+            r"service_run_cleanup\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        service_run = re.search(
+            r"service_run\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        self.assertIsNotNone(start)
+        self.assertIsNotNone(cleanup)
+        self.assertIsNotNone(service_run)
+        start_body = start.group("body")
+        cleanup_body = cleanup.group("body")
+        service_run_body = service_run.group("body")
+        self.assertLess(
+            start_body.index("deferred_service_reload_is_running"),
+            start_body.index("service_launcher_is_running"),
+        )
+        self.assertIn(
+            '[ -f "$UPGRADE_OPERATION_LOCK" ] && [ -f "$SERVICE_PAUSE_FILE" ]',
+            cleanup_body,
+        )
+        self.assertLess(
+            cleanup_body.index("remove_own_service_launcher_pid"),
+            cleanup_body.index("stop || true"),
+        )
+        self.assertIn('elif [ -f "$UPGRADE_OPERATION_LOCK" ]; then', service_run_body)
+        self.assertIn("write_service_pause_marker", service_run_body)
 
     def test_macos_service_mode_keeps_workers_in_launchd_process_tree(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "twn").read_text(

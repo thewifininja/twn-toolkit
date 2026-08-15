@@ -37,6 +37,37 @@ GITHUB_RELEASES_URL = "https://api.github.com/repos/thewifininja/twn-toolkit/rel
 BACKUP_RETENTION = 5
 TERMINAL_STATES = {"succeeded", "rolled_back", "failed", "backup_created"}
 ACTIVE_STATES = {"starting", "stopping", "backing_up", "installing", "validating", "rolling_back"}
+UPGRADE_WORKER_INTERNAL_ENVIRONMENT = {
+    "TWN_TOOLKIT_LAUNCHD_DIRECT",
+    "TWN_TOOLKIT_LAUNCHD_ROLE",
+    "TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER",
+    "TWN_TOOLKIT_SERVICE_RUN",
+    "TWN_TOOLKIT_SUPPRESS_START_EVENT",
+    "TWN_TOOLKIT_UPGRADE_REQUEST_ID",
+}
+FAILED_VALIDATION_LOGS = (
+    "twn-toolkit-error.log",
+    "twn-toolkit-access.log",
+    "twn-toolkit-restart.log",
+    "twn-service.log",
+    "twn-service-error.log",
+    "twn-service-web.log",
+    "twn-service-web-error.log",
+    "twn-automation.log",
+    "twn-supervisor.log",
+    "twn-tftp.log",
+    "twn-ssh-transfer.log",
+    "twn-ftp.log",
+    "twn-iperf3.log",
+)
+FAILED_VALIDATION_LOG_BYTES = 512 * 1024
+
+
+def _upgrade_worker_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    for name in UPGRADE_WORKER_INTERNAL_ENVIRONMENT:
+        environment.pop(name, None)
+    return environment
 
 
 class ReleaseClient:
@@ -311,7 +342,7 @@ class UpgradeManager:
                 subprocess.Popen(
                     [sys.executable, "-m", "twn_toolkit.upgrade_worker", "--request", str(request_path)],
                     cwd=self.root, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                    start_new_session=True,
+                    start_new_session=True, env=_upgrade_worker_environment(),
                 )
         except Exception as exc:
             lock_path.unlink(missing_ok=True)
@@ -706,6 +737,57 @@ def _preserve_prepared_service_reload(instance: Path, prepared: bool) -> None:
         (instance / marker).unlink(missing_ok=True)
 
 
+def _copy_bounded_log(source: Path, destination: Path) -> None:
+    with source.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        handle.seek(max(0, size - FAILED_VALIDATION_LOG_BYTES))
+        payload = handle.read(FAILED_VALIDATION_LOG_BYTES)
+    destination.write_bytes(payload)
+    os.chmod(destination, 0o600)
+
+
+def _preserve_failed_validation_diagnostics(
+    root: Path,
+    instance: Path,
+    workspace: Path,
+    request_id: str,
+    failure: str,
+) -> Path | None:
+    safe_request_id = re.sub(r"[^A-Za-z0-9_.-]", "-", request_id)[:100] or "unknown"
+    destination = workspace / "diagnostics" / safe_request_id
+    try:
+        destination.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(destination, 0o700)
+        failure_path = destination / "failure.txt"
+        failure_path.write_text(failure.rstrip() + "\n", encoding="utf-8")
+        os.chmod(failure_path, 0o600)
+
+        try:
+            status = _run([str(root / "twn"), "status"], cwd=root, timeout=30)
+            status_text = (
+                f"exit_code={status.returncode}\n\nstdout:\n{status.stdout or ''}"
+                f"\nstderr:\n{status.stderr or ''}"
+            )
+        except subprocess.SubprocessError as status_error:
+            status_text = f"Status collection failed: {type(status_error).__name__}: {status_error}\n"
+        status_path = destination / "status.txt"
+        status_path.write_text(status_text, encoding="utf-8")
+        os.chmod(status_path, 0o600)
+
+        for name in FAILED_VALIDATION_LOGS:
+            source = instance / name
+            if source.is_file():
+                _copy_bounded_log(source, destination / name)
+        for name in ("service-reload.log", "upgrade.log"):
+            source = workspace / name
+            if source.is_file():
+                _copy_bounded_log(source, destination / name)
+    except OSError:
+        return None
+    return destination
+
+
 def _record_result(
     instance: Path,
     request: dict[str, Any],
@@ -745,6 +827,7 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
     lock_path = workspace / "operation.lock"
     services_stopped = False
     service_reload_prepared = False
+    target_applied = False
 
     def status(state: str, message: str, **extra: Any) -> None:
         _atomic_json(status_path, {
@@ -823,6 +906,7 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
         )
         status("installing", f"Installing toolkit v{manifest['version']}.", backup_id=backup.name)
         _extract_and_apply(root, bundle, manifest, workspace)
+        target_applied = True
         status("validating", "Restarting and validating processes, version, and databases.", backup_id=backup.name)
         _install_and_validate(
             root, instance, str(manifest["version"]),
@@ -841,6 +925,12 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
         finish()
     except Exception as exc:
         failure = f"{type(exc).__name__}: {exc}"
+        if target_applied:
+            diagnostics = _preserve_failed_validation_diagnostics(
+                root, instance, workspace, str(request.get("id", "")), failure,
+            )
+            if diagnostics is not None:
+                failure = f"{failure} Diagnostics: {diagnostics}"
         if backup and backup.is_dir() and request.get("operation") == "upgrade":
             try:
                 status(
