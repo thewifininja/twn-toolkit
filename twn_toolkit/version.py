@@ -1,6 +1,42 @@
-APP_VERSION = "0.19.2"
+APP_VERSION = "0.19.3"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.19.3",
+        "date": "2026-08-14",
+        "title": "Reliable first-start schema migration",
+        "summary": (
+            "Serializes Remote Terminal library migration across concurrent "
+            "web workers so direct upgrades complete cleanly on their first "
+            "validated start."
+        ),
+        "groups": (
+            {
+                "title": "Concurrent startup is migration-safe",
+                "items": (
+                    "Runs Remote Terminal saved-library schema inspection and alteration inside one immediate SQLite transaction so only one Gunicorn worker can migrate the database at a time.",
+                    "Prevents simultaneous first-start workers from both adding the credential_mode column and crashing one worker with a duplicate-column error.",
+                    "Keeps the existing migration idempotent for new installations and libraries that were already upgraded successfully.",
+                ),
+            },
+            {
+                "title": "Direct upgrade and rollback safety",
+                "items": (
+                    "Supports a direct v0.19.0 or v0.19.1 to v0.19.3 systemd CLI transition; no intermediate v0.19.2 installation is required.",
+                    "Retains the v0.19.2 detached-worker, validation-handoff, failed-target diagnostics, and automatic rollback protections.",
+                    "Adds deterministic concurrent-start regression coverage using separate database connections so the production worker boundary is exercised.",
+                ),
+            },
+            {
+                "title": "Compatibility",
+                "items": (
+                    "Changes no dependency, service definition, profile format, native helper, capability, or operating-system configuration.",
+                    "Uses the same backward-compatible Remote Terminal library column introduced in v0.19.1; this patch changes only how concurrent processes coordinate its creation.",
+                    "Allows existing v0.19.2 installations to use the normal in-app or CLI upgrade workflow.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.19.2",
         "date": "2026-08-14",

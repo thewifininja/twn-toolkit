@@ -264,13 +264,15 @@ installed. Running `./install.sh` outside an active supported upgrade still uses
 the normal synchronous service reload.
 
 Existing v0.19.0 or v0.19.1 systemd installations must make the one-time
-v0.19.2 transition from a shell with
-`./twn upgrade --version 0.19.2 --yes`. Their installed web updater still
-inherits the old service-run environment before v0.19.2 code can replace it.
-After that transition, detached workers remove internal service-control state,
-service-supervisor restarts preserve the upgrade pause, and both in-app and CLI
-upgrades follow the corrected path. Failed target logs are retained under
-`.twn-upgrades/diagnostics/` before rollback restores the instance.
+transition directly to v0.19.3 from a shell with
+`./twn upgrade --version 0.19.3 --yes`. Their installed web updater still
+inherits the old service-run environment before replacement code can correct
+it. No stepped upgrade through v0.19.2 is required. The v0.19.3 target also
+serializes its Remote Terminal schema migration across concurrent Gunicorn
+workers. After that transition, both in-app and CLI upgrades follow the
+corrected path. Existing v0.19.2 installations can upgrade normally. Failed
+target logs are retained under `.twn-upgrades/diagnostics/` before rollback
+restores the instance.
 
 To relocate an installation:
 
