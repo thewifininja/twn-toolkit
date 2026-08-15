@@ -9,6 +9,21 @@ v0.11.0, the first updater-enabled release. After that transition, use the app
 or CLI workflow below. The updater cannot retroactively create the pre-upgrade
 instance backup that an older installation did not make.
 
+Existing v0.19.0 or v0.19.1 **systemd-managed** installations need one CLI
+transition to v0.19.2:
+
+```bash
+./twn upgrade --version 0.19.2 --yes
+```
+
+The already-installed web updater inherits the old service-run environment
+before replacement code is available, so it cannot retroactively apply the
+v0.19.2 worker fix. Launching the same upgrade from a shell places that old
+worker outside the systemd service cgroup; the v0.19.2 target then completes
+the corrected validation handoff. After this transition, app and CLI upgrades
+are equivalent again. This exception does not apply to manual or macOS
+installations.
+
 ## What a supported release contains
 
 Every published stable release intended for in-app upgrade has two assets:
@@ -110,6 +125,14 @@ automation event; the final OS-managed start records it exactly once. Automatic
 rollback instead lets the original in-memory launcher adopt the validated
 restored process set when its version matches. Handoff details are available in
 `.twn-upgrades/service-reload.log`.
+
+Upgrade workers discard inherited service-control variables before stopping
+the managed process set. A systemd supervisor that restarts while an operation
+lock is active preserves the pause rather than clearing it, and a prepared
+validation start bypasses transient launcher-PID rediscovery. If target
+validation still fails, bounded status and process logs are copied to
+`.twn-upgrades/diagnostics/OPERATION_ID/` before automatic rollback replaces
+the instance directory.
 
 The macOS handoff also waits for the final direct web, scheduler, and supervisor
 PID markers. If a validation-to-launchd race leaves a worker running without its

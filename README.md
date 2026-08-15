@@ -13,12 +13,14 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.19.1**
+Current release: **v0.19.2**
 
-v0.19.1 adds organized SSH and Telnet Remote Terminal libraries with inherited
-credentials, bulk host management, reviewed imports, resizable workspaces, and
-active-case transcript capture. Bulk SSH can safely recover a verified changed
-host key and rerun only that host without discarding successful results.
+v0.19.2 hardens systemd-managed upgrades so detached workers survive the
+intentional service stop, validation handoffs remain paused and deterministic,
+and failed-target diagnostics survive automatic rollback. Existing v0.19.0 or
+v0.19.1 systemd installations must use
+`./twn upgrade --version 0.19.2 --yes` for this one hotfix transition; later
+in-app upgrades use the corrected lifecycle.
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -438,6 +440,12 @@ Recovery](docs/upgrade-recovery.md).
 Installations running v0.10.2 or older require one final conventional upgrade
 to v0.11.0, the first updater-enabled release. Future releases can then be
 installed entirely through the built-in UI or CLI workflow.
+
+Existing v0.19.0 or v0.19.1 systemd installations are a one-time exception:
+run `./twn upgrade --version 0.19.2 --yes` from a shell for the v0.19.2 hotfix.
+Their already-installed web updater cannot retroactively receive the corrected
+detached-worker environment. After v0.19.2 is installed, the app and CLI again
+use the same supported service-managed upgrade path.
 
 For more detailed first-run and profile instructions, see
 [QUICKSTART.md](QUICKSTART.md) or the searchable **Help** page inside the app.
