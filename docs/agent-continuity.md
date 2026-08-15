@@ -261,7 +261,7 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.19.0: investigation cases are shared owner-and-
+- Current milestone is 0.19.1: investigation cases are shared owner-and-
   collaborator workspaces with attributed journals, managed evidence, compact
   reports, portable cross-instance archives, and non-destructive case merging.
   Remote Terminal provides persistent owner-scoped interactive SSH and Telnet sessions,

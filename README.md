@@ -13,12 +13,12 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.19.0**
+Current release: **v0.19.1**
 
-v0.19.0 adds collaborative investigation cases with portable transfer and
-non-destructive merging, persistent browser-based Remote Terminal workspaces,
-and inspect-first configuration backups spanning the toolkit's reusable
-settings.
+v0.19.1 adds organized SSH and Telnet Remote Terminal libraries with inherited
+credentials, bulk host management, reviewed imports, resizable workspaces, and
+active-case transcript capture. Bulk SSH can safely recover a verified changed
+host key and rerun only that host without discarding successful results.
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
