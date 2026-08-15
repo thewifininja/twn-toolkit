@@ -263,6 +263,15 @@ prompt. The service definition is not part of the release bundle and remains
 installed. Running `./install.sh` outside an active supported upgrade still uses
 the normal synchronous service reload.
 
+Existing v0.19.0 or v0.19.1 systemd installations must make the one-time
+v0.19.2 transition from a shell with
+`./twn upgrade --version 0.19.2 --yes`. Their installed web updater still
+inherits the old service-run environment before v0.19.2 code can replace it.
+After that transition, detached workers remove internal service-control state,
+service-supervisor restarts preserve the upgrade pause, and both in-app and CLI
+upgrades follow the corrected path. Failed target logs are retained under
+`.twn-upgrades/diagnostics/` before rollback restores the instance.
+
 To relocate an installation:
 
 1. Run `./twn service uninstall` from the old checkout.

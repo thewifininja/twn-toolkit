@@ -1,6 +1,42 @@
-APP_VERSION = "0.19.1"
+APP_VERSION = "0.19.2"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.19.2",
+        "date": "2026-08-14",
+        "title": "Reliable systemd upgrade handoffs",
+        "summary": (
+            "Keeps service-managed upgrades alive through the intentional "
+            "restart boundary and preserves target diagnostics when automatic "
+            "rollback is required."
+        ),
+        "groups": (
+            {
+                "title": "Upgrade workers survive the service stop",
+                "items": (
+                    "Removes inherited systemd and launchd service-control state from detached upgrade workers so an intentional web stop creates the durable managed pause instead of being treated as a failed service unit.",
+                    "Prevents systemd KillMode=mixed from terminating the in-app updater with the service cgroup before its recovery point, installation, validation, and final status work complete.",
+                    "Retains ordinary manual starts, restarts, backups, rollback, and macOS direct-launchd lifecycle behavior.",
+                ),
+            },
+            {
+                "title": "Deterministic validation handoff",
+                "items": (
+                    "Keeps an active upgrade pause intact if the OS service supervisor restarts and avoids stopping a validation process set that is intentionally running outside that supervisor.",
+                    "Starts target validation directly when a prepared reload helper is already active, even if systemd or launchd briefly republishes its launcher PID between withholding passes.",
+                    "Continues to finalize status, audit evidence, staged-file cleanup, and the operation lock before the OS-managed launcher loads the finalized twn script from disk.",
+                ),
+            },
+            {
+                "title": "Rollback diagnostics and compatibility",
+                "items": (
+                    "Preserves bounded target status and process logs under the owner-only .twn-upgrades/diagnostics directory before restoring the matched recovery point, so the failed generation is not erased by rollback.",
+                    "Requires existing v0.19.0 or v0.19.1 systemd installations to perform this one hotfix upgrade through ./twn upgrade --version 0.19.2 --yes; later in-app upgrades use the corrected worker environment.",
+                    "Introduces no dependency, database migration, profile-format, service-definition, capability, native-helper, or operating-system configuration change.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.19.1",
         "date": "2026-08-14",

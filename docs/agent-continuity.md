@@ -261,7 +261,14 @@ accepted replay frames.
   supported/stable configuration and migration contract.
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.19.1: investigation cases are shared owner-and-
+- Current milestone is 0.19.2: the v0.19.1 investigation and Remote Terminal
+  milestone remains intact, while systemd-managed upgrades now sanitize the
+  detached worker environment, preserve an active pause across service
+  supervisor restarts, bypass transient launcher-PID rediscovery during target
+  validation, and retain bounded failed-target logs outside the restored
+  instance. Existing v0.19.0/v0.19.1 systemd hosts require one CLI upgrade to
+  v0.19.2 because their already-running web updater cannot retroactively use
+  the corrected environment. Investigation cases are shared owner-and-
   collaborator workspaces with attributed journals, managed evidence, compact
   reports, portable cross-instance archives, and non-destructive case merging.
   Remote Terminal provides persistent owner-scoped interactive SSH and Telnet sessions,
@@ -572,6 +579,10 @@ make state, risk, and the next action obvious.
   complete stopped instance into one recovery point. Write an integrity manifest
   and verify it before every restore. Retain the five newest recovery points;
   never put them inside the instance or configuration backups.
+- Before automatic rollback replaces the target instance, retain bounded
+  target status and process logs under `.twn-upgrades/diagnostics/REQUEST_ID/`.
+  Diagnostic collection is best-effort and must never prevent the matched
+  restore.
 - Success requires the target version, web/scheduler/supervisor and every enabled
   transfer worker to be healthy, and all SQLite quick checks to pass. Any failure
   after backup restores code and instance data together and validates the old
@@ -609,6 +620,12 @@ make state, risk, and the next action obvious.
   original version, restore the launcher PID and let it adopt the validated
   process set. Ordinary `./twn restart` still uses the lighter pause/resume path,
   and a manual installer outside an active upgrade reloads synchronously.
+- A detached upgrade worker must not inherit `TWN_TOOLKIT_SERVICE_RUN`, a
+  launchd direct role, a prior request ID, or reload/suppression controls from
+  the web process that launched it. Otherwise an intentional stop can skip the
+  durable pause and let systemd `KillMode=mixed` terminate the worker with the
+  service cgroup. While an operation lock is active, a restarted supervisor
+  preserves the pause and must not stop the external validation process set.
 - Libraries that create process helpers, synchronization primitives, or event-loop
   descriptors at import time must be imported only after daemonization. This is
   the bootstrap protection for upgrades launched by an older updater that still
