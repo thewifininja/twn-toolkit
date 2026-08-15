@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import tempfile
+import threading
 import unittest
 
 from twn_toolkit.remote_connections import (
@@ -90,6 +91,84 @@ class RemoteConnectionStoreTests(unittest.TestCase):
         self.assertEqual(library["folders"][0]["credential_mode"], "inherit")
         self.assertEqual(ssh_host["credential_mode"], "credential")
         self.assertEqual(telnet_host["credential_mode"], "none")
+
+    def test_concurrent_workers_serialize_schema_migration(self) -> None:
+        self.store.clear()
+        with sqlite3.connect(self.store.path) as connection:
+            connection.executescript(
+                """
+                CREATE TABLE remote_connection_folders (
+                    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL,
+                    parent_id TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+                CREATE TABLE remote_connection_credentials (
+                    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL,
+                    remote_username TEXT NOT NULL, secret_encrypted TEXT NOT NULL,
+                    scope_host_id TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+                CREATE TABLE remote_connection_hosts (
+                    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL,
+                    host TEXT NOT NULL, port INTEGER NOT NULL,
+                    protocol TEXT NOT NULL DEFAULT 'ssh', folder_id TEXT NOT NULL DEFAULT '',
+                    credential_id TEXT NOT NULL, allow_unknown_hosts INTEGER NOT NULL DEFAULT 0,
+                    allow_legacy_algorithms INTEGER NOT NULL DEFAULT 0,
+                    notes TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+                """
+            )
+
+        migration_reads = threading.Barrier(2)
+        errors: list[Exception] = []
+
+        def initialize_worker() -> None:
+            connection = sqlite3.connect(self.store.path, timeout=5)
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA busy_timeout = 5000")
+
+            def pause_on_legacy_schema_read(statement: str) -> None:
+                normalized = statement.strip().lower()
+                if normalized == "pragma table_info(remote_connection_hosts)":
+                    try:
+                        migration_reads.wait(timeout=0.25)
+                    except threading.BrokenBarrierError:
+                        pass
+
+            connection.set_trace_callback(pause_on_legacy_schema_read)
+            try:
+                RemoteConnectionStore._initialize(connection)
+            except Exception as exc:  # pragma: no cover - assertion reports details
+                errors.append(exc)
+            finally:
+                connection.close()
+
+        workers = [threading.Thread(target=initialize_worker) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=5)
+
+        self.assertTrue(all(not worker.is_alive() for worker in workers))
+        self.assertEqual(errors, [])
+        with sqlite3.connect(self.store.path) as connection:
+            host_columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(remote_connection_hosts)"
+                )
+            }
+            folder_columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(remote_connection_folders)"
+                )
+            }
+        self.assertIn("credential_mode", host_columns)
+        self.assertIn("credential_mode", folder_columns)
+        self.assertIn("credential_id", folder_columns)
 
     def test_nested_folders_hosts_and_shared_credentials(self) -> None:
         credential = self.store.save_credential(
