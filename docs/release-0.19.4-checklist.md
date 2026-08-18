@@ -46,7 +46,9 @@
   by policy.
 - [x] Build and validate the exact v0.19.4 upgrade bundle with 396 manifested
   files and a matching SHA-256 digest.
-- [ ] Pass release-preparation PR CI, squash-merge it, and pass merged-main CI.
+- [x] Pass release-preparation PR `#134` CI run `32092742575`, squash-merge it
+  as commit `f25db13541263b577a46936bc3703312d453e872`, and pass merged-main CI
+  run `32092877151`.
 
 ## Publication gate
 
