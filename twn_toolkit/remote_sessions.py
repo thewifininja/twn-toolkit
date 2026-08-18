@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .investigations import InvestigationError, InvestigationStore
+from .serial_console import SerialConsoleError, open_serial_channel, serial_settings
 from .ssh_security import close_ssh_client, format_ssh_connection_error, open_ssh_client
 from .telnet_client import open_telnet_channel
 
@@ -63,6 +64,14 @@ class RemoteSessionStore:
                     investigation_attached_at REAL,
                     allow_unknown_hosts INTEGER NOT NULL DEFAULT 0,
                     allow_legacy_algorithms INTEGER NOT NULL DEFAULT 0,
+                    console_device_id TEXT NOT NULL DEFAULT '',
+                    console_device_path TEXT NOT NULL DEFAULT '',
+                    console_device_label TEXT NOT NULL DEFAULT '',
+                    console_baud_rate INTEGER NOT NULL DEFAULT 9600,
+                    console_data_bits INTEGER NOT NULL DEFAULT 8,
+                    console_parity TEXT NOT NULL DEFAULT 'none',
+                    console_stop_bits TEXT NOT NULL DEFAULT '1',
+                    console_flow_control TEXT NOT NULL DEFAULT 'none',
                     output_bytes INTEGER NOT NULL DEFAULT 0,
                     output_truncated INTEGER NOT NULL DEFAULT 0,
                     last_error TEXT NOT NULL DEFAULT '',
@@ -89,34 +98,35 @@ class RemoteSessionStore:
                     ON remote_session_output(session_id, id);
                 """
             )
+            # Web workers initialize this store independently. Keep every
+            # inspect-and-alter migration under one writer lock so two fresh
+            # workers cannot race on a newly introduced session column.
+            connection.execute("BEGIN IMMEDIATE")
             columns = {
                 str(row["name"])
                 for row in connection.execute("PRAGMA table_info(remote_sessions)")
             }
-            if "owner_pid" not in columns:
-                connection.execute(
-                    "ALTER TABLE remote_sessions ADD COLUMN owner_pid INTEGER NOT NULL DEFAULT 0"
-                )
-            if "control_path" not in columns:
-                connection.execute(
-                    "ALTER TABLE remote_sessions ADD COLUMN control_path TEXT NOT NULL DEFAULT ''"
-                )
-            if "source_host_id" not in columns:
-                connection.execute(
-                    "ALTER TABLE remote_sessions ADD COLUMN source_host_id TEXT NOT NULL DEFAULT ''"
-                )
-            if "investigation_attached_at" not in columns:
-                connection.execute(
-                    "ALTER TABLE remote_sessions ADD COLUMN investigation_attached_at REAL"
-                )
-            if "telnet_username_available" not in columns:
-                connection.execute(
-                    "ALTER TABLE remote_sessions ADD COLUMN telnet_username_available INTEGER NOT NULL DEFAULT 0"
-                )
-            if "telnet_password_available" not in columns:
-                connection.execute(
-                    "ALTER TABLE remote_sessions ADD COLUMN telnet_password_available INTEGER NOT NULL DEFAULT 0"
-                )
+            migrations = {
+                "owner_pid": "INTEGER NOT NULL DEFAULT 0",
+                "control_path": "TEXT NOT NULL DEFAULT ''",
+                "source_host_id": "TEXT NOT NULL DEFAULT ''",
+                "investigation_attached_at": "REAL",
+                "telnet_username_available": "INTEGER NOT NULL DEFAULT 0",
+                "telnet_password_available": "INTEGER NOT NULL DEFAULT 0",
+                "console_device_id": "TEXT NOT NULL DEFAULT ''",
+                "console_device_path": "TEXT NOT NULL DEFAULT ''",
+                "console_device_label": "TEXT NOT NULL DEFAULT ''",
+                "console_baud_rate": "INTEGER NOT NULL DEFAULT 9600",
+                "console_data_bits": "INTEGER NOT NULL DEFAULT 8",
+                "console_parity": "TEXT NOT NULL DEFAULT 'none'",
+                "console_stop_bits": "TEXT NOT NULL DEFAULT '1'",
+                "console_flow_control": "TEXT NOT NULL DEFAULT 'none'",
+            }
+            for name, definition in migrations.items():
+                if name not in columns:
+                    connection.execute(
+                        f"ALTER TABLE remote_sessions ADD COLUMN {name} {definition}"
+                    )
             connection.execute(
                 """
                 DELETE FROM remote_sessions
@@ -170,12 +180,21 @@ class RemoteSessionStore:
         owner_pid: int = 0,
         control_path: str = "",
         protocol: str = "ssh",
+        console_device_id: str = "",
+        console_device_path: str = "",
+        console_device_label: str = "",
+        console_baud_rate: int = 9600,
+        console_data_bits: int = 8,
+        console_parity: str = "none",
+        console_stop_bits: str = "1",
+        console_flow_control: str = "none",
     ) -> dict[str, Any]:
         clean_protocol = str(protocol).strip().lower()
-        if clean_protocol not in {"ssh", "telnet"}:
-            raise RemoteSessionError("Choose SSH or Telnet.")
+        if clean_protocol not in {"ssh", "telnet", "console"}:
+            raise RemoteSessionError("Choose SSH, Telnet, or Console.")
         now = time.time()
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             active_count = connection.execute(
                 """
                 SELECT COUNT(*) FROM remote_sessions
@@ -188,6 +207,22 @@ class RemoteSessionStore:
                     f"Stop one of your remote sessions before starting another. "
                     f"Each operator can keep up to {REMOTE_SESSION_LIMIT_PER_USER}."
                 )
+            if clean_protocol == "console":
+                if not console_device_id:
+                    raise RemoteSessionError("Choose a local console device.")
+                in_use = connection.execute(
+                    """
+                    SELECT title FROM remote_sessions
+                    WHERE protocol = 'console' AND console_device_id = ?
+                      AND state IN ('connecting', 'running')
+                    LIMIT 1
+                    """,
+                    (console_device_id,),
+                ).fetchone()
+                if in_use:
+                    raise RemoteSessionError(
+                        "That console device is already in use by another active session."
+                    )
             session_id = secrets.token_hex(12)
             connection.execute(
                 """
@@ -197,8 +232,11 @@ class RemoteSessionStore:
                     telnet_password_available, state, record_transcript, investigation_id,
                     investigation_attached_at,
                     allow_unknown_hosts, allow_legacy_algorithms, created_at,
-                    last_activity_at, owner_pid, control_path, source_host_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'connecting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    last_activity_at, owner_pid, control_path, source_host_id,
+                    console_device_id, console_device_path, console_device_label,
+                    console_baud_rate, console_data_bits, console_parity,
+                    console_stop_bits, console_flow_control
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'connecting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -221,6 +259,14 @@ class RemoteSessionStore:
                     owner_pid,
                     control_path,
                     source_host_id,
+                    console_device_id if clean_protocol == "console" else "",
+                    console_device_path if clean_protocol == "console" else "",
+                    console_device_label if clean_protocol == "console" else "",
+                    int(console_baud_rate),
+                    int(console_data_bits),
+                    str(console_parity),
+                    str(console_stop_bits),
+                    str(console_flow_control),
                 ),
             )
         session = self.get_session(session_id, user_id=user_id)
@@ -540,12 +586,14 @@ class RemoteSessionManager:
         logger: Any = None,
         ssh_opener: Any = open_ssh_client,
         telnet_opener: Any = open_telnet_channel,
+        serial_opener: Any = open_serial_channel,
     ) -> None:
         self.store = store
         self.investigation_store = investigation_store
         self.logger = logger
         self.ssh_opener = ssh_opener
         self.telnet_opener = telnet_opener
+        self.serial_opener = serial_opener
         self.pid = os.getpid()
         self.instance_digest = hashlib.sha256(
             str(self.store.instance_path.resolve()).encode("utf-8")
@@ -623,8 +671,31 @@ class RemoteSessionManager:
         source_host_id: str = "",
         columns: int = 120,
         rows: int = 32,
+        console_device_id: str = "",
+        console_device_path: str = "",
+        console_device_label: str = "",
+        console_baud_rate: int = 9600,
+        console_data_bits: int = 8,
+        console_parity: str = "none",
+        console_stop_bits: str = "1",
+        console_flow_control: str = "none",
     ) -> dict[str, Any]:
         self._ensure_control_server()
+        clean_protocol = str(protocol).strip().lower()
+        if clean_protocol == "console":
+            settings = serial_settings(
+                baud_rate=console_baud_rate,
+                data_bits=console_data_bits,
+                parity=console_parity,
+                stop_bits=console_stop_bits,
+                flow_control=console_flow_control,
+            )
+            remote_username = ""
+            password = ""
+            host = console_device_path
+            port = 0
+        else:
+            settings = serial_settings()
         session = self.store.create_session(
             user_id=user_id,
             username=username,
@@ -641,7 +712,15 @@ class RemoteSessionManager:
             source_host_id=source_host_id,
             owner_pid=self.pid,
             control_path=self.control_path,
-            protocol=protocol,
+            protocol=clean_protocol,
+            console_device_id=console_device_id,
+            console_device_path=console_device_path,
+            console_device_label=console_device_label,
+            console_baud_rate=settings["baud_rate"],
+            console_data_bits=settings["data_bits"],
+            console_parity=settings["parity"],
+            console_stop_bits=settings["stop_bits"],
+            console_flow_control=settings["flow_control"],
         )
         self._record_started(session)
         runtime = {
@@ -649,15 +728,15 @@ class RemoteSessionManager:
             "termination": "manual",
             "client": None,
             "channel": None,
-            "password": password if protocol == "ssh" else "",
+            "password": password if clean_protocol == "ssh" else "",
             "telnet_credentials": {
-                "username": remote_username if protocol == "telnet" else "",
-                "password": password if protocol == "telnet" else "",
+                "username": remote_username if clean_protocol == "telnet" else "",
+                "password": password if clean_protocol == "telnet" else "",
             },
         }
         thread = threading.Thread(
             target=self._run_session,
-            name=f"remote-{protocol}-{session['id'][:8]}",
+            name=f"remote-{clean_protocol}-{session['id'][:8]}",
             daemon=True,
             args=(session, columns, rows, runtime),
         )
@@ -762,11 +841,12 @@ class RemoteSessionManager:
                     f"Attached {protocol_label} session {session['title']} to the case. "
                     "Its retained transcript will be added when the session ends."
                 ),
-                targets={"host": session["host"], "port": session["port"]},
+                targets=_session_targets(session),
                 parameters={
                     "title": session["title"],
                     "protocol": protocol_label,
                     "remote_username": session["remote_username"],
+                    **_console_parameters(session),
                 },
                 metrics={"output_bytes_at_attachment": session["output_bytes"]},
                 details={
@@ -789,12 +869,13 @@ class RemoteSessionManager:
             action=f"Attached {protocol_label} transcript",
             outcome="info",
             summary=f"Attached retained output from {protocol_label} session {session['title']}.",
-            targets={"host": session["host"], "port": session["port"]},
+            targets=_session_targets(session),
             parameters={
                 "title": session["title"],
                 "protocol": protocol_label,
                 "remote_username": session["remote_username"],
                 "termination": session["termination"],
+                **_console_parameters(session),
             },
             metrics={
                 "output_bytes": session["output_bytes"],
@@ -807,7 +888,7 @@ class RemoteSessionManager:
             started_at=attached_at,
             completed_at=attached_at,
             filename=(
-                f"{str(session.get('protocol', 'ssh'))}-{safe_filename(str(session['host']))}-{session_id[:8]}.txt"
+                f"{str(session.get('protocol', 'ssh'))}-{safe_filename(_session_destination(session))}-{session_id[:8]}.txt"
             ),
             content_type="text/plain; charset=utf-8",
             content=completed_transcript.encode("utf-8"),
@@ -925,7 +1006,16 @@ class RemoteSessionManager:
                     termination=str(runtime["termination"]),
                 )
                 return
-            if protocol == "telnet":
+            if protocol == "console":
+                channel = self.serial_opener(
+                    device_path=str(session["console_device_path"]),
+                    baud_rate=int(session["console_baud_rate"]),
+                    data_bits=int(session["console_data_bits"]),
+                    parity=str(session["console_parity"]),
+                    stop_bits=str(session["console_stop_bits"]),
+                    flow_control=str(session["console_flow_control"]),
+                )
+            elif protocol == "telnet":
                 channel = self.telnet_opener(
                     hostname=session["host"],
                     port=int(session["port"]),
@@ -1016,7 +1106,7 @@ class RemoteSessionManager:
                 credentials["username"] = ""
                 credentials["password"] = ""
             runtime["password"] = ""
-            if protocol == "telnet" and channel is not None:
+            if protocol in {"telnet", "console"} and channel is not None:
                 try:
                     channel.close()
                 except Exception:
@@ -1034,6 +1124,14 @@ class RemoteSessionManager:
     def _connection_error(exc: Exception, protocol: str) -> str:
         if protocol == "ssh":
             return format_ssh_connection_error(exc)
+        if protocol == "console":
+            if isinstance(exc, SerialConsoleError):
+                return str(exc)
+            if isinstance(exc, PermissionError):
+                return "The toolkit service does not have permission to open that console device."
+            if isinstance(exc, OSError):
+                return f"The local console connection failed: {exc}."
+            return "The local console connection failed."
         if isinstance(exc, socket.gaierror):
             return "The Telnet host name could not be resolved."
         if isinstance(exc, ConnectionRefusedError):
@@ -1048,6 +1146,7 @@ class RemoteSessionManager:
         if not session.get("investigation_id"):
             return
         protocol_label = str(session.get("protocol", "ssh")).upper()
+        destination = _session_destination(session)
         try:
             self.investigation_store.record_for_case(
                 investigation_id=str(session["investigation_id"]),
@@ -1060,15 +1159,17 @@ class RemoteSessionManager:
                 action=f"Started remote {protocol_label} session",
                 outcome="info",
                 summary=(
-                    f"Started {protocol_label} session {session['title']} to "
-                    f"{session['host']}:{session['port']}."
+                    f"Started {protocol_label} session {session['title']} "
+                    f"{'on' if session.get('protocol') == 'console' else 'to'} "
+                    f"{destination}."
                 ),
-                targets={"host": session["host"], "port": session["port"]},
+                targets=_session_targets(session),
                 parameters={
                     "title": session["title"],
                     "protocol": protocol_label,
                     "remote_username": session["remote_username"],
                     "transcript_enabled": bool(session["record_transcript"]),
+                    **_console_parameters(session),
                 },
                 metrics={},
                 details={"session_id": session["id"]},
@@ -1110,7 +1211,7 @@ class RemoteSessionManager:
                     f"{protocol_label} session {session['title']} ended: "
                     f"{str(session['termination']).replace('_', ' ')}."
                 ),
-                "targets": {"host": session["host"], "port": session["port"]},
+                "targets": _session_targets(session),
                 "parameters": {
                     "title": session["title"],
                     "protocol": protocol_label,
@@ -1118,6 +1219,7 @@ class RemoteSessionManager:
                     "duration_seconds": round(elapsed, 3),
                     "termination": session["termination"],
                     "transcript_enabled": bool(session["record_transcript"]),
+                    **_console_parameters(session),
                 },
                 "metrics": {
                     "output_bytes": int(session["output_bytes"]),
@@ -1137,7 +1239,7 @@ class RemoteSessionManager:
             if bool(session["record_transcript"]) and transcript:
                 self.investigation_store.add_generated_evidence_event(
                     **event,
-                    filename=f"{protocol}-{safe_filename(str(session['host']))}-{session['id'][:8]}.txt",
+                    filename=f"{protocol}-{safe_filename(_session_destination(session))}-{session['id'][:8]}.txt",
                     content_type="text/plain; charset=utf-8",
                     content=transcript.encode("utf-8"),
                     max_bytes=REMOTE_SESSION_OUTPUT_LIMIT_BYTES + 1024,
@@ -1419,6 +1521,45 @@ class RemoteSessionManager:
     def _log_exception(self, message: str) -> None:
         if self.logger is not None:
             self.logger.exception(message)
+
+
+def _session_destination(session: dict[str, Any]) -> str:
+    if str(session.get("protocol", "ssh")) == "console":
+        label = str(session.get("console_device_label", "")).strip()
+        path = str(session.get("console_device_path", "")).strip()
+        line = (
+            f"{int(session.get('console_baud_rate', 9600))} "
+            f"{int(session.get('console_data_bits', 8))}"
+            f"{str(session.get('console_parity', 'none'))[:1].upper()}"
+            f"{str(session.get('console_stop_bits', '1'))}"
+        )
+        device = f"{label} ({path})" if label and label != path else (label or path)
+        return f"{device} · {line}"
+    username = str(session.get("remote_username", "")).strip()
+    host = str(session.get("host", ""))
+    port = int(session.get("port", 0))
+    return f"{username + '@' if username else ''}{host}:{port}"
+
+
+def _session_targets(session: dict[str, Any]) -> dict[str, Any]:
+    if str(session.get("protocol", "ssh")) == "console":
+        return {
+            "device": str(session.get("console_device_label", "")),
+            "device_path": str(session.get("console_device_path", "")),
+        }
+    return {"host": session["host"], "port": session["port"]}
+
+
+def _console_parameters(session: dict[str, Any]) -> dict[str, Any]:
+    if str(session.get("protocol", "ssh")) != "console":
+        return {}
+    return {
+        "baud_rate": int(session.get("console_baud_rate", 9600)),
+        "data_bits": int(session.get("console_data_bits", 8)),
+        "parity": str(session.get("console_parity", "none")),
+        "stop_bits": str(session.get("console_stop_bits", "1")),
+        "flow_control": str(session.get("console_flow_control", "none")),
+    }
 
 
 def sanitize_terminal_text(value: str) -> str:

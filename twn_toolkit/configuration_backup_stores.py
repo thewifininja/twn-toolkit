@@ -16,6 +16,7 @@ from .certificate_automation import (
     validate_template_identifier,
 )
 from .remote_connections import RemoteConnectionStore
+from .serial_console import serial_settings
 from .smtp_tools import SMTPSettingsStore
 from .time_settings import TimeSettingsStore
 
@@ -231,8 +232,12 @@ class RemoteConnectionBackupStore:
                         INSERT INTO remote_connection_hosts
                             (id, user_id, name, host, port, protocol, folder_id,
                              credential_mode, credential_id, allow_unknown_hosts,
-                             allow_legacy_algorithms, notes, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             allow_legacy_algorithms, notes, console_device_id,
+                             console_device_path, console_device_label,
+                             console_baud_rate, console_data_bits, console_parity,
+                             console_stop_bits, console_flow_control,
+                             created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         host,
                     )
@@ -421,16 +426,41 @@ class RemoteConnectionBackupStore:
             if unique_key in host_names:
                 raise ValueError("Remote Terminal host names must be unique within a folder.")
             host_names.add(unique_key)
-            host = self.store._hostname(item.get("host", ""))
             protocol = str(item.get("protocol", "ssh")).strip().lower()
-            if protocol not in {"ssh", "telnet"}:
-                raise ValueError("Remote Terminal protocol must be SSH or Telnet.")
+            if protocol not in {"ssh", "telnet", "console"}:
+                raise ValueError("Remote Terminal protocol must be SSH, Telnet, or Console.")
+            if protocol == "console":
+                console_device_id = self.store._console_device_id(
+                    item.get("console_device_id", "")
+                )
+                console_device_path = self.store._console_device_path(
+                    item.get("console_device_path", item.get("host", ""))
+                )
+                console_device_label = self.store._name(
+                    item.get("console_device_label", "") or console_device_path,
+                    "Console device label",
+                )
+                console = serial_settings(
+                    baud_rate=item.get("console_baud_rate", 9600),
+                    data_bits=item.get("console_data_bits", 8),
+                    parity=item.get("console_parity", "none"),
+                    stop_bits=item.get("console_stop_bits", 1),
+                    flow_control=item.get("console_flow_control", "none"),
+                )
+                host = console_device_path
+            else:
+                host = self.store._hostname(item.get("host", ""))
+                console_device_id = console_device_path = console_device_label = ""
+                console = serial_settings()
             credential_mode = str(
                 item.get(
                     "credential_mode",
                     "credential" if old_credential else "none",
                 )
             ).strip().lower()
+            if protocol == "console":
+                credential_mode = "none"
+                old_credential = ""
             if credential_mode not in {"inherit", "credential", "none"}:
                 raise ValueError("Remote Terminal host credential mode is invalid.")
             if credential_mode == "credential" and old_credential not in credential_ids:
@@ -438,7 +468,7 @@ class RemoteConnectionBackupStore:
                     raise ValueError(
                         "Remote Terminal host references a missing credential."
                     )
-            elif credential_mode == "none" and protocol != "telnet":
+            elif credential_mode == "none" and protocol not in {"telnet", "console"}:
                 raise ValueError(
                     "Remote Terminal SSH hosts must inherit or use a credential."
                 )
@@ -448,7 +478,9 @@ class RemoteConnectionBackupStore:
                 port = int(item.get("port", 23 if protocol == "telnet" else 22))
             except (TypeError, ValueError) as exc:
                 raise ValueError("Remote Terminal ports must be whole numbers.") from exc
-            if not 1 <= port <= 65535:
+            if protocol == "console":
+                port = 0
+            elif not 1 <= port <= 65535:
                 raise ValueError("Remote Terminal ports must be 1–65535.")
             notes = str(item.get("notes", "")).strip()[:1000]
             host_credentials[old_id] = old_credential
@@ -459,7 +491,17 @@ class RemoteConnectionBackupStore:
                     credential_ids.get(old_credential, ""),
                     int(bool(item.get("allow_unknown_hosts")) and protocol == "ssh"),
                     int(bool(item.get("allow_legacy_algorithms")) and protocol == "ssh"),
-                    notes, now, now,
+                    notes,
+                    console_device_id,
+                    console_device_path,
+                    console_device_label,
+                    int(console["baud_rate"]),
+                    int(console["data_bits"]),
+                    str(console["parity"]),
+                    str(console["stop_bits"]),
+                    str(console["flow_control"]),
+                    now,
+                    now,
                 )
             )
         for item in raw_credentials:

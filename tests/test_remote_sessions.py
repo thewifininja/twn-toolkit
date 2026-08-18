@@ -5,6 +5,7 @@ import time
 import unittest
 from collections import deque
 from pathlib import Path
+from unittest.mock import patch
 
 from twn_toolkit.app import create_app
 from twn_toolkit.datastore import LocalDatastore
@@ -83,6 +84,18 @@ class FakeTelnetOpener:
     def __call__(self, **options: object) -> FakeChannel:
         self.calls.append(options)
         channel = FakeChannel(b"Username: admin\r\nswitch# ready\r\n")
+        self.channels.append(channel)
+        return channel
+
+
+class FakeSerialOpener:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+        self.channels: list[FakeChannel] = []
+
+    def __call__(self, **options: object) -> FakeChannel:
+        self.calls.append(options)
+        channel = FakeChannel(b"switch console ready\r\n")
         self.channels.append(channel)
         return channel
 
@@ -230,6 +243,35 @@ class RemoteSessionStoreTests(unittest.TestCase):
                 record_transcript=False,
             )
 
+    def test_console_device_is_exclusive_across_operators(self) -> None:
+        first = self.store.create_session(
+            protocol="console",
+            user_id="user-one",
+            username="operator-one",
+            title="Switch console",
+            host="/dev/cu.usbserial-1",
+            port=0,
+            remote_username="",
+            record_transcript=False,
+            console_device_id="console_123",
+            console_device_path="/dev/cu.usbserial-1",
+            console_device_label="USB Serial",
+        )
+        with self.assertRaisesRegex(RemoteSessionError, "already in use"):
+            self.store.create_session(
+                protocol="console",
+                user_id="user-two",
+                username="operator-two",
+                title="Same console",
+                host="/dev/cu.usbserial-1",
+                port=0,
+                remote_username="",
+                record_transcript=False,
+                console_device_id="console_123",
+                console_device_path="/dev/cu.usbserial-1",
+                console_device_label="USB Serial",
+            )
+        self.store.finish(str(first["id"]), state="stopped", termination="operator")
 
 class RemoteSessionRouteTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -238,11 +280,13 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.app.testing = True
         self.opener = FakeSshOpener()
         self.telnet_opener = FakeTelnetOpener()
+        self.serial_opener = FakeSerialOpener()
         self.manager = RemoteSessionManager(
             RemoteSessionStore(self.directory.name),
             self.app.extensions["investigation_store"],
             ssh_opener=self.opener,
             telnet_opener=self.telnet_opener,
+            serial_opener=self.serial_opener,
         )
         self.app.extensions["remote_session_manager"] = self.manager
         self.client = self.app.test_client()
@@ -350,7 +394,7 @@ class RemoteSessionRouteTests(unittest.TestCase):
         response = self.start_session(protocol="rlogin")
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json()["error"], "Choose SSH or Telnet.")
+        self.assertEqual(response.get_json()["error"], "Choose SSH, Telnet, or Console.")
         self.assertEqual(self.opener.calls, [])
         self.assertEqual(self.telnet_opener.calls, [])
 
@@ -359,7 +403,7 @@ class RemoteSessionRouteTests(unittest.TestCase):
             json={"protocol": "rlogin", "credential_mode": "saved"},
         )
         self.assertEqual(host_response.status_code, 400)
-        self.assertEqual(host_response.get_json()["error"], "Choose SSH or Telnet.")
+        self.assertEqual(host_response.get_json()["error"], "Choose SSH, Telnet, or Console.")
 
     def test_terminal_page_captures_keyboard_and_paste_inside_the_shell(self) -> None:
         response = self.client.get("/tools/remote-terminal")
@@ -384,11 +428,59 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.assertIn(b'data-telnet-credential="password"', response.data)
         self.assertIn(b'value="none"', response.data)
         self.assertIn(b'id="remote-terminal-protocol"', response.data)
+        self.assertIn(b'value="console"', response.data)
+        self.assertIn(b'id="remote-terminal-console-device"', response.data)
+        self.assertIn(b'id="remote-host-console-device"', response.data)
         self.assertIn(b'id="remote-terminal-download"', response.data)
         self.assertIn(b'id="remote-terminal-delete"', response.data)
         self.assertIn(b"remote-connections.js", response.data)
         self.assertNotIn(b"Command input", response.data)
         self.assertNotIn(b'id="remote-terminal-send"', response.data)
+
+    def test_console_uses_same_terminal_lifecycle_without_credentials(self) -> None:
+        device = {
+            "id": "console_123",
+            "path": "/dev/cu.usbserial-123",
+            "label": "USB Console",
+            "accessible": True,
+        }
+        with patch(
+            "twn_toolkit.remote_terminal_routes.resolve_serial_device",
+            return_value=device,
+        ):
+            response = self.start_session(
+                protocol="console",
+                host="",
+                port=0,
+                username="",
+                password="",
+                console_device_id=device["id"],
+                console_baud_rate=115200,
+                console_data_bits=8,
+                console_parity="none",
+                console_stop_bits="1",
+                console_flow_control="none",
+            )
+        self.assertEqual(response.status_code, 201)
+        session = response.get_json()["session"]
+        wait_for_state(self.manager.store, session["id"], "running")
+        self.assertEqual(session["protocol"], "console")
+        self.assertEqual(session["console_device_id"], device["id"])
+        self.assertEqual(session["remote_username"], "")
+        self.assertEqual(
+            self.serial_opener.calls[-1],
+            {
+                "device_path": device["path"],
+                "baud_rate": 115200,
+                "data_bits": 8,
+                "parity": "none",
+                "stop_bits": "1",
+                "flow_control": "none",
+            },
+        )
+        sent = self.client.post(session["input_url"], json={"data": "show version\r"})
+        self.assertEqual(sent.status_code, 200)
+        self.assertEqual(self.serial_opener.channels[-1].sent, [b"show version\r"])
 
     def test_saved_host_import_previews_and_atomically_adds_inherited_hosts(self) -> None:
         folder = self.client.post(

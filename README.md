@@ -140,7 +140,7 @@ The sidebar and Network Tools page use the same functional organization.
 - **TCP Port Scanner** — check individual ports or ranges across authorized
   hosts.
 
-- **Remote Terminal** — keep up to twelve owner-scoped SSH or Telnet sessions running under
+- **Remote Terminal** — keep up to twelve owner-scoped SSH, Telnet, or local serial-console sessions running under
   the toolkit service, including multiple sessions to the same saved host, and
   restore them from Live Tools after navigation, a closed browser tab, or a
   brief client disconnect. Session tabs can be renamed independently from their
@@ -149,7 +149,13 @@ The sidebar and Network Tools page use the same functional organization.
   seven-day completed-scrollback retention. Telnet credentials are optional and
   are never submitted by prompt guessing; an operator explicitly sends an
   available username or password after the device prompts. Credentials and
-  submitted input are not persisted. Saved connection folders can assign a
+  submitted input are not persisted. Console Quick Connect discovers attached
+  USB, UART, and operating-system-paired Bluetooth serial devices and provides
+  baud, data-bit, parity, stop-bit, and flow-control settings. Saved console
+  connections follow the adapter's stable identity across device-path changes;
+  one physical adapter can belong to only one active session at a time. See
+  [Serial console setup](docs/serial-console.md) for Linux service permissions.
+  Saved connection folders can assign a
   shared default credential; nested folders and hosts inherit the nearest
   assignment unless they explicitly override or stop inheritance. Selection
   mode can atomically move multiple hosts/folders or change their inheritance

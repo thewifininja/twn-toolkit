@@ -15589,6 +15589,34 @@ th {
   grid-column: span 2;
 }
 
+.remote-console-settings {
+  background: var(--card-tint);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.remote-console-device-row {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.remote-console-device-row button {
+  min-height: 44px;
+}
+
+.remote-console-line-grid {
+  grid-template-columns: repeat(5, minmax(90px, 1fr));
+}
+
+.remote-console-settings .field-note {
+  margin: 0;
+}
+
 .remote-terminal-telnet-warning {
   margin: 0;
 }
@@ -15885,6 +15913,10 @@ th {
   margin: 0;
 }
 
+.remote-terminal-dialog-footer-split > .button-row:last-child {
+  margin-left: auto;
+}
+
 .remote-credential-dialog {
   width: min(900px, calc(100vw - 32px));
 }
@@ -16086,12 +16118,17 @@ th {
   }
 
   .remote-terminal-dialog-grid,
+  .remote-console-line-grid,
   .remote-terminal-credential-fields,
   .remote-host-import-options,
   .remote-credential-core-fields,
   .compact-options,
   .remote-credential-manager-body {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-console-line-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .remote-host-address-field {
@@ -16154,6 +16191,15 @@ th {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .remote-console-device-row,
+  .remote-console-line-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .remote-console-device-row button {
+    width: 100%;
+  }
+
   .remote-terminal-dialog {
     max-height: calc(100vh - 16px);
     max-width: calc(100vw - 16px);
@@ -16168,6 +16214,10 @@ th {
   .remote-terminal-dialog-footer-split .button-row,
   .remote-terminal-dialog-footer-split .button-row button {
     width: 100%;
+  }
+
+  .remote-terminal-dialog-footer-split > .button-row:last-child {
+    margin-left: 0;
   }
 
   .remote-terminal-popout-head .brand span {

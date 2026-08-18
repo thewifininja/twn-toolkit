@@ -86,6 +86,9 @@ import.
 Remote Terminal libraries are keyed by source username. An exact local match is
 suggested, but the administrator must be able to assign each library to a local
 operator or exclude it. Import never creates users or grants access.
+Saved console records include their stable adapter identity and line settings.
+An imported adapter may remain marked detached until the corresponding physical
+device is attached to the destination toolkit host.
 
 Stores validate their complete incoming records before or within their write
 transaction. Generic groups are snapshotted and rolled back in reverse order if

@@ -158,6 +158,26 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
                 allow_unknown_hosts=False,
                 allow_legacy_algorithms=False,
             )
+            source_remote.save_host(
+                user_id=source_user["id"],
+                name="Portable console",
+                host="/dev/ttyUSB0",
+                port=0,
+                protocol="console",
+                folder_id=folder["id"],
+                credential_id="",
+                credential_mode="none",
+                allow_unknown_hosts=False,
+                allow_legacy_algorithms=False,
+                console_device_id="console_portable123",
+                console_device_path="/dev/ttyUSB0",
+                console_device_label="USB console adapter",
+                console_baud_rate=115200,
+                console_data_bits=8,
+                console_parity="none",
+                console_stop_bits="1",
+                console_flow_control="none",
+            )
 
             source_item = selected_backup_items(
                 build_backup_catalog(source), {"remote_connection_library"}
@@ -188,6 +208,9 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
             inherited_host = next(
                 host for host in library["hosts"] if host["name"] == "Inherited SSH switch"
             )
+            console_host = next(
+                host for host in library["hosts"] if host["name"] == "Portable console"
+            )
             resolved = destination_remote.resolve_credential(
                 library["credentials"][0]["id"],
                 user_id=destination_user["id"],
@@ -206,6 +229,10 @@ class ConfigurationBackupStoreTests(unittest.TestCase):
             self.assertEqual(
                 inherited_host["effective_credential_name"], "Network admin"
             )
+            self.assertEqual(console_host["protocol"], "console")
+            self.assertEqual(console_host["credential_mode"], "none")
+            self.assertEqual(console_host["console_device_id"], "console_portable123")
+            self.assertEqual(console_host["console_baud_rate"], 115200)
             self.assertNotIn(
                 b"source-only-secret",
                 Path(destination, "remote_connections.sqlite3").read_bytes(),
