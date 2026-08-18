@@ -197,6 +197,9 @@
         session.protocol,
         session.host,
         session.port,
+        session.console_device_id,
+        session.console_device_label,
+        session.console_baud_rate,
         session.remote_username,
         session.telnet_username_available,
         session.telnet_password_available,
@@ -384,6 +387,12 @@
         : "",
       allow_unknown_hosts: document.getElementById("remote-terminal-unknown-host").checked,
       allow_legacy_algorithms: document.getElementById("remote-terminal-legacy").checked,
+      console_device_id: document.getElementById("remote-terminal-console-device").value,
+      console_baud_rate: document.getElementById("remote-terminal-console-baud").value,
+      console_data_bits: document.getElementById("remote-terminal-console-data-bits").value,
+      console_parity: document.getElementById("remote-terminal-console-parity").value,
+      console_stop_bits: document.getElementById("remote-terminal-console-stop-bits").value,
+      console_flow_control: document.getElementById("remote-terminal-console-flow").value,
       columns: terminalColumns(),
       rows: 32,
     };
@@ -885,6 +894,10 @@
   }
 
   function remoteTarget(session) {
+    if (session.protocol === "console") {
+      const parity = String(session.console_parity || "none").charAt(0).toUpperCase();
+      return `${session.console_device_label || session.console_device_path || "Console device"} · ${session.console_baud_rate} ${session.console_data_bits}${parity}${session.console_stop_bits}`;
+    }
     const username = String(session.remote_username || "").trim();
     return `${username ? `${username}@` : ""}${session.host}:${session.port}`;
   }

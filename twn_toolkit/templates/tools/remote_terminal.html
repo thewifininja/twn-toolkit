@@ -5,7 +5,7 @@
   <div>
     <span class="eyebrow">Persistent remote access</span>
     <h1>Remote Terminal</h1>
-    <p>Quick-connect without saving anything, or organize reusable SSH and Telnet connections with encrypted credentials in your private library.</p>
+    <p>Open persistent SSH, Telnet, or locally attached console sessions, and organize reusable connections in your private library.</p>
   </div>
   <div class="remote-terminal-primary-actions">
     <button type="button" data-open-quick-connect>Quick connect</button>
@@ -22,6 +22,7 @@
   data-import-preview-url="{{ url_for('tools.preview_remote_terminal_host_import') }}"
   data-import-url="{{ url_for('tools.import_remote_terminal_hosts') }}"
   data-bulk-url="{{ url_for('tools.bulk_update_remote_terminal_library') }}"
+  data-devices-url="{{ url_for('tools.remote_terminal_devices') }}"
 >
   <aside class="panel remote-connection-explorer" aria-label="Saved remote connections">
     <header>
@@ -119,21 +120,40 @@
           <select id="remote-terminal-protocol">
             <option value="ssh">SSH</option>
             <option value="telnet">Telnet</option>
+            <option value="console">Console</option>
           </select>
         </label>
-        <label>Host
+        <label data-quick-network>Host
           <input id="remote-terminal-host" type="text" maxlength="255" required placeholder="switch.example.com" autocomplete="off" autocapitalize="none" spellcheck="false">
         </label>
-        <label><span id="remote-terminal-port-label">SSH port</span>
+        <label data-quick-network><span id="remote-terminal-port-label">SSH port</span>
           <input id="remote-terminal-port" type="number" min="1" max="65535" value="22" required>
         </label>
         <label>Session name <span class="inline-label-note">(optional)</span>
           <input id="remote-terminal-title" type="text" maxlength="100" placeholder="Core switch maintenance">
         </label>
       </div>
+      <div class="remote-console-settings" data-quick-console hidden>
+        <div class="remote-console-device-row">
+          <label>Attached device
+            <select id="remote-terminal-console-device">
+              {% for device in serial_console_options.devices %}<option value="{{ device.id }}">{{ device.label }} · {{ device.path }}{% if not device.accessible %} · permission required{% endif %}</option>{% endfor %}
+            </select>
+          </label>
+          <button class="secondary" type="button" data-refresh-console-devices>Refresh devices</button>
+        </div>
+        <p class="field-note" data-console-device-status>{% if serial_console_options.devices %}USB, UART, and OS-paired Bluetooth serial devices are shown here.{% else %}No supported console devices are currently attached.{% endif %}</p>
+        <div class="form-grid remote-console-line-grid">
+          <label>Baud rate<select id="remote-terminal-console-baud">{% for value in serial_console_options.baud_rates %}<option value="{{ value }}"{% if value == 9600 %} selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+          <label>Data bits<select id="remote-terminal-console-data-bits">{% for value in serial_console_options.data_bits %}<option value="{{ value }}"{% if value == 8 %} selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+          <label>Parity<select id="remote-terminal-console-parity">{% for value in serial_console_options.parities %}<option value="{{ value }}">{{ value|title }}</option>{% endfor %}</select></label>
+          <label>Stop bits<select id="remote-terminal-console-stop-bits">{% for value in serial_console_options.stop_bits %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select></label>
+          <label>Flow control<select id="remote-terminal-console-flow">{% for value in serial_console_options.flow_controls %}<option value="{{ value }}">{{ value|title }}</option>{% endfor %}</select></label>
+        </div>
+      </div>
       <p class="message warning remote-terminal-telnet-warning" data-quick-telnet-warning hidden>Telnet sends terminal traffic without encryption. Credentials are never submitted automatically; use the explicit Send controls after the device prompts. Use Telnet only on a trusted network.</p>
     </section>
-    <fieldset class="remote-terminal-credential-choice">
+    <fieldset class="remote-terminal-credential-choice" data-quick-credentials>
       <legend>Credentials for this connection</legend>
       <div class="remote-terminal-choice-row">
         <label class="check"><input type="radio" name="quick_credential_mode" value="temporary" checked><span>One-time credentials<small>Used only for this connection attempt.</small></span></label>
@@ -198,12 +218,26 @@
     <div class="form-grid remote-terminal-dialog-grid">
       <label>Display name<input id="remote-host-name" maxlength="100" required placeholder="Core Switch 01"></label>
       <label>Folder<select id="remote-host-folder"></select></label>
-      <label>Protocol<select id="remote-host-protocol"><option value="ssh">SSH</option><option value="telnet">Telnet</option></select></label>
-      <label class="remote-host-address-field">Host<input id="remote-host-address" maxlength="255" required placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"></label>
-      <label><span id="remote-host-port-label">SSH port</span><input id="remote-host-port" type="number" min="1" max="65535" value="22" required></label>
+      <label>Protocol<select id="remote-host-protocol"><option value="ssh">SSH</option><option value="telnet">Telnet</option><option value="console">Console</option></select></label>
+      <label class="remote-host-address-field" data-host-network>Host<input id="remote-host-address" maxlength="255" required placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"></label>
+      <label data-host-network><span id="remote-host-port-label">SSH port</span><input id="remote-host-port" type="number" min="1" max="65535" value="22" required></label>
+    </div>
+    <div class="remote-console-settings" data-host-console hidden>
+      <div class="remote-console-device-row">
+        <label>Attached device<select id="remote-host-console-device">{% for device in serial_console_options.devices %}<option value="{{ device.id }}">{{ device.label }} · {{ device.path }}{% if not device.accessible %} · permission required{% endif %}</option>{% endfor %}</select></label>
+        <button class="secondary" type="button" data-refresh-console-devices>Refresh devices</button>
+      </div>
+      <p class="field-note" data-console-device-status>Saved connections follow the device identity when its operating-system path changes.</p>
+      <div class="form-grid remote-console-line-grid">
+        <label>Baud rate<select id="remote-host-console-baud">{% for value in serial_console_options.baud_rates %}<option value="{{ value }}"{% if value == 9600 %} selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+        <label>Data bits<select id="remote-host-console-data-bits">{% for value in serial_console_options.data_bits %}<option value="{{ value }}"{% if value == 8 %} selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+        <label>Parity<select id="remote-host-console-parity">{% for value in serial_console_options.parities %}<option value="{{ value }}">{{ value|title }}</option>{% endfor %}</select></label>
+        <label>Stop bits<select id="remote-host-console-stop-bits">{% for value in serial_console_options.stop_bits %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select></label>
+        <label>Flow control<select id="remote-host-console-flow">{% for value in serial_console_options.flow_controls %}<option value="{{ value }}">{{ value|title }}</option>{% endfor %}</select></label>
+      </div>
     </div>
     <p class="message warning remote-terminal-telnet-warning" data-host-telnet-warning hidden>Telnet sends terminal traffic without encryption. Assigned credentials are sent only when an operator selects the explicit terminal controls. Use Telnet only on a trusted network.</p>
-    <fieldset class="remote-terminal-credential-choice">
+    <fieldset class="remote-terminal-credential-choice" data-host-credentials>
       <legend>Credential assignment</legend>
       <div class="remote-terminal-choice-row">
         <label class="check"><input type="radio" name="host_credential_mode" value="inherit"><span>Inherit from folder<small>Use the nearest credential assigned in the folder tree.</small></span></label>
@@ -280,7 +314,7 @@
         <div class="remote-terminal-choice-row">
           <label class="check"><input type="radio" name="bulk_credential_mode" value="inherit" checked><span>Inherit<small>Hosts inherit from their folder; folders inherit from their parent.</small></span></label>
           <label class="check"><input type="radio" name="bulk_credential_mode" value="credential"><span>Use saved credential<small>Apply one shared vault credential to the selection.</small></span></label>
-          <label class="check"><input type="radio" name="bulk_credential_mode" value="none"><span>No credential<small>Stops folder inheritance; available only for selected Telnet hosts.</small></span></label>
+          <label class="check"><input type="radio" name="bulk_credential_mode" value="none"><span>No credential<small>Stops folder inheritance; available for Telnet hosts. Console connections always remain credential-free.</small></span></label>
         </div>
         <label data-bulk-saved hidden>Saved credential<select id="remote-library-credential"></select></label>
       </fieldset>

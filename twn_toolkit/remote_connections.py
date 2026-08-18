@@ -13,6 +13,7 @@ from typing import Any, Iterator
 from cryptography.fernet import Fernet, InvalidToken
 
 from .duplication import duplicate_name
+from .serial_console import serial_settings
 
 
 class RemoteConnectionError(ValueError):
@@ -417,15 +418,47 @@ class RemoteConnectionStore:
         host_credential: dict[str, str] | None = None,
         protocol: str = "ssh",
         credential_mode: str = "credential",
+        console_device_id: str = "",
+        console_device_path: str = "",
+        console_device_label: str = "",
+        console_baud_rate: int = 9600,
+        console_data_bits: int = 8,
+        console_parity: str = "none",
+        console_stop_bits: str = "1",
+        console_flow_control: str = "none",
     ) -> dict[str, Any]:
         clean_name = self._name(name, "Host name")
-        clean_host = self._hostname(host)
         clean_notes = str(notes).strip()[:1000]
         clean_protocol = str(protocol).strip().lower()
-        if clean_protocol not in {"ssh", "telnet"}:
-            raise RemoteConnectionError("Choose SSH or Telnet.")
-        if not 1 <= int(port) <= 65535:
-            raise RemoteConnectionError("Port must be between 1 and 65535.")
+        if clean_protocol not in {"ssh", "telnet", "console"}:
+            raise RemoteConnectionError("Choose SSH, Telnet, or Console.")
+        if clean_protocol == "console":
+            clean_device_id = self._console_device_id(console_device_id)
+            clean_device_path = self._console_device_path(console_device_path)
+            clean_device_label = self._name(
+                console_device_label or clean_device_path, "Console device label"
+            )
+            settings = serial_settings(
+                baud_rate=console_baud_rate,
+                data_bits=console_data_bits,
+                parity=console_parity,
+                stop_bits=console_stop_bits,
+                flow_control=console_flow_control,
+            )
+            clean_host = clean_device_path
+            clean_port = 0
+            credential_mode = "none"
+            credential_id = ""
+            host_credential = None
+            allow_unknown_hosts = False
+            allow_legacy_algorithms = False
+        else:
+            clean_host = self._hostname(host)
+            clean_port = int(port)
+            if not 1 <= clean_port <= 65535:
+                raise RemoteConnectionError("Port must be between 1 and 65535.")
+            clean_device_id = clean_device_path = clean_device_label = ""
+            settings = serial_settings()
         now = time.time()
         is_update = bool(host_id)
         with self._connect() as connection:
@@ -513,7 +546,7 @@ class RemoteConnectionStore:
                     credential_id = ""
                 elif credential_mode == "none":
                     credential_id = ""
-                    if clean_protocol != "telnet":
+                    if clean_protocol not in {"telnet", "console"}:
                         raise RemoteConnectionError(
                             "Saved SSH hosts must inherit or use a credential."
                         )
@@ -537,7 +570,7 @@ class RemoteConnectionStore:
             values = (
                 clean_name,
                 clean_host,
-                int(port),
+                clean_port,
                 clean_protocol,
                 folder_id,
                 credential_mode,
@@ -545,6 +578,14 @@ class RemoteConnectionStore:
                 int(bool(allow_unknown_hosts) and clean_protocol == "ssh"),
                 int(bool(allow_legacy_algorithms) and clean_protocol == "ssh"),
                 clean_notes,
+                clean_device_id,
+                clean_device_path,
+                clean_device_label,
+                int(settings["baud_rate"]),
+                int(settings["data_bits"]),
+                str(settings["parity"]),
+                str(settings["stop_bits"]),
+                str(settings["flow_control"]),
                 now,
             )
             if is_update:
@@ -553,7 +594,10 @@ class RemoteConnectionStore:
                     UPDATE remote_connection_hosts
                     SET name = ?, host = ?, port = ?, protocol = ?, folder_id = ?,
                         credential_mode = ?, credential_id = ?, allow_unknown_hosts = ?,
-                        allow_legacy_algorithms = ?, notes = ?, updated_at = ?
+                        allow_legacy_algorithms = ?, notes = ?, console_device_id = ?,
+                        console_device_path = ?, console_device_label = ?,
+                        console_baud_rate = ?, console_data_bits = ?, console_parity = ?,
+                        console_stop_bits = ?, console_flow_control = ?, updated_at = ?
                     WHERE id = ? AND user_id = ?
                     """,
                     (*values, host_id, user_id),
@@ -565,8 +609,11 @@ class RemoteConnectionStore:
                         (id, user_id, name, host, port, protocol, folder_id,
                          credential_mode, credential_id,
                          allow_unknown_hosts, allow_legacy_algorithms, notes,
+                         console_device_id, console_device_path, console_device_label,
+                         console_baud_rate, console_data_bits, console_parity,
+                         console_stop_bits, console_flow_control,
                          created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (host_id, user_id, *values[:-1], now, now),
                 )
@@ -624,6 +671,14 @@ class RemoteConnectionStore:
             host_credential=host_credential,
             protocol=str(source.get("protocol", "ssh")),
             credential_mode=str(source.get("credential_mode", "credential")),
+            console_device_id=str(source.get("console_device_id", "")),
+            console_device_path=str(source.get("console_device_path", "")),
+            console_device_label=str(source.get("console_device_label", "")),
+            console_baud_rate=int(source.get("console_baud_rate", 9600)),
+            console_data_bits=int(source.get("console_data_bits", 8)),
+            console_parity=str(source.get("console_parity", "none")),
+            console_stop_bits=str(source.get("console_stop_bits", "1")),
+            console_flow_control=str(source.get("console_flow_control", "none")),
         )
 
     def import_hosts(
@@ -813,7 +868,12 @@ class RemoteConnectionStore:
                     )
                 for host in hosts:
                     host_mode = clean_mode
-                    if host_mode == "none" and str(host["protocol"]) != "telnet":
+                    if str(host["protocol"]) == "console":
+                        host_mode = "none"
+                        clean_host_credential_id = ""
+                    else:
+                        clean_host_credential_id = clean_credential_id
+                    if host_mode == "none" and str(host["protocol"]) not in {"telnet", "console"}:
                         raise RemoteConnectionError(
                             "No credential can only be assigned to Telnet hosts."
                         )
@@ -833,7 +893,7 @@ class RemoteConnectionStore:
                         """,
                         (
                             host_mode,
-                            clean_credential_id,
+                            clean_host_credential_id,
                             now,
                             host["id"],
                             user_id,
@@ -842,7 +902,7 @@ class RemoteConnectionStore:
                     if (
                         old_credential is not None
                         and str(old_credential["scope_host_id"]) == str(host["id"])
-                        and old_credential_id != clean_credential_id
+                        and old_credential_id != clean_host_credential_id
                     ):
                         connection.execute(
                             """
@@ -900,6 +960,14 @@ class RemoteConnectionStore:
                 host_credential=host_credential,
                 protocol=str(host.get("protocol", "ssh")),
                 credential_mode=str(host.get("credential_mode", "credential")),
+                console_device_id=str(host.get("console_device_id", "")),
+                console_device_path=str(host.get("console_device_path", "")),
+                console_device_label=str(host.get("console_device_label", "")),
+                console_baud_rate=int(host.get("console_baud_rate", 9600)),
+                console_data_bits=int(host.get("console_data_bits", 8)),
+                console_parity=str(host.get("console_parity", "none")),
+                console_stop_bits=str(host.get("console_stop_bits", "1")),
+                console_flow_control=str(host.get("console_flow_control", "none")),
             )
         for folder in [item for item in library["folders"] if item["parent_id"] == source_id]:
             copied_folder = self.create_folder(
@@ -1030,6 +1098,10 @@ class RemoteConnectionStore:
             apply_effective(folder, effective_id, source_id, source_name)
 
         for host in hosts:
+            if str(host.get("protocol", "ssh")) == "console":
+                apply_effective(host, "", "", "")
+                host["credential_source"] = "none"
+                continue
             mode = str(host.get("credential_mode", "credential"))
             if mode == "credential":
                 effective_id = str(host.get("credential_id", ""))
@@ -1071,6 +1143,28 @@ class RemoteConnectionStore:
             or "://" in clean
         ):
             raise RemoteConnectionError("Enter a valid host name or IP address.")
+        return clean
+
+    @staticmethod
+    def _console_device_id(value: object) -> str:
+        clean = str(value).strip()
+        if (
+            not clean
+            or len(clean) > 128
+            or any(not (char.isalnum() or char in "_-") for char in clean)
+        ):
+            raise RemoteConnectionError("Choose an attached console device.")
+        return clean
+
+    @staticmethod
+    def _console_device_path(value: object) -> str:
+        clean = str(value).strip()
+        if (
+            not clean.startswith("/dev/")
+            or len(clean) > 512
+            or any(char in "\r\n\x00" for char in clean)
+        ):
+            raise RemoteConnectionError("Choose a valid local console device.")
         return clean
 
     @staticmethod
@@ -1119,6 +1213,16 @@ class RemoteConnectionStore:
             "allow_unknown_hosts": bool(row["allow_unknown_hosts"]),
             "allow_legacy_algorithms": bool(row["allow_legacy_algorithms"]),
             "notes": str(row["notes"]),
+            "console_device_id": str(row["console_device_id"]),
+            "console_device_path": str(row["console_device_path"]),
+            "console_device_label": str(row["console_device_label"]),
+            "console_baud_rate": int(row["console_baud_rate"]),
+            "console_data_bits": int(row["console_data_bits"]),
+            "console_parity": str(row["console_parity"]),
+            "console_stop_bits": str(
+                serial_settings(stop_bits=row["console_stop_bits"])["stop_bits"]
+            ),
+            "console_flow_control": str(row["console_flow_control"]),
             "created_at": float(row["created_at"]),
             "updated_at": float(row["updated_at"]),
         }
@@ -1318,6 +1422,14 @@ class RemoteConnectionStore:
                 allow_unknown_hosts INTEGER NOT NULL DEFAULT 0,
                 allow_legacy_algorithms INTEGER NOT NULL DEFAULT 0,
                 notes TEXT NOT NULL DEFAULT '',
+                console_device_id TEXT NOT NULL DEFAULT '',
+                console_device_path TEXT NOT NULL DEFAULT '',
+                console_device_label TEXT NOT NULL DEFAULT '',
+                console_baud_rate INTEGER NOT NULL DEFAULT 9600,
+                console_data_bits INTEGER NOT NULL DEFAULT 8,
+                console_parity TEXT NOT NULL DEFAULT 'none',
+                console_stop_bits TEXT NOT NULL DEFAULT '1',
+                console_flow_control TEXT NOT NULL DEFAULT 'none',
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL
             );
@@ -1356,6 +1468,21 @@ class RemoteConnectionStore:
                     END
                     """
                 )
+            console_columns = {
+                "console_device_id": "TEXT NOT NULL DEFAULT ''",
+                "console_device_path": "TEXT NOT NULL DEFAULT ''",
+                "console_device_label": "TEXT NOT NULL DEFAULT ''",
+                "console_baud_rate": "INTEGER NOT NULL DEFAULT 9600",
+                "console_data_bits": "INTEGER NOT NULL DEFAULT 8",
+                "console_parity": "TEXT NOT NULL DEFAULT 'none'",
+                "console_stop_bits": "TEXT NOT NULL DEFAULT '1'",
+                "console_flow_control": "TEXT NOT NULL DEFAULT 'none'",
+            }
+            for column, definition in console_columns.items():
+                if column not in host_columns:
+                    connection.execute(
+                        f"ALTER TABLE remote_connection_hosts ADD COLUMN {column} {definition}"
+                    )
             folder_columns = {
                 str(row["name"])
                 for row in connection.execute(

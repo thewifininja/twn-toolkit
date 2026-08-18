@@ -271,7 +271,8 @@ accepted replay frames.
   v0.19.2 hosts use the normal updater. Investigation cases are shared owner-and-
   collaborator workspaces with attributed journals, managed evidence, compact
   reports, portable cross-instance archives, and non-destructive case merging.
-  Remote Terminal provides persistent owner-scoped interactive SSH and Telnet sessions,
+  Remote Terminal provides persistent owner-scoped interactive SSH, Telnet, and
+  locally attached serial-console sessions,
   reusable host folders and encrypted credential libraries, temporary Quick
   Connect, retained scrollback, and bounded case transcripts. Telnet permits
   credential-free saved hosts and Quick Connect sessions; optional credentials

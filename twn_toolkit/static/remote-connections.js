@@ -86,6 +86,9 @@
   });
   quickProtocol.addEventListener("change", () => syncProtocolControls("quick"));
   hostProtocol.addEventListener("change", () => syncProtocolControls("host"));
+  document.querySelectorAll("[data-refresh-console-devices]").forEach((button) => {
+    button.addEventListener("click", () => refreshConsoleDevices(button));
+  });
   document.getElementById("remote-host-folder").addEventListener("change", syncHostCredentialMode);
   document.getElementById("remote-folder-parent").addEventListener("change", syncFolderCredentialMode);
   hostForm.querySelectorAll('input[name="host_credential_mode"]').forEach((input) => {
@@ -279,7 +282,13 @@
     const remoteUsername = String(host.effective_remote_username || "").trim();
     const inherited = host.credential_source === "folder";
     const missing = !host.effective_credential_id;
-    target.textContent = `${String(host.protocol || "ssh").toUpperCase()} · ${remoteUsername ? `${remoteUsername}@` : ""}${host.host}:${host.port}${inherited ? " · inherited" : missing ? " · no credential" : ""}`;
+    if (host.protocol === "console") {
+      const line = `${host.console_baud_rate} ${host.console_data_bits}${String(host.console_parity || "none").charAt(0).toUpperCase()}${host.console_stop_bits}`;
+      const state = host.console_in_use ? " · in use" : host.console_available ? "" : " · detached";
+      target.textContent = `CONSOLE · ${host.console_device_label || host.console_device_path} · ${line}${state}`;
+    } else {
+      target.textContent = `${String(host.protocol || "ssh").toUpperCase()} · ${remoteUsername ? `${remoteUsername}@` : ""}${host.host}:${host.port}${inherited ? " · inherited" : missing ? " · no credential" : ""}`;
+    }
     target.title = hostCredentialSummary(host);
     identity.append(title, target);
     connect.append(icon, identity);
@@ -650,12 +659,63 @@
     }
   }
 
+  function setConsoleDeviceValue(id, value, missingLabel = "Detached console device") {
+    const select = document.getElementById(id);
+    if (!select || !value) return;
+    if (!Array.from(select.options).some((option) => option.value === value)) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = `${missingLabel} · currently detached`;
+      select.append(option);
+    }
+    select.value = value;
+  }
+
+  async function refreshConsoleDevices(button = null) {
+    const original = button?.textContent;
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Refreshing…";
+    }
+    try {
+      const response = await fetch(manager.dataset.devicesUrl, {headers: {"Accept": "application/json"}});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Console devices could not be refreshed.");
+      ["remote-terminal-console-device", "remote-host-console-device"].forEach((id) => {
+        const select = document.getElementById(id);
+        const selected = select.value;
+        const options = (data.devices || []).map((device) => ({
+          id: device.id,
+          label: `${device.label} · ${device.path}${device.accessible ? "" : " · permission required"}${device.in_use ? " · in use" : ""}`,
+        }));
+        setOptions(select, options, selected, "No supported console devices attached");
+        if (selected) setConsoleDeviceValue(id, selected);
+      });
+      const count = (data.devices || []).length;
+      document.querySelectorAll("[data-console-device-status]").forEach((status) => {
+        status.textContent = count
+          ? `${count} supported console device${count === 1 ? "" : "s"} found. USB, UART, and OS-paired Bluetooth serial devices are supported.`
+          : "No supported console devices are currently attached.";
+      });
+    } catch (error) {
+      document.querySelectorAll("[data-console-device-status]").forEach((status) => {
+        status.textContent = error.message;
+      });
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    }
+  }
+
   function syncQuickCredentialMode() {
     const savedRadio = quickForm.querySelector('input[name="quick_credential_mode"][value="saved"]');
     const temporaryRadio = quickForm.querySelector('input[name="quick_credential_mode"][value="temporary"]');
     const noneRadio = quickForm.querySelector('input[name="quick_credential_mode"][value="none"]');
     const hasSaved = library.credentials.some((credential) => !credential.scope_host_id);
     const isTelnet = quickProtocol.value === "telnet";
+    const isConsole = quickProtocol.value === "console";
     if (!isTelnet && noneRadio.checked) temporaryRadio.checked = true;
     if (!hasSaved && savedRadio.checked) {
       (isTelnet ? noneRadio : temporaryRadio).checked = true;
@@ -666,9 +726,9 @@
     const saved = quickForm.querySelector("[data-quick-saved]");
     temporary.hidden = mode !== "temporary";
     saved.hidden = mode !== "saved";
-    document.getElementById("remote-terminal-username").required = mode === "temporary" && !isTelnet;
-    document.getElementById("remote-terminal-password").required = mode === "temporary" && !isTelnet;
-    document.getElementById("remote-terminal-credential").required = mode === "saved";
+    document.getElementById("remote-terminal-username").required = !isConsole && mode === "temporary" && !isTelnet;
+    document.getElementById("remote-terminal-password").required = !isConsole && mode === "temporary" && !isTelnet;
+    document.getElementById("remote-terminal-credential").required = !isConsole && mode === "saved";
   }
 
   function syncHostCredentialMode() {
@@ -678,6 +738,7 @@
     const noneRadio = hostForm.querySelector('input[name="host_credential_mode"][value="none"]');
     const hasSaved = library.credentials.some((credential) => !credential.scope_host_id);
     const isTelnet = hostProtocol.value === "telnet";
+    const isConsole = hostProtocol.value === "console";
     if (!isTelnet && noneRadio.checked) inheritRadio.checked = true;
     if (!hasSaved && savedRadio.checked) {
       inheritRadio.checked = true;
@@ -686,13 +747,13 @@
     const mode = hostForm.querySelector('input[name="host_credential_mode"]:checked').value;
     hostForm.querySelector("[data-host-saved]").hidden = mode !== "saved";
     hostForm.querySelector("[data-host-specific]").hidden = mode !== "host";
-    document.getElementById("remote-host-credential").required = mode === "saved";
-    document.getElementById("remote-host-username").required = mode === "host";
+    document.getElementById("remote-host-credential").required = !isConsole && mode === "saved";
+    document.getElementById("remote-host-username").required = !isConsole && mode === "host";
     const hostId = document.getElementById("remote-host-id").value;
     const existing = library.hosts.find((host) => host.id === hostId);
     const keepsScopedSecret = existing?.credential_scope_host_id === hostId;
     const password = document.getElementById("remote-host-password");
-    password.required = mode === "host" && !keepsScopedSecret;
+    password.required = !isConsole && mode === "host" && !keepsScopedSecret;
     password.placeholder = keepsScopedSecret
       ? "Leave blank to keep the saved password"
       : "Required for a host-specific credential";
@@ -819,6 +880,12 @@
     hostProtocol.dataset.previousProtocol = protocol;
     document.getElementById("remote-host-address").value = existing?.host || session?.host || "";
     document.getElementById("remote-host-port").value = existing?.port || session?.port || defaultPort(protocol);
+    setConsoleDeviceValue("remote-host-console-device", existing?.console_device_id || session?.console_device_id || "", existing?.console_device_label || session?.console_device_label || "Detached console device");
+    document.getElementById("remote-host-console-baud").value = existing?.console_baud_rate || session?.console_baud_rate || 9600;
+    document.getElementById("remote-host-console-data-bits").value = existing?.console_data_bits || session?.console_data_bits || 8;
+    document.getElementById("remote-host-console-parity").value = existing?.console_parity || session?.console_parity || "none";
+    document.getElementById("remote-host-console-stop-bits").value = existing?.console_stop_bits || session?.console_stop_bits || 1;
+    document.getElementById("remote-host-console-flow").value = existing?.console_flow_control || session?.console_flow_control || "none";
     document.getElementById("remote-host-folder").value = existing?.folder_id || presetFolderId;
     document.getElementById("remote-host-unknown").checked = Boolean(existing?.allow_unknown_hosts);
     document.getElementById("remote-host-legacy").checked = Boolean(existing?.allow_legacy_algorithms);
@@ -877,6 +944,12 @@
           allow_unknown_hosts: document.getElementById("remote-host-unknown").checked,
           allow_legacy_algorithms: document.getElementById("remote-host-legacy").checked,
           notes: document.getElementById("remote-host-notes").value,
+          console_device_id: document.getElementById("remote-host-console-device").value,
+          console_baud_rate: document.getElementById("remote-host-console-baud").value,
+          console_data_bits: document.getElementById("remote-host-console-data-bits").value,
+          console_parity: document.getElementById("remote-host-console-parity").value,
+          console_stop_bits: document.getElementById("remote-host-console-stop-bits").value,
+          console_flow_control: document.getElementById("remote-host-console-flow").value,
         },
       });
       hostDialog.close();
@@ -963,7 +1036,7 @@
     const none = bulkForm.querySelector('input[name="bulk_credential_mode"][value="none"]');
     none.disabled = [...selectedHosts].some((hostId) => {
       const host = library.hosts.find((item) => item.id === hostId);
-      return host?.protocol !== "telnet";
+      return !["telnet", "console"].includes(host?.protocol);
     });
     setStatus("remote-library-bulk-status", "");
     syncBulkEditor();
@@ -1141,13 +1214,21 @@
     const port = document.getElementById(isQuick ? "remote-terminal-port" : "remote-host-port");
     const label = document.getElementById(isQuick ? "remote-terminal-port-label" : "remote-host-port-label");
     const previous = select.dataset.previousProtocol || "ssh";
-    const protocol = select.value === "telnet" ? "telnet" : "ssh";
+    const protocol = ["ssh", "telnet", "console"].includes(select.value) ? select.value : "ssh";
     if (!preservePort && Number(port.value) === defaultPort(previous)) {
       port.value = String(defaultPort(protocol));
     }
     select.dataset.previousProtocol = protocol;
     label.textContent = `${protocol === "telnet" ? "Telnet" : "SSH"} port`;
     if (isQuick) {
+      quickForm.querySelectorAll("[data-quick-network]").forEach((field) => field.hidden = protocol === "console");
+      quickForm.querySelector("[data-quick-console]").hidden = protocol !== "console";
+      quickForm.querySelector("[data-quick-credentials]").hidden = protocol === "console";
+      document.getElementById("remote-terminal-host").required = protocol !== "console";
+      document.getElementById("remote-terminal-port").required = protocol !== "console";
+      document.getElementById("remote-terminal-host").disabled = protocol === "console";
+      document.getElementById("remote-terminal-port").disabled = protocol === "console";
+      document.getElementById("remote-terminal-console-device").required = protocol === "console";
       quickForm.querySelectorAll("[data-quick-ssh-option]").forEach((option) => {
         option.hidden = protocol !== "ssh";
       });
@@ -1158,6 +1239,14 @@
       });
       syncQuickCredentialMode();
     } else {
+      hostForm.querySelectorAll("[data-host-network]").forEach((field) => field.hidden = protocol === "console");
+      hostForm.querySelector("[data-host-console]").hidden = protocol !== "console";
+      hostForm.querySelector("[data-host-credentials]").hidden = protocol === "console";
+      document.getElementById("remote-host-address").required = protocol !== "console";
+      document.getElementById("remote-host-port").required = protocol !== "console";
+      document.getElementById("remote-host-address").disabled = protocol === "console";
+      document.getElementById("remote-host-port").disabled = protocol === "console";
+      document.getElementById("remote-host-console-device").required = protocol === "console";
       hostForm.querySelector("[data-host-ssh-options]").hidden = protocol !== "ssh";
       hostForm.querySelector("[data-host-telnet-warning]").hidden = protocol !== "telnet";
       hostForm.querySelectorAll("[data-host-telnet-only]").forEach((option) => {
@@ -1168,7 +1257,7 @@
   }
 
   function defaultPort(protocol) {
-    return protocol === "telnet" ? 23 : 22;
+    return protocol === "console" ? 0 : protocol === "telnet" ? 23 : 22;
   }
 
   function setStatus(id, message) {
@@ -1176,7 +1265,7 @@
   }
 
   function hostSearchText(host) {
-    return `${host.name} ${host.protocol || "ssh"} ${host.host} ${host.effective_remote_username || ""} ${host.effective_credential_name || ""} ${host.credential_source_folder_name || ""} ${host.notes || ""}`.toLocaleLowerCase();
+    return `${host.name} ${host.protocol || "ssh"} ${host.host} ${host.console_device_label || ""} ${host.console_device_path || ""} ${host.effective_remote_username || ""} ${host.effective_credential_name || ""} ${host.credential_source_folder_name || ""} ${host.notes || ""}`.toLocaleLowerCase();
   }
 
   function folderCredentialSummary(folder) {
@@ -1193,6 +1282,11 @@
   }
 
   function hostCredentialSummary(host) {
+    if (host.protocol === "console") {
+      if (!host.console_available) return "This console device is not currently attached.";
+      if (!host.console_accessible) return "The toolkit service does not have permission to open this console device.";
+      return "Local console connections do not use stored credentials.";
+    }
     if (host.credential_source === "folder") {
       return `Inherits ${host.effective_credential_name} (${host.effective_remote_username}) from ${host.credential_source_folder_name}.`;
     }

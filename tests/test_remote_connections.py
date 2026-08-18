@@ -209,6 +209,38 @@ class RemoteConnectionStoreTests(unittest.TestCase):
         with self.assertRaises(RemoteConnectionError):
             self.store.delete_credential(credential["id"], user_id="operator")
 
+    def test_console_connection_is_credential_free_and_duplicates_line_settings(self) -> None:
+        saved = self.store.save_host(
+            user_id="operator",
+            name="IDF switch console",
+            host="/dev/cu.usbserial-ABC",
+            port=0,
+            protocol="console",
+            folder_id="",
+            credential_id="",
+            credential_mode="inherit",
+            allow_unknown_hosts=True,
+            allow_legacy_algorithms=True,
+            console_device_id="console_abc123",
+            console_device_path="/dev/cu.usbserial-ABC",
+            console_device_label="USB Serial Adapter",
+            console_baud_rate=115200,
+            console_data_bits=8,
+            console_parity="none",
+            console_stop_bits="1",
+            console_flow_control="hardware",
+        )
+        copied = self.store.duplicate_host(saved["id"], user_id="operator")
+
+        self.assertEqual(saved["protocol"], "console")
+        self.assertEqual(saved["credential_mode"], "none")
+        self.assertEqual(saved["credential_id"], "")
+        self.assertFalse(saved["allow_unknown_hosts"])
+        self.assertFalse(saved["allow_legacy_algorithms"])
+        self.assertEqual(copied["console_device_id"], "console_abc123")
+        self.assertEqual(copied["console_baud_rate"], 115200)
+        self.assertEqual(copied["console_flow_control"], "hardware")
+
     def test_host_specific_credentials_clone_and_delete_with_the_host(self) -> None:
         host = self.store.save_host(
             user_id="operator",

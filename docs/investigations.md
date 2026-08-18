@@ -114,17 +114,18 @@ but not URL credentials, query strings, header values, or request/response
 bodies. RADIUS and SNMP never retain passwords, shared secrets, communities, or
 SNMPv3 key material.
 
-Remote Terminal uses lifecycle boundaries. Starting an SSH shell records its
-non-secret destination, remote username, and transcript choice. Stopping it,
+Remote Terminal uses lifecycle boundaries. Starting an SSH, Telnet, or local
+serial-console session records its non-secret destination and connection
+settings. Stopping it,
 remote closure, connection failure, case closure, idle expiry, or a toolkit
 restart supplies the completion boundary. When transcript capture was selected,
 the case receives a sanitized, bounded remote-output text artifact in the
-appendix. The SSH password and submitted input are never written to the remote
+appendix. Passwords and submitted input are never written to the remote
 session database or case; commands echoed by the remote device are output and
 therefore may appear in the transcript.
 
-Saved-host launches inherit transcript capture automatically while the case is
-recording; Quick Connect preserves its explicit checkbox. An operator may also
+Every launch retains transcript evidence automatically while the case is
+actively recording; paused cases receive no automatic terminal updates. An operator may also
 attach a live or completed owner-scoped session to the current open case. A
 live attachment records the attachment boundary and includes retained output
 from before that boundary when the final transcript is created. Attaching

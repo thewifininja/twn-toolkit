@@ -28,6 +28,17 @@ from .remote_sessions import (
     public_remote_session,
     safe_filename,
 )
+from .serial_console import (
+    SERIAL_BAUD_RATES,
+    SERIAL_DATA_BITS,
+    SERIAL_FLOW_CONTROLS,
+    SERIAL_PARITIES,
+    SERIAL_STOP_BITS,
+    SerialConsoleError,
+    list_serial_devices,
+    resolve_serial_device,
+    serial_settings,
+)
 
 
 def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
@@ -40,9 +51,8 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         return render_template(
             "tools/remote_terminal.html",
             remote_sessions=[_public_session(item) for item in sessions],
-            remote_connection_library=_connection_store().library_for_user(
-                user["id"]
-            ),
+            remote_connection_library=_connection_library(user["id"]),
+            serial_console_options=_serial_console_options(),
             can_save_remote_scrollback=_can_use_datastore(),
             datastore_folders=_datastore_folders(),
             requested_session=str(request.args.get("session", "")).strip()[:80],
@@ -52,8 +62,16 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
     def remote_terminal_library():
         suppress_audit_event()
         user = _current_user()
+        return jsonify({"library": _connection_library(user["id"])})
+
+    @tools_bp.get("/remote-terminal/devices")
+    def remote_terminal_devices():
+        suppress_audit_event()
         return jsonify(
-            {"library": _connection_store().library_for_user(user["id"])}
+            {
+                "devices": _serial_devices(),
+                "options": _serial_console_options(),
+            }
         )
 
     @tools_bp.get("/remote-terminal/sessions/<session_id>/popout")
@@ -79,6 +97,10 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         payload = request.get_json(silent=True) or {}
         try:
             user = _current_user()
+            console_device_id = ""
+            console_device_path = ""
+            console_device_label = ""
+            console = serial_settings()
             source_host_id = str(payload.get("host_id", "")).strip()
             if source_host_id:
                 saved_host = _connection_store().get_host(
@@ -89,24 +111,46 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 host = str(saved_host["host"])
                 port = int(saved_host["port"])
                 protocol = _protocol(saved_host.get("protocol", "ssh"))
-                credential_id = str(
-                    saved_host.get("effective_credential_id", "")
-                )
-                if credential_id:
-                    credential = _connection_store().resolve_credential(
-                        credential_id,
-                        user_id=user["id"],
-                        host_id=source_host_id,
+                if protocol == "console":
+                    device = resolve_serial_device(
+                        str(saved_host.get("console_device_id", ""))
                     )
-                    remote_username = credential["username"]
-                    password = credential["password"]
-                elif protocol == "telnet":
+                    console_device_id = str(device["id"])
+                    console_device_path = str(device["path"])
+                    console_device_label = str(
+                        saved_host.get("console_device_label", "")
+                        or device["label"]
+                    )
+                    console = serial_settings(
+                        baud_rate=saved_host.get("console_baud_rate", 9600),
+                        data_bits=saved_host.get("console_data_bits", 8),
+                        parity=saved_host.get("console_parity", "none"),
+                        stop_bits=saved_host.get("console_stop_bits", 1),
+                        flow_control=saved_host.get("console_flow_control", "none"),
+                    )
+                    host = console_device_path
+                    port = 0
                     remote_username = ""
                     password = ""
                 else:
-                    raise RemoteSessionError(
-                        "Assign a credential to this host or one of its parent folders."
+                    credential_id = str(
+                        saved_host.get("effective_credential_id", "")
                     )
+                    if credential_id:
+                        credential = _connection_store().resolve_credential(
+                            credential_id,
+                            user_id=user["id"],
+                            host_id=source_host_id,
+                        )
+                        remote_username = credential["username"]
+                        password = credential["password"]
+                    elif protocol == "telnet":
+                        remote_username = ""
+                        password = ""
+                    else:
+                        raise RemoteSessionError(
+                            "Assign a credential to this host or one of its parent folders."
+                        )
                 default_title = str(saved_host["name"])
                 allow_unknown_hosts = bool(saved_host["allow_unknown_hosts"])
                 allow_legacy_algorithms = bool(
@@ -114,33 +158,53 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 )
             else:
                 protocol = _protocol(payload.get("protocol", "ssh"))
-                host = _host(payload.get("host", ""))
-                default_port = 23 if protocol == "telnet" else 22
-                port = _integer(payload.get("port", default_port), "Port", 1, 65535)
-                credential_id = str(payload.get("credential_id", "")).strip()
-                if credential_id:
-                    credential = _connection_store().resolve_credential(
-                        credential_id, user_id=user["id"]
+                if protocol == "console":
+                    device = resolve_serial_device(
+                        str(payload.get("console_device_id", "")).strip()
                     )
-                    remote_username = credential["username"]
-                    password = credential["password"]
+                    console_device_id = str(device["id"])
+                    console_device_path = str(device["path"])
+                    console_device_label = str(device["label"])
+                    console = serial_settings(
+                        baud_rate=payload.get("console_baud_rate", 9600),
+                        data_bits=payload.get("console_data_bits", 8),
+                        parity=payload.get("console_parity", "none"),
+                        stop_bits=payload.get("console_stop_bits", 1),
+                        flow_control=payload.get("console_flow_control", "none"),
+                    )
+                    host = console_device_path
+                    port = 0
+                    remote_username = ""
+                    password = ""
+                    default_title = console_device_label
                 else:
-                    password = str(payload.get("password", ""))
-                    if protocol == "telnet":
-                        remote_username = _optional_remote_username(
-                            payload.get("username", "")
+                    host = _host(payload.get("host", ""))
+                    default_port = 23 if protocol == "telnet" else 22
+                    port = _integer(payload.get("port", default_port), "Port", 1, 65535)
+                    credential_id = str(payload.get("credential_id", "")).strip()
+                    if credential_id:
+                        credential = _connection_store().resolve_credential(
+                            credential_id, user_id=user["id"]
                         )
+                        remote_username = credential["username"]
+                        password = credential["password"]
                     else:
-                        remote_username = _text(
-                            payload.get("username", ""), "Username", 128
-                        )
-                        if not password:
-                            raise RemoteSessionError("Enter the password.")
-                if len(password.encode("utf-8")) > REMOTE_SESSION_INPUT_LIMIT_BYTES:
-                    raise RemoteSessionError("The password is too large.")
-                default_title = (
-                    f"{remote_username}@{host}" if remote_username else host
-                )
+                        password = str(payload.get("password", ""))
+                        if protocol == "telnet":
+                            remote_username = _optional_remote_username(
+                                payload.get("username", "")
+                            )
+                        else:
+                            remote_username = _text(
+                                payload.get("username", ""), "Username", 128
+                            )
+                            if not password:
+                                raise RemoteSessionError("Enter the password.")
+                    if len(password.encode("utf-8")) > REMOTE_SESSION_INPUT_LIMIT_BYTES:
+                        raise RemoteSessionError("The password is too large.")
+                    default_title = (
+                        f"{remote_username}@{host}" if remote_username else host
+                    )
                 allow_unknown_hosts = protocol == "ssh" and bool(
                     payload.get("allow_unknown_hosts", False)
                 )
@@ -172,8 +236,16 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 source_host_id=source_host_id,
                 columns=columns,
                 rows=rows,
+                console_device_id=console_device_id,
+                console_device_path=console_device_path,
+                console_device_label=console_device_label,
+                console_baud_rate=int(console["baud_rate"]),
+                console_data_bits=int(console["data_bits"]),
+                console_parity=str(console["parity"]),
+                console_stop_bits=str(console["stop_bits"]),
+                console_flow_control=str(console["flow_control"]),
             )
-        except (RemoteSessionError, TypeError, ValueError) as exc:
+        except (RemoteSessionError, SerialConsoleError, TypeError, ValueError) as exc:
             suppress_audit_event()
             return jsonify({"error": str(exc)}), 400
         annotate_audit_event(
@@ -185,8 +257,10 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             resource_name=str(session["title"]),
             details={
                 "protocol": protocol.upper(),
-                "host": host,
-                "port": port,
+                "host": host if protocol != "console" else "",
+                "port": port if protocol != "console" else "",
+                "console device": console_device_label if protocol == "console" else "",
+                "console path": console_device_path if protocol == "console" else "",
                 "remote username": remote_username,
                 "connection source": "saved host" if source_host_id else "quick connect",
                 "case attached": bool(investigation_id),
@@ -196,7 +270,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         record_current_activity(
             "Network tools",
             f"Started persistent {protocol.upper()} session",
-            f"{host}:{port}",
+            console_device_label if protocol == "console" else f"{host}:{port}",
             count_action=True,
         )
         return jsonify({"session": _public_session(session)}), 201
@@ -823,7 +897,12 @@ def _save_remote_terminal_credential(credential_id: str = ""):
 def _save_remote_terminal_host(host_id: str = ""):
     payload = request.get_json(silent=True) or {}
     user = _current_user()
-    credential_mode = str(payload.get("credential_mode", "saved"))
+    protocol_value = str(payload.get("protocol", "ssh")).strip().lower()
+    credential_mode = (
+        "none"
+        if protocol_value == "console"
+        else str(payload.get("credential_mode", "saved"))
+    )
     host_credential = None
     if credential_mode == "host":
         host_credential = {
@@ -843,17 +922,62 @@ def _save_remote_terminal_host(host_id: str = ""):
             }
         ), 400
     try:
-        protocol = _protocol(payload.get("protocol", "ssh"))
+        protocol = _protocol(protocol_value)
+        console_device_id = ""
+        console_device_path = ""
+        console_device_label = ""
+        console = serial_settings()
+        if protocol == "console":
+            requested_device_id = str(
+                payload.get("console_device_id", "")
+            ).strip()
+            try:
+                device = resolve_serial_device(requested_device_id)
+            except SerialConsoleError:
+                existing = (
+                    _connection_store().get_host(host_id, user_id=user["id"])
+                    if host_id
+                    else None
+                )
+                if (
+                    not existing
+                    or str(existing.get("protocol", "")) != "console"
+                    or str(existing.get("console_device_id", ""))
+                    != requested_device_id
+                ):
+                    raise
+                console_device_id = requested_device_id
+                console_device_path = str(existing["console_device_path"])
+                console_device_label = str(existing["console_device_label"])
+            else:
+                console_device_id = str(device["id"])
+                console_device_path = str(device["path"])
+                console_device_label = str(device["label"])
+            console = serial_settings(
+                baud_rate=payload.get("console_baud_rate", 9600),
+                data_bits=payload.get("console_data_bits", 8),
+                parity=payload.get("console_parity", "none"),
+                stop_bits=payload.get("console_stop_bits", 1),
+                flow_control=payload.get("console_flow_control", "none"),
+            )
         host = _connection_store().save_host(
             user_id=user["id"],
             host_id=host_id,
             name=str(payload.get("name", "")),
-            host=str(payload.get("host", "")),
-            port=_integer(
-                payload.get("port", 23 if protocol == "telnet" else 22),
-                "Port",
-                1,
-                65535,
+            host=(
+                console_device_path
+                if protocol == "console"
+                else str(payload.get("host", ""))
+            ),
+            port=(
+                0
+                if protocol == "console"
+                else _integer(
+                    payload.get("port", 23 if protocol == "telnet" else 22),
+                    "Port",
+                    1,
+                    65535,
+                )
             ),
             protocol=protocol,
             folder_id=str(payload.get("folder_id", "")),
@@ -873,8 +997,16 @@ def _save_remote_terminal_host(host_id: str = ""):
             ),
             notes=str(payload.get("notes", "")),
             host_credential=host_credential,
+            console_device_id=console_device_id,
+            console_device_path=console_device_path,
+            console_device_label=console_device_label,
+            console_baud_rate=int(console["baud_rate"]),
+            console_data_bits=int(console["data_bits"]),
+            console_parity=str(console["parity"]),
+            console_stop_bits=str(console["stop_bits"]),
+            console_flow_control=str(console["flow_control"]),
         )
-    except (RemoteConnectionError, TypeError, ValueError) as exc:
+    except (RemoteConnectionError, SerialConsoleError, TypeError, ValueError) as exc:
         suppress_audit_event()
         return jsonify({"error": str(exc)}), 400
     _annotate_library_change(
@@ -1064,9 +1196,52 @@ def _connection_store() -> RemoteConnectionStore:
 
 def _library_response(user_id: str, status: int = 200):
     return (
-        jsonify({"library": _connection_store().library_for_user(user_id)}),
+        jsonify({"library": _connection_library(user_id)}),
         status,
     )
+
+
+def _serial_devices() -> list[dict[str, object]]:
+    try:
+        devices = list_serial_devices()
+    except SerialConsoleError:
+        return []
+    active_devices = {
+        str(session.get("console_device_id", ""))
+        for session in _manager().store.active_sessions()
+        if str(session.get("protocol", "")) == "console"
+        and str(session.get("state", "")) in ACTIVE_REMOTE_SESSION_STATES
+    }
+    for device in devices:
+        device["in_use"] = str(device["id"]) in active_devices
+    return devices
+
+
+def _connection_library(user_id: str) -> dict[str, list[dict[str, object]]]:
+    library = _connection_store().library_for_user(user_id)
+    devices = {str(item["id"]): item for item in _serial_devices()}
+    for host in library["hosts"]:
+        if str(host.get("protocol", "")) != "console":
+            continue
+        device = devices.get(str(host.get("console_device_id", "")))
+        host["console_available"] = bool(device)
+        host["console_accessible"] = bool(device and device.get("accessible"))
+        host["console_in_use"] = bool(device and device.get("in_use"))
+        host["console_current_path"] = str(device.get("path", "")) if device else ""
+        if device:
+            host["console_device_path"] = str(device["path"])
+    return library
+
+
+def _serial_console_options() -> dict[str, object]:
+    return {
+        "devices": _serial_devices(),
+        "baud_rates": SERIAL_BAUD_RATES,
+        "data_bits": SERIAL_DATA_BITS,
+        "parities": SERIAL_PARITIES,
+        "stop_bits": SERIAL_STOP_BITS,
+        "flow_controls": SERIAL_FLOW_CONTROLS,
+    }
 
 
 def _annotate_library_change(
@@ -1188,8 +1363,8 @@ def _host(value: object) -> str:
 
 def _protocol(value: object) -> str:
     protocol = str(value).strip().lower()
-    if protocol not in {"ssh", "telnet"}:
-        raise RemoteSessionError("Choose SSH or Telnet.")
+    if protocol not in {"ssh", "telnet", "console"}:
+        raise RemoteSessionError("Choose SSH, Telnet, or Console.")
     return protocol
 
 
