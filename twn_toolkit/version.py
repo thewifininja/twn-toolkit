@@ -1,6 +1,50 @@
-APP_VERSION = "0.19.3"
+APP_VERSION = "0.19.4"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.19.4",
+        "date": "2026-08-17",
+        "title": "Remote serial console access",
+        "summary": (
+            "Extends Remote Terminal to locally attached serial consoles so "
+            "operators can recover and configure network equipment even when "
+            "it has no working network connection."
+        ),
+        "groups": (
+            {
+                "title": "USB and Bluetooth serial consoles",
+                "items": (
+                    "Discovers supported USB UART, operating-system-paired Bluetooth serial, and other local console devices on macOS and Linux without requiring operators to enter device paths manually.",
+                    "Adds Console alongside SSH and Telnet in Quick Connect and saved connection libraries, with baud rate, data bits, parity, stop bits, and flow-control settings.",
+                    "Keeps console interaction inside the same natural browser terminal with keyboard input, paste, mobile controls, resize, pop-out windows, reconnectable sessions, and retained scrollback.",
+                ),
+            },
+            {
+                "title": "Persistent evidence-backed field access",
+                "items": (
+                    "Reuses Remote Terminal session persistence so another browser can reconnect to an active physical console without losing its place.",
+                    "Supports scrollback downloads, Datastore retention, and automatic bounded transcript evidence while a collaborative case is actively recording.",
+                    "Documents a Raspberry Pi field workflow that combines serial console access with the existing startup automation and Discord webhook announcement capabilities.",
+                ),
+            },
+            {
+                "title": "Stable identity and exclusive ownership",
+                "items": (
+                    "Identifies adapters by USB metadata and serial number when available, allowing saved definitions to follow the same hardware when its operating-system device path changes.",
+                    "Allows only one active toolkit session to own a physical adapter at a time across users and web workers, preventing interleaved input and corrupted output.",
+                    "Shows detached, inaccessible, or busy devices without exposing another operator's session details and requires the host operating system to pair Bluetooth devices first.",
+                ),
+            },
+            {
+                "title": "Upgrade compatibility",
+                "items": (
+                    "Adds the pinned pyserial 3.5 runtime dependency and installs it through the normal verified upgrade and restart workflow.",
+                    "Adds backward-compatible optional console metadata to Remote Terminal connection and session databases while preserving existing SSH and Telnet libraries, credentials, sessions, cases, and scrollback.",
+                    "Requires the toolkit service account to have read and write access to serial device nodes; Linux installations commonly provide this through the dialout group, while macOS uses callout devices under /dev/cu.*.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.19.3",
         "date": "2026-08-14",
