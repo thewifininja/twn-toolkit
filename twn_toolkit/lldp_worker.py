@@ -6,7 +6,11 @@ import threading
 import time
 
 from .lldp_sessions import LLDPSessionStore
-from .lldp_tools import quiet_interface_lldp, restore_interface_lldp
+from .lldp_tools import (
+    local_lldpd_shutdown_frame,
+    quiet_interface_lldp,
+    restore_interface_lldp,
+)
 from .investigations import InvestigationStore
 from .packet_replay_tools import send_replay_frames
 
@@ -28,7 +32,16 @@ def main() -> int:
     try:
         session = store.begin(args.session_id)
         if session["persona"].get("quiet_lldpd"):
+            local_shutdown = local_lldpd_shutdown_frame(session["interface"])
             prior_lldpd_status = quiet_interface_lldp(session["interface"])
+            if local_shutdown and prior_lldpd_status:
+                # Remove the host identity from the adjacent device immediately
+                # instead of waiting for its previously advertised TTL to expire.
+                send_replay_frames(
+                    [local_shutdown],
+                    interface=session["interface"],
+                    interval_seconds=0.1,
+                )
         started = time.monotonic()
         final_status = "completed"
         while True:

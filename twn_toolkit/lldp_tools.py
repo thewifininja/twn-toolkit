@@ -200,6 +200,7 @@ def default_persona(*, preset: str = "generic", interface: str = "") -> dict[str
         "system_description": settings.get(
             "system_description", "The WiFi Ninja's Toolkit LLDP Lab"
         ),
+        "source_mac": source_mac,
         "chassis_id": source_mac,
         "port_id": selected or "port-1",
         "port_description": selected or "LLDP Lab port",
@@ -245,6 +246,9 @@ def persona_from_form(form: Any, *, interface: str) -> dict[str, Any]:
         "preset": str(form.get("preset", "generic")).strip(),
         "system_name": str(form.get("system_name", "")).strip(),
         "system_description": str(form.get("system_description", "")).strip(),
+        "source_mac": str(
+            form.get("source_mac", interface_mac(interface))
+        ).strip(),
         "chassis_id": str(form.get("chassis_id", "")).strip(),
         "port_id": str(form.get("port_id", "")).strip(),
         "port_description": str(form.get("port_description", "")).strip(),
@@ -284,6 +288,16 @@ def validate_persona(persona: dict[str, Any], *, interface: str) -> dict[str, An
     normalized["port_description"] = _bounded_text(
         persona.get("port_description"), "Port description", 255, required=False
     )
+    try:
+        normalized["source_mac"] = normalize_mac(
+            str(persona.get("source_mac") or interface_mac(interface))
+        )
+    except ToolInputError as exc:
+        raise ToolInputError(
+            "Ethernet source MAC must be a unicast address containing six hexadecimal octets."
+        ) from exc
+    if normalized["source_mac"] == "00:00:00:00:00:00":
+        raise ToolInputError("Ethernet source MAC cannot be all zeroes.")
     chassis_id = str(persona.get("chassis_id", "")).strip()
     try:
         normalized["chassis_id"] = normalize_mac(chassis_id)
@@ -371,6 +385,49 @@ def quiet_interface_lldp(interface: str) -> str:
     return status if target else ""
 
 
+def local_lldpd_shutdown_frame(interface: str) -> bytes | None:
+    """Build a TTL-zero PDU for lldpd's current local identity on one port."""
+    executable = _find_lldpcli()
+    if not executable:
+        return None
+    payload = _run_lldpcli(
+        executable, "show", "interfaces", "ports", interface, "details"
+    )
+    record = next(
+        (
+            item
+            for item in _named_objects(payload, "interface")
+            if str(item.get("name", "")) == interface
+        ),
+        None,
+    )
+    if not record:
+        return None
+    chassis = _first_named(record, "chassis")
+    port = _first_named(record, "port")
+    chassis_value = _lldp_identifier(
+        _first_field(chassis, "id", "type"),
+        _first_value(chassis, "id"),
+        chassis=True,
+    )
+    port_value = _lldp_identifier(
+        _first_field(port, "id", "type"),
+        _first_value(port, "id"),
+        chassis=False,
+    )
+    if not chassis_value or not port_value:
+        return None
+    source = bytes.fromhex(interface_mac(interface).replace(":", ""))
+    payload = (
+        _tlv(1, chassis_value)
+        + _tlv(2, port_value)
+        + _tlv(3, b"\x00\x00")
+        + b"\x00\x00"
+    )
+    frame = LLDP_DESTINATION + source + LLDP_ETHERTYPE + payload
+    return frame + bytes(max(0, MIN_FRAME_SIZE - len(frame)))
+
+
 def restore_interface_lldp(interface: str, status: str) -> None:
     executable = _find_lldpcli()
     target = {
@@ -440,7 +497,7 @@ def build_lldp_frame(
     persona: dict[str, Any], *, interface: str, shutdown: bool = False
 ) -> tuple[bytes, list[dict[str, Any]]]:
     normalized = validate_persona(persona, interface=interface)
-    source_mac = bytes.fromhex(interface_mac(interface).replace(":", ""))
+    source_mac = bytes.fromhex(normalized["source_mac"].replace(":", ""))
     chassis = normalized["chassis_id"]
     if normalized["chassis_id_subtype"] == "mac":
         chassis_value = bytes([4]) + bytes.fromhex(chassis.replace(":", ""))
@@ -519,7 +576,7 @@ def preview_persona(persona: dict[str, Any], *, interface: str) -> dict[str, Any
     shutdown, _ = build_lldp_frame(persona, interface=interface, shutdown=True)
     return {
         "interface": interface,
-        "source_mac": interface_mac(interface),
+        "source_mac": ":".join(f"{octet:02x}" for octet in frame[6:12]),
         "destination_mac": "01:80:c2:00:00:0e",
         "ethertype": "0x88cc",
         "frame_length": len(frame),
@@ -540,6 +597,48 @@ def _management_value(address: str) -> bytes:
 
 def _tlv(tlv_type: int, value: bytes) -> bytes:
     return struct.pack("!H", (tlv_type << 9) | len(value)) + value
+
+
+def _lldp_identifier(kind: str, value: str, *, chassis: bool) -> bytes | None:
+    normalized_kind = str(kind).strip().lower().replace("_", " ").replace("-", " ")
+    mappings = (
+        {
+            "chassis component": 1,
+            "ifalias": 2,
+            "interface alias": 2,
+            "port component": 3,
+            "mac": 4,
+            "mac address": 4,
+            "ifname": 6,
+            "interface name": 6,
+            "local": 7,
+        }
+        if chassis
+        else {
+            "ifalias": 1,
+            "interface alias": 1,
+            "port component": 2,
+            "mac": 3,
+            "mac address": 3,
+            "ifname": 5,
+            "interface name": 5,
+            "agent circuit id": 6,
+            "local": 7,
+        }
+    )
+    subtype = mappings.get(normalized_kind)
+    if subtype is None or not value:
+        return None
+    if normalized_kind in {"mac", "mac address"}:
+        try:
+            encoded = bytes.fromhex(normalize_mac(value).replace(":", ""))
+        except ToolInputError:
+            return None
+    else:
+        encoded = str(value).encode("utf-8")
+    if not encoded or len(encoded) > 255:
+        return None
+    return bytes([subtype]) + encoded
 
 
 def _run_lldpcli(executable: str, *arguments: str) -> dict[str, Any]:

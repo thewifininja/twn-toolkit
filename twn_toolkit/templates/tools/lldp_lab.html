@@ -58,7 +58,7 @@
         </dl>
         <form method="post" class="lldp-neighbor-copy-form">
           <input type="hidden" name="view" value="emulate">
-          <input type="hidden" name="interface" value="{{ interface }}">
+          <input type="hidden" name="interface" value="{{ neighbor.interface }}">
           <input type="hidden" name="neighbor_index" value="{{ loop.index0 }}">
           <button class="secondary compact" type="submit" name="action" value="neighbor_persona">Create persona from neighbor</button>
         </form>
@@ -136,7 +136,7 @@
             <input name="name" value="{{ persona.name }}" maxlength="120" required>
           </label>
           <label>Transmit interface
-            <select name="interface" required>
+            <select name="interface" required data-lldp-interface-select>
               {% for item in interfaces %}<option value="{{ item.name }}" {{ 'selected' if item.name == interface else '' }}>{{ item.name }} · {{ item.mac }}</option>{% endfor %}
             </select>
           </label>
@@ -144,7 +144,11 @@
             <input name="system_name" value="{{ persona.system_name }}" required>
           </label>
         </div>
-        <div class="lldp-form-grid two">
+        <div class="lldp-form-grid three">
+          <label>Ethernet source MAC
+            <input name="source_mac" value="{{ persona.source_mac }}" required>
+            <small>Defaults to the selected interface. Copied MAC-based neighbors use their observed chassis MAC for a faithful lab identity.</small>
+          </label>
           <label>Chassis ID
             <input name="chassis_id" value="{{ persona.chassis_id }}" required>
             <small>A MAC address uses chassis subtype MAC; other values use local.</small>
@@ -152,6 +156,8 @@
           <label>Port ID
             <input name="port_id" value="{{ persona.port_id }}" required>
           </label>
+        </div>
+        <div class="lldp-form-grid two">
           <label>System description
             <input name="system_description" value="{{ persona.system_description }}">
           </label>
@@ -230,7 +236,7 @@
 
         <label class="check risk-confirmation lldp-quiet-daemon">
           <input type="checkbox" name="quiet_lldpd" {{ 'checked' if persona.quiet_lldpd else '' }}>
-          <span><strong>Quiet this host’s LLDP transmitter during the test</strong><small>Prevents the normal host identity from competing with the persona on this interface. Receive remains enabled, and the prior lldpd state is restored when the session stops.</small></span>
+          <span><strong>Quiet this host’s LLDP transmitter during the test</strong><small>Withdraws the normal host identity, prevents it from competing with the persona, and leaves receive enabled. The prior lldpd state is restored when the session stops.</small></span>
         </label>
 
         <div class="lldp-form-actions">
@@ -238,8 +244,8 @@
             <button class="secondary" type="submit" name="action" value="preview">Preview PDU</button>
             <button class="secondary" type="submit" name="action" value="save">{{ 'Update persona' if selected_name else 'Save persona' }}</button>
           </div>
-          <label class="check risk-confirmation"><input type="checkbox" name="confirm_send"> I am authorized to transmit this identity on the selected interface.</label>
-          <button class="danger" type="submit" name="action" value="start">Start transmission</button>
+          <label class="check risk-confirmation"><input type="checkbox" name="confirm_send"> <span>I am authorized to transmit this identity on <strong data-lldp-interface-confirmation>{{ interface }}</strong></span></label>
+          <button class="danger" type="submit" name="action" value="start" data-lldp-start-button>Start on {{ interface }}</button>
         </div>
         <p class="field-note">Observation uses the local <code>lldpd</code> daemon. Transmission uses the same scoped raw-frame access as Packet Replay: Linux service installs need network capabilities; macOS needs administrator-managed BPF access.</p>
       </form>

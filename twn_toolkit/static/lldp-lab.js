@@ -12,6 +12,17 @@
   unknownPolicy?.addEventListener("change", syncUnknownPolicy);
   syncUnknownPolicy();
 
+  const interfaceSelect = document.querySelector("[data-lldp-interface-select]");
+  const interfaceConfirmation = document.querySelector("[data-lldp-interface-confirmation]");
+  const startButton = document.querySelector("[data-lldp-start-button]");
+  const syncInterfaceConfirmation = () => {
+    const selected = interfaceSelect?.value || "selected interface";
+    if (interfaceConfirmation) interfaceConfirmation.textContent = selected;
+    if (startButton) startButton.textContent = `Start on ${selected}`;
+  };
+  interfaceSelect?.addEventListener("change", syncInterfaceConfirmation);
+  syncInterfaceConfirmation();
+
   const panel = document.querySelector("[data-lldp-sessions-url]");
   if (!panel) return;
   const url = panel.dataset.lldpSessionsUrl;

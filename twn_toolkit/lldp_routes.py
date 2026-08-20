@@ -85,6 +85,11 @@ def register_lldp_routes(tools_bp: Blueprint) -> None:
                             "name": f"{neighbor['system_name'] or 'Observed neighbor'} copy",
                             "system_name": neighbor["system_name"] or "Observed neighbor",
                             "system_description": neighbor["system_description"],
+                            "source_mac": (
+                                neighbor["chassis_id"]
+                                if neighbor.get("chassis_id_type") == "mac"
+                                else persona["source_mac"]
+                            ),
                             "chassis_id": neighbor["chassis_id"] or persona["chassis_id"],
                             "port_id": neighbor["port_id"] or persona["port_id"],
                             "port_description": neighbor["port_description"],

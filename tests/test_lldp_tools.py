@@ -10,6 +10,7 @@ from twn_toolkit.app import create_app
 from twn_toolkit.lldp_tools import (
     build_lldp_frame,
     default_persona,
+    local_lldpd_shutdown_frame,
     normalize_neighbors,
     parse_custom_tlvs,
     preview_persona,
@@ -60,6 +61,58 @@ class LLDPToolTests(unittest.TestCase):
         self.assertIn("LLDP-MED capabilities", [item["label"] for item in decoded])
         self.assertIn("LLDP-MED voice policy", [item["label"] for item in decoded])
         self.assertIn(bytes.fromhex("0012bb02"), frame)
+
+    def test_source_mac_override_controls_ethernet_header(self) -> None:
+        persona = self._persona("switch")
+        persona["source_mac"] = "02:aa:bb:cc:dd:ee"
+        frame, _decoded = self._build(persona)
+        self.assertEqual(frame[6:12].hex(), "02aabbccddee")
+
+    @patch("twn_toolkit.lldp_tools._find_lldpcli", return_value="/usr/bin/lldpcli")
+    @patch("twn_toolkit.lldp_tools.interface_mac", return_value="02:11:22:33:44:55")
+    @patch("twn_toolkit.lldp_tools._run_lldpcli")
+    def test_local_lldpd_shutdown_preserves_identity_subtypes(
+        self, run_lldpcli, _interface_mac, _find_lldpcli
+    ) -> None:
+        run_lldpcli.return_value = {
+            "lldp": [
+                {
+                    "interface": [
+                        {
+                            "name": "en7",
+                            "chassis": [
+                                {
+                                    "id": [
+                                        {"type": "mac", "value": "02:aa:bb:cc:dd:ee"}
+                                    ]
+                                }
+                            ],
+                            "port": [
+                                {
+                                    "id": [
+                                        {"type": "ifname", "value": "en7"}
+                                    ]
+                                }
+                            ],
+                        }
+                    ]
+                }
+            ]
+        }
+        frame = local_lldpd_shutdown_frame("en7")
+        self.assertIsNotNone(frame)
+        assert frame is not None
+        self.assertEqual(frame[6:12].hex(), "021122334455")
+        offset = 14
+        chassis_header = struct.unpack_from("!H", frame, offset)[0]
+        self.assertEqual(frame[offset + 2], 4)
+        offset += 2 + (chassis_header & 0x1FF)
+        port_header = struct.unpack_from("!H", frame, offset)[0]
+        self.assertEqual(frame[offset + 2], 5)
+        offset += 2 + (port_header & 0x1FF)
+        ttl_header = struct.unpack_from("!H", frame, offset)[0]
+        self.assertEqual(ttl_header >> 9, 3)
+        self.assertEqual(frame[offset + 2 : offset + 4], b"\x00\x00")
 
     def test_custom_organizational_tlv_is_bounded_and_encoded(self) -> None:
         persona = self._persona("switch")
@@ -162,6 +215,57 @@ class LLDPRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Switch-1", response.data)
         self.assertIn(b"192.0.2.1", response.data)
+        self.assertIn(b'name="interface" value="en7"', response.data)
+
+    @patch("twn_toolkit.lldp_routes.available_interfaces", return_value=INTERFACES)
+    @patch("twn_toolkit.lldp_tools.available_interfaces", return_value=INTERFACES)
+    @patch("twn_toolkit.lldp_tools.interface_mac", return_value=INTERFACES[0]["mac"])
+    @patch(
+        "twn_toolkit.lldp_routes.lldpcli_capability",
+        return_value={
+            "available": True,
+            "connected": True,
+            "version": "1.0.22",
+            "message": "Connected",
+        },
+    )
+    @patch(
+        "twn_toolkit.lldp_routes.read_neighbors",
+        return_value=[
+            {
+                "interface": "en7",
+                "via": "LLDP",
+                "age": "10 seconds",
+                "system_name": "Copied switch",
+                "system_description": "Lab switch",
+                "chassis_id": "02:aa:bb:cc:dd:ee",
+                "chassis_id_type": "mac",
+                "port_id": "port1",
+                "port_id_type": "ifname",
+                "port_description": "port1",
+                "ttl": 120,
+                "management_addresses": [],
+                "capabilities": ["Bridge"],
+            }
+        ],
+    )
+    def test_neighbor_copy_preserves_observed_interface_and_mac_identity(
+        self, _neighbors, _capability, _mac, _tool_interfaces, _route_interfaces
+    ) -> None:
+        response = self.client.post(
+            "/tools/lldp-lab",
+            data={
+                "view": "emulate",
+                "interface": "en7",
+                "neighbor_index": "0",
+                "action": "neighbor_persona",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'<option value="en7" selected>', response.data)
+        self.assertIn(
+            b'name="source_mac" value="02:aa:bb:cc:dd:ee"', response.data
+        )
 
     @patch("twn_toolkit.lldp_routes.available_interfaces", return_value=INTERFACES)
     @patch(
@@ -231,6 +335,7 @@ class LLDPRouteTests(unittest.TestCase):
             "name": "Branch phone",
             "system_name": "Branch phone",
             "system_description": "Test phone",
+            "source_mac": "02:11:22:33:44:55",
             "chassis_id": "02:11:22:33:44:55",
             "port_id": "port-1",
             "port_description": "User port",
