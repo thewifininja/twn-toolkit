@@ -96,6 +96,7 @@ def test_system_settings_save_timezone_without_restart(tmp_path):
     actions = client.get("/automations/actions")
     assert b'"timestamp":"{{timestamp.local}}"' in actions.data
     assert b'"timezone":"{{toolkit.timezone}}"' in actions.data
+    assert actions.data.count(b"{{toolkit.version}}") >= 3
     assert b"Time: {{timestamp.display}}" in actions.data
 
     invalid = client.post(

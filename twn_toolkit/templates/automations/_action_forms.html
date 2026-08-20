@@ -176,7 +176,7 @@
       </div>
       <label>Message
         <textarea name="syslog_message" rows="5" maxlength="8192" placeholder="Toolkit automation fired: {{ '{{trigger.summary}}' }}" required>{{ config.get('message', config.get('syslog_message', 'Toolkit automation fired: {{trigger.summary}}')) }}</textarea>
-        <small class="field-note">Available variables include trigger metadata, toolkit identity, <code>{{ '{{timestamp.local}}' }}</code>, <code>{{ '{{timestamp.display}}' }}</code>, and the backward-compatible UTC <code>{{ '{{timestamp}}' }}</code>.</small>
+        <small class="field-note">Available variables include trigger metadata, toolkit identity such as <code>{{ '{{toolkit.version}}' }}</code>, <code>{{ '{{timestamp.local}}' }}</code>, <code>{{ '{{timestamp.display}}' }}</code>, and the backward-compatible UTC <code>{{ '{{timestamp}}' }}</code>.</small>
       </label>
     </div>
     <div data-action-fields="webhook.send" hidden>
@@ -262,6 +262,7 @@
               <code>{{ '{{actions.failed}}' }}</code><span>Failed earlier-stage actions.</span>
               <code>{{ '{{toolkit.instance_name}}' }}</code><span>Configured toolkit instance name.</span>
               <code>{{ '{{toolkit.hostname}}' }}</code><span>Current operating-system hostname.</span>
+              <code>{{ '{{toolkit.version}}' }}</code><span>Current toolkit application version.</span>
               <code>{{ '{{toolkit.primary_ipv4}}' }}</code><span>Primary usable IPv4 address, when available.</span>
               <code>{{ '{{toolkit.ipv4_addresses}}' }}</code><span>All usable IPv4 addresses.</span>
               <code>{{ '{{toolkit.ipv6_addresses}}' }}</code><span>All usable IPv6 addresses.</span>
@@ -343,6 +344,7 @@ Earlier action results:
               <code>{{ '{{actions.failed}}' }}</code><span>Failed earlier-stage actions.</span>
               <code>{{ '{{toolkit.instance_name}}' }}</code><span>Configured toolkit instance name.</span>
               <code>{{ '{{toolkit.hostname}}' }}</code><span>Current operating-system hostname.</span>
+              <code>{{ '{{toolkit.version}}' }}</code><span>Current toolkit application version.</span>
               <code>{{ '{{toolkit.primary_ipv4}}' }}</code><span>Primary usable IPv4 address, when available.</span>
               <code>{{ '{{toolkit.ipv4_addresses}}' }}</code><span>All usable IPv4 addresses.</span>
               <code>{{ '{{toolkit.ipv6_addresses}}' }}</code><span>All usable IPv6 addresses.</span>

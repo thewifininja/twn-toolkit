@@ -14,6 +14,7 @@ from twn_toolkit.system_identity import (
     write_toolkit_start_marker,
 )
 from twn_toolkit.time_settings import TimeSettingsStore
+from twn_toolkit.version import APP_VERSION
 
 
 class SystemIdentityTests(unittest.TestCase):
@@ -62,6 +63,7 @@ class SystemIdentityTests(unittest.TestCase):
 
             toolkit = identity["toolkit"]
             self.assertEqual(toolkit["instance_name"], "branch-pi")
+            self.assertEqual(toolkit["version"], APP_VERSION)
             self.assertEqual(toolkit["primary_ipv4"], "192.0.2.25")
             self.assertEqual(toolkit["timezone"], "America/New_York")
             self.assertEqual(
