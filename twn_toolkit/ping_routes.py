@@ -32,6 +32,13 @@ from .remote_sessions import RemoteSessionManager, public_remote_session
 from .snmp_investigation import finalize_pending_snmp_sessions
 
 
+PING_HEALTH_DEFAULTS = {
+    "loss_pct": 5.0,
+    "latency_ms": 100.0,
+    "jitter_ms": 30.0,
+}
+
+
 def register_ping_routes(tools_bp: Blueprint) -> None:
     @tools_bp.get("/ping")
     def ping_tool():
@@ -40,8 +47,23 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             "tools/ping.html",
             profiles=_ping_profile_store().all(),
             ping_capability=capability,
+            ping_health_defaults=PING_HEALTH_DEFAULTS,
             ping_target_limit=capability["target_limit"],
             requested_live_session=str(request.args.get("session", "")).strip()[:80],
+        )
+
+    @tools_bp.get("/ping/sessions/<session_id>/popout")
+    def ping_session_popout(session_id: str):
+        suppress_audit_event()
+        session = _live_tool_store().renew_session(
+            session_id, user_id=_current_user()["id"]
+        )
+        if not session or session["tool_key"] != "ping":
+            return jsonify({"error": "Live ping session not found."}), 404
+        return render_template(
+            "tools/ping_popout.html",
+            ping_session=public_live_session(session, include_config=True),
+            ping_health_defaults=PING_HEALTH_DEFAULTS,
         )
 
     @tools_bp.get("/live-sessions")
@@ -90,6 +112,9 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             if not 1 <= interval <= 60:
                 raise ToolInputError("Interval must be between 1 and 60 seconds.")
             timeout = validate_ping_timeout(payload.get("timeout", 1), capability)
+            health_thresholds = _ping_health_thresholds(
+                payload.get("health_thresholds")
+            )
             title = " ".join(str(payload.get("title", "")).strip().split())
             if len(title) > 100:
                 raise ToolInputError("Live tool names must be 100 characters or fewer.")
@@ -110,6 +135,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
                 targets=targets,
                 interval=interval,
                 timeout=timeout,
+                health_thresholds=health_thresholds,
                 investigation_id=investigation_id,
             )
         except (ToolInputError, TypeError, ValueError) as exc:
@@ -199,12 +225,16 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             if not 1 <= interval <= 60:
                 raise ToolInputError("Interval must be between 1 and 60 seconds.")
             timeout = validate_ping_timeout(payload.get("timeout", 1), capability)
+            health_thresholds = _ping_health_thresholds(
+                payload.get("health_thresholds")
+            )
             session = _live_tool_store().update_ping_session(
                 session_id,
                 user_id=_current_user()["id"],
                 targets=targets,
                 interval=interval,
                 timeout=timeout,
+                health_thresholds=health_thresholds,
             )
         except (ToolInputError, TypeError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
@@ -479,6 +509,9 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             if not 1 <= interval <= 60:
                 raise ToolInputError("Interval must be between 1 and 60 seconds.")
             timeout = validate_ping_timeout(payload.get("timeout", 1), capability)
+            health_thresholds = _ping_health_thresholds(
+                payload.get("health_thresholds")
+            )
         except (ToolInputError, TypeError, ValueError) as exc:
             return jsonify({"error": str(exc) or "Enter a valid interval."}), 400
 
@@ -487,6 +520,7 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             "targets": targets,
             "interval": interval,
             "timeout": timeout,
+            "health_thresholds": health_thresholds,
         }
         store = _ping_profile_store()
         before = store.get(original_name or name)
@@ -535,6 +569,31 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
 
 def _ping_profile_store() -> PingProfileStore:
     return PingProfileStore(current_app.instance_path)
+
+
+def _ping_health_thresholds(value: object) -> dict[str, float | None]:
+    source = value if isinstance(value, dict) else {}
+    limits = {
+        "loss_pct": (0.0, 100.0, "Packet-loss threshold"),
+        "latency_ms": (0.0, 60_000.0, "Latency threshold"),
+        "jitter_ms": (0.0, 60_000.0, "Jitter threshold"),
+    }
+    thresholds: dict[str, float | None] = {}
+    for key, (minimum, maximum, label) in limits.items():
+        raw = source.get(key, PING_HEALTH_DEFAULTS[key])
+        if raw is None or str(raw).strip() == "":
+            thresholds[key] = None
+            continue
+        try:
+            number = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise ToolInputError(f"{label} must be a number or left blank.") from exc
+        if not minimum <= number <= maximum:
+            raise ToolInputError(
+                f"{label} must be between {minimum:g} and {maximum:g}."
+            )
+        thresholds[key] = number
+    return thresholds
 
 
 def _live_tool_store() -> LiveToolStore:

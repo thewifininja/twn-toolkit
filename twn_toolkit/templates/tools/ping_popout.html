@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en" data-theme="{{ user_theme }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ ping_session.title }} · Ping</title>
+    <meta name="theme-color" content="#151b1a">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png', v=app_version) }}">
+    <script>(() => { const root = document.documentElement; if (root.dataset.theme === "system") root.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; })();</script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=app_version) }}">
+  </head>
+  <body class="ping-popout-page">
+    <header class="ping-popout-head">
+      <a class="brand" href="{{ ping_session.restore_url }}" target="_blank"><img src="{{ url_for('static', filename='brand/dragon-mark-128.png', v=app_version) }}" alt=""><span>The WiFi Ninja’s Toolkit</span></a>
+      <div class="ping-popout-identity">
+        <span class="eyebrow">Live Ping</span>
+        <strong>{{ ping_session.title }}</strong>
+        <span class="tool-status" id="ping-status">Restoring live session…</span>
+      </div>
+      <div class="button-row ping-popout-actions">
+        <a class="button-link secondary" href="{{ ping_session.restore_url }}">Open full workspace</a>
+        <button class="secondary" id="ping-stop" type="button">Stop</button>
+      </div>
+    </header>
+    <main class="ping-popout-shell" id="ping-workspace">
+      <form
+        id="ping-form"
+        data-delete-profile-url="{{ url_for('tools.delete_ping_profile') }}"
+        data-session-start-url="{{ url_for('tools.start_ping_session') }}"
+        data-requested-session="{{ ping_session.id }}"
+        data-save-profile-url="{{ url_for('tools.save_ping_profile') }}"
+        data-validate-url="{{ url_for('tools.ping_validate_targets') }}"
+        hidden
+      >
+        <textarea id="ping-hosts"></textarea>
+        <input id="ping-interval" value="2">
+        <input id="ping-timeout" value="1">
+        <button id="ping-start" type="submit"></button>
+        <button id="ping-update-targets" type="button"></button>
+        <button id="ping-minimize" type="button"></button>
+        <select id="ping-profile"><option value="">Current session</option></select>
+        <input id="ping-profile-name">
+        <button id="ping-profile-save" type="button"></button>
+        <button id="ping-profile-delete" type="button"></button>
+        <div id="ping-validation-warning" hidden></div>
+      </form>
+      <section class="ping-popout-thresholds panel tool-panel">
+        {% include "tools/_ping_health_thresholds.html" %}
+      </section>
+      {% set ping_popout = true %}
+      {% include "tools/_ping_results.html" %}
+    </main>
+    <section id="ping-minimized" hidden><button id="ping-restore-inline" type="button"></button></section>
+    <script src="{{ url_for('static', filename='ping-tool.js', v=app_version) }}"></script>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+<details class="ping-health-settings">
+  <summary>
+    <span>
+      <strong>Health thresholds</strong>
+      <small>Define when a responding target appears degraded.</small>
+    </span>
+    <span class="ping-health-settings-summary" id="ping-health-settings-summary">5% loss · 100 ms latency · 30 ms jitter</span>
+  </summary>
+  <div class="ping-health-threshold-grid">
+    <label>Packet loss above
+      <div class="input-suffix"><input id="ping-health-loss" type="number" min="0" max="100" step="0.1" value="{{ ping_health_defaults.loss_pct }}"><span>%</span></div>
+    </label>
+    <label>Average latency above
+      <div class="input-suffix"><input id="ping-health-latency" type="number" min="0" max="60000" step="0.1" value="{{ ping_health_defaults.latency_ms }}"><span>ms</span></div>
+    </label>
+    <label>Jitter above
+      <div class="input-suffix"><input id="ping-health-jitter" type="number" min="0" max="60000" step="0.1" value="{{ ping_health_defaults.jitter_ms }}"><span>ms</span></div>
+    </label>
+  </div>
+  <small class="field-note">Health uses a rolling one-minute window. Leave a threshold blank to ignore that measurement. A failed latest probe is always shown as down.</small>
+</details>

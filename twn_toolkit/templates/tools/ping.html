@@ -34,7 +34,7 @@
           <select id="ping-profile" data-saved-profile-select>
             <option value="">New / unsaved profile</option>
             {% for profile in profiles %}
-              <option value="{{ profile.name }}" data-interval="{{ profile.interval }}" data-timeout="{{ profile.get('timeout', 1) }}" data-targets='{{ profile.targets|tojson }}'>{{ profile.name }}</option>
+              <option value="{{ profile.name }}" data-interval="{{ profile.interval }}" data-timeout="{{ profile.get('timeout', 1) }}" data-targets='{{ profile.targets|tojson }}' data-health-thresholds='{{ profile.get("health_thresholds", ping_health_defaults)|tojson }}'>{{ profile.name }}</option>
             {% endfor %}
           </select>
         </label>
@@ -66,6 +66,7 @@
         <small class="field-note">How long to wait for a silent target. Lower values make rounds faster but may mark slow or distant replies down.</small>
       </label>
     </div>
+    {% include "tools/_ping_health_thresholds.html" %}
     <div class="button-row">
       <button id="ping-start" type="submit">Start</button>
       <button class="secondary" id="ping-stop" type="button" disabled>Stop</button>
@@ -77,79 +78,8 @@
   </form>
 </section>
 
-<section class="panel tool-panel" id="ping-results" hidden>
-  <div class="ping-history-controls">
-    <label>Visible time range
-      <select id="ping-history-range">
-        <option value="60000">1 minute</option>
-        <option value="120000">2 minutes</option>
-        <option value="300000">5 minutes</option>
-      </select>
-    </label>
-    <label class="check">
-      <input id="ping-follow-live" type="checkbox" checked>
-      Follow newest samples
-    </label>
-    <button class="secondary" id="ping-export-history" type="button">Export history CSV</button>
-    <details class="ping-history-navigation">
-      <summary>
-        <span>History Navigation</span>
-        <small id="ping-history-navigation-summary">Live</small>
-      </summary>
-      <div class="ping-history-navigation-content">
-        <label class="ping-history-navigator">History position
-          <input id="ping-history-position" type="range" min="0" max="1000" value="1000" disabled>
-          <span class="ping-history-scale"><span>Oldest</span><span>Newest</span></span>
-        </label>
-        <div class="ping-history-time-nav">
-          <button class="secondary" id="ping-history-older" type="button" disabled>← Older window</button>
-          <label>View ending at
-            <input id="ping-history-end" type="datetime-local" step="1" disabled>
-          </label>
-          <button class="secondary" id="ping-history-newer" type="button" disabled>Newer window →</button>
-        </div>
-      </div>
-    </details>
-  </div>
-  <div class="ping-results-workspace">
-    <aside class="ping-host-browser" aria-label="Ping targets">
-      <div class="ping-host-browser-head">
-        <div>
-          <span class="eyebrow">Targets</span>
-          <strong id="ping-host-count">0 hosts</strong>
-        </div>
-        <small id="ping-selection-count">0 graphed</small>
-      </div>
-      <label class="ping-host-search">Find a host
-        <input id="ping-host-filter" type="search" placeholder="Name, address, or status…" autocomplete="off">
-      </label>
-      <label class="ping-host-status-filter">Show
-        <select id="ping-host-status-filter">
-          <option value="all">All targets</option>
-          <option value="down">Down targets</option>
-          <option value="up">Up targets</option>
-          <option value="selected">Selected graphs</option>
-        </select>
-      </label>
-      <div class="ping-host-list" id="ping-host-list" role="listbox" aria-label="Select hosts to graph" aria-multiselectable="true"></div>
-      <small class="field-note">Pinging and history collection continue for every target. Graph only the hosts useful to you, or select as many as you need.</small>
-    </aside>
-    <div class="ping-graph-workspace">
-      <div class="ping-graph-workspace-head">
-        <div>
-          <span class="eyebrow">Selected history</span>
-          <h2>Response-time graphs</h2>
-        </div>
-        <small id="ping-graph-summary">Select a host from the list.</small>
-      </div>
-      <div class="empty-state ping-graph-empty" id="ping-graph-empty">
-        <strong>No graphs selected</strong>
-        <span>Select a host on the left while all targets continue to be monitored.</span>
-      </div>
-      <div class="ping-graph-grid" id="ping-graph-grid"></div>
-    </div>
-  </div>
-</section>
+{% set ping_popout = false %}
+{% include "tools/_ping_results.html" %}
 </div>
 <section class="panel tool-panel ping-minimized-placeholder" id="ping-minimized" hidden>
   <div>

@@ -476,6 +476,7 @@ def register_tools(registry: Any) -> None:
             "tools.ping_activity": "tools.ping",
             "tools.start_ping_session": "tools.ping",
             "tools.ping_session": "tools.ping",
+            "tools.ping_session_popout": "tools.ping",
             "tools.ping_session_samples": "tools.ping",
             "tools.update_ping_session_targets": "tools.ping",
             "tools.save_ping_profile": "tools.ping",

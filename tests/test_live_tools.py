@@ -400,13 +400,28 @@ class LiveToolRouteTests(unittest.TestCase):
                         "interval": 2,
                         "timeout": 0.25,
                         "title": "Local checks",
+                        "health_thresholds": {
+                            "loss_pct": 2.5,
+                            "latency_ms": 80,
+                            "jitter_ms": 20,
+                        },
                     },
                 )
                 self.assertEqual(started.status_code, 201)
                 session = started.get_json()["session"]
                 self.assertEqual(session["title"], "Local checks")
                 self.assertEqual(session["config"]["targets"][0]["label"], "Loopback")
+                self.assertEqual(
+                    session["config"]["health_thresholds"]["loss_pct"], 2.5
+                )
                 self.assertIn("?session=", session["restore_url"])
+                self.assertIn("/popout", session["popout_url"])
+
+                popout = client.get(session["popout_url"])
+                self.assertEqual(popout.status_code, 200)
+                self.assertIn(b'id="ping-grid-preview"', popout.data)
+                self.assertIn(b'id="ping-stop"', popout.data)
+                self.assertIn(b"Open full workspace", popout.data)
 
                 listed = client.get("/tools/live-sessions")
                 self.assertEqual(listed.status_code, 200)
@@ -445,11 +460,20 @@ class LiveToolRouteTests(unittest.TestCase):
                         "hosts": "Loopback = 127.0.0.1\nDNS = 192.0.2.53",
                         "interval": 5,
                         "timeout": 0.5,
+                        "health_thresholds": {
+                            "loss_pct": 10,
+                            "latency_ms": None,
+                            "jitter_ms": 40,
+                        },
                     },
                 )
                 self.assertEqual(updated.status_code, 200)
                 self.assertEqual(
                     updated.get_json()["session"]["target_count"], 2
+                )
+                self.assertEqual(
+                    updated.get_json()["session"]["config"]["health_thresholds"],
+                    {"loss_pct": 10.0, "latency_ms": None, "jitter_ms": 40.0},
                 )
 
                 samples = client.get(session["samples_url"])

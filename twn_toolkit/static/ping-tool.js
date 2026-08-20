@@ -33,6 +33,23 @@
   const historyOlder = document.getElementById("ping-history-older");
   const historyNewer = document.getElementById("ping-history-newer");
   const historyNavigationSummary = document.getElementById("ping-history-navigation-summary");
+  const healthLoss = document.getElementById("ping-health-loss");
+  const healthLatency = document.getElementById("ping-health-latency");
+  const healthJitter = document.getElementById("ping-health-jitter");
+  const healthSettingsSummary = document.getElementById("ping-health-settings-summary");
+  const healthGrid = document.getElementById("ping-health-grid");
+  const healthSummary = document.getElementById("ping-health-summary");
+  const viewButtons = [...document.querySelectorAll("[data-ping-view]")];
+  const sizeButtons = [...document.querySelectorAll("[data-ping-size]")];
+  const popoutButton = document.getElementById("ping-popout");
+  const gridPreview = document.getElementById("ping-grid-preview");
+  const gridPreviewTitle = document.getElementById("ping-grid-preview-title");
+  const gridPreviewAddress = document.getElementById("ping-grid-preview-address");
+  const gridPreviewStatus = document.getElementById("ping-grid-preview-status");
+  const gridPreviewStatistics = document.getElementById("ping-grid-preview-statistics");
+  const gridPreviewCanvas = document.getElementById("ping-grid-preview-canvas");
+  const gridPreviewClose = document.getElementById("ping-grid-preview-close");
+  const gridPreviewDetail = document.getElementById("ping-grid-preview-detail");
 
   if (!form || !hostsInput || !intervalInput || !timeoutInput || !startButton || !stopButton || !updateTargetsButton ||
       !minimizeButton || !workspace || !minimizedPlaceholder || !restoreInlineButton ||
@@ -42,7 +59,12 @@
       !selectionCount || !graphSummary || !graphEmpty || !graphGrid ||
       !historyRange || !followLive || !historyPosition ||
       !exportHistory || !historyEnd || !historyOlder ||
-      !historyNewer || !historyNavigationSummary) {
+      !historyNewer || !historyNavigationSummary || !healthLoss ||
+      !healthLatency || !healthJitter || !healthSettingsSummary ||
+      !healthGrid || !healthSummary || !viewButtons.length ||
+      !sizeButtons.length || !gridPreview || !gridPreviewTitle ||
+      !gridPreviewAddress || !gridPreviewStatus || !gridPreviewStatistics ||
+      !gridPreviewCanvas || !gridPreviewClose || !gridPreviewDetail) {
     return;
   }
 
@@ -59,15 +81,31 @@
   let resizeFrame = null;
   let renderedGraphGridWidth = 0;
   let hasStoredGraphSelection = false;
+  let gridPreviewHost = "";
+  let gridPreviewAnchor = null;
+  let gridPreviewPinned = false;
+  let gridPreviewShowTimer = null;
+  let gridPreviewHideTimer = null;
   const history = new Map();
   const hostViews = new Map();
   const graphViews = new Map();
   const selectedHosts = new Set();
   const profileStorageKey = "twn:ping-profile";
   const graphSelectionStoragePrefix = "twn:ping-graphs:";
+  const healthStoragePrefix = "twn:ping-health:";
+  const viewStorageKey = "twn:ping-results-view";
+  const sizeStorageKey = "twn:ping-graph-size";
   const historySampleBudget = 500_000;
   const visiblePollIntervalMs = 250;
   const hiddenPollIntervalMs = 5_000;
+  const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
+  const previewView = {
+    canvas: gridPreviewCanvas,
+    chart: gridPreviewCanvas.parentElement,
+    host: "",
+    variant: "preview",
+    visiblePoints: [],
+  };
   const chartTooltip = document.createElement("div");
   chartTooltip.className = "ping-chart-tooltip";
   chartTooltip.hidden = true;
@@ -85,6 +123,54 @@
   }
   hostFilter.addEventListener("input", applyHostFilters);
   hostStatusFilter.addEventListener("change", applyHostFilters);
+  viewButtons.forEach((button) => button.addEventListener("click", () => {
+    setViewMode(button.dataset.pingView);
+  }));
+  sizeButtons.forEach((button) => button.addEventListener("click", () => {
+    setGraphSize(button.dataset.pingSize);
+  }));
+  [healthLoss, healthLatency, healthJitter].forEach((input) => {
+    input.addEventListener("input", () => {
+      updateHealthSettingsSummary();
+      persistHealthThresholds();
+      refreshRenderedResults();
+      renderAllCharts();
+    });
+  });
+  popoutButton?.addEventListener("click", () => {
+    if (!activeSession?.popout_url) return;
+    const popup = window.open(
+      activeSession.popout_url,
+      `twn-ping-session-${activeSession.id}`,
+      "popup,width=1280,height=820,resizable=yes,scrollbars=yes"
+    );
+    if (!popup) status.textContent = "The browser blocked the results window. Allow pop-ups for this toolkit and try again.";
+  });
+  gridPreviewClose.addEventListener("click", hideGridPreview);
+  gridPreviewDetail.addEventListener("click", openPreviewDetail);
+  gridPreview.addEventListener("pointerenter", cancelGridPreviewHide);
+  gridPreview.addEventListener("pointerleave", () => scheduleGridPreviewHide());
+  gridPreview.addEventListener("focusin", cancelGridPreviewHide);
+  gridPreview.addEventListener("focusout", () => scheduleGridPreviewHide());
+  gridPreviewCanvas.addEventListener("mousemove", (event) => showCanvasTooltip(previewView, event));
+  gridPreviewCanvas.addEventListener("mouseleave", () => { chartTooltip.hidden = true; });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !gridPreview.hidden) hideGridPreview();
+  });
+  window.addEventListener("resize", () => {
+    if (!gridPreview.hidden && gridPreviewAnchor) positionGridPreview(gridPreviewAnchor);
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key === healthStorageKey()) {
+      restoreHealthThresholds(activeSession?.config?.health_thresholds);
+      refreshRenderedResults();
+      renderAllCharts();
+    }
+  });
+
+  setViewMode(readDisplayPreference(viewStorageKey, ["graphs", "grid"], "graphs"), {persist: false});
+  setGraphSize(readDisplayPreference(sizeStorageKey, ["small", "medium", "large"], "large"), {persist: false});
+  updateHealthSettingsSummary();
 
   minimizeButton.addEventListener("click", () => {
     if (!activeSession) return;
@@ -138,6 +224,7 @@
       loadedProfileName = "";
       profileNameInput.value = "";
       hostsInput.value = "";
+      restoreHealthThresholds({}, {preferStored: false});
       sessionStorage.removeItem(profileStorageKey);
       status.textContent = "Ready to create a new profile.";
       return;
@@ -148,6 +235,10 @@
       .join("\n");
     intervalInput.value = option.dataset.interval || "2";
     timeoutInput.value = option.dataset.timeout || "1";
+    restoreHealthThresholds(
+      JSON.parse(option.dataset.healthThresholds || "{}"),
+      {preferStored: false}
+    );
     profileNameInput.value = option.value;
     loadedProfileName = option.value;
     sessionStorage.setItem(profileStorageKey, option.value);
@@ -176,6 +267,7 @@
           hosts: hostsInput.value,
           interval: intervalInput.value,
           timeout: timeoutInput.value,
+          health_thresholds: healthThresholdValues(),
         }),
       });
       const data = await response.json();
@@ -255,6 +347,7 @@
           interval: intervalInput.value,
           timeout: timeoutInput.value,
           title: profileNameInput.value || profileSelect.value || "Ping",
+          health_thresholds: healthThresholdValues(),
         }),
       });
       const data = await response.json();
@@ -292,6 +385,7 @@
           hosts: targetsToSource(targets),
           interval: intervalInput.value,
           timeout: timeoutInput.value,
+          health_thresholds: healthThresholdValues(),
         }),
       });
       const data = await response.json();
@@ -452,12 +546,15 @@
     hostsInput.value = activeHostsSource;
     intervalInput.value = String(config.interval || session.interval || 2);
     timeoutInput.value = String(config.timeout || session.timeout || 1);
+    restoreHealthThresholds(config.health_thresholds);
+    persistHealthThresholds();
     if (resetHistory) resetResultsWorkspace();
     startButton.disabled = running;
     stopButton.disabled = !running;
     updateTargetsButton.disabled = !running;
     minimizeButton.disabled = !running;
     resultsPanel.hidden = false;
+    if (popoutButton) popoutButton.disabled = !session.popout_url;
   }
 
   function resetResultsWorkspace() {
@@ -471,6 +568,8 @@
     historyPosition.value = "1000";
     hostList.innerHTML = "";
     graphGrid.innerHTML = "";
+    healthGrid.innerHTML = "";
+    hideGridPreview();
     hostFilter.value = "";
     hostStatusFilter.value = "all";
     updateSelectionSummary();
@@ -613,7 +712,7 @@
         hostList.appendChild(hostView.button);
       }
       hostView.result = result;
-      hostView.state = result.reachable ? "up" : "down";
+      hostView.state = healthState(result, hostHistory);
       updateHostView(hostView);
 
       if (selectedHosts.has(result.host) && !graphViews.has(result.host)) {
@@ -632,15 +731,19 @@
     hostCount.textContent = `${activeHosts.size} host${activeHosts.size === 1 ? "" : "s"}`;
     applyHostFilters();
     updateSelectionSummary();
+    updateHealthSummary();
+    refreshGridPreview();
     updateHistoryNavigator();
   }
 
   function refreshRenderedResults() {
     hostViews.forEach((view, host) => {
-      if (!activeHosts.has(host)) view.state = "removed";
+      const series = history.get(host);
+      view.state = !activeHosts.has(host)
+        ? "removed"
+        : healthState(view.result, series);
       updateHostView(view);
       const graphView = graphViews.get(host);
-      const series = history.get(host);
       if (graphView && series) {
         updateGraphView(graphView, view.result, series);
         if (view.state === "removed") updateGraphStatus(graphView, "removed");
@@ -649,6 +752,8 @@
     hostCount.textContent = `${activeHosts.size} host${activeHosts.size === 1 ? "" : "s"}`;
     applyHostFilters();
     updateSelectionSummary();
+    updateHealthSummary();
+    refreshGridPreview();
     updateHistoryNavigator();
   }
 
@@ -674,8 +779,18 @@
     const state = document.createElement("span");
     state.className = "ping-host-option-state";
     button.append(indicator, identity, state);
-    const view = {button, indicator, stateLabel: state, result, state: "down"};
+    const healthCard = createHealthCard(result);
+    healthGrid.appendChild(healthCard.card);
+    const view = {
+      button,
+      indicator,
+      stateLabel: state,
+      healthCard,
+      result,
+      state: "down",
+    };
     button.addEventListener("click", () => toggleGraph(result.host));
+    wireGridPreview(view);
     return view;
   }
 
@@ -684,7 +799,8 @@
     view.button.dataset.state = view.state;
     view.button.classList.toggle("selected", selected);
     view.button.setAttribute("aria-selected", String(selected));
-    view.stateLabel.textContent = view.state === "up" ? "Up" : view.state === "down" ? "Down" : "Removed";
+    view.stateLabel.textContent = healthStateLabel(view.state);
+    updateHealthCard(view);
   }
 
   function toggleGraph(host) {
@@ -764,7 +880,16 @@
     canvas.setAttribute("aria-label", `Latency history for ${result.label || result.host}`);
     chart.appendChild(canvas);
     card.append(header, chart);
-    const view = {card, status: state, statistics, chart, canvas, host: result.host, visiblePoints: []};
+    const view = {
+      card,
+      status: state,
+      statistics,
+      chart,
+      canvas,
+      host: result.host,
+      variant: "detail",
+      visiblePoints: [],
+    };
     canvas.addEventListener("mousemove", (event) => showCanvasTooltip(view, event));
     canvas.addEventListener("mouseleave", () => {
       chartTooltip.hidden = true;
@@ -773,15 +898,15 @@
   }
 
   function updateGraphView(view, result, series) {
-    updateGraphStatus(view, result.reachable ? "up" : "down");
+    updateGraphStatus(view, healthState(result, series));
     const statistics = statisticsCell(series);
     view.statistics.replaceChildren(...statistics.childNodes);
     renderHistoryCanvas(view, series);
   }
 
   function updateGraphStatus(view, state) {
-    view.status.textContent = state === "up" ? "Up" : state === "down" ? "Down" : "Removed";
-    view.status.className = `pill${state === "up" ? " success" : state === "down" ? " error" : ""}`;
+    view.status.textContent = healthStateLabel(state);
+    view.status.className = `pill${state === "healthy" ? " success" : state === "degraded" ? " warning" : state === "down" ? " error" : ""}`;
   }
 
   function updateSelectionSummary() {
@@ -791,6 +916,7 @@
       ? `${count} selected host${count === 1 ? "" : "s"}`
       : "Select a host from the list.";
     graphEmpty.hidden = count > 0;
+    updateHealthSummary();
   }
 
   function applyHostFilters() {
@@ -801,7 +927,323 @@
       const stateMatches = stateFilter === "all"
         || stateFilter === view.state
         || (stateFilter === "selected" && selectedHosts.has(host));
-      view.button.hidden = !stateMatches || Boolean(query && !identity.includes(query));
+      const hidden = !stateMatches || Boolean(query && !identity.includes(query));
+      view.button.hidden = hidden;
+      view.healthCard.card.hidden = hidden;
+    });
+  }
+
+  function readDisplayPreference(key, allowed, fallback) {
+    try {
+      const value = localStorage.getItem(key);
+      return allowed.includes(value) ? value : fallback;
+    } catch (_error) {
+      return fallback;
+    }
+  }
+
+  function setViewMode(mode, {persist = true} = {}) {
+    const selected = mode === "grid" ? "grid" : "graphs";
+    resultsPanel.dataset.viewMode = selected;
+    viewButtons.forEach((button) => {
+      const active = button.dataset.pingView === selected;
+      button.setAttribute("aria-pressed", String(active));
+      button.classList.toggle("active", active);
+    });
+    if (persist) {
+      try {
+        localStorage.setItem(viewStorageKey, selected);
+      } catch (_error) {
+        // Display preferences are optional.
+      }
+    }
+    if (selected === "graphs") hideGridPreview();
+    window.requestAnimationFrame(() => {
+      renderAllCharts();
+      updateHealthSummary();
+    });
+  }
+
+  function setGraphSize(size, {persist = true} = {}) {
+    const selected = ["small", "medium", "large"].includes(size) ? size : "large";
+    resultsPanel.dataset.graphSize = selected;
+    sizeButtons.forEach((button) => {
+      const active = button.dataset.pingSize === selected;
+      button.setAttribute("aria-pressed", String(active));
+      button.classList.toggle("active", active);
+    });
+    if (persist) {
+      try {
+        localStorage.setItem(sizeStorageKey, selected);
+      } catch (_error) {
+        // Display preferences are optional.
+      }
+    }
+    window.requestAnimationFrame(renderAllCharts);
+  }
+
+  function healthStorageKey() {
+    return activeSession?.id ? `${healthStoragePrefix}${activeSession.id}` : "";
+  }
+
+  function healthThresholdValues() {
+    const value = (input) => {
+      if (input.value.trim() === "") return null;
+      const number = Number(input.value);
+      return Number.isFinite(number) ? number : null;
+    };
+    return {
+      loss_pct: value(healthLoss),
+      latency_ms: value(healthLatency),
+      jitter_ms: value(healthJitter),
+    };
+  }
+
+  function restoreHealthThresholds(values, {preferStored = true} = {}) {
+    let thresholds = values && typeof values === "object" ? values : {};
+    const storageKey = healthStorageKey();
+    if (preferStored && storageKey) {
+      try {
+        const stored = JSON.parse(localStorage.getItem(storageKey) || "null");
+        if (stored && typeof stored === "object") thresholds = stored;
+      } catch (_error) {
+        // Invalid optional presentation state falls back to the session values.
+      }
+    }
+    const assign = (input, key, fallback) => {
+      const value = Object.prototype.hasOwnProperty.call(thresholds, key)
+        ? thresholds[key]
+        : fallback;
+      input.value = value == null ? "" : String(value);
+    };
+    assign(healthLoss, "loss_pct", 5);
+    assign(healthLatency, "latency_ms", 100);
+    assign(healthJitter, "jitter_ms", 30);
+    updateHealthSettingsSummary();
+  }
+
+  function persistHealthThresholds() {
+    const storageKey = healthStorageKey();
+    if (!storageKey) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(healthThresholdValues()));
+    } catch (_error) {
+      // Monitoring remains usable when browser storage is unavailable.
+    }
+  }
+
+  function updateHealthSettingsSummary() {
+    const thresholds = healthThresholdValues();
+    const values = [];
+    if (thresholds.loss_pct != null) values.push(`${thresholds.loss_pct}% loss`);
+    if (thresholds.latency_ms != null) values.push(`${thresholds.latency_ms} ms latency`);
+    if (thresholds.jitter_ms != null) values.push(`${thresholds.jitter_ms} ms jitter`);
+    healthSettingsSummary.textContent = values.length ? values.join(" · ") : "No degradation thresholds";
+  }
+
+  function healthStateLabel(state) {
+    if (state === "healthy") return "Healthy";
+    if (state === "degraded") return "Degraded";
+    if (state === "down") return "Down";
+    return "Removed";
+  }
+
+  function healthMetrics(series) {
+    if (!series) return {average: null, jitter: null, lossPct: 0, total: 0};
+    const points = historyPoints(series);
+    if (!points.length) return {average: null, jitter: null, lossPct: 0, total: 0};
+    const newest = points[points.length - 1].time.getTime();
+    const recent = points.filter((point) => point.time.getTime() >= newest - 60_000);
+    let total = 0;
+    let received = 0;
+    let latencySum = 0;
+    const latencies = [];
+    recent.forEach((point) => {
+      const sent = Math.max(1, Number(point.total) || 1);
+      const replies = point.reachable ? Math.max(0, sent * (1 - Number(point.loss || 0))) : 0;
+      total += sent;
+      received += replies;
+      if (replies && Number.isFinite(point.latency)) {
+        latencySum += point.latency * replies;
+        latencies.push(point.latency);
+      }
+    });
+    const jitter = latencies.length > 1
+      ? latencies.slice(1).reduce((sum, value, index) => sum + Math.abs(value - latencies[index]), 0) / (latencies.length - 1)
+      : 0;
+    return {
+      average: received ? latencySum / received : null,
+      jitter,
+      lossPct: total ? (total - received) / total * 100 : 0,
+      total,
+    };
+  }
+
+  function healthState(result, series) {
+    if (!result?.reachable) return "down";
+    const metrics = healthMetrics(series);
+    const thresholds = healthThresholdValues();
+    const degraded = (
+      thresholds.loss_pct != null && metrics.lossPct > thresholds.loss_pct
+    ) || (
+      thresholds.latency_ms != null && metrics.average != null && metrics.average > thresholds.latency_ms
+    ) || (
+      thresholds.jitter_ms != null && metrics.jitter != null && metrics.jitter > thresholds.jitter_ms
+    );
+    return degraded ? "degraded" : "healthy";
+  }
+
+  function createHealthCard(result) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "ping-health-card";
+    const identity = document.createElement("span");
+    identity.className = "ping-health-card-identity";
+    const label = document.createElement("strong");
+    label.textContent = result.label || result.host;
+    const address = document.createElement("small");
+    address.textContent = result.label ? result.host : "Live target";
+    identity.append(label, address);
+    const current = document.createElement("strong");
+    current.className = "ping-health-current";
+    const detail = document.createElement("small");
+    detail.className = "ping-health-detail";
+    const state = document.createElement("span");
+    state.className = "ping-health-card-state";
+    card.append(identity, current, detail, state);
+    return {card, identity, current, detail, state};
+  }
+
+  function updateHealthCard(view) {
+    const metrics = healthMetrics(history.get(view.result.host));
+    const latency = view.result.reachable && Number.isFinite(Number(view.result.latency_ms))
+      ? formatLatency(Number(view.result.latency_ms))
+      : "No reply";
+    view.healthCard.card.dataset.state = view.state;
+    view.healthCard.current.textContent = latency;
+    view.healthCard.detail.textContent = metrics.total
+      ? `${metrics.lossPct.toFixed(1)}% loss · ${metrics.jitter.toFixed(1)} ms jitter`
+      : "Waiting for history";
+    view.healthCard.state.textContent = healthStateLabel(view.state);
+    view.healthCard.card.setAttribute(
+      "aria-label",
+      `${view.result.label || view.result.host}: ${healthStateLabel(view.state)}, ${latency}. Show recent graph.`
+    );
+  }
+
+  function updateHealthSummary() {
+    const counts = {healthy: 0, degraded: 0, down: 0};
+    hostViews.forEach((view, host) => {
+      if (activeHosts.has(host) && counts[view.state] != null) counts[view.state] += 1;
+    });
+    const total = counts.healthy + counts.degraded + counts.down;
+    healthSummary.textContent = total
+      ? `${counts.healthy} healthy · ${counts.degraded} degraded · ${counts.down} down`
+      : "Waiting for results.";
+  }
+
+  function wireGridPreview(view) {
+    const card = view.healthCard.card;
+    card.addEventListener("pointerenter", () => {
+      if (!finePointer.matches) return;
+      clearTimeout(gridPreviewShowTimer);
+      gridPreviewShowTimer = setTimeout(
+        () => showGridPreview(view.result.host, card, false),
+        180
+      );
+    });
+    card.addEventListener("pointerleave", () => {
+      clearTimeout(gridPreviewShowTimer);
+      scheduleGridPreviewHide();
+    });
+    card.addEventListener("focus", () => showGridPreview(view.result.host, card, false));
+    card.addEventListener("blur", () => scheduleGridPreviewHide());
+    card.addEventListener("click", () => {
+      gridPreviewPinned = true;
+      showGridPreview(view.result.host, card, true);
+    });
+  }
+
+  function showGridPreview(host, anchor, pinned = false) {
+    const view = hostViews.get(host);
+    const series = history.get(host);
+    if (!view || !series) return;
+    if (gridPreviewPinned && !pinned && gridPreviewHost !== host) return;
+    cancelGridPreviewHide();
+    if (pinned) gridPreviewPinned = true;
+    gridPreviewHost = host;
+    gridPreviewAnchor = anchor;
+    gridPreviewTitle.textContent = view.result.label || host;
+    gridPreviewAddress.textContent = view.result.label ? host : "";
+    gridPreviewAddress.hidden = !view.result.label;
+    gridPreviewStatus.textContent = healthStateLabel(view.state);
+    gridPreviewStatus.className = `pill${view.state === "healthy" ? " success" : view.state === "degraded" ? " warning" : view.state === "down" ? " error" : ""}`;
+    const statistics = statisticsCell(series);
+    gridPreviewStatistics.replaceChildren(...statistics.childNodes);
+    previewView.host = host;
+    gridPreview.hidden = false;
+    window.requestAnimationFrame(() => {
+      renderHistoryCanvas(previewView, series);
+      positionGridPreview(anchor);
+    });
+  }
+
+  function refreshGridPreview() {
+    if (gridPreview.hidden || !gridPreviewHost || !gridPreviewAnchor) return;
+    showGridPreview(gridPreviewHost, gridPreviewAnchor, gridPreviewPinned);
+  }
+
+  function scheduleGridPreviewHide() {
+    if (gridPreviewPinned) return;
+    clearTimeout(gridPreviewHideTimer);
+    gridPreviewHideTimer = setTimeout(hideGridPreview, 220);
+  }
+
+  function cancelGridPreviewHide() {
+    clearTimeout(gridPreviewHideTimer);
+  }
+
+  function hideGridPreview() {
+    clearTimeout(gridPreviewShowTimer);
+    clearTimeout(gridPreviewHideTimer);
+    gridPreview.hidden = true;
+    gridPreviewHost = "";
+    gridPreviewAnchor = null;
+    gridPreviewPinned = false;
+    chartTooltip.hidden = true;
+  }
+
+  function positionGridPreview(anchor) {
+    if (gridPreview.hidden || !anchor) return;
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      gridPreview.style.left = "";
+      gridPreview.style.top = "";
+      return;
+    }
+    const margin = 12;
+    const anchorBox = anchor.getBoundingClientRect();
+    const previewBox = gridPreview.getBoundingClientRect();
+    let left = anchorBox.right + margin;
+    if (left + previewBox.width > window.innerWidth - margin) {
+      left = anchorBox.left - previewBox.width - margin;
+    }
+    left = Math.max(margin, Math.min(left, window.innerWidth - previewBox.width - margin));
+    const top = Math.max(
+      margin,
+      Math.min(anchorBox.top, window.innerHeight - previewBox.height - margin)
+    );
+    gridPreview.style.left = `${Math.round(left)}px`;
+    gridPreview.style.top = `${Math.round(top)}px`;
+  }
+
+  function openPreviewDetail() {
+    const host = gridPreviewHost;
+    if (!host) return;
+    selectGraph(host);
+    setViewMode("graphs");
+    hideGridPreview();
+    window.requestAnimationFrame(() => {
+      graphViews.get(host)?.card.scrollIntoView({behavior: "smooth", block: "center"});
     });
   }
 
@@ -893,7 +1335,9 @@
     const canvas = view.canvas;
     const cssWidth = Math.floor(view.chart.clientWidth);
     if (cssWidth <= 0) return;
-    const cssHeight = 240;
+    const cssHeight = view.variant === "preview"
+      ? 170
+      : ({small: 110, medium: 170, large: 240}[resultsPanel.dataset.graphSize] || 240);
     const scale = window.devicePixelRatio || 1;
     canvas.width = Math.round(cssWidth * scale);
     canvas.height = Math.round(cssHeight * scale);
@@ -1091,6 +1535,10 @@
       const series = history.get(host);
       if (series) renderHistoryCanvas(view, series);
     });
+    if (!gridPreview.hidden && gridPreviewHost) {
+      const series = history.get(gridPreviewHost);
+      if (series) renderHistoryCanvas(previewView, series);
+    }
     updateHistoryNavigator();
   }
 
@@ -1105,7 +1553,10 @@
   function retainedBounds() {
     let earliest = Infinity;
     let latest = -Infinity;
-    selectedHosts.forEach((host) => {
+    const visibleHosts = resultsPanel.dataset.viewMode === "grid"
+      ? activeHosts
+      : selectedHosts;
+    visibleHosts.forEach((host) => {
       const series = history.get(host);
       if (!series) return;
       const points = historyPoints(series);
@@ -1310,6 +1761,9 @@
     option.dataset.interval = String(profile.interval);
     option.dataset.timeout = String(profile.timeout || 1);
     option.dataset.targets = JSON.stringify(profile.targets);
+    option.dataset.healthThresholds = JSON.stringify(
+      profile.health_thresholds || healthThresholdValues()
+    );
     profileSelect.value = profile.name;
   }
 

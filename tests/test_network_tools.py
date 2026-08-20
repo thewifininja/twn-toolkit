@@ -1122,6 +1122,11 @@ class NetworkToolTests(unittest.TestCase):
                     "name": "Office",
                     "hosts": "Gateway = 192.0.2.1-192.0.2.2\n8.8.8.8",
                     "interval": 5,
+                    "health_thresholds": {
+                        "loss_pct": 3,
+                        "latency_ms": 75,
+                        "jitter_ms": "",
+                    },
                 },
             )
             self.assertEqual(response.status_code, 200)
@@ -1133,7 +1138,23 @@ class NetworkToolTests(unittest.TestCase):
                     {"label": "", "host": "8.8.8.8"},
                 ],
             )
+            self.assertEqual(
+                response.get_json()["profile"]["health_thresholds"],
+                {"loss_pct": 3.0, "latency_ms": 75.0, "jitter_ms": None},
+            )
             self.assertIn(b"Office", client.get("/tools/ping").data)
+
+            invalid_health = client.post(
+                "/tools/ping/profiles",
+                json={
+                    "name": "Invalid health",
+                    "hosts": "192.0.2.1",
+                    "interval": 2,
+                    "health_thresholds": {"loss_pct": 101},
+                },
+            )
+            self.assertEqual(invalid_health.status_code, 400)
+            self.assertIn("between 0 and 100", invalid_health.get_json()["error"])
 
             response = client.post(
                 "/tools/ping/profiles",
