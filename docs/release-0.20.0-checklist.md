@@ -60,7 +60,8 @@
   advisory exceptions: no known vulnerabilities found.
 - [x] Build and validate the exact v0.20.0 upgrade bundle with 404 manifested
   files, the `v0.9.0` minimum upgrade boundary, and a matching SHA-256 digest.
-- [ ] Pass release-preparation PR CI, squash-merge it, and pass merged-main CI.
+- [x] Pass release-preparation PR `#138` CI run `32360830325`, squash-merge it
+  as commit `a67544f`, and pass merged-main CI run `32361029954`.
 
 ## Publication gate
 
