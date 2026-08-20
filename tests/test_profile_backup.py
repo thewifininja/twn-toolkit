@@ -55,6 +55,7 @@ class ProfileBackupTests(unittest.TestCase):
                 "ntp_host_profiles",
                 "traceroute_host_profiles",
                 "wol_target_profiles",
+                "lldp_personas",
                 "ssh_commandlets",
                 "automation_definitions",
                 "dashboard_layout",

@@ -188,6 +188,9 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.update_snmp_interface_monitor_session",
         "tools.wake_on_lan",
         "tools.delete_wol_profile",
+        "tools.delete_lldp_persona",
+        "tools.duplicate_lldp_persona",
+        "tools.stop_lldp_session",
         "tools.duplicate_dns_profile",
         "tools.duplicate_ntp_profile",
         "tools.duplicate_ping_profile",
@@ -225,6 +228,7 @@ AUDIT_CONDITIONAL_ENDPOINTS = frozenset(
         "rename_objects",
         "run_task",
         "tools.packet_replay",
+        "tools.lldp_lab",
         "tools.ping_activity",
     }
 )

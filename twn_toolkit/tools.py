@@ -9,6 +9,7 @@ from .dhcp_routes import register_dhcp_routes
 from .dns_routes import register_dns_routes
 from .ip_info_routes import register_ip_info_routes
 from .iperf_routes import register_iperf_routes
+from .lldp_routes import register_lldp_routes
 from .multicast_routes import register_multicast_routes
 from .ntp_routes import register_ntp_routes
 from .packet_replay_routes import register_packet_replay_routes
@@ -36,6 +37,7 @@ register_dhcp_routes(tools_bp)
 register_dns_routes(tools_bp)
 register_ip_info_routes(tools_bp)
 register_iperf_routes(tools_bp)
+register_lldp_routes(tools_bp)
 register_multicast_routes(tools_bp)
 register_ntp_routes(tools_bp)
 register_packet_capture_routes(tools_bp)

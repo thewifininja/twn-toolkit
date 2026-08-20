@@ -49,6 +49,7 @@ CAPTURE_POLICIES: dict[str, InvestigationCapturePolicy] = {
     "tools.speed_test": _policy("finite", "bounded-results", "Browser throughput results are finite observations."),
     "tools.iperf3": _policy("hybrid", "bounded-results", "Client tests are finite while managed servers have a lifecycle."),
     "tools.multicast": _policy("finite", "bounded-results", "Each authorized test has a bounded result."),
+    "tools.lldp_lab": _policy("hybrid", "json", "Neighbor snapshots are explicit evidence while bounded identity emission has lifecycle boundaries."),
     "tools.certificate_inspector": _policy("finite", "bounded-results", "TLS identity, trust, and chain findings are reportable."),
     "tools.certificate_automation": _policy("action", "status-events", "Issuance and installation actions are consequential workflow boundaries."),
     "tools.snmp_test": _policy("hybrid", "csv", "OID polls are finite while interface monitors are persistent."),

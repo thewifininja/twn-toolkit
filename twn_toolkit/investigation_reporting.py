@@ -703,6 +703,41 @@ def _packet_replay_presentation(event: dict[str, Any]) -> ReportPresentation:
     }
 
 
+def _lldp_presentation(event: dict[str, Any]) -> ReportPresentation:
+    parameters = _mapping(event.get("parameters"))
+    metrics = _mapping(event.get("metrics"))
+    details = _mapping(event.get("details"))
+    targets = _mapping(event.get("targets"))
+    facts = []
+    _fact(facts, "Interface", targets.get("interface"))
+    _fact(facts, "Persona", parameters.get("persona"))
+    _fact(facts, "Preset", parameters.get("preset"))
+    _fact(facts, "Interval", _unit(parameters.get("interval_seconds"), "seconds"))
+    _fact(facts, "Duration limit", _unit(parameters.get("duration_minutes"), "minutes"))
+    _fact(facts, "Frames sent", metrics.get("frames_sent"))
+    _fact(facts, "Neighbors", metrics.get("neighbor_count"))
+    rows = []
+    for raw_neighbor in _sequence(details.get("neighbors")):
+        neighbor = _mapping(raw_neighbor)
+        rows.append(
+            [
+                _text(neighbor.get("interface")),
+                _text(neighbor.get("system_name") or neighbor.get("chassis_id")),
+                _text(neighbor.get("port_description") or neighbor.get("port_id")),
+                ", ".join(_text(value) for value in _sequence(neighbor.get("management_addresses"))),
+                ", ".join(_text(value) for value in _sequence(neighbor.get("capabilities"))),
+            ]
+        )
+    return {
+        "facts": facts,
+        "detail": _table(
+            ["Interface", "Neighbor", "Port", "Management", "Capabilities"], rows
+        )
+        if rows
+        else None,
+    }
+
+
 def _packet_capture_presentation(event: dict[str, Any]) -> ReportPresentation:
     parameters = _mapping(event.get("parameters"))
     metrics = _mapping(event.get("metrics"))
@@ -1172,6 +1207,7 @@ _PRESENTATION_BUILDERS: dict[str, PresentationBuilder] = {
     "tools.syslog_receiver": _syslog_presentation,
     "tools.api_request": _api_presentation,
     "tools.packet_replay": _packet_replay_presentation,
+    "tools.lldp_lab": _lldp_presentation,
     "tools.packet_capture": _packet_capture_presentation,
     "tools.multi_ssh": _ssh_presentation,
     "tools.remote_terminal": _remote_terminal_presentation,
