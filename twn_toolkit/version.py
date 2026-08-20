@@ -1,6 +1,58 @@
-APP_VERSION = "0.19.4"
+APP_VERSION = "0.20.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.20.0",
+        "date": "2026-08-20",
+        "title": "Raspberry Pi networking and fleet Ping visibility",
+        "summary": (
+            "Turns Raspberry Pi installations into safely managed wireless "
+            "edge appliances and adds denser, configurable Ping views for "
+            "monitoring large target groups."
+        ),
+        "groups": (
+            {
+                "title": "Raspberry Pi wireless network roles",
+                "items": (
+                    "Detects Raspberry Pi hardware through its device-tree identity and adds a dedicated System Settings workspace only on supported hosts.",
+                    "Configures NAT access points with private DHCP/DNS service, untagged or 802.1Q VLAN-backed Layer-2 bridges, and Wi-Fi client connections through NetworkManager.",
+                    "Exposes adapter, Ethernet uplink, regulatory country, SSID, band, channel, and WPA2/WPA3 Personal settings while retaining the parent Ethernet management path for tagged bridges.",
+                ),
+            },
+            {
+                "title": "Enterprise Wi-Fi client support",
+                "items": (
+                    "Joins PEAP-MSCHAPv2 networks with encrypted write-only credentials and server-certificate validation through the system trust store or an uploaded CA certificate.",
+                    "Allows an explicit, risk-labeled choice to disable PEAP server validation when a deployment cannot yet provide a usable certificate.",
+                    "Joins EAP-TLS networks with validated PKCS#12 material or a matching client certificate and encrypted private key; enterprise authentication remains client-only and is never offered for hosted access points.",
+                ),
+            },
+            {
+                "title": "Safe privileged application and recovery",
+                "items": (
+                    "Routes network changes through a root-owned, request-validating NetworkManager broker that accepts only the configured toolkit service account over an owner-only Unix socket.",
+                    "Creates a NetworkManager checkpoint before Apply or Disable and automatically restores prior profiles, radio state, country, and active connections unless the operator confirms the change within two minutes.",
+                    "Keeps recovery independent of the browser and web process, records administrative audit events, and preserves Raspberry Pi network state in complete recovery points while excluding it from portable configuration backups.",
+                ),
+            },
+            {
+                "title": "Dense and portable Ping results",
+                "items": (
+                    "Adds small, medium, and large response-time graphs plus a compact status grid that classifies every target as healthy, degraded, or down.",
+                    "Defines degradation with editable rolling one-minute packet-loss, average-latency, and jitter thresholds stored with Ping profiles and live sessions; a failed latest probe is always shown as down.",
+                    "Previews recent history from grid targets on hover, keyboard focus, or touch and opens a synchronized standalone results window while configuration remains in the main workspace.",
+                ),
+            },
+            {
+                "title": "Upgrade and compatibility boundary",
+                "items": (
+                    "Supports a direct verified upgrade from every release accepted by the standard v0.9.0 minimum bundle boundary; no stepped release is required.",
+                    "Requires existing Raspberry Pi service installations to run sudo ./twn service install once after upgrade so the root-owned networking broker matches the new application; other platforms keep their existing service layout.",
+                    "Adds no Python dependency or database migration and preserves existing Ping profiles through backward-compatible default health thresholds.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.19.4",
         "date": "2026-08-17",
