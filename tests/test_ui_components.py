@@ -641,7 +641,8 @@ class UIComponentTests(unittest.TestCase):
 
         self.assertIn(".ping-results-workspace {", stylesheet)
         self.assertIn("grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);", stylesheet)
-        self.assertIn('.ping-host-option[data-state="up"] .ping-host-state-dot {', stylesheet)
+        self.assertIn('.ping-host-option[data-state="healthy"] .ping-host-state-dot {', stylesheet)
+        self.assertIn('.ping-host-option[data-state="degraded"] .ping-host-state-dot {', stylesheet)
         self.assertIn('.ping-host-option[data-state="down"] .ping-host-state-dot {', stylesheet)
         self.assertIn(".ping-graph-card {", stylesheet)
         self.assertIn(".ping-host-statistics .ping-statistics span {", stylesheet)
@@ -672,6 +673,17 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("new ResizeObserver((entries) => {", script)
         self.assertIn("const cssWidth = Math.floor(view.chart.clientWidth);", script)
         self.assertIn("if (cssWidth <= 0) return;", script)
+        self.assertIn('data-view-mode="graphs"', (TEMPLATE_ROOT / "tools" / "_ping_results.html").read_text(encoding="utf-8"))
+        self.assertIn('data-ping-size="small"', (TEMPLATE_ROOT / "tools" / "_ping_results.html").read_text(encoding="utf-8"))
+        self.assertIn('id="ping-health-grid"', (TEMPLATE_ROOT / "tools" / "_ping_results.html").read_text(encoding="utf-8"))
+        self.assertIn('id="ping-grid-preview"', (TEMPLATE_ROOT / "tools" / "_ping_results.html").read_text(encoding="utf-8"))
+        self.assertIn("function healthState(result, series)", script)
+        self.assertIn("function showGridPreview(host, anchor, pinned = false)", script)
+        self.assertIn("const cssHeight = view.variant === \"preview\"", script)
+        self.assertIn("{small: 110, medium: 170, large: 240}", script)
+        self.assertIn('.ping-health-card[data-state="degraded"] {', stylesheet)
+        self.assertIn(".ping-grid-preview {", stylesheet)
+        self.assertIn(".ping-popout-page {", stylesheet)
 
     def test_live_tools_use_a_low_profile_footer_dock(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

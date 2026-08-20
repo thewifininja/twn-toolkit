@@ -120,7 +120,11 @@ The sidebar and Network Tools page use the same functional organization.
   and raises the target limit from 100 to 250. Without it, the standard system
   `ping` compatibility engine remains available. Ping exposes separate
   round-interval and per-target probe-timeout controls; accelerated mode accepts
-  sub-second timeouts for dense groups of known-local targets.
+  sub-second timeouts for dense groups of known-local targets. Results can use
+  small, medium, or large graphs, or a compact health grid with configurable
+  loss, latency, and jitter thresholds. Grid targets expose a recent-history
+  graph on hover, focus, or tap, and the complete results workspace can be
+  opened in a separate resizable window.
 #### Services & Protocols
 
 - **Bulk SSH** — build prompt-aware concurrent runs in one spreadsheet-style

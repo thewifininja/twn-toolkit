@@ -3407,7 +3407,13 @@ class AutomationUiRegressionTests(unittest.TestCase):
     def test_live_ping_uses_a_target_snapshot_and_explicit_update_control(self) -> None:
         root = Path(__file__).resolve().parents[1] / "twn_toolkit"
         script = (root / "static" / "ping-tool.js").read_text(encoding="utf-8")
-        template = (root / "templates" / "tools" / "ping.html").read_text(encoding="utf-8")
+        template = (root / "templates" / "tools" / "ping.html").read_text(
+            encoding="utf-8"
+        )
+        results_template = (
+            root / "templates" / "tools" / "_ping_results.html"
+        ).read_text(encoding="utf-8")
+        composed_template = template + results_template
         self.assertIn("form.dataset.sessionStartUrl", script)
         self.assertIn("activeSession.targets_url", script)
         self.assertIn('id="ping-update-targets"', template)
@@ -3421,9 +3427,9 @@ class AutomationUiRegressionTests(unittest.TestCase):
         self.assertNotIn('navigator.sendBeacon(form.dataset.activityUrl', script)
         self.assertIn("const historySampleBudget = 500_000", script)
         self.assertIn("trimHistoryToBudget(series)", script)
-        self.assertIn('id="ping-host-list"', template)
-        self.assertIn('id="ping-graph-grid"', template)
-        self.assertIn('aria-multiselectable="true"', template)
+        self.assertIn('id="ping-host-list"', composed_template)
+        self.assertIn('id="ping-graph-grid"', composed_template)
+        self.assertIn('aria-multiselectable="true"', composed_template)
         self.assertIn("const selectedHosts = new Set()", script)
         self.assertIn("const graphViews = new Map()", script)
         self.assertIn("graphViews.forEach", script)

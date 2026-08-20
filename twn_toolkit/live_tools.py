@@ -40,6 +40,7 @@ class LiveToolStore:
         targets: list[dict[str, str]],
         interval: int,
         timeout: float,
+        health_thresholds: dict[str, float | None] | None = None,
         investigation_id: str = "",
     ) -> dict[str, Any]:
         now = time.time()
@@ -48,6 +49,8 @@ class LiveToolStore:
             "interval": interval,
             "timeout": timeout,
         }
+        if health_thresholds is not None:
+            config["health_thresholds"] = health_thresholds
         with self._connect() as connection:
             self._check_session_limit(connection, user_id)
             session_id = secrets.token_hex(12)
@@ -197,6 +200,7 @@ class LiveToolStore:
         targets: list[dict[str, str]],
         interval: int,
         timeout: float,
+        health_thresholds: dict[str, float | None] | None = None,
     ) -> dict[str, Any] | None:
         now = time.time()
         with self._connect() as connection:
@@ -215,6 +219,8 @@ class LiveToolStore:
             config["targets"] = targets
             config["interval"] = interval
             config["timeout"] = timeout
+            if health_thresholds is not None:
+                config["health_thresholds"] = health_thresholds
             revision = int(row["revision"]) + 1
             connection.execute(
                 """
@@ -1527,6 +1533,9 @@ def public_live_session(
         )
         public["targets_url"] = url_for(
             "tools.update_ping_session_targets", session_id=session_id
+        )
+        public["popout_url"] = url_for(
+            "tools.ping_session_popout", session_id=session_id
         )
     public["stop_url"] = url_for(
         "tools.stop_live_tool_session", session_id=session_id

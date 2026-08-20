@@ -1,0 +1,118 @@
+<section class="panel tool-panel" id="ping-results" data-view-mode="graphs" data-graph-size="large" hidden>
+  <div class="ping-presentation-toolbar">
+    <div class="ping-presentation-control">
+      <span class="eyebrow">Presentation</span>
+      <div class="ping-display-toggle" role="group" aria-label="Ping results view">
+        <button class="secondary" type="button" data-ping-view="graphs" aria-pressed="true">Graphs</button>
+        <button class="secondary" type="button" data-ping-view="grid" aria-pressed="false">Status grid</button>
+      </div>
+    </div>
+    <div class="ping-presentation-control ping-size-control">
+      <span class="eyebrow">Graph height</span>
+      <div class="ping-display-toggle" role="group" aria-label="Ping graph height">
+        <button class="secondary" type="button" data-ping-size="small" aria-pressed="false">Small</button>
+        <button class="secondary" type="button" data-ping-size="medium" aria-pressed="false">Medium</button>
+        <button class="secondary" type="button" data-ping-size="large" aria-pressed="true">Large</button>
+      </div>
+    </div>
+    {% if not ping_popout %}<button class="secondary ping-popout-action" id="ping-popout" type="button">Pop out results</button>{% endif %}
+  </div>
+  <div class="ping-history-controls">
+    <label>Visible time range
+      <select id="ping-history-range">
+        <option value="60000">1 minute</option>
+        <option value="120000">2 minutes</option>
+        <option value="300000">5 minutes</option>
+      </select>
+    </label>
+    <label class="check">
+      <input id="ping-follow-live" type="checkbox" checked>
+      Follow newest samples
+    </label>
+    <button class="secondary" id="ping-export-history" type="button">Export history CSV</button>
+    <details class="ping-history-navigation">
+      <summary>
+        <span>History Navigation</span>
+        <small id="ping-history-navigation-summary">Live</small>
+      </summary>
+      <div class="ping-history-navigation-content">
+        <label class="ping-history-navigator">History position
+          <input id="ping-history-position" type="range" min="0" max="1000" value="1000" disabled>
+          <span class="ping-history-scale"><span>Oldest</span><span>Newest</span></span>
+        </label>
+        <div class="ping-history-time-nav">
+          <button class="secondary" id="ping-history-older" type="button" disabled>← Older window</button>
+          <label>View ending at
+            <input id="ping-history-end" type="datetime-local" step="1" disabled>
+          </label>
+          <button class="secondary" id="ping-history-newer" type="button" disabled>Newer window →</button>
+        </div>
+      </div>
+    </details>
+  </div>
+  <div class="ping-results-workspace">
+    <aside class="ping-host-browser" aria-label="Ping targets">
+      <div class="ping-host-browser-head">
+        <div>
+          <span class="eyebrow">Targets</span>
+          <strong id="ping-host-count">0 hosts</strong>
+        </div>
+        <small id="ping-selection-count">0 graphed</small>
+      </div>
+      <label class="ping-host-search">Find a host
+        <input id="ping-host-filter" type="search" placeholder="Name, address, or status…" autocomplete="off">
+      </label>
+      <label class="ping-host-status-filter">Show
+        <select id="ping-host-status-filter">
+          <option value="all">All targets</option>
+          <option value="down">Down targets</option>
+          <option value="degraded">Degraded targets</option>
+          <option value="healthy">Healthy targets</option>
+          <option value="selected">Selected graphs</option>
+        </select>
+      </label>
+      <div class="ping-host-list" id="ping-host-list" role="listbox" aria-label="Select hosts to graph" aria-multiselectable="true"></div>
+      <small class="field-note">Pinging and history collection continue for every target. Graph only the hosts useful to you, or select as many as you need.</small>
+    </aside>
+    <div class="ping-graph-workspace">
+      <div class="ping-graph-workspace-head">
+        <div>
+          <span class="eyebrow">Selected history</span>
+          <h2>Response-time graphs</h2>
+        </div>
+        <small id="ping-graph-summary">Select a host from the list.</small>
+      </div>
+      <div class="empty-state ping-graph-empty" id="ping-graph-empty">
+        <strong>No graphs selected</strong>
+        <span>Select a host on the left while all targets continue to be monitored.</span>
+      </div>
+      <div class="ping-graph-grid" id="ping-graph-grid"></div>
+    </div>
+    <div class="ping-health-workspace">
+      <div class="ping-health-workspace-head">
+        <div>
+          <span class="eyebrow">All targets</span>
+          <h2>Live health grid</h2>
+        </div>
+        <small id="ping-health-summary">Waiting for results.</small>
+      </div>
+      <div class="ping-health-grid" id="ping-health-grid"></div>
+    </div>
+  </div>
+</section>
+<aside class="ping-grid-preview" id="ping-grid-preview" aria-live="polite" hidden>
+  <header>
+    <div>
+      <span class="eyebrow">Recent history</span>
+      <strong id="ping-grid-preview-title">Target</strong>
+      <code id="ping-grid-preview-address"></code>
+    </div>
+    <div class="ping-grid-preview-actions">
+      <span class="pill" id="ping-grid-preview-status">Waiting</span>
+      <button class="graph-close-button" id="ping-grid-preview-close" type="button" aria-label="Close graph preview"></button>
+    </div>
+  </header>
+  <div class="ping-host-statistics" id="ping-grid-preview-statistics"></div>
+  <div class="ping-history-canvas-wrap"><canvas class="ping-history-canvas" id="ping-grid-preview-canvas" role="img" aria-label="Recent latency preview"></canvas></div>
+  <button id="ping-grid-preview-detail" type="button">Open detailed graph</button>
+</aside>
