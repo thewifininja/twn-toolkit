@@ -19,6 +19,16 @@ from typing import Sequence
 
 SYSTEMD_UNIT_NAME = "twn-toolkit.service"
 SYSTEMD_UNIT_PATH = Path("/etc/systemd/system") / SYSTEMD_UNIT_NAME
+PI_NETWORK_BROKER_UNIT_NAME = "twn-toolkit-pi-network-broker.service"
+PI_NETWORK_BROKER_UNIT_PATH = (
+    Path("/etc/systemd/system") / PI_NETWORK_BROKER_UNIT_NAME
+)
+PI_NETWORK_BROKER_SOURCE = Path(__file__).resolve().parent / "pi_network_broker.py"
+PI_NETWORK_BROKER_HELPER_PATH = Path(
+    "/usr/local/libexec/twn-toolkit-pi-network-broker"
+)
+PI_NETWORK_BROKER_SOCKET = Path("/run/twn-toolkit/pi-network-broker.sock")
+PI_NETWORK_BROKER_STATE_DIRECTORY = Path("/etc/twn-toolkit/pi-networking")
 LAUNCHD_LABEL = "com.thewifininja.toolkit"
 LAUNCHD_PLIST_PATH = Path("/Library/LaunchDaemons") / f"{LAUNCHD_LABEL}.plist"
 LAUNCHD_NETWORK_BROKER_LABEL = f"{LAUNCHD_LABEL}.network-broker"
@@ -157,6 +167,75 @@ def render_systemd_unit(
         "[Install]\n"
         "WantedBy=multi-user.target\n"
     )
+
+
+def raspberry_pi_hardware() -> bool:
+    try:
+        compatible = (
+            Path("/proc/device-tree/compatible")
+            .read_bytes()
+            .replace(b"\0", b" ")
+            .decode("utf-8", "replace")
+        )
+    except OSError:
+        return False
+    return any(
+        value.startswith("raspberrypi,")
+        for value in compatible.casefold().split()
+    )
+
+
+def render_pi_network_broker_unit(root: Path, user: ServiceUser) -> str:
+    return (
+        "[Unit]\n"
+        "Description=The WiFi Ninja's Toolkit Raspberry Pi network broker\n"
+        "Requires=NetworkManager.service\n"
+        "After=NetworkManager.service\n\n"
+        "[Service]\n"
+        "Type=simple\n"
+        "User=root\n"
+        "Group=root\n"
+        f"ExecStart={_unit_quote(str(PI_NETWORK_BROKER_HELPER_PATH))} "
+        f"--socket {_unit_quote(str(PI_NETWORK_BROKER_SOCKET))} "
+        f"--uid {user.uid} --root {_unit_quote(str(root))}\n"
+        "Restart=on-failure\n"
+        "RestartSec=2\n"
+        "UMask=0077\n"
+        "RuntimeDirectory=twn-toolkit\n"
+        "RuntimeDirectoryMode=0711\n"
+        "NoNewPrivileges=true\n"
+        "PrivateTmp=true\n"
+        "ProtectSystem=strict\n"
+        "ProtectHome=read-only\n"
+        "ProtectControlGroups=true\n"
+        "ProtectKernelModules=true\n"
+        "ProtectKernelTunables=true\n"
+        "RestrictRealtime=true\n"
+        "LockPersonality=true\n"
+        f"ReadWritePaths={_unit_path(str(Path('/etc/NetworkManager/system-connections')))}\n"
+        f"ReadWritePaths={_unit_path(str(PI_NETWORK_BROKER_STATE_DIRECTORY))}\n"
+        f"ReadWritePaths={_unit_path(str(PI_NETWORK_BROKER_SOCKET.parent))}\n"
+        "ReadWritePaths=-/boot/firmware\n"
+        "ReadWritePaths=-/etc/default/crda\n"
+        "ReadWritePaths=-/var/lib/systemd/rfkill\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+    )
+
+
+def _remove_pi_network_broker() -> None:
+    if (
+        PI_NETWORK_BROKER_UNIT_PATH.exists()
+        or PI_NETWORK_BROKER_HELPER_PATH.exists()
+        or PI_NETWORK_BROKER_SOCKET.exists()
+    ):
+        _run(
+            ("systemctl", "disable", "--now", PI_NETWORK_BROKER_UNIT_NAME),
+            check=False,
+        )
+    PI_NETWORK_BROKER_UNIT_PATH.unlink(missing_ok=True)
+    PI_NETWORK_BROKER_HELPER_PATH.unlink(missing_ok=True)
+    PI_NETWORK_BROKER_SOCKET.unlink(missing_ok=True)
 
 
 def _launchd_job_label(role: str) -> str:
@@ -666,6 +745,14 @@ def service_runtime_status(
     if detected_system == "Linux":
         definition_path = str(SYSTEMD_UNIT_PATH)
         installed = SYSTEMD_UNIT_PATH.is_file()
+        network_broker_installed = (
+            PI_NETWORK_BROKER_UNIT_PATH.is_file()
+            and PI_NETWORK_BROKER_HELPER_PATH.is_file()
+        )
+        try:
+            network_broker_socket_ready = PI_NETWORK_BROKER_SOCKET.exists()
+        except OSError:
+            network_broker_socket_ready = False
         if installed and shutil.which("systemctl"):
             enabled_result = _run_quiet_bounded(
                 ("systemctl", "is-enabled", SYSTEMD_UNIT_NAME),
@@ -869,10 +956,42 @@ def install_service(
             network_capabilities=network_capabilities,
         ).encode()
         _write_system_file(SYSTEMD_UNIT_PATH, unit)
+        if raspberry_pi_hardware():
+            if not PI_NETWORK_BROKER_SOURCE.is_file():
+                raise ServiceError(
+                    "The Raspberry Pi network broker is missing from this release bundle."
+                )
+            PI_NETWORK_BROKER_HELPER_PATH.parent.mkdir(
+                parents=True, exist_ok=True
+            )
+            _write_system_file(
+                PI_NETWORK_BROKER_HELPER_PATH,
+                PI_NETWORK_BROKER_SOURCE.read_bytes(),
+                mode=0o755,
+            )
+            os.chown(PI_NETWORK_BROKER_HELPER_PATH, 0, 0)
+            PI_NETWORK_BROKER_STATE_DIRECTORY.mkdir(
+                parents=True, mode=0o700, exist_ok=True
+            )
+            os.chown(PI_NETWORK_BROKER_STATE_DIRECTORY, 0, 0)
+            os.chmod(PI_NETWORK_BROKER_STATE_DIRECTORY, 0o700)
+            _write_system_file(
+                PI_NETWORK_BROKER_UNIT_PATH,
+                render_pi_network_broker_unit(root, user).encode(),
+            )
+        else:
+            _remove_pi_network_broker()
         _run(("systemctl", "daemon-reload"))
         _run(("systemctl", "enable", SYSTEMD_UNIT_NAME))
+        if raspberry_pi_hardware():
+            _run(("systemctl", "enable", PI_NETWORK_BROKER_UNIT_NAME))
+            _run(("systemctl", "restart", PI_NETWORK_BROKER_UNIT_NAME))
         _run(("systemctl", "restart", SYSTEMD_UNIT_NAME))
         print(f"Installed and started {SYSTEMD_UNIT_NAME} as {user.name}:{user.group}.")
+        if raspberry_pi_hardware():
+            print(
+                "Installed the root-owned, UID-restricted Raspberry Pi NetworkManager broker."
+            )
         if network_capabilities:
             print("Enabled scoped Linux network capabilities for capture, replay, and privileged ports.")
         else:
@@ -985,6 +1104,7 @@ def install_service(
 def uninstall_service(*, system: str) -> None:
     _require_root()
     if system == "Linux":
+        _remove_pi_network_broker()
         _run(("systemctl", "disable", "--now", SYSTEMD_UNIT_NAME), check=False)
         _run(("systemctl", "reset-failed", SYSTEMD_UNIT_NAME), check=False)
         SYSTEMD_UNIT_PATH.unlink(missing_ok=True)
@@ -1055,6 +1175,19 @@ def service_status(*, system: str) -> int:
         active = _run(("systemctl", "is-active", SYSTEMD_UNIT_NAME), check=False).returncode == 0
         print(f"Autostart service: {'enabled' if enabled else 'disabled'}, {'active' if active else 'inactive'}")
         print(f"Unit: {SYSTEMD_UNIT_PATH}")
+        if PI_NETWORK_BROKER_UNIT_PATH.exists():
+            broker_active = (
+                _run(
+                    ("systemctl", "is-active", PI_NETWORK_BROKER_UNIT_NAME),
+                    check=False,
+                ).returncode
+                == 0
+            )
+            print(
+                "Raspberry Pi network broker: "
+                + ("active" if broker_active else "inactive")
+            )
+            return 0 if enabled and active and broker_active else 1
         return 0 if enabled and active else 1
     if not LAUNCHD_PLIST_PATH.exists():
         print(f"Autostart service is not installed ({LAUNCHD_PLIST_PATH}).")
@@ -1080,8 +1213,12 @@ def service_status(*, system: str) -> int:
 
 def service_logs(root: Path, *, system: str) -> int:
     if system == "Linux":
+        command = ["journalctl", "-u", SYSTEMD_UNIT_NAME]
+        if PI_NETWORK_BROKER_UNIT_PATH.exists():
+            command.extend(("-u", PI_NETWORK_BROKER_UNIT_NAME))
+        command.extend(("-n", "100", "--no-pager"))
         return _run(
-            ("journalctl", "-u", SYSTEMD_UNIT_NAME, "-n", "100", "--no-pager"),
+            tuple(command),
             check=False,
         ).returncode
     found = False

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import threading
@@ -49,6 +50,17 @@ from .tls_tools import certificate_status, regenerate_self_signed_certificate
 from .tool_catalog import TOOL_BY_ID, grouped_access_tools
 from .audit import AuditStore, annotate_audit_event, audit_reference
 from .operational import OperationalSettingsStore
+from .raspberry_pi_networking import (
+    MAX_CERTIFICATE_BYTES,
+    PI_NETWORK_ROLLBACK_SECONDS,
+    PiNetworkBrokerError,
+    RaspberryPiNetworkStore,
+    raspberry_pi_identity,
+    raspberry_pi_network_status,
+    request_pi_network_broker,
+    validate_pi_network_settings,
+    validate_uploaded_tls_material,
+)
 from .smtp_tools import (
     SMTPSettingsStore,
     parse_email_recipients,
@@ -347,6 +359,9 @@ def register_admin_routes(
     upgrade_manager = UpgradeManager(project_root, Path(app.instance_path), APP_VERSION)
     smtp_store = SMTPSettingsStore(app.instance_path, app.config["SECRET_KEY"])
     time_store = TimeSettingsStore(app.instance_path)
+    pi_network_store = RaspberryPiNetworkStore(
+        app.instance_path, str(app.config["SECRET_KEY"])
+    )
     configuration_import_store = ConfigurationImportStore(
         app.instance_path, str(app.config["SECRET_KEY"])
     )
@@ -435,9 +450,13 @@ def register_admin_routes(
     @app.get("/settings")
     def settings():
         requested_section = str(request.args.get("section", "system")).strip().lower()
+        pi_identity = raspberry_pi_identity()
+        available_sections = {"system", "email", "operations", "accounts"}
+        if pi_identity["is_raspberry_pi"]:
+            available_sections.add("raspberry-pi")
         settings_section = (
             requested_section
-            if requested_section in {"system", "email", "operations", "accounts"}
+            if requested_section in available_sections
             else "system"
         )
         if not g.current_user.get("is_admin"):
@@ -448,6 +467,20 @@ def register_admin_routes(
             else [g.current_user]
         )
         active_server_settings = server_settings_store.get()
+        pi_network_status = raspberry_pi_network_status()
+        local_pending = pi_network_store.pending()
+        if (
+            local_pending
+            and pi_network_status.get("broker_available")
+            and not pi_network_status.get("pending")
+        ):
+            _cleanup_pi_network_material(
+                pi_network_store,
+                dict(local_pending.get("material") or {}),
+                keep=dict(pi_network_store.get().get("material") or {}),
+            )
+            pi_network_store.clear_pending()
+            local_pending = {}
         automation_storage = automation_store.storage_stats()
         automation_storage["database_size"] = _format_bytes(
             int(automation_storage["database_bytes"])
@@ -482,7 +515,378 @@ def register_admin_routes(
             time_settings=time_store.snapshot(),
             timezone_choices=COMMON_TIMEZONES,
             settings_section=settings_section,
+            pi_network_identity=pi_identity,
+            pi_network_status=pi_network_status,
+            pi_network_settings=pi_network_store.get(),
+            pi_network_pending=local_pending,
         )
+
+    def _pi_admin_required() -> Response | None:
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        if not raspberry_pi_identity()["is_raspberry_pi"]:
+            return Response("Raspberry Pi hardware is required.", status=404)
+        return None
+
+    def _pi_settings_redirect(anchor: str = "raspberry-pi-networking"):
+        return redirect(
+            url_for("settings", section="raspberry-pi", _anchor=anchor)
+        )
+
+    def _uploaded_pi_material(name: str) -> bytes:
+        upload = request.files.get(name)
+        if not upload or not upload.filename:
+            return b""
+        data = upload.stream.read(MAX_CERTIFICATE_BYTES + 1)
+        if len(data) > MAX_CERTIFICATE_BYTES:
+            raise ToolInputError(
+                "Each uploaded certificate or key file must be 2 MiB or smaller."
+            )
+        return data
+
+    def _existing_pi_material(
+        store: RaspberryPiNetworkStore, material: dict[str, str], key: str
+    ) -> bytes:
+        raw_path = str(material.get(key, ""))
+        if not raw_path:
+            return b""
+        try:
+            path = Path(raw_path).resolve(strict=True)
+            path.relative_to(store.material_root.resolve())
+            data = path.read_bytes()
+        except (OSError, ValueError):
+            return b""
+        return data if len(data) <= MAX_CERTIFICATE_BYTES else b""
+
+    def _cleanup_pi_network_material(
+        store: RaspberryPiNetworkStore,
+        material: dict[str, str],
+        *,
+        keep: dict[str, str] | None = None,
+    ) -> None:
+        keep_paths = {
+            str(Path(path).resolve())
+            for path in (keep or {}).values()
+            if path
+        }
+        for raw_path in material.values():
+            try:
+                path = Path(str(raw_path)).resolve()
+                parent = path.parent
+                parent.relative_to(store.material_root.resolve())
+            except (OSError, ValueError):
+                continue
+            if str(path) not in keep_paths:
+                path.unlink(missing_ok=True)
+                try:
+                    parent.rmdir()
+                except OSError:
+                    pass
+
+    @app.post("/settings/raspberry-pi/network/apply")
+    def apply_raspberry_pi_networking():
+        denied = _pi_admin_required()
+        if denied:
+            return denied
+        current = pi_network_store.get(include_secrets=True)
+        values = {
+            "mode": request.form.get("mode", ""),
+            "wifi_interface": request.form.get("wifi_interface", ""),
+            "uplink_interface": request.form.get("uplink_interface", ""),
+            "country": request.form.get("country", ""),
+            "ssid": request.form.get("ssid", ""),
+            "hidden": request.form.get("hidden") == "on",
+            "autoconnect": request.form.get("autoconnect") == "on",
+            "security": request.form.get("security", ""),
+            "passphrase": request.form.get("passphrase", ""),
+            "has_passphrase": bool(current.get("passphrase")),
+            "band": request.form.get("band", "auto"),
+            "channel": request.form.get("channel", "0"),
+            "client_isolation": request.form.get("client_isolation") == "on",
+            "vlan_id": request.form.get("vlan_id", ""),
+            "network": request.form.get("network", ""),
+            "gateway": request.form.get("gateway", ""),
+            "dhcp_start": request.form.get("dhcp_start", ""),
+            "dhcp_end": request.form.get("dhcp_end", ""),
+            "lease_time": request.form.get("lease_time", "3600"),
+            "identity": request.form.get("identity", ""),
+            "anonymous_identity": request.form.get("anonymous_identity", ""),
+            "password": request.form.get("password", ""),
+            "has_password": bool(current.get("password")),
+            "verify_server_certificate": (
+                request.form.get("verify_server_certificate") == "on"
+            ),
+            "ca_source": request.form.get("ca_source", "system"),
+            "server_domain": request.form.get("server_domain", ""),
+            "tls_material_format": request.form.get(
+                "tls_material_format", "bundle"
+            ),
+            "private_key_password": request.form.get(
+                "private_key_password", ""
+            ),
+        }
+        staged_material: dict[str, str] = {}
+        try:
+            settings = validate_pi_network_settings(values)
+            for key in ("passphrase", "password"):
+                if key in settings and not settings[key]:
+                    settings[key] = str(current.get(key, ""))
+
+            ca_data = _uploaded_pi_material("ca_certificate")
+            client_data = _uploaded_pi_material("client_certificate")
+            key_data = _uploaded_pi_material("private_key")
+            bundle_data = _uploaded_pi_material("identity_bundle")
+            new_files: dict[str, bytes] = {}
+            material: dict[str, str] = {}
+            certificate_summary: dict[str, Any] = {}
+            current_material = dict(current.get("material") or {})
+            security = settings.get("security")
+
+            if security in {"peap", "eap-tls"} and settings.get("ca_source") == "upload":
+                if ca_data:
+                    new_files["ca"] = ca_data
+                elif current_material.get("ca"):
+                    material["ca"] = current_material["ca"]
+                    ca_data = _existing_pi_material(
+                        pi_network_store, current_material, "ca"
+                    )
+                else:
+                    raise ToolInputError("Upload the trusted RADIUS CA certificate.")
+
+            if security == "eap-tls":
+                if settings["tls_material_format"] == "bundle":
+                    if bundle_data:
+                        new_files["bundle"] = bundle_data
+                    elif current_material.get("bundle"):
+                        material["bundle"] = current_material["bundle"]
+                        bundle_data = _existing_pi_material(
+                            pi_network_store, current_material, "bundle"
+                        )
+                    else:
+                        raise ToolInputError(
+                            "Upload a PKCS#12 client identity bundle."
+                        )
+                    client_data = b""
+                    key_data = b""
+                else:
+                    if client_data:
+                        new_files["client_certificate"] = client_data
+                    elif current_material.get("client_certificate"):
+                        material["client_certificate"] = current_material[
+                            "client_certificate"
+                        ]
+                        client_data = _existing_pi_material(
+                            pi_network_store, current_material, "client_certificate"
+                        )
+                    if key_data:
+                        new_files["private_key"] = key_data
+                    elif current_material.get("private_key"):
+                        material["private_key"] = current_material["private_key"]
+                        key_data = _existing_pi_material(
+                            pi_network_store, current_material, "private_key"
+                        )
+                    bundle_data = b""
+                    if not client_data or not key_data:
+                        raise ToolInputError(
+                            "Upload both the EAP-TLS client certificate and private key."
+                        )
+                if (
+                    not settings.get("private_key_password")
+                    and not new_files.get("bundle")
+                    and not new_files.get("private_key")
+                ):
+                    settings["private_key_password"] = str(
+                        current.get("private_key_password", "")
+                    )
+
+            if ca_data or client_data or key_data or bundle_data:
+                certificate_summary = validate_uploaded_tls_material(
+                    ca_data=ca_data,
+                    client_certificate_data=client_data,
+                    private_key_data=key_data,
+                    bundle_data=bundle_data,
+                    private_key_password=str(
+                        settings.get("private_key_password", "")
+                    ),
+                )
+            if new_files:
+                staged_material = pi_network_store.stage_material(new_files)
+                material.update(staged_material)
+            settings["material"] = material
+            response = request_pi_network_broker(
+                {
+                    "operation": "apply",
+                    "settings": settings,
+                    "rollback_seconds": PI_NETWORK_ROLLBACK_SECONDS,
+                },
+                timeout=90,
+            )
+            settings.pop("material", None)
+            pi_network_store.save_pending(
+                kind="apply",
+                token=str(response["token"]),
+                expires_at=float(response["expires_at"]),
+                settings=settings,
+                material=material,
+                certificate_summary=certificate_summary,
+            )
+        except (ToolInputError, PiNetworkBrokerError, OSError, RuntimeError) as exc:
+            _cleanup_pi_network_material(pi_network_store, staged_material)
+            flash(str(exc), "error")
+        else:
+            annotate_audit_event(
+                category="Administration",
+                action="settings.raspberry_pi_network_pending",
+                summary="Applied a provisional Raspberry Pi network configuration.",
+                resource_type="settings",
+                resource_id="raspberry-pi-networking",
+                resource_name="Raspberry Pi networking",
+                details={
+                    "mode": settings.get("mode"),
+                    "SSID": settings.get("ssid"),
+                    "rollback seconds": PI_NETWORK_ROLLBACK_SECONDS,
+                },
+            )
+            flash(
+                "The network configuration is provisional. Confirm it before the rollback timer expires.",
+                "warning",
+            )
+        return _pi_settings_redirect("pi-network-pending")
+
+    @app.post("/settings/raspberry-pi/network/confirm")
+    def confirm_raspberry_pi_networking():
+        denied = _pi_admin_required()
+        if denied:
+            return denied
+        pending = pi_network_store.pending(include_secrets=True)
+        token = str(pending.get("token", ""))
+        try:
+            if not token:
+                raise PiNetworkBrokerError(
+                    "The pending network change is no longer available."
+                )
+            request_pi_network_broker(
+                {"operation": "confirm", "token": token}
+            )
+            before = pi_network_store.get()
+            if pending.get("kind") == "apply":
+                old_material = dict(before.get("material") or {})
+                new_material = dict(pending.get("material") or {})
+                after = pi_network_store.save_active(
+                    dict(pending.get("settings") or {}),
+                    material=new_material,
+                    certificate_summary=dict(
+                        pending.get("certificate_summary") or {}
+                    ),
+                )
+                _cleanup_pi_network_material(
+                    pi_network_store,
+                    old_material,
+                    keep=new_material,
+                )
+            else:
+                old_material = dict(before.get("material") or {})
+                pi_network_store.clear()
+                _cleanup_pi_network_material(pi_network_store, old_material)
+                after = {}
+            pi_network_store.clear_pending()
+        except (PiNetworkBrokerError, OSError, RuntimeError) as exc:
+            flash(str(exc), "error")
+        else:
+            annotate_audit_event(
+                category="Administration",
+                action="settings.raspberry_pi_network_confirmed",
+                summary="Confirmed the Raspberry Pi network configuration.",
+                resource_type="settings",
+                resource_id="raspberry-pi-networking",
+                resource_name="Raspberry Pi networking",
+                before=before,
+                after=after,
+            )
+            flash("Raspberry Pi networking is active and retained.", "success")
+        return _pi_settings_redirect()
+
+    @app.post("/settings/raspberry-pi/network/rollback")
+    def rollback_raspberry_pi_networking():
+        denied = _pi_admin_required()
+        if denied:
+            return denied
+        pending = pi_network_store.pending()
+        try:
+            request_pi_network_broker(
+                {"operation": "rollback", "token": str(pending.get("token", ""))},
+                timeout=90,
+            )
+        except (PiNetworkBrokerError, OSError) as exc:
+            flash(str(exc), "error")
+        else:
+            _cleanup_pi_network_material(
+                pi_network_store,
+                dict(pending.get("material") or {}),
+                keep=dict(pi_network_store.get().get("material") or {}),
+            )
+            pi_network_store.clear_pending()
+            annotate_audit_event(
+                category="Administration",
+                action="settings.raspberry_pi_network_rolled_back",
+                summary="Rolled back a provisional Raspberry Pi network configuration.",
+                resource_type="settings",
+                resource_id="raspberry-pi-networking",
+                resource_name="Raspberry Pi networking",
+            )
+            flash("The previous network configuration was restored.", "success")
+        return _pi_settings_redirect()
+
+    @app.post("/settings/raspberry-pi/network/disable")
+    def disable_raspberry_pi_networking():
+        denied = _pi_admin_required()
+        if denied:
+            return denied
+        try:
+            response = request_pi_network_broker(
+                {
+                    "operation": "disable",
+                    "rollback_seconds": PI_NETWORK_ROLLBACK_SECONDS,
+                },
+                timeout=90,
+            )
+            pi_network_store.save_pending(
+                kind="disable",
+                token=str(response["token"]),
+                expires_at=float(response["expires_at"]),
+            )
+        except (PiNetworkBrokerError, OSError, RuntimeError) as exc:
+            flash(str(exc), "error")
+        else:
+            annotate_audit_event(
+                category="Administration",
+                action="settings.raspberry_pi_network_disable_pending",
+                summary="Provisionally disabled toolkit-managed Raspberry Pi networking.",
+                resource_type="settings",
+                resource_id="raspberry-pi-networking",
+                resource_name="Raspberry Pi networking",
+            )
+            flash(
+                "Toolkit-managed networking is provisionally disabled. Confirm that the previous network is reachable.",
+                "warning",
+            )
+        return _pi_settings_redirect("pi-network-pending")
+
+    @app.post("/settings/raspberry-pi/network/scan")
+    def scan_raspberry_pi_wifi():
+        denied = _pi_admin_required()
+        if denied:
+            return denied
+        try:
+            response = request_pi_network_broker(
+                {
+                    "operation": "scan",
+                    "interface": request.form.get("wifi_interface", ""),
+                }
+            )
+        except (PiNetworkBrokerError, OSError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"networks": response.get("networks") or []})
 
     @app.post("/settings/timezone")
     def update_time_settings():

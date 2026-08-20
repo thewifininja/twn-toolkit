@@ -203,6 +203,11 @@
     <p>Datastore contents are operational files and are intentionally excluded from configuration backups. Use a complete recovery point or another deliberate datastore backup when those files matter.</p>
     <p>TFTP and SSH-transfer settings/history are local operational state. Runtime-only staging is deliberately removed whenever its corresponding service stops.</p>
   </div></details>
+  <details class="help-topic"><summary>Raspberry Pi networking</summary><div class="help-topic-body">
+    <p>On device-tree-identified Raspberry Pi hardware, <strong>Administration → System Settings → Raspberry Pi networking</strong> can create a private NAT access point, bridge wireless clients to untagged Ethernet or an optional VLAN, or join an existing Wi-Fi network. Access-point modes appear only when NetworkManager reports an AP-capable Wi-Fi adapter and a wired interface.</p>
+    <p>Client mode supports open, WPA2 Personal, WPA2/WPA3 transition, WPA3 Personal, PEAP-MSCHAPv2, and EAP-TLS networks. PEAP validates the authentication-server certificate by default against the operating-system CA store or an uploaded CA and requires an expected server domain. Disabling that validation is an explicit unsafe exception. EAP-TLS accepts a PKCS#12 identity or a matching client certificate and private key. Passwords and keys are write-only, encrypted in the instance, and validated before use.</p>
+    <p>The web application never runs as root. On a Pi, <code>sudo ./twn service install</code> installs a root-owned NetworkManager broker that accepts only the configured service UID over a protected Unix socket. Preserve <code>--network-capabilities</code> when refreshing a service that already uses that option. Apply and Disable create a NetworkManager checkpoint and automatically restore the previous profiles, country, and radio state unless the administrator confirms reachability within two minutes.</p>
+  </div></details>
 </section>
 
 <section class="home-section help-section" id="automations">

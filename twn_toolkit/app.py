@@ -484,6 +484,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             "preferred_fqdn": identity["preferred_fqdn"],
             "page_title": page_title,
             "app_version": APP_VERSION,
+            "asset_version": f"{APP_VERSION}-{app.config['BOOT_ID']}",
             "release_notes": RELEASE_NOTES,
             "min_password_length": password_policy["min_length"],
             "password_policy": password_policy,

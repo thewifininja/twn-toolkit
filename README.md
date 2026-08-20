@@ -406,6 +406,14 @@ integration timestamps remain UTC. Updates & Recovery is separated into
 Updates, Recovery points, and Configuration backups so advanced and destructive
 controls remain available without crowding routine administration.
 
+On detected Raspberry Pi hardware, System Settings also provides a dedicated
+networking view for NAT or VLAN-capable bridged access-point service and Wi-Fi
+client operation. Client authentication includes WPA2/WPA3 Personal,
+PEAP-MSCHAPv2 with explicit server-trust policy, and certificate-based EAP-TLS.
+Every change is provisional until reachability is confirmed and automatically
+rolls back from a root-owned, UID-restricted NetworkManager broker. See
+[Raspberry Pi networking](docs/raspberry-pi-networking.md).
+
 Operators receive the union of their assigned custom profiles. Unauthorized tools
 are removed from navigation and remain blocked by the server if requested directly.
 
@@ -522,6 +530,9 @@ permission:
   administrator-managed BPF access for the normal service account.
 - Standard TFTP/FTP ports may require privileged bind permission; the default
   high ports avoid that requirement.
+- **Raspberry Pi networking** uses a separate root-owned, UID-restricted
+  NetworkManager broker installed by `./twn service install`; the web
+  application and its stored credentials remain unprivileged.
 
 Starting the whole toolkit with `sudo` can make `instance/` root-owned. Return
 to normal operation with `./twn recover`. The recovery command detects Linux or
