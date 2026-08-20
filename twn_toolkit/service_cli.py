@@ -709,6 +709,25 @@ def _service_definition_details(
     )
 
 
+def systemd_network_capabilities_enabled(
+    unit_path: Path = SYSTEMD_UNIT_PATH,
+) -> bool:
+    """Return whether the installed toolkit unit retains every bounded network cap."""
+    try:
+        lines = unit_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+    ambient = next(
+        (
+            line.partition("=")[2].split()
+            for line in lines
+            if line.startswith("AmbientCapabilities=")
+        ),
+        [],
+    )
+    return set(NETWORK_CAPABILITIES).issubset(ambient)
+
+
 def service_runtime_status(
     root: Path,
     *,

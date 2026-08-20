@@ -997,6 +997,7 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"Toolkit server\xe2\x80\x99s public internet address", ip_page.data)
             self.assertIn(b"/tools/whats-my-ip/server-public", ip_page.data)
             self.assertIn(b'id="check-ip-again"', ip_page.data)
+            self.assertIn(b'class="ip-address-action-region"', ip_page.data)
             self.assertIn("no-store", ip_page.headers["Cache-Control"])
 
             upstream = MagicMock()

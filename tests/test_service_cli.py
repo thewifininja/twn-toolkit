@@ -43,6 +43,7 @@ from twn_toolkit.service_cli import (
     service_runtime_status,
     service_user,
     service_status,
+    systemd_network_capabilities_enabled,
     uninstall_service,
 )
 
@@ -80,6 +81,25 @@ class ServiceCliTests(unittest.TestCase):
         self.assertIn(f"AmbientCapabilities={joined}", unit)
         self.assertIn("NoNewPrivileges=true", unit)
         self.assertNotIn("CAP_SYS_ADMIN", unit)
+
+    def test_installed_systemd_network_capabilities_are_detected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            unit_path = Path(temporary) / "twn-toolkit.service"
+            unit_path.write_text(
+                render_systemd_unit(
+                    Path("/srv/twn-toolkit"),
+                    self.user,
+                    network_capabilities=True,
+                ),
+                encoding="utf-8",
+            )
+            self.assertTrue(systemd_network_capabilities_enabled(unit_path))
+
+            unit_path.write_text(
+                render_systemd_unit(Path("/srv/twn-toolkit"), self.user),
+                encoding="utf-8",
+            )
+            self.assertFalse(systemd_network_capabilities_enabled(unit_path))
 
     def test_raspberry_pi_network_broker_is_root_owned_and_uid_restricted(self) -> None:
         root = Path("/home/toolkit/twn-toolkit")
