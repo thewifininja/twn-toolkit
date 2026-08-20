@@ -326,6 +326,32 @@ class LLDPRouteTests(unittest.TestCase):
         self.assertEqual(status["sessions"][0]["interface"], "en7")
         self.assertEqual(status["sessions"][0]["status"], "queued")
 
+    @patch("twn_toolkit.lldp_routes.available_interfaces", return_value=INTERFACES)
+    @patch(
+        "twn_toolkit.lldp_routes.lldpcli_capability",
+        return_value={
+            "available": False,
+            "connected": False,
+            "version": "",
+            "message": "Not installed",
+        },
+    )
+    @patch("twn_toolkit.lldp_routes.LLDPSessionStore.launch")
+    @patch("twn_toolkit.lldp_tools.available_interfaces", return_value=INTERFACES)
+    @patch("twn_toolkit.lldp_tools.interface_mac", return_value=INTERFACES[0]["mac"])
+    def test_posted_interface_overrides_stale_query_interface(
+        self, _mac, _tool_interfaces, launch, _capability, _route_interfaces
+    ) -> None:
+        response = self.client.post(
+            "/tools/lldp-lab?view=emulate&interface=en0",
+            data={**self._form(), "action": "start", "confirm_send": "on"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Started Branch phone on en7", response.data)
+        launch.assert_called_once()
+        status = self.client.get("/tools/lldp-lab/sessions").get_json()
+        self.assertEqual(status["sessions"][0]["interface"], "en7")
+
     @staticmethod
     def _form() -> dict[str, str]:
         return {

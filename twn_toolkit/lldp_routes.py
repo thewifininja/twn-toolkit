@@ -41,14 +41,18 @@ def register_lldp_routes(tools_bp: Blueprint) -> None:
         persona_store = LLDPPersonaStore(current_app.instance_path)
         session_store = LLDPSessionStore(current_app.instance_path)
         interfaces = available_interfaces()
-        selected_interface = request.values.get("interface", "").strip()
+        # A POST to the current page retains its query string. Prefer the
+        # submitted form so a stale ``?interface=en0`` cannot override the
+        # operator's newly selected transmit interface.
+        request_fields = request.form if request.method == "POST" else request.args
+        selected_interface = request_fields.get("interface", "").strip()
         if not selected_interface and interfaces:
             selected_interface = preferred_interface(interfaces)
-        view = request.values.get("view", "observe").strip()
+        view = request_fields.get("view", "observe").strip()
         if view not in {"observe", "emulate"}:
             view = "observe"
-        preset = request.values.get("preset", "generic").strip()
-        selected_name = request.values.get("persona", "").strip()
+        preset = request_fields.get("preset", "generic").strip()
+        selected_name = request_fields.get("persona", "").strip()
         selected = persona_store.get(selected_name) if selected_name else None
         if selected:
             persona = default_persona(
