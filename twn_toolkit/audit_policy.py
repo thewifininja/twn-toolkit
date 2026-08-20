@@ -22,6 +22,7 @@ class AuditRoutePolicy(str, Enum):
 AUDIT_ANNOTATED_ENDPOINTS = frozenset(
     {
         "apply_switch_order",
+        "apply_raspberry_pi_networking",
         "bulk_delete_datastore_files",
         "bulk_download_datastore_files",
         "bulk_move_datastore_files",
@@ -31,6 +32,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "clear_ftp_history",
         "clear_ssh_transfer_history",
         "clear_tftp_history",
+        "confirm_raspberry_pi_networking",
         "create_datastore_folder",
         "create_investigation",
         "import_investigation_case",
@@ -50,6 +52,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "delete_ssh_transfer_temporary_file",
         "delete_tftp_temporary_file",
         "delete_user",
+        "disable_raspberry_pi_networking",
         "duplicate_access_profile",
         "duplicate_automation",
         "duplicate_automation_action",
@@ -78,6 +81,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "reset_dashboard_layout",
         "retry_failed_automation_jobs",
         "rollback_update",
+        "rollback_raspberry_pi_networking",
         "run_automation_now",
         "save_access_profile",
         "save_automation",
@@ -249,6 +253,7 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
         "tools.remote_terminal_credential",
         "tools.resize_remote_terminal_session",
         "tools.preview_remote_terminal_host_import",
+        "scan_raspberry_pi_wifi",
     }
 )
 

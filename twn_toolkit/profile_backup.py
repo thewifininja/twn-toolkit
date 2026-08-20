@@ -44,6 +44,7 @@ SAVED_DATA_INVENTORY: tuple[dict[str, str], ...] = (
     {"id": "users_and_sessions", "boundary": "recovery", "reason": "Passwords, assignments, and session secrets are instance identity."},
     {"id": "server_identity", "boundary": "recovery", "reason": "Listener and allowlist settings can lock out a different host."},
     {"id": "operational_limits", "boundary": "recovery", "reason": "Capacity limits are host-specific."},
+    {"id": "raspberry_pi_networking", "boundary": "recovery", "reason": "Interfaces, Wi-Fi credentials, certificates, and active NetworkManager profiles are host-specific."},
     {"id": "transfer_services", "boundary": "recovery", "reason": "Listeners, password hashes, host keys, and paths are host-specific."},
     {"id": "tls_and_issued_certificates", "boundary": "recovery", "reason": "Private keys and issued material remain bound to the instance."},
     {"id": "investigations", "boundary": "case", "reason": "Cases use portable case export and explicit merge workflows."},

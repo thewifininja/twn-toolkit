@@ -18,6 +18,9 @@ from twn_toolkit.service_cli import (
     MACOS_NETWORK_BROKER_HELPER_PATH,
     MACOS_NETWORK_BROKER_SOCKET,
     NETWORK_CAPABILITIES,
+    PI_NETWORK_BROKER_HELPER_PATH,
+    PI_NETWORK_BROKER_SOCKET,
+    PI_NETWORK_BROKER_UNIT_NAME,
     SYSTEMD_UNIT_NAME,
     ServiceError,
     ServiceUser,
@@ -35,6 +38,7 @@ from twn_toolkit.service_cli import (
     render_launchd_plist,
     render_launchd_network_broker_plist,
     render_launchd_plists,
+    render_pi_network_broker_unit,
     render_systemd_unit,
     service_runtime_status,
     service_user,
@@ -76,6 +80,26 @@ class ServiceCliTests(unittest.TestCase):
         self.assertIn(f"AmbientCapabilities={joined}", unit)
         self.assertIn("NoNewPrivileges=true", unit)
         self.assertNotIn("CAP_SYS_ADMIN", unit)
+
+    def test_raspberry_pi_network_broker_is_root_owned_and_uid_restricted(self) -> None:
+        root = Path("/home/toolkit/twn-toolkit")
+        unit = render_pi_network_broker_unit(root, self.user)
+
+        self.assertIn("User=root", unit)
+        self.assertIn("Group=root", unit)
+        self.assertIn(str(PI_NETWORK_BROKER_HELPER_PATH), unit)
+        self.assertIn(f'--socket "{PI_NETWORK_BROKER_SOCKET}"', unit)
+        self.assertIn("--uid 1001", unit)
+        self.assertIn(f'--root "{root}"', unit)
+        self.assertIn("ProtectSystem=strict", unit)
+        self.assertIn("ProtectHome=read-only", unit)
+        self.assertIn("NoNewPrivileges=true", unit)
+        self.assertIn("RuntimeDirectoryMode=0711", unit)
+        self.assertNotIn("User=toolkit", unit)
+        self.assertEqual(
+            PI_NETWORK_BROKER_UNIT_NAME,
+            "twn-toolkit-pi-network-broker.service",
+        )
 
     def test_launchd_job_starts_at_boot_as_the_installing_user(self) -> None:
         root = Path("/Users/toolkit/twn-toolkit")
@@ -689,11 +713,13 @@ class ServiceCliTests(unittest.TestCase):
             with (
                 mock.patch("twn_toolkit.service_cli._require_root"),
                 mock.patch("twn_toolkit.service_cli.SYSTEMD_UNIT_PATH", unit_path),
+                mock.patch("twn_toolkit.service_cli._remove_pi_network_broker") as remove_pi_broker,
                 mock.patch("twn_toolkit.service_cli._run") as run,
             ):
                 uninstall_service(system="Linux")
 
         self.assertFalse(unit_path.exists())
+        remove_pi_broker.assert_called_once_with()
         self.assertEqual(
             run.call_args_list,
             [

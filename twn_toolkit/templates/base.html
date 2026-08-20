@@ -15,7 +15,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=app_version) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=asset_version) }}">
   </head>
   <body>
     <header class="topbar {{ 'with-sidebar' if current_user else '' }}">
@@ -371,16 +371,16 @@
     </div>
     <script src="{{ url_for('static', filename='theme.js') }}"></script>
     <script src="{{ url_for('static', filename='checkbox-actions.js') }}"></script>
-    <script src="{{ url_for('static', filename='profile-duplicate.js', v=app_version) }}"></script>
-    <script src="{{ url_for('static', filename='saved-profile-manager.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='profile-duplicate.js', v=asset_version) }}"></script>
+    <script src="{{ url_for('static', filename='saved-profile-manager.js', v=asset_version) }}"></script>
     <script src="{{ url_for('static', filename='loading.js') }}"></script>
-    <script src="{{ url_for('static', filename='sidebar.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='sidebar.js', v=asset_version) }}"></script>
     {% if active_investigation %}
-      <script src="{{ url_for('static', filename='case-note.js', v=app_version) }}"></script>
+      <script src="{{ url_for('static', filename='case-note.js', v=asset_version) }}"></script>
     {% endif %}
     {% if current_user %}
-      <script src="{{ url_for('static', filename='favorites-order.js', v=app_version) }}"></script>
-      <script src="{{ url_for('static', filename='pcap-viewer.js', v=app_version) }}"></script>
+      <script src="{{ url_for('static', filename='favorites-order.js', v=asset_version) }}"></script>
+      <script src="{{ url_for('static', filename='pcap-viewer.js', v=asset_version) }}"></script>
     {% endif %}
     {% if current_user and (
       current_user.is_admin
@@ -390,7 +390,7 @@
       or 'tools.iperf3' in allowed_tool_ids
       or 'tools.remote_terminal' in allowed_tool_ids
     ) %}
-      <script src="{{ url_for('static', filename='live-tools.js', v=app_version) }}"></script>
+      <script src="{{ url_for('static', filename='live-tools.js', v=asset_version) }}"></script>
     {% endif %}
   </body>
 </html>

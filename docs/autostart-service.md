@@ -60,6 +60,16 @@ on a host and network where toolkit users are trusted. The unit bounds the
 capability set and does not modify the virtual environment's Python executable,
 so rebuilding `.venv` does not silently remove or spread the grant.
 
+On detected Raspberry Pi hardware, the same install also copies and starts a
+separate root-owned NetworkManager broker. The broker's Unix socket is writable
+only by the configured service UID; it accepts a versioned, bounded request
+format and manages only toolkit-prefixed connection profiles plus its private
+rollback state. The application service remains unprivileged. Refresh the
+service after first installing a release that adds or updates this helper,
+preserving `--network-capabilities` when that option was previously selected.
+See [Raspberry Pi networking](raspberry-pi-networking.md) for supported modes,
+enterprise certificate handling, and safe-apply recovery.
+
 Service-manager output is available through:
 
 ```bash

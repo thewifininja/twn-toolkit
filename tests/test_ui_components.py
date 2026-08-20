@@ -596,7 +596,7 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("env(safe-area-inset-bottom)", stylesheet)
         self.assertIn("overflow-wrap: anywhere;", stylesheet)
         self.assertIn("Help &amp; release notes", template)
-        self.assertIn("filename='sidebar.js', v=app_version", template)
+        self.assertIn("filename='sidebar.js', v=asset_version", template)
 
     def test_sidebar_nested_tools_are_text_only_and_keep_hierarchy_indent(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(

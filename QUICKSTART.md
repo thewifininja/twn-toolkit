@@ -111,6 +111,14 @@ There is no default account.
    or boot-service runtime mode, web/scheduler/supervisor health, databases,
    command integrations, and platform capabilities.
 
+On a Raspberry Pi, an additional **Raspberry Pi networking** settings tab can
+configure a routed or bridged access point, or join Personal, PEAP, and EAP-TLS
+Wi-Fi. It requires the protected broker installed by the OS service. Refresh
+that service with `sudo ./twn service install`, preserving
+`--network-capabilities` if the existing service uses that option. Apply and
+Disable both roll back automatically unless reachability is confirmed within
+two minutes. See [Raspberry Pi networking](docs/raspberry-pi-networking.md).
+
 The persistent sidebar is the primary navigation:
 
 - Use **Find a tool** above Dashboard to filter permitted destinations by tool
