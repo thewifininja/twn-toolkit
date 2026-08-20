@@ -2983,6 +2983,7 @@ class AutomationRegistryTests(unittest.TestCase):
                 "toolkit": {
                     "instance_name": "branch-pi",
                     "hostname": "branch-pi.local",
+                    "version": "0.20.0",
                     "primary_ipv4": "192.0.2.25",
                     "ipv4_addresses": ["192.0.2.25", "198.51.100.25"],
                     "ipv6_addresses": ["2001:db8::25"],
@@ -3018,7 +3019,7 @@ class AutomationRegistryTests(unittest.TestCase):
                     "method": "POST",
                     "headers": "",
                     "body_format": "json",
-                    "body": '{"ipv4":"{{toolkit.ipv4_addresses}}","ipv6":"{{toolkit.ipv6_addresses}}","urls":"{{toolkit.urls}}","reason":"{{startup.reason}}"}',
+                    "body": '{"version":"{{toolkit.version}}","ipv4":"{{toolkit.ipv4_addresses}}","ipv6":"{{toolkit.ipv6_addresses}}","urls":"{{toolkit.urls}}","reason":"{{startup.reason}}"}',
                     "timeout": 5,
                     "verify_tls": True,
                     "expected_statuses": "200-299",
@@ -3026,6 +3027,7 @@ class AutomationRegistryTests(unittest.TestCase):
                 trigger,
             )
         body = json.loads(sender.call_args.kwargs["body"])
+        self.assertEqual(body["version"], "0.20.0")
         self.assertEqual(body["ipv4"], ["192.0.2.25", "198.51.100.25"])
         self.assertEqual(body["ipv6"], ["2001:db8::25"])
         self.assertEqual(body["urls"][1], "https://[2001:db8::25]:5050")
