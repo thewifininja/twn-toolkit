@@ -57,7 +57,8 @@
   advisory exceptions: no known vulnerabilities found.
 - [x] Build and validate the v0.21.0 upgrade bundle with 413 manifested files,
   the `v0.9.0` minimum upgrade boundary, and a matching SHA-256 digest.
-- [ ] Pass release-preparation PR CI, squash-merge it, and pass merged-main CI.
+- [x] Pass release-preparation PR `#143` CI run `32443532741`, squash-merge it
+  as commit `e2cb61e`, and pass merged-main CI run `32443673744`.
 
 ## Publication gate
 
