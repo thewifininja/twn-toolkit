@@ -37,8 +37,11 @@
   advisory exceptions: no known vulnerabilities found.
 - [x] Build and validate the v0.21.1 upgrade bundle with 414 manifested files,
   the `v0.9.0` minimum upgrade boundary, and a matching SHA-256 digest.
-- [ ] Pass pull-request CI on Ubuntu Python 3.10/3.13 and macOS Python 3.13.
-- [ ] Squash-merge the release PR and pass merged-main CI.
+- [x] Pass release PR `#145` CI run `32478422968` on Ubuntu Python
+  3.10/3.13 and macOS Python 3.13, including repository checks and dependency
+  audit.
+- [x] Squash-merge release PR `#145` as commit `6d861c5` and pass merged-main
+  CI run `32478613617`.
 
 ## Publication gate
 
