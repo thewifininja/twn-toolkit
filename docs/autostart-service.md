@@ -322,6 +322,11 @@ does not know the v0.17.0 worker and connector paths.
   correctly unprivileged. Reinstall the Linux unit with
   `--network-capabilities`, or provision persistent BPF read/write access for
   the macOS service account and restart the service.
+- **LLDP Lab says `lldpcli` cannot access the local control socket on Linux:**
+  install and start `lldpd`, then run
+  `sudo ./twn service install --network-capabilities`. The installer adds only
+  the package-owned LLDP execution and socket groups to the hardened toolkit
+  service. Rerun it if `lldpd` was installed after the toolkit service.
 - **Terminal reaches a local device but toolkit SSH or TCP reports `No route to
   host` on macOS:** test the same address and port with the toolkit TCP Port
   Scanner. An immediate errno 65 failure can be a Local Network Privacy denial

@@ -1,6 +1,42 @@
-APP_VERSION = "0.21.0"
+APP_VERSION = "0.21.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.21.1",
+        "date": "2026-08-21",
+        "title": "Reliable Linux LLDP service access",
+        "summary": (
+            "Repairs LLDP Lab observation and local-daemon control for hardened "
+            "systemd installations while preserving the toolkit's unprivileged "
+            "service boundary."
+        ),
+        "groups": (
+            {
+                "title": "Scoped lldpd control access",
+                "items": (
+                    "Detects the package-owned execution and control-socket groups used by Linux lldpcli installations and adds only those groups to the toolkit systemd service.",
+                    "Keeps NoNewPrivileges, the normal service account, and the existing bounded network capabilities intact instead of elevating the web application or weakening the unit.",
+                    "Supports Debian and Raspberry Pi OS packaging where lldpcli normally relies on a setuid transition to the _lldpd account that NoNewPrivileges correctly suppresses.",
+                ),
+            },
+            {
+                "title": "Actionable detection and recovery",
+                "items": (
+                    "Discovers lldpcli in standard Linux sbin locations even when the current account cannot execute it, allowing the LLDP Lab to distinguish a permission problem from a missing installation.",
+                    "Shows the exact scoped service reinstall command when the daemon exists but its local control socket is inaccessible.",
+                    "Applies the LLDP groups automatically during future Linux service installations whenever lldpcli is already installed.",
+                ),
+            },
+            {
+                "title": "Upgrade and compatibility",
+                "items": (
+                    "Requires existing Linux service installations that use LLDP Lab to run sudo ./twn service install --network-capabilities once after upgrading so the root-owned systemd unit receives the repaired group list.",
+                    "Changes no Python dependency, database schema, profile format, Raspberry Pi network configuration, or macOS LaunchDaemon behavior.",
+                    "Keeps the standard v0.9.0 minimum direct-upgrade boundary; no stepped release is required.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.21.0",
         "date": "2026-08-20",

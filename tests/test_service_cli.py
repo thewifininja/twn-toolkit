@@ -82,37 +82,61 @@ class ServiceCliTests(unittest.TestCase):
         self.assertIn("SupplementaryGroups=adm _lldpd\n", unit)
 
     def test_detects_debian_lldpcli_execution_and_socket_groups(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            executable = Path(temporary) / "lldpcli"
-            socket_path = Path(temporary) / "lldpd.socket"
-            executable.touch()
-            socket_path.touch()
-            executable.chmod(
-                stat.S_ISUID
-                | stat.S_IRUSR
-                | stat.S_IXUSR
-                | stat.S_IRGRP
-                | stat.S_IXGRP
-            )
-            socket_path.chmod(
-                stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP
-            )
-            with (
-                mock.patch(
-                    "twn_toolkit.service_cli.pwd.getpwuid",
-                    return_value=mock.Mock(pw_gid=106),
-                ),
-                mock.patch(
-                    "twn_toolkit.service_cli.grp.getgrgid",
-                    side_effect=lambda group_id: mock.Mock(
-                        gr_name="_lldpd" if group_id == 106 else "adm"
+        executable = Path("/usr/sbin/lldpcli")
+        socket_path = Path("/run/lldpd.socket")
+
+        def path_stat(path: Path, *_args: object, **_kwargs: object) -> mock.Mock:
+            if path == executable:
+                return mock.Mock(
+                    st_mode=(
+                        stat.S_IFREG
+                        | stat.S_ISUID
+                        | stat.S_IRUSR
+                        | stat.S_IXUSR
+                        | stat.S_IRGRP
+                        | stat.S_IXGRP
                     ),
-                ),
-            ):
-                groups = linux_lldp_service_groups(
-                    (executable,),
-                    (socket_path,),
+                    st_uid=103,
+                    st_gid=4,
                 )
+            return mock.Mock(
+                st_mode=(
+                    stat.S_IFSOCK
+                    | stat.S_IRUSR
+                    | stat.S_IWUSR
+                    | stat.S_IRGRP
+                    | stat.S_IWGRP
+                ),
+                st_uid=103,
+                st_gid=106,
+            )
+
+        with (
+            mock.patch(
+                "twn_toolkit.service_cli.Path.is_file",
+                autospec=True,
+                side_effect=lambda path: path == executable,
+            ),
+            mock.patch(
+                "twn_toolkit.service_cli.Path.stat",
+                autospec=True,
+                side_effect=path_stat,
+            ),
+            mock.patch(
+                "twn_toolkit.service_cli.pwd.getpwuid",
+                return_value=mock.Mock(pw_gid=106),
+            ),
+            mock.patch(
+                "twn_toolkit.service_cli.grp.getgrgid",
+                side_effect=lambda group_id: mock.Mock(
+                    gr_name="_lldpd" if group_id == 106 else "adm"
+                ),
+            ),
+        ):
+            groups = linux_lldp_service_groups(
+                (executable,),
+                (socket_path,),
+            )
 
         self.assertEqual(groups, ("adm", "_lldpd"))
 
