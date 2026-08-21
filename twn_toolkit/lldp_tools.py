@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import platform
 import re
 import shutil
 import struct
@@ -99,7 +100,15 @@ def lldpcli_capability() -> dict[str, Any]:
     try:
         _run_lldpcli(executable, "show", "neighbors", "summary")
     except ToolInputError as exc:
-        result["message"] = str(exc)
+        detail = str(exc)
+        if platform.system() == "Linux" and "permission denied" in detail.casefold():
+            result["message"] = (
+                "lldpcli is installed, but the toolkit service cannot access the local "
+                "lldpd control socket. Refresh the scoped service permissions with "
+                "sudo ./twn service install --network-capabilities."
+            )
+        else:
+            result["message"] = detail
     else:
         result["connected"] = True
         result["message"] = "Connected to the local lldpd control socket."
@@ -983,7 +992,12 @@ def _find_lldpcli() -> str | None:
     return shutil.which("lldpcli") or next(
         (
             str(path)
-            for path in (Path("/opt/homebrew/sbin/lldpcli"), Path("/usr/local/sbin/lldpcli"))
+            for path in (
+                Path("/usr/sbin/lldpcli"),
+                Path("/usr/bin/lldpcli"),
+                Path("/opt/homebrew/sbin/lldpcli"),
+                Path("/usr/local/sbin/lldpcli"),
+            )
             if path.is_file()
         ),
         None,

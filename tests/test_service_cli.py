@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import plistlib
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -34,6 +35,7 @@ from twn_toolkit.service_cli import (
     _wait_for_launchd_unloaded,
     _wait_for_managed_toolkit,
     install_service,
+    linux_lldp_service_groups,
     manage_service,
     render_launchd_plist,
     render_launchd_network_broker_plist,
@@ -68,6 +70,75 @@ class ServiceCliTests(unittest.TestCase):
         self.assertIn('Environment="HOME=/home/toolkit"', unit)
         self.assertIn("WantedBy=multi-user.target", unit)
         self.assertNotIn("AmbientCapabilities=", unit)
+        self.assertNotIn("SupplementaryGroups=", unit)
+
+    def test_systemd_unit_can_scope_lldpd_control_groups(self) -> None:
+        unit = render_systemd_unit(
+            Path("/srv/twn-toolkit"),
+            self.user,
+            supplementary_groups=("adm", "_lldpd", "adm"),
+        )
+
+        self.assertIn("SupplementaryGroups=adm _lldpd\n", unit)
+
+    def test_detects_debian_lldpcli_execution_and_socket_groups(self) -> None:
+        executable = Path("/usr/sbin/lldpcli")
+        socket_path = Path("/run/lldpd.socket")
+
+        def path_stat(path: Path, *_args: object, **_kwargs: object) -> mock.Mock:
+            if path == executable:
+                return mock.Mock(
+                    st_mode=(
+                        stat.S_IFREG
+                        | stat.S_ISUID
+                        | stat.S_IRUSR
+                        | stat.S_IXUSR
+                        | stat.S_IRGRP
+                        | stat.S_IXGRP
+                    ),
+                    st_uid=103,
+                    st_gid=4,
+                )
+            return mock.Mock(
+                st_mode=(
+                    stat.S_IFSOCK
+                    | stat.S_IRUSR
+                    | stat.S_IWUSR
+                    | stat.S_IRGRP
+                    | stat.S_IWGRP
+                ),
+                st_uid=103,
+                st_gid=106,
+            )
+
+        with (
+            mock.patch(
+                "twn_toolkit.service_cli.Path.is_file",
+                autospec=True,
+                side_effect=lambda path: path == executable,
+            ),
+            mock.patch(
+                "twn_toolkit.service_cli.Path.stat",
+                autospec=True,
+                side_effect=path_stat,
+            ),
+            mock.patch(
+                "twn_toolkit.service_cli.pwd.getpwuid",
+                return_value=mock.Mock(pw_gid=106),
+            ),
+            mock.patch(
+                "twn_toolkit.service_cli.grp.getgrgid",
+                side_effect=lambda group_id: mock.Mock(
+                    gr_name="_lldpd" if group_id == 106 else "adm"
+                ),
+            ),
+        ):
+            groups = linux_lldp_service_groups(
+                (executable,),
+                (socket_path,),
+            )
+
+        self.assertEqual(groups, ("adm", "_lldpd"))
 
     def test_systemd_network_capabilities_are_explicit_and_bounded(self) -> None:
         unit = render_systemd_unit(

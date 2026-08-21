@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import struct
+import subprocess
 import tempfile
 import unittest
 from io import BytesIO
@@ -13,6 +14,7 @@ from twn_toolkit.lldp_tools import (
     PRESETS,
     build_lldp_frame,
     default_persona,
+    lldpcli_capability,
     lldp_persona_candidates,
     local_lldp_status,
     local_lldpd_shutdown_frame,
@@ -23,6 +25,7 @@ from twn_toolkit.lldp_tools import (
     preferred_interface,
     set_local_lldp_mode,
 )
+from twn_toolkit.network_tools import ToolInputError
 
 
 INTERFACES = [{"name": "en7", "mac": "02:11:22:33:44:55"}]
@@ -166,6 +169,26 @@ class LLDPToolTests(unittest.TestCase):
 
     def test_fortiswitch_is_not_a_canned_persona(self) -> None:
         self.assertNotIn("fortiswitch", PRESETS)
+
+    @patch("twn_toolkit.lldp_tools.platform.system", return_value="Linux")
+    @patch("twn_toolkit.lldp_tools._find_lldpcli", return_value="/usr/sbin/lldpcli")
+    @patch("twn_toolkit.lldp_tools.subprocess.run")
+    @patch("twn_toolkit.lldp_tools._run_lldpcli")
+    def test_lldp_capability_explains_linux_socket_permissions(
+        self, run_lldpcli, run, _find_lldpcli, _system
+    ) -> None:
+        run.return_value = subprocess.CompletedProcess(
+            (), 0, "lldpcli 1.0.18", ""
+        )
+        run_lldpcli.side_effect = ToolInputError(
+            "unable to connect to socket /run/lldpd.socket: Permission denied"
+        )
+
+        capability = lldpcli_capability()
+
+        self.assertTrue(capability["available"])
+        self.assertFalse(capability["connected"])
+        self.assertIn("service install --network-capabilities", capability["message"])
 
     @patch("twn_toolkit.lldp_tools._find_lldpcli", return_value="/usr/bin/lldpcli")
     @patch("twn_toolkit.lldp_tools.available_interfaces", return_value=INTERFACES)

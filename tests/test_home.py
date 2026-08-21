@@ -54,7 +54,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
-        self.assertIn(b"v0.21.0", response.data)
+        self.assertIn(b"v0.21.1", response.data)
         self.assertIn(b'href="/help"', response.data)
         self.assertIn(b"Help &amp; release notes", response.data)
         self.assertIn(
