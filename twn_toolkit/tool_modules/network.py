@@ -13,6 +13,7 @@ from twn_toolkit.profiles import (
     SNMPOidProfileStore,
     TracerouteHostProfileStore,
     WOLTargetProfileStore,
+    LLDPPersonaStore,
 )
 from twn_toolkit.ssh_commandlets import SSHCommandletStore
 
@@ -115,6 +116,13 @@ def backup_items(instance_path: str) -> list[dict[str, Any]]:
             "label": "Wake-on-LAN device groups",
             "description": "Saved device names, MAC addresses, and optional verification hosts.",
             "store": WOLTargetProfileStore(instance_path),
+            "sensitive": False,
+        },
+        {
+            "id": "lldp_personas",
+            "label": "LLDP Lab personas",
+            "description": "Saved LLDP identities, LLDP-MED policies, and custom organizational TLVs.",
+            "store": LLDPPersonaStore(instance_path),
             "sensitive": False,
         },
         {
@@ -249,6 +257,17 @@ def register_tools(registry: Any) -> None:
                 "Network Tools",
                 risk="advanced",
                 nav_icon="◌",
+                nav_group="traffic",
+            ),
+            ToolLink(
+                "tools.lldp_lab",
+                "LLDP Lab",
+                "Decode LLDP neighbors and transmit bounded per-interface device identities for authorized switch testing.",
+                "tools.lldp_lab",
+                "network",
+                "Network Tools",
+                risk="high",
+                nav_icon="⇥",
                 nav_group="traffic",
             ),
             ToolLink(
@@ -401,6 +420,11 @@ def register_tools(registry: Any) -> None:
             "tools.delete_packet_capture": "tools.packet_capture",
             "tools.dhcp_discover": "tools.dhcp_discover",
             "tools.packet_replay": "tools.packet_replay",
+            "tools.lldp_lab": "tools.lldp_lab",
+            "tools.duplicate_lldp_persona": "tools.lldp_lab",
+            "tools.delete_lldp_persona": "tools.lldp_lab",
+            "tools.stop_lldp_session": "tools.lldp_lab",
+            "tools.lldp_session_status": "tools.lldp_lab",
             "tools.path_mtu": "tools.path_mtu",
             "tools.api_request": "tools.api_request",
             "tools.syslog_receiver": "tools.syslog_receiver",

@@ -14,7 +14,7 @@
   <div class="section-head"><div><h2 id="help-contents">Guide contents</h2><p>Jump directly to the area you need.</p></div></div>
   <div class="help-search"><label for="help-search-input">Search this guide</label><div class="help-search-controls"><input id="help-search-input" type="search" placeholder="Try automation, VLAN, backup, sudo…" autocomplete="off" data-help-search><button class="secondary" type="button" data-help-search-clear hidden>Clear</button></div><small data-help-search-status aria-live="polite"></small></div>
   <nav class="help-toc" aria-label="Help topics">
-    <a href="#release-notes">Release notes</a><a href="#getting-started">Getting started</a><a href="#dashboard">Dashboard</a><a href="#accounts">Accounts &amp; access</a><a href="#profiles">Profiles &amp; backups</a><a href="#fortinet">Fortinet</a><a href="#network-tools">Network tools</a><a href="#investigations">Investigations</a><a href="#local-tools">Local tools</a><a href="#automations">Automations</a><a href="#dhcp-discover">DHCP Discover</a><a href="#packet-capture">Packet Capture</a><a href="#packet-replay">Packet Replay</a><a href="#operations">Operations</a><a href="#security">Security</a>
+    <a href="#release-notes">Release notes</a><a href="#getting-started">Getting started</a><a href="#dashboard">Dashboard</a><a href="#accounts">Accounts &amp; access</a><a href="#profiles">Profiles &amp; backups</a><a href="#fortinet">Fortinet</a><a href="#network-tools">Network tools</a><a href="#investigations">Investigations</a><a href="#local-tools">Local tools</a><a href="#automations">Automations</a><a href="#dhcp-discover">DHCP Discover</a><a href="#packet-capture">Packet Capture</a><a href="#packet-replay">Packet Replay</a><a href="#lldp-lab">LLDP Lab</a><a href="#operations">Operations</a><a href="#security">Security</a>
   </nav>
 </section>
 
@@ -341,6 +341,24 @@ Backup collector = 192.0.2.20 | 5514</code></pre>
     <pre><code>sudo tcpdump -i en0 -e -nn -vvv 'vlan or ether proto 0x8100'
 sudo tcpdump -i en0 -e -nn -vvv 'vlan and port 514'</code></pre>
     <p>Sender acceptance is not remote delivery; verify actual egress on the wire.</p>
+  </div></details>
+</section>
+
+<section class="home-section help-section" id="lldp-lab">
+  <div class="section-head"><div><span class="eyebrow">Link-layer testing</span><h2>LLDP Lab</h2></div><a href="#help-contents">Back to contents</a></div>
+  <details class="help-topic" open><summary>Observe and preserve neighbors</summary><div class="help-topic-body">
+    <p>Observe asks the host <code>lldpd</code> service to decode LLDP received on each local interface. It displays chassis and port identity, management addresses, capabilities, VLAN information, and LLDP-MED policy when the neighbor advertises those fields. A snapshot can be retained as timestamped JSON evidence while a case actively records. Observation is passive, but its completeness depends on the interface, driver, neighboring device, and <code>lldpd</code> control-socket access available to the toolkit service account.</p>
+  </div></details>
+  <details class="help-topic"><summary>Emulate a standards-based endpoint</summary><div class="help-topic-body">
+    <p>Emulate constructs and transmits an exact Ethernet LLDP frame on one selected interface. Start with the generic endpoint, phone, switch, or experimental FortiSwitch baseline; then customize Ethernet source MAC, identity, advertised capabilities, management address, PVID, LLDP-MED endpoint class and voice policy, and bounded organizational TLVs. Copying a MAC-based observed neighbor uses its chassis address as the Ethernet source for a consistent lab identity. Preview the complete TLV list before explicitly confirming authorization. Saved personas are reusable and can be duplicated.</p>
+    <p>Only one LLDP Lab session may transmit on an interface at a time. Sessions are limited to 1–60 minutes with a 1–120 second interval and send a TTL-zero shutdown PDU when they stop normally. By default the worker temporarily suppresses <code>lldpd</code> transmission on that interface and withdraws the host's existing identity so the adjacent device need not wait for its prior TTL to expire. Reception remains enabled and the previous port state is restored at the end.</p>
+    <p>The phone preset advertises standards-based LLDP-MED fields suitable for testing voice-policy assignment. The FortiSwitch preset is an experimental starting point: vendor discovery and secure FortiLink/Auto-ISL behavior may require additional proprietary state, certificates, or protocol exchanges beyond a static LLDP advertisement. Verify the switch's actual response rather than treating transmitted frames as proof of a completed workflow.</p>
+  </div></details>
+  <details class="help-topic"><summary>Installation, permissions, and verification</summary><div class="help-topic-body">
+    <p>Install and run <code>lldpd</code> on the toolkit host for decoded observation. Linux service installations need <code>./twn service install --network-capabilities</code> for the scoped raw-frame transmission path. macOS uses Scapy/libpcap/BPF and needs persistent BPF read/write access for the normal LaunchDaemon account. Do not elevate the full web application.</p>
+    <pre><code>sudo tcpdump -i eth0 -e -nn -vvv 'ether proto 0x88cc'
+lldpcli -f keyvalue show interfaces ports eth0</code></pre>
+    <p>Capture the emitted PDU and inspect the adjacent switch's learned neighbor, VLAN, and port state. Sending a valid advertisement proves only local egress; it does not prove that the switch accepted or acted on every advertised field.</p>
   </div></details>
 </section>
 

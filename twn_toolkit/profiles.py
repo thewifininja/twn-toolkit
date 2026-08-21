@@ -195,3 +195,10 @@ class TracerouteHostProfileStore(PingProfileStore):
 class WOLTargetProfileStore(PingProfileStore):
     def __init__(self, instance_path: str) -> None:
         super().__init__(instance_path, "wol_target_profiles.json")
+
+
+class LLDPPersonaStore(PingProfileStore):
+    """Saved, reusable LLDP egress identities and organizational TLVs."""
+
+    def __init__(self, instance_path: str) -> None:
+        super().__init__(instance_path, "lldp_personas.json")
