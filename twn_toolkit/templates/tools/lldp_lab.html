@@ -22,10 +22,10 @@
 
 {% if view == 'observe' %}
 <section class="panel lldp-observe-panel">
-  {% call section_header('Neighbor inventory', 'Live data decoded by the local lldpd daemon. No packets are transmitted from this view.', 'Read only') %}
+  {% call section_header('Neighbor inventory', 'Live data decoded by the local lldpd daemon, with interface-scoped control of this host’s own advertisements.', 'Local daemon') %}
     <div class="lldp-head-actions">
       <span class="pill {{ 'success' if capability.connected else 'error' }}">{{ 'connected' if capability.connected else 'not connected' }}</span>
-      <a class="button-link secondary" href="{{ url_for('tools.lldp_lab', view='observe') }}">Refresh</a>
+      <a class="button-link secondary" href="{{ url_for('tools.lldp_lab', view='observe', interface=interface) }}">Refresh</a>
     </div>
   {% endcall %}
 
@@ -35,7 +35,38 @@
       <span>{{ capability.message }}</span>
       <small>macOS: install and start <code>lldpd</code> with Homebrew. Linux: install <code>lldpd</code> and enable its service.</small>
     </div>
-  {% elif neighbors %}
+  {% else %}
+    <div class="lldp-local-transmitter">
+      <form method="get" class="lldp-local-interface-picker">
+        <input type="hidden" name="view" value="observe">
+        <label>Local interface
+          <select name="interface">
+            {% for item in interfaces %}<option value="{{ item.name }}" {{ 'selected' if item.name == interface else '' }}>{{ item.name }} · {{ item.mac }}</option>{% endfor %}
+          </select>
+        </label>
+        <button class="secondary" type="submit">Inspect interface</button>
+      </form>
+      <div class="lldp-local-transmitter-state">
+        <div>
+          <span class="eyebrow">Local transmitter</span>
+          <strong>{{ interface_lldp_status or 'State unavailable' }}</strong>
+          <small>Receive-only silences this host while lldpd continues decoding neighbors.</small>
+        </div>
+        <form method="post" data-loading-message="Updating local LLDP state…">
+          <input type="hidden" name="view" value="observe">
+          <input type="hidden" name="interface" value="{{ interface }}">
+          <input type="hidden" name="action" value="local_lldp_mode">
+          {% if interface_lldp_status == 'RX only' %}
+            <button class="secondary" type="submit" name="local_lldp_mode" value="receive-and-transmit">Restore advertisements</button>
+          {% else %}
+            <button class="secondary" type="submit" name="local_lldp_mode" value="receive-only">Silence advertisements</button>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if capability.connected and neighbors %}
     <div class="lldp-neighbor-grid">
       {% for neighbor in neighbors %}
       <article class="lldp-neighbor-card">
@@ -70,7 +101,7 @@
       <button class="secondary" type="submit" name="action" value="snapshot">Add snapshot to active case</button>
       <span>Creates a timestamped JSON evidence file with this full decoded view.</span>
     </form>
-  {% else %}
+  {% elif capability.connected %}
     {% call empty_state('No LLDP neighbors are currently visible', 'Connect the selected toolkit host to an LLDP-speaking network, then refresh. lldpd listens across its configured interfaces.') %}{% endcall %}
   {% endif %}
 </section>
@@ -79,57 +110,127 @@
   <aside class="panel lldp-persona-library">
     <div class="section-head compact">
       <div>
-        <span class="eyebrow">Reusable identities</span>
-        <h2>Personas</h2>
-        <p>{{ personas|length }} saved</p>
+        <span class="eyebrow">Starting points</span>
+        <h2>Persona templates</h2>
+        <p>Choose a baseline, then make it yours.</p>
       </div>
-      <a class="button-link compact" href="{{ url_for('tools.lldp_lab', view='emulate', preset='generic') }}">New</a>
+      <div class="lldp-library-actions">
+        <a class="button-link secondary compact" href="{{ url_for('tools.lldp_lab', view='emulate', import=1, interface=interface) }}">Import PCAP</a>
+        <a class="button-link compact" href="{{ url_for('tools.lldp_lab', view='emulate', preset='generic', interface=interface) }}">New</a>
+      </div>
     </div>
     <nav class="lldp-preset-list" aria-label="Persona presets">
       {% for preset_id, preset_info in presets.items() %}
       <a href="{{ url_for('tools.lldp_lab', view='emulate', preset=preset_id, interface=interface) }}" class="lldp-preset-card {{ 'is-selected' if persona.preset == preset_id and not selected_name else '' }}">
         <strong>{{ preset_info.label }}</strong>
         <span>{{ preset_info.description }}</span>
-        {% if preset_info.experimental %}<small>Experimental</small>{% endif %}
       </a>
       {% endfor %}
     </nav>
-    {% if personas %}
     <div class="lldp-saved-list">
-      <span class="saved-profile-kicker">Saved personas</span>
+      <div class="lldp-saved-heading">
+        <div><span class="eyebrow">Your library</span><h3>Saved personas</h3></div>
+        <span class="count-badge">{{ personas|length }}</span>
+      </div>
+      {% if personas %}
       {% for saved in personas %}
       <div class="lldp-saved-row {{ 'is-selected' if selected_name == saved.name else '' }}">
         <a href="{{ url_for('tools.lldp_lab', view='emulate', persona=saved.name, interface=interface) }}">
           <strong>{{ saved.name }}</strong>
           <small>{{ presets.get(saved.preset, {}).get('label', 'Custom') }}</small>
         </a>
-        <details class="overflow-menu">
-          <summary aria-label="Actions for {{ saved.name }}">•••</summary>
-          <div class="overflow-menu-popover">
-            <form method="post" action="{{ url_for('tools.duplicate_lldp_persona', name=saved.name) }}"><button type="submit">Duplicate</button></form>
-            <form method="post" action="{{ url_for('tools.delete_lldp_persona', name=saved.name) }}"><button class="danger-text" type="submit">Delete</button></form>
+        <details class="lldp-persona-menu">
+          <summary aria-label="Actions for {{ saved.name }}" title="Persona actions">•••</summary>
+          <div class="lldp-persona-menu-popover">
+            <form method="post" action="{{ url_for('tools.duplicate_lldp_persona', name=saved.name) }}"><button class="menu-action" type="submit">Duplicate</button></form>
+            <form method="post" action="{{ url_for('tools.delete_lldp_persona', name=saved.name) }}"><button class="menu-action danger-text" type="submit">Delete</button></form>
           </div>
         </details>
       </div>
       {% endfor %}
+      {% else %}
+      <div class="empty-state compact"><strong>No saved personas yet</strong><span>Start from a template or import an LLDP identity from a capture.</span></div>
+      {% endif %}
     </div>
-    {% endif %}
   </aside>
 
   <div class="lldp-emulation-main">
-    <section class="panel">
-      {% call section_header('Build an LLDP identity', 'Preview the exact fields before a bounded transmission. Saved personas remain independent of the selected interface.', 'Controlled egress') %}
-        <span class="pill {{ 'error' if presets.get(persona.preset, {}).get('experimental') else 'warning' }}">{{ 'experimental' if presets.get(persona.preset, {}).get('experimental') else 'transmits frames' }}</span>
+    {% if import_mode %}
+    <section class="panel lldp-import-panel">
+      {% call section_header('Import a persona from PCAP', 'Only LLDP Ethernet frames are decoded. Nothing is saved or transmitted until you review the imported identity.', 'Capture-led identity') %}
+        <a class="button-link secondary compact" href="{{ url_for('tools.lldp_lab', view='emulate', interface=interface) }}">Cancel</a>
       {% endcall %}
-      {% if presets.get(persona.preset, {}).get('experimental') %}
-      <div class="message warning">
-        This is a standards-based bridge baseline—not a promise of complete Auto-ISL emulation. Fortinet vendor TLVs and any stateful authentication must be learned from an authorized capture and added deliberately.
+      <form method="post" enctype="multipart/form-data" class="form lldp-import-form" data-loading-message="Inspecting LLDP capture…">
+        <input type="hidden" name="view" value="emulate">
+        <input type="hidden" name="import" value="1">
+        <fieldset class="lldp-import-source-picker">
+          <legend>Capture source</legend>
+          <div class="lldp-form-grid two">
+            <label>From datastore
+              <select name="datastore_capture" {% if not can_use_datastore %}disabled{% endif %}>
+                <option value="">Select a stored PCAP…</option>
+                {% for capture in datastore_captures %}
+                <option value="{{ capture.path }}" {% if not capture.within_limit %}disabled{% endif %}>{{ capture.path }} · {{ capture.size_display }}{% if not capture.within_limit %} · exceeds 8 MiB limit{% endif %}</option>
+                {% endfor %}
+              </select>
+              <small>{% if not can_use_datastore %}Add Datastore to this account’s access profile to choose stored captures.{% elif datastore_capture_count %}{{ datastore_capture_count }} available capture{{ '' if datastore_capture_count == 1 else 's' }}.{% elif datastore_captures %}Stored captures exceed the 8 MiB import limit.{% else %}No classic PCAP files are currently stored in the datastore.{% endif %}</small>
+            </label>
+            <label>Upload from this device
+              <input type="file" name="pcap_file" accept=".pcap,.cap,application/vnd.tcpdump.pcap">
+              <small>Classic Ethernet PCAP · maximum 8 MiB · used for this review only</small>
+            </label>
+          </div>
+          <span class="field-note">Choose one source. The importer ignores every non-LLDP packet in the capture.</span>
+        </fieldset>
+        <label class="lldp-import-interface">Transmit interface for the imported persona
+          <select name="interface" required>
+            {% for item in interfaces %}<option value="{{ item.name }}" {{ 'selected' if item.name == interface else '' }}>{{ item.name }} · {{ item.mac }}</option>{% endfor %}
+          </select>
+          <small>This chooses the editor default only. Import does not send traffic.</small>
+        </label>
+        <div class="lldp-import-actions">
+          <span>Nothing is saved until you choose an identity and save the resulting persona.</span>
+          <button type="submit" name="action" value="import_pcap">Inspect capture</button>
+        </div>
+      </form>
+
+      {% if import_candidates %}
+      <div class="lldp-import-results">
+        <div class="section-head compact">
+          <div><span class="eyebrow">Decoded identities</span><h3>Choose a persona</h3><p>Repeated advertisements from the same identity are grouped together.</p></div>
+          <span class="count-badge">{{ import_candidates|length }}</span>
+        </div>
+        <div class="lldp-import-candidate-list">
+          {% for candidate in import_candidates %}
+          <article class="lldp-import-candidate">
+            <div>
+              <strong>{{ candidate.system_name or candidate.name }}</strong>
+              <span><code>{{ candidate.source_mac }}</code> · port {{ candidate.port_id }}</span>
+              <small>{{ candidate.packet_count }} advertisement{{ '' if candidate.packet_count == 1 else 's' }} · {{ candidate.custom_tlv_count }} preserved organizational TLV{{ '' if candidate.custom_tlv_count == 1 else 's' }}</small>
+            </div>
+            <form method="post">
+              <input type="hidden" name="view" value="emulate">
+              <input type="hidden" name="interface" value="{{ interface }}">
+              <input type="hidden" name="frame_hex" value="{{ candidate.frame_hex }}">
+              <button class="secondary" type="submit" name="action" value="import_pcap_candidate">Use this identity</button>
+            </form>
+          </article>
+          {% endfor %}
+        </div>
       </div>
       {% endif %}
+    </section>
+    {% else %}
+    <section class="panel">
+      {% call section_header('Build an LLDP identity', 'Preview the exact fields before a bounded transmission. Saved personas remain independent of the selected interface.', 'Controlled egress') %}
+        <span class="pill warning">transmits frames</span>
+      {% endcall %}
       <form method="post" class="form lldp-persona-form" data-loading-message="Preparing LLDP session…">
         <input type="hidden" name="view" value="emulate">
         <input type="hidden" name="preset" value="{{ persona.preset }}">
         <input type="hidden" name="original_name" value="{{ selected_name }}">
+        <input type="hidden" name="chassis_id_subtype" value="{{ persona.chassis_id_subtype }}">
+        <input type="hidden" name="port_id_subtype" value="{{ persona.port_id_subtype }}">
 
         <div class="lldp-form-grid three">
           <label>Persona name
@@ -234,18 +335,20 @@
           <div class="lldp-shutdown-note"><strong>Clean stop</strong><span>A TTL-zero shutdown PDU is sent automatically.</span></div>
         </div>
 
-        <label class="check risk-confirmation lldp-quiet-daemon">
+        <label class="check lldp-option-row lldp-quiet-daemon">
           <input type="checkbox" name="quiet_lldpd" {{ 'checked' if persona.quiet_lldpd else '' }}>
           <span><strong>Quiet this host’s LLDP transmitter during the test</strong><small>Withdraws the normal host identity, prevents it from competing with the persona, and leaves receive enabled. The prior lldpd state is restored when the session stops.</small></span>
         </label>
 
         <div class="lldp-form-actions">
-          <div>
+          <div class="lldp-editor-actions">
             <button class="secondary" type="submit" name="action" value="preview">Preview PDU</button>
             <button class="secondary" type="submit" name="action" value="save">{{ 'Update persona' if selected_name else 'Save persona' }}</button>
           </div>
-          <label class="check risk-confirmation"><input type="checkbox" name="confirm_send"> <span>I am authorized to transmit this identity on <strong data-lldp-interface-confirmation>{{ interface }}</strong></span></label>
-          <button class="danger" type="submit" name="action" value="start" data-lldp-start-button>Start on {{ interface }}</button>
+          <div class="lldp-send-actions">
+            <label class="check lldp-send-confirmation"><input type="checkbox" name="confirm_send"> <span>I am authorized to transmit on <strong data-lldp-interface-confirmation>{{ interface }}</strong></span></label>
+            <button class="danger" type="submit" name="action" value="start" data-lldp-start-button>Start on {{ interface }}</button>
+          </div>
         </div>
         <p class="field-note">Observation uses the local <code>lldpd</code> daemon. Transmission uses the same scoped raw-frame access as Packet Replay: Linux service installs need network capabilities; macOS needs administrator-managed BPF access.</p>
       </form>
@@ -282,6 +385,7 @@
         {% endfor %}
       </div>
     </section>
+    {% endif %}
   </div>
 </section>
 {% endif %}

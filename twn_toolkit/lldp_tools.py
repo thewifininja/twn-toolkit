@@ -72,18 +72,6 @@ PRESETS: dict[str, dict[str, Any]] = {
         "interval_seconds": 5,
         "duration_minutes": 10,
     },
-    "fortiswitch": {
-        "label": "FortiSwitch lab baseline",
-        "description": "An experimental bridge baseline for capture-led Auto-ISL testing.",
-        "capabilities": ["bridge"],
-        "med_enabled": False,
-        "med_class": 0,
-        "med_policy_enabled": False,
-        "system_description": "FortiSwitch lab emulation",
-        "interval_seconds": 5,
-        "duration_minutes": 10,
-        "experimental": True,
-    },
 }
 
 
@@ -126,6 +114,53 @@ def read_neighbors() -> list[dict[str, Any]]:
         )
     payload = _run_lldpcli(executable, "show", "neighbors", "details")
     return normalize_neighbors(payload)
+
+
+def local_lldp_status(interface: str) -> str:
+    """Return lldpd's current receive/transmit state for one local interface."""
+    executable = _find_lldpcli()
+    if not executable:
+        raise ToolInputError(
+            "Local LLDP control requires lldpd/lldpcli. Install lldpd and start its local daemon."
+        )
+    valid_interfaces = {item["name"] for item in available_interfaces()}
+    if interface not in valid_interfaces:
+        raise ToolInputError("Select an available LLDP interface.")
+    payload = _run_lldpcli(
+        executable, "show", "interfaces", "ports", interface, "details"
+    )
+    record = next(
+        (
+            item
+            for item in _named_objects(payload, "interface")
+            if str(item.get("name", "")) == interface
+        ),
+        None,
+    )
+    status = _first_value(record or {}, "status")
+    if not status:
+        raise ToolInputError(f"lldpd did not report a state for {interface}.")
+    return status
+
+
+def set_local_lldp_mode(interface: str, mode: str) -> str:
+    """Set one interface to receive-only or normal receive/transmit operation."""
+    targets = {
+        "receive-only": "rx-only",
+        "receive-and-transmit": "rx-and-tx",
+    }
+    target = targets.get(str(mode))
+    if not target:
+        raise ToolInputError("Choose a valid local LLDP transmitter state.")
+    # Validate the interface and daemon connection before changing state.
+    local_lldp_status(interface)
+    executable = _find_lldpcli()
+    if not executable:
+        raise ToolInputError("lldpcli is not available.")
+    _execute_lldpcli(
+        executable, "configure", "ports", interface, "lldp", "status", target
+    )
+    return local_lldp_status(interface)
 
 
 def normalize_neighbors(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -202,7 +237,9 @@ def default_persona(*, preset: str = "generic", interface: str = "") -> dict[str
         ),
         "source_mac": source_mac,
         "chassis_id": source_mac,
+        "chassis_id_subtype": 4,
         "port_id": selected or "port-1",
+        "port_id_subtype": 5 if selected else 7,
         "port_description": selected or "LLDP Lab port",
         "capabilities": list(settings["capabilities"]),
         "management_address": "",
@@ -250,7 +287,9 @@ def persona_from_form(form: Any, *, interface: str) -> dict[str, Any]:
             form.get("source_mac", interface_mac(interface))
         ).strip(),
         "chassis_id": str(form.get("chassis_id", "")).strip(),
+        "chassis_id_subtype": form.get("chassis_id_subtype", ""),
         "port_id": str(form.get("port_id", "")).strip(),
+        "port_id_subtype": form.get("port_id_subtype", ""),
         "port_description": str(form.get("port_description", "")).strip(),
         "capabilities": capabilities,
         "management_address": str(form.get("management_address", "")).strip(),
@@ -299,12 +338,22 @@ def validate_persona(persona: dict[str, Any], *, interface: str) -> dict[str, An
     if normalized["source_mac"] == "00:00:00:00:00:00":
         raise ToolInputError("Ethernet source MAC cannot be all zeroes.")
     chassis_id = str(persona.get("chassis_id", "")).strip()
-    try:
-        normalized["chassis_id"] = normalize_mac(chassis_id)
-        normalized["chassis_id_subtype"] = "mac"
-    except ToolInputError:
+    chassis_subtype = _identifier_subtype(
+        persona.get("chassis_id_subtype"), chassis=True, identifier=chassis_id
+    )
+    if chassis_subtype == 4:
+        try:
+            normalized["chassis_id"] = normalize_mac(chassis_id)
+        except ToolInputError as exc:
+            raise ToolInputError(
+                "A MAC-address chassis ID must contain six hexadecimal octets."
+            ) from exc
+    else:
         normalized["chassis_id"] = _bounded_text(chassis_id, "Chassis ID", 255)
-        normalized["chassis_id_subtype"] = "local"
+    normalized["chassis_id_subtype"] = chassis_subtype
+    normalized["port_id_subtype"] = _identifier_subtype(
+        persona.get("port_id_subtype"), chassis=False, identifier=normalized["port_id"]
+    )
     capabilities = [
         str(name).lower() for name in persona.get("capabilities", []) if str(name).lower() in CAPABILITY_BITS
     ]
@@ -360,20 +409,10 @@ def quiet_interface_lldp(interface: str) -> str:
     executable = _find_lldpcli()
     if not executable:
         return ""
-    payload = _run_lldpcli(
-        executable, "show", "interfaces", "ports", interface, "details"
-    )
-    record = next(
-        (
-            item
-            for item in _named_objects(payload, "interface")
-            if str(item.get("name", "")) == interface
-        ),
-        None,
-    )
-    if not record:
+    try:
+        status = local_lldp_status(interface)
+    except ToolInputError:
         return ""
-    status = _first_value(record, "status")
     target = {
         "RX and TX": "rx-only",
         "TX only": "disabled",
@@ -493,19 +532,191 @@ def validate_custom_tlvs(items: Any) -> list[dict[str, Any]]:
     return result
 
 
+def lldp_persona_candidates(
+    packets: Iterable[bytes], *, interface: str
+) -> list[dict[str, Any]]:
+    """Return one reviewable candidate per LLDP identity found in a capture."""
+    candidates: dict[tuple[Any, ...], dict[str, Any]] = {}
+    lldp_frames = 0
+    for frame in packets:
+        try:
+            _lldp_payload_offset(frame)
+        except ToolInputError:
+            continue
+        lldp_frames += 1
+        try:
+            persona = persona_from_lldp_frame(frame, interface=interface)
+        except ToolInputError:
+            continue
+        key = (
+            persona["source_mac"],
+            persona["chassis_id_subtype"],
+            persona["chassis_id"],
+            persona["port_id_subtype"],
+            persona["port_id"],
+            persona["system_name"],
+        )
+        if key in candidates:
+            candidates[key]["packet_count"] += 1
+            continue
+        candidates[key] = {
+            "frame_hex": frame.hex(),
+            "name": persona["name"],
+            "system_name": persona["system_name"],
+            "source_mac": persona["source_mac"],
+            "chassis_id": persona["chassis_id"],
+            "port_id": persona["port_id"],
+            "capabilities": persona["capabilities"],
+            "custom_tlv_count": len(persona["custom_tlvs"]),
+            "packet_count": 1,
+        }
+    if not candidates:
+        if lldp_frames:
+            raise ToolInputError(
+                "The capture contains LLDP traffic, but no complete active identity could be decoded."
+            )
+        raise ToolInputError("The capture does not contain any LLDP Ethernet frames.")
+    return sorted(
+        candidates.values(),
+        key=lambda item: (item["system_name"].lower(), item["source_mac"]),
+    )
+
+
+def persona_from_lldp_frame(frame: bytes, *, interface: str) -> dict[str, Any]:
+    """Decode one Ethernet LLDP frame into an unsaved, editable persona."""
+    payload_offset = _lldp_payload_offset(frame)
+    source_mac = _format_mac(frame[6:12])
+    values: dict[int, list[bytes]] = {}
+    offset = payload_offset
+    saw_end = False
+    while offset + 2 <= len(frame):
+        header = struct.unpack_from("!H", frame, offset)[0]
+        tlv_type = header >> 9
+        length = header & 0x1FF
+        offset += 2
+        if tlv_type == 0:
+            if length:
+                raise ToolInputError("The LLDP end TLV is malformed.")
+            saw_end = True
+            break
+        end = offset + length
+        if end > len(frame):
+            raise ToolInputError("The LLDP frame ends inside a TLV.")
+        values.setdefault(tlv_type, []).append(frame[offset:end])
+        offset = end
+    if not saw_end:
+        raise ToolInputError("The LLDP frame has no end TLV.")
+    if not all(values.get(kind) for kind in (1, 2, 3)):
+        raise ToolInputError("The LLDP frame is missing a mandatory identity TLV.")
+
+    chassis_subtype, chassis_id = _decode_identifier(values[1][0], chassis=True)
+    port_subtype, port_id = _decode_identifier(values[2][0], chassis=False)
+    if len(values[3][0]) != 2:
+        raise ToolInputError("The LLDP TTL TLV is malformed.")
+    ttl = struct.unpack("!H", values[3][0])[0]
+    if ttl == 0:
+        raise ToolInputError("LLDP shutdown advertisements cannot become personas.")
+
+    system_name = _decode_text(_first_tlv(values, 5)) or chassis_id
+    system_description = _decode_text(_first_tlv(values, 6))
+    port_description = _decode_text(_first_tlv(values, 4))
+    capability_mask = 0
+    capability_value = _first_tlv(values, 7)
+    if len(capability_value) >= 4:
+        _supported, capability_mask = struct.unpack("!HH", capability_value[:4])
+    capabilities = [
+        name for name, bit in CAPABILITY_BITS.items() if capability_mask & bit
+    ]
+    preset = (
+        "phone"
+        if "telephone" in capabilities
+        else "switch"
+        if "bridge" in capabilities
+        else "generic"
+    )
+    persona = default_persona(preset=preset, interface=interface)
+    persona.update(
+        {
+            "name": system_name,
+            "preset": preset,
+            "system_name": system_name,
+            "system_description": system_description,
+            "source_mac": source_mac,
+            "chassis_id": chassis_id,
+            "chassis_id_subtype": chassis_subtype,
+            "port_id": port_id,
+            "port_id_subtype": port_subtype,
+            "port_description": port_description,
+            "capabilities": capabilities,
+            "management_address": _decode_management_address(
+                _first_tlv(values, 8)
+            ),
+            "ttl": ttl,
+            "pvid": 0,
+            "med_enabled": False,
+            "med_policy_enabled": False,
+            "custom_tlvs": [],
+        }
+    )
+
+    for organization in values.get(127, []):
+        if len(organization) < 4:
+            raise ToolInputError("An organizational LLDP TLV is malformed.")
+        oui = organization[:3]
+        subtype = organization[3]
+        value = organization[4:]
+        if oui == IEEE_8021_OUI and subtype == 1 and len(value) == 2:
+            persona["pvid"] = struct.unpack("!H", value)[0]
+            continue
+        if oui == LLDP_MED_OUI and subtype == 1 and len(value) == 3:
+            med_capabilities, med_class = struct.unpack("!HB", value)
+            persona["med_enabled"] = True
+            persona["med_class"] = med_class
+            persona["med_policy_enabled"] = bool(med_capabilities & 2)
+            continue
+        if oui == LLDP_MED_OUI and subtype == 2 and len(value) == 4:
+            policy = struct.unpack("!I", value)[0]
+            if (policy >> 24) & 0x1F == 1:
+                persona.update(
+                    {
+                        "med_enabled": True,
+                        "med_policy_enabled": True,
+                        "med_policy_unknown": bool(policy & (1 << 23)),
+                        "med_policy_tagged": bool(policy & (1 << 22)),
+                        "med_policy_vlan": (policy >> 9) & 0xFFF,
+                        "med_policy_priority": (policy >> 6) & 0x7,
+                        "med_policy_dscp": policy & 0x3F,
+                    }
+                )
+                continue
+        persona["custom_tlvs"].append(
+            {
+                "oui": oui.hex(),
+                "subtype": subtype,
+                "value_hex": value.hex(),
+            }
+        )
+    return validate_persona(persona, interface=interface)
+
+
 def build_lldp_frame(
     persona: dict[str, Any], *, interface: str, shutdown: bool = False
 ) -> tuple[bytes, list[dict[str, Any]]]:
     normalized = validate_persona(persona, interface=interface)
     source_mac = bytes.fromhex(normalized["source_mac"].replace(":", ""))
-    chassis = normalized["chassis_id"]
-    if normalized["chassis_id_subtype"] == "mac":
-        chassis_value = bytes([4]) + bytes.fromhex(chassis.replace(":", ""))
-    else:
-        chassis_value = bytes([7]) + chassis.encode("utf-8")
+    chassis_value = bytes([normalized["chassis_id_subtype"]]) + _identifier_value(
+        normalized["chassis_id"],
+        subtype=normalized["chassis_id_subtype"],
+        chassis=True,
+    )
+    port_value = bytes([normalized["port_id_subtype"]]) + _identifier_value(
+        normalized["port_id"],
+        subtype=normalized["port_id_subtype"],
+        chassis=False,
+    )
     tlvs: list[tuple[int, bytes, str]] = [
         (1, chassis_value, "Chassis ID"),
-        (2, bytes([7]) + normalized["port_id"].encode("utf-8"), "Port ID"),
+        (2, port_value, "Port ID"),
         (3, struct.pack("!H", 0 if shutdown else normalized["ttl"]), "TTL"),
     ]
     if not shutdown:
@@ -584,6 +795,94 @@ def preview_persona(persona: dict[str, Any], *, interface: str) -> dict[str, Any
         "shutdown_frame_hex": shutdown.hex(),
         "tlvs": tlvs,
     }
+
+
+def _lldp_payload_offset(frame: bytes) -> int:
+    if len(frame) < 14:
+        raise ToolInputError("The Ethernet frame is too short.")
+    offset = 12
+    ethertype = struct.unpack_from("!H", frame, offset)[0]
+    while ethertype in {0x8100, 0x88A8, 0x9100}:
+        if len(frame) < offset + 6:
+            raise ToolInputError("The Ethernet frame has an incomplete VLAN header.")
+        offset += 4
+        ethertype = struct.unpack_from("!H", frame, offset)[0]
+    if ethertype != 0x88CC:
+        raise ToolInputError("The Ethernet frame is not LLDP.")
+    return offset + 2
+
+
+def _first_tlv(values: dict[int, list[bytes]], tlv_type: int) -> bytes:
+    return values.get(tlv_type, [b""])[0]
+
+
+def _decode_text(value: bytes) -> str:
+    return value.decode("utf-8", errors="replace").rstrip("\0").strip()
+
+
+def _format_mac(value: bytes) -> str:
+    if len(value) != 6:
+        raise ToolInputError("An LLDP MAC address must contain six octets.")
+    return ":".join(f"{octet:02x}" for octet in value)
+
+
+def _decode_identifier(value: bytes, *, chassis: bool) -> tuple[int, str]:
+    if len(value) < 2:
+        raise ToolInputError("An LLDP identity TLV is empty.")
+    subtype = value[0]
+    if not 1 <= subtype <= 7:
+        raise ToolInputError("An LLDP identity uses an unsupported subtype.")
+    mac_subtype = 4 if chassis else 3
+    decoded = _format_mac(value[1:]) if subtype == mac_subtype else _decode_text(value[1:])
+    if not decoded:
+        raise ToolInputError("An LLDP identity TLV has no value.")
+    return subtype, decoded
+
+
+def _identifier_subtype(raw: Any, *, chassis: bool, identifier: str) -> int:
+    named = str(raw or "").strip().lower()
+    aliases = {
+        "mac": 4 if chassis else 3,
+        "local": 7,
+        "ifname": 6 if chassis else 5,
+        "interface name": 6 if chassis else 5,
+    }
+    if named in aliases:
+        return aliases[named]
+    try:
+        subtype = int(named)
+    except (TypeError, ValueError):
+        try:
+            normalize_mac(identifier)
+        except ToolInputError:
+            return 7
+        return 4 if chassis else 3
+    if not 1 <= subtype <= 7:
+        raise ToolInputError("LLDP identity subtypes must be between 1 and 7.")
+    return subtype
+
+
+def _identifier_value(value: str, *, subtype: int, chassis: bool) -> bytes:
+    mac_subtype = 4 if chassis else 3
+    if subtype == mac_subtype:
+        return bytes.fromhex(normalize_mac(value).replace(":", ""))
+    return value.encode("utf-8")
+
+
+def _decode_management_address(value: bytes) -> str:
+    if len(value) < 2:
+        return ""
+    address_length = value[0]
+    if address_length < 2 or len(value) < 1 + address_length:
+        return ""
+    subtype = value[1]
+    packed = value[2 : 1 + address_length]
+    if (subtype, len(packed)) not in {(1, 4), (2, 16)}:
+        return ""
+    try:
+        return str(ipaddress.ip_address(packed))
+    except ValueError:
+        return ""
 
 
 def _management_value(address: str) -> bytes:

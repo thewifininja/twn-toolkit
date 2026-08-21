@@ -18915,6 +18915,30 @@ body.remote-terminal-resizing * {
   flex-wrap: wrap;
 }
 
+.lldp-local-transmitter {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.75fr) minmax(22rem, 1.25fr);
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.lldp-local-interface-picker,
+.lldp-local-transmitter-state {
+  display: flex;
+  align-items: end;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.lldp-local-interface-picker label { flex: 1; min-width: 0; }
+.lldp-local-transmitter-state { justify-content: space-between; align-items: center; }
+.lldp-local-transmitter-state > div { display: grid; min-width: 0; gap: 0.1rem; }
+.lldp-local-transmitter-state small { color: var(--muted); }
+
 .lldp-neighbor-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 31rem), 1fr));
@@ -18967,17 +18991,21 @@ body.remote-terminal-resizing * {
 
 .lldp-emulation-layout {
   display: grid;
-  grid-template-columns: minmax(16rem, 21rem) minmax(0, 1fr);
+  grid-template-columns: minmax(18rem, 23rem) minmax(0, 1fr);
   align-items: start;
   gap: 1rem;
 }
 
 .lldp-emulation-main { display: grid; min-width: 0; gap: 1rem; }
-.lldp-persona-library { position: sticky; top: 1rem; min-width: 0; }
+.lldp-persona-library { position: sticky; top: 1rem; min-width: 0; overflow: visible; }
+.lldp-persona-library > .section-head { align-items: center; }
+.lldp-library-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.4rem; }
 
 .lldp-preset-list,
 .lldp-saved-list { display: grid; gap: 0.55rem; }
 .lldp-saved-list { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.lldp-saved-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.15rem; }
+.lldp-saved-heading h3 { font-size: 1rem; margin: 0.1rem 0 0; }
 
 .lldp-preset-card {
   display: grid;
@@ -19011,11 +19039,55 @@ body.remote-terminal-resizing * {
 .lldp-saved-row > a small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lldp-saved-row > a small { color: var(--muted); }
 
-.lldp-form-grid { display: grid; gap: 0.8rem; }
+.lldp-persona-menu { position: relative; }
+.lldp-persona-menu > summary {
+  align-items: center;
+  border-radius: 7px;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 900;
+  height: 2rem;
+  justify-content: center;
+  letter-spacing: 0.08em;
+  list-style: none;
+  width: 2rem;
+}
+.lldp-persona-menu > summary::-webkit-details-marker { display: none; }
+.lldp-persona-menu > summary:hover,
+.lldp-persona-menu[open] > summary { background: var(--surface-soft); }
+.lldp-persona-menu-popover {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 30px rgb(20 35 28 / 18%);
+  display: grid;
+  gap: 0.15rem;
+  min-width: 9rem;
+  padding: 0.35rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.3rem);
+  z-index: 20;
+}
+.lldp-persona-menu-popover form { margin: 0; }
+.lldp-persona-menu-popover .menu-action {
+  background: transparent;
+  color: var(--ink);
+  justify-content: flex-start;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.6rem;
+  width: 100%;
+}
+.lldp-persona-menu-popover .menu-action:hover { background: var(--surface-soft); }
+.lldp-persona-menu-popover .menu-action.danger-text { color: var(--red); }
+
+.lldp-form-grid { display: grid; gap: 0.8rem; align-items: start; }
 .lldp-form-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lldp-form-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .lldp-form-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.lldp-form-grid > label { align-content: start; min-width: 0; }
 .lldp-form-grid label > span { color: var(--muted); font-weight: 500; }
+.lldp-form-grid label > small { color: var(--muted); line-height: 1.35; }
 
 .lldp-fieldset {
   border: 1px solid var(--border);
@@ -19039,14 +19111,62 @@ body.remote-terminal-resizing * {
 .lldp-run-limits { align-items: end; }
 .lldp-shutdown-note { display: grid; gap: 0.15rem; min-height: var(--control-height); align-content: center; padding: 0.5rem 0.8rem; border-left: 3px solid var(--green); background: var(--green-soft); border-radius: var(--radius-sm); }
 .lldp-shutdown-note span { color: var(--muted); font-size: 0.82rem; }
+.lldp-option-row {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+}
 
 .lldp-form-actions {
-  justify-content: flex-end;
+  justify-content: space-between;
   border-top: 1px solid var(--border);
   padding-top: 1rem;
 }
-.lldp-form-actions > div { display: flex; gap: 0.5rem; margin-right: auto; }
-.lldp-form-actions .risk-confirmation { flex: 1 1 22rem; justify-content: flex-end; }
+.lldp-form-actions > div { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.lldp-editor-actions { margin-right: auto; }
+.lldp-send-actions { justify-content: flex-end; }
+.lldp-send-confirmation { padding: 0.35rem 0.25rem; }
+
+.lldp-import-form {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+.lldp-import-source-picker {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 0.8rem;
+  margin: 0;
+  min-width: 0;
+  padding: 0.9rem;
+}
+.lldp-import-source-picker legend { font-weight: 800; padding: 0 0.35rem; }
+.lldp-import-source-picker .field-note { margin: 0; }
+.lldp-import-interface { align-content: start; max-width: 42rem; }
+.lldp-import-interface small { color: var(--muted); font-weight: 500; }
+.lldp-import-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; }
+.lldp-import-actions span { color: var(--muted); }
+.lldp-import-results { border-top: 1px solid var(--border); display: grid; gap: 0.8rem; margin-top: 1.1rem; padding-top: 1.1rem; }
+.lldp-import-candidate-list { display: grid; gap: 0.55rem; }
+.lldp-import-candidate {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0.75rem 0.85rem;
+}
+.lldp-import-candidate > div { display: grid; gap: 0.15rem; min-width: 0; }
+.lldp-import-candidate span,
+.lldp-import-candidate small { color: var(--muted); overflow-wrap: anywhere; }
+.lldp-import-candidate form { margin: 0; }
 
 .lldp-tlv-list { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 1rem; }
 .lldp-tlv-list span { display: grid; gap: 0.05rem; border: 1px solid var(--border); border-radius: 999px; padding: 0.35rem 0.7rem; background: var(--surface-soft); }
@@ -19083,6 +19203,11 @@ body.remote-terminal-resizing * {
 }
 
 @media (max-width: 700px) {
+  .lldp-local-transmitter { grid-template-columns: 1fr; }
+  .lldp-local-interface-picker,
+  .lldp-local-transmitter-state { align-items: stretch; flex-direction: column; }
+  .lldp-local-interface-picker button,
+  .lldp-local-transmitter-state button { width: 100%; }
   .lldp-neighbor-facts,
   .lldp-preview-facts,
   .lldp-form-grid.two,
@@ -19090,9 +19215,14 @@ body.remote-terminal-resizing * {
   .lldp-form-grid.four { grid-template-columns: 1fr; }
   .lldp-form-actions { align-items: stretch; }
   .lldp-form-actions > div { width: 100%; }
-  .lldp-form-actions > div > button { flex: 1; }
-  .lldp-form-actions .risk-confirmation { justify-content: flex-start; flex-basis: 100%; }
-  .lldp-form-actions > button { width: 100%; }
+  .lldp-editor-actions > button { flex: 1; }
+  .lldp-send-actions { align-items: stretch; flex-direction: column; }
+  .lldp-send-actions > button { width: 100%; }
+  .lldp-import-actions,
+  .lldp-import-candidate { align-items: stretch; grid-template-columns: 1fr; }
+  .lldp-import-actions { flex-direction: column; }
+  .lldp-import-actions button,
+  .lldp-import-candidate button { width: 100%; }
   .lldp-snapshot-row { justify-content: flex-start; }
   .lldp-preset-list {
     display: flex;

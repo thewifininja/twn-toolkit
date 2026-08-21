@@ -51,9 +51,13 @@ def parse_single_packet_capture(data: bytes) -> bytes:
     return packets[0]
 
 
-def parse_packet_capture(data: bytes) -> list[bytes]:
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise ToolInputError("Packet replay captures may not exceed 256 KiB.")
+def parse_packet_capture(
+    data: bytes, *, max_upload_bytes: int = MAX_UPLOAD_BYTES
+) -> list[bytes]:
+    if len(data) > max_upload_bytes:
+        if max_upload_bytes == MAX_UPLOAD_BYTES:
+            raise ToolInputError("Packet replay captures may not exceed 256 KiB.")
+        raise ToolInputError("The packet capture exceeds the allowed upload size.")
     if len(data) < 24:
         raise ToolInputError("Choose a classic PCAP or paste raw packet hex.")
 

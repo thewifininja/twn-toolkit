@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import secrets
 import time
-from typing import Any
+from typing import Any, BinaryIO
 
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, request, url_for
 
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run, suppress_audit_event
+from .capture_sources import CLASSIC_PCAP_SUFFIXES, datastore_packet_captures
+from .datastore import DatastoreError, LocalDatastore
 from .dhcp_tools import available_interfaces
 from .investigation_context import (
     add_current_investigation_generated_evidence_event,
@@ -21,16 +23,31 @@ from .lldp_tools import (
     PRESETS,
     default_persona,
     format_custom_tlvs,
+    lldp_persona_candidates,
     lldpcli_capability,
+    local_lldp_status,
     persona_from_form,
+    persona_from_lldp_frame,
     preferred_interface,
     preview_persona,
     read_neighbors,
+    set_local_lldp_mode,
     validate_persona,
 )
 from .network_tools import ToolInputError
+from .packet_replay_tools import parse_hex_packet, parse_packet_capture
 from .profiles import LLDPPersonaStore
 from .route_utils import disable_client_caching
+
+
+MAX_LLDP_PCAP_BYTES = 8 * 1024 * 1024
+
+
+def _read_lldp_capture(stream: BinaryIO) -> list[bytes]:
+    capture = stream.read(MAX_LLDP_PCAP_BYTES + 1)
+    if len(capture) > MAX_LLDP_PCAP_BYTES:
+        raise ToolInputError("LLDP persona captures may not exceed 8 MiB.")
+    return parse_packet_capture(capture, max_upload_bytes=MAX_LLDP_PCAP_BYTES)
 
 
 def register_lldp_routes(tools_bp: Blueprint) -> None:
@@ -40,6 +57,19 @@ def register_lldp_routes(tools_bp: Blueprint) -> None:
         user_id = str(user.get("id", ""))
         persona_store = LLDPPersonaStore(current_app.instance_path)
         session_store = LLDPSessionStore(current_app.instance_path)
+        datastore = LocalDatastore(current_app.instance_path)
+        can_use_datastore = bool(
+            user.get("is_admin")
+            or "local.datastore" in getattr(g, "allowed_tool_ids", set())
+        )
+        datastore_captures = (
+            datastore_packet_captures(datastore, max_bytes=MAX_LLDP_PCAP_BYTES)
+            if can_use_datastore
+            else []
+        )
+        datastore_capture_count = sum(
+            bool(capture["within_limit"]) for capture in datastore_captures
+        )
         interfaces = available_interfaces()
         # A POST to the current page retains its query string. Prefer the
         # submitted form so a stale ``?interface=en0`` cannot override the
@@ -65,7 +95,10 @@ def register_lldp_routes(tools_bp: Blueprint) -> None:
         persona.setdefault("custom_tlvs", [])
         persona["custom_tlvs_text"] = format_custom_tlvs(persona["custom_tlvs"])
         preview = None
+        import_mode = request_fields.get("import", "").strip() == "1"
+        import_candidates: list[dict[str, Any]] = []
         journal_event = None
+        interface_lldp_status = ""
         error = ""
         message = ""
         neighbors: list[dict[str, Any]] = []
@@ -73,7 +106,74 @@ def register_lldp_routes(tools_bp: Blueprint) -> None:
 
         if request.method == "POST":
             action = request.form.get("action", "preview")
-            if action == "neighbor_persona":
+            if action == "import_pcap":
+                view = "emulate"
+                import_mode = True
+                try:
+                    uploaded = request.files.get("pcap_file")
+                    has_upload = bool(uploaded and uploaded.filename)
+                    datastore_capture = request.form.get(
+                        "datastore_capture", ""
+                    ).strip()
+                    if sum((has_upload, bool(datastore_capture))) != 1:
+                        raise ToolInputError(
+                            "Choose exactly one LLDP capture source: a datastore PCAP or a local upload."
+                        )
+                    if has_upload and uploaded:
+                        packets = _read_lldp_capture(uploaded.stream)
+                    else:
+                        if not can_use_datastore:
+                            raise ToolInputError(
+                                "Datastore access is required to select a stored PCAP."
+                            )
+                        capture_path = datastore.file(datastore_capture)
+                        if capture_path.suffix.casefold() not in CLASSIC_PCAP_SUFFIXES:
+                            raise ToolInputError(
+                                "Choose a classic .pcap or .cap file from the datastore."
+                            )
+                        with capture_path.open("rb") as capture_source:
+                            packets = _read_lldp_capture(capture_source)
+                    import_candidates = lldp_persona_candidates(
+                        packets, interface=selected_interface
+                    )
+                    if len(import_candidates) == 1:
+                        persona = persona_from_lldp_frame(
+                            bytes.fromhex(import_candidates[0]["frame_hex"]),
+                            interface=selected_interface,
+                        )
+                        persona["custom_tlvs_text"] = format_custom_tlvs(
+                            persona["custom_tlvs"]
+                        )
+                        preview = preview_persona(persona, interface=selected_interface)
+                        import_mode = False
+                        message = "Decoded one LLDP identity into an unsaved persona. Review it before saving or transmitting."
+                    else:
+                        message = (
+                            f"Found {len(import_candidates)} LLDP identities. "
+                            "Choose the one you want to turn into a persona."
+                        )
+                except (DatastoreError, OSError, ToolInputError, TypeError, ValueError) as exc:
+                    error = str(exc) or "The LLDP capture could not be decoded."
+                suppress_audit_event()
+            elif action == "import_pcap_candidate":
+                view = "emulate"
+                try:
+                    frame = parse_hex_packet(request.form.get("frame_hex", ""))
+                    persona = persona_from_lldp_frame(
+                        frame, interface=selected_interface
+                    )
+                    persona["custom_tlvs_text"] = format_custom_tlvs(
+                        persona["custom_tlvs"]
+                    )
+                    preview = preview_persona(persona, interface=selected_interface)
+                    import_mode = False
+                    selected_name = ""
+                    message = "Decoded the selected LLDP identity into an unsaved persona. Review it before saving or transmitting."
+                except (OSError, ToolInputError, TypeError, ValueError) as exc:
+                    import_mode = True
+                    error = str(exc) or "The selected LLDP identity could not be decoded."
+                suppress_audit_event()
+            elif action == "neighbor_persona":
                 view = "emulate"
                 try:
                     observed = read_neighbors()
@@ -215,6 +315,43 @@ def register_lldp_routes(tools_bp: Blueprint) -> None:
                             outcome="failed",
                             details={"error": error},
                         )
+            elif action == "local_lldp_mode":
+                view = "observe"
+                requested_mode = request.form.get("local_lldp_mode", "").strip()
+                try:
+                    interface_lldp_status = set_local_lldp_mode(
+                        selected_interface, requested_mode
+                    )
+                    message = (
+                        f"Local LLDP advertisements are now silenced on {selected_interface}; "
+                        "neighbor reception remains enabled."
+                        if requested_mode == "receive-only"
+                        else f"Local LLDP receive and transmit are enabled on {selected_interface}."
+                    )
+                    annotate_tool_run(
+                        category="Network tools",
+                        action_namespace="lldp.local_transmit",
+                        tool_name="LLDP Lab local transmitter",
+                        outcome="succeeded",
+                        details={
+                            "interface": selected_interface,
+                            "mode": requested_mode,
+                            "status": interface_lldp_status,
+                        },
+                    )
+                except ToolInputError as exc:
+                    error = str(exc)
+                    annotate_tool_run(
+                        category="Network tools",
+                        action_namespace="lldp.local_transmit",
+                        tool_name="LLDP Lab local transmitter",
+                        outcome="failed",
+                        details={
+                            "interface": selected_interface,
+                            "mode": requested_mode,
+                            "error": error,
+                        },
+                    )
             elif action == "snapshot":
                 view = "observe"
                 try:
@@ -279,6 +416,18 @@ def register_lldp_routes(tools_bp: Blueprint) -> None:
             except ToolInputError as exc:
                 error = str(exc)
 
+        if (
+            view == "observe"
+            and capability["connected"]
+            and selected_interface
+            and not interface_lldp_status
+        ):
+            try:
+                interface_lldp_status = local_lldp_status(selected_interface)
+            except ToolInputError as exc:
+                if not error:
+                    error = str(exc)
+
         return render_template(
             "tools/lldp_lab.html",
             view=view,
@@ -286,12 +435,18 @@ def register_lldp_routes(tools_bp: Blueprint) -> None:
             neighbors=neighbors,
             interfaces=interfaces,
             interface=selected_interface,
+            interface_lldp_status=interface_lldp_status,
             presets=PRESETS,
             capabilities=CAPABILITY_BITS,
             personas=persona_store.all(),
             selected_name=selected_name,
             persona=persona,
             preview=preview,
+            import_mode=import_mode,
+            import_candidates=import_candidates,
+            datastore_captures=datastore_captures,
+            datastore_capture_count=datastore_capture_count,
+            can_use_datastore=can_use_datastore,
             sessions=session_store.recent(user_id=user_id),
             error=error,
             message=message,

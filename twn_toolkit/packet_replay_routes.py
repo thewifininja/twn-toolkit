@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import secrets
 import time
-from pathlib import Path
 from typing import BinaryIO
 
 from flask import Blueprint, current_app, g, render_template, request
 
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run, suppress_audit_event
-from .datastore import DatastoreError, LocalDatastore, format_bytes
+from .capture_sources import CLASSIC_PCAP_SUFFIXES, datastore_packet_captures
+from .datastore import DatastoreError, LocalDatastore
 from .dhcp_tools import available_interfaces
 from .network_tools import ToolInputError
 from .investigation_context import record_current_investigation_event
@@ -24,25 +24,13 @@ from .packet_replay_tools import (
 )
 
 
-REPLAY_CAPTURE_SUFFIXES = {".cap", ".pcap"}
-
-
 def _datastore_packet_captures(store: LocalDatastore) -> list[dict[str, object]]:
-    captures: list[dict[str, object]] = []
-    for folder in store.folders():
-        for entry in store.list(str(folder["path"]))["entries"]:
-            if entry["is_dir"]:
-                continue
-            if Path(str(entry["name"])).suffix.casefold() not in REPLAY_CAPTURE_SUFFIXES:
-                continue
-            captures.append(
-                {
-                    **entry,
-                    "size_display": format_bytes(int(entry["size"])),
-                    "replayable": int(entry["size"]) <= MAX_REPLAY_CAPTURE_BYTES,
-                }
-            )
-    return sorted(captures, key=lambda item: str(item["path"]).casefold())
+    return [
+        {**capture, "replayable": capture["within_limit"]}
+        for capture in datastore_packet_captures(
+            store, max_bytes=MAX_REPLAY_CAPTURE_BYTES
+        )
+    ]
 
 
 def _read_capture_stream(stream: BinaryIO) -> list[bytes]:
@@ -114,7 +102,7 @@ def register_packet_replay_routes(tools_bp: Blueprint) -> None:
                                 "Datastore access is required to select a stored PCAP."
                             )
                         capture_path = datastore.file(form["datastore_capture"])
-                        if capture_path.suffix.casefold() not in REPLAY_CAPTURE_SUFFIXES:
+                        if capture_path.suffix.casefold() not in CLASSIC_PCAP_SUFFIXES:
                             raise ToolInputError(
                                 "Choose a classic .pcap or .cap file from the datastore."
                             )

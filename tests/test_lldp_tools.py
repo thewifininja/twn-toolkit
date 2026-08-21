@@ -4,21 +4,36 @@ import json
 import struct
 import tempfile
 import unittest
+from io import BytesIO
 from unittest.mock import patch
 
 from twn_toolkit.app import create_app
+from twn_toolkit.datastore import LocalDatastore
 from twn_toolkit.lldp_tools import (
+    PRESETS,
     build_lldp_frame,
     default_persona,
+    lldp_persona_candidates,
+    local_lldp_status,
     local_lldpd_shutdown_frame,
     normalize_neighbors,
     parse_custom_tlvs,
+    persona_from_lldp_frame,
     preview_persona,
     preferred_interface,
+    set_local_lldp_mode,
 )
 
 
 INTERFACES = [{"name": "en7", "mac": "02:11:22:33:44:55"}]
+
+
+def _pcap(*frames: bytes) -> bytes:
+    payload = bytearray(struct.pack("<IHHIIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, 1))
+    for index, frame in enumerate(frames, start=1):
+        payload.extend(struct.pack("<IIII", index, 0, len(frame), len(frame)))
+        payload.extend(frame)
+    return bytes(payload)
 
 
 class LLDPToolTests(unittest.TestCase):
@@ -121,6 +136,67 @@ class LLDPToolTests(unittest.TestCase):
         self.assertIn(bytes.fromhex("00090f07deadbeef"), frame)
         self.assertIn("Custom 00090f / 7", [item["label"] for item in decoded])
 
+    def test_capture_import_preserves_identity_subtypes_and_vendor_tlvs(self) -> None:
+        persona = self._persona("switch")
+        persona.update(
+            {
+                "name": "Captured switch",
+                "system_name": "Captured switch",
+                "port_id": "port5",
+                "port_id_subtype": 5,
+                "custom_tlvs": parse_custom_tlvs(
+                    "08:5b:0e, 2, 53313234455035393139303035303732"
+                ),
+            }
+        )
+        frame, _decoded = self._build(persona)
+        with (
+            patch("twn_toolkit.lldp_tools.available_interfaces", return_value=INTERFACES),
+            patch("twn_toolkit.lldp_tools.interface_mac", return_value=INTERFACES[0]["mac"]),
+        ):
+            imported = persona_from_lldp_frame(frame, interface="en7")
+            candidates = lldp_persona_candidates(
+                [b"\xff" * 60, frame, frame], interface="en7"
+            )
+        self.assertEqual(imported["port_id_subtype"], 5)
+        self.assertEqual(imported["port_id"], "port5")
+        self.assertEqual(imported["custom_tlvs"][0]["oui"], "085b0e")
+        self.assertEqual(candidates[0]["packet_count"], 2)
+        self.assertEqual(candidates[0]["custom_tlv_count"], 1)
+
+    def test_fortiswitch_is_not_a_canned_persona(self) -> None:
+        self.assertNotIn("fortiswitch", PRESETS)
+
+    @patch("twn_toolkit.lldp_tools._find_lldpcli", return_value="/usr/bin/lldpcli")
+    @patch("twn_toolkit.lldp_tools.available_interfaces", return_value=INTERFACES)
+    @patch("twn_toolkit.lldp_tools._run_lldpcli")
+    def test_reads_and_changes_local_lldp_transmitter_state(
+        self, run_lldpcli, _interfaces, _find_lldpcli
+    ) -> None:
+        run_lldpcli.return_value = {
+            "lldp": [
+                {
+                    "interface": [
+                        {"name": "en7", "status": [{"value": "RX only"}]}
+                    ]
+                }
+            ]
+        }
+        self.assertEqual(local_lldp_status("en7"), "RX only")
+        with patch("twn_toolkit.lldp_tools._execute_lldpcli") as execute:
+            self.assertEqual(
+                set_local_lldp_mode("en7", "receive-and-transmit"), "RX only"
+            )
+        execute.assert_called_once_with(
+            "/usr/bin/lldpcli",
+            "configure",
+            "ports",
+            "en7",
+            "lldp",
+            "status",
+            "rx-and-tx",
+        )
+
     def test_prefers_normal_wired_interface_over_macos_pseudo_interfaces(self) -> None:
         self.assertEqual(
             preferred_interface(
@@ -220,6 +296,45 @@ class LLDPRouteTests(unittest.TestCase):
     @patch("twn_toolkit.lldp_routes.available_interfaces", return_value=INTERFACES)
     @patch("twn_toolkit.lldp_tools.available_interfaces", return_value=INTERFACES)
     @patch("twn_toolkit.lldp_tools.interface_mac", return_value=INTERFACES[0]["mac"])
+    @patch("twn_toolkit.lldp_routes.local_lldp_status", return_value="RX and TX")
+    @patch("twn_toolkit.lldp_routes.set_local_lldp_mode", return_value="RX only")
+    @patch(
+        "twn_toolkit.lldp_routes.lldpcli_capability",
+        return_value={
+            "available": True,
+            "connected": True,
+            "version": "1.0.22",
+            "message": "Connected",
+        },
+    )
+    @patch("twn_toolkit.lldp_routes.read_neighbors", return_value=[])
+    def test_observe_view_can_silence_local_lldp_transmit(
+        self,
+        _neighbors,
+        _capability,
+        set_mode,
+        _status,
+        _mac,
+        _tool_interfaces,
+        _route_interfaces,
+    ) -> None:
+        response = self.client.post(
+            "/tools/lldp-lab",
+            data={
+                "view": "observe",
+                "interface": "en7",
+                "action": "local_lldp_mode",
+                "local_lldp_mode": "receive-only",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"advertisements are now silenced on en7", response.data)
+        self.assertIn(b"Restore advertisements", response.data)
+        set_mode.assert_called_once_with("en7", "receive-only")
+
+    @patch("twn_toolkit.lldp_routes.available_interfaces", return_value=INTERFACES)
+    @patch("twn_toolkit.lldp_tools.available_interfaces", return_value=INTERFACES)
+    @patch("twn_toolkit.lldp_tools.interface_mac", return_value=INTERFACES[0]["mac"])
     @patch(
         "twn_toolkit.lldp_routes.lldpcli_capability",
         return_value={
@@ -294,6 +409,64 @@ class LLDPRouteTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Branch phone copy", response.data)
+
+    @patch("twn_toolkit.lldp_routes.available_interfaces", return_value=INTERFACES)
+    @patch(
+        "twn_toolkit.lldp_routes.lldpcli_capability",
+        return_value={
+            "available": False,
+            "connected": False,
+            "version": "",
+            "message": "Not installed",
+        },
+    )
+    @patch("twn_toolkit.lldp_tools.available_interfaces", return_value=INTERFACES)
+    @patch("twn_toolkit.lldp_tools.interface_mac", return_value=INTERFACES[0]["mac"])
+    def test_imports_an_unsaved_persona_from_pcap(
+        self, _mac, _tool_interfaces, _capability, _route_interfaces
+    ) -> None:
+        persona = default_persona(preset="switch", interface="en7")
+        persona.update(
+            {
+                "name": "Captured switch",
+                "system_name": "Captured switch",
+                "port_id": "port5",
+                "port_id_subtype": 5,
+                "custom_tlvs": parse_custom_tlvs("08:5b:0e, 1, 73776974636800"),
+            }
+        )
+        frame, _decoded = build_lldp_frame(persona, interface="en7")
+        response = self.client.post(
+            "/tools/lldp-lab",
+            data={
+                "view": "emulate",
+                "interface": "en7",
+                "action": "import_pcap",
+                "pcap_file": (BytesIO(_pcap(frame, frame)), "identity.pcap"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Decoded one LLDP identity into an unsaved persona", response.data)
+        self.assertIn(b'name="name" value="Captured switch"', response.data)
+        self.assertIn(b'name="port_id_subtype" value="5"', response.data)
+        self.assertIn(b"085b0e, 1, 73776974636800", response.data)
+
+        LocalDatastore(self.temp.name).save_upload(
+            "", "stored-identity.pcap", BytesIO(_pcap(frame, frame))
+        )
+        response = self.client.post(
+            "/tools/lldp-lab",
+            data={
+                "view": "emulate",
+                "interface": "en7",
+                "action": "import_pcap",
+                "datastore_capture": "stored-identity.pcap",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Decoded one LLDP identity into an unsaved persona", response.data)
+        self.assertIn(b'name="name" value="Captured switch"', response.data)
 
     @patch("twn_toolkit.lldp_routes.available_interfaces", return_value=INTERFACES)
     @patch(
