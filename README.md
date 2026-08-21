@@ -239,6 +239,12 @@ The sidebar and Network Tools page use the same functional organization.
   selected directly from the contained Datastore after explicit authorization
   confirmation; each replay is bounded by capture size, frame count, and
   scheduled duration.
+- **LLDP Lab** — observe interface-scoped neighbors through `lldpd`, retain
+  decoded snapshots as case evidence, and build reusable endpoint, phone, or
+  bridge personas for controlled Ethernet LLDP transmission. Import captured
+  identities from a local or Datastore PCAP, review the exact source and TLVs,
+  then run one bounded session per interface with optional local-advertisement
+  suppression, TTL-zero shutdown, and prior `lldpd` state restoration.
 
 ### Investigations
 

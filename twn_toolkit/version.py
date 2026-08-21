@@ -1,6 +1,50 @@
-APP_VERSION = "0.20.0"
+APP_VERSION = "0.21.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.21.0",
+        "date": "2026-08-20",
+        "title": "LLDP observation and controlled link-layer emulation",
+        "summary": (
+            "Adds a capture-led LLDP laboratory for observing neighbors, "
+            "building reusable device identities, and running bounded, "
+            "interface-specific switch-behavior tests."
+        ),
+        "groups": (
+            {
+                "title": "Interface-scoped LLDP observation",
+                "items": (
+                    "Uses the host lldpd service to decode neighbors by local interface, including chassis and port identity, management addresses, capabilities, VLAN information, and advertised LLDP-MED policy.",
+                    "Retains an operator-requested neighbor snapshot as timestamped JSON evidence while a case actively records.",
+                    "Lets an operator place local lldpd into receive-only mode on one interface outside an emulation session, then restore normal receive-and-transmit behavior explicitly.",
+                ),
+            },
+            {
+                "title": "Capture-led reusable personas",
+                "items": (
+                    "Imports LLDP identities from a bounded classic-PCAP upload or a compatible PCAP selected from Local Datastore, groups repeated advertisements by speaker, and requires review before saving or transmitting.",
+                    "Preserves the observed Ethernet source, chassis and port identifier subtypes, standard LLDP fields, and bounded organizational TLVs so a saved persona can reproduce the captured identity faithfully.",
+                    "Provides editable generic endpoint, VoIP phone, and bridge templates plus reusable saved personas that can be duplicated without tying them to one transmit interface.",
+                ),
+            },
+            {
+                "title": "Bounded and reversible emulation",
+                "items": (
+                    "Previews the exact Ethernet LLDP frame and requires an explicit authorization acknowledgement before transmitting on the selected interface.",
+                    "Limits each interface to one 1-to-60-minute session with a 1-to-120-second interval, optionally silences the host lldpd identity during the test, and sends a TTL-zero shutdown PDU when the session stops normally.",
+                    "Restores the prior lldpd port state after emulation and records bounded lifecycle summaries and evidence when a case actively records.",
+                ),
+            },
+            {
+                "title": "Operational polish and compatibility",
+                "items": (
+                    "Adds toolkit.version to startup automation templates so webhook, email, and Syslog announcements can include the running toolkit release.",
+                    "Detects whether a Raspberry Pi systemd service already retains bounded network capabilities and shows the exact safe reinstall command without silently removing those permissions.",
+                    "Keeps the normal v0.9.0 minimum upgrade boundary, adds no Python dependency or database migration, and reuses the existing Linux network-capability and macOS BPF permission models for raw LLDP transmission.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.20.0",
         "date": "2026-08-20",
