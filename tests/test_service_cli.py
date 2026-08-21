@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import plistlib
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -34,6 +35,7 @@ from twn_toolkit.service_cli import (
     _wait_for_launchd_unloaded,
     _wait_for_managed_toolkit,
     install_service,
+    linux_lldp_service_groups,
     manage_service,
     render_launchd_plist,
     render_launchd_network_broker_plist,
@@ -68,6 +70,51 @@ class ServiceCliTests(unittest.TestCase):
         self.assertIn('Environment="HOME=/home/toolkit"', unit)
         self.assertIn("WantedBy=multi-user.target", unit)
         self.assertNotIn("AmbientCapabilities=", unit)
+        self.assertNotIn("SupplementaryGroups=", unit)
+
+    def test_systemd_unit_can_scope_lldpd_control_groups(self) -> None:
+        unit = render_systemd_unit(
+            Path("/srv/twn-toolkit"),
+            self.user,
+            supplementary_groups=("adm", "_lldpd", "adm"),
+        )
+
+        self.assertIn("SupplementaryGroups=adm _lldpd\n", unit)
+
+    def test_detects_debian_lldpcli_execution_and_socket_groups(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "lldpcli"
+            socket_path = Path(temporary) / "lldpd.socket"
+            executable.touch()
+            socket_path.touch()
+            executable.chmod(
+                stat.S_ISUID
+                | stat.S_IRUSR
+                | stat.S_IXUSR
+                | stat.S_IRGRP
+                | stat.S_IXGRP
+            )
+            socket_path.chmod(
+                stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP
+            )
+            with (
+                mock.patch(
+                    "twn_toolkit.service_cli.pwd.getpwuid",
+                    return_value=mock.Mock(pw_gid=106),
+                ),
+                mock.patch(
+                    "twn_toolkit.service_cli.grp.getgrgid",
+                    side_effect=lambda group_id: mock.Mock(
+                        gr_name="_lldpd" if group_id == 106 else "adm"
+                    ),
+                ),
+            ):
+                groups = linux_lldp_service_groups(
+                    (executable,),
+                    (socket_path,),
+                )
+
+        self.assertEqual(groups, ("adm", "_lldpd"))
 
     def test_systemd_network_capabilities_are_explicit_and_bounded(self) -> None:
         unit = render_systemd_unit(

@@ -8,6 +8,7 @@ import platform
 import plistlib
 import pwd
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -56,6 +57,12 @@ LAUNCHD_TRANSFER_MARKERS = {
     "ftp": "twn-ftp.launchd-enabled",
 }
 NETWORK_CAPABILITIES = ("CAP_NET_ADMIN", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW")
+LLDPCLI_PATHS = (
+    Path("/usr/sbin/lldpcli"),
+    Path("/usr/bin/lldpcli"),
+    Path("/usr/local/sbin/lldpcli"),
+)
+LLDPD_SOCKET_PATHS = (Path("/run/lldpd.socket"), Path("/var/run/lldpd.socket"))
 
 
 class ServiceError(RuntimeError):
@@ -124,6 +131,7 @@ def render_systemd_unit(
     user: ServiceUser,
     *,
     network_capabilities: bool = False,
+    supplementary_groups: Sequence[str] = (),
 ) -> str:
     capabilities = ""
     if network_capabilities:
@@ -133,6 +141,10 @@ def render_systemd_unit(
             f"AmbientCapabilities={joined}\n"
             "NoNewPrivileges=true\n"
         )
+    groups = tuple(dict.fromkeys(group for group in supplementary_groups if group))
+    supplementary = (
+        f"SupplementaryGroups={' '.join(groups)}\n" if groups else ""
+    )
     return (
         "[Unit]\n"
         "Description=The WiFi Ninja's Toolkit\n"
@@ -144,6 +156,7 @@ def render_systemd_unit(
         "Type=simple\n"
         f"User={user.name}\n"
         f"Group={user.group}\n"
+        f"{supplementary}"
         f"WorkingDirectory={_unit_path(str(root))}\n"
         f"ExecStart={_unit_quote(str(root / 'twn'))} service-run\n"
         "Restart=on-failure\n"
@@ -167,6 +180,56 @@ def render_systemd_unit(
         "[Install]\n"
         "WantedBy=multi-user.target\n"
     )
+
+
+def linux_lldp_service_groups(
+    executable_paths: Sequence[Path] = LLDPCLI_PATHS,
+    socket_paths: Sequence[Path] = LLDPD_SOCKET_PATHS,
+) -> tuple[str, ...]:
+    """Return the bounded local groups needed by Debian-style lldpcli installs.
+
+    Debian grants execution through the binary's group and uses a setuid lldpd
+    account to reach the control socket. The toolkit unit deliberately enables
+    NoNewPrivileges, which suppresses that setuid transition. Adding the
+    package-owned socket group to this service only preserves the hardening while
+    allowing lldpcli to perform its intended local control operation.
+    """
+
+    executable = next((path for path in executable_paths if path.is_file()), None)
+    if executable is None:
+        return ()
+
+    group_ids: list[int] = []
+    try:
+        executable_stat = executable.stat()
+    except OSError:
+        return ()
+    if executable_stat.st_mode & stat.S_IXGRP:
+        group_ids.append(executable_stat.st_gid)
+    if executable_stat.st_mode & stat.S_ISUID:
+        try:
+            group_ids.append(pwd.getpwuid(executable_stat.st_uid).pw_gid)
+        except KeyError:
+            pass
+    for socket_path in socket_paths:
+        try:
+            socket_stat = socket_path.stat()
+        except OSError:
+            continue
+        if socket_stat.st_mode & (stat.S_IRGRP | stat.S_IWGRP):
+            group_ids.append(socket_stat.st_gid)
+
+    groups: list[str] = []
+    for group_id in dict.fromkeys(group_ids):
+        if group_id == 0:
+            continue
+        try:
+            name = grp.getgrgid(group_id).gr_name
+        except KeyError:
+            continue
+        if name and not any(character.isspace() for character in name):
+            groups.append(name)
+    return tuple(dict.fromkeys(groups))
 
 
 def raspberry_pi_hardware() -> bool:
@@ -969,10 +1032,12 @@ def install_service(
     if system == "Linux":
         if not shutil.which("systemctl"):
             raise ServiceError("systemctl is unavailable; this Linux installation is not systemd-managed.")
+        lldp_groups = linux_lldp_service_groups()
         unit = render_systemd_unit(
             root,
             user,
             network_capabilities=network_capabilities,
+            supplementary_groups=lldp_groups,
         ).encode()
         _write_system_file(SYSTEMD_UNIT_PATH, unit)
         if raspberry_pi_hardware():
@@ -1015,6 +1080,8 @@ def install_service(
             print("Enabled scoped Linux network capabilities for capture, replay, and privileged ports.")
         else:
             print("Raw capture/replay and ports below 1024 may need: ./twn service install --network-capabilities")
+        if lldp_groups:
+            print("Enabled scoped access to the local lldpd control socket for LLDP Lab.")
         return
 
     if not shutil.which("launchctl"):
