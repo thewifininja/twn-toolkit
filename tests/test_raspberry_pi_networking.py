@@ -684,6 +684,58 @@ class RaspberryPiNetworkBrokerTests(unittest.TestCase):
 
 
 class RaspberryPiSettingsRouteTests(unittest.TestCase):
+    def test_pi_broker_repair_preserves_installed_network_capabilities(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            app = create_app(temporary)
+            app.testing = True
+            status = {
+                "is_raspberry_pi": True,
+                "model": "Raspberry Pi 5",
+                "compatible": "raspberrypi,5-model-b",
+                "supported": False,
+                "network_manager": "nmcli 1.52.1",
+                "network_manager_active": True,
+                "broker_available": False,
+                "wifi_enabled": True,
+                "country": "US",
+                "wifi_interfaces": [],
+                "wired_interfaces": [],
+                "ap_available": False,
+                "wired_available": False,
+                "active_connections": [],
+                "managed": {},
+                "pending": {},
+                "limitations": [
+                    "Reinstall the system service to enable protected network changes."
+                ],
+            }
+            with (
+                mock.patch(
+                    "twn_toolkit.admin_routes.raspberry_pi_identity",
+                    return_value={
+                        "is_raspberry_pi": True,
+                        "model": "Raspberry Pi 5",
+                        "compatible": "raspberrypi,5-model-b",
+                    },
+                ),
+                mock.patch(
+                    "twn_toolkit.admin_routes.raspberry_pi_network_status",
+                    return_value=status,
+                ),
+                mock.patch(
+                    "twn_toolkit.admin_routes.systemd_network_capabilities_enabled",
+                    return_value=True,
+                ),
+            ):
+                page = app.test_client().get("/settings?section=raspberry-pi")
+
+            self.assertEqual(page.status_code, 200)
+            self.assertIn(
+                b"sudo ./twn service install --network-capabilities",
+                page.data,
+            )
+            self.assertIn(b"the flag is included", page.data)
+
     def test_transient_broker_failure_preserves_local_pending_change(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             app = create_app(temporary)

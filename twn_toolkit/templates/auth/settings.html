@@ -81,7 +81,19 @@
     </div>
 
     {% for limitation in pi_network_status.limitations %}
-      <div class="message {{ 'warning' if pi_network_status.network_manager else 'error' }}"><strong>{{ limitation }}</strong>{% if 'Reinstall' in limitation %}<span>Run <code>sudo ./twn service install</code> from this toolkit checkout, adding <code>--network-capabilities</code> if this installation already uses that service option, then return here.</span>{% endif %}</div>
+      <div class="message pi-network-limitation {{ 'warning' if pi_network_status.network_manager else 'error' }}">
+        <strong>{{ limitation }}</strong>
+        {% if 'reinstall' in limitation|lower %}
+          <span>
+            Run <code>{{ pi_service_install_command }}</code> from this toolkit checkout, then return here.
+            {% if pi_service_network_capabilities %}
+              This instance already uses <code>--network-capabilities</code>; the flag is included so reinstalling does not remove its bounded packet and privileged-port access.
+            {% else %}
+              If this service was previously installed with <code>--network-capabilities</code>, use <code>sudo ./twn service install --network-capabilities</code> instead so those existing permissions are preserved.
+            {% endif %}
+          </span>
+        {% endif %}
+      </div>
     {% endfor %}
 
     {% if pending %}

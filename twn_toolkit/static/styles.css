@@ -6707,6 +6707,15 @@ button.compact,
   font-size: 0.85rem;
 }
 
+.pi-network-limitation {
+  display: grid;
+  gap: 4px;
+}
+
+.pi-network-limitation > span {
+  font-weight: 600;
+}
+
 .platform-warning {
   background: #fff4cc;
   border: 1px solid #d6a928;
@@ -10705,8 +10714,19 @@ button.compact,
   white-space: nowrap;
 }
 
-.ip-address-actions {
+.ip-address-action-region {
+  display: grid;
+  gap: 10px;
   margin-top: 26px;
+}
+
+.ip-address-actions {
+  margin: 0;
+}
+
+.ip-address-action-region > .field-note {
+  margin: 0;
+  min-height: 1.2em;
 }
 
 .nav-logout {

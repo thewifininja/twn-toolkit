@@ -38,12 +38,14 @@
     over HTTPS; no toolkit credentials are sent.
   </p>
 
-  <div class="button-row ip-address-actions">
-    <button type="button" id="check-ip-again">Check again</button>
-    <button class="secondary" type="button" id="record-ip-snapshot"
-            data-record-url="{{ url_for('tools.record_ip_snapshot') }}">Add snapshot to case</button>
+  <div class="ip-address-action-region">
+    <div class="button-row ip-address-actions">
+      <button type="button" id="check-ip-again">Check again</button>
+      <button class="secondary" type="button" id="record-ip-snapshot"
+              data-record-url="{{ url_for('tools.record_ip_snapshot') }}">Add snapshot to case</button>
+    </div>
+    <p class="field-note" id="ip-snapshot-status" aria-live="polite"></p>
   </div>
-  <p class="field-note" id="ip-snapshot-status" aria-live="polite"></p>
 </section>
 <script src="{{ url_for('static', filename='whats-my-ip.js') }}" defer></script>
 {% endblock %}

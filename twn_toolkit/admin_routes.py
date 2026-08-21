@@ -68,7 +68,10 @@ from .smtp_tools import (
 )
 from .migrations import MigrationManager
 from .network_tools import ToolInputError
-from .service_cli import service_runtime_status
+from .service_cli import (
+    service_runtime_status,
+    systemd_network_capabilities_enabled,
+)
 from .system_diagnostics import (
     command_dependencies,
     platform_capabilities,
@@ -468,6 +471,13 @@ def register_admin_routes(
         )
         active_server_settings = server_settings_store.get()
         pi_network_status = raspberry_pi_network_status()
+        pi_service_network_capabilities = bool(
+            pi_identity["is_raspberry_pi"]
+            and systemd_network_capabilities_enabled()
+        )
+        pi_service_install_command = "sudo ./twn service install"
+        if pi_service_network_capabilities:
+            pi_service_install_command += " --network-capabilities"
         local_pending = pi_network_store.pending()
         if (
             local_pending
@@ -519,6 +529,8 @@ def register_admin_routes(
             pi_network_status=pi_network_status,
             pi_network_settings=pi_network_store.get(),
             pi_network_pending=local_pending,
+            pi_service_install_command=pi_service_install_command,
+            pi_service_network_capabilities=pi_service_network_capabilities,
         )
 
     def _pi_admin_required() -> Response | None:
