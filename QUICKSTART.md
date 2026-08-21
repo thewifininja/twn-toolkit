@@ -22,9 +22,11 @@ Optional workflows need their own system commands or remote permissions:
   the toolkit does not install it.
 - Multicast tests use the host's IPv4 socket support and require at least one
   multicast-capable interface. No extra package is installed.
-- DHCP Discover, Packet Capture, and Packet Replay need platform packet access.
-  A boot-managed Linux installation can opt into scoped capabilities; macOS
-  uses administrator-managed BPF access for the normal service account.
+- DHCP Discover, Packet Capture, Packet Replay, and LLDP Lab transmission need
+  platform packet access. A boot-managed Linux installation can opt into
+  scoped capabilities; macOS uses administrator-managed BPF access for the
+  normal service account. Decoded LLDP observation additionally needs a running
+  `lldpd` service and access to its `lldpcli` control interface.
 
 ## Install or upgrade
 
@@ -81,9 +83,9 @@ low-numbered ports:
 
 On macOS, place a service checkout outside `Desktop`, `Documents`, `Downloads`,
 iCloud Drive, and `~/Library/CloudStorage`; `~/twn-toolkit` is suitable. Packet
-Capture, Packet Replay, and DHCP Discover use the service account's BPF access,
-which must be provisioned separately by an administrator. See
-[Autostart Service](docs/autostart-service.md) for the complete installation,
+Capture, Packet Replay, DHCP Discover, and LLDP Lab transmission use the service
+account's BPF access, which must be provisioned separately by an administrator.
+See [Autostart Service](docs/autostart-service.md) for the complete installation,
 verification, upgrade, permission, logging, and uninstall procedure.
 
 For a manual Python setup:
