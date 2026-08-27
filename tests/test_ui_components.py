@@ -250,6 +250,8 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('id="remote-terminal-jump-live"', workspace)
         self.assertIn("jumpToLive({focus: false})", script)
         self.assertIn("inputCapture.disabled !== inputDisabled", script)
+        self.assertIn("synchronizing = wasSynchronizing && pollImmediately", script)
+        self.assertNotIn("synchronizing = pollImmediately;", script)
         self.assertIn("New output · Jump to live", script)
         self.assertIn("options.historyLimit", emulator)
         self.assertIn("renderOverscan", emulator)

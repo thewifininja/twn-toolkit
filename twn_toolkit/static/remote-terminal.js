@@ -535,7 +535,11 @@
       cursor = Number(data.next_cursor || cursor);
       pollImmediately = Boolean(data.has_more);
       const wasSynchronizing = synchronizing;
-      synchronizing = pollImmediately;
+      // Multiple pages are also normal during a large live-output burst. Only an
+      // initial restore may keep the input disabled while those pages catch up;
+      // a running terminal must never lose focus merely because live output is
+      // arriving faster than one response page can carry it.
+      synchronizing = wasSynchronizing && pollImmediately;
       updateWorkspace(selected);
       renderList();
       if (!synchronizing) {
