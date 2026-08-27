@@ -418,13 +418,16 @@ def _dhcp_presentation(event: dict[str, Any]) -> ReportPresentation:
             [
                 _text(offer.get("offered_address")),
                 _text(offer.get("server_address")),
+                _unit(offer.get("response_time_ms"), "ms"),
                 _text(offer.get("relay_address")),
                 "\n".join(options) or "—",
             ]
         )
     return {
         "facts": facts,
-        "detail": _table(["Offered address", "Server", "Relay", "Options"], rows)
+        "detail": _table(
+            ["Offered address", "Server", "Response", "Relay", "Options"], rows
+        )
         if rows
         else _metrics([("Observation", "No DHCP offers were received.")]),
     }

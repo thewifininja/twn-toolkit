@@ -232,8 +232,8 @@ The sidebar and Network Tools page use the same functional organization.
   and provides `./twn multicast-pf` status, install, and uninstall guidance for
   IGMP Router Alert handling.
 - **DHCP Discover** — send one customizable Discover and inspect matching Offers
-  without requesting or accepting a lease; Linux uses UDP client port 68 while
-  macOS uses BPF capture and transmit access.
+  with per-server response time without requesting or accepting a lease; Linux
+  uses UDP client port 68 while macOS uses BPF capture and transmit access.
 - **Packet Replay** — preview, rewrite, VLAN-tag/fan-out, and transmit raw
   Ethernet frames from hex, a local classic-PCAP upload, or a compatible PCAP
   selected directly from the contained Datastore after explicit authorization

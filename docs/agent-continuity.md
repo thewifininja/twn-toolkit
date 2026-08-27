@@ -407,7 +407,9 @@ accepted replay frames.
   unit-scoped set of `CAP_NET_RAW`, `CAP_NET_ADMIN`, and
   `CAP_NET_BIND_SERVICE`; macOS instead relies on administrator-managed BPF
   access for the normal service account. macOS DHCP Discover uses one raw BPF
-  Discover/Offer exchange and never binds port 68 or sends a DHCP Request.
+  Discover/Offer exchange, derives response time from each capture timestamp,
+  and never binds port 68 or sends a DHCP Request. Linux measures the same
+  Discover-to-Offer interval with a monotonic clock around its UDP exchange.
   Installed service lifecycle, ordinary launcher commands, upgrades, rollback,
   and recovery coordinate through the same supervisor context. Service removal
   retains toolkit data. System Diagnostics now separates manual or

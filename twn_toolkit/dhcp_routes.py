@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import secrets
 import time
 
@@ -19,6 +20,24 @@ from .network_tools import ToolInputError
 from .investigation_context import record_current_investigation_event
 
 
+def _offer_response_metrics(offers: list[dict[str, object]]) -> dict[str, float]:
+    response_times = []
+    for offer in offers:
+        try:
+            response_time = float(offer.get("response_time_ms"))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(response_time) and response_time >= 0:
+            response_times.append(response_time)
+    if not response_times:
+        return {}
+    return {
+        "first_offer_response_ms": response_times[0],
+        "fastest_offer_response_ms": min(response_times),
+        "slowest_offer_response_ms": max(response_times),
+    }
+
+
 def register_dhcp_routes(tools_bp: Blueprint) -> None:
     @tools_bp.route("/dhcp-discover", methods=["GET", "POST"])
     def dhcp_discover():
@@ -35,6 +54,7 @@ def register_dhcp_routes(tools_bp: Blueprint) -> None:
         offers = None
         journal_event = None
         requested_codes = list(DEFAULT_PARAMETER_REQUEST_LIST)
+        response_metrics: dict[str, float] = {}
         error = ""
         if request.method == "POST":
             operation_id = f"dhcp-discover:{secrets.token_hex(12)}"
@@ -61,21 +81,44 @@ def register_dhcp_routes(tools_bp: Blueprint) -> None:
                 error = str(exc) or "Enter valid DHCP probe settings."
                 record_current_activity("Addressing", "Sent DHCP Discover", "Request failed")
             else:
+                response_metrics = _offer_response_metrics(offers)
+                timing = (
+                    f"; first Offer in {response_metrics['first_offer_response_ms']:g} ms"
+                    if response_metrics
+                    else ""
+                )
                 record_current_activity(
                     "Addressing",
                     "Sent DHCP Discover",
-                    f"{form['interface']}: {len(offers)} offer(s)",
+                    f"{form['interface']}: {len(offers)} offer(s){timing}",
                     counters={"dhcp": {"discovers": 1, "offers": len(offers)}},
+                )
+            audit_details: dict[str, int | float] = {
+                "requested option count": len(requested_codes),
+                "offer count": len(offers or []),
+            }
+            if response_metrics:
+                audit_details.update(
+                    {
+                        "first offer response ms": response_metrics[
+                            "first_offer_response_ms"
+                        ],
+                        "slowest offer response ms": response_metrics[
+                            "slowest_offer_response_ms"
+                        ],
+                    }
                 )
             annotate_tool_run(
                 category="Network tools",
                 action_namespace="dhcp.discover",
                 tool_name="DHCP discovery",
                 outcome="failed" if error else "succeeded",
-                details={
-                    "requested option count": len(requested_codes),
-                    "offer count": len(offers or []),
-                },
+                details=audit_details,
+            )
+            timing_summary = (
+                f" First Offer arrived in {response_metrics['first_offer_response_ms']:g} ms."
+                if response_metrics
+                else ""
             )
             journal_event = record_current_investigation_event(
                 operation_id=operation_id,
@@ -86,7 +129,10 @@ def register_dhcp_routes(tools_bp: Blueprint) -> None:
                 summary=(
                     f"DHCP discovery failed: {error}"
                     if error
-                    else f"Sent DHCP Discover on {form['interface']}: received {len(offers or [])} offer(s)."
+                    else (
+                        f"Sent DHCP Discover on {form['interface']}: received "
+                        f"{len(offers or [])} offer(s).{timing_summary}"
+                    )
                 ),
                 targets={"interface": form["interface"], "client_mac": form["mac"]},
                 parameters={
@@ -95,7 +141,9 @@ def register_dhcp_routes(tools_bp: Blueprint) -> None:
                     "hostname": form["hostname"],
                     "vendor_class": form["vendor_class"],
                 },
-                metrics={"offer_count": len(offers or [])} if not error else {},
+                metrics={"offer_count": len(offers or []), **response_metrics}
+                if not error
+                else {},
                 details={"error": error, "offers": offers or []},
                 started_at=journal_started_at,
                 completed_at=time.time(),
