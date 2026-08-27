@@ -255,6 +255,7 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
         "tools.snmp_interfaces",
         "tools.remote_terminal_input",
         "tools.remote_terminal_credential",
+        "tools.save_remote_terminal_checkpoint",
         "tools.resize_remote_terminal_session",
         "tools.preview_remote_terminal_host_import",
         "scan_raspberry_pi_wifi",

@@ -5,11 +5,16 @@
     constructor(element, options = {}) {
       this.element = element;
       this.onData = typeof options.onData === "function" ? options.onData : () => {};
-      this.maxScrollback = Math.max(1000, Number(options.scrollback || 12000));
+      this.maxScrollback = Math.max(1000, Number(options.scrollback || 100000));
+      this.renderOverscan = Math.max(40, Number(options.renderOverscan || 120));
       this.columns = 120;
       this.rows = 32;
       this.pending = "";
       this.savedScreen = null;
+      this.trimmedHistory = 0;
+      this._renderFrame = null;
+      this._rendering = false;
+      this.element.addEventListener("scroll", () => this._scheduleViewportRender());
       this.reset(this.columns, this.rows);
     }
 
@@ -33,6 +38,7 @@
       this.savedScreen = null;
       this.pending = "";
       this.hasOutput = false;
+      this.trimmedHistory = 0;
       this.render();
     }
 
@@ -43,12 +49,13 @@
 
       this.columns = nextColumns;
       this.screen = this.screen.map((line) => this._resizeLine(line));
-      this.history = this.history.map((line) => this._resizeLine(line));
       if (nextRows > this.rows) {
         while (this.screen.length < nextRows) this.screen.push(this._blankLine());
       } else if (nextRows < this.rows) {
         const removed = this.screen.splice(0, this.rows - nextRows);
-        if (!this.alternate) this.history.push(...removed);
+        if (!this.alternate) {
+          this.history.push(...removed.map((line) => this._serializeLine(line)));
+        }
         this.cursorY = Math.max(0, this.cursorY - removed.length);
       }
       this.rows = nextRows;
@@ -133,8 +140,90 @@
       return this.bracketedPaste ? `\u001b[200~${text}\u001b[201~` : text;
     }
 
-    render() {
-      const nearBottom = this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight < 80;
+    serialize(options = {}) {
+      const requestedLimit = Number(options.historyLimit ?? this.maxScrollback);
+      const historyLimit = Number.isFinite(requestedLimit)
+        ? Math.max(0, Math.min(this.maxScrollback, requestedLimit))
+        : this.maxScrollback;
+      const checkpointHistory = historyLimit ? this.history.slice(-historyLimit) : [];
+      return {
+        version: 1,
+        columns: this.columns,
+        rows: this.rows,
+        history: checkpointHistory.map((line) => this._copySerializedLine(line)),
+        screen: this.screen.map((line) => this._serializeLine(line)),
+        cursorX: this.cursorX,
+        cursorY: this.cursorY,
+        savedCursor: {...this.savedCursor},
+        scrollTop: this.scrollTop,
+        scrollBottom: this.scrollBottom,
+        wrapPending: this.wrapPending,
+        applicationCursor: this.applicationCursor,
+        backspaceSendsBackspace: this.backspaceSendsBackspace,
+        bracketedPaste: this.bracketedPaste,
+        cursorVisible: this.cursorVisible,
+        attributes: {...this.attributes},
+        alternate: this.alternate,
+        savedScreen: this.savedScreen ? this._serializeSavedScreen(this.savedScreen) : null,
+        pending: this.pending,
+        hasOutput: this.hasOutput,
+        trimmedHistory: this.trimmedHistory + Math.max(0, this.history.length - historyLimit),
+      };
+    }
+
+    restore(snapshot) {
+      if (
+        !snapshot
+        || snapshot.version !== 1
+        || !Array.isArray(snapshot.history)
+        || !Array.isArray(snapshot.screen)
+        || !snapshot.screen.length
+      ) return false;
+      try {
+        const columns = this._dimension(snapshot.columns, 40, 300);
+        const rows = this._dimension(snapshot.rows, 10, 120);
+        this.columns = columns;
+        this.rows = rows;
+        this.history = this._restoreSerializedLines(snapshot.history, this.maxScrollback);
+        this.screen = this._restoreLines(snapshot.screen, rows);
+        this.screen.length = Math.min(this.screen.length, rows);
+        while (this.screen.length < rows) this.screen.push(this._blankLine());
+        this.cursorX = this._position(snapshot.cursorX, columns - 1);
+        this.cursorY = this._position(snapshot.cursorY, rows - 1);
+        this.savedCursor = {
+          x: this._position(snapshot.savedCursor?.x, columns - 1),
+          y: this._position(snapshot.savedCursor?.y, rows - 1),
+        };
+        this.scrollTop = this._position(snapshot.scrollTop, rows - 1);
+        this.scrollBottom = Math.max(
+          this.scrollTop,
+          this._position(snapshot.scrollBottom, rows - 1)
+        );
+        this.wrapPending = Boolean(snapshot.wrapPending);
+        this.applicationCursor = Boolean(snapshot.applicationCursor);
+        this.backspaceSendsBackspace = Boolean(snapshot.backspaceSendsBackspace);
+        this.bracketedPaste = Boolean(snapshot.bracketedPaste);
+        this.cursorVisible = snapshot.cursorVisible !== false;
+        this.attributes = this._restoreAttributes(snapshot.attributes);
+        this.alternate = Boolean(snapshot.alternate);
+        this.savedScreen = snapshot.savedScreen
+          ? this._restoreSavedScreen(snapshot.savedScreen, columns, rows)
+          : null;
+        this.pending = String(snapshot.pending || "").slice(0, 4096);
+        this.hasOutput = Boolean(snapshot.hasOutput || this.history.length || this.screen.some(
+          (line) => this._contentEnd(line) > 0
+        ));
+        this.trimmedHistory = Math.max(0, Math.round(Number(snapshot.trimmedHistory) || 0));
+        this._trimHistory();
+        this.render();
+        return true;
+      } catch (_error) {
+        return false;
+      }
+    }
+
+    render(options = {}) {
+      const followOutput = options.followOutput ?? this.isNearBottom();
       if (!this.hasOutput) {
         this.element.replaceChildren();
         return;
@@ -143,19 +232,50 @@
         this.cursorY,
         this.screen.reduce((last, line, index) => this._lineText(line) ? index : last, 0)
       );
-      const lines = [...this.history, ...this.screen.slice(0, lastScreenLine + 1)];
+      const totalLines = this.history.length + lastScreenLine + 1;
       const cursorLine = this.history.length + this.cursorY;
+      const lineHeight = this._lineHeight();
+      const viewportLines = Math.max(1, Math.ceil(this.element.clientHeight / lineHeight));
+      const firstVisible = followOutput
+        ? Math.max(0, totalLines - viewportLines)
+        : Math.max(0, Math.floor(this.element.scrollTop / lineHeight));
+      const start = Math.max(0, firstVisible - this.renderOverscan);
+      const end = Math.min(
+        totalLines,
+        firstVisible + viewportLines + this.renderOverscan
+      );
       const fragment = document.createDocumentFragment();
-      lines.forEach((line, lineIndex) => {
+      if (start) fragment.append(this._spacer(start * lineHeight));
+      for (let lineIndex = start; lineIndex < end; lineIndex += 1) {
+        const line = lineIndex < this.history.length
+          ? this._deserializeLine(this.history[lineIndex])
+          : this.screen[lineIndex - this.history.length];
+        const lineElement = document.createElement("div");
+        lineElement.className = "remote-terminal-line";
         const contentEnd = this._contentEnd(line);
         const visibleEnd = lineIndex === cursorLine && this.cursorVisible
           ? Math.max(contentEnd, this.cursorX + 1)
           : contentEnd;
-        this._renderLine(fragment, line, visibleEnd, lineIndex === cursorLine);
-        if (lineIndex < lines.length - 1) fragment.append(document.createTextNode("\n"));
-      });
+        this._renderLine(lineElement, line, visibleEnd, lineIndex === cursorLine);
+        fragment.append(lineElement);
+      }
+      if (end < totalLines) fragment.append(this._spacer((totalLines - end) * lineHeight));
+      this._rendering = true;
       this.element.replaceChildren(fragment);
-      if (nearBottom) this.element.scrollTop = this.element.scrollHeight;
+      if (followOutput) this.element.scrollTop = this.element.scrollHeight;
+      this._rendering = false;
+    }
+
+    isNearBottom() {
+      return this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight < 80;
+    }
+
+    scrollToBottom() {
+      this.render({followOutput: true});
+    }
+
+    hasTrimmedHistory() {
+      return this.trimmedHistory > 0;
     }
 
     _escape(data, start) {
@@ -330,7 +450,9 @@
       for (let index = 0; index < amount; index += 1) {
         const removed = this.screen.splice(this.scrollTop, 1)[0];
         this.screen.splice(this.scrollBottom, 0, this._blankLine());
-        if (this.scrollTop === 0 && !this.alternate) this.history.push(removed);
+        if (this.scrollTop === 0 && !this.alternate) {
+          this.history.push(this._serializeLine(removed));
+        }
       }
     }
 
@@ -463,6 +585,149 @@
       return classes.join(" ");
     }
 
+    _serializeSavedScreen(saved) {
+      return {
+        history: (saved.history || []).map((line) => this._copySerializedLine(line)),
+        screen: (saved.screen || []).map((line) => this._serializeLine(line)),
+        cursorX: saved.cursorX,
+        cursorY: saved.cursorY,
+        savedCursor: {...(saved.savedCursor || {x: 0, y: 0})},
+        attributes: {...(saved.attributes || this._defaultAttributes())},
+        scrollTop: saved.scrollTop,
+        scrollBottom: saved.scrollBottom,
+        wrapPending: saved.wrapPending,
+      };
+    }
+
+    _restoreSavedScreen(saved, columns, rows) {
+      const screen = this._restoreLines(saved.screen, rows);
+      screen.length = Math.min(screen.length, rows);
+      while (screen.length < rows) screen.push(this._blankLine());
+      return {
+        history: this._restoreSerializedLines(saved.history, this.maxScrollback),
+        screen,
+        cursorX: this._position(saved.cursorX, columns - 1),
+        cursorY: this._position(saved.cursorY, rows - 1),
+        savedCursor: {
+          x: this._position(saved.savedCursor?.x, columns - 1),
+          y: this._position(saved.savedCursor?.y, rows - 1),
+        },
+        attributes: this._restoreAttributes(saved.attributes),
+        scrollTop: this._position(saved.scrollTop, rows - 1),
+        scrollBottom: this._position(saved.scrollBottom, rows - 1),
+        wrapPending: Boolean(saved.wrapPending),
+      };
+    }
+
+    _serializeLine(line) {
+      let end = 0;
+      for (let index = line.length - 1; index >= 0; index -= 1) {
+        if ((line[index]?.character || " ") !== " " || line[index]?.style) {
+          end = index + 1;
+          break;
+        }
+      }
+      const runs = [];
+      let position = 0;
+      while (position < end) {
+        const style = line[position]?.style || "";
+        let next = position + 1;
+        while (next < end && (line[next]?.style || "") === style) next += 1;
+        runs.push([
+          line.slice(position, next).map((cell) => cell?.character || " ").join(""),
+          style,
+        ]);
+        position = next;
+      }
+      return runs;
+    }
+
+    _restoreLines(lines, limit) {
+      if (!Array.isArray(lines)) return [];
+      return lines.slice(-Math.max(0, limit)).map((runs) => {
+        const line = this._blankLine();
+        if (!Array.isArray(runs)) return line;
+        let position = 0;
+        for (const run of runs) {
+          if (!Array.isArray(run) || position >= this.columns) continue;
+          const text = String(run[0] || "");
+          const style = this._restoreStyle(run[1]);
+          for (let index = 0; index < text.length && position < this.columns; index += 1) {
+            line[position] = {character: text[index], style};
+            position += 1;
+          }
+        }
+        return line;
+      });
+    }
+
+    _restoreSerializedLines(lines, limit) {
+      if (!Array.isArray(lines)) return [];
+      return lines.slice(-Math.max(0, limit)).map((runs) => {
+        if (!Array.isArray(runs)) return [];
+        const restored = [];
+        let remaining = this.columns;
+        for (const run of runs) {
+          if (!Array.isArray(run) || remaining <= 0) continue;
+          const text = String(run[0] || "").slice(0, remaining);
+          if (!text) continue;
+          restored.push([text, this._restoreStyle(run[1])]);
+          remaining -= text.length;
+        }
+        return restored;
+      });
+    }
+
+    _copySerializedLine(line) {
+      return Array.isArray(line)
+        ? line.map((run) => [String(run?.[0] || ""), this._restoreStyle(run?.[1])])
+        : [];
+    }
+
+    _deserializeLine(runs) {
+      const line = this._blankLine();
+      let position = 0;
+      for (const run of runs || []) {
+        const text = String(run?.[0] || "");
+        const style = this._restoreStyle(run?.[1]);
+        for (let index = 0; index < text.length && position < this.columns; index += 1) {
+          line[position] = {character: text[index], style};
+          position += 1;
+        }
+      }
+      return line;
+    }
+
+    _restoreStyle(value) {
+      const allowed = /^(?:terminal-(?:fg|bg)-(?:[0-9]|1[0-5])|terminal-(?:bold|dim|italic|underline|inverse))$/;
+      return String(value || "")
+        .split(/\s+/)
+        .filter((item) => allowed.test(item))
+        .join(" ");
+    }
+
+    _restoreAttributes(value) {
+      const source = value && typeof value === "object" ? value : {};
+      const color = (candidate) => {
+        if (candidate === null || candidate === undefined || candidate === "") return null;
+        const number = Number(candidate);
+        return Number.isInteger(number) && number >= 0 && number <= 15 ? number : null;
+      };
+      return {
+        foreground: color(source.foreground),
+        background: color(source.background),
+        bold: Boolean(source.bold),
+        dim: Boolean(source.dim),
+        italic: Boolean(source.italic),
+        underline: Boolean(source.underline),
+        inverse: Boolean(source.inverse),
+      };
+    }
+
+    _position(value, maximum) {
+      return Math.max(0, Math.min(maximum, Math.round(Number(value) || 0)));
+    }
+
     _defaultAttributes() {
       return {
         foreground: null,
@@ -481,8 +746,32 @@
 
     _trimHistory() {
       if (this.history.length > this.maxScrollback) {
-        this.history.splice(0, this.history.length - this.maxScrollback);
+        const removed = this.history.length - this.maxScrollback;
+        this.history.splice(0, removed);
+        this.trimmedHistory += removed;
       }
+    }
+
+    _lineHeight() {
+      const computed = window.getComputedStyle?.(this.element);
+      const lineHeight = Number.parseFloat(computed?.lineHeight || "");
+      return Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 21;
+    }
+
+    _spacer(height) {
+      const spacer = document.createElement("div");
+      spacer.className = "remote-terminal-scroll-spacer";
+      spacer.style.height = `${Math.max(0, height)}px`;
+      spacer.setAttribute("aria-hidden", "true");
+      return spacer;
+    }
+
+    _scheduleViewportRender() {
+      if (this._rendering || this._renderFrame !== null || !this.hasOutput) return;
+      this._renderFrame = window.requestAnimationFrame(() => {
+        this._renderFrame = null;
+        this.render({followOutput: false});
+      });
     }
 
     _blankLine() {

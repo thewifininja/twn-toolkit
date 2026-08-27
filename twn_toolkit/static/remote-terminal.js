@@ -13,6 +13,8 @@
   const screen = document.getElementById("remote-terminal-screen");
   const inputCapture = document.getElementById("remote-terminal-input-capture");
   const focusState = document.getElementById("remote-terminal-focus-state");
+  const jumpLiveButton = document.getElementById("remote-terminal-jump-live");
+  const jumpLiveLabel = document.getElementById("remote-terminal-jump-live-label");
   const stopButton = document.getElementById("remote-terminal-stop");
   const popoutButton = document.getElementById("remote-terminal-popout");
   const saveHostButton = document.getElementById("remote-terminal-save-host");
@@ -20,6 +22,7 @@
   const attachCaseButton = document.getElementById("remote-terminal-attach-case");
   const caseLink = document.getElementById("remote-terminal-case-link");
   const saveDatastoreButton = document.getElementById("remote-terminal-save-datastore");
+  const transcriptButton = document.getElementById("remote-terminal-transcript-view");
   const downloadButton = document.getElementById("remote-terminal-download");
   const deleteButton = document.getElementById("remote-terminal-delete");
   const startButton = document.getElementById("remote-terminal-start");
@@ -59,7 +62,15 @@
   let selected = null;
   let cursor = 0;
   let pollTimer = null;
-  let polling = false;
+  let pollGeneration = 0;
+  let pollingGeneration = -1;
+  let synchronizing = false;
+  let focusAfterSync = false;
+  let checkpointTimer = null;
+  const checkpointCursors = new Map();
+  const checkpointRequests = new Set();
+  const CHECKPOINT_INITIAL_DELAY = 1500;
+  const CHECKPOINT_REFRESH_DELAY = 30000;
   let inputQueue = [];
   let inputTimer = null;
   let inputSending = false;
@@ -68,6 +79,8 @@
   let renameSession = null;
   let datastoreSession = null;
   let renderedSessionFingerprint = "";
+  let unreadOutput = false;
+  let historyGapDetected = false;
   const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
   const activeCase = workspace.dataset.activeCaseId
     ? {id: workspace.dataset.activeCaseId, title: workspace.dataset.activeCaseTitle}
@@ -77,6 +90,11 @@
   surface.addEventListener("click", () => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) focusTerminal();
+  });
+  screen.addEventListener("scroll", updateLiveFollowState);
+  jumpLiveButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    jumpToLive({focus: true});
   });
   stopButton.addEventListener("click", stopSession);
   attachCaseButton?.addEventListener("click", () => {
@@ -124,6 +142,9 @@
     document.dispatchEvent(new CustomEvent("twn:save-session-host", {detail: selected}));
   });
   downloadButton?.addEventListener("click", () => {
+    if (sessionMenu) sessionMenu.open = false;
+  });
+  transcriptButton?.addEventListener("click", () => {
     if (sessionMenu) sessionMenu.open = false;
   });
   document.addEventListener("click", (event) => {
@@ -174,8 +195,10 @@
     button.addEventListener("click", () => sendTelnetCredential(button));
   });
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && selected) pollOutput();
+    if (document.hidden) persistCheckpoint();
+    else if (selected) pollOutput();
   });
+  window.addEventListener("pagehide", () => persistCheckpoint());
   initializeTerminalHeight();
   if (window.ResizeObserver) {
     new ResizeObserver(() => {
@@ -443,58 +466,166 @@
   async function openSession(session, options = {}) {
     const reveal = Boolean(options.reveal);
     const requestFocus = Boolean(options.focus);
+    persistCheckpoint();
     clearTimeout(pollTimer);
+    clearTimeout(checkpointTimer);
+    checkpointTimer = null;
+    pollGeneration += 1;
     selected = session;
     cursor = 0;
+    synchronizing = true;
+    unreadOutput = false;
+    historyGapDetected = false;
+    focusAfterSync = requestFocus;
     workspace.hidden = false;
     if (stageEmpty) stageEmpty.hidden = true;
     terminal.reset(terminalColumns(), terminalRows());
     if (reveal) workspace.scrollIntoView({behavior: "smooth", block: "start"});
     updateWorkspace(session);
-    await pollOutput();
+    await pollOutput({bootstrap: true, generation: pollGeneration});
     if (
-      requestFocus
+      focusAfterSync
+      && !synchronizing
       && finePointer.matches
       && selected?.state === "running"
       && !editable(document.activeElement)
-    ) focusTerminal();
-    resizeRemote();
+    ) {
+      focusAfterSync = false;
+      focusTerminal();
+    }
+    if (!synchronizing) resizeRemote();
   }
 
-  async function pollOutput() {
-    if (!selected || polling) return;
+  async function pollOutput(options = {}) {
+    if (!selected) return;
+    const generation = Number(options.generation ?? pollGeneration);
+    if (pollingGeneration === generation) return;
     const pollingSession = selected;
-    polling = true;
+    const requestCursor = cursor;
+    const bootstrap = Boolean(options.bootstrap && requestCursor === 0);
+    pollingGeneration = generation;
+    let pollImmediately = false;
     try {
-      const response = await fetch(`${pollingSession.output_url}?after=${cursor}`, {
+      const suffix = bootstrap ? "&bootstrap=1" : "";
+      const response = await fetch(`${pollingSession.output_url}?after=${requestCursor}${suffix}`, {
         headers: {"Accept": "application/json"},
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Terminal output is unavailable.");
-      if (!selected || selected.id !== pollingSession.id) return;
+      if (
+        generation !== pollGeneration
+        || !selected
+        || selected.id !== pollingSession.id
+      ) return;
       selected = data.session;
       upsert(selected);
-      data.chunks.forEach((chunk) => appendOutput(chunk.output));
+      if (data.checkpoint) {
+        const restored = terminal.restore(data.checkpoint.snapshot);
+        if (!restored) {
+          terminal.reset(terminalColumns(), terminalRows());
+          cursor = 0;
+          pollImmediately = true;
+          return;
+        }
+        cursor = Number(data.checkpoint.cursor || 0);
+        checkpointCursors.set(selected.id, cursor);
+      }
+      if (data.history_gap) historyGapDetected = true;
+      appendOutput(data.chunks.map((chunk) => chunk.output).join(""));
       cursor = Number(data.next_cursor || cursor);
+      pollImmediately = Boolean(data.has_more);
+      const wasSynchronizing = synchronizing;
+      // Multiple pages are also normal during a large live-output burst. Only an
+      // initial restore may keep the input disabled while those pages catch up;
+      // a running terminal must never lose focus merely because live output is
+      // arriving faster than one response page can carry it.
+      synchronizing = wasSynchronizing && pollImmediately;
       updateWorkspace(selected);
       renderList();
+      if (!synchronizing) {
+        scheduleCheckpoint();
+        if (wasSynchronizing) {
+          resizeRemote();
+          if (
+            focusAfterSync
+            && finePointer.matches
+            && selected.state === "running"
+            && !editable(document.activeElement)
+          ) {
+            focusAfterSync = false;
+            focusTerminal();
+          }
+        }
+      }
     } catch (error) {
       showMessage(error.message);
     } finally {
-      polling = false;
-      schedulePoll();
+      if (pollingGeneration === generation) pollingGeneration = -1;
+      if (generation === pollGeneration) schedulePoll(pollImmediately);
     }
   }
 
-  function schedulePoll() {
+  function schedulePoll(immediate = false) {
     clearTimeout(pollTimer);
     if (!selected) return;
-    const delay = document.hidden ? 5000 : active(selected) ? 250 : 2000;
-    pollTimer = setTimeout(pollOutput, delay);
+    const delay = immediate ? 0 : document.hidden ? 5000 : active(selected) ? 250 : 2000;
+    const generation = pollGeneration;
+    pollTimer = setTimeout(() => pollOutput({generation}), delay);
+  }
+
+  function scheduleCheckpoint() {
+    if (
+      checkpointTimer
+      || synchronizing
+      || !selected?.checkpoint_url
+      || cursor <= Number(checkpointCursors.get(selected.id) || 0)
+    ) return;
+    const delay = checkpointCursors.has(selected.id)
+      ? CHECKPOINT_REFRESH_DELAY
+      : CHECKPOINT_INITIAL_DELAY;
+    checkpointTimer = window.setTimeout(() => {
+      checkpointTimer = null;
+      persistCheckpoint();
+    }, delay);
+  }
+
+  async function persistCheckpoint() {
+    if (
+      synchronizing
+      || !selected?.checkpoint_url
+      || cursor <= Number(checkpointCursors.get(selected.id) || 0)
+      || checkpointRequests.has(selected.id)
+    ) return;
+    const session = selected;
+    const checkpointCursor = cursor;
+    const snapshot = terminal.serialize({historyLimit: 12000});
+    checkpointRequests.add(session.id);
+    try {
+      const response = await fetch(session.checkpoint_url, {
+        method: "POST",
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: JSON.stringify({cursor: checkpointCursor, snapshot}),
+      });
+      if (response.ok) {
+        checkpointCursors.set(
+          session.id,
+          Math.max(checkpointCursor, Number(checkpointCursors.get(session.id) || 0))
+        );
+      }
+    } catch (_error) {
+      // Checkpoints are an optimization. Raw output replay remains the safe fallback.
+    } finally {
+      checkpointRequests.delete(session.id);
+      if (
+        selected?.id === session.id
+        && cursor > Number(checkpointCursors.get(session.id) || 0)
+      ) scheduleCheckpoint();
+    }
   }
 
   function queueInput(data, immediate) {
     if (!selected || selected.state !== "running" || !data) return;
+    jumpToLive({focus: false});
     const item = {
       sessionId: selected.id,
       url: selected.input_url,
@@ -791,9 +922,17 @@
   }
 
   function clearSelectedSession() {
+    persistCheckpoint();
     clearTimeout(pollTimer);
+    clearTimeout(checkpointTimer);
+    checkpointTimer = null;
+    pollGeneration += 1;
     selected = null;
     cursor = 0;
+    synchronizing = false;
+    focusAfterSync = false;
+    unreadOutput = false;
+    historyGapDetected = false;
     inputQueue = [];
     terminal.reset(terminalColumns(), terminalRows());
     workspace.hidden = true;
@@ -858,10 +997,11 @@
     stateBadge.textContent = stateLabel(session);
     stateBadge.className = `status-pill ${session.state}`;
     const isActive = active(session);
-    inputCapture.disabled = session.state !== "running";
-    surface.classList.toggle("input-disabled", inputCapture.disabled);
+    const inputDisabled = session.state !== "running" || synchronizing;
+    if (inputCapture.disabled !== inputDisabled) inputCapture.disabled = inputDisabled;
+    surface.classList.toggle("input-disabled", inputDisabled);
     document.querySelectorAll("[data-terminal-key]").forEach((button) => {
-      button.disabled = inputCapture.disabled;
+      if (button.disabled !== inputDisabled) button.disabled = inputDisabled;
     });
     const telnetCredentialAvailable = session.protocol === "telnet"
       && session.state === "running"
@@ -878,19 +1018,48 @@
     stopButton.disabled = !isActive;
     if (popoutButton) popoutButton.hidden = !isActive;
     if (saveHostButton) saveHostButton.hidden = Boolean(session.source_host_id);
+    if (transcriptButton) {
+      transcriptButton.href = session.transcript_url;
+      transcriptButton.hidden = !session.transcript_url;
+    }
     if (downloadButton) {
       downloadButton.href = session.download_url;
       downloadButton.hidden = !session.download_url;
     }
     if (deleteButton) deleteButton.hidden = isActive;
     if (session.last_error) showMessage(session.last_error);
-    else if (session.output_truncated) showMessage("Reconnect scrollback reached its 10 MiB retention limit.");
+    else if (session.output_truncated) {
+      showMessage("The retained transcript reached 100 MiB. Live output continues, but later output is available only in the interactive session.");
+    } else if (historyGapDetected || terminal.hasTrimmedHistory()) {
+      showMessage("Earlier output is outside this interactive view. The retained transcript remains available from Session actions.");
+    }
     else sessionMessage.hidden = true;
     updateFocusState();
   }
 
   function appendOutput(chunk) {
+    if (!chunk) return;
+    const followingLive = terminal.isNearBottom();
     terminal.write(chunk);
+    if (!followingLive) unreadOutput = true;
+    updateLiveFollowState();
+  }
+
+  function updateLiveFollowState() {
+    if (!jumpLiveButton) return;
+    const reviewingHistory = terminal.hasOutput && !terminal.isNearBottom();
+    if (!reviewingHistory) unreadOutput = false;
+    jumpLiveButton.hidden = !reviewingHistory;
+    if (jumpLiveLabel) {
+      jumpLiveLabel.textContent = unreadOutput ? "New output · Jump to live" : "Jump to live";
+    }
+  }
+
+  function jumpToLive(options = {}) {
+    unreadOutput = false;
+    terminal.scrollToBottom();
+    updateLiveFollowState();
+    if (options.focus) focusTerminal();
   }
 
   function remoteTarget(session) {
@@ -1063,7 +1232,8 @@
   }
 
   function updateFocusState() {
-    if (inputCapture.disabled) focusState.textContent = active(selected || {}) ? "Connecting…" : "Read-only scrollback";
+    if (synchronizing) focusState.textContent = "Restoring session…";
+    else if (inputCapture.disabled) focusState.textContent = active(selected || {}) ? "Connecting…" : "Read-only scrollback";
     else if (document.activeElement === inputCapture) focusState.textContent = "Typing in terminal";
     else focusState.textContent = "Click or tap to type";
   }

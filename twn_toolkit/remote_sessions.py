@@ -20,10 +20,13 @@ from .telnet_client import open_telnet_channel
 
 
 REMOTE_SESSION_LIMIT_PER_USER = 12
-REMOTE_SESSION_OUTPUT_LIMIT_BYTES = 10 * 1024 * 1024
+REMOTE_SESSION_OUTPUT_LIMIT_BYTES = 100 * 1024 * 1024
+REMOTE_SESSION_LIVE_OUTPUT_LIMIT_BYTES = 16 * 1024 * 1024
 REMOTE_SESSION_INPUT_LIMIT_BYTES = 16 * 1024
 REMOTE_SESSION_OUTPUT_PAGE_LIMIT = 500
 REMOTE_SESSION_OUTPUT_PAGE_BYTES = 512 * 1024
+REMOTE_SESSION_CHECKPOINT_LIMIT_BYTES = 8 * 1024 * 1024
+REMOTE_SESSION_CHECKPOINT_VERSION = 1
 REMOTE_SESSION_IDLE_SECONDS = 8 * 60 * 60
 REMOTE_SESSION_RETENTION_SECONDS = 7 * 24 * 60 * 60
 ACTIVE_REMOTE_SESSION_STATES = frozenset({"connecting", "running"})
@@ -38,7 +41,7 @@ class RemoteSessionError(ValueError):
 
 
 class RemoteSessionStore:
-    """Durable metadata and bounded scrollback for browser-managed shells."""
+    """Durable transcripts and rolling live delivery for browser-managed shells."""
 
     def __init__(self, instance_path: str) -> None:
         self.instance_path = Path(instance_path)
@@ -96,6 +99,28 @@ class RemoteSessionStore:
                 );
                 CREATE INDEX IF NOT EXISTS remote_session_output_cursor
                     ON remote_session_output(session_id, id);
+                CREATE TABLE IF NOT EXISTS remote_session_live_output (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    output TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    FOREIGN KEY(session_id) REFERENCES remote_sessions(id)
+                        ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS remote_session_live_output_cursor
+                    ON remote_session_live_output(session_id, id);
+                CREATE TABLE IF NOT EXISTS remote_session_store_metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS remote_session_checkpoints (
+                    session_id TEXT PRIMARY KEY,
+                    output_cursor INTEGER NOT NULL,
+                    snapshot TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    FOREIGN KEY(session_id) REFERENCES remote_sessions(id)
+                        ON DELETE CASCADE
+                );
                 """
             )
             # Web workers initialize this store independently. Keep every
@@ -121,12 +146,46 @@ class RemoteSessionStore:
                 "console_parity": "TEXT NOT NULL DEFAULT 'none'",
                 "console_stop_bits": "TEXT NOT NULL DEFAULT '1'",
                 "console_flow_control": "TEXT NOT NULL DEFAULT 'none'",
+                "live_output_bytes": "INTEGER NOT NULL DEFAULT 0",
+                "live_output_floor_cursor": "INTEGER NOT NULL DEFAULT 0",
             }
             for name, definition in migrations.items():
                 if name not in columns:
                     connection.execute(
                         f"ALTER TABLE remote_sessions ADD COLUMN {name} {definition}"
                     )
+            live_migration = connection.execute(
+                """
+                SELECT 1 FROM remote_session_store_metadata
+                WHERE key = 'live_output_v1'
+                """
+            ).fetchone()
+            if not live_migration:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO remote_session_live_output(
+                        id, session_id, output, created_at
+                    )
+                    SELECT id, session_id, output, created_at
+                    FROM remote_session_output
+                    """
+                )
+                connection.execute(
+                    """
+                    UPDATE remote_sessions
+                    SET live_output_bytes = COALESCE((
+                        SELECT SUM(length(CAST(output AS BLOB)))
+                        FROM remote_session_live_output
+                        WHERE remote_session_live_output.session_id = remote_sessions.id
+                    ), 0)
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO remote_session_store_metadata(key, value)
+                    VALUES ('live_output_v1', 'complete')
+                    """
+                )
             connection.execute(
                 """
                 DELETE FROM remote_sessions
@@ -361,11 +420,24 @@ class RemoteSessionStore:
         now = time.time()
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT output_bytes, state FROM remote_sessions WHERE id = ?",
+                """
+                SELECT output_bytes, live_output_bytes, live_output_floor_cursor, state
+                FROM remote_sessions WHERE id = ?
+                """,
                 (session_id,),
             ).fetchone()
             if not row:
                 return 0
+            live = encoded.decode("utf-8", errors="replace")
+            live_cursor = int(
+                connection.execute(
+                    """
+                    INSERT INTO remote_session_live_output(session_id, output, created_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (session_id, live, now),
+                ).lastrowid
+            )
             remaining = REMOTE_SESSION_OUTPUT_LIMIT_BYTES - int(row["output_bytes"])
             retained = encoded[: max(0, remaining)]
             while retained:
@@ -390,31 +462,210 @@ class RemoteSessionStore:
                 UPDATE remote_sessions
                 SET output_bytes = output_bytes + ?,
                     output_truncated = MAX(output_truncated, ?),
+                    live_output_bytes = live_output_bytes + ?,
                     last_activity_at = ?
                 WHERE id = ?
                 """,
-                (kept, int(kept < len(encoded)), now, session_id),
+                (kept, int(kept < len(encoded)), len(encoded), now, session_id),
             )
+            live_bytes = int(row["live_output_bytes"]) + len(encoded)
+            if live_bytes > REMOTE_SESSION_LIVE_OUTPUT_LIMIT_BYTES:
+                excess = live_bytes - REMOTE_SESSION_LIVE_OUTPUT_LIMIT_BYTES
+                reclaimed = 0
+                floor_cursor = int(row["live_output_floor_cursor"])
+                oldest = connection.execute(
+                    """
+                    SELECT id, length(CAST(output AS BLOB)) AS byte_count
+                    FROM remote_session_live_output
+                    WHERE session_id = ? AND id < ?
+                    ORDER BY id
+                    """,
+                    (session_id, live_cursor),
+                ).fetchall()
+                for old in oldest:
+                    reclaimed += int(old["byte_count"])
+                    floor_cursor = int(old["id"])
+                    if reclaimed >= excess:
+                        break
+                if reclaimed:
+                    connection.execute(
+                        """
+                        DELETE FROM remote_session_live_output
+                        WHERE session_id = ? AND id <= ?
+                        """,
+                        (session_id, floor_cursor),
+                    )
+                    connection.execute(
+                        """
+                        UPDATE remote_sessions
+                        SET live_output_bytes = MAX(0, live_output_bytes - ?),
+                            live_output_floor_cursor = MAX(live_output_floor_cursor, ?)
+                        WHERE id = ?
+                        """,
+                        (reclaimed, floor_cursor, session_id),
+                    )
         return kept
 
+    def save_checkpoint(
+        self,
+        session_id: str,
+        *,
+        user_id: str,
+        output_cursor: int,
+        snapshot: dict[str, Any],
+    ) -> bool:
+        """Retain an owner-scoped browser terminal state at a durable output cursor."""
+        if (
+            not isinstance(snapshot, dict)
+            or snapshot.get("version") != REMOTE_SESSION_CHECKPOINT_VERSION
+        ):
+            raise RemoteSessionError("Terminal checkpoint format is not supported.")
+        columns = snapshot.get("columns")
+        rows = snapshot.get("rows")
+        history = snapshot.get("history")
+        screen = snapshot.get("screen")
+        if (
+            not isinstance(columns, int)
+            or isinstance(columns, bool)
+            or not 40 <= columns <= 300
+            or not isinstance(rows, int)
+            or isinstance(rows, bool)
+            or not 10 <= rows <= 120
+            or not isinstance(history, list)
+            or len(history) > 12000
+            or not isinstance(screen, list)
+            or not screen
+            or len(screen) > rows
+        ):
+            raise RemoteSessionError("Terminal checkpoint state is invalid.")
+        try:
+            encoded = json.dumps(
+                snapshot,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        except (TypeError, ValueError) as exc:
+            raise RemoteSessionError("Terminal checkpoint is not valid JSON.") from exc
+        if len(encoded.encode("utf-8")) > REMOTE_SESSION_CHECKPOINT_LIMIT_BYTES:
+            raise RemoteSessionError("Terminal checkpoint is too large.")
+
+        cursor = int(output_cursor)
+        if cursor <= 0:
+            raise RemoteSessionError("Terminal checkpoint cursor is invalid.")
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            owned = connection.execute(
+                "SELECT 1 FROM remote_sessions WHERE id = ? AND user_id = ?",
+                (session_id, user_id),
+            ).fetchone()
+            if not owned:
+                return False
+            cursor_range = connection.execute(
+                """
+                SELECT live_output_floor_cursor,
+                       (SELECT MAX(id) FROM remote_session_live_output
+                        WHERE session_id = remote_sessions.id) AS latest_cursor
+                FROM remote_sessions
+                WHERE id = ? AND user_id = ?
+                """,
+                (session_id, user_id),
+            ).fetchone()
+            floor_cursor = int(cursor_range["live_output_floor_cursor"] or 0)
+            latest_cursor = int(cursor_range["latest_cursor"] or 0)
+            if cursor < floor_cursor or cursor > latest_cursor:
+                raise RemoteSessionError("Terminal checkpoint cursor is unavailable.")
+            existing = connection.execute(
+                """
+                SELECT output_cursor FROM remote_session_checkpoints
+                WHERE session_id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+            if existing and int(existing["output_cursor"]) >= cursor:
+                return False
+            connection.execute(
+                """
+                INSERT INTO remote_session_checkpoints(
+                    session_id, output_cursor, snapshot, created_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    output_cursor = excluded.output_cursor,
+                    snapshot = excluded.snapshot,
+                    created_at = excluded.created_at
+                """,
+                (session_id, cursor, encoded, now),
+            )
+        return True
+
     def output_page(
-        self, session_id: str, *, user_id: str, after_id: int = 0
+        self,
+        session_id: str,
+        *,
+        user_id: str,
+        after_id: int = 0,
+        include_checkpoint: bool = False,
     ) -> dict[str, Any] | None:
         session = self.get_session(session_id, user_id=user_id)
         if not session:
             return None
+        checkpoint: dict[str, Any] | None = None
+        cursor = max(0, after_id)
+        floor_cursor = 0
+        history_gap = False
         with self._connect() as connection:
+            live_state = connection.execute(
+                """
+                SELECT live_output_floor_cursor
+                FROM remote_sessions WHERE id = ? AND user_id = ?
+                """,
+                (session_id, user_id),
+            ).fetchone()
+            if not live_state:
+                return None
+            floor_cursor = int(live_state["live_output_floor_cursor"] or 0)
+            history_gap = cursor < floor_cursor
+            if (include_checkpoint and cursor == 0) or history_gap:
+                checkpoint_row = connection.execute(
+                    """
+                    SELECT output_cursor, snapshot, created_at
+                    FROM remote_session_checkpoints
+                    WHERE session_id = ?
+                    """,
+                    (session_id,),
+                ).fetchone()
+                if (
+                    checkpoint_row
+                    and int(checkpoint_row["output_cursor"]) >= floor_cursor
+                ):
+                    try:
+                        snapshot = json.loads(str(checkpoint_row["snapshot"]))
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        snapshot = None
+                    if isinstance(snapshot, dict):
+                        cursor = int(checkpoint_row["output_cursor"])
+                        checkpoint = {
+                            "cursor": cursor,
+                            "snapshot": snapshot,
+                            "created_at": float(checkpoint_row["created_at"]),
+                        }
+                        history_gap = False
+            if history_gap:
+                cursor = floor_cursor
             rows = connection.execute(
                 """
-                SELECT id, output, created_at FROM remote_session_output
+                SELECT id, output, created_at FROM remote_session_live_output
                 WHERE session_id = ? AND id > ? ORDER BY id
                 LIMIT ?
                 """,
-                (session_id, max(0, after_id), REMOTE_SESSION_OUTPUT_PAGE_LIMIT),
+                (session_id, cursor, REMOTE_SESSION_OUTPUT_PAGE_LIMIT + 1),
             ).fetchall()
         chunks = []
         page_bytes = 0
         for row in rows:
+            if len(chunks) >= REMOTE_SESSION_OUTPUT_PAGE_LIMIT:
+                break
             chunk = dict(row)
             chunk_bytes = len(str(chunk["output"]).encode("utf-8"))
             if chunks and page_bytes + chunk_bytes > REMOTE_SESSION_OUTPUT_PAGE_BYTES:
@@ -424,7 +675,11 @@ class RemoteSessionStore:
         return {
             "session": session,
             "chunks": chunks,
-            "next_cursor": int(chunks[-1]["id"]) if chunks else max(0, after_id),
+            "next_cursor": int(chunks[-1]["id"]) if chunks else cursor,
+            "has_more": len(chunks) < len(rows),
+            "checkpoint": checkpoint,
+            "history_gap": history_gap,
+            "floor_cursor": floor_cursor,
         }
 
     def transcript(self, session_id: str) -> str:
@@ -1629,8 +1884,16 @@ def public_remote_session(session: dict[str, Any]) -> dict[str, Any]:
             "output_url": url_for(
                 "tools.remote_terminal_output", session_id=session_id
             ),
+            "checkpoint_url": url_for(
+                "tools.save_remote_terminal_checkpoint", session_id=session_id
+            ),
             "download_url": url_for(
                 "tools.download_remote_terminal_scrollback", session_id=session_id
+            ),
+            "transcript_url": url_for(
+                "tools.download_remote_terminal_scrollback",
+                session_id=session_id,
+                view="1",
             ),
             "delete_url": url_for(
                 "tools.delete_remote_terminal_scrollback", session_id=session_id

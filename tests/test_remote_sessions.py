@@ -165,6 +165,207 @@ class RemoteSessionStoreTests(unittest.TestCase):
         )
         self.assertEqual(second["chunks"], [])
 
+    def test_existing_transcript_rows_migrate_once_into_live_delivery(self) -> None:
+        session = self.store.create_session(
+            user_id="user-one",
+            username="operator",
+            title="Existing shell",
+            host="192.0.2.10",
+            port=22,
+            remote_username="admin",
+            record_transcript=False,
+        )
+        session_id = str(session["id"])
+        self.store.append_output(session_id, "legacy output\n")
+        with self.store._connect() as connection:
+            connection.execute("DELETE FROM remote_session_live_output")
+            connection.execute(
+                "DELETE FROM remote_session_store_metadata WHERE key = 'live_output_v1'"
+            )
+            connection.execute(
+                """
+                UPDATE remote_sessions
+                SET live_output_bytes = 0, live_output_floor_cursor = 0
+                """
+            )
+
+        migrated = RemoteSessionStore(self.directory.name)
+        page = migrated.output_page(session_id, user_id="user-one")
+        self.assertEqual(
+            [chunk["output"] for chunk in page["chunks"]], ["legacy output\n"]
+        )
+        reopened = RemoteSessionStore(self.directory.name)
+        second_page = reopened.output_page(session_id, user_id="user-one")
+        self.assertEqual(len(second_page["chunks"]), 1)
+
+    def test_checkpoint_bootstrap_restores_state_then_returns_only_new_output(self) -> None:
+        session = self.store.create_session(
+            user_id="user-one",
+            username="operator",
+            title="Core switch",
+            host="192.0.2.10",
+            port=22,
+            remote_username="admin",
+            record_transcript=False,
+        )
+        session_id = str(session["id"])
+        self.store.append_output(session_id, "first\n")
+        first = self.store.output_page(session_id, user_id="user-one")
+        checkpoint_cursor = int(first["next_cursor"])
+        snapshot = {
+            "version": 1,
+            "columns": 80,
+            "rows": 24,
+            "history": [],
+            "screen": [[["first", ""]]],
+        }
+
+        self.assertTrue(
+            self.store.save_checkpoint(
+                session_id,
+                user_id="user-one",
+                output_cursor=checkpoint_cursor,
+                snapshot=snapshot,
+            )
+        )
+        self.assertFalse(
+            self.store.save_checkpoint(
+                session_id,
+                user_id="user-one",
+                output_cursor=checkpoint_cursor,
+                snapshot=snapshot,
+            )
+        )
+        self.store.append_output(session_id, "second\n")
+
+        bootstrap = self.store.output_page(
+            session_id,
+            user_id="user-one",
+            include_checkpoint=True,
+        )
+        self.assertEqual(bootstrap["checkpoint"]["cursor"], checkpoint_cursor)
+        self.assertEqual(bootstrap["checkpoint"]["snapshot"], snapshot)
+        self.assertEqual(
+            [chunk["output"] for chunk in bootstrap["chunks"]], ["second\n"]
+        )
+        complete = self.store.output_page(session_id, user_id="user-one")
+        self.assertIsNone(complete["checkpoint"])
+        self.assertEqual(
+            [chunk["output"] for chunk in complete["chunks"]],
+            ["first\n", "second\n"],
+        )
+
+    def test_checkpoint_is_owner_scoped_and_requires_a_real_output_cursor(self) -> None:
+        session = self.store.create_session(
+            user_id="user-one",
+            username="operator",
+            title="Core switch",
+            host="192.0.2.10",
+            port=22,
+            remote_username="admin",
+            record_transcript=False,
+        )
+        session_id = str(session["id"])
+        snapshot = {
+            "version": 1,
+            "columns": 80,
+            "rows": 24,
+            "history": [],
+            "screen": [[]],
+        }
+        self.assertFalse(
+            self.store.save_checkpoint(
+                session_id,
+                user_id="different-user",
+                output_cursor=1,
+                snapshot=snapshot,
+            )
+        )
+        with self.assertRaisesRegex(RemoteSessionError, "cursor is invalid"):
+            self.store.save_checkpoint(
+                session_id,
+                user_id="user-one",
+                output_cursor=0,
+                snapshot=snapshot,
+            )
+        with self.assertRaisesRegex(RemoteSessionError, "cursor is unavailable"):
+            self.store.save_checkpoint(
+                session_id,
+                user_id="user-one",
+                output_cursor=999,
+                snapshot=snapshot,
+            )
+
+    def test_output_page_reports_when_more_chunks_are_ready(self) -> None:
+        session = self.store.create_session(
+            user_id="user-one",
+            username="operator",
+            title="Core switch",
+            host="192.0.2.10",
+            port=22,
+            remote_username="admin",
+            record_transcript=False,
+        )
+        session_id = str(session["id"])
+        self.store.append_output(session_id, "one")
+        self.store.append_output(session_id, "two")
+        with patch("twn_toolkit.remote_sessions.REMOTE_SESSION_OUTPUT_PAGE_LIMIT", 1):
+            first = self.store.output_page(session_id, user_id="user-one")
+        self.assertEqual([chunk["output"] for chunk in first["chunks"]], ["one"])
+        self.assertTrue(first["has_more"])
+
+    def test_live_delivery_rolls_without_truncating_retained_transcript(self) -> None:
+        session = self.store.create_session(
+            user_id="user-one",
+            username="operator",
+            title="Long running shell",
+            host="192.0.2.10",
+            port=22,
+            remote_username="admin",
+            record_transcript=False,
+        )
+        session_id = str(session["id"])
+        with patch(
+            "twn_toolkit.remote_sessions.REMOTE_SESSION_LIVE_OUTPUT_LIMIT_BYTES", 5
+        ):
+            self.store.append_output(session_id, "one")
+            self.store.append_output(session_id, "two")
+
+        page = self.store.output_page(session_id, user_id="user-one")
+        self.assertTrue(page["history_gap"])
+        self.assertEqual([chunk["output"] for chunk in page["chunks"]], ["two"])
+        self.assertEqual(self.store.transcript(session_id), "onetwo")
+        reopened = RemoteSessionStore(self.directory.name)
+        restarted_page = reopened.output_page(session_id, user_id="user-one")
+        self.assertTrue(restarted_page["history_gap"])
+        self.assertEqual(
+            [chunk["output"] for chunk in restarted_page["chunks"]], ["two"]
+        )
+
+    def test_retained_transcript_limit_never_stops_live_delivery(self) -> None:
+        session = self.store.create_session(
+            user_id="user-one",
+            username="operator",
+            title="Very noisy shell",
+            host="192.0.2.10",
+            port=22,
+            remote_username="admin",
+            record_transcript=False,
+        )
+        session_id = str(session["id"])
+        with patch("twn_toolkit.remote_sessions.REMOTE_SESSION_OUTPUT_LIMIT_BYTES", 4):
+            self.store.append_output(session_id, "abcdef")
+            self.store.append_output(session_id, "XYZ")
+
+        retained = self.store.get_session(session_id, user_id="user-one")
+        page = self.store.output_page(session_id, user_id="user-one")
+        self.assertEqual(self.store.transcript(session_id), "abcd")
+        self.assertTrue(retained["output_truncated"])
+        self.assertEqual(
+            [chunk["output"] for chunk in page["chunks"]],
+            ["abcdef", "XYZ"],
+        )
+
     def test_new_manager_marks_orphaned_shell_interrupted(self) -> None:
         session = self.store.create_session(
             user_id="user-one",
@@ -331,6 +532,48 @@ class RemoteSessionRouteTests(unittest.TestCase):
         stopped = self.client.post(session["stop_url"])
         self.assertEqual(stopped.status_code, 200)
         self.assertEqual(stopped.get_json()["session"]["state"], "stopped")
+
+    def test_reconnect_endpoint_uses_owner_checkpoint_and_output_delta(self) -> None:
+        response = self.start_session()
+        self.assertEqual(response.status_code, 201)
+        session = response.get_json()["session"]
+        wait_for_output(self.manager.store, session["id"])
+        initial = self.client.get(session["output_url"]).get_json()
+        checkpoint_cursor = int(initial["next_cursor"])
+        snapshot = {
+            "version": 1,
+            "columns": 120,
+            "rows": 32,
+            "history": [],
+            "screen": [[["switch# ready", "terminal-fg-2"]]],
+        }
+
+        saved = self.client.post(
+            session["checkpoint_url"],
+            json={"cursor": checkpoint_cursor, "snapshot": snapshot},
+        )
+        self.assertEqual(saved.status_code, 200)
+        self.assertTrue(saved.get_json()["saved"])
+        self.manager.store.append_output(session["id"], "show system status\r\n")
+
+        bootstrap = self.client.get(
+            f'{session["output_url"]}?after=0&bootstrap=1'
+        )
+        self.assertEqual(bootstrap.status_code, 200)
+        payload = bootstrap.get_json()
+        self.assertEqual(payload["checkpoint"]["cursor"], checkpoint_cursor)
+        self.assertEqual(payload["checkpoint"]["snapshot"], snapshot)
+        self.assertEqual(
+            [chunk["output"] for chunk in payload["chunks"]],
+            ["show system status\r\n"],
+        )
+
+        rejected = self.client.post(
+            session["checkpoint_url"],
+            json={"cursor": checkpoint_cursor, "snapshot": {"version": 99}},
+        )
+        self.assertEqual(rejected.status_code, 400)
+        self.assertIn("not supported", rejected.get_json()["error"])
 
     def test_telnet_uses_the_same_persistent_terminal_lifecycle(self) -> None:
         response = self.start_session(
@@ -931,6 +1174,10 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.assertIn("attachment;", download.headers["Content-Disposition"])
         self.assertIn(b"switch# ready", download.data)
         self.assertNotIn(b"\x1b", download.data)
+        transcript = self.client.get(session["transcript_url"])
+        self.assertEqual(transcript.status_code, 200)
+        self.assertIn("inline;", transcript.headers["Content-Disposition"])
+        self.assertIn(b"switch# ready", transcript.data)
 
         deleted = self.client.delete(session["delete_url"])
         self.assertEqual(deleted.status_code, 200)
