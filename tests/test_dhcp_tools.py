@@ -131,6 +131,10 @@ class DHCPToolTests(unittest.TestCase):
             patch("twn_toolkit.dhcp_tools.socket.if_nameindex", return_value=[(2, "eth0")]),
             patch("twn_toolkit.dhcp_tools.socket.socket", return_value=fake),
             patch("twn_toolkit.dhcp_tools.os.urandom", return_value=transaction_id.to_bytes(4, "big")),
+            patch(
+                "twn_toolkit.dhcp_tools.time.monotonic",
+                side_effect=[100.0, 100.01, 100.075, 100.21],
+            ),
         ):
             offers = discover_offers("eth0", "02:00:00:00:00:01", [1, 3, 6], timeout=0.2)
         self.assertEqual(len(fake.sent), 1)
@@ -138,6 +142,7 @@ class DHCPToolTests(unittest.TestCase):
         self.assertIn(bytes((53, 1, 1)), fake.sent[0][0])
         self.assertNotIn(bytes((53, 1, 3)), fake.sent[0][0])
         self.assertEqual(offers[0]["offered_address"], "192.0.2.50")
+        self.assertEqual(offers[0]["response_time_ms"], 75.0)
         self.assertTrue(fake.closed)
 
     def test_builds_macos_bpf_discover_as_valid_ethernet_ipv4_udp(self) -> None:
@@ -191,6 +196,9 @@ class DHCPToolTests(unittest.TestCase):
         events = []
 
         class FakePacket:
+            def __init__(self, captured_at):
+                self.time = captured_at
+
             def __bytes__(self):
                 return offer_frame
 
@@ -222,7 +230,7 @@ class DHCPToolTests(unittest.TestCase):
 
         def fake_sniff(**kwargs):
             events.append(("sniff", kwargs))
-            return [FakePacket(), FakePacket()]
+            return [FakePacket(500.036), FakePacket(500.12)]
 
         scapy_all.sniff = fake_sniff
         scapy_error.Scapy_Exception = type("Scapy_Exception", (Exception,), {})
@@ -231,6 +239,7 @@ class DHCPToolTests(unittest.TestCase):
         with (
             patch.dict(sys.modules, modules),
             patch("twn_toolkit.dhcp_tools.interface_mac", return_value="02:11:22:33:44:55"),
+            patch("twn_toolkit.dhcp_tools.time.time", return_value=500.0),
         ):
             offers = _discover_offers_macos_bpf(
                 "en0",
@@ -242,6 +251,7 @@ class DHCPToolTests(unittest.TestCase):
         self.assertEqual([event[0] for event in events[:4]], ["listen", "sender", "send", "sniff"])
         self.assertEqual(len(offers), 1)
         self.assertEqual(offers[0]["offered_address"], "192.0.2.50")
+        self.assertEqual(offers[0]["response_time_ms"], 36.0)
         self.assertTrue(scapy_all.conf.use_pcap)
 
     def test_discover_dispatches_to_bpf_on_macos_without_opening_udp_socket(self) -> None:
@@ -290,6 +300,7 @@ class DHCPToolTests(unittest.TestCase):
             "source_address": "192.0.2.1",
             "relay_address": "0.0.0.0",
             "next_server": "",
+            "response_time_ms": 18.4,
             "options": [
                 {"code": 1, "name": "Subnet Mask", "value": "255.255.255.0", "hex": "ff ff ff 00"}
             ],
@@ -316,6 +327,8 @@ class DHCPToolTests(unittest.TestCase):
             summary = ActivityStore(instance).summary()
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Offer: 192.0.2.50", response.data)
+        self.assertIn(b"responded in <strong>18.4 ms</strong>", response.data)
+        self.assertIn(b"Response time", response.data)
         self.assertIn(b"Subnet Mask", response.data)
         self.assertIn(b"never sends a DHCP Request", response.data)
         self.assertIn(b"macOS sends and captures", response.data)

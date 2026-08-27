@@ -33,10 +33,11 @@ servers.
    policy.
 7. Select **Send discover** and review every returned Offer.
 
-The result identifies the offered address, DHCP server identifier, packet source,
-relay-agent address when present, next-server field, and all returned options.
-The **Requested** column distinguishes solicited options from additional policy
-the server supplied.
+The result identifies the elapsed Discover-to-Offer response time, offered
+address, DHCP server identifier, packet source, relay-agent address when present,
+next-server field, and all returned options. Each unique server/address pair keeps
+the timing of its first captured Offer. The **Requested** column distinguishes
+solicited options from additional policy the server supplied.
 
 ## Linux permissions
 
@@ -103,7 +104,8 @@ interface selection, or transaction mismatch.
 ## Records and privacy
 
 A completed run records activity counts for Discovers and Offers. The
-administrative audit event retains the requested-option count, Offer count, and
-outcome rather than the entered MAC, host name, vendor class, or returned option
-payloads. Results are rendered for the current request and are not saved as a
-DHCP lease or reusable profile.
+administrative audit event retains the requested-option count, Offer count,
+first-Offer timing, slowest-Offer timing, and outcome rather than the entered MAC,
+host name, vendor class, or returned option payloads. Case evidence retains each
+Offer's response time beside its decoded result. Results are rendered for the
+current request and are not saved as a DHCP lease or reusable profile.

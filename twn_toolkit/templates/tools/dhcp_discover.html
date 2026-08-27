@@ -68,12 +68,13 @@
   <div class="certificate-result-head">
     <div>
       <h2>Offer: {{ offer.offered_address }}</h2>
-      <p>DHCP server {{ offer.server_address }}{% if offer.source_address != offer.server_address %} · received from {{ offer.source_address }}{% endif %}</p>
+      <p>DHCP server {{ offer.server_address }}{% if offer.source_address != offer.server_address %} · received from {{ offer.source_address }}{% endif %}{% if offer.response_time_ms is defined and offer.response_time_ms is not none %} · responded in <strong>{{ "%.1f"|format(offer.response_time_ms) }} ms</strong>{% endif %}</p>
     </div>
     <span class="pill success">offer only</span>
   </div>
 
   <dl class="ntp-details">
+    {% if offer.response_time_ms is defined and offer.response_time_ms is not none %}<div><dt>Response time</dt><dd><strong>{{ "%.1f"|format(offer.response_time_ms) }} ms</strong></dd></div>{% endif %}
     <div><dt>Offered address</dt><dd><code>{{ offer.offered_address }}</code></dd></div>
     <div><dt>Server identifier</dt><dd><code>{{ offer.server_address }}</code></dd></div>
     {% if offer.next_server %}<div><dt>Next server</dt><dd><code>{{ offer.next_server }}</code></dd></div>{% endif %}

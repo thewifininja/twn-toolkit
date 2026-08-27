@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import errno
 import ipaddress
+import math
 import os
 import re
 import socket
@@ -59,6 +60,18 @@ _NORMALIZED_NAMES = {
 _IP_LIST_OPTIONS = {3, 4, 6, 28, 42, 44, 54, 138, 150}
 _SECONDS_OPTIONS = {51, 58, 59}
 _TEXT_OPTIONS = {12, 15, 60, 66, 67, 252}
+
+
+def _response_time_ms(sent_at: object, received_at: object) -> float | None:
+    """Return a stable non-negative elapsed time for one captured Offer."""
+    try:
+        started = float(sent_at)
+        completed = float(received_at)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(started) or not math.isfinite(completed):
+        return None
+    return round(max(0.0, completed - started) * 1000, 1)
 
 
 def available_interfaces() -> list[dict[str, str]]:
@@ -277,9 +290,10 @@ def _discover_offers_udp(
             interface_index = socket.if_nametoindex(interface)
             sock.setsockopt(socket.IPPROTO_IP, 25, interface_index)
         sock.bind(("", DHCP_CLIENT_PORT))
+        sent_at = time.monotonic()
         sock.sendto(packet, ("255.255.255.255", DHCP_SERVER_PORT))
 
-        deadline = time.monotonic() + timeout
+        deadline = sent_at + timeout
         offers = []
         seen = set()
         while True:
@@ -291,8 +305,10 @@ def _discover_offers_udp(
                 response, source = sock.recvfrom(65535)
             except socket.timeout:
                 break
+            received_at = time.monotonic()
             offer = parse_offer(response, transaction_id, source)
             if offer:
+                offer["response_time_ms"] = _response_time_ms(sent_at, received_at)
                 key = (offer["server_address"], offer["offered_address"])
                 if key not in seen:
                     seen.add(key)
@@ -334,6 +350,7 @@ def _discover_offers_macos_bpf(
         )
         sender = conf.L2socket(iface=interface)
         frame = _build_dhcp_discover_frame(packet, interface_mac(interface))
+        sent_at = time.time()
         sent = sender.send(frame)
         if isinstance(sent, int) and sent != len(frame):
             raise ToolInputError(
@@ -371,6 +388,9 @@ def _discover_offers_macos_bpf(
         response, source = extracted
         offer = parse_offer(response, transaction_id, source)
         if offer:
+            offer["response_time_ms"] = _response_time_ms(
+                sent_at, getattr(captured_packet, "time", None)
+            )
             key = (offer["server_address"], offer["offered_address"])
             if key not in seen:
                 seen.add(key)

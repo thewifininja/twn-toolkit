@@ -1542,6 +1542,45 @@ class InvestigationRouteTests(unittest.TestCase):
                 )
             self.assertIn(b"Recorded in the active case", mtu_page.data)
 
+            dhcp_offer = {
+                "offered_address": "192.0.2.50",
+                "server_address": "192.0.2.1",
+                "source_address": "192.0.2.1",
+                "relay_address": "0.0.0.0",
+                "next_server": "",
+                "response_time_ms": 42.7,
+                "options": [
+                    {
+                        "code": 1,
+                        "name": "Subnet Mask",
+                        "value": "255.255.255.0",
+                        "hex": "ff ff ff 00",
+                    }
+                ],
+            }
+            with (
+                patch(
+                    "twn_toolkit.dhcp_routes.available_interfaces",
+                    return_value=[
+                        {"name": "eth0", "mac": "02:00:00:00:00:01"}
+                    ],
+                ),
+                patch(
+                    "twn_toolkit.dhcp_routes.discover_offers",
+                    return_value=[dhcp_offer],
+                ),
+            ):
+                dhcp_page = client.post(
+                    "/tools/dhcp-discover",
+                    data={
+                        "interface": "eth0",
+                        "mac": "02:00:00:00:00:01",
+                        "parameters": "1, 3, 6",
+                        "timeout": "1",
+                    },
+                )
+            self.assertIn(b"Recorded in the active case", dhcp_page.data)
+
             speed = client.post(
                 "/tools/speed-test/activity",
                 json={
@@ -1568,6 +1607,7 @@ class InvestigationRouteTests(unittest.TestCase):
                     "tools.traceroute",
                     "tools.ntp_test",
                     "tools.path_mtu",
+                    "tools.dhcp_discover",
                     "tools.speed_test",
                 },
             )
@@ -1577,10 +1617,11 @@ class InvestigationRouteTests(unittest.TestCase):
                 b"gateway.local",
                 b"Primary",
                 b"1400 bytes",
+                b"42.7 ms",
                 b"125.5 Mbps",
             ):
                 self.assertIn(value, report.data)
-            self.assertEqual(report.data.count(b"Detailed results R-"), 4)
+            self.assertEqual(report.data.count(b"Detailed results R-"), 5)
 
     def test_vendor_exports_and_actions_become_safe_case_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
