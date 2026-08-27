@@ -5,11 +5,16 @@
     constructor(element, options = {}) {
       this.element = element;
       this.onData = typeof options.onData === "function" ? options.onData : () => {};
-      this.maxScrollback = Math.max(1000, Number(options.scrollback || 12000));
+      this.maxScrollback = Math.max(1000, Number(options.scrollback || 100000));
+      this.renderOverscan = Math.max(40, Number(options.renderOverscan || 120));
       this.columns = 120;
       this.rows = 32;
       this.pending = "";
       this.savedScreen = null;
+      this.trimmedHistory = 0;
+      this._renderFrame = null;
+      this._rendering = false;
+      this.element.addEventListener("scroll", () => this._scheduleViewportRender());
       this.reset(this.columns, this.rows);
     }
 
@@ -33,6 +38,7 @@
       this.savedScreen = null;
       this.pending = "";
       this.hasOutput = false;
+      this.trimmedHistory = 0;
       this.render();
     }
 
@@ -43,12 +49,13 @@
 
       this.columns = nextColumns;
       this.screen = this.screen.map((line) => this._resizeLine(line));
-      this.history = this.history.map((line) => this._resizeLine(line));
       if (nextRows > this.rows) {
         while (this.screen.length < nextRows) this.screen.push(this._blankLine());
       } else if (nextRows < this.rows) {
         const removed = this.screen.splice(0, this.rows - nextRows);
-        if (!this.alternate) this.history.push(...removed);
+        if (!this.alternate) {
+          this.history.push(...removed.map((line) => this._serializeLine(line)));
+        }
         this.cursorY = Math.max(0, this.cursorY - removed.length);
       }
       this.rows = nextRows;
@@ -133,12 +140,17 @@
       return this.bracketedPaste ? `\u001b[200~${text}\u001b[201~` : text;
     }
 
-    serialize() {
+    serialize(options = {}) {
+      const requestedLimit = Number(options.historyLimit ?? this.maxScrollback);
+      const historyLimit = Number.isFinite(requestedLimit)
+        ? Math.max(0, Math.min(this.maxScrollback, requestedLimit))
+        : this.maxScrollback;
+      const checkpointHistory = historyLimit ? this.history.slice(-historyLimit) : [];
       return {
         version: 1,
         columns: this.columns,
         rows: this.rows,
-        history: this.history.map((line) => this._serializeLine(line)),
+        history: checkpointHistory.map((line) => this._copySerializedLine(line)),
         screen: this.screen.map((line) => this._serializeLine(line)),
         cursorX: this.cursorX,
         cursorY: this.cursorY,
@@ -155,6 +167,7 @@
         savedScreen: this.savedScreen ? this._serializeSavedScreen(this.savedScreen) : null,
         pending: this.pending,
         hasOutput: this.hasOutput,
+        trimmedHistory: this.trimmedHistory + Math.max(0, this.history.length - historyLimit),
       };
     }
 
@@ -171,7 +184,7 @@
         const rows = this._dimension(snapshot.rows, 10, 120);
         this.columns = columns;
         this.rows = rows;
-        this.history = this._restoreLines(snapshot.history, this.maxScrollback);
+        this.history = this._restoreSerializedLines(snapshot.history, this.maxScrollback);
         this.screen = this._restoreLines(snapshot.screen, rows);
         this.screen.length = Math.min(this.screen.length, rows);
         while (this.screen.length < rows) this.screen.push(this._blankLine());
@@ -200,6 +213,7 @@
         this.hasOutput = Boolean(snapshot.hasOutput || this.history.length || this.screen.some(
           (line) => this._contentEnd(line) > 0
         ));
+        this.trimmedHistory = Math.max(0, Math.round(Number(snapshot.trimmedHistory) || 0));
         this._trimHistory();
         this.render();
         return true;
@@ -208,8 +222,8 @@
       }
     }
 
-    render() {
-      const nearBottom = this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight < 80;
+    render(options = {}) {
+      const followOutput = options.followOutput ?? this.isNearBottom();
       if (!this.hasOutput) {
         this.element.replaceChildren();
         return;
@@ -218,19 +232,50 @@
         this.cursorY,
         this.screen.reduce((last, line, index) => this._lineText(line) ? index : last, 0)
       );
-      const lines = [...this.history, ...this.screen.slice(0, lastScreenLine + 1)];
+      const totalLines = this.history.length + lastScreenLine + 1;
       const cursorLine = this.history.length + this.cursorY;
+      const lineHeight = this._lineHeight();
+      const viewportLines = Math.max(1, Math.ceil(this.element.clientHeight / lineHeight));
+      const firstVisible = followOutput
+        ? Math.max(0, totalLines - viewportLines)
+        : Math.max(0, Math.floor(this.element.scrollTop / lineHeight));
+      const start = Math.max(0, firstVisible - this.renderOverscan);
+      const end = Math.min(
+        totalLines,
+        firstVisible + viewportLines + this.renderOverscan
+      );
       const fragment = document.createDocumentFragment();
-      lines.forEach((line, lineIndex) => {
+      if (start) fragment.append(this._spacer(start * lineHeight));
+      for (let lineIndex = start; lineIndex < end; lineIndex += 1) {
+        const line = lineIndex < this.history.length
+          ? this._deserializeLine(this.history[lineIndex])
+          : this.screen[lineIndex - this.history.length];
+        const lineElement = document.createElement("div");
+        lineElement.className = "remote-terminal-line";
         const contentEnd = this._contentEnd(line);
         const visibleEnd = lineIndex === cursorLine && this.cursorVisible
           ? Math.max(contentEnd, this.cursorX + 1)
           : contentEnd;
-        this._renderLine(fragment, line, visibleEnd, lineIndex === cursorLine);
-        if (lineIndex < lines.length - 1) fragment.append(document.createTextNode("\n"));
-      });
+        this._renderLine(lineElement, line, visibleEnd, lineIndex === cursorLine);
+        fragment.append(lineElement);
+      }
+      if (end < totalLines) fragment.append(this._spacer((totalLines - end) * lineHeight));
+      this._rendering = true;
       this.element.replaceChildren(fragment);
-      if (nearBottom) this.element.scrollTop = this.element.scrollHeight;
+      if (followOutput) this.element.scrollTop = this.element.scrollHeight;
+      this._rendering = false;
+    }
+
+    isNearBottom() {
+      return this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight < 80;
+    }
+
+    scrollToBottom() {
+      this.render({followOutput: true});
+    }
+
+    hasTrimmedHistory() {
+      return this.trimmedHistory > 0;
     }
 
     _escape(data, start) {
@@ -405,7 +450,9 @@
       for (let index = 0; index < amount; index += 1) {
         const removed = this.screen.splice(this.scrollTop, 1)[0];
         this.screen.splice(this.scrollBottom, 0, this._blankLine());
-        if (this.scrollTop === 0 && !this.alternate) this.history.push(removed);
+        if (this.scrollTop === 0 && !this.alternate) {
+          this.history.push(this._serializeLine(removed));
+        }
       }
     }
 
@@ -540,7 +587,7 @@
 
     _serializeSavedScreen(saved) {
       return {
-        history: (saved.history || []).map((line) => this._serializeLine(line)),
+        history: (saved.history || []).map((line) => this._copySerializedLine(line)),
         screen: (saved.screen || []).map((line) => this._serializeLine(line)),
         cursorX: saved.cursorX,
         cursorY: saved.cursorY,
@@ -557,7 +604,7 @@
       screen.length = Math.min(screen.length, rows);
       while (screen.length < rows) screen.push(this._blankLine());
       return {
-        history: this._restoreLines(saved.history, this.maxScrollback),
+        history: this._restoreSerializedLines(saved.history, this.maxScrollback),
         screen,
         cursorX: this._position(saved.cursorX, columns - 1),
         cursorY: this._position(saved.cursorY, rows - 1),
@@ -614,6 +661,43 @@
       });
     }
 
+    _restoreSerializedLines(lines, limit) {
+      if (!Array.isArray(lines)) return [];
+      return lines.slice(-Math.max(0, limit)).map((runs) => {
+        if (!Array.isArray(runs)) return [];
+        const restored = [];
+        let remaining = this.columns;
+        for (const run of runs) {
+          if (!Array.isArray(run) || remaining <= 0) continue;
+          const text = String(run[0] || "").slice(0, remaining);
+          if (!text) continue;
+          restored.push([text, this._restoreStyle(run[1])]);
+          remaining -= text.length;
+        }
+        return restored;
+      });
+    }
+
+    _copySerializedLine(line) {
+      return Array.isArray(line)
+        ? line.map((run) => [String(run?.[0] || ""), this._restoreStyle(run?.[1])])
+        : [];
+    }
+
+    _deserializeLine(runs) {
+      const line = this._blankLine();
+      let position = 0;
+      for (const run of runs || []) {
+        const text = String(run?.[0] || "");
+        const style = this._restoreStyle(run?.[1]);
+        for (let index = 0; index < text.length && position < this.columns; index += 1) {
+          line[position] = {character: text[index], style};
+          position += 1;
+        }
+      }
+      return line;
+    }
+
     _restoreStyle(value) {
       const allowed = /^(?:terminal-(?:fg|bg)-(?:[0-9]|1[0-5])|terminal-(?:bold|dim|italic|underline|inverse))$/;
       return String(value || "")
@@ -662,8 +746,32 @@
 
     _trimHistory() {
       if (this.history.length > this.maxScrollback) {
-        this.history.splice(0, this.history.length - this.maxScrollback);
+        const removed = this.history.length - this.maxScrollback;
+        this.history.splice(0, removed);
+        this.trimmedHistory += removed;
       }
+    }
+
+    _lineHeight() {
+      const computed = window.getComputedStyle?.(this.element);
+      const lineHeight = Number.parseFloat(computed?.lineHeight || "");
+      return Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 21;
+    }
+
+    _spacer(height) {
+      const spacer = document.createElement("div");
+      spacer.className = "remote-terminal-scroll-spacer";
+      spacer.style.height = `${Math.max(0, height)}px`;
+      spacer.setAttribute("aria-hidden", "true");
+      return spacer;
+    }
+
+    _scheduleViewportRender() {
+      if (this._rendering || this._renderFrame !== null || !this.hasOutput) return;
+      this._renderFrame = window.requestAnimationFrame(() => {
+        this._renderFrame = null;
+        this.render({followOutput: false});
+      });
     }
 
     _blankLine() {

@@ -18253,6 +18253,17 @@ body.remote-terminal-resizing * {
   word-break: normal;
 }
 
+.remote-terminal-line {
+  height: 1.45em;
+  min-width: max-content;
+  white-space: pre;
+}
+
+.remote-terminal-scroll-spacer {
+  min-width: 1px;
+  pointer-events: none;
+}
+
 .remote-terminal-cursor {
   background: #bceac5;
   color: #0b1110;
@@ -18350,6 +18361,46 @@ body.remote-terminal-resizing * {
   pointer-events: none;
   position: absolute;
   right: 10px;
+}
+
+.remote-terminal-jump-live {
+  align-items: center;
+  background: rgb(23 48 38 / 94%);
+  border: 1px solid #69bd78;
+  border-radius: 999px;
+  bottom: 10px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 28%);
+  color: #d7f7df;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 850;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 11px;
+  position: absolute;
+  right: 10px;
+  z-index: 2;
+}
+
+.remote-terminal-jump-live[hidden] {
+  display: none;
+}
+
+.remote-terminal-jump-live:hover,
+.remote-terminal-jump-live:focus-visible {
+  background: #21523c;
+  border-color: #8bd99a;
+}
+
+.remote-terminal-jump-live-dot {
+  background: #72d987;
+  border-radius: 50%;
+  height: 8px;
+  width: 8px;
+}
+
+.remote-terminal-jump-live:not([hidden]) + .remote-terminal-focus-state {
+  display: none;
 }
 
 .remote-terminal-surface:focus-within .remote-terminal-focus-state {

@@ -232,9 +232,28 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('bootstrap ? "&bootstrap=1"', script)
         self.assertIn('focusState.textContent = "Restoring session…"', script)
         self.assertIn("data.chunks.map((chunk) => chunk.output).join", script)
-        self.assertIn("serialize() {", emulator)
+        self.assertIn("serialize(options = {}) {", emulator)
         self.assertIn("restore(snapshot) {", emulator)
         self.assertGreaterEqual(stylesheet.count("overflow-anchor: none;"), 2)
+
+    def test_remote_terminal_keeps_focus_and_exposes_live_follow_controls(self) -> None:
+        workspace = (
+            TEMPLATE_ROOT / "tools" / "_remote_terminal_workspace.html"
+        ).read_text(encoding="utf-8")
+        script = (TEMPLATE_ROOT.parent / "static" / "remote-terminal.js").read_text(
+            encoding="utf-8"
+        )
+        emulator = (
+            TEMPLATE_ROOT.parent / "static" / "terminal-emulator.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('id="remote-terminal-jump-live"', workspace)
+        self.assertIn("jumpToLive({focus: false})", script)
+        self.assertIn("inputCapture.disabled !== inputDisabled", script)
+        self.assertIn("New output · Jump to live", script)
+        self.assertIn("options.historyLimit", emulator)
+        self.assertIn("renderOverscan", emulator)
+        self.assertIn("scrollToBottom()", emulator)
 
     def test_remote_terminal_exposes_case_and_datastore_capture_actions(self) -> None:
         workspace = (
@@ -250,6 +269,7 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn('data-active-case-id="{{ active_investigation.id', workspace)
         self.assertIn('id="remote-terminal-attach-case"', workspace)
         self.assertIn('id="remote-terminal-save-datastore"', workspace)
+        self.assertIn('id="remote-terminal-transcript-view"', workspace)
         self.assertIn('id="remote-terminal-datastore-dialog"', workspace)
         self.assertIn("all retained scrollback, including output produced before attachment", script)
         self.assertIn("This saves the output retained so far as a snapshot", script)

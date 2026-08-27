@@ -13,6 +13,8 @@
   const screen = document.getElementById("remote-terminal-screen");
   const inputCapture = document.getElementById("remote-terminal-input-capture");
   const focusState = document.getElementById("remote-terminal-focus-state");
+  const jumpLiveButton = document.getElementById("remote-terminal-jump-live");
+  const jumpLiveLabel = document.getElementById("remote-terminal-jump-live-label");
   const stopButton = document.getElementById("remote-terminal-stop");
   const popoutButton = document.getElementById("remote-terminal-popout");
   const saveHostButton = document.getElementById("remote-terminal-save-host");
@@ -20,6 +22,7 @@
   const attachCaseButton = document.getElementById("remote-terminal-attach-case");
   const caseLink = document.getElementById("remote-terminal-case-link");
   const saveDatastoreButton = document.getElementById("remote-terminal-save-datastore");
+  const transcriptButton = document.getElementById("remote-terminal-transcript-view");
   const downloadButton = document.getElementById("remote-terminal-download");
   const deleteButton = document.getElementById("remote-terminal-delete");
   const startButton = document.getElementById("remote-terminal-start");
@@ -76,6 +79,8 @@
   let renameSession = null;
   let datastoreSession = null;
   let renderedSessionFingerprint = "";
+  let unreadOutput = false;
+  let historyGapDetected = false;
   const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
   const activeCase = workspace.dataset.activeCaseId
     ? {id: workspace.dataset.activeCaseId, title: workspace.dataset.activeCaseTitle}
@@ -85,6 +90,11 @@
   surface.addEventListener("click", () => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) focusTerminal();
+  });
+  screen.addEventListener("scroll", updateLiveFollowState);
+  jumpLiveButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    jumpToLive({focus: true});
   });
   stopButton.addEventListener("click", stopSession);
   attachCaseButton?.addEventListener("click", () => {
@@ -132,6 +142,9 @@
     document.dispatchEvent(new CustomEvent("twn:save-session-host", {detail: selected}));
   });
   downloadButton?.addEventListener("click", () => {
+    if (sessionMenu) sessionMenu.open = false;
+  });
+  transcriptButton?.addEventListener("click", () => {
     if (sessionMenu) sessionMenu.open = false;
   });
   document.addEventListener("click", (event) => {
@@ -461,6 +474,8 @@
     selected = session;
     cursor = 0;
     synchronizing = true;
+    unreadOutput = false;
+    historyGapDetected = false;
     focusAfterSync = requestFocus;
     workspace.hidden = false;
     if (stageEmpty) stageEmpty.hidden = true;
@@ -515,6 +530,7 @@
         cursor = Number(data.checkpoint.cursor || 0);
         checkpointCursors.set(selected.id, cursor);
       }
+      if (data.history_gap) historyGapDetected = true;
       appendOutput(data.chunks.map((chunk) => chunk.output).join(""));
       cursor = Number(data.next_cursor || cursor);
       pollImmediately = Boolean(data.has_more);
@@ -578,7 +594,7 @@
     ) return;
     const session = selected;
     const checkpointCursor = cursor;
-    const snapshot = terminal.serialize();
+    const snapshot = terminal.serialize({historyLimit: 12000});
     checkpointRequests.add(session.id);
     try {
       const response = await fetch(session.checkpoint_url, {
@@ -605,6 +621,7 @@
 
   function queueInput(data, immediate) {
     if (!selected || selected.state !== "running" || !data) return;
+    jumpToLive({focus: false});
     const item = {
       sessionId: selected.id,
       url: selected.input_url,
@@ -910,6 +927,8 @@
     cursor = 0;
     synchronizing = false;
     focusAfterSync = false;
+    unreadOutput = false;
+    historyGapDetected = false;
     inputQueue = [];
     terminal.reset(terminalColumns(), terminalRows());
     workspace.hidden = true;
@@ -974,10 +993,11 @@
     stateBadge.textContent = stateLabel(session);
     stateBadge.className = `status-pill ${session.state}`;
     const isActive = active(session);
-    inputCapture.disabled = session.state !== "running" || synchronizing;
-    surface.classList.toggle("input-disabled", inputCapture.disabled);
+    const inputDisabled = session.state !== "running" || synchronizing;
+    if (inputCapture.disabled !== inputDisabled) inputCapture.disabled = inputDisabled;
+    surface.classList.toggle("input-disabled", inputDisabled);
     document.querySelectorAll("[data-terminal-key]").forEach((button) => {
-      button.disabled = inputCapture.disabled;
+      if (button.disabled !== inputDisabled) button.disabled = inputDisabled;
     });
     const telnetCredentialAvailable = session.protocol === "telnet"
       && session.state === "running"
@@ -994,19 +1014,48 @@
     stopButton.disabled = !isActive;
     if (popoutButton) popoutButton.hidden = !isActive;
     if (saveHostButton) saveHostButton.hidden = Boolean(session.source_host_id);
+    if (transcriptButton) {
+      transcriptButton.href = session.transcript_url;
+      transcriptButton.hidden = !session.transcript_url;
+    }
     if (downloadButton) {
       downloadButton.href = session.download_url;
       downloadButton.hidden = !session.download_url;
     }
     if (deleteButton) deleteButton.hidden = isActive;
     if (session.last_error) showMessage(session.last_error);
-    else if (session.output_truncated) showMessage("Reconnect scrollback reached its 10 MiB retention limit.");
+    else if (session.output_truncated) {
+      showMessage("The retained transcript reached 100 MiB. Live output continues, but later output is available only in the interactive session.");
+    } else if (historyGapDetected || terminal.hasTrimmedHistory()) {
+      showMessage("Earlier output is outside this interactive view. The retained transcript remains available from Session actions.");
+    }
     else sessionMessage.hidden = true;
     updateFocusState();
   }
 
   function appendOutput(chunk) {
-    if (chunk) terminal.write(chunk);
+    if (!chunk) return;
+    const followingLive = terminal.isNearBottom();
+    terminal.write(chunk);
+    if (!followingLive) unreadOutput = true;
+    updateLiveFollowState();
+  }
+
+  function updateLiveFollowState() {
+    if (!jumpLiveButton) return;
+    const reviewingHistory = terminal.hasOutput && !terminal.isNearBottom();
+    if (!reviewingHistory) unreadOutput = false;
+    jumpLiveButton.hidden = !reviewingHistory;
+    if (jumpLiveLabel) {
+      jumpLiveLabel.textContent = unreadOutput ? "New output · Jump to live" : "Jump to live";
+    }
+  }
+
+  function jumpToLive(options = {}) {
+    unreadOutput = false;
+    terminal.scrollToBottom();
+    updateLiveFollowState();
+    if (options.focus) focusTerminal();
   }
 
   function remoteTarget(session) {

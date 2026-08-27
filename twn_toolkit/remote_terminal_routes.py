@@ -604,14 +604,21 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             manager.store.transcript(session_id),
             content_type="text/plain; charset=utf-8",
         )
-        response.headers["Content-Disposition"] = (
-            f'attachment; filename="{filename}"'
-        )
+        disposition = "inline" if request.args.get("view") == "1" else "attachment"
+        response.headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
         response.headers["X-Content-Type-Options"] = "nosniff"
         annotate_audit_event(
             category="Network tools",
-            action="remote_terminal.scrollback_downloaded",
-            summary="Downloaded retained remote-terminal scrollback.",
+            action=(
+                "remote_terminal.scrollback_viewed"
+                if disposition == "inline"
+                else "remote_terminal.scrollback_downloaded"
+            ),
+            summary=(
+                "Viewed the retained remote-terminal transcript."
+                if disposition == "inline"
+                else "Downloaded retained remote-terminal scrollback."
+            ),
             resource_type="remote_session",
             resource_id=session_id,
             resource_name=str(session["title"]),

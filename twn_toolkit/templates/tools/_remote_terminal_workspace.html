@@ -32,6 +32,7 @@
           {% if can_save_remote_scrollback %}
             <button id="remote-terminal-save-datastore" type="button" role="menuitem">Save to Datastore</button>
           {% endif %}
+          <a id="remote-terminal-transcript-view" href="#" target="_blank" rel="noopener" hidden role="menuitem">View full transcript</a>
           <a id="remote-terminal-download" href="#" download hidden role="menuitem">Download scrollback</a>
           {% if not is_popout|default(false) %}
             <button class="danger" id="remote-terminal-delete" type="button" hidden role="menuitem">Delete scrollback</button>
@@ -46,7 +47,7 @@
   {% endif %}
   <div class="message warning" id="remote-terminal-session-message" role="status" hidden></div>
   <div class="remote-terminal-surface" id="remote-terminal-surface">
-    <pre class="remote-terminal-screen" id="remote-terminal-screen" role="log" aria-label="Remote terminal output"></pre>
+    <div class="remote-terminal-screen" id="remote-terminal-screen" role="log" aria-label="Remote terminal output"></div>
     <textarea
       class="remote-terminal-input-capture"
       id="remote-terminal-input-capture"
@@ -58,6 +59,10 @@
       autocorrect="off"
       spellcheck="false"
     ></textarea>
+    <button class="remote-terminal-jump-live" id="remote-terminal-jump-live" type="button" hidden>
+      <span class="remote-terminal-jump-live-dot" aria-hidden="true"></span>
+      <span id="remote-terminal-jump-live-label">Jump to live</span>
+    </button>
     <span class="remote-terminal-focus-state" id="remote-terminal-focus-state" aria-hidden="true">Click or tap to type</span>
   </div>
   <button
