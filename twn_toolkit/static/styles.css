@@ -18165,12 +18165,27 @@ button.danger:hover {
   border-radius: 10px;
   cursor: text;
   height: clamp(330px, 52vh, 680px);
-  margin: 16px 0 4px;
+  margin: 16px 0 0;
   min-height: 0;
   overflow: hidden;
   overflow-anchor: none;
   position: relative;
   transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.remote-terminal-surface-bar {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(120px, 1fr);
+  margin: 4px 0;
+  min-height: 30px;
+}
+
+.remote-terminal-surface-status {
+  align-items: center;
+  display: inline-flex;
+  min-width: 0;
 }
 
 .remote-terminal-height-resizer {
@@ -18186,7 +18201,6 @@ button.danger:hover {
   gap: 9px;
   height: 26px;
   justify-content: center;
-  margin-bottom: 4px;
   min-height: 26px;
   padding: 0;
   width: 100%;
@@ -18349,18 +18363,19 @@ body.remote-terminal-resizing * {
 }
 
 .remote-terminal-focus-state {
-  background: rgb(11 17 16 / 88%);
-  border: 1px solid #35423d;
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  bottom: 10px;
-  color: #91a99e;
+  color: var(--muted);
+  display: inline-flex;
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.01em;
+  min-height: 26px;
   padding: 5px 9px;
   pointer-events: none;
-  position: absolute;
-  right: 10px;
+  white-space: nowrap;
 }
 
 .remote-terminal-jump-live {
@@ -18368,18 +18383,14 @@ body.remote-terminal-resizing * {
   background: rgb(23 48 38 / 94%);
   border: 1px solid #69bd78;
   border-radius: 999px;
-  bottom: 10px;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 28%);
+  box-shadow: none;
   color: #d7f7df;
   display: inline-flex;
   font-size: 0.76rem;
   font-weight: 850;
   gap: 7px;
-  min-height: 34px;
-  padding: 6px 11px;
-  position: absolute;
-  right: 10px;
-  z-index: 2;
+  min-height: 28px;
+  padding: 4px 9px;
 }
 
 .remote-terminal-jump-live[hidden] {
@@ -18403,9 +18414,10 @@ body.remote-terminal-resizing * {
   display: none;
 }
 
-.remote-terminal-surface:focus-within .remote-terminal-focus-state {
-  border-color: #477c52;
-  color: #bceac5;
+.remote-terminal-surface:focus-within + .remote-terminal-surface-bar .remote-terminal-focus-state {
+  background: color-mix(in srgb, var(--panel), var(--brand-green) 8%);
+  border-color: color-mix(in srgb, var(--line), var(--brand-green) 45%);
+  color: var(--brand-green-dark);
 }
 
 .remote-terminal-input-tools {
@@ -18609,6 +18621,20 @@ body.remote-terminal-resizing * {
 
   .remote-terminal-screen {
     padding: 12px;
+  }
+
+  .remote-terminal-surface-bar {
+    gap: 8px;
+    grid-template-columns: auto minmax(80px, 1fr);
+  }
+
+  .remote-terminal-height-resizer-label {
+    font-size: 0;
+  }
+
+  .remote-terminal-height-resizer-label::after {
+    content: "Resize";
+    font-size: 0.68rem;
   }
 
   .remote-terminal-input-tools {

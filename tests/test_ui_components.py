@@ -248,6 +248,11 @@ class UIComponentTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('id="remote-terminal-jump-live"', workspace)
+        self.assertIn('class="remote-terminal-surface-bar"', workspace)
+        self.assertGreater(
+            workspace.index('class="remote-terminal-surface-bar"'),
+            workspace.index('id="remote-terminal-surface"'),
+        )
         self.assertIn("jumpToLive({focus: false})", script)
         self.assertIn("inputCapture.disabled !== inputDisabled", script)
         self.assertIn("synchronizing = wasSynchronizing && pollImmediately", script)
