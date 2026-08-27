@@ -21,6 +21,7 @@ from .investigations import InvestigationError, InvestigationStore
 from .remote_connections import RemoteConnectionError, RemoteConnectionStore
 from .remote_sessions import (
     ACTIVE_REMOTE_SESSION_STATES,
+    REMOTE_SESSION_CHECKPOINT_LIMIT_BYTES,
     REMOTE_SESSION_INPUT_LIMIT_BYTES,
     REMOTE_SESSION_OUTPUT_LIMIT_BYTES,
     RemoteSessionError,
@@ -550,11 +551,43 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             session_id,
             user_id=_current_user()["id"],
             after_id=after_id,
+            include_checkpoint=request.args.get("bootstrap") == "1",
         )
         if page is None:
             return jsonify({"error": "Remote session not found."}), 404
         page["session"] = _public_session(page["session"])
         return jsonify(page)
+
+    @tools_bp.post("/remote-terminal/sessions/<session_id>/checkpoint")
+    def save_remote_terminal_checkpoint(session_id: str):
+        suppress_audit_event()
+        if (
+            request.content_length is not None
+            and request.content_length > REMOTE_SESSION_CHECKPOINT_LIMIT_BYTES + 64 * 1024
+        ):
+            return jsonify({"error": "Terminal checkpoint is too large."}), 413
+        data = request.get_json(silent=True) or {}
+        try:
+            output_cursor = int(data.get("cursor", 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Terminal checkpoint cursor must be an integer."}), 400
+        snapshot = data.get("snapshot")
+        if not isinstance(snapshot, dict):
+            return jsonify({"error": "Terminal checkpoint is invalid."}), 400
+        try:
+            saved = _manager().store.save_checkpoint(
+                session_id,
+                user_id=_current_user()["id"],
+                output_cursor=output_cursor,
+                snapshot=snapshot,
+            )
+        except RemoteSessionError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if not saved and not _manager().get_session(
+            session_id, user_id=_current_user()["id"]
+        ):
+            return jsonify({"error": "Remote session not found."}), 404
+        return jsonify({"saved": saved, "cursor": output_cursor})
 
     @tools_bp.get("/remote-terminal/sessions/<session_id>/download")
     def download_remote_terminal_scrollback(session_id: str):

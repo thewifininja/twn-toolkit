@@ -59,7 +59,15 @@
   let selected = null;
   let cursor = 0;
   let pollTimer = null;
-  let polling = false;
+  let pollGeneration = 0;
+  let pollingGeneration = -1;
+  let synchronizing = false;
+  let focusAfterSync = false;
+  let checkpointTimer = null;
+  const checkpointCursors = new Map();
+  const checkpointRequests = new Set();
+  const CHECKPOINT_INITIAL_DELAY = 1500;
+  const CHECKPOINT_REFRESH_DELAY = 30000;
   let inputQueue = [];
   let inputTimer = null;
   let inputSending = false;
@@ -174,8 +182,10 @@
     button.addEventListener("click", () => sendTelnetCredential(button));
   });
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && selected) pollOutput();
+    if (document.hidden) persistCheckpoint();
+    else if (selected) pollOutput();
   });
+  window.addEventListener("pagehide", () => persistCheckpoint());
   initializeTerminalHeight();
   if (window.ResizeObserver) {
     new ResizeObserver(() => {
@@ -443,54 +453,154 @@
   async function openSession(session, options = {}) {
     const reveal = Boolean(options.reveal);
     const requestFocus = Boolean(options.focus);
+    persistCheckpoint();
     clearTimeout(pollTimer);
+    clearTimeout(checkpointTimer);
+    checkpointTimer = null;
+    pollGeneration += 1;
     selected = session;
     cursor = 0;
+    synchronizing = true;
+    focusAfterSync = requestFocus;
     workspace.hidden = false;
     if (stageEmpty) stageEmpty.hidden = true;
     terminal.reset(terminalColumns(), terminalRows());
     if (reveal) workspace.scrollIntoView({behavior: "smooth", block: "start"});
     updateWorkspace(session);
-    await pollOutput();
+    await pollOutput({bootstrap: true, generation: pollGeneration});
     if (
-      requestFocus
+      focusAfterSync
+      && !synchronizing
       && finePointer.matches
       && selected?.state === "running"
       && !editable(document.activeElement)
-    ) focusTerminal();
-    resizeRemote();
+    ) {
+      focusAfterSync = false;
+      focusTerminal();
+    }
+    if (!synchronizing) resizeRemote();
   }
 
-  async function pollOutput() {
-    if (!selected || polling) return;
+  async function pollOutput(options = {}) {
+    if (!selected) return;
+    const generation = Number(options.generation ?? pollGeneration);
+    if (pollingGeneration === generation) return;
     const pollingSession = selected;
-    polling = true;
+    const requestCursor = cursor;
+    const bootstrap = Boolean(options.bootstrap && requestCursor === 0);
+    pollingGeneration = generation;
+    let pollImmediately = false;
     try {
-      const response = await fetch(`${pollingSession.output_url}?after=${cursor}`, {
+      const suffix = bootstrap ? "&bootstrap=1" : "";
+      const response = await fetch(`${pollingSession.output_url}?after=${requestCursor}${suffix}`, {
         headers: {"Accept": "application/json"},
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Terminal output is unavailable.");
-      if (!selected || selected.id !== pollingSession.id) return;
+      if (
+        generation !== pollGeneration
+        || !selected
+        || selected.id !== pollingSession.id
+      ) return;
       selected = data.session;
       upsert(selected);
-      data.chunks.forEach((chunk) => appendOutput(chunk.output));
+      if (data.checkpoint) {
+        const restored = terminal.restore(data.checkpoint.snapshot);
+        if (!restored) {
+          terminal.reset(terminalColumns(), terminalRows());
+          cursor = 0;
+          pollImmediately = true;
+          return;
+        }
+        cursor = Number(data.checkpoint.cursor || 0);
+        checkpointCursors.set(selected.id, cursor);
+      }
+      appendOutput(data.chunks.map((chunk) => chunk.output).join(""));
       cursor = Number(data.next_cursor || cursor);
+      pollImmediately = Boolean(data.has_more);
+      const wasSynchronizing = synchronizing;
+      synchronizing = pollImmediately;
       updateWorkspace(selected);
       renderList();
+      if (!synchronizing) {
+        scheduleCheckpoint();
+        if (wasSynchronizing) {
+          resizeRemote();
+          if (
+            focusAfterSync
+            && finePointer.matches
+            && selected.state === "running"
+            && !editable(document.activeElement)
+          ) {
+            focusAfterSync = false;
+            focusTerminal();
+          }
+        }
+      }
     } catch (error) {
       showMessage(error.message);
     } finally {
-      polling = false;
-      schedulePoll();
+      if (pollingGeneration === generation) pollingGeneration = -1;
+      if (generation === pollGeneration) schedulePoll(pollImmediately);
     }
   }
 
-  function schedulePoll() {
+  function schedulePoll(immediate = false) {
     clearTimeout(pollTimer);
     if (!selected) return;
-    const delay = document.hidden ? 5000 : active(selected) ? 250 : 2000;
-    pollTimer = setTimeout(pollOutput, delay);
+    const delay = immediate ? 0 : document.hidden ? 5000 : active(selected) ? 250 : 2000;
+    const generation = pollGeneration;
+    pollTimer = setTimeout(() => pollOutput({generation}), delay);
+  }
+
+  function scheduleCheckpoint() {
+    if (
+      checkpointTimer
+      || synchronizing
+      || !selected?.checkpoint_url
+      || cursor <= Number(checkpointCursors.get(selected.id) || 0)
+    ) return;
+    const delay = checkpointCursors.has(selected.id)
+      ? CHECKPOINT_REFRESH_DELAY
+      : CHECKPOINT_INITIAL_DELAY;
+    checkpointTimer = window.setTimeout(() => {
+      checkpointTimer = null;
+      persistCheckpoint();
+    }, delay);
+  }
+
+  async function persistCheckpoint() {
+    if (
+      synchronizing
+      || !selected?.checkpoint_url
+      || cursor <= Number(checkpointCursors.get(selected.id) || 0)
+      || checkpointRequests.has(selected.id)
+    ) return;
+    const session = selected;
+    const checkpointCursor = cursor;
+    const snapshot = terminal.serialize();
+    checkpointRequests.add(session.id);
+    try {
+      const response = await fetch(session.checkpoint_url, {
+        method: "POST",
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: JSON.stringify({cursor: checkpointCursor, snapshot}),
+      });
+      if (response.ok) {
+        checkpointCursors.set(
+          session.id,
+          Math.max(checkpointCursor, Number(checkpointCursors.get(session.id) || 0))
+        );
+      }
+    } catch (_error) {
+      // Checkpoints are an optimization. Raw output replay remains the safe fallback.
+    } finally {
+      checkpointRequests.delete(session.id);
+      if (
+        selected?.id === session.id
+        && cursor > Number(checkpointCursors.get(session.id) || 0)
+      ) scheduleCheckpoint();
+    }
   }
 
   function queueInput(data, immediate) {
@@ -791,9 +901,15 @@
   }
 
   function clearSelectedSession() {
+    persistCheckpoint();
     clearTimeout(pollTimer);
+    clearTimeout(checkpointTimer);
+    checkpointTimer = null;
+    pollGeneration += 1;
     selected = null;
     cursor = 0;
+    synchronizing = false;
+    focusAfterSync = false;
     inputQueue = [];
     terminal.reset(terminalColumns(), terminalRows());
     workspace.hidden = true;
@@ -858,7 +974,7 @@
     stateBadge.textContent = stateLabel(session);
     stateBadge.className = `status-pill ${session.state}`;
     const isActive = active(session);
-    inputCapture.disabled = session.state !== "running";
+    inputCapture.disabled = session.state !== "running" || synchronizing;
     surface.classList.toggle("input-disabled", inputCapture.disabled);
     document.querySelectorAll("[data-terminal-key]").forEach((button) => {
       button.disabled = inputCapture.disabled;
@@ -890,7 +1006,7 @@
   }
 
   function appendOutput(chunk) {
-    terminal.write(chunk);
+    if (chunk) terminal.write(chunk);
   }
 
   function remoteTarget(session) {
@@ -1063,7 +1179,8 @@
   }
 
   function updateFocusState() {
-    if (inputCapture.disabled) focusState.textContent = active(selected || {}) ? "Connecting…" : "Read-only scrollback";
+    if (synchronizing) focusState.textContent = "Restoring session…";
+    else if (inputCapture.disabled) focusState.textContent = active(selected || {}) ? "Connecting…" : "Read-only scrollback";
     else if (document.activeElement === inputCapture) focusState.textContent = "Typing in terminal";
     else focusState.textContent = "Click or tap to type";
   }

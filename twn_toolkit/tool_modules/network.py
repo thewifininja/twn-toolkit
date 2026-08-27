@@ -540,6 +540,7 @@ def register_tools(registry: Any) -> None:
             "tools.delete_remote_terminal_host": "tools.remote_terminal",
             "tools.remote_terminal_session": "tools.remote_terminal",
             "tools.remote_terminal_output": "tools.remote_terminal",
+            "tools.save_remote_terminal_checkpoint": "tools.remote_terminal",
             "tools.download_remote_terminal_scrollback": "tools.remote_terminal",
             "tools.attach_remote_terminal_case": "tools.remote_terminal",
             "tools.save_remote_terminal_scrollback": "tools.remote_terminal",

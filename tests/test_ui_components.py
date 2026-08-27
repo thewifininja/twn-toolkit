@@ -217,6 +217,25 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(".remote-terminal-tab-shell {", stylesheet)
         self.assertIn(".remote-terminal-tab-action.close:hover", stylesheet)
 
+    def test_remote_terminal_reconnects_from_checkpoint_without_losing_history(self) -> None:
+        script = (TEMPLATE_ROOT.parent / "static" / "remote-terminal.js").read_text(
+            encoding="utf-8"
+        )
+        emulator = (
+            TEMPLATE_ROOT.parent / "static" / "terminal-emulator.js"
+        ).read_text(encoding="utf-8")
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("async function persistCheckpoint()", script)
+        self.assertIn('bootstrap ? "&bootstrap=1"', script)
+        self.assertIn('focusState.textContent = "Restoring session…"', script)
+        self.assertIn("data.chunks.map((chunk) => chunk.output).join", script)
+        self.assertIn("serialize() {", emulator)
+        self.assertIn("restore(snapshot) {", emulator)
+        self.assertGreaterEqual(stylesheet.count("overflow-anchor: none;"), 2)
+
     def test_remote_terminal_exposes_case_and_datastore_capture_actions(self) -> None:
         workspace = (
             TEMPLATE_ROOT / "tools" / "_remote_terminal_workspace.html"

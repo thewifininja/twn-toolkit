@@ -24,6 +24,8 @@ REMOTE_SESSION_OUTPUT_LIMIT_BYTES = 10 * 1024 * 1024
 REMOTE_SESSION_INPUT_LIMIT_BYTES = 16 * 1024
 REMOTE_SESSION_OUTPUT_PAGE_LIMIT = 500
 REMOTE_SESSION_OUTPUT_PAGE_BYTES = 512 * 1024
+REMOTE_SESSION_CHECKPOINT_LIMIT_BYTES = 8 * 1024 * 1024
+REMOTE_SESSION_CHECKPOINT_VERSION = 1
 REMOTE_SESSION_IDLE_SECONDS = 8 * 60 * 60
 REMOTE_SESSION_RETENTION_SECONDS = 7 * 24 * 60 * 60
 ACTIVE_REMOTE_SESSION_STATES = frozenset({"connecting", "running"})
@@ -96,6 +98,14 @@ class RemoteSessionStore:
                 );
                 CREATE INDEX IF NOT EXISTS remote_session_output_cursor
                     ON remote_session_output(session_id, id);
+                CREATE TABLE IF NOT EXISTS remote_session_checkpoints (
+                    session_id TEXT PRIMARY KEY,
+                    output_cursor INTEGER NOT NULL,
+                    snapshot TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    FOREIGN KEY(session_id) REFERENCES remote_sessions(id)
+                        ON DELETE CASCADE
+                );
                 """
             )
             # Web workers initialize this store independently. Keep every
@@ -397,24 +407,142 @@ class RemoteSessionStore:
             )
         return kept
 
+    def save_checkpoint(
+        self,
+        session_id: str,
+        *,
+        user_id: str,
+        output_cursor: int,
+        snapshot: dict[str, Any],
+    ) -> bool:
+        """Retain an owner-scoped browser terminal state at a durable output cursor."""
+        if (
+            not isinstance(snapshot, dict)
+            or snapshot.get("version") != REMOTE_SESSION_CHECKPOINT_VERSION
+        ):
+            raise RemoteSessionError("Terminal checkpoint format is not supported.")
+        columns = snapshot.get("columns")
+        rows = snapshot.get("rows")
+        history = snapshot.get("history")
+        screen = snapshot.get("screen")
+        if (
+            not isinstance(columns, int)
+            or isinstance(columns, bool)
+            or not 40 <= columns <= 300
+            or not isinstance(rows, int)
+            or isinstance(rows, bool)
+            or not 10 <= rows <= 120
+            or not isinstance(history, list)
+            or len(history) > 12000
+            or not isinstance(screen, list)
+            or not screen
+            or len(screen) > rows
+        ):
+            raise RemoteSessionError("Terminal checkpoint state is invalid.")
+        try:
+            encoded = json.dumps(
+                snapshot,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        except (TypeError, ValueError) as exc:
+            raise RemoteSessionError("Terminal checkpoint is not valid JSON.") from exc
+        if len(encoded.encode("utf-8")) > REMOTE_SESSION_CHECKPOINT_LIMIT_BYTES:
+            raise RemoteSessionError("Terminal checkpoint is too large.")
+
+        cursor = int(output_cursor)
+        if cursor <= 0:
+            raise RemoteSessionError("Terminal checkpoint cursor is invalid.")
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            owned = connection.execute(
+                "SELECT 1 FROM remote_sessions WHERE id = ? AND user_id = ?",
+                (session_id, user_id),
+            ).fetchone()
+            if not owned:
+                return False
+            output = connection.execute(
+                """
+                SELECT 1 FROM remote_session_output
+                WHERE session_id = ? AND id = ?
+                """,
+                (session_id, cursor),
+            ).fetchone()
+            if not output:
+                raise RemoteSessionError("Terminal checkpoint cursor is unavailable.")
+            existing = connection.execute(
+                """
+                SELECT output_cursor FROM remote_session_checkpoints
+                WHERE session_id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+            if existing and int(existing["output_cursor"]) >= cursor:
+                return False
+            connection.execute(
+                """
+                INSERT INTO remote_session_checkpoints(
+                    session_id, output_cursor, snapshot, created_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    output_cursor = excluded.output_cursor,
+                    snapshot = excluded.snapshot,
+                    created_at = excluded.created_at
+                """,
+                (session_id, cursor, encoded, now),
+            )
+        return True
+
     def output_page(
-        self, session_id: str, *, user_id: str, after_id: int = 0
+        self,
+        session_id: str,
+        *,
+        user_id: str,
+        after_id: int = 0,
+        include_checkpoint: bool = False,
     ) -> dict[str, Any] | None:
         session = self.get_session(session_id, user_id=user_id)
         if not session:
             return None
+        checkpoint: dict[str, Any] | None = None
+        cursor = max(0, after_id)
         with self._connect() as connection:
+            if include_checkpoint and cursor == 0:
+                checkpoint_row = connection.execute(
+                    """
+                    SELECT output_cursor, snapshot, created_at
+                    FROM remote_session_checkpoints
+                    WHERE session_id = ?
+                    """,
+                    (session_id,),
+                ).fetchone()
+                if checkpoint_row:
+                    try:
+                        snapshot = json.loads(str(checkpoint_row["snapshot"]))
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        snapshot = None
+                    if isinstance(snapshot, dict):
+                        cursor = int(checkpoint_row["output_cursor"])
+                        checkpoint = {
+                            "cursor": cursor,
+                            "snapshot": snapshot,
+                            "created_at": float(checkpoint_row["created_at"]),
+                        }
             rows = connection.execute(
                 """
                 SELECT id, output, created_at FROM remote_session_output
                 WHERE session_id = ? AND id > ? ORDER BY id
                 LIMIT ?
                 """,
-                (session_id, max(0, after_id), REMOTE_SESSION_OUTPUT_PAGE_LIMIT),
+                (session_id, cursor, REMOTE_SESSION_OUTPUT_PAGE_LIMIT + 1),
             ).fetchall()
         chunks = []
         page_bytes = 0
         for row in rows:
+            if len(chunks) >= REMOTE_SESSION_OUTPUT_PAGE_LIMIT:
+                break
             chunk = dict(row)
             chunk_bytes = len(str(chunk["output"]).encode("utf-8"))
             if chunks and page_bytes + chunk_bytes > REMOTE_SESSION_OUTPUT_PAGE_BYTES:
@@ -424,7 +552,9 @@ class RemoteSessionStore:
         return {
             "session": session,
             "chunks": chunks,
-            "next_cursor": int(chunks[-1]["id"]) if chunks else max(0, after_id),
+            "next_cursor": int(chunks[-1]["id"]) if chunks else cursor,
+            "has_more": len(chunks) < len(rows),
+            "checkpoint": checkpoint,
         }
 
     def transcript(self, session_id: str) -> str:
@@ -1628,6 +1758,9 @@ def public_remote_session(session: dict[str, Any]) -> dict[str, Any]:
             ),
             "output_url": url_for(
                 "tools.remote_terminal_output", session_id=session_id
+            ),
+            "checkpoint_url": url_for(
+                "tools.save_remote_terminal_checkpoint", session_id=session_id
             ),
             "download_url": url_for(
                 "tools.download_remote_terminal_scrollback", session_id=session_id

@@ -133,6 +133,81 @@
       return this.bracketedPaste ? `\u001b[200~${text}\u001b[201~` : text;
     }
 
+    serialize() {
+      return {
+        version: 1,
+        columns: this.columns,
+        rows: this.rows,
+        history: this.history.map((line) => this._serializeLine(line)),
+        screen: this.screen.map((line) => this._serializeLine(line)),
+        cursorX: this.cursorX,
+        cursorY: this.cursorY,
+        savedCursor: {...this.savedCursor},
+        scrollTop: this.scrollTop,
+        scrollBottom: this.scrollBottom,
+        wrapPending: this.wrapPending,
+        applicationCursor: this.applicationCursor,
+        backspaceSendsBackspace: this.backspaceSendsBackspace,
+        bracketedPaste: this.bracketedPaste,
+        cursorVisible: this.cursorVisible,
+        attributes: {...this.attributes},
+        alternate: this.alternate,
+        savedScreen: this.savedScreen ? this._serializeSavedScreen(this.savedScreen) : null,
+        pending: this.pending,
+        hasOutput: this.hasOutput,
+      };
+    }
+
+    restore(snapshot) {
+      if (
+        !snapshot
+        || snapshot.version !== 1
+        || !Array.isArray(snapshot.history)
+        || !Array.isArray(snapshot.screen)
+        || !snapshot.screen.length
+      ) return false;
+      try {
+        const columns = this._dimension(snapshot.columns, 40, 300);
+        const rows = this._dimension(snapshot.rows, 10, 120);
+        this.columns = columns;
+        this.rows = rows;
+        this.history = this._restoreLines(snapshot.history, this.maxScrollback);
+        this.screen = this._restoreLines(snapshot.screen, rows);
+        this.screen.length = Math.min(this.screen.length, rows);
+        while (this.screen.length < rows) this.screen.push(this._blankLine());
+        this.cursorX = this._position(snapshot.cursorX, columns - 1);
+        this.cursorY = this._position(snapshot.cursorY, rows - 1);
+        this.savedCursor = {
+          x: this._position(snapshot.savedCursor?.x, columns - 1),
+          y: this._position(snapshot.savedCursor?.y, rows - 1),
+        };
+        this.scrollTop = this._position(snapshot.scrollTop, rows - 1);
+        this.scrollBottom = Math.max(
+          this.scrollTop,
+          this._position(snapshot.scrollBottom, rows - 1)
+        );
+        this.wrapPending = Boolean(snapshot.wrapPending);
+        this.applicationCursor = Boolean(snapshot.applicationCursor);
+        this.backspaceSendsBackspace = Boolean(snapshot.backspaceSendsBackspace);
+        this.bracketedPaste = Boolean(snapshot.bracketedPaste);
+        this.cursorVisible = snapshot.cursorVisible !== false;
+        this.attributes = this._restoreAttributes(snapshot.attributes);
+        this.alternate = Boolean(snapshot.alternate);
+        this.savedScreen = snapshot.savedScreen
+          ? this._restoreSavedScreen(snapshot.savedScreen, columns, rows)
+          : null;
+        this.pending = String(snapshot.pending || "").slice(0, 4096);
+        this.hasOutput = Boolean(snapshot.hasOutput || this.history.length || this.screen.some(
+          (line) => this._contentEnd(line) > 0
+        ));
+        this._trimHistory();
+        this.render();
+        return true;
+      } catch (_error) {
+        return false;
+      }
+    }
+
     render() {
       const nearBottom = this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight < 80;
       if (!this.hasOutput) {
@@ -461,6 +536,112 @@
       if (this.attributes.underline) classes.push("terminal-underline");
       if (this.attributes.inverse) classes.push("terminal-inverse");
       return classes.join(" ");
+    }
+
+    _serializeSavedScreen(saved) {
+      return {
+        history: (saved.history || []).map((line) => this._serializeLine(line)),
+        screen: (saved.screen || []).map((line) => this._serializeLine(line)),
+        cursorX: saved.cursorX,
+        cursorY: saved.cursorY,
+        savedCursor: {...(saved.savedCursor || {x: 0, y: 0})},
+        attributes: {...(saved.attributes || this._defaultAttributes())},
+        scrollTop: saved.scrollTop,
+        scrollBottom: saved.scrollBottom,
+        wrapPending: saved.wrapPending,
+      };
+    }
+
+    _restoreSavedScreen(saved, columns, rows) {
+      const screen = this._restoreLines(saved.screen, rows);
+      screen.length = Math.min(screen.length, rows);
+      while (screen.length < rows) screen.push(this._blankLine());
+      return {
+        history: this._restoreLines(saved.history, this.maxScrollback),
+        screen,
+        cursorX: this._position(saved.cursorX, columns - 1),
+        cursorY: this._position(saved.cursorY, rows - 1),
+        savedCursor: {
+          x: this._position(saved.savedCursor?.x, columns - 1),
+          y: this._position(saved.savedCursor?.y, rows - 1),
+        },
+        attributes: this._restoreAttributes(saved.attributes),
+        scrollTop: this._position(saved.scrollTop, rows - 1),
+        scrollBottom: this._position(saved.scrollBottom, rows - 1),
+        wrapPending: Boolean(saved.wrapPending),
+      };
+    }
+
+    _serializeLine(line) {
+      let end = 0;
+      for (let index = line.length - 1; index >= 0; index -= 1) {
+        if ((line[index]?.character || " ") !== " " || line[index]?.style) {
+          end = index + 1;
+          break;
+        }
+      }
+      const runs = [];
+      let position = 0;
+      while (position < end) {
+        const style = line[position]?.style || "";
+        let next = position + 1;
+        while (next < end && (line[next]?.style || "") === style) next += 1;
+        runs.push([
+          line.slice(position, next).map((cell) => cell?.character || " ").join(""),
+          style,
+        ]);
+        position = next;
+      }
+      return runs;
+    }
+
+    _restoreLines(lines, limit) {
+      if (!Array.isArray(lines)) return [];
+      return lines.slice(-Math.max(0, limit)).map((runs) => {
+        const line = this._blankLine();
+        if (!Array.isArray(runs)) return line;
+        let position = 0;
+        for (const run of runs) {
+          if (!Array.isArray(run) || position >= this.columns) continue;
+          const text = String(run[0] || "");
+          const style = this._restoreStyle(run[1]);
+          for (let index = 0; index < text.length && position < this.columns; index += 1) {
+            line[position] = {character: text[index], style};
+            position += 1;
+          }
+        }
+        return line;
+      });
+    }
+
+    _restoreStyle(value) {
+      const allowed = /^(?:terminal-(?:fg|bg)-(?:[0-9]|1[0-5])|terminal-(?:bold|dim|italic|underline|inverse))$/;
+      return String(value || "")
+        .split(/\s+/)
+        .filter((item) => allowed.test(item))
+        .join(" ");
+    }
+
+    _restoreAttributes(value) {
+      const source = value && typeof value === "object" ? value : {};
+      const color = (candidate) => {
+        if (candidate === null || candidate === undefined || candidate === "") return null;
+        const number = Number(candidate);
+        return Number.isInteger(number) && number >= 0 && number <= 15 ? number : null;
+      };
+      return {
+        foreground: color(source.foreground),
+        background: color(source.background),
+        bold: Boolean(source.bold),
+        dim: Boolean(source.dim),
+        italic: Boolean(source.italic),
+        underline: Boolean(source.underline),
+        inverse: Boolean(source.inverse),
+      };
+    }
+
+    _position(value, maximum) {
+      return Math.max(0, Math.min(maximum, Math.round(Number(value) || 0)));
     }
 
     _defaultAttributes() {
