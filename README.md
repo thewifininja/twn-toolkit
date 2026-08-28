@@ -13,14 +13,15 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.19.3**
+Current release: **v0.21.2**
 
-v0.19.3 serializes the Remote Terminal library migration across concurrent web
-workers so a direct upgrade completes on its first validated start. Existing
-v0.19.0 or v0.19.1 systemd installations should use
-`./twn upgrade --version 0.19.3 --yes` for their one CLI transition; no stepped
-upgrade through v0.19.2 is required. Existing v0.19.2 installations can use the
-normal in-app or CLI workflow.
+v0.21.2 makes persistent Remote Terminal recovery faster for long-running
+sessions, keeps live-focus controls clear of terminal output on desktop and
+mobile, and reports per-server DHCP Discover-to-Offer response time. It adds no
+dependency, database migration, privileged-helper change, or service-layout
+change. Existing installations accepted by the standard v0.9.0 minimum upgrade
+boundary can upgrade directly through the normal in-app or CLI workflow; no
+stepped release or service reinstall is required.
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
