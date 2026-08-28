@@ -39,9 +39,11 @@
 
 ## Pull-request and merged-main gates
 
-- [ ] Pass the release-preparation PR on Ubuntu Python 3.10/3.13 and macOS
-  Python 3.13, including repository checks and dependency audit.
-- [ ] Squash-merge the release-preparation PR and pass its merged-main CI run.
+- [x] Pass release-preparation PR #150 on Ubuntu Python 3.10/3.13 and macOS
+  Python 3.13, including repository checks and dependency audit (CI run
+  `33180301749`).
+- [x] Squash-merge PR #150 as `8eba1bdd22797866118b071656115d11ce0df82e`
+  and pass merged-main CI run `33180533086`.
 
 ## Publication gate
 
