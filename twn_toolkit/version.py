@@ -1,6 +1,51 @@
-APP_VERSION = "0.21.1"
+APP_VERSION = "0.21.2"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.21.2",
+        "date": "2026-08-28",
+        "title": "Resilient terminals and timed DHCP Offers",
+        "summary": (
+            "Makes persistent terminal recovery fast and predictable across "
+            "long-running sessions, keeps terminal controls clear of live "
+            "output, and reports Discover-to-Offer response time for every "
+            "captured DHCP reply."
+        ),
+        "groups": (
+            {
+                "title": "Fast persistent-terminal recovery",
+                "items": (
+                    "Reconnects an active Remote Terminal from an owner-scoped rendered checkpoint and exact output cursor, then applies only newer delivery-journal output before resuming live polling.",
+                    "Decouples live delivery from the retained transcript so reaching the 100 MiB transcript ceiling never freezes an active SSH, Telnet, or serial-console session.",
+                    "Keeps up to 100,000 compact interactive lines with viewport-only rendering, preserves the complete bounded transcript for download and evidence, and accelerates replay when a checkpoint is unavailable.",
+                ),
+            },
+            {
+                "title": "Natural terminal focus and scrollback",
+                "items": (
+                    "Preserves typing focus while long-running device output arrives and returns a scrolled-up operator to the live cursor as soon as they type.",
+                    "Lets an operator inspect historical output without new data forcing the view downward, with an explicit Jump to live action when newer output is waiting.",
+                    "Moves typing state and Jump to live into a compact responsive bar below the terminal so neither can cover device output or the active prompt on desktop or mobile.",
+                ),
+            },
+            {
+                "title": "DHCP Offer timing",
+                "items": (
+                    "Reports the elapsed Discover-to-Offer response time for each unique DHCP server and offered-address pair without requesting or accepting a lease.",
+                    "Uses monotonic exchange timing on Linux and packet-capture timestamps on macOS while retaining the existing bounded, transaction-matched discovery behavior.",
+                    "Carries first- and slowest-Offer timing into activity, administrative audit summaries, active-case journal results, and generated case reports.",
+                ),
+            },
+            {
+                "title": "Upgrade and compatibility",
+                "items": (
+                    "Adds no Python dependency, database migration, profile-format change, privileged-helper change, or service-layout change.",
+                    "Requires no service reinstall on macOS, Linux, or Raspberry Pi installations; the normal verified in-app or CLI upgrade is sufficient.",
+                    "Keeps the standard v0.9.0 minimum direct-upgrade boundary; no stepped release is required.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.21.1",
         "date": "2026-08-21",

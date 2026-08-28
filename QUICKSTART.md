@@ -489,7 +489,8 @@ toolkit as the invoking user.
 - **DHCP Discover** binds UDP client port 68 on Linux and works with the scoped
   Linux service capabilities. macOS sends one Discover and captures matching
   Offers through BPF, so it needs persistent BPF read/write access but not a
-  privileged port bind. Neither backend sends a DHCP Request or accepts a lease.
+  privileged port bind. Both backends report the elapsed response time for each
+  unique matching Offer. Neither sends a DHCP Request or accepts a lease.
 - **Packet Capture** and **Packet Replay** require packet/BPF access. Prefer
   scoped Linux service capabilities or administrator-managed macOS BPF access
   for the normal service account instead of elevating the entire application.
