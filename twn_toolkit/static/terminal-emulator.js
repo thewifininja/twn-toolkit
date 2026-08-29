@@ -21,6 +21,7 @@
     reset(columns = this.columns, rows = this.rows) {
       this.columns = this._dimension(columns, 40, 300);
       this.rows = this._dimension(rows, 10, 120);
+      this._syncElementDimensions();
       this.history = [];
       this.screen = Array.from({length: this.rows}, () => this._blankLine());
       this.cursorX = 0;
@@ -59,6 +60,7 @@
         this.cursorY = Math.max(0, this.cursorY - removed.length);
       }
       this.rows = nextRows;
+      this._syncElementDimensions();
       this.screen.length = nextRows;
       while (this.screen.length < nextRows) this.screen.push(this._blankLine());
       this.cursorX = Math.min(this.cursorX, this.columns - 1);
@@ -184,6 +186,7 @@
         const rows = this._dimension(snapshot.rows, 10, 120);
         this.columns = columns;
         this.rows = rows;
+        this._syncElementDimensions();
         this.history = this._restoreSerializedLines(snapshot.history, this.maxScrollback);
         this.screen = this._restoreLines(snapshot.screen, rows);
         this.screen.length = Math.min(this.screen.length, rows);
@@ -272,6 +275,28 @@
 
     scrollToBottom() {
       this.render({followOutput: true});
+    }
+
+    scrollToCursor() {
+      const computed = window.getComputedStyle?.(this.element);
+      const paddingLeft = Number.parseFloat(computed?.paddingLeft || "") || 0;
+      const probe = document.createElement("span");
+      probe.textContent = "0";
+      probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+      this.element.append(probe);
+      const characterWidth = probe.getBoundingClientRect().width || 8;
+      probe.remove();
+      const cursorLeft = paddingLeft + this.cursorX * characterWidth;
+      const visibleLeft = this.element.scrollLeft;
+      const visibleRight = visibleLeft + this.element.clientWidth;
+      if (cursorLeft < visibleLeft) {
+        this.element.scrollLeft = Math.max(0, cursorLeft - characterWidth);
+      } else if (cursorLeft + characterWidth > visibleRight) {
+        this.element.scrollLeft = Math.max(
+          0,
+          cursorLeft + characterWidth - this.element.clientWidth + paddingLeft
+        );
+      }
     }
 
     hasTrimmedHistory() {
@@ -750,6 +775,10 @@
         this.history.splice(0, removed);
         this.trimmedHistory += removed;
       }
+    }
+
+    _syncElementDimensions() {
+      this.element.style.setProperty("--terminal-columns", String(this.columns));
     }
 
     _lineHeight() {

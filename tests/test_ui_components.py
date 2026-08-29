@@ -261,6 +261,10 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("options.historyLimit", emulator)
         self.assertIn("renderOverscan", emulator)
         self.assertIn("scrollToBottom()", emulator)
+        self.assertIn("scrollToCursor()", emulator)
+        self.assertIn('id="remote-terminal-width"', workspace)
+        self.assertIn("syncTerminalGeometry(selected)", script)
+        self.assertNotIn("window.addEventListener(\"resize\", scheduleResize)", script)
 
     def test_remote_terminal_exposes_case_and_datastore_capture_actions(self) -> None:
         workspace = (

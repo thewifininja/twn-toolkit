@@ -165,6 +165,33 @@ class RemoteSessionStoreTests(unittest.TestCase):
         )
         self.assertEqual(second["chunks"], [])
 
+    def test_session_geometry_is_durable_and_defaults_to_wide_terminal(self) -> None:
+        session = self.store.create_session(
+            user_id="user-one",
+            username="operator",
+            title="Core switch",
+            host="192.0.2.10",
+            port=22,
+            remote_username="admin",
+            record_transcript=False,
+        )
+
+        self.assertEqual(session["terminal_columns"], 120)
+        self.assertEqual(session["terminal_rows"], 32)
+        resized = self.store.update_terminal_geometry(
+            str(session["id"]),
+            user_id="user-one",
+            columns=160,
+            rows=40,
+        )
+        self.assertEqual(resized["terminal_columns"], 160)
+        self.assertEqual(resized["terminal_rows"], 40)
+        reopened = RemoteSessionStore(self.directory.name).get_session(
+            str(session["id"]), user_id="user-one"
+        )
+        self.assertEqual(reopened["terminal_columns"], 160)
+        self.assertEqual(reopened["terminal_rows"], 40)
+
     def test_existing_transcript_rows_migrate_once_into_live_delivery(self) -> None:
         session = self.store.create_session(
             user_id="user-one",
@@ -528,6 +555,9 @@ class RemoteSessionRouteTests(unittest.TestCase):
         )
         self.assertEqual(resized.status_code, 200)
         self.assertEqual(self.opener.clients[0].channel.size, (100, 40))
+        stored = self.manager.store.get_session(session["id"], user_id="test-user")
+        self.assertEqual(stored["terminal_columns"], 100)
+        self.assertEqual(stored["terminal_rows"], 40)
 
         stopped = self.client.post(session["stop_url"])
         self.assertEqual(stopped.status_code, 200)
@@ -654,6 +684,8 @@ class RemoteSessionRouteTests(unittest.TestCase):
         self.assertIn(b'id="remote-connection-tree"', response.data)
         self.assertIn(b'id="remote-connection-width-resizer"', response.data)
         self.assertIn(b'id="remote-terminal-height-resizer"', response.data)
+        self.assertIn(b'id="remote-terminal-width"', response.data)
+        self.assertIn(b'>120 columns</option>', response.data)
         self.assertIn(b"Resize terminal", response.data)
         self.assertIn(b'id="remote-host-import-dialog"', response.data)
         self.assertIn(b'id="remote-quick-connect-dialog"', response.data)

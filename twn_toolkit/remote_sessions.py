@@ -75,6 +75,8 @@ class RemoteSessionStore:
                     console_parity TEXT NOT NULL DEFAULT 'none',
                     console_stop_bits TEXT NOT NULL DEFAULT '1',
                     console_flow_control TEXT NOT NULL DEFAULT 'none',
+                    terminal_columns INTEGER NOT NULL DEFAULT 120,
+                    terminal_rows INTEGER NOT NULL DEFAULT 32,
                     output_bytes INTEGER NOT NULL DEFAULT 0,
                     output_truncated INTEGER NOT NULL DEFAULT 0,
                     last_error TEXT NOT NULL DEFAULT '',
@@ -146,6 +148,8 @@ class RemoteSessionStore:
                 "console_parity": "TEXT NOT NULL DEFAULT 'none'",
                 "console_stop_bits": "TEXT NOT NULL DEFAULT '1'",
                 "console_flow_control": "TEXT NOT NULL DEFAULT 'none'",
+                "terminal_columns": "INTEGER NOT NULL DEFAULT 120",
+                "terminal_rows": "INTEGER NOT NULL DEFAULT 32",
                 "live_output_bytes": "INTEGER NOT NULL DEFAULT 0",
                 "live_output_floor_cursor": "INTEGER NOT NULL DEFAULT 0",
             }
@@ -247,6 +251,8 @@ class RemoteSessionStore:
         console_parity: str = "none",
         console_stop_bits: str = "1",
         console_flow_control: str = "none",
+        terminal_columns: int = 120,
+        terminal_rows: int = 32,
     ) -> dict[str, Any]:
         clean_protocol = str(protocol).strip().lower()
         if clean_protocol not in {"ssh", "telnet", "console"}:
@@ -294,8 +300,9 @@ class RemoteSessionStore:
                     last_activity_at, owner_pid, control_path, source_host_id,
                     console_device_id, console_device_path, console_device_label,
                     console_baud_rate, console_data_bits, console_parity,
-                    console_stop_bits, console_flow_control
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'connecting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    console_stop_bits, console_flow_control, terminal_columns,
+                    terminal_rows
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'connecting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -326,6 +333,8 @@ class RemoteSessionStore:
                     str(console_parity),
                     str(console_stop_bits),
                     str(console_flow_control),
+                    int(terminal_columns),
+                    int(terminal_rows),
                 ),
             )
         session = self.get_session(session_id, user_id=user_id)
@@ -412,6 +421,28 @@ class RemoteSessionStore:
                 "UPDATE remote_sessions SET last_activity_at = ? WHERE id = ?",
                 (time.time(), session_id),
             )
+
+    def update_terminal_geometry(
+        self,
+        session_id: str,
+        *,
+        user_id: str,
+        columns: int,
+        rows: int,
+    ) -> dict[str, Any]:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE remote_sessions
+                SET terminal_columns = ?, terminal_rows = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (int(columns), int(rows), session_id, user_id),
+            )
+        session = self.get_session(session_id, user_id=user_id)
+        if not session:  # pragma: no cover - ownership is checked by the manager
+            raise RemoteSessionError("Remote session not found.")
+        return session
 
     def append_output(self, session_id: str, output: str) -> int:
         if not output:
@@ -976,6 +1007,8 @@ class RemoteSessionManager:
             console_parity=settings["parity"],
             console_stop_bits=settings["stop_bits"],
             console_flow_control=settings["flow_control"],
+            terminal_columns=columns,
+            terminal_rows=rows,
         )
         self._record_started(session)
         runtime = {
@@ -1157,13 +1190,19 @@ class RemoteSessionManager:
 
     def resize(
         self, session_id: str, *, user_id: str, columns: int, rows: int
-    ) -> None:
+    ) -> dict[str, Any]:
         session = self.store.get_session(session_id, user_id=user_id)
         if not session or session["state"] != "running":
             raise RemoteSessionError("That remote session is not connected.")
         self._send_control(
             session,
             {"action": "resize", "columns": columns, "rows": rows},
+        )
+        return self.store.update_terminal_geometry(
+            session_id,
+            user_id=user_id,
+            columns=columns,
+            rows=rows,
         )
 
     def stop_session(

@@ -10,6 +10,7 @@
   const stageEmpty = document.getElementById("remote-terminal-stage-empty");
   const surface = document.getElementById("remote-terminal-surface");
   const heightResizer = document.getElementById("remote-terminal-height-resizer");
+  const widthControl = document.getElementById("remote-terminal-width");
   const screen = document.getElementById("remote-terminal-screen");
   const inputCapture = document.getElementById("remote-terminal-input-capture");
   const focusState = document.getElementById("remote-terminal-focus-state");
@@ -81,6 +82,8 @@
   let renderedSessionFingerprint = "";
   let unreadOutput = false;
   let historyGapDetected = false;
+  const DEFAULT_COLUMNS = 120;
+  const DEFAULT_ROWS = 32;
   const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
   const activeCase = workspace.dataset.activeCaseId
     ? {id: workspace.dataset.activeCaseId, title: workspace.dataset.activeCaseTitle}
@@ -96,6 +99,7 @@
     event.stopPropagation();
     jumpToLive({focus: true});
   });
+  widthControl?.addEventListener("change", changeTerminalWidth);
   stopButton.addEventListener("click", stopSession);
   attachCaseButton?.addEventListener("click", () => {
     if (selected) attachSessionToCase(selected, attachCaseButton);
@@ -203,10 +207,7 @@
   if (window.ResizeObserver) {
     new ResizeObserver(() => {
       updateTerminalHeightAccessibility();
-      scheduleResize();
     }).observe(surface);
-  } else {
-    window.addEventListener("resize", scheduleResize);
   }
 
   function renderList(force = false) {
@@ -416,8 +417,8 @@
       console_parity: document.getElementById("remote-terminal-console-parity").value,
       console_stop_bits: document.getElementById("remote-terminal-console-stop-bits").value,
       console_flow_control: document.getElementById("remote-terminal-console-flow").value,
-      columns: terminalColumns(),
-      rows: 32,
+      columns: DEFAULT_COLUMNS,
+      rows: DEFAULT_ROWS,
     };
     try {
       await startPayload(payload, {button: startButton, status: startStatus});
@@ -479,7 +480,7 @@
     focusAfterSync = requestFocus;
     workspace.hidden = false;
     if (stageEmpty) stageEmpty.hidden = true;
-    terminal.reset(terminalColumns(), terminalRows());
+    terminal.reset(sessionColumns(session), sessionRows(session));
     if (reveal) workspace.scrollIntoView({behavior: "smooth", block: "start"});
     updateWorkspace(session);
     await pollOutput({bootstrap: true, generation: pollGeneration});
@@ -493,7 +494,6 @@
       focusAfterSync = false;
       focusTerminal();
     }
-    if (!synchronizing) resizeRemote();
   }
 
   async function pollOutput(options = {}) {
@@ -522,7 +522,7 @@
       if (data.checkpoint) {
         const restored = terminal.restore(data.checkpoint.snapshot);
         if (!restored) {
-          terminal.reset(terminalColumns(), terminalRows());
+          terminal.reset(sessionColumns(selected), sessionRows(selected));
           cursor = 0;
           pollImmediately = true;
           return;
@@ -530,6 +530,7 @@
         cursor = Number(data.checkpoint.cursor || 0);
         checkpointCursors.set(selected.id, cursor);
       }
+      syncTerminalGeometry(selected);
       if (data.history_gap) historyGapDetected = true;
       appendOutput(data.chunks.map((chunk) => chunk.output).join(""));
       cursor = Number(data.next_cursor || cursor);
@@ -545,7 +546,6 @@
       if (!synchronizing) {
         scheduleCheckpoint();
         if (wasSynchronizing) {
-          resizeRemote();
           if (
             focusAfterSync
             && finePointer.matches
@@ -934,7 +934,7 @@
     unreadOutput = false;
     historyGapDetected = false;
     inputQueue = [];
-    terminal.reset(terminalColumns(), terminalRows());
+    terminal.reset(DEFAULT_COLUMNS, DEFAULT_ROWS);
     workspace.hidden = true;
     if (stageEmpty) stageEmpty.hidden = false;
   }
@@ -961,7 +961,7 @@
         clearTimeout(pollTimer);
         selected = null;
         cursor = 0;
-        terminal.reset(terminalColumns(), terminalRows());
+        terminal.reset(DEFAULT_COLUMNS, DEFAULT_ROWS);
         workspace.hidden = true;
         if (stageEmpty) stageEmpty.hidden = false;
       }
@@ -972,6 +972,7 @@
   }
 
   function updateWorkspace(session) {
+    syncTerminalGeometry(session);
     sessionTitle.textContent = session.title;
     if (sessionProtocol) sessionProtocol.textContent = `${protocolLabel(session)} session`;
     sessionTarget.textContent = remoteTarget(session);
@@ -997,6 +998,7 @@
     stateBadge.textContent = stateLabel(session);
     stateBadge.className = `status-pill ${session.state}`;
     const isActive = active(session);
+    if (widthControl) widthControl.disabled = !isActive;
     const inputDisabled = session.state !== "running" || synchronizing;
     if (inputCapture.disabled !== inputDisabled) inputCapture.disabled = inputDisabled;
     surface.classList.toggle("input-disabled", inputDisabled);
@@ -1058,6 +1060,7 @@
   function jumpToLive(options = {}) {
     unreadOutput = false;
     terminal.scrollToBottom();
+    terminal.scrollToCursor();
     updateLiveFollowState();
     if (options.focus) focusTerminal();
   }
@@ -1071,21 +1074,73 @@
     return `${username ? `${username}@` : ""}${session.host}:${session.port}`;
   }
 
-  function resizeRemote() {
+  async function resizeRemote(columns, rows) {
     if (!selected || selected.state !== "running") return;
-    const columns = terminalColumns();
-    const rows = terminalRows();
+    const session = selected;
+    const previousColumns = sessionColumns(session);
+    const previousRows = sessionRows(session);
+    session.terminal_columns = columns;
+    session.terminal_rows = rows;
     terminal.resize(columns, rows);
-    fetch(selected.resize_url, {
-      method: "POST",
-      headers: {"Accept": "application/json", "Content-Type": "application/json"},
-      body: JSON.stringify({columns, rows}),
-    }).catch(() => {});
+    syncWidthControl(columns);
+    try {
+      const response = await fetch(session.resize_url, {
+        method: "POST",
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: JSON.stringify({columns, rows}),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The terminal size could not be changed.");
+      upsert(session);
+    } catch (error) {
+      session.terminal_columns = previousColumns;
+      session.terminal_rows = previousRows;
+      terminal.resize(previousColumns, previousRows);
+      syncWidthControl(previousColumns);
+      showMessage(error.message);
+    }
   }
 
-  function scheduleResize() {
+  function scheduleRowResize() {
     window.clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(resizeRemote, 150);
+    resizeTimer = window.setTimeout(() => {
+      if (!selected || selected.state !== "running") return;
+      resizeRemote(sessionColumns(selected), viewportRows());
+    }, 150);
+  }
+
+  function changeTerminalWidth() {
+    if (!selected || selected.state !== "running" || !widthControl) return;
+    const requested = widthControl.value === "fit"
+      ? viewportColumns()
+      : Number(widthControl.value);
+    const columns = Math.max(40, Math.min(300, Math.round(requested || DEFAULT_COLUMNS)));
+    resizeRemote(columns, sessionRows(selected));
+  }
+
+  function syncTerminalGeometry(session) {
+    const columns = sessionColumns(session);
+    const rows = sessionRows(session);
+    terminal.resize(columns, rows);
+    syncWidthControl(columns);
+  }
+
+  function syncWidthControl(columns) {
+    if (!widthControl) return;
+    widthControl.querySelectorAll("option[data-current-width]").forEach((option) => option.remove());
+    const preset = Array.from(widthControl.options).find(
+      (option) => option.value === String(columns)
+    );
+    if (preset) {
+      widthControl.value = preset.value;
+      return;
+    }
+    const option = document.createElement("option");
+    option.value = String(columns);
+    option.textContent = `${columns} columns`;
+    option.dataset.currentWidth = "true";
+    widthControl.prepend(option);
+    widthControl.value = option.value;
   }
 
   function initializeTerminalHeight() {
@@ -1132,7 +1187,7 @@
         // Layout persistence is optional.
       }
       updateTerminalHeightAccessibility();
-      scheduleResize();
+      scheduleRowResize();
     });
     heightResizer.addEventListener("keydown", (event) => {
       const step = event.shiftKey ? 64 : 24;
@@ -1150,7 +1205,7 @@
           // Layout persistence is optional.
         }
         updateTerminalHeightAccessibility();
-        scheduleResize();
+        scheduleRowResize();
       }
     });
 
@@ -1158,7 +1213,7 @@
       const height = Math.round(Math.max(minimum, Math.min(maximum, Number(value) || 500)));
       surface.style.height = `${height}px`;
       heightResizer.setAttribute("aria-valuenow", String(height));
-      scheduleResize();
+      scheduleRowResize();
       if (persist) saveTerminalHeight();
     }
 
@@ -1178,12 +1233,26 @@
     if (height > 0) heightResizer.setAttribute("aria-valuenow", String(height));
   }
 
-  function terminalColumns() {
+  function viewportColumns() {
     return Math.max(40, Math.min(200, Math.floor((screen?.clientWidth || 960) / 8)));
   }
 
-  function terminalRows() {
+  function viewportRows() {
     return Math.max(10, Math.min(120, Math.floor((screen?.clientHeight || 500) / 21)));
+  }
+
+  function sessionColumns(session) {
+    return Math.max(
+      40,
+      Math.min(300, Math.round(Number(session?.terminal_columns) || DEFAULT_COLUMNS))
+    );
+  }
+
+  function sessionRows(session) {
+    return Math.max(
+      10,
+      Math.min(120, Math.round(Number(session?.terminal_rows) || DEFAULT_ROWS))
+    );
   }
 
   function terminalKey(name) {

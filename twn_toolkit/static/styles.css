@@ -18177,9 +18177,26 @@ button.danger:hover {
   align-items: center;
   display: grid;
   gap: 12px;
-  grid-template-columns: auto minmax(120px, 1fr);
+  grid-template-columns: minmax(0, auto) auto minmax(120px, 1fr);
   margin: 4px 0;
   min-height: 30px;
+}
+
+.remote-terminal-width-control {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 800;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.remote-terminal-width-control select {
+  font-size: 0.72rem;
+  min-height: 28px;
+  padding: 3px 26px 3px 8px;
+  width: auto;
 }
 
 .remote-terminal-surface-status {
@@ -18265,16 +18282,19 @@ body.remote-terminal-resizing * {
   tab-size: 8;
   white-space: pre;
   word-break: normal;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
 }
 
 .remote-terminal-line {
   height: 1.45em;
-  min-width: max-content;
+  min-width: calc(var(--terminal-columns, 120) * 1ch);
+  width: max-content;
   white-space: pre;
 }
 
 .remote-terminal-scroll-spacer {
-  min-width: 1px;
+  min-width: calc(var(--terminal-columns, 120) * 1ch);
   pointer-events: none;
 }
 
@@ -18625,7 +18645,15 @@ body.remote-terminal-resizing * {
 
   .remote-terminal-surface-bar {
     gap: 8px;
-    grid-template-columns: auto minmax(80px, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .remote-terminal-width-control {
+    justify-self: end;
+  }
+
+  .remote-terminal-height-resizer {
+    grid-column: 1 / -1;
   }
 
   .remote-terminal-height-resizer-label {
