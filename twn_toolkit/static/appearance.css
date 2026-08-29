@@ -8,7 +8,7 @@
 
 :root {
   --ui-font: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --ui-radius: 2px;
+  --ui-radius: 0;
   --ui-gap: 6px;
   --ui-panel-padding: 10px;
   --ui-control-height: 34px;
@@ -835,6 +835,20 @@ input[type="file"] {
 
 input[type="file"]::file-selector-button {
   border-radius: var(--ui-radius);
+}
+
+/* Automation predates the shared tiled geometry and still grows new nested
+   surfaces through reusable builders and retained-run views. Scope a complete
+   square reset to the workspace so populated cards cannot reintroduce legacy
+   radii. Native radio controls remain circular by design. */
+.automation-workspace *,
+.automation-workspace *::before,
+.automation-workspace *::after {
+  border-radius: 0 !important;
+}
+
+.automation-workspace input[type="radio"] {
+  border-radius: 50% !important;
 }
 
 /* Investigations has several older components whose names do not use the

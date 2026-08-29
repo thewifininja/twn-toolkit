@@ -123,6 +123,10 @@ def test_appearance_preference_is_saved_per_user(tmp_path):
     assert b'id="appearance-menu"' in page.data
     assert b'aria-label="Appearance settings"' in page.data
     assert b"appearance.css" in page.data
+    appearance_css = client.get("/static/appearance.css")
+    assert appearance_css.status_code == 200
+    assert b"--ui-radius: 0;" in appearance_css.data
+    assert b".automation-workspace *::after" in appearance_css.data
 
     for invalid in (
         {"palette": "sepia"},
