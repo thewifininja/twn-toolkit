@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
 import sqlite3
 import subprocess
@@ -58,7 +59,7 @@ from .raspberry_pi_networking import (
     raspberry_pi_identity,
     raspberry_pi_network_status,
     request_pi_network_broker,
-    validate_pi_network_settings,
+    validate_pi_network_configuration,
     validate_uploaded_tls_material,
 )
 from .smtp_tools import (
@@ -470,7 +471,24 @@ def register_admin_routes(
             else [g.current_user]
         )
         active_server_settings = server_settings_store.get()
-        pi_network_status = raspberry_pi_network_status()
+        pi_network_status = (
+            raspberry_pi_network_status()
+            if settings_section == "raspberry-pi"
+            else {
+                **pi_identity,
+                "supported": False,
+                "broker_available": False,
+                "interfaces": [],
+                "wifi_interfaces": [],
+                "wired_interfaces": [],
+                "managed": {},
+                "pending": {},
+                "profile_status": [],
+                "wireless_clients": [],
+                "wired_clients": [],
+                "limitations": [],
+            }
+        )
         pi_service_network_capabilities = bool(
             pi_identity["is_raspberry_pi"]
             and systemd_network_capabilities_enabled()
@@ -478,7 +496,11 @@ def register_admin_routes(
         pi_service_install_command = "sudo ./twn service install"
         if pi_service_network_capabilities:
             pi_service_install_command += " --network-capabilities"
-        local_pending = pi_network_store.pending()
+        pi_network_configuration = pi_network_store.get_configuration()
+        local_pending = (
+            pi_network_store.pending_configuration()
+            or pi_network_store.pending()
+        )
         if (
             local_pending
             and pi_network_status.get("broker_available")
@@ -486,11 +508,23 @@ def register_admin_routes(
         ):
             _cleanup_pi_network_material(
                 pi_network_store,
-                dict(local_pending.get("material") or {}),
-                keep=dict(pi_network_store.get().get("material") or {}),
+                (
+                    _pi_configuration_material(
+                        dict(local_pending.get("configuration") or {})
+                    )
+                    if local_pending.get("configuration")
+                    else dict(local_pending.get("material") or {})
+                ),
+                keep=_pi_configuration_material(pi_network_configuration),
             )
             pi_network_store.clear_pending()
             local_pending = {}
+        pi_network_editor = _pi_profile_editor(
+            pi_network_configuration,
+            pi_network_status,
+            profile_id=str(request.args.get("profile", "")).strip(),
+            new_kind=str(request.args.get("new", "")).strip().lower(),
+        )
         automation_storage = automation_store.storage_stats()
         automation_storage["database_size"] = _format_bytes(
             int(automation_storage["database_bytes"])
@@ -528,6 +562,8 @@ def register_admin_routes(
             pi_network_identity=pi_identity,
             pi_network_status=pi_network_status,
             pi_network_settings=pi_network_store.get(),
+            pi_network_configuration=pi_network_configuration,
+            pi_network_editor=pi_network_editor,
             pi_network_pending=local_pending,
             pi_service_install_command=pi_service_install_command,
             pi_service_network_capabilities=pi_service_network_capabilities,
@@ -544,6 +580,98 @@ def register_admin_routes(
         return redirect(
             url_for("settings", section="raspberry-pi", _anchor=anchor)
         )
+
+    def _pi_configuration_material(configuration: dict[str, Any]) -> dict[str, str]:
+        material: dict[str, str] = {}
+        for profile in configuration.get("profiles", []):
+            if not isinstance(profile, dict):
+                continue
+            for key, path in dict(profile.get("material") or {}).items():
+                if path:
+                    material[f"{profile.get('id', '')}:{key}"] = str(path)
+        return material
+
+    def _pi_profile_editor(
+        configuration: dict[str, Any],
+        status: dict[str, Any],
+        *,
+        profile_id: str,
+        new_kind: str,
+    ) -> dict[str, Any]:
+        for profile in configuration.get("profiles", []):
+            if str(profile.get("id", "")) == profile_id:
+                return json.loads(json.dumps(profile))
+        if new_kind not in {"wifi-ap", "wifi-client", "wired"}:
+            return {}
+        interfaces = list(status.get("interfaces") or [])
+        wifi = next(
+            (item for item in interfaces if item.get("type") == "wifi"),
+            next(iter(status.get("wifi_interfaces") or []), {}),
+        )
+        wired = next(
+            (item for item in interfaces if item.get("type") == "ethernet"),
+            next(iter(status.get("wired_interfaces") or []), {}),
+        )
+        common = {
+            "id": "",
+            "name": "",
+            "kind": new_kind,
+            "enabled": True,
+            "autoconnect": True,
+        }
+        if new_kind == "wired":
+            common.update(
+                {
+                    "name": "Wired connection",
+                    "interface": str(wired.get("name", "eth0")),
+                    "adapter_mac": str(
+                        wired.get("mac_address") or wired.get("mac") or ""
+                    ),
+                    "ipv4_mode": "dhcp",
+                    "ipv6_mode": "auto",
+                    "dns_servers": [],
+                    "mtu": 0,
+                    "route_metric": 0,
+                    "network": "192.168.60.0/24",
+                    "gateway": "192.168.60.1",
+                    "dhcp_start": "192.168.60.50",
+                    "dhcp_end": "192.168.60.200",
+                    "lease_time": 3600,
+                }
+            )
+            return common
+        common.update(
+            {
+                "name": "Access point" if new_kind == "wifi-ap" else "Wi-Fi client",
+                "wifi_interface": str(wifi.get("name", "wlan0")),
+                "adapter_mac": str(
+                    wifi.get("mac_address") or wifi.get("mac") or ""
+                ),
+                "ssid": "",
+                "hidden": False,
+                "security": "wpa2-wpa3",
+            }
+        )
+        if new_kind == "wifi-ap":
+            common.update(
+                {
+                    "network_mode": "nat",
+                    "uplink_interface": str(wired.get("name", "eth0")),
+                    "uplink_mac": str(
+                        wired.get("mac_address") or wired.get("mac") or ""
+                    ),
+                    "band": "auto",
+                    "channel": 0,
+                    "client_isolation": False,
+                    "vlan_id": 0,
+                    "network": "192.168.50.0/24",
+                    "gateway": "192.168.50.1",
+                    "dhcp_start": "192.168.50.50",
+                    "dhcp_end": "192.168.50.200",
+                    "lease_time": 3600,
+                }
+            )
+        return common
 
     def _uploaded_pi_material(name: str) -> bytes:
         upload = request.files.get(name)
@@ -581,7 +709,14 @@ def register_admin_routes(
             for path in (keep or {}).values()
             if path
         }
-        for raw_path in material.values():
+        def material_paths(values: dict[str, Any]):
+            for value in values.values():
+                if isinstance(value, dict):
+                    yield from material_paths(value)
+                elif value:
+                    yield str(value)
+
+        for raw_path in material_paths(material):
             try:
                 path = Path(str(raw_path)).resolve()
                 parent = path.parent
@@ -595,172 +730,338 @@ def register_admin_routes(
                 except OSError:
                     pass
 
+    def _apply_pi_configuration(
+        configuration: dict[str, Any], *, summary: str
+    ) -> dict[str, Any]:
+        validated = validate_pi_network_configuration(configuration)
+        source_profiles = {
+            str(profile.get("id", "")): profile
+            for profile in configuration.get("profiles", [])
+            if isinstance(profile, dict)
+        }
+        for profile in validated["profiles"]:
+            source = source_profiles.get(str(profile.get("id", "")), {})
+            for key in ("passphrase", "password", "private_key_password"):
+                if not profile.get(key) and source.get(key):
+                    profile[key] = str(source[key])
+            profile["material"] = dict(source.get("material") or {})
+            profile["certificate_summary"] = dict(
+                source.get("certificate_summary") or {}
+            )
+        response = request_pi_network_broker(
+            {
+                "operation": "apply",
+                "configuration": validated,
+                "rollback_seconds": PI_NETWORK_ROLLBACK_SECONDS,
+            },
+            timeout=90,
+        )
+        pi_network_store.save_pending_configuration(
+            kind="apply",
+            token=str(response["token"]),
+            expires_at=float(response["expires_at"]),
+            configuration=validated,
+            dormant_profiles=list(response.get("dormant_profiles") or []),
+        )
+        annotate_audit_event(
+            category="Administration",
+            action="settings.raspberry_pi_network_pending",
+            summary=summary,
+            resource_type="settings",
+            resource_id="raspberry-pi-networking",
+            resource_name="Raspberry Pi networking",
+            details={
+                "profiles": len(validated["profiles"]),
+                "dormant profiles": len(response.get("dormant_profiles") or []),
+                "rollback seconds": PI_NETWORK_ROLLBACK_SECONDS,
+            },
+        )
+        return validated
+
     @app.post("/settings/raspberry-pi/network/apply")
     def apply_raspberry_pi_networking():
         denied = _pi_admin_required()
         if denied:
             return denied
-        current = pi_network_store.get(include_secrets=True)
-        values = {
-            "mode": request.form.get("mode", ""),
-            "wifi_interface": request.form.get("wifi_interface", ""),
-            "uplink_interface": request.form.get("uplink_interface", ""),
-            "country": request.form.get("country", ""),
-            "ssid": request.form.get("ssid", ""),
-            "hidden": request.form.get("hidden") == "on",
+        current = pi_network_store.get_configuration(include_secrets=True)
+        old_identifier = str(request.form.get("profile_id", "")).strip()
+        existing = next(
+            (
+                profile
+                for profile in current.get("profiles", [])
+                if str(profile.get("id", "")) == old_identifier
+            ),
+            {},
+        )
+        identifier = old_identifier or f"network-{secrets.token_hex(5)}"
+        kind = str(request.form.get("kind", "")).strip().lower()
+        profile: dict[str, Any] = {
+            "id": identifier,
+            "name": request.form.get("name", ""),
+            "kind": kind,
+            "enabled": request.form.get("enabled") == "on",
             "autoconnect": request.form.get("autoconnect") == "on",
-            "security": request.form.get("security", ""),
-            "passphrase": request.form.get("passphrase", ""),
-            "has_passphrase": bool(current.get("passphrase")),
-            "band": request.form.get("band", "auto"),
-            "channel": request.form.get("channel", "0"),
-            "client_isolation": request.form.get("client_isolation") == "on",
-            "vlan_id": request.form.get("vlan_id", ""),
-            "network": request.form.get("network", ""),
-            "gateway": request.form.get("gateway", ""),
-            "dhcp_start": request.form.get("dhcp_start", ""),
-            "dhcp_end": request.form.get("dhcp_end", ""),
-            "lease_time": request.form.get("lease_time", "3600"),
-            "identity": request.form.get("identity", ""),
-            "anonymous_identity": request.form.get("anonymous_identity", ""),
-            "password": request.form.get("password", ""),
-            "has_password": bool(current.get("password")),
-            "verify_server_certificate": (
-                request.form.get("verify_server_certificate") == "on"
-            ),
-            "ca_source": request.form.get("ca_source", "system"),
-            "server_domain": request.form.get("server_domain", ""),
-            "tls_material_format": request.form.get(
-                "tls_material_format", "bundle"
-            ),
-            "private_key_password": request.form.get(
-                "private_key_password", ""
-            ),
         }
+        if kind == "wired":
+            profile.update(
+                {
+                    "interface": request.form.get("interface", ""),
+                    "adapter_mac": request.form.get("adapter_mac", ""),
+                    "ipv4_mode": request.form.get("ipv4_mode", "dhcp"),
+                    "ipv6_mode": request.form.get("ipv6_mode", "auto"),
+                    "address": request.form.get("address", ""),
+                    "gateway": request.form.get("gateway", ""),
+                    "dns_servers": request.form.get("dns_servers", ""),
+                    "network": request.form.get("network", ""),
+                    "dhcp_start": request.form.get("dhcp_start", ""),
+                    "dhcp_end": request.form.get("dhcp_end", ""),
+                    "lease_time": request.form.get("lease_time", "3600"),
+                    "mtu": request.form.get("mtu", "0"),
+                    "route_metric": request.form.get("route_metric", "0"),
+                }
+            )
+        else:
+            profile.update(
+                {
+                    "wifi_interface": request.form.get("wifi_interface", ""),
+                    "adapter_mac": request.form.get("adapter_mac", ""),
+                    "ssid": request.form.get("ssid", ""),
+                    "hidden": request.form.get("hidden") == "on",
+                    "security": request.form.get("security", ""),
+                    "passphrase": request.form.get("passphrase", "")
+                    or str(existing.get("passphrase", "")),
+                    "has_passphrase": bool(existing.get("passphrase")),
+                    "identity": request.form.get("identity", ""),
+                    "anonymous_identity": request.form.get(
+                        "anonymous_identity", ""
+                    ),
+                    "password": request.form.get("password", "")
+                    or str(existing.get("password", "")),
+                    "has_password": bool(existing.get("password")),
+                    "verify_server_certificate": request.form.get(
+                        "verify_server_certificate"
+                    )
+                    == "on",
+                    "ca_source": request.form.get("ca_source", "system"),
+                    "server_domain": request.form.get("server_domain", ""),
+                    "tls_material_format": request.form.get(
+                        "tls_material_format", "bundle"
+                    ),
+                    "private_key_password": request.form.get(
+                        "private_key_password", ""
+                    )
+                    or str(existing.get("private_key_password", "")),
+                }
+            )
+            if kind == "wifi-ap":
+                profile.update(
+                    {
+                        "network_mode": request.form.get("network_mode", "nat"),
+                        "uplink_interface": request.form.get(
+                            "uplink_interface", ""
+                        ),
+                        "uplink_mac": request.form.get("uplink_mac", ""),
+                        "band": request.form.get("band", "auto"),
+                        "channel": request.form.get("channel", "0"),
+                        "client_isolation": request.form.get("client_isolation")
+                        == "on",
+                        "vlan_id": request.form.get("vlan_id", ""),
+                        "network": request.form.get("network", ""),
+                        "gateway": request.form.get("gateway", ""),
+                        "dhcp_start": request.form.get("dhcp_start", ""),
+                        "dhcp_end": request.form.get("dhcp_end", ""),
+                        "lease_time": request.form.get("lease_time", "3600"),
+                    }
+                )
+
         staged_material: dict[str, str] = {}
         try:
-            settings = validate_pi_network_settings(values)
-            for key in ("passphrase", "password"):
-                if key in settings and not settings[key]:
-                    settings[key] = str(current.get(key, ""))
-
-            ca_data = _uploaded_pi_material("ca_certificate")
-            client_data = _uploaded_pi_material("client_certificate")
-            key_data = _uploaded_pi_material("private_key")
-            bundle_data = _uploaded_pi_material("identity_bundle")
-            new_files: dict[str, bytes] = {}
-            material: dict[str, str] = {}
-            certificate_summary: dict[str, Any] = {}
-            current_material = dict(current.get("material") or {})
-            security = settings.get("security")
-
-            if security in {"peap", "eap-tls"} and settings.get("ca_source") == "upload":
-                if ca_data:
-                    new_files["ca"] = ca_data
-                elif current_material.get("ca"):
-                    material["ca"] = current_material["ca"]
-                    ca_data = _existing_pi_material(
-                        pi_network_store, current_material, "ca"
-                    )
-                else:
-                    raise ToolInputError("Upload the trusted RADIUS CA certificate.")
-
-            if security == "eap-tls":
-                if settings["tls_material_format"] == "bundle":
-                    if bundle_data:
-                        new_files["bundle"] = bundle_data
-                    elif current_material.get("bundle"):
-                        material["bundle"] = current_material["bundle"]
-                        bundle_data = _existing_pi_material(
-                            pi_network_store, current_material, "bundle"
+            if kind == "wifi-client":
+                current_material = dict(existing.get("material") or {})
+                material = dict(current_material)
+                new_files: dict[str, bytes] = {}
+                ca_data = _uploaded_pi_material("ca_certificate")
+                client_data = _uploaded_pi_material("client_certificate")
+                key_data = _uploaded_pi_material("private_key")
+                bundle_data = _uploaded_pi_material("identity_bundle")
+                security = profile.get("security")
+                if security not in {"peap", "eap-tls"}:
+                    material = {}
+                elif security == "peap":
+                    for unused_key in (
+                        "bundle",
+                        "client_certificate",
+                        "private_key",
+                    ):
+                        material.pop(unused_key, None)
+                    if profile.get("ca_source") != "upload":
+                        material.pop("ca", None)
+                if security in {"peap", "eap-tls"} and profile.get("ca_source") == "upload":
+                    if ca_data:
+                        new_files["ca"] = ca_data
+                    elif material.get("ca"):
+                        ca_data = _existing_pi_material(
+                            pi_network_store, material, "ca"
                         )
                     else:
                         raise ToolInputError(
-                            "Upload a PKCS#12 client identity bundle."
+                            "Upload the trusted RADIUS CA certificate."
                         )
-                    client_data = b""
-                    key_data = b""
-                else:
-                    if client_data:
-                        new_files["client_certificate"] = client_data
-                    elif current_material.get("client_certificate"):
-                        material["client_certificate"] = current_material[
-                            "client_certificate"
-                        ]
-                        client_data = _existing_pi_material(
-                            pi_network_store, current_material, "client_certificate"
-                        )
-                    if key_data:
-                        new_files["private_key"] = key_data
-                    elif current_material.get("private_key"):
-                        material["private_key"] = current_material["private_key"]
-                        key_data = _existing_pi_material(
-                            pi_network_store, current_material, "private_key"
-                        )
-                    bundle_data = b""
-                    if not client_data or not key_data:
-                        raise ToolInputError(
-                            "Upload both the EAP-TLS client certificate and private key."
-                        )
-                if (
-                    not settings.get("private_key_password")
-                    and not new_files.get("bundle")
-                    and not new_files.get("private_key")
-                ):
-                    settings["private_key_password"] = str(
-                        current.get("private_key_password", "")
+                if security == "eap-tls":
+                    if profile["tls_material_format"] == "bundle":
+                        if bundle_data:
+                            new_files["bundle"] = bundle_data
+                            material.pop("client_certificate", None)
+                            material.pop("private_key", None)
+                        elif material.get("bundle"):
+                            bundle_data = _existing_pi_material(
+                                pi_network_store, material, "bundle"
+                            )
+                        else:
+                            raise ToolInputError(
+                                "Upload a PKCS#12 client identity bundle."
+                            )
+                        client_data = key_data = b""
+                    else:
+                        if client_data:
+                            new_files["client_certificate"] = client_data
+                            material.pop("bundle", None)
+                        elif material.get("client_certificate"):
+                            client_data = _existing_pi_material(
+                                pi_network_store, material, "client_certificate"
+                            )
+                        if key_data:
+                            new_files["private_key"] = key_data
+                        elif material.get("private_key"):
+                            key_data = _existing_pi_material(
+                                pi_network_store, material, "private_key"
+                            )
+                        bundle_data = b""
+                        if not client_data or not key_data:
+                            raise ToolInputError(
+                                "Upload both the EAP-TLS client certificate and private key."
+                            )
+                certificate_summary = {}
+                if ca_data or client_data or key_data or bundle_data:
+                    certificate_summary = validate_uploaded_tls_material(
+                        ca_data=ca_data,
+                        client_certificate_data=client_data,
+                        private_key_data=key_data,
+                        bundle_data=bundle_data,
+                        private_key_password=str(
+                            profile.get("private_key_password", "")
+                        ),
                     )
-
-            if ca_data or client_data or key_data or bundle_data:
-                certificate_summary = validate_uploaded_tls_material(
-                    ca_data=ca_data,
-                    client_certificate_data=client_data,
-                    private_key_data=key_data,
-                    bundle_data=bundle_data,
-                    private_key_password=str(
-                        settings.get("private_key_password", "")
-                    ),
+                if new_files:
+                    staged_material = pi_network_store.stage_material(new_files)
+                    material.update(staged_material)
+                profile["material"] = material
+                profile["certificate_summary"] = (
+                    certificate_summary
+                    or (
+                        dict(existing.get("certificate_summary") or {})
+                        if security in {"peap", "eap-tls"}
+                        else {}
+                    )
                 )
-            if new_files:
-                staged_material = pi_network_store.stage_material(new_files)
-                material.update(staged_material)
-            settings["material"] = material
-            response = request_pi_network_broker(
-                {
-                    "operation": "apply",
-                    "settings": settings,
-                    "rollback_seconds": PI_NETWORK_ROLLBACK_SECONDS,
-                },
-                timeout=90,
-            )
-            settings.pop("material", None)
-            pi_network_store.save_pending(
-                kind="apply",
-                token=str(response["token"]),
-                expires_at=float(response["expires_at"]),
-                settings=settings,
-                material=material,
-                certificate_summary=certificate_summary,
+
+            profiles = [
+                item
+                for item in current.get("profiles", [])
+                if str(item.get("id", "")) != old_identifier
+            ]
+            profiles.append(profile)
+            configuration = {
+                "schema_version": 2,
+                "country": request.form.get("country", "")
+                or current.get("country", "")
+                or "US",
+                "profiles": profiles,
+            }
+            _apply_pi_configuration(
+                configuration,
+                summary=f"Applied provisional Raspberry Pi profile {profile['name']}.",
             )
         except (ToolInputError, PiNetworkBrokerError, OSError, RuntimeError) as exc:
             _cleanup_pi_network_material(pi_network_store, staged_material)
             flash(str(exc), "error")
-        else:
-            annotate_audit_event(
-                category="Administration",
-                action="settings.raspberry_pi_network_pending",
-                summary="Applied a provisional Raspberry Pi network configuration.",
-                resource_type="settings",
-                resource_id="raspberry-pi-networking",
-                resource_name="Raspberry Pi networking",
-                details={
-                    "mode": settings.get("mode"),
-                    "SSID": settings.get("ssid"),
-                    "rollback seconds": PI_NETWORK_ROLLBACK_SECONDS,
-                },
+            return redirect(
+                url_for(
+                    "settings",
+                    section="raspberry-pi",
+                    profile=old_identifier,
+                    new=kind if not old_identifier else None,
+                    _anchor="pi-network-profile-editor",
+                )
             )
+        flash(
+            "The network configuration is provisional. Confirm it before the rollback timer expires.",
+            "warning",
+        )
+        return _pi_settings_redirect("pi-network-pending")
+
+    @app.post("/settings/raspberry-pi/network/profile/<profile_id>/toggle")
+    def toggle_raspberry_pi_network_profile(profile_id: str):
+        denied = _pi_admin_required()
+        if denied:
+            return denied
+        configuration = pi_network_store.get_configuration(include_secrets=True)
+        profile = next(
+            (
+                item
+                for item in configuration.get("profiles", [])
+                if str(item.get("id", "")) == profile_id
+            ),
+            None,
+        )
+        try:
+            if profile is None:
+                raise ToolInputError("That Raspberry Pi network profile no longer exists.")
+            profile["enabled"] = not bool(profile.get("enabled", True))
+            _apply_pi_configuration(
+                configuration,
+                summary=f"Provisionally {'enabled' if profile['enabled'] else 'disabled'} Raspberry Pi profile {profile.get('name', profile_id)}.",
+            )
+        except (ToolInputError, PiNetworkBrokerError, OSError, RuntimeError) as exc:
+            flash(str(exc), "error")
+        else:
             flash(
-                "The network configuration is provisional. Confirm it before the rollback timer expires.",
+                "The profile change is provisional. Confirm it before automatic rollback.",
+                "warning",
+            )
+        return _pi_settings_redirect("pi-network-pending")
+
+    @app.post("/settings/raspberry-pi/network/profile/<profile_id>/delete")
+    def delete_raspberry_pi_network_profile(profile_id: str):
+        denied = _pi_admin_required()
+        if denied:
+            return denied
+        configuration = pi_network_store.get_configuration(include_secrets=True)
+        removed = next(
+            (
+                item
+                for item in configuration.get("profiles", [])
+                if str(item.get("id", "")) == profile_id
+            ),
+            None,
+        )
+        try:
+            if removed is None:
+                raise ToolInputError("That Raspberry Pi network profile no longer exists.")
+            configuration["profiles"] = [
+                item
+                for item in configuration["profiles"]
+                if str(item.get("id", "")) != profile_id
+            ]
+            _apply_pi_configuration(
+                configuration,
+                summary=f"Provisionally removed Raspberry Pi profile {removed.get('name', profile_id)}.",
+            )
+        except (ToolInputError, PiNetworkBrokerError, OSError, RuntimeError) as exc:
+            flash(str(exc), "error")
+        else:
+            flash(
+                "The profile removal is provisional. Confirm it before automatic rollback.",
                 "warning",
             )
         return _pi_settings_redirect("pi-network-pending")
@@ -770,7 +1071,10 @@ def register_admin_routes(
         denied = _pi_admin_required()
         if denied:
             return denied
-        pending = pi_network_store.pending(include_secrets=True)
+        pending = (
+            pi_network_store.pending_configuration(include_secrets=True)
+            or pi_network_store.pending(include_secrets=True)
+        )
         token = str(pending.get("token", ""))
         try:
             if not token:
@@ -780,9 +1084,21 @@ def register_admin_routes(
             request_pi_network_broker(
                 {"operation": "confirm", "token": token}
             )
-            before = pi_network_store.get()
-            if pending.get("kind") == "apply":
-                old_material = dict(before.get("material") or {})
+            before = pi_network_store.get_configuration()
+            if pending.get("kind") == "apply" and pending.get("configuration"):
+                old_material = _pi_configuration_material(before)
+                after = pi_network_store.save_active_configuration(
+                    dict(pending["configuration"])
+                )
+                new_material = _pi_configuration_material(after)
+                _cleanup_pi_network_material(
+                    pi_network_store,
+                    old_material,
+                    keep=new_material,
+                )
+            elif pending.get("kind") == "apply":
+                legacy_before = pi_network_store.get()
+                old_material = dict(legacy_before.get("material") or {})
                 new_material = dict(pending.get("material") or {})
                 after = pi_network_store.save_active(
                     dict(pending.get("settings") or {}),
@@ -792,12 +1108,10 @@ def register_admin_routes(
                     ),
                 )
                 _cleanup_pi_network_material(
-                    pi_network_store,
-                    old_material,
-                    keep=new_material,
+                    pi_network_store, old_material, keep=new_material
                 )
             else:
-                old_material = dict(before.get("material") or {})
+                old_material = _pi_configuration_material(before)
                 pi_network_store.clear()
                 _cleanup_pi_network_material(pi_network_store, old_material)
                 after = {}
@@ -823,7 +1137,7 @@ def register_admin_routes(
         denied = _pi_admin_required()
         if denied:
             return denied
-        pending = pi_network_store.pending()
+        pending = pi_network_store.pending_configuration() or pi_network_store.pending()
         try:
             request_pi_network_broker(
                 {"operation": "rollback", "token": str(pending.get("token", ""))},
@@ -834,8 +1148,16 @@ def register_admin_routes(
         else:
             _cleanup_pi_network_material(
                 pi_network_store,
-                dict(pending.get("material") or {}),
-                keep=dict(pi_network_store.get().get("material") or {}),
+                (
+                    _pi_configuration_material(
+                        dict(pending.get("configuration") or {})
+                    )
+                    if pending.get("configuration")
+                    else dict(pending.get("material") or {})
+                ),
+                keep=_pi_configuration_material(
+                    pi_network_store.get_configuration()
+                ),
             )
             pi_network_store.clear_pending()
             annotate_audit_event(
@@ -862,7 +1184,7 @@ def register_admin_routes(
                 },
                 timeout=90,
             )
-            pi_network_store.save_pending(
+            pi_network_store.save_pending_configuration(
                 kind="disable",
                 token=str(response["token"]),
                 expires_at=float(response["expires_at"]),

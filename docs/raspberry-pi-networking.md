@@ -1,11 +1,31 @@
 # Raspberry Pi networking
 
 On Raspberry Pi hardware, **Administration → System Settings → Raspberry Pi
-networking** can manage the Pi's Wi-Fi role through NetworkManager. The page is
+networking** can manage the Pi's network adapters and simultaneous network
+roles through NetworkManager. The page is
 not shown on other platforms. Detection uses the device-tree compatibility
 identifier rather than assuming every ARM Linux host is a Raspberry Pi.
 
-## Supported modes
+## Adapters and profiles
+
+The workspace discovers built-in and USB Ethernet and Wi-Fi adapters. Profiles
+are bound to a permanent hardware address, not only the current Linux interface
+name. This is important for field kits: removing a USB NIC, booting without it,
+or having udev assign it a different name does not delete the profile or prevent
+unrelated profiles from operating. The profile is shown as **Missing hardware**
+and remains dormant until that adapter returns. The protected broker watches
+the kernel's interface inventory: it deactivates a role whose required adapter
+disappears, re-resolves returning hardware by permanent MAC, and asks
+NetworkManager to restore the saved role. This same reconciliation runs after
+a cold boot, including when optional USB adapters are still absent.
+
+Each physical Wi-Fi radio can run one active role at a time. A Pi with multiple
+Wi-Fi adapters can therefore expose multiple SSIDs simultaneously—for example,
+a bridged service SSID on the built-in radio and a private NAT SSID on a USB
+radio. The toolkit does not assume that a driver supports reliable virtual
+multi-BSSID operation on one radio.
+
+## Supported wireless modes
 
 - **NAT access point** creates a private IPv4 wireless network. NetworkManager
   provides DHCP, DNS forwarding, and NAT through the selected Ethernet uplink.
@@ -18,9 +38,36 @@ identifier rather than assuming every ARM Linux host is a Raspberry Pi.
   WPA3 Personal, PEAP-MSCHAPv2, or EAP-TLS network.
 
 Access-point modes require both an AP-capable Wi-Fi adapter and a wired
-Ethernet interface. The page keeps client mode available when only client Wi-Fi
-is supported. Adapter firmware, regulatory country, and NetworkManager still
-determine which bands, channels, and WPA3 combinations can actually be used.
+Ethernet interface. Adapter firmware, regulatory country, and NetworkManager
+still determine which bands, channels, and WPA3 combinations can be used.
+
+## Wired interface modes
+
+Every detected built-in or USB Ethernet adapter can have an independent
+profile:
+
+- **DHCP client** obtains IPv4 addressing from the connected network.
+- **Static IPv4** sets an address/prefix and optional gateway and DNS servers.
+- **Private DHCP + NAT** makes the Pi a DHCP/DNS gateway on that interface and
+  routes clients through its active default uplink.
+- **Disable IPv4** leaves the link available without IPv4 configuration.
+
+Profiles also expose IPv6 automatic/disabled behavior, MTU, route metric, DNS
+overrides, boot autoconnect, and enabled/disabled state. Enabled private DHCP
+networks must not overlap one another, including networks used by NAT access
+points; validation blocks both exact duplicates and partially nested subnets
+before any system configuration changes.
+
+## Live visibility
+
+The adapter inventory reports link state, current addresses, gateway, driver,
+bus, active Wi-Fi channel, frequency, signal, and radio capabilities. Managed
+access points report observed clients by combining association data, DHCP
+leases, and neighbor entries. Installing the operating system's `iw` utility
+adds per-client signal, traffic, and rate details; the rest of the page remains
+functional if `iw` is unavailable. Private DHCP + NAT Ethernet profiles use the
+same client workspace to report downstream lease identity, address, hardware
+address, and current or recent neighbor reachability.
 
 ## Enterprise Wi-Fi
 
@@ -69,7 +116,8 @@ System Settings.
 ## Safe apply and recovery
 
 Apply and Disable are provisional. Before changing networking, the broker
-creates a NetworkManager checkpoint and records the prior active connections,
+stages the complete profile collection, creates a NetworkManager checkpoint,
+and records the prior active connections,
 wireless-country setting, Wi-Fi radio state, toolkit profile files, and managed
 state. The page then starts a two-minute confirmation timer.
 
