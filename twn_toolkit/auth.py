@@ -29,11 +29,14 @@ APPEARANCE_PALETTES = {
 APPEARANCE_DENSITIES = {"compact", "comfortable"}
 APPEARANCE_LAYOUTS = {"tiled", "compact", "focus"}
 APPEARANCE_TEXT_SCALES = {"90", "100", "110", "125"}
+MIN_SIDEBAR_WIDTH = 220
+MAX_SIDEBAR_WIDTH = 400
 DEFAULT_APPEARANCE = {
     "palette": "tokyo-night",
     "density": "compact",
     "layout": "tiled",
     "text_scale": "100",
+    "sidebar_width": "274",
 }
 
 
@@ -137,6 +140,17 @@ class AuthStore:
             if value not in allowed:
                 raise ValueError(f"Unsupported appearance {key}: {value or 'empty'}.")
             updated[key] = value
+        if "sidebar_width" in appearance:
+            try:
+                sidebar_width = int(str(appearance["sidebar_width"]).strip())
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Sidebar width must be a whole number.") from exc
+            if not MIN_SIDEBAR_WIDTH <= sidebar_width <= MAX_SIDEBAR_WIDTH:
+                raise ValueError(
+                    f"Sidebar width must be between {MIN_SIDEBAR_WIDTH} and "
+                    f"{MAX_SIDEBAR_WIDTH} pixels."
+                )
+            updated["sidebar_width"] = str(sidebar_width)
         user["appearance"] = updated
         user["theme"] = APPEARANCE_PALETTES[updated["palette"]]
         self._write(data)
@@ -500,6 +514,12 @@ def _appearance_from_user(user: dict[str, Any]) -> dict[str, str]:
         value = str(raw.get(key, ""))
         if value in allowed:
             appearance[key] = value
+    try:
+        sidebar_width = int(str(raw.get("sidebar_width", "")))
+    except (TypeError, ValueError):
+        sidebar_width = int(DEFAULT_APPEARANCE["sidebar_width"])
+    if MIN_SIDEBAR_WIDTH <= sidebar_width <= MAX_SIDEBAR_WIDTH:
+        appearance["sidebar_width"] = str(sidebar_width)
     return appearance
 
 

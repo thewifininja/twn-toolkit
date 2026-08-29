@@ -109,6 +109,7 @@ def test_appearance_preference_is_saved_per_user(tmp_path):
         "density": "comfortable",
         "layout": "focus",
         "text_scale": "110",
+        "sidebar_width": "274",
     }
     assert response.get_json() == {"appearance": appearance}
     user = AuthStore(str(tmp_path)).get_user("admin")
@@ -133,6 +134,9 @@ def test_appearance_preference_is_saved_per_user(tmp_path):
         {"density": "spacious"},
         {"layout": "floating"},
         {"text_scale": "200"},
+        {"sidebar_width": "219"},
+        {"sidebar_width": "401"},
+        {"sidebar_width": "wide"},
     ):
         assert client.post("/settings/appearance", json=invalid).status_code == 400
     assert client.post("/settings/appearance", json=["tokyo-night"]).status_code == 400
@@ -144,6 +148,12 @@ def test_appearance_preference_is_saved_per_user(tmp_path):
     page = client.get("/")
     assert b'data-palette="flexoki-light"' in page.data
     assert b'data-layout="focus"' in page.data
+    assert b'data-sidebar-width="274"' in page.data
+
+    resized = client.post("/settings/appearance", json={"sidebar_width": "336"})
+    assert resized.status_code == 200
+    assert resized.get_json()["appearance"]["sidebar_width"] == "336"
+    assert AuthStore(str(tmp_path)).get_user("admin")["appearance"]["sidebar_width"] == "336"
 
 
 def test_legacy_theme_endpoint_maps_to_semantic_palette(tmp_path):

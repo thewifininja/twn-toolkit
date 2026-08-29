@@ -648,23 +648,20 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("Help &amp; release notes", template)
         self.assertIn("filename='sidebar.js', v=asset_version", template)
 
-    def test_sidebar_nested_tools_are_text_only_and_keep_hierarchy_indent(self) -> None:
-        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+    def test_sidebar_drills_into_flat_text_only_tool_lists(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(
             encoding="utf-8"
         )
         template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
 
-        self.assertIn('<ul class="side-nav-tool-list">', template)
-        self.assertIn(
-            ".side-nav-tool-list,\n.side-nav-tree {",
-            stylesheet,
-        )
-        self.assertIn("margin-left: 12px !important;", stylesheet)
-        self.assertIn("padding-left: 8px !important;", stylesheet)
-        self.assertIn(".side-nav-tool-list .side-nav-item > a {", stylesheet)
-        self.assertIn(".side-nav-item.text-only > a {", stylesheet)
-        self.assertIn("gap: 0;", stylesheet)
-        self.assertIn("sidebar_tool_row(tool, show_icon=false)", template)
+        self.assertIn('class="side-nav-panel side-nav-category-panel"', template)
+        self.assertIn('class="side-nav-flat-tool-list"', template)
+        self.assertIn('class="side-nav-tool-section"', template)
+        self.assertIn('data-nav-open="category-{{ loop.index0 }}"', template)
+        self.assertIn(".side-nav-flat-tool-list {", stylesheet)
+        self.assertIn(".side-nav-category-panel .side-nav-label", stylesheet)
+        self.assertIn("overflow-wrap: anywhere;", stylesheet)
+        self.assertIn("sidebar_tool_row(tool, show_icon=false, category_label=group.label)", template)
         self.assertIn(
             "{% if show_icon %}<span class=\"side-nav-icon\"", template
         )
