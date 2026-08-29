@@ -1,13 +1,13 @@
 <!doctype html>
-<html lang="en" data-theme="{{ user_theme }}">
+<html lang="en" data-theme="{{ user_theme }}" data-palette="{{ user_palette }}" data-density="{{ user_appearance.density }}" data-layout="{{ user_appearance.layout }}" data-text-scale="{{ user_appearance.text_scale }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ ping_session.title }} · Ping</title>
-    <meta name="theme-color" content="#151b1a">
+    <meta name="theme-color" content="{{ '#0e0e14' if user_theme == 'dark' else '#f2f0e5' }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png', v=app_version) }}">
-    <script>(() => { const root = document.documentElement; if (root.dataset.theme === "system") root.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; })();</script>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=app_version) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='appearance.css', v=app_version) }}">
   </head>
   <body class="ping-popout-page">
     <header class="ping-popout-head">

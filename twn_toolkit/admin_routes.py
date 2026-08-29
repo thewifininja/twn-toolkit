@@ -451,6 +451,25 @@ def register_admin_routes(
         g.current_user["theme"] = theme
         return jsonify({"theme": theme})
 
+    @app.post("/settings/appearance")
+    def update_appearance():
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Appearance settings must be an object."}), 400
+        try:
+            appearance = auth_store.set_user_appearance(
+                g.current_user["id"], payload
+            )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        g.current_user["appearance"] = appearance
+        g.current_user["theme"] = (
+            "light"
+            if appearance["palette"] in {"flexoki-light", "toolkit-classic"}
+            else "dark"
+        )
+        return jsonify({"appearance": appearance})
+
     @app.get("/settings")
     def settings():
         requested_section = str(request.args.get("section", "system")).strip().lower()

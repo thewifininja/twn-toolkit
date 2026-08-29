@@ -31,7 +31,12 @@ from .datastore_routes import register_datastore_routes
 from .tftp import TFTPHistoryStore, TFTPSettingsStore
 from .ssh_transfer_server import SSHTransferHistoryStore, SSHTransferSettingsStore
 from .ftp_server import FTPSettingsStore
-from .auth import AuthStore, load_or_create_secret_key
+from .auth import (
+    APPEARANCE_PALETTES,
+    DEFAULT_APPEARANCE,
+    AuthStore,
+    load_or_create_secret_key,
+)
 from .admin_routes import register_admin_routes
 from .dashboard_layout import DashboardLayoutStore
 from .fortiauthenticator_routes import register_fortiauthenticator_routes
@@ -401,17 +406,20 @@ def create_app(instance_path: str | None = None) -> Flask:
                         "active": active_in_tools(network_tools),
                     }
                 )
+            operations_children = []
             if investigation_tools:
-                sidebar_tool_groups.append(
+                investigation_tool = investigation_tools[0]
+                operations_children.append(
                     {
                         "label": "Investigations",
-                        "icon": category_icons["investigations"],
-                        "tools": investigation_tools,
+                        "tool": investigation_tool,
+                        "direct": True,
+                        "favorite_enabled": investigation_tool.grantable,
                         "active": active_in_tools(investigation_tools),
                     }
                 )
             if local_tools:
-                sidebar_tool_groups.append(
+                operations_children.append(
                     {
                         "label": "Local Tools",
                         "icon": category_icons["local"],
@@ -420,12 +428,26 @@ def create_app(instance_path: str | None = None) -> Flask:
                     }
                 )
             if automation_tools:
-                sidebar_tool_groups.append(
+                operations_children.append(
                     {
                         "label": "Automation",
                         "icon": category_icons["automation"],
                         "tools": automation_tools,
                         "active": active_in_tools(automation_tools),
+                    }
+                )
+            if operations_children:
+                sidebar_tool_groups.append(
+                    {
+                        "label": "Operations",
+                        "icon": "◇",
+                        "children": operations_children,
+                        "count": sum(
+                            len(child.get("tools", ()))
+                            + (1 if child.get("tool") else 0)
+                            for child in operations_children
+                        ),
+                        "active": any(child["active"] for child in operations_children),
                     }
                 )
 
@@ -470,9 +492,17 @@ def create_app(instance_path: str | None = None) -> Flask:
                 app.logger.exception(
                     "Active investigation context could not be loaded"
                 )
+        appearance = (
+            auth_store.user_appearance(current_user["id"])
+            if current_user
+            else dict(DEFAULT_APPEARANCE)
+        )
+        color_mode = APPEARANCE_PALETTES[appearance["palette"]]
         return {
             "current_user": current_user,
-            "user_theme": current_user.get("theme", "light") if current_user else "system",
+            "user_theme": color_mode,
+            "user_appearance": appearance,
+            "user_palette": appearance["palette"],
             "favorite_ids": auth_store.favorite_tool_ids(current_user["id"]) if current_user else [],
             "allowed_tool_ids": allowed_tool_ids,
             "nav_category_ids": nav_category_ids,

@@ -271,6 +271,7 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
 AUDIT_EXCLUDED_ENDPOINTS = {
     "reorder_tool_favorites": "Personal navigation preference with no operational effect.",
     "toggle_tool_favorite": "Personal navigation preference with no operational effect.",
+    "update_appearance": "Personal presentation preference with no operational effect.",
     "update_theme": "Personal presentation preference with no operational effect.",
 }
 

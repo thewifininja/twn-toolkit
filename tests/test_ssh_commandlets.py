@@ -197,7 +197,13 @@ class SSHCommandletRouteTests(unittest.TestCase):
                 b'role="group" aria-label="Target editor mode"',
                 initial_page.data,
             )
-            self.assertNotIn(b'aria-pressed="true"', initial_page.data)
+            toggle_attribute = initial_page.data.index(b"data-ssh-matrix-toggle")
+            toggle_start = initial_page.data.rfind(b"<button", 0, toggle_attribute)
+            toggle_end = initial_page.data.index(b">", toggle_attribute)
+            self.assertNotIn(
+                b'aria-pressed="true"',
+                initial_page.data[toggle_start:toggle_end],
+            )
             self.assertNotIn(b'role="tablist"', initial_page.data)
             self.assertIn(b'aria-label="Add target row"', initial_page.data)
             self.assertIn(b'aria-label="Add variable column"', initial_page.data)

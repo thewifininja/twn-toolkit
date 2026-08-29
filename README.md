@@ -52,6 +52,11 @@ expandable library, and supported profiles, credentials, automation definitions,
 complete automations, schedule rules, and action stages can be duplicated before
 they are adapted for another site or workflow.
 
+Each operator can save an appearance profile from the top bar. Semantic palettes
+(Tokyo Night, Catppuccin, Gruvbox, Flexoki Light, and Toolkit Classic), compact
+or comfortable density, three workspace/navigation layouts, and four text scales
+all use the same tiled component system and bundled JetBrains Mono typography.
+
 ## What it includes
 
 ### Dashboard

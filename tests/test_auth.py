@@ -89,28 +89,73 @@ def test_login_logout_and_safe_next_redirect(tmp_path):
     assert b"definitely wrong" not in (tmp_path / "audit.sqlite3").read_bytes()
 
 
-def test_theme_preference_is_saved_per_user(tmp_path):
+def test_appearance_preference_is_saved_per_user(tmp_path):
     app = create_app(str(tmp_path))
     client = app.test_client()
     _setup(client)
 
-    response = client.post("/settings/theme", json={"theme": "dark"})
+    response = client.post(
+        "/settings/appearance",
+        json={
+            "palette": "flexoki-light",
+            "density": "comfortable",
+            "layout": "focus",
+            "text_scale": "110",
+        },
+    )
     assert response.status_code == 200
-    assert response.get_json() == {"theme": "dark"}
-    assert AuthStore(str(tmp_path)).get_user("admin")["theme"] == "dark"
+    appearance = {
+        "palette": "flexoki-light",
+        "density": "comfortable",
+        "layout": "focus",
+        "text_scale": "110",
+    }
+    assert response.get_json() == {"appearance": appearance}
+    user = AuthStore(str(tmp_path)).get_user("admin")
+    assert user["appearance"] == appearance
+    assert user["theme"] == "light"
     page = client.get("/")
-    assert b'data-theme="dark"' in page.data
-    assert b'id="theme-toggle"' in page.data
-    assert b'aria-label="Switch to light mode"' in page.data
-    assert b"theme-toggle-label" not in page.data
+    assert b'data-theme="light"' in page.data
+    assert b'data-palette="flexoki-light"' in page.data
+    assert b'data-density="comfortable"' in page.data
+    assert b'data-layout="focus"' in page.data
+    assert b'data-text-scale="110"' in page.data
+    assert b'id="appearance-menu"' in page.data
+    assert b'aria-label="Appearance settings"' in page.data
+    assert b"appearance.css" in page.data
 
-    assert client.post("/settings/theme", json={"theme": "sepia"}).status_code == 400
+    for invalid in (
+        {"palette": "sepia"},
+        {"density": "spacious"},
+        {"layout": "floating"},
+        {"text_scale": "200"},
+    ):
+        assert client.post("/settings/appearance", json=invalid).status_code == 400
+    assert client.post("/settings/appearance", json=["tokyo-night"]).status_code == 400
     client.post("/logout")
     client.post(
         "/login",
         data={"username": "admin", "password": "correct horse battery staple"},
     )
-    assert b'data-theme="dark"' in client.get("/").data
+    page = client.get("/")
+    assert b'data-palette="flexoki-light"' in page.data
+    assert b'data-layout="focus"' in page.data
+
+
+def test_legacy_theme_endpoint_maps_to_semantic_palette(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+
+    response = client.post("/settings/theme", json={"theme": "light"})
+    assert response.status_code == 200
+    assert response.get_json() == {"theme": "light"}
+    user = AuthStore(str(tmp_path)).get_user("admin")
+    assert user["theme"] == "light"
+    assert user["appearance"]["palette"] == "toolkit-classic"
+    assert b'data-palette="toolkit-classic"' in client.get("/").data
+
+    assert client.post("/settings/theme", json={"theme": "sepia"}).status_code == 400
 
 
 def test_admin_can_manage_users_timeout_and_passwords(tmp_path):

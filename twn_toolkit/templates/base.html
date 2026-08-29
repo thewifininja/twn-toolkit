@@ -1,21 +1,21 @@
 <!doctype html>
-<html lang="en" data-theme="{{ user_theme }}">
+<html
+  lang="en"
+  data-theme="{{ user_theme }}"
+  data-palette="{{ user_palette }}"
+  data-density="{{ user_appearance.density }}"
+  data-layout="{{ user_appearance.layout }}"
+  data-text-scale="{{ user_appearance.text_scale }}"
+>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% if page_title %}{{ page_title }} · {% endif %}{% if instance_name %}{{ instance_name }} · {% endif %}The WiFi Ninja’s Toolkit</title>
-    <meta name="theme-color" content="#151b1a">
+    <meta name="theme-color" content="{{ '#0e0e14' if user_theme == 'dark' else '#f2f0e5' }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png', v=app_version) }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='brand/apple-touch-icon.png', v=app_version) }}">
-    <script>
-      (() => {
-        const root = document.documentElement;
-        if (root.dataset.theme === "system") {
-          root.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-        }
-      })();
-    </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=asset_version) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='appearance.css', v=asset_version) }}">
   </head>
   <body>
     <header class="topbar {{ 'with-sidebar' if current_user else '' }}">
@@ -40,18 +40,61 @@
       <span class="subtitle">Fortinet workflows and network diagnostics</span>
       <nav class="topnav">
         {% if current_user %}
-          <button
-            type="button"
-            class="theme-toggle"
-            id="theme-toggle"
-            data-update-url="{{ url_for('update_theme') }}"
-            data-theme="{{ user_theme }}"
-            aria-pressed="{{ 'true' if user_theme == 'dark' else 'false' }}"
-            aria-label="{{ 'Switch to light mode' if user_theme == 'dark' else 'Switch to dark mode' }}"
-            title="{{ 'Switch to light mode' if user_theme == 'dark' else 'Switch to dark mode' }}"
-          >
-            <span class="theme-toggle-icon" aria-hidden="true">{{ '☾' if user_theme == 'dark' else '☀' }}</span>
-          </button>
+          <details class="appearance-menu" id="appearance-menu">
+            <summary class="appearance-toggle" aria-label="Appearance settings" title="Appearance settings">
+              <span class="appearance-toggle-mark" aria-hidden="true">Aa</span>
+              <span class="appearance-toggle-label">Appearance</span>
+            </summary>
+            <div class="appearance-popover" data-update-url="{{ url_for('update_appearance') }}">
+              <header>
+                <span>Appearance</span>
+                <small>Saved for {{ current_user.username }}</small>
+              </header>
+              <fieldset class="appearance-theme-grid">
+                <legend>Theme</legend>
+                {% for value, label in [
+                  ('tokyo-night', 'Tokyo Night'),
+                  ('catppuccin', 'Catppuccin'),
+                  ('gruvbox', 'Gruvbox'),
+                  ('flexoki-light', 'Flexoki Light'),
+                  ('toolkit-classic', 'Toolkit Classic')
+                ] %}
+                  <button
+                    type="button"
+                    class="appearance-theme-choice"
+                    data-appearance-key="palette"
+                    data-appearance-value="{{ value }}"
+                    aria-pressed="{{ 'true' if user_palette == value else 'false' }}"
+                  ><span class="theme-preview theme-preview-{{ value }}" aria-hidden="true"></span>{{ label }}</button>
+                {% endfor %}
+              </fieldset>
+              <fieldset>
+                <legend>Workspace</legend>
+                <div class="appearance-choice-row">
+                  {% for value, label in [('tiled', 'Tiled'), ('compact', 'Compact'), ('focus', 'Focus')] %}
+                    <button type="button" data-appearance-key="layout" data-appearance-value="{{ value }}" aria-pressed="{{ 'true' if user_appearance.layout == value else 'false' }}">{{ label }}</button>
+                  {% endfor %}
+                </div>
+              </fieldset>
+              <fieldset>
+                <legend>Density</legend>
+                <div class="appearance-choice-row">
+                  {% for value, label in [('compact', 'Compact'), ('comfortable', 'Comfortable')] %}
+                    <button type="button" data-appearance-key="density" data-appearance-value="{{ value }}" aria-pressed="{{ 'true' if user_appearance.density == value else 'false' }}">{{ label }}</button>
+                  {% endfor %}
+                </div>
+              </fieldset>
+              <fieldset>
+                <legend>Text size</legend>
+                <div class="appearance-choice-row">
+                  {% for value in ['90', '100', '110', '125'] %}
+                    <button type="button" data-appearance-key="text_scale" data-appearance-value="{{ value }}" aria-pressed="{{ 'true' if user_appearance.text_scale == value else 'false' }}">{{ value }}%</button>
+                  {% endfor %}
+                </div>
+              </fieldset>
+              <p class="appearance-status" data-appearance-status role="status" aria-live="polite"></p>
+            </div>
+          </details>
           <form method="post" action="{{ url_for('logout') }}" class="nav-logout">
             <button type="submit" class="link-button" aria-label="Sign out {{ current_user.username }}">
               Sign out <span class="nav-logout-username">({{ current_user.username }})</span>
@@ -62,8 +105,8 @@
     </header>
     <div class="app-layout {{ 'with-sidebar' if current_user else 'without-sidebar' }}">
       {% if current_user %}
-        {% macro sidebar_tool_row(tool, label=none, parent=false, favorite_enabled=true, show_icon=true) -%}
-          <div class="side-nav-item {{ 'parent' if parent else '' }} {{ 'text-only' if not show_icon else '' }}">
+        {% macro sidebar_tool_row(tool, label=none, parent=false, favorite_enabled=true, show_icon=true, direct=false) -%}
+          <div class="side-nav-item {{ 'parent' if parent else '' }} {{ 'text-only' if not show_icon else '' }} {{ 'direct' if direct else '' }}">
             <a class="{{ 'side-nav-parent-link' if parent else '' }} {{ 'active' if tool.id == current_tool_id else '' }}" href="{{ url_for(tool.endpoint, **tool.endpoint_values) }}" title="{{ label or tool.label }}">
               {% if show_icon %}<span class="side-nav-icon" aria-hidden="true">{{ tool.nav_icon }}</span>{% endif %}
               <span class="side-nav-label">{{ label or tool.label }}</span>
@@ -171,7 +214,11 @@
                           <li>
                             {% if child.tool or not child.tools %}<div class="side-nav-parent-row">
                               {% if child.tool %}
-                                {{ sidebar_tool_row(child.tool, child.label, true, child.favorite_enabled|default(true)) }}
+                                {% if child.direct|default(false) %}
+                                  {{ sidebar_tool_row(child.tool, child.label, false, child.favorite_enabled|default(true), true, true) }}
+                                {% else %}
+                                  {{ sidebar_tool_row(child.tool, child.label, true, child.favorite_enabled|default(true)) }}
+                                {% endif %}
                               {% elif not child.tools %}
                                 <span class="side-nav-parent-label">
                                   <span class="side-nav-icon" aria-hidden="true">{{ child.icon|default('•') }}</span>
@@ -369,7 +416,7 @@
         <small id="app-loading-quip">The toolkit is talking to the gear. Tiny packets are doing tiny packet things.</small>
       </div>
     </div>
-    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='theme.js', v=asset_version) }}"></script>
     <script src="{{ url_for('static', filename='checkbox-actions.js') }}"></script>
     <script src="{{ url_for('static', filename='profile-duplicate.js', v=asset_version) }}"></script>
     <script src="{{ url_for('static', filename='saved-profile-manager.js', v=asset_version) }}"></script>
