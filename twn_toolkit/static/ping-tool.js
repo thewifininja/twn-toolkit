@@ -666,7 +666,7 @@
     const cadenceNote = constrained
       ? ` The ${duration} round exceeded the ${intervalSeconds}s target; lower the ping timeout for a true ${intervalSeconds}-second cadence.`
       : "";
-    status.textContent = `Last round completed in ${duration} using ${engine} at ${completedAt.toLocaleTimeString()}.${cadenceNote} This run can be safely minimized.`;
+    status.textContent = `Last round completed in ${duration} using ${engine} at ${completedAt.toLocaleTimeString()}.${cadenceNote} This run continues while you navigate.`;
   }
 
   async function validateTargets(source) {

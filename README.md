@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/thewifininja/twn-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/thewifininja/twn-toolkit/actions/workflows/ci.yml)
 
-![TWN Toolkit](twn_toolkit/static/brand/twn-toolkit-wordmark.png)
+<img src="twn_toolkit/static/brand/twn-toolkit-wordmark.svg" alt="TWN Toolkit terminal wordmark" width="760">
 
 A local-first web toolkit for network diagnostics, repeatable Fortinet
 administration, contained file transfer, and event-driven automation.
@@ -13,15 +13,15 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.21.2**
+Current release: **v0.22.0**
 
-v0.21.2 makes persistent Remote Terminal recovery faster for long-running
-sessions, keeps live-focus controls clear of terminal output on desktop and
-mobile, and reports per-server DHCP Discover-to-Offer response time. It adds no
-dependency, database migration, privileged-helper change, or service-layout
-change. Existing installations accepted by the standard v0.9.0 minimum upgrade
-boundary can upgrade directly through the normal in-app or CLI workflow; no
-stepped release or service reinstall is required.
+v0.22.0 introduces the themeable, terminal-inspired TWN Toolkit interface,
+results-first diagnostic workspaces, reusable Bulk SSH host matrices with
+ordered runbooks, and simultaneous hardware-bound Raspberry Pi wired and Wi-Fi
+profiles. It adds no Python dependency or database-schema migration. Existing
+installations accepted by the standard v0.9.0 minimum upgrade boundary can
+upgrade directly; Raspberry Pi service installations must refresh the protected
+network broker once with `sudo ./twn service install` after upgrading.
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -54,7 +54,7 @@ they are adapted for another site or workflow.
 
 Each operator can save an appearance profile from the top bar. Semantic palettes
 (Tokyo Night, Catppuccin, Gruvbox, Flexoki Light, and Toolkit Classic), compact
-or comfortable density, three workspace/navigation layouts, and four text scales
+or comfortable density, tiled or focus workspace layouts, and four text scales
 all use the same tiled component system and bundled JetBrains Mono typography.
 
 ## What it includes
@@ -119,9 +119,10 @@ The sidebar and Network Tools page use the same functional organization.
 
 - **Ping** — graph reachability, latency, and loss for a validated
   target snapshot; update targets without discarding unchanged history.
-  Persistent runs continue through normal toolkit navigation and can be
-  minimized to the collapsed-by-default Live tools footer dock, renamed in
-  place, then restored with retained history by selecting the session card.
+  Starting a run collapses setup into a compact run bar while the unchanged
+  form remains available through **Edit settings**. Persistent runs continue
+  through normal toolkit navigation, remain available in the collapsed-by-default
+  Live tools footer dock, and restore with retained history from the session card.
   A working optional `fping` system command enables batched high-capacity rounds
   and raises the target limit from 100 to 250. Without it, the standard system
   `ping` compatibility engine remains available. Ping exposes separate
@@ -133,17 +134,17 @@ The sidebar and Network Tools page use the same functional organization.
   opened in a separate resizable window.
 #### Services & Protocols
 
-- **Bulk SSH** — build prompt-aware concurrent runs in one spreadsheet-style
-  target table, with a Raw Matrix editor for CSV-style pasting and a compact
-  importer for friendly host lists and inclusive IPv4/IPv6 ranges. Substitute
-  literal `{{ variable }}` values into reusable Stored Commandlets; the fixed
-  `Host` column maps directly to `{{ host }}`, and older `IP/FQDN` headings
-  remain accepted when importing saved matrices. Fleet runs support up to
-  5,000 targets, submitted in batches of 50 with at most 10 simultaneous SSH
-  connections and a bounded aggregate output budget. Commandlets can
-  optionally retain their target matrix and per-host values, while credentials
-  remain per-run only. Signed previews show every rendered command before
-  execution.
+- **Bulk SSH** — save a spreadsheet-style host matrix with fixed Name and Host
+  columns plus reusable per-host variables. Each matrix owns a compatible CLI
+  action library; the Run tab builds an explicit ordered runbook from only the
+  actions needed for that execution. Raw Matrix mode supports CSV-style pasting,
+  and the compact importer accepts friendly host lists and inclusive IPv4/IPv6
+  ranges. Fleet runs support up to 5,000 targets in batches of 50 with at most
+  10 simultaneous SSH connections and a bounded aggregate output budget.
+  Credentials remain per-run only, and a signed preview resolves the selected
+  runbook before execution. Older saved command sets migrate into matrix-owned
+  actions when they contain saved targets and otherwise remain available as
+  optional copy sources.
 - **Bulk Transfer** — fetch files concurrently over SFTP, SCP, or FTP into the
   Datastore or a one-shot ZIP, using collision-safe filename templates and the
   same explicit legacy SSH exception for SFTP/SCP.
@@ -374,9 +375,9 @@ Available conditions include:
 
 Available actions include:
 
-- prompt-aware SSH command collection with Stored Commandlet loading,
-  spreadsheet-style per-host variables, and fleet batching for up to 5,000
-  targets;
+- prompt-aware SSH command collection with optional matrix-owned Bulk SSH action
+  loading, spreadsheet-style per-host variables, and fleet batching for up to
+  5,000 targets;
 - SFTP, SCP, or FTP file collection to the Datastore or retained artifacts;
 - bounded packet capture to retained artifacts or the Datastore;
 - RFC 5424 Syslog and metadata-only email notifications; and
@@ -423,11 +424,13 @@ Updates, Recovery points, and Configuration backups so advanced and destructive
 controls remain available without crowding routine administration.
 
 On detected Raspberry Pi hardware, System Settings also provides a dedicated
-networking view for NAT or VLAN-capable bridged access-point service and Wi-Fi
-client operation. Client authentication includes WPA2/WPA3 Personal,
-PEAP-MSCHAPv2 with explicit server-trust policy, and certificate-based EAP-TLS.
-Every change is provisional until reachability is confirmed and automatically
-rolls back from a root-owned, UID-restricted NetworkManager broker. See
+networking view for simultaneous hardware-bound Ethernet and Wi-Fi profiles.
+Ethernet can use DHCP, static IPv4, private DHCP plus NAT, or disabled IPv4;
+Wi-Fi can provide NAT or VLAN-capable bridged access points or join Personal,
+PEAP-MSCHAPv2, and EAP-TLS networks. Missing removable adapters remain dormant
+and resume by permanent hardware address when they return. Every change is
+provisional until reachability is confirmed and automatically rolls back from
+a root-owned, UID-restricted NetworkManager broker. See
 [Raspberry Pi networking](docs/raspberry-pi-networking.md).
 
 Operators receive the union of their assigned custom profiles. Unauthorized tools

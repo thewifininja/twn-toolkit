@@ -147,9 +147,10 @@ toolkit generation identifiers are deliberately omitted from action evidence.
 - Cooldown: minimum interval between incident triggers.
 - Action: render a command template against a target matrix of up to 5,000 SSH
   hosts. Fixed Name and Host columns plus operator-defined variable columns use
-  the same `{{ variable }}` substitution as Bulk SSH. A Stored Commandlet can
-  populate the action editor, but the action saves a snapshot rather than a
-  live reference. Fleet execution submits batches of 50 with no more than 10
+  the same `{{ variable }}` substitution as Bulk SSH. A matrix-owned Bulk SSH
+  CLI action can populate the action editor; pre-v0.22 standalone command sets
+  remain available as compatibility sources. The automation saves a snapshot
+  rather than a live reference. Fleet execution submits batches of 50 with no more than 10
   simultaneous SSH connections and a bounded aggregate output budget. Commands
   use a 300-second default ceiling and complete as soon as the original device
   prompt returns. Prefix an individual command with `[timeout=600]` when it

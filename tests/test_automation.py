@@ -3457,7 +3457,7 @@ class AutomationUiRegressionTests(unittest.TestCase):
         self.assertIn("Existing history was preserved", script)
         self.assertIn("loadNewSamples", script)
         self.assertIn("last_duration_ms", script)
-        self.assertIn("This run can be safely minimized", script)
+        self.assertIn("This run continues while you navigate", script)
         self.assertNotIn('navigator.sendBeacon(form.dataset.activityUrl', script)
         self.assertIn("const historySampleBudget = 500_000", script)
         self.assertIn("trimHistoryToBudget(series)", script)

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
@@ -14,9 +16,11 @@ from twn_toolkit.auth import AuthStore, load_or_create_secret_key
 from twn_toolkit.automation import AutomationStore
 from twn_toolkit.migrations import MigrationManager
 from twn_toolkit.profiles import PingProfileStore, ProfileStore
+from twn_toolkit.ssh_commandlets import SSHCommandletStore, SSHHostMatrixStore
 
 
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "releases" / "v0.9.1"
+V0212_FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "releases" / "v0.21.2"
 
 
 def restore_release_fixture(instance: Path) -> None:
@@ -41,6 +45,74 @@ def restore_release_fixture(instance: Path) -> None:
 
 
 class PriorReleaseUpgradeTests(unittest.TestCase):
+    def test_v0212_bulk_ssh_profiles_migrate_to_matrix_owned_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            instance = Path(temporary)
+            shutil.copy2(
+                V0212_FIXTURE_ROOT / "ssh_commandlets.json",
+                instance / "ssh_commandlets.json",
+            )
+
+            matrices = SSHHostMatrixStore(str(instance)).all()
+            commandlets = {
+                item["name"]: item for item in SSHCommandletStore(str(instance)).all()
+            }
+            stored_commandlets = json.loads(
+                (instance / "ssh_commandlets.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(len(matrices), 1)
+            self.assertEqual(matrices[0]["name"], "Inspect branch interfaces targets")
+            self.assertEqual(matrices[0]["target_count"], 2)
+            self.assertEqual(
+                [action["name"] for action in matrices[0]["actions"]],
+                ["Inspect branch interfaces"],
+            )
+            self.assertEqual(
+                commandlets["Inspect branch interfaces"]["matrix_names"],
+                ["Inspect branch interfaces targets"],
+            )
+            self.assertEqual(commandlets["Collect system status"]["matrix_names"], [])
+            self.assertTrue(
+                all("target_matrix" not in item for item in stored_commandlets)
+            )
+
+    def test_interrupted_v0212_bulk_ssh_migration_is_retryable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            instance = Path(temporary)
+            source = V0212_FIXTURE_ROOT / "ssh_commandlets.json"
+            commandlet_path = instance / "ssh_commandlets.json"
+            shutil.copy2(source, commandlet_path)
+            original_replace = os.replace
+
+            def interrupt_commandlet_commit(source_path: str, target_path: str) -> None:
+                if Path(target_path).name == "ssh_commandlets.json":
+                    raise OSError("simulated interruption")
+                original_replace(source_path, target_path)
+
+            with (
+                patch(
+                    "twn_toolkit.profiles.os.replace",
+                    side_effect=interrupt_commandlet_commit,
+                ),
+                self.assertRaisesRegex(OSError, "simulated interruption"),
+            ):
+                SSHCommandletStore(str(instance)).all()
+
+            preserved = json.loads(commandlet_path.read_text(encoding="utf-8"))
+            self.assertIn("target_matrix", preserved[0])
+
+            matrices = SSHHostMatrixStore(str(instance)).all()
+            self.assertEqual(len(matrices), 1)
+            self.assertEqual(
+                [action["name"] for action in matrices[0]["actions"]],
+                ["Inspect branch interfaces"],
+            )
+            self.assertEqual(
+                len(SSHHostMatrixStore(str(instance)).all()),
+                1,
+            )
+
     def test_v091_instance_upgrades_without_losing_saved_state(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             instance = Path(temporary)

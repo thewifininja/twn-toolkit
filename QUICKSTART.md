@@ -114,9 +114,11 @@ There is no default account.
    command integrations, and platform capabilities.
 
 On a Raspberry Pi, an additional **Raspberry Pi networking** settings tab can
-configure a routed or bridged access point, or join Personal, PEAP, and EAP-TLS
-Wi-Fi. It requires the protected broker installed by the OS service. Refresh
-that service with `sudo ./twn service install`, preserving
+manage simultaneous hardware-bound Ethernet and Wi-Fi profiles. Ethernet can
+use DHCP, static IPv4, private DHCP plus NAT, or disabled IPv4; Wi-Fi can provide
+routed or bridged access points or join Personal, PEAP, and EAP-TLS networks.
+It requires the protected broker installed by the OS service. Refresh that
+service with `sudo ./twn service install`, preserving
 `--network-capabilities` if the existing service uses that option. Apply and
 Disable both roll back automatically unless reachability is confirmed within
 two minutes. See [Raspberry Pi networking](docs/raspberry-pi-networking.md).
@@ -186,13 +188,12 @@ credentials:
 3. Select **Start**.
 4. Review live reachability, current/minimum/average/maximum latency, loss, and
    response-time history.
-5. Select **Minimize** to keep the run active while using other toolkit pages.
-   Restore it from the compact **Live tools** footer dock. The dock starts
-   collapsed; open it to rename a run with the pencil, select its card to
-   restore it, or use the compact × control to stop it.
-6. Edit the settings and select **Apply changes** when the active run should
-   change. Unchanged targets keep their history; removed targets remain visible
-   as removed.
+5. Navigate normally while the run continues. The compact **Live tools** footer
+   dock starts collapsed; open it to rename a run with the pencil, select its
+   card to restore it, or use the compact × control to stop it.
+6. Select **Edit settings** from the compact run bar when the active run should
+   change, then select **Apply changes**. Unchanged targets keep their history;
+   removed targets remain visible as removed.
 
 Invalid entries are reported without preventing valid targets from running.
 The active run uses a validated snapshot, so typing does not create partial
@@ -311,10 +312,11 @@ Open **Automation → Actions** and expand **New action**. A practical first act
 3. Enter the username and password.
 4. Save the action.
 
-A Stored Commandlet is an optional shortcut, not a requirement. Expanding the
-shortcut copies its commands, timeout, and optional target matrix into the
-action as an independent snapshot. Later Commandlet changes do not silently
-alter an armed automation.
+A saved Bulk SSH CLI action is an optional shortcut, not a requirement.
+Loading it copies its commands, timeout, and owning host matrix into the action
+as an independent snapshot. Later Bulk SSH edits do not silently alter an armed
+automation. Standalone Commandlets from older releases remain available as
+legacy copy sources after upgrade.
 
 Commands normally use prompt-aware completion with a default ceiling. Override
 one long-running command by prefixing it, for example:

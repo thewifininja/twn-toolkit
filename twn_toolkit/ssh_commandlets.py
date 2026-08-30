@@ -506,8 +506,12 @@ def normalize_ssh_host_matrix(matrix: dict[str, Any]) -> dict[str, Any]:
         action_names.add(comparable)
     now = datetime.now(timezone.utc).isoformat()
     created_at = str(matrix.get("created_at", "")).strip() or now
-    action_schema_version = 1 if "actions" in matrix else int(
-        matrix.get("action_schema_version", 0) or 0
+    action_schema_version = (
+        int(matrix.get("action_schema_version", 0) or 0)
+        if "action_schema_version" in matrix
+        else 1
+        if "actions" in matrix
+        else 0
     )
     return {
         "name": name,
