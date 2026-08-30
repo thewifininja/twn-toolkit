@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import stat
 import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from twn_toolkit.profiles import (
     DNSProfileStore,
@@ -73,6 +76,26 @@ class ProfileStoreTests(unittest.TestCase):
 
             mode = stat.S_IMODE(store.path.stat().st_mode)
             self.assertEqual(mode, 0o600)
+
+    def test_failed_profile_replace_preserves_the_previous_json(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            store = PingProfileStore(instance)
+            store.replace_all([{"name": "Before", "targets": "1.1.1.1"}])
+
+            with (
+                patch("twn_toolkit.profiles.os.replace", side_effect=OSError("interrupted")),
+                self.assertRaisesRegex(OSError, "interrupted"),
+            ):
+                store.replace_all([{"name": "After", "targets": "8.8.8.8"}])
+
+            self.assertEqual(
+                json.loads(store.path.read_text(encoding="utf-8")),
+                [{"name": "Before", "targets": "1.1.1.1"}],
+            )
+            self.assertEqual(
+                list(Path(instance).glob(f".{store.path.stem}-*.json")),
+                [],
+            )
 
     def test_snmp_oid_profiles_include_defaults_when_first_saved(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

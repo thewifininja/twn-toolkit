@@ -127,15 +127,15 @@ def backup_items(instance_path: str) -> list[dict[str, Any]]:
         },
         {
             "id": "ssh_commandlets",
-            "label": "SSH command sets",
-            "description": "Reusable Bulk SSH command templates and compatibility metadata.",
+            "label": "Legacy SSH command sets",
+            "description": "Pre-v0.22 Bulk SSH command templates retained for import and automation compatibility.",
             "store": SSHCommandletStore(instance_path),
             "sensitive": True,
         },
         {
             "id": "ssh_host_matrices",
             "label": "SSH host matrices",
-            "description": "Reusable Bulk SSH hosts and per-host variable values.",
+            "description": "Reusable Bulk SSH hosts, per-host variables, and matrix-owned CLI actions.",
             "store": SSHHostMatrixStore(instance_path),
             "sensitive": True,
         },

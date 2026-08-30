@@ -1481,7 +1481,7 @@ def _ssh_action_sources(
             )
     for commandlet in _ssh_commandlet_store().all():
         append_source(
-            group="Legacy command sets",
+            group="Imported command sets (pre-v0.22)",
             label=str(commandlet["name"]),
             value=json.dumps(
                 {"kind": "legacy", "action": commandlet["name"]},

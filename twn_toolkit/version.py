@@ -1,6 +1,59 @@
-APP_VERSION = "0.21.2"
+APP_VERSION = "0.22.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.22.0",
+        "date": "2026-08-30",
+        "title": "Tiled workspaces and resilient field networking",
+        "summary": (
+            "Introduces the themeable TWN Toolkit interface, makes diagnostic "
+            "results the center of each tool workspace, reorganizes fleet SSH "
+            "around reusable host matrices and runbooks, and expands Raspberry "
+            "Pi wired and wireless network management."
+        ),
+        "groups": (
+            {
+                "title": "TWN identity and tiled interface",
+                "items": (
+                    "Rebrands the operator interface as TWN Toolkit with a terminal-style wordmark, bundled JetBrains Mono typography, squared shared geometry, theme-aware native controls, and no legacy dragon artwork.",
+                    "Adds Tokyo Night, Catppuccin, Gruvbox, Flexoki Light, and Toolkit Classic palettes with compact or comfortable density, tiled or focus layouts, four text scales, and a user-adjustable navigation width.",
+                    "Rebuilds the sidebar as a denser, searchable hierarchy with clearer Network Tools groups, reliable narrow-screen behavior, and the same active destination and favorites model across layouts.",
+                ),
+            },
+            {
+                "title": "Results-first tool workspaces",
+                "items": (
+                    "Collapses completed or active tool setup into a compact run bar and opens unchanged settings in a responsive side sheet, keeping Ping, DNS, NTP, Traceroute, TCP scanning, certificate inspection, and related results immediately visible.",
+                    "Standardizes full-width tabs, saved-profile controls, dropdowns, upload fields, action rows, button geometry, pop-outs, dense traceroute hops, persistent iPerf3 results, and mobile terminal overflow across the toolkit.",
+                    "Reorganizes SNMP, Bulk Transfer, Syslog, Multicast, LLDP, FortiGate, FortiAuthenticator, RADIUS, and iPerf3 around clearer staged or tabbed workflows without removing their existing operational options.",
+                ),
+            },
+            {
+                "title": "Reusable Bulk SSH runbooks",
+                "items": (
+                    "Makes each saved host matrix own its compatible CLI-action library, including per-host variables, descriptions, platform labels, command timeouts, and configuration-backup portability.",
+                    "Builds each execution explicitly on the Run tab: operators add only the actions needed, arrange their order, review a signed representative plan, then enter per-run credentials before concurrent host execution.",
+                    "Migrates v0.21.2 Stored Commandlets with embedded targets into reusable host matrices and independent CLI actions while preserving standalone legacy command sets as optional copy sources for Bulk SSH and Automation.",
+                ),
+            },
+            {
+                "title": "Raspberry Pi network roles and survivability",
+                "items": (
+                    "Adds simultaneous hardware-bound wired and Wi-Fi profiles, including Ethernet DHCP client, static IPv4, private DHCP plus NAT, disabled IPv4, multi-radio access points, Wi-Fi clients, and non-overlapping private subnet validation.",
+                    "Tracks removable adapters by permanent hardware address, keeps missing profiles dormant, reconciles returning interfaces after hot-plug or boot, and reports managed wireless and wired clients without making optional telemetry a requirement.",
+                    "Requires Raspberry Pi installations to refresh the protected service once with sudo ./twn service install so broker protocol v2 is installed; other platforms require no service reinstall.",
+                ),
+            },
+            {
+                "title": "Upgrade and compatibility",
+                "items": (
+                    "Adds no Python dependency or database-schema migration and keeps the standard v0.9.0 minimum direct-upgrade boundary; no stepped release is required.",
+                    "Maps the retired compact workspace layout to tiled, preserves saved appearance values and reusable profiles, and retains existing reverse-domain service identifiers so installed macOS services continue upgrading in place.",
+                    "Commits JSON profile changes through crash-safe atomic replacement and verifies that an interrupted v0.21.2 Bulk SSH migration can be retried without losing or duplicating saved work.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.21.2",
         "date": "2026-08-28",

@@ -19,7 +19,8 @@ The v2 catalog currently registers:
 - FortiGate and FortiAuthenticator connection profiles;
 - ping, DNS host/resolver, RADIUS server/credential/attribute, SNMP
   credential/host/OID, TCP scan host/port, NTP, traceroute, Wake-on-LAN, and
-  Bulk SSH commandlet profiles;
+  Bulk SSH host matrices with their CLI actions, plus pre-v0.22 command-set
+  compatibility records;
 - automation definitions without execution history or output;
 - dashboard layout without counters or activity;
 - user-owned Remote Terminal folders, saved hosts, and credentials without

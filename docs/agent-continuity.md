@@ -357,15 +357,16 @@ accepted replay frames.
   the host FQDN, avoiding platform-specific DNS delays. CI reports slow-test
   timings and keeps host-sensitive certificate tests independent of transient
   runner names. Bulk SSH now uses one preview-first workflow with reusable
-  Stored Commandlets, spreadsheet-style target matrices, per-host variables,
-  signed previews, and bounded fleet execution for up to 5,000 targets. Its
+  host matrices that own reusable CLI actions, spreadsheet-style targets,
+  per-host variables, explicit ordered runbooks, signed previews, and bounded
+  fleet execution for up to 5,000 targets. Its
   compact host importer retains the earlier friendly-name and inclusive
   IPv4/IPv6 range syntax without restoring a separate Basic mode; legacy mode
   URLs redirect to the unified page, and legacy Basic submissions are converted
   into previews without executing. SSH collection
   automation actions use the same matrix and rendering model while saving
-  independent Commandlet snapshots and retaining compatibility with legacy
-  host-list configurations. The dashboard is now a calmer operator workspace:
+  independent action snapshots and retaining compatibility with pre-v0.22
+  command sets and legacy host-list configurations. The dashboard is now a calmer operator workspace:
   permission-aware quick launch and search lead into live-tool and automation
   status, recent work, and a four-metric snapshot. Full metrics and optional
   team comparison remain available as secondary expandable views without

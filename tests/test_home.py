@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
@@ -13,6 +15,27 @@ from twn_toolkit.version import RELEASE_NOTES
 
 
 class HomePageTests(unittest.TestCase):
+    def test_readme_wordmark_is_the_single_horizontal_twn_identity(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        logo_path = (
+            root
+            / "twn_toolkit"
+            / "static"
+            / "brand"
+            / "twn-toolkit-wordmark.svg"
+        )
+        logo = logo_path.read_text(encoding="utf-8")
+        document = ET.fromstring(logo)
+        namespace = {"svg": "http://www.w3.org/2000/svg"}
+        text = [element.text for element in document.findall(".//svg:text", namespace)]
+
+        self.assertIn("twn_toolkit/static/brand/twn-toolkit-wordmark.svg", readme)
+        self.assertEqual(text, [">_TWN:~$", "toolkit"])
+        self.assertEqual(document.attrib["viewBox"], "0 0 1120 240")
+        self.assertNotIn("gradient", logo.lower())
+        self.assertNotIn("dragon", logo.lower())
+
     def sidebar_category_panel(self, html: str, label: str) -> str:
         marker = f'data-nav-label="{label}"'
         start = html.index(marker)
@@ -60,7 +83,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"DNS", response.data)
         self.assertIn(b"Speed tests", response.data)
         self.assertIn(b"Syslog", response.data)
-        self.assertIn(b"v0.21.2", response.data)
+        self.assertIn(b"v0.22.0", response.data)
         self.assertIn(b'href="/help"', response.data)
         self.assertIn(b"Help &amp; release notes", response.data)
         self.assertIn(

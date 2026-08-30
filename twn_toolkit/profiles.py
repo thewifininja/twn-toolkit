@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -80,9 +81,27 @@ class JsonListStore:
 
     def _write(self, profiles: list[dict[str, Any]]) -> None:
         self.instance_path.mkdir(parents=True, exist_ok=True)
-        with self.path.open("w", encoding="utf-8") as handle:
-            json.dump(profiles, handle, indent=2)
-        os.chmod(self.path, 0o600)
+        descriptor, temporary_name = tempfile.mkstemp(
+            dir=self.instance_path,
+            prefix=f".{self.path.stem}-",
+            suffix=".json",
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(profiles, handle, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temporary_name, 0o600)
+            os.replace(temporary_name, self.path)
+            directory_descriptor = os.open(self.instance_path, os.O_RDONLY)
+            try:
+                os.fsync(directory_descriptor)
+            finally:
+                os.close(directory_descriptor)
+        finally:
+            if os.path.exists(temporary_name):
+                os.unlink(temporary_name)
 
 
 class ProfileStore(JsonListStore):

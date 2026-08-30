@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 240" role="img" aria-labelledby="title description">
+  <title id="title">TWN Toolkit</title>
+  <desc id="description">Terminal prompt wordmark reading greater-than underscore TWN colon tilde dollar toolkit.</desc>
+  <rect width="1120" height="240" fill="#080b0d"/>
+  <g font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace" font-size="96" dominant-baseline="alphabetic">
+    <text x="64" y="153" fill="#7ad74a" font-weight="800">&gt;_TWN:~$</text>
+    <text x="585" y="153" fill="#c6cbd2" font-weight="400">toolkit</text>
+  </g>
+</svg>

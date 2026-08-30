@@ -29,7 +29,7 @@
             <div class="automation-helper-body">
               <label>Bulk SSH action
                 <select data-automation-ssh-commandlet>
-                  <option value="">Choose a command set…</option>
+                  <option value="">Choose a saved action…</option>
                   {% for commandlet in ssh_commandlets %}
                     <option value="{{ commandlet.name }}">{{ commandlet.name }}{% if commandlet.platform %} · {{ commandlet.platform }}{% endif %}{% if commandlet.target_count %} · {{ commandlet.target_count }} target(s){% endif %}</option>
                   {% endfor %}
