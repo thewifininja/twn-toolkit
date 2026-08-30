@@ -53,9 +53,12 @@
 
 - [x] Squash-merge the interface and workflow foundation as PR #152 and pass
   merged-main CI run `33334455094`.
-- [ ] Pass the v0.22.0 release-preparation PR on Ubuntu Python 3.10/3.13 and
-  macOS Python 3.13, including repository checks and dependency audit.
-- [ ] Squash-merge the release-preparation PR and pass merged-main CI.
+- [x] Pass release-preparation PR #153 on Ubuntu Python 3.10/3.13 and macOS
+  Python 3.13, including repository checks and dependency audit (CI run
+  `33336484313`).
+- [x] Squash-merge PR #153 as
+  `5bce2ad5a6a357792320da171216cdf982c15010` and pass merged-main CI run
+  `33336612511`.
 
 ## Publication gate
 
