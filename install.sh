@@ -69,7 +69,7 @@ if [ "$FRESH_INSTALL" -eq 1 ]; then
 fi
 
 INSTALL_STAGE=toolkit-start
-echo "Starting The WiFi Ninja's Toolkit..."
+echo "Starting TWN Toolkit..."
 if [ "$WAS_RUNNING" -eq 1 ]; then
   TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER=1 "$ROOT/twn" restart
 else

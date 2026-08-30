@@ -40,6 +40,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "create_user",
         "create_recovery_point",
         "delete_access_profile",
+        "delete_raspberry_pi_network_profile",
         "delete_automation",
         "delete_automation_action",
         "delete_automation_condition",
@@ -99,6 +100,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "test_condition_definition",
         "test_schedule_definition",
         "test_smtp_settings",
+        "toggle_raspberry_pi_network_profile",
         "test_fortiauthenticator_profile",
         "test_profile",
         "toggle_automation",
@@ -128,12 +130,14 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.update_remote_terminal_folder",
         "tools.update_remote_terminal_host",
         "tools.delete_dns_profile",
+        "tools.delete_failed_acme_dns_request",
         "tools.delete_ntp_profile",
         "tools.delete_ping_profile",
         "tools.delete_port_scan_profile",
         "tools.delete_radius_profile",
         "tools.delete_snmp_profile",
         "tools.delete_ssh_commandlet",
+        "tools.delete_ssh_host_matrix",
         "tools.delete_traceroute_profile",
         "tools.retry_multi_ssh_host_key",
         "tools.api_request",
@@ -269,6 +273,7 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
 AUDIT_EXCLUDED_ENDPOINTS = {
     "reorder_tool_favorites": "Personal navigation preference with no operational effect.",
     "toggle_tool_favorite": "Personal navigation preference with no operational effect.",
+    "update_appearance": "Personal presentation preference with no operational effect.",
     "update_theme": "Personal presentation preference with no operational effect.",
 }
 

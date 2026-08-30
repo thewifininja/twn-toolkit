@@ -1,11 +1,14 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import case_recorded_notice, saved_profile_manager %}
+{% from "components/ui.html" import case_recorded_notice, saved_profile_manager, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
-<section class="panel">
-  <div class="panel-head">
-    <h1>Wake-on-LAN</h1>
-    <p>Send bounded magic packets from the toolkit host to local devices or to a routed broadcast/relay destination, then optionally confirm that addressed devices respond to ping.</p>
+{% set has_results = outcome is not none %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
+{{ tool_result_runbar('Wake request complete', 'Wake-on-LAN', (outcome.device_count ~ ' device(s) · ' ~ outcome.packets_sent ~ ' packets sent') if has_results else '', 'wol-form', 'wol-settings', has_results, 'Wake again') }}
+<section class="panel tool-setup-panel" id="wol-settings" data-tool-settings-panel>
+  <div class="panel-head tool-setup-heading">
+    <div><h1>Wake-on-LAN</h1><p>Send bounded magic packets from the toolkit host to local devices or to a routed broadcast/relay destination, then optionally confirm that addressed devices respond to ping.</p></div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {{ case_recorded_notice(journal_event) }}
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
@@ -94,7 +97,9 @@
     </span>
   </form>
 </section>
+{{ tool_settings_backdrop('Wake-on-LAN') }}
 
+<div data-tool-results-anchor tabindex="-1">
 {% if outcome %}
 <section class="panel">
   <div class="certificate-result-head">
@@ -139,6 +144,8 @@
   </div>
 </section>
 {% endif %}
+</div>
 
 <script src="{{ url_for('static', filename='wake-on-lan.js') }}"></script>
+</div>
 {% endblock %}

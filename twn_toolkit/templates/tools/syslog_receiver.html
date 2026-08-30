@@ -1,110 +1,224 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import case_recorded_notice %}
+{% from "components/ui.html" import case_recorded_notice, tool_result_runbar, tool_settings_backdrop %}
 {% block content %}
-{{ case_recorded_notice(journal_event) }}
-<section class="panel">
+{% set send_has_results = send_result is not none %}
+{% set receive_has_results = messages is not none %}
+{% set selected_syslog_mode = active_mode|default('send') %}
+
+<section class="panel syslog-tool-intro">
   <div class="panel-head">
+    <span class="eyebrow">Message transport</span>
     <h1>Syslog Tools</h1>
-    <p>Generate an RFC 5424 test message or temporarily listen for incoming syslog over UDP or TCP.</p>
+    <p>Send a standards-based test event or open a bounded listener for incoming UDP and TCP syslog.</p>
   </div>
+  {{ case_recorded_notice(journal_event) }}
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  <div class="tool-workspace-tabs syslog-task-switch" role="tablist" aria-label="Choose a syslog task" data-syslog-task-switch>
+    <button
+      class="syslog-task-tab"
+      id="syslog-send-tab"
+      type="button"
+      role="tab"
+      aria-controls="syslog-send-panel"
+      aria-selected="{{ 'true' if selected_syslog_mode == 'send' else 'false' }}"
+      tabindex="{{ '0' if selected_syslog_mode == 'send' else '-1' }}"
+      data-syslog-task="send"
+    >
+      <strong>Send a test message</strong>
+      <small>Compose one RFC 5424 event and deliver it to a collector.</small>
+    </button>
+    <button
+      class="syslog-task-tab"
+      id="syslog-receive-tab"
+      type="button"
+      role="tab"
+      aria-controls="syslog-receive-panel"
+      aria-selected="{{ 'true' if selected_syslog_mode == 'receive' else 'false' }}"
+      tabindex="{{ '0' if selected_syslog_mode == 'receive' else '-1' }}"
+      data-syslog-task="receive"
+    >
+      <strong>Receive messages temporarily</strong>
+      <small>Listen for a fixed time or until the capture limit is reached.</small>
+    </button>
+  </div>
 </section>
 
-<section class="panel">
-  <div class="panel-head">
-    <h2>Send a Test Message</h2>
-    <p>Build and transmit one standards-based syslog message to another product.</p>
-  </div>
-  <form class="form" method="post" data-loading-message="Sending syslog message…">
-    <input type="hidden" name="action" value="send">
-    <div class="ntp-options">
-      <label>Protocol
-        <select name="send_protocol"><option value="udp" {{ 'selected' if send_form.protocol == 'udp' else '' }}>UDP</option><option value="tcp" {{ 'selected' if send_form.protocol == 'tcp' else '' }}>TCP</option></select>
-      </label>
-      <label>Destination
-        <input name="send_host" value="{{ send_form.host }}" placeholder="syslog.example.com" required>
-      </label>
-      <label>Port
-        <input name="send_port" type="number" min="1" max="65535" value="{{ send_form.port }}" required>
-      </label>
-      <label>Timeout
-        <input name="send_timeout" type="number" min="0.2" max="10" step="0.1" value="{{ send_form.timeout }}" required>
-      </label>
-      <label>Facility
-        <select name="send_facility">
-          {% for value, label in [(0,'kern'),(1,'user'),(2,'mail'),(3,'daemon'),(4,'auth'),(5,'syslog'),(6,'lpr'),(7,'news'),(8,'uucp'),(9,'cron'),(10,'authpriv'),(11,'ftp'),(12,'ntp'),(13,'security'),(14,'console'),(15,'clock'),(16,'local0'),(17,'local1'),(18,'local2'),(19,'local3'),(20,'local4'),(21,'local5'),(22,'local6'),(23,'local7')] %}
-            <option value="{{ value }}" {{ 'selected' if send_form.facility|int == value else '' }}>{{ value }} · {{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Severity
-        <select name="send_severity">
-          {% for value, label in [(0,'Emergency'),(1,'Alert'),(2,'Critical'),(3,'Error'),(4,'Warning'),(5,'Notice'),(6,'Informational'),(7,'Debug')] %}
-            <option value="{{ value }}" {{ 'selected' if send_form.severity|int == value else '' }}>{{ value }} · {{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Message hostname
-        <input name="send_hostname" value="{{ send_form.hostname }}" maxlength="255" required>
-      </label>
-      <label>Application name
-        <input name="send_app_name" value="{{ send_form.app_name }}" maxlength="48" required>
-      </label>
-    </div>
-    <label>Message
-      <textarea name="send_message" rows="5" maxlength="8192" placeholder="Test message from The WiFi Ninja's Toolkit" required>{{ send_form.message }}</textarea>
-    </label>
-    <div class="button-row"><button type="submit">Send syslog message</button></div>
-    <span class="field-note">TCP uses newline framing. Sending confirms local transmission or connection—not ingestion by the remote product.</span>
-  </form>
-  {% if send_result %}
-    <div class="message success">Sent {{ send_result.bytes }} bytes over {{ send_result.protocol }} to <code>{{ send_result.address }}:{{ send_result.port }}</code> with priority {{ send_result.priority }}.</div>
-    <h3>Message on the Wire</h3>
-    <pre class="result-output">{{ send_result.wire_message }}</pre>
-  {% endif %}
-</section>
+<div class="syslog-task-panels" data-syslog-task-panels data-initial-syslog-task="{{ selected_syslog_mode }}">
+  <div
+    class="syslog-task-panel"
+    id="syslog-send-panel"
+    role="tabpanel"
+    aria-labelledby="syslog-send-tab"
+    data-syslog-task-panel="send"
+    {% if selected_syslog_mode != 'send' %}hidden{% endif %}
+  >
+    <div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if send_has_results else 'setup' }}">
+      {{ tool_result_runbar('Message sent', 'Syslog transmission', (send_result.bytes ~ ' bytes · ' ~ send_result.protocol|upper ~ ' · ' ~ send_result.address) if send_has_results else '', 'syslog-send-form', 'syslog-send-settings', send_has_results, 'Send again') }}
+      <section class="panel compact-tool-workspace-panel tool-setup-panel" id="syslog-send-settings" data-tool-settings-panel>
+        <div class="panel-head compact-tool-workspace-head tool-setup-heading">
+          <div><span class="eyebrow">Syslog sender</span><h2>Build a test event</h2><p>Define the collector and message identity, then inspect the exact event placed on the wire.</p></div>
+          <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not send_has_results %}hidden{% endif %}>Close settings</button>
+        </div>
 
-<section class="panel">
-  <div class="panel-head">
-    <h2>Receive Messages Temporarily</h2>
-    <p>Open a bounded listener, collect incoming messages, then close it automatically.</p>
-  </div>
-  <form class="form" method="post" data-loading-message="Listening for syslog messages…">
-    <input type="hidden" name="action" value="receive">
-    <div class="ntp-options">
-      <label>Protocol
-        <select name="protocol"><option value="udp" {{ 'selected' if receive_form.protocol == 'udp' else '' }}>UDP</option><option value="tcp" {{ 'selected' if receive_form.protocol == 'tcp' else '' }}>TCP</option></select>
-      </label>
-      <label>Bind address
-        <input name="bind_address" value="{{ receive_form.bind_address }}" required>
-      </label>
-      <label>Port
-        <input name="port" type="number" min="1" max="65535" value="{{ receive_form.port }}" required>
-      </label>
-      <label>Listen duration
-        <input name="duration" type="number" min="1" max="30" step="1" value="{{ receive_form.duration }}" required>
-      </label>
-      <label>Maximum messages
-        <input name="max_messages" type="number" min="1" max="500" value="{{ receive_form.max_messages }}" required>
-      </label>
+        <form class="compact-tool-form" id="syslog-send-form" method="post" data-loading-message="Sending syslog message…">
+          <input type="hidden" name="action" value="send">
+          <div class="compact-tool-config-grid syslog-send-config-grid">
+            <article class="compact-tool-config-card compact-tool-source-card">
+              <header>
+                <div><span class="eyebrow">Step 1</span><h2>Collector endpoint</h2><p>Choose the transport and remote destination for this test event.</p></div>
+                <span class="compact-tool-card-meta">UDP or TCP</span>
+              </header>
+              <div class="compact-tool-option-grid syslog-destination-grid">
+                <label class="syslog-host-field">Destination
+                  <input name="send_host" value="{{ send_form.host }}" placeholder="syslog.example.com" required>
+                </label>
+                <label>Protocol
+                  <select name="send_protocol"><option value="udp" {{ 'selected' if send_form.protocol == 'udp' else '' }}>UDP</option><option value="tcp" {{ 'selected' if send_form.protocol == 'tcp' else '' }}>TCP</option></select>
+                </label>
+                <label>Port
+                  <input name="send_port" type="number" min="1" max="65535" value="{{ send_form.port }}" required>
+                </label>
+                <label>Timeout
+                  <span class="compact-tool-input-with-unit"><input name="send_timeout" type="number" min="0.2" max="10" step="0.1" value="{{ send_form.timeout }}" required><span>seconds</span></span>
+                </label>
+              </div>
+              <p class="field-note compact-tool-card-note">TCP uses newline framing. Delivery confirms the local transmission or connection, not ingestion by the remote product.</p>
+            </article>
+
+            <article class="compact-tool-config-card compact-tool-run-card syslog-message-card">
+              <header>
+                <div><span class="eyebrow">Step 2</span><h2>Message identity and payload</h2><p>Set the event priority, source identity, and human-readable message.</p></div>
+                <span class="compact-tool-card-meta">RFC 5424</span>
+              </header>
+              <div class="syslog-message-fields">
+                <div class="compact-tool-option-grid syslog-message-meta-grid">
+                  <label>Facility
+                    <select name="send_facility">
+                      {% for value, label in [(0,'kern'),(1,'user'),(2,'mail'),(3,'daemon'),(4,'auth'),(5,'syslog'),(6,'lpr'),(7,'news'),(8,'uucp'),(9,'cron'),(10,'authpriv'),(11,'ftp'),(12,'ntp'),(13,'security'),(14,'console'),(15,'clock'),(16,'local0'),(17,'local1'),(18,'local2'),(19,'local3'),(20,'local4'),(21,'local5'),(22,'local6'),(23,'local7')] %}
+                        <option value="{{ value }}" {{ 'selected' if send_form.facility|int == value else '' }}>{{ value }} · {{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>Severity
+                    <select name="send_severity">
+                      {% for value, label in [(0,'Emergency'),(1,'Alert'),(2,'Critical'),(3,'Error'),(4,'Warning'),(5,'Notice'),(6,'Informational'),(7,'Debug')] %}
+                        <option value="{{ value }}" {{ 'selected' if send_form.severity|int == value else '' }}>{{ value }} · {{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>Message hostname
+                    <input name="send_hostname" value="{{ send_form.hostname }}" maxlength="255" required>
+                  </label>
+                  <label>Application name
+                    <input name="send_app_name" value="{{ send_form.app_name }}" maxlength="48" required>
+                  </label>
+                </div>
+                <label class="compact-tool-source-field syslog-message-field"><span>Message</span>
+                  <textarea name="send_message" rows="4" maxlength="8192" placeholder="Test message from TWN Toolkit" required>{{ send_form.message }}</textarea>
+                </label>
+              </div>
+              <footer class="compact-tool-run-footer">
+                <span class="tool-status">The generated wire message is shown after transmission so you can verify the exact priority and payload.</span>
+                <button type="submit">Send syslog message</button>
+              </footer>
+            </article>
+          </div>
+        </form>
+      </section>
+      {{ tool_settings_backdrop('syslog sender') }}
+      <div data-tool-results-anchor tabindex="-1">
+      {% if send_result %}
+        <section class="panel syslog-send-result">
+          <div class="certificate-result-head">
+            <div><span class="eyebrow">Transmission complete</span><h2>Message on the Wire</h2><p>Sent {{ send_result.bytes }} bytes over {{ send_result.protocol|upper }} to <code>{{ send_result.address }}:{{ send_result.port }}</code>.</p></div>
+            <span class="pill success">{{ send_result.bytes }} bytes · PRI {{ send_result.priority }}</span>
+          </div>
+          <pre class="result-output">{{ send_result.wire_message }}</pre>
+        </section>
+      {% endif %}
+      </div>
     </div>
-    <div class="button-row"><button type="submit">Start listening</button></div>
-    <span class="field-note">The page waits while listening. Port 5514 avoids the privileges normally required by standard syslog port 514.</span>
-  </form>
-</section>
-{% if messages is not none %}
-<section class="panel">
-  <div class="certificate-result-head"><div><h2>Captured Messages</h2><p>{{ messages|length }} message{{ '' if messages|length == 1 else 's' }}</p></div><span class="pill success">listener closed</span></div>
-  {% if messages %}
-  <div class="preview-table-wrap"><table>
-    <thead><tr><th>Received (UTC)</th><th>Source</th><th>PRI</th><th>Facility</th><th>Severity</th><th>Message</th></tr></thead>
-    <tbody>{% for item in messages %}<tr>
-      <td><code>{{ item.received_at }}</code></td><td><code>{{ item.source }}:{{ item.source_port }}</code></td>
-      <td>{{ item.priority if item.priority is not none else '—' }}</td><td>{{ item.facility if item.facility is not none else '—' }}</td>
-      <td>{{ item.severity if item.severity is not none else '—' }}</td><td><code>{{ item.message }}</code></td>
-    </tr>{% endfor %}</tbody>
-  </table></div>
-  {% else %}<p class="empty">No syslog messages arrived before the listener closed.</p>{% endif %}
-</section>
-{% endif %}
+  </div>
+
+  <div
+    class="syslog-task-panel"
+    id="syslog-receive-panel"
+    role="tabpanel"
+    aria-labelledby="syslog-receive-tab"
+    data-syslog-task-panel="receive"
+    {% if selected_syslog_mode != 'receive' %}hidden{% endif %}
+  >
+    <div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if receive_has_results else 'setup' }}">
+      {{ tool_result_runbar('Listener closed', 'Syslog receiver', (messages|length ~ ' message(s) captured') if receive_has_results else '', 'syslog-receive-form', 'syslog-receive-settings', receive_has_results, 'Listen again') }}
+      <section class="panel compact-tool-workspace-panel tool-setup-panel" id="syslog-receive-settings" data-tool-settings-panel>
+        <div class="panel-head compact-tool-workspace-head tool-setup-heading">
+          <div><span class="eyebrow">Temporary receiver</span><h2>Open a bounded listener</h2><p>Choose the local endpoint and automatic stop conditions before waiting for incoming events.</p></div>
+          <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not receive_has_results %}hidden{% endif %}>Close settings</button>
+        </div>
+
+        <form class="compact-tool-form" id="syslog-receive-form" method="post" data-loading-message="Listening for syslog messages…">
+          <input type="hidden" name="action" value="receive">
+          <div class="compact-tool-config-grid syslog-receive-config-grid">
+            <article class="compact-tool-config-card compact-tool-source-card">
+              <header>
+                <div><span class="eyebrow">Step 1</span><h2>Listener endpoint</h2><p>Bind a temporary UDP or TCP socket on the toolkit host.</p></div>
+                <span class="compact-tool-card-meta">Local socket</span>
+              </header>
+              <div class="compact-tool-option-grid syslog-listener-grid">
+                <label>Protocol
+                  <select name="protocol"><option value="udp" {{ 'selected' if receive_form.protocol == 'udp' else '' }}>UDP</option><option value="tcp" {{ 'selected' if receive_form.protocol == 'tcp' else '' }}>TCP</option></select>
+                </label>
+                <label>Bind address
+                  <input name="bind_address" value="{{ receive_form.bind_address }}" required>
+                </label>
+                <label>Port
+                  <input name="port" type="number" min="1" max="65535" value="{{ receive_form.port }}" required>
+                </label>
+              </div>
+              <p class="field-note compact-tool-card-note">Port 5514 avoids the privileges normally required by standard syslog port 514.</p>
+            </article>
+
+            <article class="compact-tool-config-card compact-tool-run-card">
+              <header>
+                <div><span class="eyebrow">Step 2</span><h2>Capture bounds</h2><p>The listener closes when either limit is reached, keeping the test finite and predictable.</p></div>
+                <span class="compact-tool-card-meta">Maximum 30 seconds</span>
+              </header>
+              <div class="compact-tool-option-grid syslog-capture-grid">
+                <label>Listen duration
+                  <span class="compact-tool-input-with-unit"><input name="duration" type="number" min="1" max="30" step="1" value="{{ receive_form.duration }}" required><span>seconds</span></span>
+                </label>
+                <label>Maximum messages
+                  <input name="max_messages" type="number" min="1" max="500" value="{{ receive_form.max_messages }}" required>
+                </label>
+              </div>
+              <footer class="compact-tool-run-footer">
+                <span class="tool-status">This page waits while the listener is open, then presents all captured messages together.</span>
+                <button type="submit">Start listening</button>
+              </footer>
+            </article>
+          </div>
+        </form>
+      </section>
+      {{ tool_settings_backdrop('syslog receiver') }}
+      <div data-tool-results-anchor tabindex="-1">
+      {% if messages is not none %}
+      <section class="panel">
+        <div class="certificate-result-head"><div><span class="eyebrow">Capture complete</span><h2>Captured messages</h2><p>{{ messages|length }} message{{ '' if messages|length == 1 else 's' }}</p></div><span class="pill success">listener closed</span></div>
+        {% if messages %}
+        <div class="preview-table-wrap"><table>
+          <thead><tr><th>Received (UTC)</th><th>Source</th><th>PRI</th><th>Facility</th><th>Severity</th><th>Message</th></tr></thead>
+          <tbody>{% for item in messages %}<tr>
+            <td><code>{{ item.received_at }}</code></td><td><code>{{ item.source }}:{{ item.source_port }}</code></td>
+            <td>{{ item.priority if item.priority is not none else '—' }}</td><td>{{ item.facility if item.facility is not none else '—' }}</td>
+            <td>{{ item.severity if item.severity is not none else '—' }}</td><td><code>{{ item.message }}</code></td>
+          </tr>{% endfor %}</tbody>
+        </table></div>
+        {% else %}<p class="empty">No syslog messages arrived before the listener closed.</p>{% endif %}
+      </section>
+      {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='syslog-tools.js', v=app_version) }}"></script>
 {% endblock %}

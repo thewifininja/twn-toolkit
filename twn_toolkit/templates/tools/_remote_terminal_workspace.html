@@ -68,6 +68,15 @@
       </button>
       <span class="remote-terminal-focus-state" id="remote-terminal-focus-state" role="status" aria-live="polite">Click or tap to type</span>
     </div>
+    <label class="remote-terminal-width-control" for="remote-terminal-width">
+      <span>Width</span>
+      <select id="remote-terminal-width" aria-label="Shared terminal width">
+        <option value="80">80 columns</option>
+        <option value="120" selected>120 columns</option>
+        <option value="160">160 columns</option>
+        <option value="fit">Fit this view</option>
+      </select>
+    </label>
     <button
       class="remote-terminal-height-resizer"
       id="remote-terminal-height-resizer"

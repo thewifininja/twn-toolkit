@@ -177,6 +177,7 @@ class DiagnosticToolTests(unittest.TestCase):
                     "duration": "1", "max_messages": "10",
                 })
             self.assertIn(b"&lt;134&gt;hello", page.data)
+            self.assertIn(b'data-initial-syslog-task="receive"', page.data)
 
             with patch(
                 "twn_toolkit.syslog_routes.send_syslog",
@@ -195,6 +196,7 @@ class DiagnosticToolTests(unittest.TestCase):
                 })
             self.assertIn(b"Sent 80 bytes", page.data)
             self.assertIn(b"Message on the Wire", page.data)
+            self.assertIn(b'data-initial-syslog-task="send"', page.data)
             summary = ActivityStore(instance).summary()
             self.assertEqual(summary["counters"]["path_mtu"]["tests"], 1)
             self.assertEqual(summary["counters"]["api"]["requests"], 1)

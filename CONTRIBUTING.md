@@ -1,6 +1,6 @@
 # Contributing
 
-The WiFi Ninja's Toolkit keeps `main` in a releasable state. Changes should be
+TWN Toolkit keeps `main` in a releasable state. Changes should be
 developed on a focused branch, validated locally and by GitHub Actions, and
 merged through a pull request.
 

@@ -147,7 +147,7 @@ def render_systemd_unit(
     )
     return (
         "[Unit]\n"
-        "Description=The WiFi Ninja's Toolkit\n"
+        "Description=TWN Toolkit\n"
         "Wants=network-online.target\n"
         "After=network-online.target\n"
         "StartLimitIntervalSec=120\n"
@@ -251,7 +251,7 @@ def raspberry_pi_hardware() -> bool:
 def render_pi_network_broker_unit(root: Path, user: ServiceUser) -> str:
     return (
         "[Unit]\n"
-        "Description=The WiFi Ninja's Toolkit Raspberry Pi network broker\n"
+        "Description=TWN Toolkit Raspberry Pi network broker\n"
         "Requires=NetworkManager.service\n"
         "After=NetworkManager.service\n\n"
         "[Service]\n"

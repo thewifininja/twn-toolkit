@@ -23,13 +23,17 @@ from .network_tools import ToolInputError
 
 
 PI_NETWORK_BROKER_SOCKET = "/run/twn-toolkit/pi-network-broker.sock"
-PI_NETWORK_BROKER_PROTOCOL_VERSION = 1
+PI_NETWORK_BROKER_PROTOCOL_VERSION = 2
 PI_NETWORK_ROLLBACK_SECONDS = 120
 MAX_BROKER_MESSAGE_BYTES = 512 * 1024
 MAX_CERTIFICATE_BYTES = 2 * 1024 * 1024
 INTERFACE_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,15}$")
 CONNECTION_MODES = {"nat", "bridge", "client"}
 AP_SECURITY_MODES = {"wpa2", "wpa2-wpa3", "wpa3"}
+MANAGED_PROFILE_KINDS = {"wifi-ap", "wifi-client", "wired"}
+WIRED_IPV4_MODES = {"dhcp", "static", "shared", "disabled"}
+PROFILE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
+MAC_ADDRESS_PATTERN = re.compile(r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 CLIENT_SECURITY_MODES = {
     "open",
     "wpa2",
@@ -122,6 +126,10 @@ def raspberry_pi_network_status(
         "ap_available": False,
         "wired_available": False,
         "active_connections": [],
+        "interfaces": [],
+        "profile_status": [],
+        "wireless_clients": [],
+        "wired_clients": [],
         "managed": {},
         "pending": {},
         "limitations": [],
@@ -196,6 +204,13 @@ def raspberry_pi_network_status(
         )
     if status["broker_available"]:
         try:
+            locally_detected_interfaces = {
+                item.get("name"): item
+                for item in (
+                    status["wifi_interfaces"] + status["wired_interfaces"]
+                )
+                if item.get("name")
+            }
             broker = request_pi_network_broker(
                 {"operation": "status"}, socket_path=broker_socket
             )
@@ -205,6 +220,45 @@ def raspberry_pi_network_status(
                 )
             status["managed"] = broker.get("managed") or {}
             status["pending"] = broker.get("pending") or {}
+            status["interfaces"] = broker.get("interfaces") or []
+            status["profile_status"] = broker.get("profile_status") or []
+            status["wireless_clients"] = broker.get("wireless_clients") or []
+            status["wired_clients"] = broker.get("wired_clients") or []
+            if status["interfaces"]:
+                merged_interfaces = []
+                for broker_interface in status["interfaces"]:
+                    local_interface = locally_detected_interfaces.get(
+                        broker_interface.get("name"), {}
+                    )
+                    merged = {**local_interface, **broker_interface}
+                    if merged.get("type") == "wifi":
+                        # A stale or capability-limited broker must not erase a
+                        # positive AP/band result obtained from NetworkManager.
+                        for capability in (
+                            "ap",
+                            "wpa2",
+                            "band_2ghz",
+                            "band_5ghz",
+                            "band_6ghz",
+                        ):
+                            merged[capability] = bool(
+                                local_interface.get(capability)
+                                or broker_interface.get(capability)
+                            )
+                    merged_interfaces.append(merged)
+                status["interfaces"] = merged_interfaces
+                status["wifi_interfaces"] = [
+                    item for item in status["interfaces"] if item.get("type") == "wifi"
+                ]
+                status["wired_interfaces"] = [
+                    item
+                    for item in status["interfaces"]
+                    if item.get("type") == "ethernet"
+                ]
+                status["ap_available"] = any(
+                    bool(item.get("ap")) for item in status["wifi_interfaces"]
+                )
+                status["wired_available"] = bool(status["wired_interfaces"])
         except (OSError, PiNetworkBrokerError) as exc:
             status["broker_available"] = False
             status["broker_error"] = " ".join(str(exc).split())[:240]
@@ -214,7 +268,9 @@ def raspberry_pi_network_status(
     elif not status["network_manager_active"]:
         status["limitations"].append("NetworkManager is not active.")
     if not status["wifi_interfaces"]:
-        status["limitations"].append("No NetworkManager Wi-Fi interface was detected.")
+        status["limitations"].append(
+            "No NetworkManager Wi-Fi interface was detected; wired management remains available."
+        )
     if status["wifi_interfaces"] and not status["ap_available"]:
         status["limitations"].append(
             "The detected Wi-Fi interface does not report access-point support."
@@ -224,10 +280,12 @@ def raspberry_pi_network_status(
             status["broker_error"]
             or "Reinstall the system service to enable protected network changes."
         )
+    # Hardware can legitimately be absent during boot or after a removable
+    # adapter is unplugged. Keep the management surface available so saved
+    # profiles can remain dormant and be edited while their adapter is away.
     status["supported"] = bool(
         version
         and status["network_manager_active"]
-        and status["wifi_interfaces"]
         and status["broker_available"]
     )
     return status
@@ -277,6 +335,13 @@ def _interface(value: Any, label: str) -> str:
     normalized = str(value or "").strip()
     if not INTERFACE_PATTERN.fullmatch(normalized):
         raise ToolInputError(f"Choose a valid {label} interface.")
+    return normalized
+
+
+def _optional_mac_address(value: Any, label: str) -> str:
+    normalized = str(value or "").strip().upper()
+    if normalized and not MAC_ADDRESS_PATTERN.fullmatch(normalized):
+        raise ToolInputError(f"The {label} hardware address is invalid.")
     return normalized
 
 
@@ -452,6 +517,320 @@ def validate_pi_network_settings(values: dict[str, Any]) -> dict[str, Any]:
     return settings
 
 
+def _profile_id(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if not PROFILE_ID_PATTERN.fullmatch(normalized):
+        raise ToolInputError(
+            "Network profile identifiers must use lowercase letters, numbers, dashes, or underscores."
+        )
+    return normalized
+
+
+def _integer(
+    value: Any,
+    label: str,
+    minimum: int,
+    maximum: int,
+    *,
+    default: int = 0,
+) -> int:
+    try:
+        number = int(value if value is not None and value != "" else default)
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError(f"{label} must be a number.") from exc
+    if not minimum <= number <= maximum:
+        raise ToolInputError(f"{label} must be between {minimum} and {maximum}.")
+    return number
+
+
+def _dns_servers(value: Any) -> list[str]:
+    raw_values = value if isinstance(value, list) else re.split(r"[,\s]+", str(value or ""))
+    servers: list[str] = []
+    for raw in raw_values:
+        normalized = str(raw or "").strip()
+        if not normalized:
+            continue
+        try:
+            address = ipaddress.ip_address(normalized)
+        except ValueError as exc:
+            raise ToolInputError(f"{normalized} is not a valid DNS server address.") from exc
+        rendered = str(address)
+        if rendered not in servers:
+            servers.append(rendered)
+    if len(servers) > 6:
+        raise ToolInputError("Configure no more than six DNS server addresses per interface.")
+    return servers
+
+
+def _adapter_identity_keys(interface: str, mac_address: str) -> set[str]:
+    keys = {f"name:{interface.casefold()}"}
+    if mac_address:
+        keys.add(f"mac:{mac_address.casefold()}")
+    return keys
+
+
+def _private_ipv4_settings(values: dict[str, Any], *, label: str) -> dict[str, Any]:
+    try:
+        network = ipaddress.ip_network(str(values.get("network", "")), strict=True)
+        gateway = ipaddress.ip_address(str(values.get("gateway", "")))
+        dhcp_start = ipaddress.ip_address(str(values.get("dhcp_start", "")))
+        dhcp_end = ipaddress.ip_address(str(values.get("dhcp_end", "")))
+    except ValueError as exc:
+        raise ToolInputError(
+            f"Enter a valid IPv4 network, gateway, and DHCP range for {label}."
+        ) from exc
+    if network.version != 4 or not 16 <= network.prefixlen <= 29:
+        raise ToolInputError(
+            f"{label.capitalize()} networks must be IPv4 with a prefix between /16 and /29."
+        )
+    unusable = {network.network_address, network.broadcast_address}
+    if any(
+        address.version != 4 or address not in network or address in unusable
+        for address in (gateway, dhcp_start, dhcp_end)
+    ):
+        raise ToolInputError(
+            f"The gateway and DHCP range must be usable addresses in the {label} network."
+        )
+    if int(dhcp_start) > int(dhcp_end) or int(dhcp_start) <= int(gateway) <= int(dhcp_end):
+        raise ToolInputError(
+            "Enter an ordered DHCP range that does not include the gateway endpoint."
+        )
+    return {
+        "network": str(network),
+        "gateway": str(gateway),
+        "dhcp_start": str(dhcp_start),
+        "dhcp_end": str(dhcp_end),
+        "lease_time": _integer(
+            values.get("lease_time"),
+            "DHCP lease time",
+            120,
+            31_536_000,
+            default=3600,
+        ),
+    }
+
+
+def _validate_wired_profile(values: dict[str, Any]) -> dict[str, Any]:
+    mode = str(values.get("ipv4_mode", "dhcp")).strip().lower()
+    if mode not in WIRED_IPV4_MODES:
+        raise ToolInputError(
+            "Choose DHCP client, static IPv4, private DHCP server, or disabled IPv4."
+        )
+    profile: dict[str, Any] = {
+        "interface": _interface(values.get("interface"), "Ethernet"),
+        "adapter_mac": _optional_mac_address(
+            values.get("adapter_mac"), "Ethernet adapter"
+        ),
+        "ipv4_mode": mode,
+        "ipv6_mode": (
+            "disabled"
+            if str(values.get("ipv6_mode", "auto")).strip().lower() == "disabled"
+            else "auto"
+        ),
+        "dns_servers": _dns_servers(values.get("dns_servers")),
+        "autoconnect": bool(values.get("autoconnect", True)),
+        "mtu": _integer(values.get("mtu"), "MTU", 0, 9000, default=0),
+        "route_metric": _integer(
+            values.get("route_metric"), "Route metric", 0, 65_535, default=0
+        ),
+    }
+    if mode == "static":
+        try:
+            address = ipaddress.ip_interface(str(values.get("address", "")))
+        except ValueError as exc:
+            raise ToolInputError("Enter the static IPv4 address with its prefix length.") from exc
+        if address.version != 4:
+            raise ToolInputError("The static interface address must be IPv4.")
+        gateway_text = str(values.get("gateway", "")).strip()
+        if gateway_text:
+            try:
+                gateway = ipaddress.ip_address(gateway_text)
+            except ValueError as exc:
+                raise ToolInputError("Enter a valid IPv4 gateway.") from exc
+            if gateway.version != 4 or gateway not in address.network:
+                raise ToolInputError("The IPv4 gateway must belong to the static interface network.")
+            profile["gateway"] = str(gateway)
+        else:
+            profile["gateway"] = ""
+        profile["address"] = str(address)
+    elif mode == "shared":
+        profile.update(_private_ipv4_settings(values, label="private wired"))
+    return profile
+
+
+def validate_pi_network_configuration(values: dict[str, Any]) -> dict[str, Any]:
+    """Validate a complete, simultaneous Raspberry Pi network configuration."""
+
+    country = str(values.get("country", "")).strip().upper()
+    if not re.fullmatch(r"[A-Z]{2}", country):
+        raise ToolInputError("Enter the two-letter wireless regulatory country code.")
+    raw_profiles = values.get("profiles")
+    if not isinstance(raw_profiles, list):
+        raise ToolInputError("The network profile collection is invalid.")
+    if len(raw_profiles) > 32:
+        raise ToolInputError("Configure no more than 32 Raspberry Pi network profiles.")
+
+    profiles: list[dict[str, Any]] = []
+    identifiers: set[str] = set()
+    names: set[str] = set()
+    active_wifi: dict[str, str] = {}
+    active_wired: dict[str, str] = {}
+    bridged_uplinks: dict[str, str] = {}
+    private_networks: list[tuple[str, ipaddress.IPv4Network]] = []
+
+    for raw_profile in raw_profiles:
+        if not isinstance(raw_profile, dict):
+            raise ToolInputError("Each Raspberry Pi network profile must be an object.")
+        identifier = _profile_id(raw_profile.get("id"))
+        if identifier in identifiers:
+            raise ToolInputError(f"Network profile identifier {identifier} is duplicated.")
+        identifiers.add(identifier)
+        name = _bounded_text(
+            raw_profile.get("name"), "a network profile name", 80, required=True
+        )
+        name_key = name.casefold()
+        if name_key in names:
+            raise ToolInputError(f"Network profile name {name} is duplicated.")
+        names.add(name_key)
+        kind = str(raw_profile.get("kind", "")).strip().lower()
+        if kind not in MANAGED_PROFILE_KINDS:
+            raise ToolInputError(f"Network profile {name} has an unsupported type.")
+        enabled = bool(raw_profile.get("enabled", True))
+
+        if kind == "wired":
+            normalized = _validate_wired_profile(raw_profile)
+            normalized.update(
+                {"id": identifier, "name": name, "kind": kind, "enabled": enabled}
+            )
+            interface = normalized["interface"]
+            resources = _adapter_identity_keys(
+                interface, str(normalized.get("adapter_mac", ""))
+            )
+            if enabled:
+                assigned = next(
+                    (active_wired[key] for key in resources if key in active_wired),
+                    "",
+                )
+                if assigned:
+                    raise ToolInputError(
+                        f"{interface} is already assigned to {assigned}."
+                    )
+                active_wired.update({key: name for key in resources})
+                if normalized["ipv4_mode"] == "shared":
+                    private_networks.append(
+                        (name, ipaddress.ip_network(normalized["network"]))
+                    )
+        else:
+            wifi_values = dict(raw_profile)
+            wifi_values["country"] = country
+            wifi_values["mode"] = (
+                "client"
+                if kind == "wifi-client"
+                else str(raw_profile.get("network_mode", "nat")).strip().lower()
+            )
+            if kind == "wifi-ap" and wifi_values["mode"] not in {"nat", "bridge"}:
+                raise ToolInputError(
+                    f"Choose NAT or bridge networking for access point {name}."
+                )
+            normalized = validate_pi_network_settings(wifi_values)
+            normalized.update(
+                {
+                    "id": identifier,
+                    "name": name,
+                    "kind": kind,
+                    "enabled": enabled,
+                    "adapter_mac": _optional_mac_address(
+                        raw_profile.get("adapter_mac"), "Wi-Fi adapter"
+                    ),
+                }
+            )
+            if kind == "wifi-ap":
+                normalized["network_mode"] = normalized.pop("mode")
+                normalized["uplink_mac"] = _optional_mac_address(
+                    raw_profile.get("uplink_mac"), "wired uplink"
+                )
+            else:
+                normalized.pop("mode", None)
+            interface = normalized["wifi_interface"]
+            resources = _adapter_identity_keys(
+                interface, str(normalized.get("adapter_mac", ""))
+            )
+            if enabled:
+                assigned = next(
+                    (active_wifi[key] for key in resources if key in active_wifi),
+                    "",
+                )
+                if assigned:
+                    raise ToolInputError(
+                        f"{interface} is already assigned to {assigned}."
+                    )
+                active_wifi.update({key: name for key in resources})
+                if kind == "wifi-ap" and normalized["network_mode"] == "bridge":
+                    uplink = normalized["uplink_interface"]
+                    uplink_resources = _adapter_identity_keys(
+                        uplink, str(normalized.get("uplink_mac", ""))
+                    )
+                    bridged_by = next(
+                        (
+                            bridged_uplinks[key]
+                            for key in uplink_resources
+                            if key in bridged_uplinks
+                        ),
+                        "",
+                    )
+                    if bridged_by:
+                        raise ToolInputError(
+                            f"{uplink} is already bridged by {bridged_by}."
+                        )
+                    bridged_uplinks.update(
+                        {key: name for key in uplink_resources}
+                    )
+                elif kind == "wifi-ap":
+                    private_networks.append(
+                        (name, ipaddress.ip_network(normalized["network"]))
+                    )
+        profiles.append(normalized)
+
+    for resource, bridge_name in bridged_uplinks.items():
+        if resource in active_wired:
+            raise ToolInputError(
+                f"The bridged uplink cannot be managed by {active_wired[resource]} while it is bridged by {bridge_name}."
+            )
+    for index, (name, network) in enumerate(private_networks):
+        for other_name, other_network in private_networks[index + 1 :]:
+            if network.overlaps(other_network):
+                raise ToolInputError(
+                    f"Private networks for {name} and {other_name} overlap."
+                )
+    return {"schema_version": 2, "country": country, "profiles": profiles}
+
+
+def pi_network_configuration_from_legacy(settings: dict[str, Any]) -> dict[str, Any]:
+    """Convert the v0.20/v0.21 single-role settings shape without losing secrets."""
+
+    if not settings:
+        return {"schema_version": 2, "country": "", "profiles": []}
+    mode = str(settings.get("mode", ""))
+    kind = "wifi-client" if mode == "client" else "wifi-ap"
+    profile = dict(settings)
+    profile.update(
+        {
+            "id": "legacy-wireless",
+            "name": str(settings.get("ssid") or "Existing wireless profile"),
+            "kind": kind,
+            "enabled": True,
+        }
+    )
+    if kind == "wifi-ap":
+        profile["network_mode"] = mode
+    profile.pop("mode", None)
+    return {
+        "schema_version": 2,
+        "country": str(settings.get("country", "")),
+        "profiles": [profile],
+    }
+
+
 def _certificate_summary(certificate: x509.Certificate) -> dict[str, str]:
     return {
         "subject": certificate.subject.rfc4514_string(),
@@ -557,6 +936,96 @@ class RaspberryPiNetworkStore:
         values["saved_at"] = float(raw.get("saved_at") or 0)
         return values
 
+    def get_configuration(self, *, include_secrets: bool = False) -> dict[str, Any]:
+        raw = self._read(self.path)
+        if not raw:
+            return {"schema_version": 2, "country": "", "profiles": []}
+        if not isinstance(raw.get("configuration"), dict):
+            legacy = self.get(include_secrets=include_secrets)
+            configuration = pi_network_configuration_from_legacy(legacy)
+            if configuration["profiles"]:
+                profile = configuration["profiles"][0]
+                profile["material"] = dict(legacy.get("material") or {})
+                profile["certificate_summary"] = dict(
+                    legacy.get("certificate_summary") or {}
+                )
+            return configuration
+        configuration = json.loads(json.dumps(raw["configuration"]))
+        secret_profiles = self._decrypt_payload(
+            str(raw.get("secrets_encrypted", ""))
+        )
+        materials = raw.get("material") if isinstance(raw.get("material"), dict) else {}
+        summaries = (
+            raw.get("certificate_summary")
+            if isinstance(raw.get("certificate_summary"), dict)
+            else {}
+        )
+        for profile in configuration.get("profiles", []):
+            identifier = str(profile.get("id", ""))
+            secrets_payload = (
+                secret_profiles.get(identifier, {})
+                if isinstance(secret_profiles.get(identifier), dict)
+                else {}
+            )
+            profile["has_passphrase"] = bool(secrets_payload.get("passphrase"))
+            profile["has_password"] = bool(secrets_payload.get("password"))
+            profile["has_private_key_password"] = bool(
+                secrets_payload.get("private_key_password")
+            )
+            if include_secrets:
+                profile.update(
+                    {
+                        key: str(value)
+                        for key, value in secrets_payload.items()
+                        if isinstance(key, str) and isinstance(value, str)
+                    }
+                )
+            profile["material"] = dict(materials.get(identifier) or {})
+            profile["certificate_summary"] = dict(summaries.get(identifier) or {})
+        configuration["saved_at"] = float(raw.get("saved_at") or 0)
+        return configuration
+
+    def save_active_configuration(
+        self, configuration: dict[str, Any]
+    ) -> dict[str, Any]:
+        safe = json.loads(json.dumps(configuration))
+        secret_profiles: dict[str, dict[str, str]] = {}
+        materials: dict[str, dict[str, str]] = {}
+        summaries: dict[str, dict[str, Any]] = {}
+        for profile in safe.get("profiles", []):
+            identifier = str(profile.get("id", ""))
+            secrets_payload = {}
+            for key in ("passphrase", "password", "private_key_password"):
+                value = str(profile.pop(key, ""))
+                if value:
+                    secrets_payload[key] = value
+            if secrets_payload:
+                secret_profiles[identifier] = secrets_payload
+            material = profile.pop("material", {})
+            if isinstance(material, dict) and material:
+                materials[identifier] = {
+                    str(key): str(value) for key, value in material.items()
+                }
+            summary = profile.pop("certificate_summary", {})
+            if isinstance(summary, dict) and summary:
+                summaries[identifier] = summary
+            for key in (
+                "has_passphrase",
+                "has_password",
+                "has_private_key_password",
+            ):
+                profile.pop(key, None)
+        payload = {
+            "schema_version": 2,
+            "configuration": safe,
+            "secrets_encrypted": self._encrypt_payload(secret_profiles),
+            "material": materials,
+            "certificate_summary": summaries,
+            "saved_at": time.time(),
+        }
+        self._write(self.path, payload)
+        return self.get_configuration()
+
     def save_active(
         self,
         settings: dict[str, Any],
@@ -612,8 +1081,90 @@ class RaspberryPiNetworkStore:
             },
         )
 
+    def save_pending_configuration(
+        self,
+        *,
+        kind: str,
+        token: str,
+        expires_at: float,
+        configuration: dict[str, Any] | None = None,
+        dormant_profiles: list[dict[str, str]] | None = None,
+    ) -> None:
+        safe = json.loads(json.dumps(configuration or {}))
+        secret_profiles: dict[str, dict[str, str]] = {}
+        materials: dict[str, dict[str, str]] = {}
+        summaries: dict[str, dict[str, Any]] = {}
+        for profile in safe.get("profiles", []):
+            identifier = str(profile.get("id", ""))
+            secrets_payload = {}
+            for key in ("passphrase", "password", "private_key_password"):
+                value = str(profile.pop(key, ""))
+                if value:
+                    secrets_payload[key] = value
+            if secrets_payload:
+                secret_profiles[identifier] = secrets_payload
+            material = profile.pop("material", {})
+            if isinstance(material, dict) and material:
+                materials[identifier] = {
+                    str(key): str(value) for key, value in material.items()
+                }
+            summary = profile.pop("certificate_summary", {})
+            if isinstance(summary, dict) and summary:
+                summaries[identifier] = summary
+            for key in (
+                "has_passphrase",
+                "has_password",
+                "has_private_key_password",
+            ):
+                profile.pop(key, None)
+        self._write(
+            self.pending_path,
+            {
+                "schema_version": 2,
+                "kind": kind,
+                "token": token,
+                "expires_at": float(expires_at),
+                "configuration": safe,
+                "secrets_encrypted": self._encrypt_payload(secret_profiles),
+                "material": materials,
+                "certificate_summary": summaries,
+                "dormant_profiles": list(dormant_profiles or []),
+            },
+        )
+
+    def pending_configuration(
+        self, *, include_secrets: bool = False
+    ) -> dict[str, Any]:
+        raw = self._read_pending()
+        if not raw or not isinstance(raw.get("configuration"), dict):
+            return {}
+        result = dict(raw)
+        configuration = json.loads(json.dumps(raw["configuration"]))
+        secret_profiles = self._decrypt_payload(
+            str(result.pop("secrets_encrypted", ""))
+        )
+        materials = result.get("material") if isinstance(result.get("material"), dict) else {}
+        summaries = (
+            result.get("certificate_summary")
+            if isinstance(result.get("certificate_summary"), dict)
+            else {}
+        )
+        for profile in configuration.get("profiles", []):
+            identifier = str(profile.get("id", ""))
+            secret_payload = (
+                secret_profiles.get(identifier, {})
+                if isinstance(secret_profiles.get(identifier), dict)
+                else {}
+            )
+            if include_secrets:
+                profile.update(secret_payload)
+            profile["material"] = dict(materials.get(identifier) or {})
+            profile["certificate_summary"] = dict(summaries.get(identifier) or {})
+        result["configuration"] = configuration
+        return result
+
     def pending(self, *, include_secrets: bool = False) -> dict[str, Any]:
-        pending = self._read(self.pending_path)
+        pending = self._read_pending()
         if not pending:
             return {}
         result = dict(pending)
@@ -626,6 +1177,7 @@ class RaspberryPiNetworkStore:
 
     def clear_pending(self) -> None:
         self.pending_path.unlink(missing_ok=True)
+        self._sync_directory(self.pending_path.parent)
 
     def stage_material(self, files: dict[str, bytes]) -> dict[str, str]:
         token = secrets.token_hex(12)
@@ -658,14 +1210,56 @@ class RaspberryPiNetworkStore:
             raise RuntimeError(f"Could not read {path.name}.") from exc
         return value if isinstance(value, dict) else {}
 
+    def _read_pending(self) -> dict[str, Any]:
+        # The protected broker is authoritative for whether a provisional
+        # network change still exists. A torn local pending record must never
+        # prevent an administrator from reopening Settings after power loss.
+        try:
+            return self._read(self.pending_path)
+        except RuntimeError:
+            return {}
+
+    @staticmethod
+    def _sync_directory(path: Path) -> None:
+        descriptor = -1
+        try:
+            descriptor = os.open(
+                path,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+            os.fsync(descriptor)
+        except OSError:
+            # Some filesystems do not support directory fsync. The atomic
+            # replace still prevents readers from observing a partial write.
+            pass
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+
     def _write(self, path: Path, payload: dict[str, Any]) -> None:
         self.instance_path.mkdir(parents=True, exist_ok=True)
         temporary = path.with_name(f".{path.name}.{secrets.token_hex(5)}.tmp")
-        temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
+        try:
+            descriptor = os.open(
+                temporary,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+            )
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, indent=2) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            self._sync_directory(path.parent)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def _encrypt_dict(self, values: dict[str, str]) -> str:
+        if not values:
+            return ""
+        return self._cipher.encrypt(json.dumps(values).encode("utf-8")).decode("ascii")
+
+    def _encrypt_payload(self, values: dict[str, Any]) -> str:
         if not values:
             return ""
         return self._cipher.encrypt(json.dumps(values).encode("utf-8")).decode("ascii")
@@ -682,3 +1276,14 @@ class RaspberryPiNetworkStore:
             for key, item in decoded.items()
             if isinstance(key, str) and isinstance(item, str)
         }
+
+    def _decrypt_payload(self, value: str) -> dict[str, Any]:
+        if not value:
+            return {}
+        try:
+            decoded = json.loads(self._cipher.decrypt(value.encode("ascii")))
+        except (InvalidToken, ValueError, UnicodeError) as exc:
+            raise RuntimeError(
+                "Could not decrypt the saved Raspberry Pi network credentials."
+            ) from exc
+        return decoded if isinstance(decoded, dict) else {}

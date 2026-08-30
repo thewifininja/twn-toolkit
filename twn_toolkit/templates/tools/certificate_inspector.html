@@ -1,17 +1,20 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import case_recorded_notice %}
+{% from "components/ui.html" import case_recorded_notice, tool_result_runbar, tool_settings_backdrop %}
 
 {% block shell_classes %} certificate-shell{% endblock %}
 
 {% block content %}
-<section class="panel tool-panel">
-  <div class="panel-head">
-    <h1>Certificate Chain Inspector</h1>
-    <p>See the exact certificate chain a TLS server presents and test it against this machine's trust store.</p>
+{% set has_results = result is not none %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
+{{ tool_result_runbar('Inspection complete', 'Certificate chain', (result.host ~ ':' ~ result.port ~ ' · ' ~ ('valid' if result.overall_valid else 'needs attention')) if has_results else '', 'certificate-inspector-form', 'certificate-inspector-settings', has_results, 'Inspect again') }}
+<section class="panel tool-panel tool-setup-panel" id="certificate-inspector-settings" data-tool-settings-panel>
+  <div class="panel-head tool-setup-heading">
+    <div><h1>Certificate Chain Inspector</h1><p>See the exact certificate chain a TLS server presents and test it against this machine's trust store.</p></div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {{ case_recorded_notice(journal_event) }}
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form" method="post" data-loading-message="Inspecting certificate chain…">
+  <form class="form" id="certificate-inspector-form" method="post" data-loading-message="Inspecting certificate chain…">
     <label>
       Hostname or HTTPS URL
       <input name="target" value="{{ form.target }}" placeholder="portal.example.com" autocomplete="off" required>
@@ -34,7 +37,9 @@
     </div>
   </form>
 </section>
+{{ tool_settings_backdrop('Certificate inspector') }}
 
+<div data-tool-results-anchor tabindex="-1">
 {% if result %}
 <section class="panel tool-panel certificate-summary">
   <div class="certificate-result-head">
@@ -173,4 +178,6 @@
   </div>
 </section>
 {% endif %}
+</div>
+</div>
 {% endblock %}

@@ -1,7 +1,7 @@
 # Packet Replay setup
 
-Packet Replay sends raw Ethernet frames from the host running The WiFi Ninja's
-Toolkit. Treat it like a lab tool: use only a wired test interface on networks
+Packet Replay sends raw Ethernet frames from the host running TWN Toolkit.
+Treat it like a lab tool: use only a wired test interface on networks
 where you are authorized to transmit crafted traffic.
 
 ## Host requirements

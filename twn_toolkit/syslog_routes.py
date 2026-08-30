@@ -41,10 +41,12 @@ def register_syslog_routes(tools_bp: Blueprint) -> None:
         send_result = None
         journal_event = None
         error = ""
+        active_mode = "send"
         if request.method == "POST":
             operation_id = f"syslog:{secrets.token_hex(12)}"
             journal_started_at = time.time()
             action = request.form.get("action", "receive")
+            active_mode = "send" if action == "send" else "receive"
             if action == "send":
                 send_form = {
                     key: request.form.get(f"send_{key}", default).strip()
@@ -189,6 +191,7 @@ def register_syslog_routes(tools_bp: Blueprint) -> None:
             send_result=send_result,
             error=error,
             journal_event=journal_event,
+            active_mode=active_mode,
         )
 
 

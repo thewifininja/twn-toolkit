@@ -16,6 +16,18 @@
   </div>
 </section>
 
+{% set initial_fortigate_tab = 'profiles' if edit_profile or (can_manage_profiles and not profiles) else 'workflows' %}
+<div class="fortinet-workspace" data-workspace-tabs data-initial-tab="{{ initial_fortigate_tab }}" data-workspace-tabs-key="twn.fortigate-workspace-tab" data-workspace-tabs-persist="false">
+  <nav class="tool-workspace-tabs" role="tablist" aria-label="FortiGate workspace">
+    <button id="fortigate-workflows-tab" type="button" role="tab" data-workspace-tab="workflows" aria-controls="fortigate-workflows-panel" aria-selected="{{ 'true' if initial_fortigate_tab == 'workflows' else 'false' }}">
+      <span>Workflows</span><small>AP, switch, client, and inventory operations</small>
+    </button>
+    <button id="fortigate-profiles-tab" type="button" role="tab" data-workspace-tab="profiles" aria-controls="fortigate-profiles-panel" aria-selected="{{ 'true' if initial_fortigate_tab == 'profiles' else 'false' }}">
+      <span>Profiles</span><small>{{ profiles|length }} saved FortiGate connection{{ '' if profiles|length == 1 else 's' }}</small>
+    </button>
+  </nav>
+
+<div id="fortigate-profiles-panel" role="tabpanel" aria-labelledby="fortigate-profiles-tab" data-workspace-panel="profiles" {% if initial_fortigate_tab != 'profiles' %}hidden{% endif %}>
 {% if can_manage_profiles %}
   <section class="panel fortinet-profile-panel saved-profile-library-panel">
     {{ section_header(
@@ -127,7 +139,9 @@
     </div>
   </section>
 {% endif %}
+</div>
 
+<div id="fortigate-workflows-panel" role="tabpanel" aria-labelledby="fortigate-workflows-tab" data-workspace-panel="workflows" {% if initial_fortigate_tab != 'workflows' %}hidden{% endif %}>
 <div class="task-groups">
   {% for group_label, tools in tool_groups %}
     <section class="home-section task-group">
@@ -142,5 +156,7 @@
       </div>
     </section>
   {% endfor %}
+</div>
+</div>
 </div>
 {% endblock %}

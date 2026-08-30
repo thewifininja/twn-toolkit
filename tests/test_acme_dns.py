@@ -20,6 +20,7 @@ from cryptography.x509.oid import NameOID
 
 from twn_toolkit import acme_dns_hook, create_app
 from twn_toolkit.acme_dns import (
+    AcmeDnsError,
     AcmeDnsManager,
     LETS_ENCRYPT_STAGING_DIRECTORY,
     _read_json,
@@ -63,6 +64,50 @@ def _certificate_material(domains: list[str]) -> dict[str, bytes]:
 
 
 class AcmeDnsCoreTests(unittest.TestCase):
+    def test_failed_attempts_can_be_deleted_but_issued_jobs_are_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = AcmeDnsManager(directory, certbot_path="/usr/bin/true")
+
+            def create_job(job_id: str, status: str) -> Path:
+                job_path = manager.jobs_root / job_id
+                (job_path / "challenges").mkdir(parents=True, mode=0o700)
+                _write_json(
+                    job_path / "request.json",
+                    {
+                        "id": job_id,
+                        "name": "Public RADIUS",
+                        "email": "admin@example.org",
+                        "domains": ["radius.example.org"],
+                        "environment": "staging",
+                        "key_type": "ecdsa",
+                        "cert_name": f"twn-acme-{job_id}",
+                        "created_at": time.time(),
+                    },
+                )
+                _write_json(
+                    job_path / "status.json",
+                    {
+                        "status": status,
+                        "message": "Test request stopped.",
+                        "updated_at": time.time(),
+                    },
+                )
+                return job_path
+
+            failed_id = "1" * 24
+            failed_path = create_job(failed_id, "failed")
+            deleted = manager.delete_failed(failed_id)
+            self.assertEqual(deleted["status"], "failed")
+            self.assertFalse(failed_path.exists())
+
+            issued_id = "2" * 24
+            issued_path = create_job(issued_id, "issued")
+            with self.assertRaisesRegex(
+                AcmeDnsError, "Only failed or cancelled ACME attempts"
+            ):
+                manager.delete_failed(issued_id)
+            self.assertTrue(issued_path.exists())
+
     def test_request_normalization_supports_wildcards_and_rejects_bad_input(self) -> None:
         values = normalize_acme_request(
             "Guest Portal",
@@ -588,6 +633,46 @@ class AcmeDnsRouteTests(unittest.TestCase):
         self.assertNotIn("cert_name", public_job)
         self.assertNotIn("process_id", public_job)
         self.assertIn("/status", public_job["status_url"])
+
+    def test_failed_request_can_be_deleted_from_history(self) -> None:
+        manager = AcmeDnsManager(self.directory.name, certbot_path="/usr/bin/true")
+        job_id = "3" * 24
+        job_path = manager.jobs_root / job_id
+        (job_path / "challenges").mkdir(parents=True, mode=0o700)
+        _write_json(
+            job_path / "request.json",
+            {
+                "id": job_id,
+                "name": "Failed Public RADIUS",
+                "email": "admin@example.org",
+                "domains": ["radius.example.org"],
+                "environment": "staging",
+                "key_type": "ecdsa",
+                "cert_name": f"twn-acme-{job_id}",
+                "created_at": time.time(),
+            },
+        )
+        _write_json(
+            job_path / "status.json",
+            {
+                "status": "failed",
+                "message": "Test request stopped.",
+                "updated_at": time.time(),
+            },
+        )
+
+        page = self.client.get("/tools/certificate-automation?section=acme")
+        self.assertIn(
+            f"/tools/certificate-automation/acme/{job_id}/delete".encode(),
+            page.data,
+        )
+        response = self.client.post(
+            f"/tools/certificate-automation/acme/{job_id}/delete",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Deleted failed ACME request Failed Public RADIUS", response.data)
+        self.assertFalse(job_path.exists())
 
     def test_reset_data_removes_certbot_account_and_artifacts(self) -> None:
         acme_root = Path(self.directory.name) / "acme_dns"

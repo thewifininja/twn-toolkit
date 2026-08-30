@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import re
 import tempfile
 import unittest
@@ -13,11 +14,13 @@ from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.ssh_commandlets import (
     SSH_MATRIX_ROW_LIMIT,
     SSHCommandletStore,
+    SSHHostMatrixStore,
     build_ssh_command_plans,
     normalize_variable_name,
     parse_ssh_target_matrix,
     referenced_ssh_variables,
     render_ssh_command,
+    ssh_matrix_command_compatibility,
 )
 
 
@@ -145,6 +148,76 @@ class SSHCommandletParserTests(unittest.TestCase):
                 "show {{ vlan }}",
             )
 
+    def test_command_sets_are_reusable_across_compatible_matrices(self) -> None:
+        first = ssh_matrix_command_compatibility(
+            "Name | Host | Interface\nCore | core-1 | port1",
+            "show interface {{ interface }}",
+        )
+        second = ssh_matrix_command_compatibility(
+            "Name | Host | Site | Interface\nEdge | edge-1 | HQ | wan1",
+            "show interface {{ interface }}",
+        )
+        missing_column = ssh_matrix_command_compatibility(
+            "Name | Host | Site\nEdge | edge-1 | HQ",
+            "show interface {{ interface }}",
+        )
+        missing_value = ssh_matrix_command_compatibility(
+            "Name | Host | Interface | Site\nEdge | edge-1 | | HQ",
+            "show interface {{ interface }}",
+        )
+
+        self.assertTrue(first["compatible"])
+        self.assertTrue(second["compatible"])
+        self.assertEqual(missing_column["missing_variables"], ["interface"])
+        self.assertEqual(len(missing_value["incomplete_targets"]), 1)
+
+    def test_legacy_embedded_matrix_is_migrated_to_a_reusable_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            Path(instance, "ssh_commandlets.json").write_text(
+                json.dumps(
+                    [
+                        {
+                            "name": "Inspect interface",
+                            "description": "Legacy commandlet",
+                            "platform": "FortiGate",
+                            "commands": "show {{ interface }}",
+                            "command_timeout": 30,
+                            "target_matrix": (
+                                "Name | Host | Interface\nGate | gate-1 | port1"
+                            ),
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            commandlet_store = SSHCommandletStore(instance)
+            commandlet = commandlet_store.get("Inspect interface")
+            matrices = SSHHostMatrixStore(instance).all()
+            stored_commands = json.loads(
+                Path(instance, "ssh_commandlets.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(len(matrices), 1)
+            self.assertEqual(commandlet["matrix_names"], [matrices[0]["name"]])
+            self.assertEqual(commandlet["target_count"], 1)
+            self.assertIn("gate-1", commandlet["target_matrix"])
+            self.assertNotIn("target_matrix", stored_commands[0])
+            self.assertEqual(
+                [action["name"] for action in matrices[0]["actions"]],
+                ["Inspect interface"],
+            )
+            commandlet_store.upsert(
+                {**commandlet, "commands": "diagnose {{ interface }}"},
+                original_name="Inspect interface",
+            )
+            self.assertEqual(
+                SSHHostMatrixStore(instance).get(matrices[0]["name"])["actions"][
+                    0
+                ]["commands"],
+                "show {{ interface }}",
+            )
+
     def test_commandlet_store_is_owner_only_and_never_needs_credentials(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             store = SSHCommandletStore(instance)
@@ -188,24 +261,22 @@ class SSHCommandletRouteTests(unittest.TestCase):
                 "port": "22",
             }
             initial_page = client.get("/tools/multi-ssh")
-            self.assertIn(b"Table editor", initial_page.data)
+            self.assertIn(b"Fleet command workspace", initial_page.data)
+            self.assertIn(b"Host matrix", initial_page.data)
+            self.assertIn(b"1 \xc2\xb7 Hosts", initial_page.data)
+            self.assertIn(b"2 \xc2\xb7 CLI actions", initial_page.data)
+            self.assertIn(b"3 \xc2\xb7 Run", initial_page.data)
             self.assertIn(b"Raw matrix", initial_page.data)
             self.assertEqual(initial_page.data.count(b"data-ssh-matrix-mode="), 1)
             self.assertIn(b'data-ssh-matrix-toggle', initial_page.data)
             self.assertIn(b'aria-label="Switch to Raw matrix"', initial_page.data)
-            self.assertNotIn(
-                b'role="group" aria-label="Target editor mode"',
-                initial_page.data,
-            )
-            self.assertNotIn(b'aria-pressed="true"', initial_page.data)
-            self.assertNotIn(b'role="tablist"', initial_page.data)
+            self.assertIn(b'role="tablist"', initial_page.data)
             self.assertIn(b'aria-label="Add target row"', initial_page.data)
             self.assertIn(b'aria-label="Add variable column"', initial_page.data)
             self.assertIn(b"Add row", initial_page.data)
             self.assertIn(b"Add variable", initial_page.data)
             self.assertIn(b'data-ssh-target-limit="5000"', initial_page.data)
-            self.assertIn(b"batches of 50", initial_page.data)
-            self.assertIn(b"Name and Host stay fixed", initial_page.data)
+            self.assertIn(b"Names and hosts stay fixed", initial_page.data)
             self.assertNotIn(b"Name and IP/FQDN stay fixed", initial_page.data)
             self.assertNotIn(b"Basic", initial_page.data)
             self.assertNotIn(b"Advanced", initial_page.data)
@@ -214,31 +285,9 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b"Append imported rows", initial_page.data)
             self.assertIn(b"Replace current rows", initial_page.data)
             self.assertIn(b"data-ssh-matrix data-1p-ignore", initial_page.data)
-            self.assertIn(b"data-ssh-commands data-1p-ignore", initial_page.data)
-            self.assertIn(
-                b'name="commandlet_name" maxlength="100"',
-                initial_page.data,
-            )
-            self.assertIn(
-                b'placeholder="Configure access VLAN" data-1p-ignore',
-                initial_page.data,
-            )
-            self.assertIn(
-                b'placeholder="FortiSwitch, Cisco IOS, Linux\xe2\x80\xa6" data-1p-ignore',
-                initial_page.data,
-            )
-            self.assertIn(
-                b'placeholder="What this template changes and when to use it." data-1p-ignore',
-                initial_page.data,
-            )
-            self.assertIn(
-                b"Need more time for one command? Prefix it with",
-                initial_page.data,
-            )
-            self.assertNotIn(
-                b"Override one line with <code>[timeout=600] command</code>.",
-                initial_page.data,
-            )
+            self.assertNotIn(b"data-ssh-action-commands", initial_page.data)
+            self.assertIn(b"Save the host matrix first", initial_page.data)
+            self.assertNotIn(b'name="commandlet_name"', initial_page.data)
             self.assertNotIn(b'name="username"', initial_page.data)
             self.assertNotIn(b'name="password"', initial_page.data)
 
@@ -508,11 +557,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
             )
 
             self.assertIn(b"Access VLAN", response.data)
-            self.assertIn(b"1 saved target", response.data)
-            self.assertIn(b"multi-ssh-commandlet-summary", response.data)
-            self.assertIn(b"multi-ssh-commandlet-actions", response.data)
-            self.assertIn(b'class="button-link compact"', response.data)
-            self.assertIn(b'class="danger compact"', response.data)
+            self.assertIn(b"Host matrix", response.data)
             loaded = client.get("/tools/multi-ssh?commandlet=Access%20VLAN")
             self.assertIn(b"set private-value {{ vlan_id }}", loaded.data)
             self.assertIn(
@@ -523,10 +568,20 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn("audit-target.example", stored["target_matrix"])
             self.assertNotIn("username", stored)
             self.assertNotIn("password", stored)
+            migrated_matrix = SSHHostMatrixStore(instance).get(
+                "Access VLAN targets"
+            )
+            self.assertEqual(
+                [action["name"] for action in migrated_matrix["actions"]],
+                ["Access VLAN"],
+            )
             event = AuditStore(instance).recent(1)[0]
             self.assertEqual(event["action"], "ssh.commandlet_created")
             self.assertEqual(event["details"]["variables"], ["vlan_id"])
-            self.assertEqual(event["details"]["saved target count"], 1)
+            self.assertEqual(
+                event["details"]["related host matrices"],
+                ["Access VLAN targets"],
+            )
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
             self.assertNotIn(b"set private-value", audit_database)
             self.assertNotIn(b"audit-target.example", audit_database)
@@ -538,6 +593,352 @@ class SSHCommandletRouteTests(unittest.TestCase):
             )
             self.assertIn(b"deleted", deleted.data)
             self.assertIsNone(SSHCommandletStore(instance).get("Access VLAN"))
+            self.assertEqual(
+                SSHHostMatrixStore(instance).get("Access VLAN targets")[
+                    "actions"
+                ][0]["commands"],
+                "set private-value {{ vlan_id }}",
+            )
+
+    def test_saved_matrices_and_command_sets_form_reusable_relationships(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+
+            for name, host, interface in (
+                ("School switches", "school-1", "port1"),
+                ("Lab switches", "lab-1", "port8"),
+            ):
+                response = client.post(
+                    "/tools/multi-ssh",
+                    data={
+                        "action": "save_host_matrix",
+                        "host_matrix_name": name,
+                        "matrix": (
+                            f"Name | Host | Interface\n{name} | {host} | {interface}"
+                        ),
+                    },
+                )
+                self.assertIn(name.encode(), response.data)
+                self.assertIn(b"saved", response.data)
+
+            response = client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "save_commandlet",
+                    "commandlet_name": "Inspect interface",
+                    "commandlet_platform": "FortiGate",
+                    "host_matrix_original_name": "School switches",
+                    "commands": "show {{ interface }}",
+                    "command_timeout": "30",
+                },
+            )
+            self.assertIn(b"Inspect interface", response.data)
+            self.assertIn(b"saved", response.data)
+
+            response = client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "load_profiles",
+                    "commandlet": "Inspect interface",
+                    "host_matrix": "Lab switches",
+                },
+                follow_redirects=True,
+            )
+            self.assertIn(b"remembered pairing", response.data)
+            commandlet = SSHCommandletStore(instance).get("Inspect interface")
+            self.assertEqual(
+                commandlet["matrix_names"], ["School switches", "Lab switches"]
+            )
+
+            loaded = client.get(
+                "/tools/multi-ssh?commandlet=Inspect%20interface"
+            )
+            self.assertIn(b"school-1", loaded.data)
+            self.assertIn(b"Copy from another matrix", loaded.data)
+            self.assertIn(b"Inspect interface", loaded.data)
+            self.assertIn(b"Lab switches", loaded.data)
+
+    def test_matrix_owned_actions_can_be_reordered_duplicated_and_copied(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+
+            for name, interface in (("School", "port1"), ("Lab", "port8")):
+                client.post(
+                    "/tools/multi-ssh",
+                    data={
+                        "action": "save_host_matrix",
+                        "host_matrix_name": name,
+                        "matrix": (
+                            "Name | Host | Interface\n"
+                            f"{name} Gate | {name.lower()}-gate | {interface}"
+                        ),
+                    },
+                )
+
+            for name, commands in (
+                ("Inspect interface", "show {{ interface }}"),
+                ("System status", "get system status"),
+            ):
+                response = client.post(
+                    "/tools/multi-ssh",
+                    data={
+                        "action": "save_matrix_action",
+                        "workspace": "actions",
+                        "host_matrix_original_name": "School",
+                        "matrix_action_name": name,
+                        "matrix_action_description": f"Run {name}.",
+                        "matrix_action_platform": "FortiGate",
+                        "commands": commands,
+                        "command_timeout": "30",
+                    },
+                )
+                self.assertIn(name.encode(), response.data)
+
+            moved = client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "move_matrix_action",
+                    "workspace": "actions",
+                    "host_matrix_original_name": "School",
+                    "move_action_name": "System status",
+                    "move_action_direction": "up",
+                },
+            )
+            self.assertEqual(moved.status_code, 200)
+            school = SSHHostMatrixStore(instance).get("School")
+            self.assertEqual(
+                [action["name"] for action in school["actions"]],
+                ["System status", "Inspect interface"],
+            )
+
+            duplicated = client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "duplicate_matrix_action",
+                    "workspace": "actions",
+                    "host_matrix_original_name": "School",
+                    "matrix_action_original_name": "System status",
+                },
+            )
+            self.assertIn(b"System status (2)", duplicated.data)
+
+            copied = client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "copy_matrix_action",
+                    "workspace": "actions",
+                    "host_matrix_original_name": "Lab",
+                    "copy_action_source": json.dumps(
+                        {
+                            "kind": "matrix",
+                            "matrix": "School",
+                            "action": "Inspect interface",
+                        }
+                    ),
+                },
+            )
+            self.assertIn(b"independent action", copied.data)
+            lab = SSHHostMatrixStore(instance).get("Lab")
+            self.assertEqual(lab["actions"][0]["commands"], "show {{ interface }}")
+
+            client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "save_matrix_action",
+                    "workspace": "actions",
+                    "host_matrix_original_name": "School",
+                    "matrix_action_original_name": "Inspect interface",
+                    "matrix_action_name": "Inspect interface",
+                    "commands": "diagnose {{ interface }}",
+                    "command_timeout": "30",
+                },
+            )
+            self.assertEqual(
+                SSHHostMatrixStore(instance).get("Lab")["actions"][0][
+                    "commands"
+                ],
+                "show {{ interface }}",
+            )
+
+            deleted = client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "delete_matrix_action",
+                    "workspace": "actions",
+                    "host_matrix_original_name": "School",
+                    "matrix_action_original_name": "System status (2)",
+                },
+            )
+            self.assertIn(b"deleted", deleted.data)
+            self.assertNotIn(
+                "System status (2)",
+                [
+                    action["name"]
+                    for action in SSHHostMatrixStore(instance).get("School")[
+                        "actions"
+                    ]
+                ],
+            )
+
+    def test_runbook_starts_empty_and_runs_actions_in_operator_order(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "save_host_matrix",
+                    "host_matrix_name": "Branches",
+                    "matrix": (
+                        "Name | Host | Interface\n"
+                        "Branch 1 | gate-1 | port1\n"
+                        "Branch 2 | gate-2 | port2"
+                    ),
+                },
+            )
+            for name, commands, timeout in (
+                ("Inspect", "show {{ interface }}", "30"),
+                ("Status", "[timeout=75] get system status", "20"),
+            ):
+                client.post(
+                    "/tools/multi-ssh",
+                    data={
+                        "action": "save_matrix_action",
+                        "workspace": "actions",
+                        "host_matrix_original_name": "Branches",
+                        "matrix_action_name": name,
+                        "commands": commands,
+                        "command_timeout": timeout,
+                    },
+                )
+
+            run_workspace = client.get(
+                "/tools/multi-ssh?host_matrix=Branches&workspace=run"
+            )
+            self.assertIn(b"No actions in this runbook", run_workspace.data)
+            self.assertIn(b"0 actions", run_workspace.data)
+            self.assertNotIn(b'name="selected_actions"', run_workspace.data)
+
+            action_form = {
+                "workspace": "run",
+                "matrix_action_run": "on",
+                "host_matrix_original_name": "Branches",
+                "selected_actions": ["Status", "Inspect"],
+                "port": "22",
+            }
+            preview = client.post(
+                "/tools/multi-ssh",
+                data={**action_form, "action": "preview"},
+            )
+            self.assertIn(b"data-ssh-runbook", preview.data)
+            self.assertIn(b"2 actions", preview.data)
+            self.assertIn(b"[timeout=30] show port1", preview.data)
+            self.assertIn(b"[timeout=75] get system status", preview.data)
+            self.assertLess(
+                preview.data.index(b"[timeout=75] get system status"),
+                preview.data.index(b"[timeout=30] show port1"),
+            )
+            token = re.search(
+                rb'name="preview_token" type="hidden" value="([^"]+)"',
+                preview.data,
+            ).group(1).decode()
+
+            results = [
+                {
+                    "host": f"gate-{index}",
+                    "host_label": f"Branch {index}",
+                    "status": "success",
+                    "output": "ok",
+                }
+                for index in (1, 2)
+            ]
+            with patch(
+                "twn_toolkit.ssh_routes.run_ssh_host_plans",
+                return_value=results,
+            ) as run:
+                response = client.post(
+                    "/tools/multi-ssh",
+                    data={
+                        **action_form,
+                        "action": "run",
+                        "preview_token": token,
+                        "username": "admin",
+                        "password": "secret",
+                        "confirm_execution": "on",
+                    },
+                )
+
+            self.assertIn(b"SSH Results", response.data)
+            plans = run.call_args.args[0]
+            self.assertEqual(
+                [spec["command"] for spec in plans[0]["command_specs"]],
+                ["get system status", "show port1"],
+            )
+            self.assertEqual(
+                [spec["timeout"] for spec in plans[0]["command_specs"]],
+                [75, 30],
+            )
+
+    def test_matrix_actions_block_missing_variables_and_unsafe_matrix_edits(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "save_host_matrix",
+                    "host_matrix_name": "Closets",
+                    "matrix": "Name | Host | VLAN\nCloset 1 | switch-1 | 44",
+                },
+            )
+
+            invalid_action = client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "save_matrix_action",
+                    "workspace": "actions",
+                    "host_matrix_original_name": "Closets",
+                    "matrix_action_name": "Missing interface",
+                    "commands": "show {{ interface }}",
+                    "command_timeout": "30",
+                },
+            )
+            self.assertIn(b"requires missing matrix column", invalid_action.data)
+            self.assertEqual(
+                SSHHostMatrixStore(instance).get("Closets")["actions"], []
+            )
+
+            client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "save_matrix_action",
+                    "workspace": "actions",
+                    "host_matrix_original_name": "Closets",
+                    "matrix_action_name": "Inspect VLAN",
+                    "commands": "show vlan {{ vlan }}",
+                    "command_timeout": "30",
+                },
+            )
+            unsafe_edit = client.post(
+                "/tools/multi-ssh",
+                data={
+                    "action": "save_host_matrix",
+                    "workspace": "hosts",
+                    "host_matrix_original_name": "Closets",
+                    "host_matrix_name": "Closets",
+                    "matrix": "Name | Host\nCloset 1 | switch-1",
+                },
+            )
+            self.assertIn(b"requires missing matrix column", unsafe_edit.data)
+            saved = SSHHostMatrixStore(instance).get("Closets")
+            self.assertIn("VLAN", saved["matrix"])
+            self.assertEqual(saved["actions"][0]["name"], "Inspect VLAN")
 
     def test_compact_importer_parses_friendly_hosts_and_ranges(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

@@ -2,66 +2,110 @@
 {% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager %}
 
 {% block content %}
-<section class="panel">
-  <div class="panel-head">
-    <h1>Traceroute</h1>
-    <p>Follow live IPv4 or IPv6 network paths from the toolkit host to as many as 10 destinations.</p>
+{% set traceroute_has_results = result is not none %}
+<div class="tool-workspace traceroute-tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if traceroute_has_results else 'setup' }}">
+<section class="tool-runbar" data-tool-runbar {% if not traceroute_has_results %}hidden{% endif %} aria-label="Traceroute run controls">
+  <div class="tool-runbar-state">
+    <span class="tool-runbar-indicator {{ 'complete' if traceroute_has_results else '' }}" data-traceroute-run-indicator aria-hidden="true"></span>
+    <div>
+      <span class="eyebrow" data-traceroute-run-state>{{ 'Trace complete' if traceroute_has_results else 'Tracing' }}</span>
+      <strong data-traceroute-run-title>{{ result.host if result else 'Traceroute' }}</strong>
+      <small data-traceroute-run-summary>{% if result %}{{ result.responding_hops }} responding hop{{ '' if result.responding_hops == 1 else 's' }} · {{ 'destination reached' if result.reached else 'trace incomplete' }}{% else %}Preparing results…{% endif %}</small>
+    </div>
+  </div>
+  <div class="tool-runbar-actions">
+    <button id="traceroute-runbar-rerun" type="submit" form="traceroute-form">Run again</button>
+    <button class="secondary" type="button" data-tool-settings-open aria-controls="traceroute-settings" aria-expanded="false">Edit settings</button>
+    <button class="secondary" id="traceroute-runbar-cancel" type="button" disabled hidden>Cancel</button>
+  </div>
+</section>
+
+<section class="panel compact-tool-workspace-panel tool-setup-panel" id="traceroute-settings" data-tool-settings-panel>
+  <div class="panel-head compact-tool-workspace-head tool-setup-heading">
+    <div>
+      <span class="eyebrow">Path discovery</span>
+      <h1>Traceroute</h1>
+      <p>Follow live IPv4 or IPv6 network paths from the toolkit host to as many as 10 destinations.</p>
+    </div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not traceroute_has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {{ case_recorded_notice(journal_event) }}
 
-  <form class="form" method="post" id="traceroute-form" data-run-url="{{ url_for('tools.traceroute_run') }}" data-save-profile-url="{{ url_for('tools.save_traceroute_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_traceroute_profile') }}">
-    {% call saved_profile_manager("Destination profiles", "Load or maintain reusable traceroute target lists.", profiles|length) %}
-      <div class="saved-profile-fields">
-        <label>Saved profile<select id="traceroute-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} destination{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
-        <label>Profile name<input id="traceroute-profile-name" data-saved-profile-name placeholder="Core network paths" maxlength="100"></label>
-      </div>
-      <div class="saved-profile-manager-actions">
-        <span class="saved-profile-state" data-saved-profile-state>New profile</span>
-        <div class="button-row">
-          <button class="secondary profile-save-action" id="traceroute-save-profile" data-saved-profile-save type="button">Save profile</button>
-          <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_traceroute_profile') }}" data-profile-select="#traceroute-profile" disabled>Duplicate</button>
-          <button class="danger" id="traceroute-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+  <form class="compact-tool-form" method="post" id="traceroute-form" data-run-url="{{ url_for('tools.traceroute_run') }}" data-save-profile-url="{{ url_for('tools.save_traceroute_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_traceroute_profile') }}">
+    {% call saved_profile_manager("Destination lists", "Load or maintain reusable traceroute target lists.", profiles|length, "traceroute-profile-manager", compact=true) %}
+      <div class="compact-profile-controls">
+        <label class="compact-profile-select">Saved profile<select id="traceroute-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} destination{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
+        <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
+        <details class="compact-profile-more" data-saved-profile-more>
+          <summary aria-label="More Traceroute profile actions" title="More profile actions">•••</summary>
+          <div>
+            <button class="secondary" type="button" data-saved-profile-rename>Rename…</button>
+            <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_traceroute_profile') }}" data-profile-select="#traceroute-profile" disabled>Duplicate</button>
+            <button class="danger" id="traceroute-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+          </div>
+        </details>
+        <div class="compact-profile-naming" data-saved-profile-naming hidden>
+          <label>Profile name<input id="traceroute-profile-name" data-saved-profile-name placeholder="Core network paths" maxlength="100"></label>
+          <button class="profile-save-action" id="traceroute-save-profile" data-saved-profile-save type="button">Save profile</button>
+          <button class="secondary" type="button" data-saved-profile-cancel>Cancel</button>
         </div>
       </div>
     {% endcall %}
-    <div class="traceroute-options">
-      <label>Destinations
-        <textarea name="hosts" id="traceroute-hosts" rows="4" placeholder="Public DNS = 1.1.1.1&#10;Test path = 10.0.0.1-10.0.0.4&#10;example.com" required>{{ form.host }}</textarea>
-        <span class="field-note">{{ host_range_guidance(10, 'destinations') }}</span>
-      </label>
-      <label>Address family
-        <select name="family">
-          <option value="auto" {% if form.family == "auto" %}selected{% endif %}>Auto</option>
-          <option value="ipv4" {% if form.family == "ipv4" %}selected{% endif %}>IPv4</option>
-          <option value="ipv6" {% if form.family == "ipv6" %}selected{% endif %}>IPv6</option>
-        </select>
-      </label>
-      <label>Probe method
-        <select name="method">
-          <option value="udp" {% if form.method == "udp" %}selected{% endif %}>UDP</option>
-          <option value="icmp" {% if form.method == "icmp" %}selected{% endif %}>ICMP</option>
-        </select>
-      </label>
-      <label>Maximum hops
-        <input name="max_hops" type="number" min="1" max="64" value="{{ form.max_hops }}" required>
-      </label>
-      <label>Probes per hop
-        <input name="probes" type="number" min="1" max="3" value="{{ form.probes }}" required>
-      </label>
-      <label>Probe timeout
-        <input name="timeout" type="number" min="1" max="5" step="1" value="{{ form.timeout }}" required>
-      </label>
+
+    <div class="compact-tool-config-grid traceroute-config-grid">
+      <article class="compact-tool-config-card compact-tool-source-card">
+        <header>
+          <div><span class="eyebrow">Targets</span><h2>Destinations</h2></div>
+          <span class="compact-tool-card-meta">10 maximum</span>
+        </header>
+        <label class="compact-tool-source-field">
+          <span>Hostnames, addresses, or ranges</span>
+          <textarea name="hosts" id="traceroute-hosts" rows="4" placeholder="Public DNS = 1.1.1.1&#10;Test path = 10.0.0.1-10.0.0.4&#10;example.com" required>{{ form.host }}</textarea>
+        </label>
+        <p class="field-note compact-tool-card-note">{{ host_range_guidance(10, 'destinations') }}</p>
+      </article>
+
+      <article class="compact-tool-config-card compact-tool-run-card">
+        <header>
+          <div><span class="eyebrow">Trace</span><h2>Probe behavior</h2><p>Choose the address family, probe method, and path limits.</p></div>
+        </header>
+        <div class="traceroute-options compact-tool-option-grid">
+          <label>Address family
+            <select name="family">
+              <option value="auto" {% if form.family == "auto" %}selected{% endif %}>Auto</option>
+              <option value="ipv4" {% if form.family == "ipv4" %}selected{% endif %}>IPv4</option>
+              <option value="ipv6" {% if form.family == "ipv6" %}selected{% endif %}>IPv6</option>
+            </select>
+          </label>
+          <label>Probe method
+            <select name="method">
+              <option value="udp" {% if form.method == "udp" %}selected{% endif %}>UDP</option>
+              <option value="icmp" {% if form.method == "icmp" %}selected{% endif %}>ICMP</option>
+            </select>
+          </label>
+          <label>Maximum hops
+            <input name="max_hops" type="number" min="1" max="64" value="{{ form.max_hops }}" required>
+          </label>
+          <label>Probes per hop
+            <input name="probes" type="number" min="1" max="3" value="{{ form.probes }}" required>
+          </label>
+          <label>Probe timeout
+            <span class="compact-tool-input-with-unit"><input name="timeout" type="number" min="1" max="5" step="1" value="{{ form.timeout }}" required><span>seconds</span></span>
+          </label>
+        </div>
+        <footer class="compact-tool-run-footer">
+          <span class="tool-status" id="traceroute-status">The trace runs from the toolkit server. ICMP may require extra host permissions.</span>
+          <button type="submit" id="traceroute-start">Run traceroute</button>
+        </footer>
+      </article>
     </div>
-    <div class="button-row">
-      <button type="submit" id="traceroute-start">Run traceroute</button>
-      <button class="secondary" type="button" id="traceroute-cancel" disabled>Cancel</button>
-    </div>
-    <span class="tool-status" id="traceroute-status">The trace runs from the toolkit server. ICMP mode may require additional host or container permissions.</span>
   </form>
 </section>
 
-{% if not result %}
+<button class="tool-settings-backdrop" type="button" data-tool-settings-close hidden aria-label="Close Traceroute settings"></button>
+
+<div class="traceroute-results-workspace" data-tool-results-anchor tabindex="-1">
 <div class="traceroute-results-toolbar" id="traceroute-results-toolbar" hidden>
   <button class="secondary" type="button" id="traceroute-toggle-all">Expand all</button>
 </div>
@@ -96,7 +140,6 @@
     </details>
   </section>
 </template>
-{% endif %}
 
 {% if result %}
 <section class="panel">
@@ -147,5 +190,8 @@
   </details>
 </section>
 {% endif %}
+</div>
+</div>
+<script src="{{ url_for('static', filename='tool-results-workspace.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='traceroute.js') }}"></script>
 {% endblock %}

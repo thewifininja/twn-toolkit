@@ -1,4 +1,4 @@
-# The WiFi Ninja’s Toolkit Quick Start
+# TWN Toolkit Quick Start
 
 This guide takes a new installation from first launch through a useful network
 test, saved device profiles, a working automation, local file services, and

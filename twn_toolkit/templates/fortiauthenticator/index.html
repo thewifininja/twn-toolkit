@@ -16,6 +16,18 @@
   </div>
 </section>
 
+{% set initial_fac_tab = 'profiles' if edit_profile or (can_manage_profiles and not profiles) else 'workflows' %}
+<div class="fortinet-workspace" data-workspace-tabs data-initial-tab="{{ initial_fac_tab }}" data-workspace-tabs-key="twn.fortiauthenticator-workspace-tab" data-workspace-tabs-persist="false">
+  <nav class="tool-workspace-tabs" role="tablist" aria-label="FortiAuthenticator workspace">
+    <button id="fac-workflows-tab" type="button" role="tab" data-workspace-tab="workflows" aria-controls="fac-workflows-panel" aria-selected="{{ 'true' if initial_fac_tab == 'workflows' else 'false' }}">
+      <span>Workflows</span><small>MAC devices and group membership operations</small>
+    </button>
+    <button id="fac-profiles-tab" type="button" role="tab" data-workspace-tab="profiles" aria-controls="fac-profiles-panel" aria-selected="{{ 'true' if initial_fac_tab == 'profiles' else 'false' }}">
+      <span>Profiles</span><small>{{ profiles|length }} saved FortiAuthenticator connection{{ '' if profiles|length == 1 else 's' }}</small>
+    </button>
+  </nav>
+
+<div id="fac-profiles-panel" role="tabpanel" aria-labelledby="fac-profiles-tab" data-workspace-panel="profiles" {% if initial_fac_tab != 'profiles' %}hidden{% endif %}>
 {% if can_manage_profiles %}
   <section class="panel fortinet-profile-panel saved-profile-library-panel">
     {{ section_header(
@@ -135,7 +147,9 @@
     </div>
   </section>
 {% endif %}
+</div>
 
+<div id="fac-workflows-panel" role="tabpanel" aria-labelledby="fac-workflows-tab" data-workspace-panel="workflows" {% if initial_fac_tab != 'workflows' %}hidden{% endif %}>
 {% for group_label, tools in tool_groups %}
   <section class="home-section task-group">
     <div class="section-head compact">
@@ -149,4 +163,6 @@
     </div>
   </section>
 {% endfor %}
+</div>
+</div>
 {% endblock %}

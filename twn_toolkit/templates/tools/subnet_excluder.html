@@ -1,15 +1,18 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import case_recorded_notice %}
+{% from "components/ui.html" import case_recorded_notice, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
+{% set has_results = results is not none %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
+{{ tool_result_runbar('Calculation complete', 'Subnet exclusion', (results|length ~ ' remaining network(s)') if has_results else '', 'subnet-excluder-form', 'subnet-excluder-settings', has_results, 'Calculate again') }}
 {{ case_recorded_notice(journal_event) }}
-<section class="panel tool-panel">
-  <div class="panel-head">
-    <h1>Subnet Excluder</h1>
-    <p>Subtract one or more CIDR networks from parent networks.</p>
+<section class="panel tool-panel tool-setup-panel" id="subnet-excluder-settings" data-tool-settings-panel>
+  <div class="panel-head tool-setup-heading">
+    <div><h1>Subnet Excluder</h1><p>Subtract one or more CIDR networks from parent networks.</p></div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form" method="post" data-loading-message="Calculating remaining networks…">
+  <form class="form" id="subnet-excluder-form" method="post" data-loading-message="Calculating remaining networks…">
     <label>
       Parent networks
       <textarea name="supernets" rows="4" placeholder="10.10.0.0/20&#10;172.16.0.0/16" required>{{ supernets }}</textarea>
@@ -24,7 +27,9 @@
     </div>
   </form>
 </section>
+{{ tool_settings_backdrop('Subnet Excluder') }}
 
+<div data-tool-results-anchor tabindex="-1">
 {% if results is not none %}
   <section class="panel tool-panel">
     <div class="preview-head">
@@ -38,4 +43,6 @@
     {% endif %}
   </section>
 {% endif %}
+</div>
+</div>
 {% endblock %}

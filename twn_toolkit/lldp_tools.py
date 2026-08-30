@@ -242,7 +242,7 @@ def default_persona(*, preset: str = "generic", interface: str = "") -> dict[str
         "preset": preset,
         "system_name": "Toolkit LLDP Lab",
         "system_description": settings.get(
-            "system_description", "The WiFi Ninja's Toolkit LLDP Lab"
+            "system_description", "TWN Toolkit LLDP Lab"
         ),
         "source_mac": source_mac,
         "chassis_id": source_mac,

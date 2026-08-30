@@ -89,28 +89,109 @@ def test_login_logout_and_safe_next_redirect(tmp_path):
     assert b"definitely wrong" not in (tmp_path / "audit.sqlite3").read_bytes()
 
 
-def test_theme_preference_is_saved_per_user(tmp_path):
+def test_appearance_preference_is_saved_per_user(tmp_path):
     app = create_app(str(tmp_path))
     client = app.test_client()
     _setup(client)
 
-    response = client.post("/settings/theme", json={"theme": "dark"})
+    response = client.post(
+        "/settings/appearance",
+        json={
+            "palette": "flexoki-light",
+            "density": "comfortable",
+            "layout": "focus",
+            "text_scale": "110",
+        },
+    )
     assert response.status_code == 200
-    assert response.get_json() == {"theme": "dark"}
-    assert AuthStore(str(tmp_path)).get_user("admin")["theme"] == "dark"
+    appearance = {
+        "palette": "flexoki-light",
+        "density": "comfortable",
+        "layout": "focus",
+        "text_scale": "110",
+        "sidebar_width": "274",
+    }
+    assert response.get_json() == {"appearance": appearance}
+    user = AuthStore(str(tmp_path)).get_user("admin")
+    assert user["appearance"] == appearance
+    assert user["theme"] == "light"
     page = client.get("/")
-    assert b'data-theme="dark"' in page.data
-    assert b'id="theme-toggle"' in page.data
-    assert b'aria-label="Switch to light mode"' in page.data
-    assert b"theme-toggle-label" not in page.data
+    assert b'data-theme="light"' in page.data
+    assert b'data-palette="flexoki-light"' in page.data
+    assert b'data-density="comfortable"' in page.data
+    assert b'data-layout="focus"' in page.data
+    assert b'data-text-scale="110"' in page.data
+    assert b'id="appearance-menu"' in page.data
+    assert b'aria-label="Appearance settings"' in page.data
+    assert b"appearance.css" in page.data
+    appearance_css = client.get("/static/appearance.css")
+    assert appearance_css.status_code == 200
+    assert b"--ui-radius: 0;" in appearance_css.data
+    assert b".automation-workspace *::after" in appearance_css.data
 
-    assert client.post("/settings/theme", json={"theme": "sepia"}).status_code == 400
+    for invalid in (
+        {"palette": "sepia"},
+        {"density": "spacious"},
+        {"layout": "floating"},
+        {"text_scale": "200"},
+        {"sidebar_width": "219"},
+        {"sidebar_width": "401"},
+        {"sidebar_width": "wide"},
+    ):
+        assert client.post("/settings/appearance", json=invalid).status_code == 400
+    assert client.post("/settings/appearance", json=["tokyo-night"]).status_code == 400
     client.post("/logout")
     client.post(
         "/login",
         data={"username": "admin", "password": "correct horse battery staple"},
     )
-    assert b'data-theme="dark"' in client.get("/").data
+    page = client.get("/")
+    assert b'data-palette="flexoki-light"' in page.data
+    assert b'data-layout="focus"' in page.data
+    assert b'data-sidebar-width="274"' in page.data
+
+    resized = client.post("/settings/appearance", json={"sidebar_width": "336"})
+    assert resized.status_code == 200
+    assert resized.get_json()["appearance"]["sidebar_width"] == "336"
+    assert AuthStore(str(tmp_path)).get_user("admin")["appearance"]["sidebar_width"] == "336"
+
+
+def test_legacy_theme_endpoint_maps_to_semantic_palette(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+
+    response = client.post("/settings/theme", json={"theme": "light"})
+    assert response.status_code == 200
+    assert response.get_json() == {"theme": "light"}
+    user = AuthStore(str(tmp_path)).get_user("admin")
+    assert user["theme"] == "light"
+    assert user["appearance"]["palette"] == "toolkit-classic"
+    assert b'data-palette="toolkit-classic"' in client.get("/").data
+
+    assert client.post("/settings/theme", json={"theme": "sepia"}).status_code == 400
+
+
+def test_legacy_compact_workspace_migrates_to_tiled(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+
+    auth_path = tmp_path / "auth.json"
+    auth_data = json.loads(auth_path.read_text(encoding="utf-8"))
+    auth_data["users"][0]["appearance"]["layout"] = "compact"
+    auth_path.write_text(json.dumps(auth_data), encoding="utf-8")
+
+    assert AuthStore(str(tmp_path)).get_user("admin")["appearance"]["layout"] == "compact"
+    assert AuthStore(str(tmp_path)).user_appearance(auth_data["users"][0]["id"])["layout"] == "tiled"
+    page = client.get("/")
+    assert b'data-layout="tiled"' in page.data
+    assert b'data-appearance-value="compact"' not in page.data.split(
+        b"<legend>Workspace</legend>", 1
+    )[1].split(b"</fieldset>", 1)[0]
+    assert client.post(
+        "/settings/appearance", json={"layout": "compact"}
+    ).status_code == 400
 
 
 def test_admin_can_manage_users_timeout_and_passwords(tmp_path):
@@ -420,7 +501,7 @@ def test_admin_can_save_server_access_and_trigger_restart(tmp_path):
     assert settings["instance_name"] == "branch-tools"
     assert settings["preferred_fqdn"] == "branch-tools.example.test"
     page = client.get("/settings")
-    assert b"Settings \xc2\xb7 branch-tools \xc2\xb7 The WiFi Ninja" in page.data
+    assert b"Settings \xc2\xb7 branch-tools \xc2\xb7 TWN Toolkit" in page.data
 
 
 def test_admin_can_explicitly_regenerate_managed_certificate_for_fqdn(tmp_path):

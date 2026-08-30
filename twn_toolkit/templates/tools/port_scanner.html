@@ -1,78 +1,108 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager %}
+{% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
-<section class="panel">
-  <div class="panel-head">
-    <h1>TCP Port Scanner</h1>
-    <p>Check selected TCP ports across authorized hosts from the toolkit host.</p>
+{% set has_results = stats is not none %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
+{{ tool_result_runbar('Scan complete', 'TCP port scan', (stats.combinations ~ ' tested · ' ~ stats.open ~ ' open') if has_results else '', 'port-scan-form', 'port-scan-settings', has_results, 'Scan again') }}
+<section class="panel compact-tool-workspace-panel tool-setup-panel" id="port-scan-settings" data-tool-settings-panel>
+  <div class="panel-head compact-tool-workspace-head tool-setup-heading">
+    <div><span class="eyebrow">TCP reachability</span><h1>TCP Port Scanner</h1><p>Check selected TCP services across authorized hosts from the toolkit server.</p></div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {{ case_recorded_notice(journal_event) }}
 
-  <form class="form" method="post" id="port-scan-form" data-loading-message="Scanning TCP ports…">
-    <div class="grid two port-profile-grid">
-      <div class="form port-inline-profile" data-kind="hosts" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='hosts') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='hosts') }}">
-        {% call saved_profile_manager("Host profiles", "Reusable target lists for authorized scans.", host_profiles|length, "port-saved-profile-manager") %}
-          <div class="saved-profile-fields">
-            <label>Saved profile<select class="port-existing-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in host_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }}</option>{% endfor %}</select></label>
-            <label>Profile name<input class="port-profile-name" data-saved-profile-name placeholder="Infrastructure hosts" maxlength="100"></label>
-          </div>
-          <div class="saved-profile-manager-actions">
-            <span class="saved-profile-state" data-saved-profile-state>New profile</span>
-            <div class="button-row port-profile-actions">
-              <button class="secondary port-save-profile profile-save-action" data-saved-profile-save type="button">Save profile</button>
-              <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_port_scan_profile', kind='hosts') }}" data-profile-select=".port-inline-profile[data-kind='hosts'] .port-existing-profile" disabled>Duplicate</button>
-              <button class="danger port-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+  <form class="compact-tool-form" method="post" id="port-scan-form" data-loading-message="Scanning TCP ports…">
+    <div class="compact-tool-config-grid port-scan-config-grid">
+      <article class="compact-tool-config-card compact-tool-source-card port-inline-profile" data-kind="hosts" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='hosts') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='hosts') }}">
+        <header>
+          <div><span class="eyebrow">Step 1</span><h2>Target hosts</h2><p>Enter individual devices, named targets, or inclusive address ranges.</p></div>
+          <span class="compact-tool-card-meta">50 maximum</span>
+        </header>
+        {% call saved_profile_manager("Host lists", "Reusable authorized scan targets.", host_profiles|length, "port-saved-profile-manager", compact=true) %}
+          <div class="compact-profile-controls">
+            <label class="compact-profile-select">Saved list<select class="port-existing-profile" data-saved-profile-select><option value="">New / unsaved list</option>{% for profile in host_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }} · {{ profile.count }} host{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
+            <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
+            <details class="compact-profile-more" data-saved-profile-more>
+              <summary aria-label="More host-list actions" title="More profile actions">•••</summary>
+              <div>
+                <button class="secondary" type="button" data-saved-profile-rename>Rename…</button>
+                <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_port_scan_profile', kind='hosts') }}" data-profile-select=".port-inline-profile[data-kind='hosts'] .port-existing-profile" disabled>Duplicate</button>
+                <button class="danger port-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+              </div>
+            </details>
+            <div class="compact-profile-naming" data-saved-profile-naming hidden>
+              <label>List name<input class="port-profile-name" data-saved-profile-name placeholder="Infrastructure hosts" maxlength="100"></label>
+              <button class="port-save-profile profile-save-action" data-saved-profile-save type="button">Save list</button>
+              <button class="secondary" type="button" data-saved-profile-cancel>Cancel</button>
             </div>
           </div>
         {% endcall %}
-        <label>Hosts
-          <textarea name="hosts" class="port-profile-values" id="port-scan-hosts" rows="7" placeholder="Core Switch = 192.0.2.10&#10;Access switches = 10.0.0.1-10.0.0.24&#10;server.example.com" required>{{ form.hosts }}</textarea>
+        <label class="compact-tool-source-field"><span>Hostnames, addresses, or ranges</span>
+          <textarea name="hosts" class="port-profile-values" id="port-scan-hosts" rows="5" placeholder="Core Switch = 192.0.2.10&#10;Access switches = 10.0.0.1-10.0.0.24&#10;server.example.com" required>{{ form.hosts }}</textarea>
         </label>
-        <span class="field-note">{{ host_range_guidance(50, 'hosts') }}</span>
-      </div>
-      <div class="form port-inline-profile" data-kind="ports" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='ports') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='ports') }}">
-        {% call saved_profile_manager("Port profiles", "Reusable TCP port sets for repeated scans.", port_profiles|length, "port-saved-profile-manager") %}
-          <div class="saved-profile-fields">
-            <label>Saved profile<select class="port-existing-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in port_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }}</option>{% endfor %}</select></label>
-            <label>Profile name<input class="port-profile-name" data-saved-profile-name placeholder="Common service ports" maxlength="100"></label>
-          </div>
-          <div class="saved-profile-manager-actions">
-            <span class="saved-profile-state" data-saved-profile-state>New profile</span>
-            <div class="button-row port-profile-actions">
-              <button class="secondary port-save-profile profile-save-action" data-saved-profile-save type="button">Save profile</button>
-              <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_port_scan_profile', kind='ports') }}" data-profile-select=".port-inline-profile[data-kind='ports'] .port-existing-profile" disabled>Duplicate</button>
-              <button class="danger port-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+        <p class="field-note compact-tool-card-note">{{ host_range_guidance(50, 'hosts') }}</p>
+      </article>
+
+      <article class="compact-tool-config-card compact-tool-source-card port-inline-profile" data-kind="ports" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='ports') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='ports') }}">
+        <header>
+          <div><span class="eyebrow">Step 2</span><h2>TCP port set</h2><p>Choose the services to test on every expanded target.</p></div>
+          <span class="compact-tool-card-meta">200 maximum</span>
+        </header>
+        {% call saved_profile_manager("Port lists", "Reusable TCP service sets.", port_profiles|length, "port-saved-profile-manager", compact=true) %}
+          <div class="compact-profile-controls">
+            <label class="compact-profile-select">Saved list<select class="port-existing-profile" data-saved-profile-select><option value="">New / unsaved list</option>{% for profile in port_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }} · {{ profile.count }} port{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
+            <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
+            <details class="compact-profile-more" data-saved-profile-more>
+              <summary aria-label="More port-list actions" title="More profile actions">•••</summary>
+              <div>
+                <button class="secondary" type="button" data-saved-profile-rename>Rename…</button>
+                <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_port_scan_profile', kind='ports') }}" data-profile-select=".port-inline-profile[data-kind='ports'] .port-existing-profile" disabled>Duplicate</button>
+                <button class="danger port-delete-profile" data-saved-profile-delete type="button" disabled>Delete</button>
+              </div>
+            </details>
+            <div class="compact-profile-naming" data-saved-profile-naming hidden>
+              <label>List name<input class="port-profile-name" data-saved-profile-name placeholder="Common service ports" maxlength="100"></label>
+              <button class="port-save-profile profile-save-action" data-saved-profile-save type="button">Save list</button>
+              <button class="secondary" type="button" data-saved-profile-cancel>Cancel</button>
             </div>
           </div>
         {% endcall %}
-        <label>TCP ports
-          <textarea name="ports" class="port-profile-values" id="port-scan-ports" rows="7" placeholder="22, 53, 80, 443, 8000-8010" required>{{ form.ports }}</textarea>
+        <label class="compact-tool-source-field"><span>Ports and ranges</span>
+          <textarea name="ports" class="port-profile-values" id="port-scan-ports" rows="5" placeholder="22, 53, 80, 443, 8000-8010" required>{{ form.ports }}</textarea>
         </label>
-        <span class="field-note">Comma, whitespace, and ascending ranges are accepted. Maximum 200 unique ports.</span>
-      </div>
+        <p class="field-note compact-tool-card-note">Comma, whitespace, and ascending ranges are accepted.</p>
+      </article>
+
+      <article class="compact-tool-config-card compact-tool-run-card port-scan-run-card">
+        <header>
+          <div><span class="eyebrow">Step 3</span><h2>Scan behavior</h2><p>Balance response time and parallel connections, then choose how much detail to retain.</p></div>
+          <span class="compact-tool-card-meta">5,000 combinations</span>
+        </header>
+        <div class="port-scan-options compact-tool-option-grid">
+          <label>Connection timeout
+            <span class="compact-tool-input-with-unit"><input name="timeout" type="number" min="0.1" max="10" step="0.1" value="{{ form.timeout }}"><span>seconds</span></span>
+          </label>
+          <label>Concurrency
+            <input name="concurrency" type="number" min="1" max="200" value="{{ form.concurrency }}">
+          </label>
+          <label class="check port-open-only">
+            <input name="open_only" type="checkbox" {% if form.open_only %}checked{% endif %}>
+            <span><strong>Only show open ports</strong><small>Hide closed, timed-out, and error rows from the results table.</small></span>
+          </label>
+        </div>
+        <footer class="compact-tool-run-footer">
+          <span class="tool-status" id="port-profile-status">Only scan systems you own or are authorized to test.</span>
+          <button type="submit">Run TCP scan</button>
+        </footer>
+      </article>
     </div>
-    <span class="tool-status" id="port-profile-status">Only scan systems you own or are authorized to test.</span>
-    <div class="port-scan-options">
-      <label>Connection timeout (seconds)
-        <input name="timeout" type="number" min="0.1" max="10" step="0.1" value="{{ form.timeout }}">
-      </label>
-      <label>Concurrency
-        <input name="concurrency" type="number" min="1" max="200" value="{{ form.concurrency }}">
-      </label>
-      <label class="check port-open-only">
-        <input name="open_only" type="checkbox" {% if form.open_only %}checked{% endif %}>
-        Show only open ports
-      </label>
-    </div>
-    <div class="button-row">
-      <button type="submit">Run TCP scan</button>
-    </div>
-    <span class="tool-status">Maximum 5,000 host/port combinations per scan.</span>
   </form>
 </section>
+{{ tool_settings_backdrop('TCP port scanner') }}
 
+<div data-tool-results-anchor tabindex="-1">
 {% if stats %}
 <section class="panel">
   <div class="port-scan-summary">
@@ -109,6 +139,8 @@
   {% endif %}
 </section>
 {% endif %}
+</div>
 
 <script src="{{ url_for('static', filename='port-scanner.js') }}"></script>
+</div>
 {% endblock %}

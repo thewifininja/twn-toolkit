@@ -119,6 +119,7 @@
     const value = document.createElement("strong");
     const secondary = document.createElement("small");
     caption.textContent = label;
+    caption.className = "snmp-monitor-metric-label";
     value.textContent = "—";
     value.className = className;
     secondary.className = secondaryClass;
@@ -349,7 +350,11 @@
     ui.upload.secondary.textContent = formatPercent(uploadRate, speed);
     target.peakDownload = Math.max(target.peakDownload || 0, downloadRate);
     target.peakUpload = Math.max(target.peakUpload || 0, uploadRate);
-    ui.peaks.value.textContent = `${formatRate(target.peakDownload)} down / ${formatRate(target.peakUpload)} up`;
+    const peakDownload = document.createElement("span");
+    const peakUpload = document.createElement("span");
+    peakDownload.textContent = `${formatRate(target.peakDownload)} down`;
+    peakUpload.textContent = `${formatRate(target.peakUpload)} up`;
+    ui.peaks.value.replaceChildren(peakDownload, peakUpload);
     ui.empty.hidden = true;
     if (draw) drawChart(target);
   };
@@ -717,6 +722,7 @@
     activeSession = session;
     running = session.state === "running";
     intervalSelect.value = String(session.config?.interval || session.interval || 5);
+    window.TwnSelectControls?.sync(intervalSelect);
     if (restore) {
       sampleCursor = 0;
       historyEndAt = null;
@@ -785,6 +791,7 @@
       if (!pollInFlight) schedulePoll();
     } catch (error) {
       intervalSelect.value = String(activeSession.config?.interval || activeSession.interval || 5);
+      window.TwnSelectControls?.sync(intervalSelect);
       setStatus(error.message, "error");
     }
   });

@@ -24,7 +24,7 @@ DEFAULT_SMTP_SETTINGS = {
     "security": "starttls",
     "verify_tls": True,
     "username": "",
-    "from_name": "The WiFi Ninja's Toolkit",
+    "from_name": "TWN Toolkit",
     "from_address": "",
     "timeout": 10.0,
 }

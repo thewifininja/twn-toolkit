@@ -13,12 +13,18 @@ from twn_toolkit.version import RELEASE_NOTES
 
 
 class HomePageTests(unittest.TestCase):
-    def assert_sidebar_section_open(self, html: str, label: str) -> None:
-        label_index = html.index(f">{label}</span>")
-        section_index = html.rfind('<details class="side-nav-section"', 0, label_index)
-        self.assertNotEqual(section_index, -1)
-        section_tag = html[section_index : html.index(">", section_index)]
-        self.assertIn("open", section_tag)
+    def sidebar_category_panel(self, html: str, label: str) -> str:
+        marker = f'data-nav-label="{label}"'
+        start = html.index(marker)
+        end = html.find('class="side-nav-panel side-nav-category-panel"', start + len(marker))
+        return html[start : end if end >= 0 else html.index('class="side-nav-help', start)]
+
+    def assert_sidebar_category_active(self, html: str, label: str) -> None:
+        marker = f'data-nav-label="{label}"'
+        marker_index = html.index(marker)
+        section_index = html.rfind("<section", 0, marker_index)
+        section_tag = html[section_index : html.index(">", marker_index)]
+        self.assertIn('data-nav-active="true"', section_tag)
 
     def test_home_renders_launchpad_and_packet_replay_for_admin(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -69,8 +75,15 @@ class HomePageTests(unittest.TestCase):
         )
         topnav = response.data.split(b'<nav class="topnav">', 1)[1].split(b"</nav>", 1)[0]
         self.assertNotIn(b"Settings", topnav)
-        self.assertIn(b'aria-label="Switch to dark mode"', topnav)
-        self.assertNotIn(b"theme-toggle-label", topnav)
+        self.assertIn(b'aria-label="Appearance settings"', topnav)
+        self.assertIn(b"appearance-toggle-label", topnav)
+        self.assertIn(b'data-appearance-value="tokyo-night"', topnav)
+        self.assertIn(b'data-appearance-value="focus"', topnav)
+        workspace_choices = topnav.split(b"<legend>Workspace</legend>", 1)[1].split(
+            b"</fieldset>", 1
+        )[0]
+        self.assertIn(b'data-appearance-value="tiled"', workspace_choices)
+        self.assertNotIn(b'data-appearance-value="compact"', workspace_choices)
         self.assertIn(b"Packet Replay", response.data)
         self.assertIn(b"FortiGate", response.data)
         self.assertIn(b"Certificate Automation", response.data)
@@ -80,7 +93,9 @@ class HomePageTests(unittest.TestCase):
 
         sidebar_script = client.get("/static/sidebar.js")
         self.assertEqual(sidebar_script.status_code, 200)
-        self.assertIn(b'category === "Favorites"', sidebar_script.data)
+        self.assertIn(b'link.closest(".side-nav-favorites")', sidebar_script.data)
+        self.assertIn(b"showPanel", sidebar_script.data)
+        self.assertIn(b"setSidebarWidth", sidebar_script.data)
         self.assertIn(b'scroll.classList.toggle("searching"', sidebar_script.data)
         self.assertIn(b"renderDashboardSearch", sidebar_script.data)
         sidebar_script.close()
@@ -101,7 +116,7 @@ class HomePageTests(unittest.TestCase):
             response = client.get("/help")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Using The WiFi Ninja", response.data)
+        self.assertIn(b"Using TWN Toolkit", response.data)
         self.assertIn(b"Profiles, secrets, and configuration backups", response.data)
         self.assertIn(b"Packet Replay", response.data)
         self.assertIn(b"Automations, schedules, conditions, and actions", response.data)
@@ -215,7 +230,7 @@ class HomePageTests(unittest.TestCase):
         self.assertNotIn(b'class="help-topic release-note" open', response.data)
         self.assertIn(b"Use at your own risk", response.data)
 
-    def test_sidebar_orders_local_tools_before_automation_and_updates_last(self) -> None:
+    def test_sidebar_groups_casework_local_tools_and_automation_as_operations(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             client = app.test_client()
@@ -230,11 +245,10 @@ class HomePageTests(unittest.TestCase):
 
             response = client.get("/")
 
-        self.assertLess(
-            response.data.index(b">Local Tools</span>"),
-            response.data.index(b">Automation</span>"),
-        )
-        administration = response.data.split(b">Administration</span>", 1)[1]
+        operations = self.sidebar_category_panel(response.data.decode(), "Operations").encode()
+        self.assertLess(operations.index(b">Investigations</span>"), operations.index(b">Local Tools</strong>"))
+        self.assertLess(operations.index(b">Local Tools</strong>"), operations.index(b">Automation</strong>"))
+        administration = self.sidebar_category_panel(response.data.decode(), "Administration").encode()
         self.assertLess(
             administration.index(b">System Settings</span>"),
             administration.index(b">System Diagnostics</span>"),
@@ -244,7 +258,7 @@ class HomePageTests(unittest.TestCase):
             administration.index(b">Updates &amp; Recovery</span>"),
         )
 
-    def test_sidebar_flattens_single_tool_categories(self) -> None:
+    def test_sidebar_places_investigations_inside_operations(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             app.testing = True
@@ -252,13 +266,10 @@ class HomePageTests(unittest.TestCase):
 
             page = client.get("/investigations").data.decode()
 
-        singleton = page.split(
-            '<div class="side-nav-section side-nav-singleton">', 1
-        )[1].split("</div>", 1)[0]
-        self.assertIn('active" href="/investigations"', singleton)
-        self.assertEqual(singleton.count(">Investigations</span>"), 1)
-        self.assertIn("Add Investigations to favorites", singleton)
-        self.assertNotIn("<summary", singleton)
+        operations = self.sidebar_category_panel(page, "Operations")
+        self.assertRegex(operations, r'class="side-nav-tool-link\s+active"\s+href="/investigations"')
+        self.assertEqual(operations.count(">Investigations</span>"), 1)
+        self.assertIn("Add Investigations to favorites", operations)
 
     def test_profile_backup_moves_from_settings_to_updates_and_recovery(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -278,10 +289,13 @@ class HomePageTests(unittest.TestCase):
             backup = client.get("/settings/backup")
 
         self.assertNotIn(b">Configuration backup</h2>", settings.data)
-        self.assertIn(b">Configuration backups</a>", updates.data)
+        self.assertIn(b"><span>Configuration backups</span></a>", updates.data)
         self.assertIn(b"Create a configuration backup", backup.data)
-        self.assertIn(b'aria-current="page">Configuration backups</a>', backup.data)
-        self.assert_sidebar_section_open(backup.data.decode(), "Administration")
+        self.assertIn(
+            b'aria-current="page"><span>Configuration backups</span></a>',
+            backup.data,
+        )
+        self.assert_sidebar_category_active(backup.data.decode(), "Administration")
 
     def test_fortinet_pages_show_workflows_without_self_profile_card(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -331,15 +345,15 @@ class HomePageTests(unittest.TestCase):
             fortiauthenticator = client.get("/fortiauthenticator").data.decode()
             settings = client.get("/settings").data.decode()
 
-        self.assert_sidebar_section_open(fortigate, "Fortinet Tools")
-        self.assertIn('side-nav-parent-link active" href="/fortigate"', fortigate)
-        self.assert_sidebar_section_open(fortiauthenticator, "Fortinet Tools")
-        self.assertIn(
-            'side-nav-parent-link active" href="/fortiauthenticator"',
+        self.assert_sidebar_category_active(fortigate, "Fortinet Tools")
+        self.assertRegex(fortigate, r'class="side-nav-tool-link\s+active"\s+href="/fortigate"')
+        self.assert_sidebar_category_active(fortiauthenticator, "Fortinet Tools")
+        self.assertRegex(
             fortiauthenticator,
+            r'class="side-nav-tool-link\s+active"\s+href="/fortiauthenticator"',
         )
-        self.assert_sidebar_section_open(settings, "Administration")
-        self.assertIn('active" href="/settings"', settings)
+        self.assert_sidebar_category_active(settings, "Administration")
+        self.assertRegex(settings, r'class="side-nav-tool-link\s+active"\s+href="/settings"')
         self.assertNotIn('/favorites/tools/admin.settings', settings)
 
     def test_network_sidebar_reserves_icons_for_categories_not_leaf_tools(self) -> None:
@@ -357,19 +371,19 @@ class HomePageTests(unittest.TestCase):
 
             page = client.get("/tools/ping").data.decode()
 
-        self.assert_sidebar_section_open(page, "Network Tools")
+        self.assert_sidebar_category_active(page, "Network Tools")
         self.assertIn("Addressing &amp; Reachability", page)
         self.assertNotIn("Multi-Host Tools", page)
         self.assertIn("Services &amp; Protocols", page)
         self.assertIn("Traffic &amp; Interfaces", page)
         self.assertIn('<span class="side-nav-icon" aria-hidden="true">⌁</span>', page)
-        self.assertIn('<span class="side-nav-icon" aria-hidden="true">◎</span>', page)
+        self.assertIn('<span class="side-nav-section-accent" aria-hidden="true">◎</span>', page)
         self.assertNotIn('<span class="side-nav-icon" aria-hidden="true">•</span>', page)
         ping_link = page.split('href="/tools/ping"', 1)[1].split("</a>", 1)[0]
         self.assertIn(">Ping</span>", ping_link)
         self.assertNotIn("side-nav-icon", ping_link)
 
-    def test_sidebar_keeps_icons_for_standalone_links_but_not_favorites(self) -> None:
+    def test_sidebar_keeps_icons_for_direct_group_links_but_not_favorites(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance_path=instance)
             client = app.test_client()
@@ -385,10 +399,10 @@ class HomePageTests(unittest.TestCase):
 
             page = client.get("/investigations").data.decode()
 
-        singleton = page.split(
-            '<div class="side-nav-section side-nav-singleton">', 1
-        )[1].split("</div>", 1)[0]
-        self.assertIn("side-nav-icon", singleton)
+        investigation = page.split('href="/investigations"', 1)[1].split(
+            "</a>", 1
+        )[0]
+        self.assertIn("side-nav-icon", investigation)
         favorite = page.split('data-favorite-id="tools.ping"', 1)[1].split(
             "</li>", 1
         )[0]

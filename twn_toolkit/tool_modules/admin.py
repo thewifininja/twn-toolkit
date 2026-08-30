@@ -128,6 +128,8 @@ def register_tools(registry) -> None:
             "confirm_raspberry_pi_networking": "admin.settings",
             "rollback_raspberry_pi_networking": "admin.settings",
             "disable_raspberry_pi_networking": "admin.settings",
+            "delete_raspberry_pi_network_profile": "admin.settings",
+            "toggle_raspberry_pi_network_profile": "admin.settings",
             "scan_raspberry_pi_wifi": "admin.settings",
             "update_smtp_settings": "admin.settings",
             "test_smtp_settings": "admin.settings",

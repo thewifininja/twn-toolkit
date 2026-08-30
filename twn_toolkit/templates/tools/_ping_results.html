@@ -1,38 +1,40 @@
-<section class="panel tool-panel" id="ping-results" data-view-mode="graphs" data-graph-size="large" hidden>
-  <div class="ping-presentation-toolbar">
-    <div class="ping-presentation-control">
-      <span class="eyebrow">Presentation</span>
-      <div class="ping-display-toggle" role="group" aria-label="Ping results view">
-        <button class="secondary" type="button" data-ping-view="graphs" aria-pressed="true">Graphs</button>
-        <button class="secondary" type="button" data-ping-view="grid" aria-pressed="false">Status grid</button>
+<section class="panel tool-panel" id="ping-results" data-tool-results-anchor data-view-mode="graphs" data-graph-size="large" tabindex="-1" hidden>
+  <div class="ping-results-control-deck">
+    <div class="ping-presentation-toolbar">
+      <div class="ping-presentation-control">
+        <span class="eyebrow">View</span>
+        <div class="ping-display-toggle" role="group" aria-label="Ping results view">
+          <button class="secondary" type="button" data-ping-view="graphs" aria-pressed="true">Graphs</button>
+          <button class="secondary" type="button" data-ping-view="grid" aria-pressed="false">Status grid</button>
+        </div>
+      </div>
+      <div class="ping-presentation-control ping-size-control">
+        <span class="eyebrow">Graph height</span>
+        <div class="ping-display-toggle" role="group" aria-label="Ping graph height">
+          <button class="secondary" type="button" data-ping-size="small" aria-pressed="false">Small</button>
+          <button class="secondary" type="button" data-ping-size="medium" aria-pressed="false">Medium</button>
+          <button class="secondary" type="button" data-ping-size="large" aria-pressed="true">Large</button>
+        </div>
+      </div>
+      <label class="ping-history-range-control">Visible range
+        <select id="ping-history-range">
+          <option value="60000">1 minute</option>
+          <option value="120000">2 minutes</option>
+          <option value="300000">5 minutes</option>
+        </select>
+      </label>
+      <label class="check ping-follow-live-control">
+        <input id="ping-follow-live" type="checkbox" checked>
+        Follow newest
+      </label>
+      <div class="ping-results-toolbar-actions">
+        {% if not ping_popout %}<button class="secondary" id="ping-popout" type="button">Pop out</button>{% endif %}
+        <button class="secondary" id="ping-export-history" type="button">Export CSV</button>
       </div>
     </div>
-    <div class="ping-presentation-control ping-size-control">
-      <span class="eyebrow">Graph height</span>
-      <div class="ping-display-toggle" role="group" aria-label="Ping graph height">
-        <button class="secondary" type="button" data-ping-size="small" aria-pressed="false">Small</button>
-        <button class="secondary" type="button" data-ping-size="medium" aria-pressed="false">Medium</button>
-        <button class="secondary" type="button" data-ping-size="large" aria-pressed="true">Large</button>
-      </div>
-    </div>
-    {% if not ping_popout %}<button class="secondary ping-popout-action" id="ping-popout" type="button">Pop out results</button>{% endif %}
-  </div>
-  <div class="ping-history-controls">
-    <label>Visible time range
-      <select id="ping-history-range">
-        <option value="60000">1 minute</option>
-        <option value="120000">2 minutes</option>
-        <option value="300000">5 minutes</option>
-      </select>
-    </label>
-    <label class="check">
-      <input id="ping-follow-live" type="checkbox" checked>
-      Follow newest samples
-    </label>
-    <button class="secondary" id="ping-export-history" type="button">Export history CSV</button>
     <details class="ping-history-navigation">
       <summary>
-        <span>History Navigation</span>
+        <span>History navigation</span>
         <small id="ping-history-navigation-summary">Live</small>
       </summary>
       <div class="ping-history-navigation-content">

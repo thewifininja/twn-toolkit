@@ -57,6 +57,7 @@ class ProfileBackupTests(unittest.TestCase):
                 "wol_target_profiles",
                 "lldp_personas",
                 "ssh_commandlets",
+                "ssh_host_matrices",
                 "automation_definitions",
                 "dashboard_layout",
                 "remote_connection_library",

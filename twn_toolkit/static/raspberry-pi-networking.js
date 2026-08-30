@@ -10,49 +10,56 @@
     });
   };
 
+  const bindHardwareIdentity = (selectSelector, inputSelector) => {
+    const select = form?.querySelector(selectSelector);
+    const input = form?.querySelector(inputSelector);
+    if (!select || !input) return;
+    const refreshIdentity = () => {
+      input.value = select.selectedOptions[0]?.dataset.mac || input.value;
+    };
+    select.addEventListener("change", refreshIdentity);
+    refreshIdentity();
+  };
+
   const refresh = () => {
     if (!form) return;
-    const mode = form.querySelector("input[name='mode']:checked")?.value || "nat";
-    const securitySelect = form.querySelector("[data-pi-security]");
-    const clientOnlyOptions = form.querySelectorAll("[data-client-only]");
-    clientOnlyOptions.forEach((option) => {
-      option.disabled = mode !== "client";
-      option.hidden = mode !== "client";
-    });
-    if (mode !== "client" && ["open", "peap", "eap-tls"].includes(securitySelect.value)) {
-      securitySelect.value = "wpa2-wpa3";
+    const kind = form.dataset.profileKind;
+    if (kind === "wired") {
+      const mode = form.querySelector("input[name='ipv4_mode']:checked")?.value || "dhcp";
+      form.querySelectorAll("[data-wired-static]").forEach((element) => setSectionVisible(element, mode === "static"));
+      form.querySelectorAll("[data-wired-shared]").forEach((element) => setSectionVisible(element, mode === "shared"));
+      form.querySelectorAll("[data-wired-dns]").forEach((element) => setSectionVisible(element, ["dhcp", "static"].includes(mode)));
+      return;
     }
-    const security = securitySelect.value;
-    const enterprise = mode === "client" && ["peap", "eap-tls"].includes(security);
+    if (kind === "wifi-ap") {
+      const networkMode = form.querySelector("input[name='network_mode']:checked")?.value || "nat";
+      form.querySelectorAll("[data-ap-nat]").forEach((element) => setSectionVisible(element, networkMode === "nat"));
+      form.querySelectorAll("[data-ap-bridge]").forEach((element) => setSectionVisible(element, networkMode === "bridge"));
+    }
+    const security = form.querySelector("[data-pi-security]")?.value || "open";
+    const enterprise = kind === "wifi-client" && ["peap", "eap-tls"].includes(security);
     const personal = security !== "open" && !enterprise;
-    form.querySelectorAll("[data-ap-only]").forEach((element) => setSectionVisible(element, mode !== "client"));
-    form.querySelectorAll("[data-uplink-section]").forEach((element) => setSectionVisible(element, mode !== "client"));
-    form.querySelectorAll("[data-bridge-only]").forEach((element) => setSectionVisible(element, mode === "bridge"));
-    form.querySelectorAll("[data-nat-only]").forEach((element) => setSectionVisible(element, mode === "nat"));
+    form.querySelectorAll("[data-security-personal]").forEach((element) => setSectionVisible(element, personal));
     form.querySelectorAll("[data-enterprise-only]").forEach((element) => setSectionVisible(element, enterprise));
-    form.querySelectorAll("[data-security-section='personal']").forEach((element) => setSectionVisible(element, personal));
     form.querySelectorAll("[data-peap-only]").forEach((element) => setSectionVisible(element, security === "peap"));
     form.querySelectorAll("[data-eap-tls-only]").forEach((element) => setSectionVisible(element, security === "eap-tls"));
-
     const verify = form.querySelector("[data-pi-verify-server]");
-    const trustVisible = security === "eap-tls" || (security === "peap" && verify.checked);
+    const trustVisible = security === "eap-tls" || (security === "peap" && Boolean(verify?.checked));
     form.querySelectorAll("[data-server-trust]").forEach((element) => setSectionVisible(element, trustVisible));
-    const warning = form.querySelector("[data-pi-insecure-peap]");
-    if (warning) warning.hidden = security !== "peap" || verify.checked;
     const caSource = form.querySelector("[data-pi-ca-source]")?.value;
     form.querySelectorAll("[data-ca-upload]").forEach((element) => setSectionVisible(element, trustVisible && caSource === "upload"));
-
     const tlsFormat = form.querySelector("[data-pi-tls-format]")?.value || "bundle";
     form.querySelectorAll("[data-tls-bundle]").forEach((element) => setSectionVisible(element, security === "eap-tls" && tlsFormat === "bundle"));
     form.querySelectorAll("[data-tls-separate]").forEach((element) => setSectionVisible(element, security === "eap-tls" && tlsFormat === "separate"));
   };
 
   if (form) {
+    bindHardwareIdentity("[data-pi-adapter-select]", "[data-pi-adapter-mac]");
+    bindHardwareIdentity("[data-pi-uplink-select]", "[data-pi-uplink-mac]");
     form.addEventListener("change", (event) => {
-      if (event.target.matches("input[name='mode'], [data-pi-security], [data-pi-verify-server], [data-pi-ca-source], [data-pi-tls-format]")) refresh();
+      if (event.target.matches("input[name='ipv4_mode'], input[name='network_mode'], [data-pi-security], [data-pi-verify-server], [data-pi-ca-source], [data-pi-tls-format]")) refresh();
     });
     refresh();
-
     const scanButton = form.querySelector("[data-pi-network-scan]");
     const scanResults = form.querySelector("[data-pi-network-scan-results]");
     scanButton?.addEventListener("click", async () => {
@@ -65,11 +72,7 @@
       const payload = new FormData();
       payload.set("wifi_interface", form.querySelector("[data-pi-wifi-interface]").value);
       try {
-        const response = await fetch(scanButton.dataset.scanUrl, {
-          method: "POST",
-          body: payload,
-          headers: { Accept: "application/json" },
-        });
+        const response = await fetch(scanButton.dataset.scanUrl, { method: "POST", body: payload, headers: { Accept: "application/json" } });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "The scan failed.");
         scanResults.replaceChildren();

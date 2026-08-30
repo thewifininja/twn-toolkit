@@ -1,8 +1,8 @@
-# The WiFi Ninja’s Toolkit
+# TWN Toolkit
 
 [![CI](https://github.com/thewifininja/twn-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/thewifininja/twn-toolkit/actions/workflows/ci.yml)
 
-![The WiFi Ninja’s Toolkit dragon](twn_toolkit/static/brand/dragon-mark-128.png)
+![TWN Toolkit](twn_toolkit/static/brand/twn-toolkit-wordmark.png)
 
 A local-first web toolkit for network diagnostics, repeatable Fortinet
 administration, contained file transfer, and event-driven automation.
@@ -51,6 +51,11 @@ desktop and mobile views. Saved configurations share a consistent manager or
 expandable library, and supported profiles, credentials, automation definitions,
 complete automations, schedule rules, and action stages can be duplicated before
 they are adapted for another site or workflow.
+
+Each operator can save an appearance profile from the top bar. Semantic palettes
+(Tokyo Night, Catppuccin, Gruvbox, Flexoki Light, and Toolkit Classic), compact
+or comfortable density, three workspace/navigation layouts, and four text scales
+all use the same tiled component system and bundled JetBrains Mono typography.
 
 ## What it includes
 
@@ -650,7 +655,7 @@ and authorization remain consistent. See
 
 ## Disclaimer
 
-The WiFi Ninja’s Toolkit is provided as-is, without warranty of any kind. You
+TWN Toolkit is provided as-is, without warranty of any kind. You
 are responsible for reviewing actions, protecting credentials, and ensuring you
 have authorization to use the toolkit in your environment. **Use at your own
 risk.**

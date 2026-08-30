@@ -9,30 +9,38 @@
   const dashboardSearchInput = document.getElementById("dashboard-tool-search-input");
   const dashboardSearchResults = document.getElementById("dashboard-tool-search-results");
   const dashboardSearchEmpty = document.getElementById("dashboard-tool-search-empty");
+  const rootPanel = sidebar?.querySelector("[data-nav-root]");
+  const categoryPanels = Array.from(sidebar?.querySelectorAll("[data-nav-panel]") || []);
+  const categoryButtons = Array.from(sidebar?.querySelectorAll("[data-nav-open]") || []);
+  const resizer = sidebar?.querySelector(".sidebar-resizer");
+  const root = document.documentElement;
   const desktopQuery = window.matchMedia(
     "(min-width: 901px) and (hover: hover) and (pointer: fine)",
   );
+  const minimumWidth = 220;
+  const maximumWidth = 400;
+  let activePanel = null;
 
-  if (!button || !sidebar) return;
+  if (!button || !sidebar || !rootPanel) return;
 
   const normalizeSearch = (value) => value.toLocaleLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
 
   const searchableTools = (() => {
     const tools = new Map();
-    sidebar.querySelectorAll(".side-nav-section a[href]").forEach((link) => {
+    sidebar.querySelectorAll("[data-nav-tool]").forEach((link) => {
+      if (link.closest(".side-nav-favorites")) return;
       const label = link.querySelector(".side-nav-label")?.textContent?.trim();
-      const section = link.closest(".side-nav-section");
-      const category = section?.querySelector(":scope > summary .side-nav-label")?.textContent?.trim() || "Tools";
-      if (!label || category === "Favorites" || tools.has(link.href)) return;
-      const subsection = link.closest(".side-nav-subsection")
-        ?.querySelector(":scope > summary .side-nav-subsection-title > span:last-child")
-        ?.textContent?.trim() || "";
-      const parent = link.closest(".side-nav-tree > li")?.querySelector(":scope > .side-nav-parent-row .side-nav-label")?.textContent?.trim() || "";
-      const path = [category, parent, subsection].filter((part, index, values) => part && values.indexOf(part) === index).join(" › ");
+      const category = link.dataset.navCategory?.trim() || "Tools";
+      const subgroup = link.dataset.navSubgroup?.trim() || "";
+      if (!label || tools.has(link.href)) return;
+      const path = [category, subgroup]
+        .filter((part, index, values) => part && part !== label && values.indexOf(part) === index)
+        .join(" › ");
       tools.set(link.href, {
         href: link.href,
         label,
         icon: link.querySelector(".side-nav-icon")?.textContent?.trim() || "•",
+        category,
         path,
         active: link.classList.contains("active"),
         search: normalizeSearch(`${label} ${path}`),
@@ -41,17 +49,19 @@
     return [...tools.values()];
   })();
 
-  const searchMatches = (value) => {
+  const searchMatches = (value, category = "") => {
     const query = normalizeSearch(value.trim());
     if (!query) return [];
-    return searchableTools.filter((tool) => tool.search.includes(query));
+    return searchableTools.filter(
+      (tool) => (!category || tool.category === category) && tool.search.includes(query),
+    );
   };
 
   const searchResult = (tool, className) => {
     const link = document.createElement("a");
     link.className = `${className}${tool.active ? " active" : ""}`;
     link.href = tool.href;
-    link.title = `${tool.label} — ${tool.path}`;
+    link.title = tool.path ? `${tool.label} — ${tool.path}` : tool.label;
 
     const icon = document.createElement("span");
     icon.className = "side-nav-icon";
@@ -65,6 +75,8 @@
     return link;
   };
 
+  const activeCategory = () => activePanel?.dataset.navLabel || "";
+
   const renderSearch = () => {
     if (!scroll || !searchInput || !searchResults || !searchEmpty) return;
     const searching = Boolean(searchInput.value.trim());
@@ -74,7 +86,7 @@
     searchEmpty.hidden = true;
     if (!searching) return;
 
-    const matches = searchMatches(searchInput.value);
+    const matches = searchMatches(searchInput.value, activeCategory());
     searchResults.hidden = matches.length === 0;
     searchResults.replaceChildren(
       ...matches.map((tool) => searchResult(tool, "side-nav-search-result")),
@@ -98,12 +110,54 @@
     dashboardSearchEmpty.hidden = matches.length > 0;
   };
 
+  const clearSearch = () => {
+    if (!searchInput?.value) return;
+    searchInput.value = "";
+    renderSearch();
+  };
+
+  const showPanel = (panelName = "", {focus = false} = {}) => {
+    clearSearch();
+    activePanel = categoryPanels.find((panel) => panel.dataset.navPanel === panelName) || null;
+    rootPanel.hidden = Boolean(activePanel);
+    categoryPanels.forEach((panel) => {
+      panel.hidden = panel !== activePanel;
+    });
+    if (!activePanel && root.dataset.layout === "focus" && desktopQuery.matches) {
+      rootPanel.querySelector(".side-nav-favorites")?.removeAttribute("open");
+    }
+    const label = activeCategory();
+    if (searchInput) {
+      searchInput.placeholder = label ? `Search ${label}…` : "Find a tool…";
+      searchInput.setAttribute("aria-label", label ? `Search ${label}` : "Find a tool");
+    }
+    if (scroll) scroll.scrollTop = 0;
+    if (focus) {
+      (activePanel?.querySelector("[data-nav-back]") || rootPanel.querySelector("a, button"))?.focus();
+    }
+  };
+
+  const closeFocusPanel = () => {
+    if (root.dataset.layout !== "focus" || !desktopQuery.matches || !activePanel) return;
+    showPanel("");
+  };
+
+  categoryButtons.forEach((categoryButton) => {
+    categoryButton.addEventListener("click", () => {
+      showPanel(categoryButton.dataset.navOpen || "", {focus: true});
+    });
+  });
+  categoryPanels.forEach((panel) => {
+    panel.querySelector("[data-nav-back]")?.addEventListener("click", () => {
+      showPanel("", {focus: true});
+    });
+  });
+
   searchInput?.addEventListener("input", renderSearch);
   searchInput?.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && searchInput.value) {
       event.stopPropagation();
-      searchInput.value = "";
-      renderSearch();
+      clearSearch();
     }
   });
   dashboardSearchInput?.addEventListener("input", renderDashboardSearch);
@@ -117,7 +171,7 @@
 
   const updateTopbarHeight = () => {
     if (!topbar) return;
-    document.documentElement.style.setProperty(
+    root.style.setProperty(
       "--topbar-height",
       `${Math.ceil(topbar.getBoundingClientRect().height)}px`,
     );
@@ -125,7 +179,7 @@
 
   const updateMobileViewportHeight = () => {
     const viewportHeight = window.visualViewport?.height || window.innerHeight;
-    document.documentElement.style.setProperty(
+    root.style.setProperty(
       "--mobile-visual-viewport-height",
       `${Math.floor(viewportHeight)}px`,
     );
@@ -158,7 +212,64 @@
     applyState();
   };
 
+  const setSidebarWidth = (value) => {
+    const width = Math.max(minimumWidth, Math.min(maximumWidth, Math.round(value)));
+    root.dataset.sidebarWidth = String(width);
+    root.style.setProperty("--ui-sidebar-expanded-width", `${width}px`);
+    resizer?.setAttribute("aria-valuenow", String(width));
+    return width;
+  };
+
+  const saveSidebarWidth = async (width) => {
+    if (!sidebar.dataset.appearanceUrl) return;
+    try {
+      await fetch(sidebar.dataset.appearanceUrl, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        credentials: "same-origin",
+        body: JSON.stringify({sidebar_width: String(width)}),
+      });
+    } catch (_error) {
+      // The current width remains useful for this page even if persistence fails.
+    }
+  };
+
+  if (resizer) {
+    resizer.addEventListener("pointerdown", (event) => {
+      if (!desktopQuery.matches || root.dataset.layout === "focus") return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = sidebar.getBoundingClientRect().width;
+      document.body.classList.add("sidebar-resizing");
+      resizer.setPointerCapture(event.pointerId);
+      const move = (moveEvent) => setSidebarWidth(startWidth + moveEvent.clientX - startX);
+      const finish = () => {
+        document.body.classList.remove("sidebar-resizing");
+        resizer.removeEventListener("pointermove", move);
+        resizer.removeEventListener("pointerup", finish);
+        resizer.removeEventListener("pointercancel", finish);
+        saveSidebarWidth(Number(root.dataset.sidebarWidth));
+      };
+      resizer.addEventListener("pointermove", move);
+      resizer.addEventListener("pointerup", finish);
+      resizer.addEventListener("pointercancel", finish);
+    });
+    resizer.addEventListener("keydown", (event) => {
+      if (!desktopQuery.matches || root.dataset.layout === "focus") return;
+      const current = Number(root.dataset.sidebarWidth) || 274;
+      const next = event.key === "ArrowLeft" ? current - 8
+        : event.key === "ArrowRight" ? current + 8
+          : event.key === "Home" ? minimumWidth
+            : event.key === "End" ? maximumWidth
+              : null;
+      if (next === null) return;
+      event.preventDefault();
+      saveSidebarWidth(setSidebarWidth(next));
+    });
+  }
+
   updateSidebarGeometry();
+  setSidebarWidth(Number(root.dataset.sidebarWidth) || 274);
   window.addEventListener("resize", updateSidebarGeometry);
   window.visualViewport?.addEventListener("resize", updateSidebarGeometry);
   window.visualViewport?.addEventListener("scroll", updateSidebarGeometry);
@@ -170,12 +281,40 @@
     document.body.classList.add("sidebar-collapsed");
   }
 
+  const initiallyActive = root.dataset.layout === "focus" && desktopQuery.matches
+    ? null
+    : categoryPanels.find((panel) => panel.dataset.navActive === "true");
+  showPanel(initiallyActive?.dataset.navPanel || "");
+  let renderedLayout = root.dataset.layout;
+  window.addEventListener("themechange", () => {
+    const previousLayout = renderedLayout;
+    renderedLayout = root.dataset.layout;
+    if (renderedLayout === previousLayout) return;
+    if (renderedLayout === "focus" && desktopQuery.matches && activePanel) {
+      showPanel("");
+    } else if (previousLayout === "focus" && !activePanel) {
+      const currentToolPanel = categoryPanels.find((panel) => panel.dataset.navActive === "true");
+      showPanel(currentToolPanel?.dataset.navPanel || "");
+    }
+  });
+
   button.addEventListener("click", toggle);
   sidebar.addEventListener("click", (event) => {
     if (!desktopQuery.matches && event.target.closest("a")) {
       document.body.classList.remove("sidebar-open");
       applyState();
     }
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!sidebar.contains(event.target)) closeFocusPanel();
+  });
+  sidebar.addEventListener("focusout", (event) => {
+    if (event.relatedTarget && sidebar.contains(event.relatedTarget)) return;
+    window.requestAnimationFrame(() => {
+      if (!sidebar.matches(":hover") && !sidebar.contains(document.activeElement)) {
+        closeFocusPanel();
+      }
+    });
   });
   desktopQuery.addEventListener("change", () => {
     document.body.classList.remove("sidebar-open");
@@ -188,7 +327,12 @@
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
+    if (event.key !== "Escape") return;
+    if (searchInput?.value) {
+      clearSearch();
+    } else if (activePanel) {
+      showPanel("", {focus: true});
+    } else {
       document.body.classList.remove("sidebar-open");
       applyState();
     }

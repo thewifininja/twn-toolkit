@@ -144,6 +144,7 @@ class ToolRegistryTests(unittest.TestCase):
             "tools.live_tool_sessions",
             "tools.rename_live_tool_session",
             "tools.stop_live_tool_session",
+            "update_appearance",
             "update_theme",
             "change_user_password",
             "toggle_tool_favorite",

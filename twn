@@ -439,7 +439,7 @@ request_service_start() {
       rm -f "$SERVICE_RESUME_FILE"
       load_running_endpoint
       if [ -f "$SCHEME_FILE" ]; then SCHEME=$(cat "$SCHEME_FILE"); fi
-      echo "The autostart service started The WiFi Ninja's Toolkit (PID $(cat "$PIDFILE"))."
+      echo "The autostart service started TWN Toolkit (PID $(cat "$PIDFILE"))."
       show_access_urls
       return
     fi
@@ -1147,7 +1147,7 @@ start() {
     start_automation
     start_transfer_services
     start_supervisor || true
-    echo "The WiFi Ninja's Toolkit is already running (PID $(cat "$PIDFILE"))."
+    echo "TWN Toolkit is already running (PID $(cat "$PIDFILE"))."
     echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
     if tftp_is_running; then
       echo "TFTP service is running (PID $(cat "$TFTP_PIDFILE"))."
@@ -1221,7 +1221,7 @@ start() {
         echo "Warning: enabled iPerf3 listeners could not be restored. Check: $IPERF_LOG" >&2
       fi
       start_supervisor || true
-      echo "Started The WiFi Ninja's Toolkit (PID $(cat "$PIDFILE"))."
+      echo "Started TWN Toolkit (PID $(cat "$PIDFILE"))."
       echo "Started automation scheduler (PID $(cat "$AUTOMATION_PIDFILE"))."
       if tftp_is_running; then
         echo "Started TFTP service (PID $(cat "$TFTP_PIDFILE"))."
@@ -1269,7 +1269,7 @@ stop() {
     stop_iperf_servers
     stop_automation
     stop_transfer_services
-    echo "The WiFi Ninja's Toolkit is not running."
+    echo "TWN Toolkit is not running."
     return
   fi
 
@@ -1310,7 +1310,7 @@ stop() {
   rm -f "$SCHEME_FILE"
   rm -f "$HOST_FILE"
   rm -f "$PORT_FILE"
-  echo "Stopped The WiFi Ninja's Toolkit."
+  echo "Stopped TWN Toolkit."
 }
 
 status() {
@@ -1319,7 +1319,7 @@ status() {
     if [ -f "$SCHEME_FILE" ]; then
       SCHEME=$(cat "$SCHEME_FILE")
     fi
-    echo "The WiFi Ninja's Toolkit is running (PID $(cat "$PIDFILE"))."
+    echo "TWN Toolkit is running (PID $(cat "$PIDFILE"))."
     if automation_is_running; then
       echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
     else
@@ -1360,9 +1360,9 @@ status() {
     show_access_urls
   else
     if service_launcher_is_running && [ -f "$SERVICE_PAUSE_FILE" ]; then
-      echo "The WiFi Ninja's Toolkit is stopped; its autostart service remains loaded and paused."
+      echo "TWN Toolkit is stopped; its autostart service remains loaded and paused."
     else
-      echo "The WiFi Ninja's Toolkit is not running."
+      echo "TWN Toolkit is not running."
     fi
     exit 1
   fi
@@ -1490,7 +1490,7 @@ recover() {
 
   load_running_endpoint
   host_os=$(uname -s 2>/dev/null || echo unknown)
-  echo "Recovering The WiFi Ninja's Toolkit on $host_os..."
+  echo "Recovering TWN Toolkit on $host_os..."
 
   server_pids=$(recovery_server_pids)
   listener_pids=$(recovery_listener_pids)

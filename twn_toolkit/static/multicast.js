@@ -15,7 +15,13 @@
   const port = form.querySelector("#multicast-port");
   const preset = form.querySelector("#multicast-preset");
   const startButton = form.querySelector("#multicast-run");
+  const runModeMeta = form.querySelector("#multicast-run-mode-meta");
   const cancelButton = form.querySelector("#multicast-cancel");
+  const runbarCancelButton = document.querySelector("#multicast-runbar-cancel");
+  const runbarState = document.querySelector("[data-multicast-run-state]");
+  const runbarTitle = document.querySelector("[data-multicast-run-title]");
+  const runbarSummary = document.querySelector("[data-multicast-run-summary]");
+  const runbarIndicator = document.querySelector("[data-multicast-run-indicator]");
   const results = document.querySelector("#multicast-results");
   const livePanel = document.querySelector("#multicast-live-panel");
   const liveTitle = document.querySelector("#multicast-live-title");
@@ -45,12 +51,30 @@
   let activeReport = null;
   let liveData = {receive: {}, send: {}};
 
+  function workspaceController() {
+    return window.TwnToolWorkspace?.forElement(form);
+  }
+
+  function setRunbar(state, title, summary, complete = false) {
+    if (runbarState) runbarState.textContent = state;
+    if (runbarTitle) runbarTitle.textContent = title;
+    if (runbarSummary) runbarSummary.textContent = summary;
+    runbarIndicator?.classList.toggle("complete", complete);
+  }
+
   function selectedMode() {
     return modeInputs.find((input) => input.checked)?.value || "listen";
   }
 
   function updateMode() {
     const mode = selectedMode();
+    const modeCopy = {
+      listen: {button: "Listen to group", meta: "Listen mode"},
+      send: {button: "Send test stream", meta: "Send mode"},
+      path: {button: "Run end-to-end test", meta: "End-to-end mode"},
+    };
+    if (startButton) startButton.textContent = modeCopy[mode]?.button || "Run multicast test";
+    if (runModeMeta) runModeMeta.textContent = modeCopy[mode]?.meta || "Multicast test";
     if (mode === "path" && receiveInterface?.value === sendInterface?.value) {
       const alternate = [...receiveInterface.options].find(
         (option) => option.value !== sendInterface.value
@@ -313,6 +337,7 @@
       );
     } else if (event.type === "complete") {
       insertReport(event.html, event.result);
+      setRunbar("Test complete", "Multicast test", event.result.summary, true);
       liveTitle.textContent = event.result.summary;
       liveMeta.textContent = "The full multicast report is ready below.";
       setLiveProgress(100);
@@ -367,17 +392,22 @@
     activeController = controller;
     results.replaceChildren();
     resetLive(payload);
+    workspaceController()?.setState("results", {focusResults: true});
+    setRunbar("Live test", "Multicast test", `${payload.group}:${payload.port} · ${payload.mode}`);
     startButton.disabled = true;
     cancelButton.hidden = false;
+    if (runbarCancelButton) runbarCancelButton.hidden = false;
     try {
       await runLiveTest(payload, controller);
     } catch (error) {
       if (activeController !== controller) return;
       if (error.name === "AbortError") {
+        setRunbar("Test stopped", "Multicast test", "Cancelled before completion");
         liveTitle.textContent = "Multicast test cancelled";
         liveMeta.textContent = "The socket is closing and the group membership is being released.";
         setLiveState("cancelled", "planned");
       } else {
+        setRunbar("Test failed", "Multicast test", error.message);
         liveTitle.textContent = "Multicast test failed";
         liveMeta.textContent = error.message;
         setLiveState("error", "error");
@@ -387,11 +417,13 @@
         activeController = null;
         startButton.disabled = false;
         cancelButton.hidden = true;
+        if (runbarCancelButton) runbarCancelButton.hidden = true;
       }
     }
   });
 
   cancelButton?.addEventListener("click", () => activeController?.abort());
+  runbarCancelButton?.addEventListener("click", () => activeController?.abort());
   window.addEventListener("resize", () => {
     const receive = activeReport?.mode === "path"
       ? activeReport.receive

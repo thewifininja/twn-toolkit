@@ -5,16 +5,26 @@
   if (!form || !results || !template) return;
 
   const startButton = document.getElementById("traceroute-start");
-  const cancelButton = document.getElementById("traceroute-cancel");
   const status = document.getElementById("traceroute-status");
   const toolbar = document.getElementById("traceroute-results-toolbar");
   const toggleAllButton = document.getElementById("traceroute-toggle-all");
   const profileSelect = document.getElementById("traceroute-profile");
   const profileName = document.getElementById("traceroute-profile-name");
   const hostsInput = document.getElementById("traceroute-hosts");
+  const workspace = document.querySelector(".traceroute-tool-workspace");
+  const runbarRerunButton = document.getElementById("traceroute-runbar-rerun");
+  const runbarCancelButton = document.getElementById("traceroute-runbar-cancel");
+  const runbarState = document.querySelector("[data-traceroute-run-state]");
+  const runbarTitle = document.querySelector("[data-traceroute-run-title]");
+  const runbarSummary = document.querySelector("[data-traceroute-run-summary]");
+  const runbarIndicator = document.querySelector("[data-traceroute-run-indicator]");
+  const workspaceController = window.TwnToolWorkspace?.forElement(workspace);
   const profileStorageKey = "twn:traceroute-profile";
   let controllers = [];
   let cancelled = false;
+
+  if (!workspace || !runbarRerunButton || !runbarCancelButton || !runbarState
+      || !runbarTitle || !runbarSummary || !runbarIndicator || !workspaceController) return;
 
   profileSelect.addEventListener("change", () => {
     const option = profileSelect.selectedOptions[0];
@@ -74,6 +84,8 @@
       output: element.querySelector(".traceroute-live-output"),
       respondingHops: 0,
       caseRecorded: false,
+      completed: false,
+      reached: false,
     };
   }
 
@@ -133,6 +145,8 @@
       appendHop(view, event.hop);
       view.meta.textContent = `${view.target.label ? `${view.target.host} · ` : ""}Hop ${event.hop.number} received · waiting for next hop`;
     } else if (event.type === "complete") {
+      view.completed = true;
+      view.reached = Boolean(event.reached);
       view.state.className = `pill traceroute-live-state ${event.reached ? "success" : "planned"}`;
       view.state.textContent = event.reached ? "destination reached" : "trace incomplete";
       view.meta.textContent = `${view.target.label ? `${view.target.host} · ` : ""}${view.respondingHops} responding hop${view.respondingHops === 1 ? "" : "s"}`;
@@ -170,6 +184,7 @@
       }
       if (buffer.trim()) handleEvent(view, JSON.parse(buffer));
     } catch (error) {
+      view.completed = true;
       view.state.className = `pill traceroute-live-state ${error.name === "AbortError" ? "planned" : "error"}`;
       view.state.textContent = error.name === "AbortError" ? "cancelled" : "error";
       const detail = error.name === "AbortError" ? "Trace cancelled" : error.message;
@@ -211,8 +226,19 @@
     toolbar.hidden = false;
     toggleAllButton.textContent = "Expand all";
     const views = targets.map(createResult);
+    const targetLabel = targets.length === 1
+      ? (targets[0].label || targets[0].host)
+      : `${targets.length} destinations`;
+    runbarState.textContent = "Tracing";
+    runbarTitle.textContent = targetLabel;
+    runbarSummary.textContent = `${targets.length} active · ${payload.family} · ${payload.method}`;
+    runbarIndicator.classList.remove("complete", "stopped");
+    runbarRerunButton.disabled = true;
+    runbarRerunButton.hidden = true;
+    runbarCancelButton.disabled = false;
+    runbarCancelButton.hidden = false;
+    workspaceController.setState("results", {focusResults: true});
     startButton.disabled = true;
-    cancelButton.disabled = false;
     status.textContent = `Tracing ${targets.length} destination${targets.length === 1 ? "" : "s"}…`;
     try {
       await runQueue(targets, payload, views);
@@ -220,9 +246,19 @@
       status.textContent = cancelled
         ? "Traceroutes cancelled."
         : `All traceroutes completed.${recorded ? ` ${recorded} recorded in the active case.` : ""}`;
+      const reached = views.filter((view) => view.reached).length;
+      runbarState.textContent = cancelled ? "Run cancelled" : "Trace complete";
+      runbarSummary.textContent = cancelled
+        ? `${views.filter((view) => view.completed).length}/${targets.length} finished before cancellation`
+        : `${targets.length} completed · ${reached} reached destination${reached === 1 ? "" : "s"}`;
+      runbarIndicator.classList.toggle("complete", !cancelled);
+      runbarIndicator.classList.toggle("stopped", cancelled);
     } finally {
       startButton.disabled = false;
-      cancelButton.disabled = true;
+      runbarRerunButton.disabled = false;
+      runbarRerunButton.hidden = false;
+      runbarCancelButton.disabled = true;
+      runbarCancelButton.hidden = true;
     }
   });
 
@@ -240,8 +276,10 @@
     return targets;
   }
 
-  cancelButton.addEventListener("click", () => {
+  runbarCancelButton.addEventListener("click", () => {
     cancelled = true;
+    runbarCancelButton.disabled = true;
+    status.textContent = "Cancelling active traceroutes…";
     controllers.forEach((controller) => controller.abort());
   });
 

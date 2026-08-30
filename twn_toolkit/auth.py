@@ -19,6 +19,25 @@ MIN_PASSWORD_LENGTH = 8
 MIN_CONFIGURABLE_PASSWORD_LENGTH = 8
 MAX_CONFIGURABLE_PASSWORD_LENGTH = 128
 DEFAULT_IDLE_TIMEOUT_MINUTES = 30
+APPEARANCE_PALETTES = {
+    "tokyo-night": "dark",
+    "catppuccin": "dark",
+    "gruvbox": "dark",
+    "flexoki-light": "light",
+    "toolkit-classic": "light",
+}
+APPEARANCE_DENSITIES = {"compact", "comfortable"}
+APPEARANCE_LAYOUTS = {"tiled", "focus"}
+APPEARANCE_TEXT_SCALES = {"90", "100", "110", "125"}
+MIN_SIDEBAR_WIDTH = 220
+MAX_SIDEBAR_WIDTH = 400
+DEFAULT_APPEARANCE = {
+    "palette": "tokyo-night",
+    "density": "compact",
+    "layout": "tiled",
+    "text_scale": "100",
+    "sidebar_width": "274",
+}
 
 
 class AuthStore:
@@ -72,7 +91,8 @@ class AuthStore:
             "password_hash": generate_password_hash(password, method="scrypt"),
             "is_admin": bool(is_admin),
             "enabled": True,
-            "theme": "light",
+            "theme": "dark",
+            "appearance": dict(DEFAULT_APPEARANCE),
             "access_profile_ids": _valid_profile_ids(data, access_profile_ids or []),
             "session_version": 1,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -87,7 +107,54 @@ class AuthStore:
         data = self._read()
         user = _find_user(data, user_id)
         user["theme"] = theme
+        appearance = _appearance_from_user(user)
+        appearance["palette"] = (
+            "tokyo-night" if theme == "dark" else "toolkit-classic"
+        )
+        user["appearance"] = appearance
         self._write(data)
+
+    def user_appearance(self, user_id: str) -> dict[str, str]:
+        try:
+            user = _find_user(self._read(), user_id)
+        except ValueError:
+            return dict(DEFAULT_APPEARANCE)
+        return _appearance_from_user(user)
+
+    def set_user_appearance(
+        self, user_id: str, appearance: dict[str, Any]
+    ) -> dict[str, str]:
+        data = self._read()
+        user = _find_user(data, user_id)
+        updated = _appearance_from_user(user)
+        validators = {
+            "palette": APPEARANCE_PALETTES,
+            "density": APPEARANCE_DENSITIES,
+            "layout": APPEARANCE_LAYOUTS,
+            "text_scale": APPEARANCE_TEXT_SCALES,
+        }
+        for key, allowed in validators.items():
+            if key not in appearance:
+                continue
+            value = str(appearance[key]).strip()
+            if value not in allowed:
+                raise ValueError(f"Unsupported appearance {key}: {value or 'empty'}.")
+            updated[key] = value
+        if "sidebar_width" in appearance:
+            try:
+                sidebar_width = int(str(appearance["sidebar_width"]).strip())
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Sidebar width must be a whole number.") from exc
+            if not MIN_SIDEBAR_WIDTH <= sidebar_width <= MAX_SIDEBAR_WIDTH:
+                raise ValueError(
+                    f"Sidebar width must be between {MIN_SIDEBAR_WIDTH} and "
+                    f"{MAX_SIDEBAR_WIDTH} pixels."
+                )
+            updated["sidebar_width"] = str(sidebar_width)
+        user["appearance"] = updated
+        user["theme"] = APPEARANCE_PALETTES[updated["palette"]]
+        self._write(data)
+        return dict(updated)
 
     def favorite_tool_ids(self, user_id: str) -> list[str]:
         try:
@@ -428,6 +495,34 @@ class AuthStore:
         finally:
             if os.path.exists(temporary_name):
                 os.unlink(temporary_name)
+
+
+def _appearance_from_user(user: dict[str, Any]) -> dict[str, str]:
+    raw = user.get("appearance")
+    if not isinstance(raw, dict):
+        legacy_theme = str(user.get("theme", "light"))
+        palette = "tokyo-night" if legacy_theme == "dark" else "toolkit-classic"
+        return {**DEFAULT_APPEARANCE, "palette": palette}
+    appearance = dict(DEFAULT_APPEARANCE)
+    if str(raw.get("layout", "")) == "compact":
+        raw = {**raw, "layout": "tiled"}
+    allowed_values = {
+        "palette": APPEARANCE_PALETTES,
+        "density": APPEARANCE_DENSITIES,
+        "layout": APPEARANCE_LAYOUTS,
+        "text_scale": APPEARANCE_TEXT_SCALES,
+    }
+    for key, allowed in allowed_values.items():
+        value = str(raw.get(key, ""))
+        if value in allowed:
+            appearance[key] = value
+    try:
+        sidebar_width = int(str(raw.get("sidebar_width", "")))
+    except (TypeError, ValueError):
+        sidebar_width = int(DEFAULT_APPEARANCE["sidebar_width"])
+    if MIN_SIDEBAR_WIDTH <= sidebar_width <= MAX_SIDEBAR_WIDTH:
+        appearance["sidebar_width"] = str(sidebar_width)
+    return appearance
 
 
 def load_or_create_secret_key(instance_path: str) -> str:

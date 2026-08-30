@@ -514,7 +514,9 @@ make state, risk, and the next action obvious.
   clipped actions and accidental page-level horizontal scrolling; allow bounded
   data regions to scroll when comparison requires it.
 - Support keyboard operation, visible focus, semantic labels, readable contrast,
-  reduced motion, and light/dark themes. Hover-only disclosure is supplemental,
+  reduced motion, and every semantic appearance palette. The per-user appearance
+  profile includes palette, density, workspace layout, and text scale; preserve
+  the common tiled component structure across all combinations. Hover-only disclosure is supplemental,
   never the only way to discover or operate a control.
 - Keep secrets write-only and sensitive values out of rendered pages, URLs,
   browser storage, exports, logs, and error detail unless explicitly required and
@@ -541,6 +543,10 @@ make state, risk, and the next action obvious.
   geometry changes. Hover/focus may change background or border color but must
   remain visually consistent in light and dark themes. Apply fixes through the
   shared component selectors rather than per-tool overrides.
+- JetBrains Mono is bundled locally under the SIL Open Font License and is the
+  interface font. Keep terminal ligatures disabled and use the semantic
+  appearance variables from `appearance.css` instead of palette-specific colors
+  in page-level styles.
 - Saved-record actions use `.button-row`. When independent forms require the
   actions to sit outside the edit form, add the shared `.profile-form-actions`
   modifier so padding, spacing, and child-form margins remain consistent. Do not
