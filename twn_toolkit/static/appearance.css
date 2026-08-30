@@ -402,6 +402,7 @@ body,
 .side-nav-section summary::after { color: var(--depth-primary); content: "·"; font-size: 1rem; transform: none; }
 .side-nav-section[open] summary::after { content: "···"; transform: none; }
 .side-nav-section summary small { background: transparent; border-radius: 0; padding: 0; }
+.side-nav-favorites:not([open]) > summary { color: var(--chrome-muted, #9aa8a2); }
 .side-nav-section[open] { background: color-mix(in srgb, var(--nav-raised), transparent 48%); }
 .side-nav-section[open] > summary { background: transparent; border: 0; color: #c9d2ce; }
 
@@ -461,12 +462,10 @@ body,
 .side-nav-version { color: #c9d2ce; font-size: 0.62rem; }
 .side-nav-instance { color: #83928b; font-size: 0.55rem; }
 
-/* Drill-in navigation keeps every tool at one readable depth. */
-.side-nav-panel[hidden] { display: none !important; }
-
+/* The navigation hierarchy expands in place. One top-level category and one
+   subgroup stay open at a time, so every section remains one click away. */
 .side-nav-root-panel,
 .side-nav-category-list,
-.side-nav-category-panel,
 .side-nav-category-body,
 .side-nav-tool-section,
 .side-nav-flat-tool-list {
@@ -478,112 +477,84 @@ body,
 .side-nav-root-panel { align-content: start; }
 .side-nav-category-list { gap: 0; }
 
-.side-nav-category-button {
+.side-nav-category-accordion {
+  border-bottom: 1px solid color-mix(in srgb, var(--line-strong), transparent 42%);
+  border-radius: 0;
+  min-width: 0;
+}
+
+.side-nav-category-accordion:first-child {
+  border-top: 1px solid color-mix(in srgb, var(--line-strong), transparent 42%);
+}
+
+.side-nav-category-summary {
   align-items: center;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--line-strong), transparent 42%);
+  border-radius: 0;
   color: #c9d2ce;
+  cursor: pointer;
   display: grid;
   font: inherit;
   font-size: 0.64rem;
   font-weight: 720;
   gap: 7px;
   grid-template-columns: 16px minmax(0, 1fr) auto 14px;
+  list-style: none;
   min-height: 34px;
   padding: 6px 7px;
   text-align: left;
   width: 100%;
 }
 
-.side-nav-category-button:first-child {
-  border-top: 1px solid color-mix(in srgb, var(--line-strong), transparent 42%);
-}
+.side-nav-category-summary::-webkit-details-marker { display: none; }
+.side-nav-category-summary::marker { content: ""; }
 
-.side-nav-category-button:hover,
-.side-nav-category-button:focus-visible,
-.side-nav-category-button.active {
+.side-nav-category-summary:hover,
+.side-nav-category-summary:focus-visible,
+.side-nav-category-accordion.active > .side-nav-category-summary,
+.side-nav-category-accordion[open] > .side-nav-category-summary {
   background: color-mix(in srgb, var(--depth-primary), transparent 84%);
   color: #ffffff;
 }
 
-.side-nav-category-button:focus-visible {
+.side-nav-category-summary:focus-visible {
   outline: 1px solid var(--depth-primary);
   outline-offset: -1px;
 }
 
-.side-nav-category-button .side-nav-label {
+.side-nav-category-summary .side-nav-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.side-nav-category-button small,
-.side-nav-category-heading small,
-.side-nav-tool-section > header small {
+.side-nav-category-summary small,
+.side-nav-tool-section > summary small {
   color: #8f9e97;
   font-size: 0.58rem;
   font-weight: 700;
 }
 
-.side-nav-forward {
+.side-nav-disclosure {
   color: var(--chrome-accent, var(--depth-primary));
   font-size: 0.8rem;
   justify-self: end;
+  transition: transform 120ms ease;
 }
 
-.side-nav-category-header {
-  background: var(--nav);
-  display: grid;
-  gap: 4px;
-  position: sticky;
-  top: -7px;
-  z-index: 2;
+.side-nav-category-accordion[open] > .side-nav-category-summary .side-nav-disclosure,
+.side-nav-tool-section[open] > summary .side-nav-disclosure {
+  transform: rotate(90deg);
 }
 
-.side-nav-back {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--line-strong), transparent 34%);
-  color: #aeb9b4;
-  display: flex;
-  font: inherit;
-  font-size: 0.62rem;
-  font-weight: 720;
-  gap: 7px;
-  justify-content: flex-start;
-  min-height: 30px;
-  padding: 5px 7px;
-  width: 100%;
+.side-nav-category-body {
+  border-left: 1px solid color-mix(in srgb, var(--line-strong), transparent 28%);
+  gap: 3px;
+  margin: 2px 0 6px 8px;
+  padding-left: 6px;
 }
-
-.side-nav-back:hover,
-.side-nav-back:focus-visible {
-  background: color-mix(in srgb, var(--depth-primary), transparent 88%);
-  color: #ffffff;
-}
-
-.side-nav-category-heading {
-  align-items: center;
-  background: color-mix(in srgb, var(--nav-raised), var(--nav) 22%);
-  border-block: 1px solid color-mix(in srgb, var(--line-strong), transparent 18%);
-  border-left: 2px solid var(--depth-primary);
-  display: grid;
-  gap: 7px;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  min-height: 38px;
-  padding: 7px 8px;
-}
-
-.side-nav-category-heading strong {
-  color: #f0f4f2;
-  font-size: 0.72rem;
-  line-height: 1.2;
-}
-
-.side-nav-category-body { gap: 8px; padding-top: 3px; }
 
 .side-nav-flat-tool-list {
   list-style: none;
@@ -591,10 +562,10 @@ body,
   padding: 0;
 }
 
-.side-nav-category-panel .side-nav-item,
+.side-nav-category-body .side-nav-item,
 .side-nav-category-direct .side-nav-item { width: 100%; }
 
-.side-nav-category-panel .side-nav-tool-link,
+.side-nav-category-body .side-nav-tool-link,
 .side-nav-category-direct .side-nav-tool-link {
   align-items: center;
   border: 1px solid transparent;
@@ -609,18 +580,18 @@ body,
   text-decoration: none;
 }
 
-.side-nav-category-panel .side-nav-tool-link:hover,
-.side-nav-category-panel .side-nav-tool-link:focus,
-.side-nav-category-panel .side-nav-tool-link.active {
+.side-nav-category-body .side-nav-tool-link:hover,
+.side-nav-category-body .side-nav-tool-link:focus,
+.side-nav-category-body .side-nav-tool-link.active {
   background: color-mix(in srgb, var(--depth-primary), transparent 84%);
   color: #ffffff;
 }
 
-.side-nav-category-panel .side-nav-tool-link.active {
+.side-nav-category-body .side-nav-tool-link.active {
   border-color: color-mix(in srgb, var(--depth-primary), transparent 42%);
 }
 
-.side-nav-category-panel .side-nav-label,
+.side-nav-category-body .side-nav-label,
 .side-nav-category-direct .side-nav-label {
   line-height: 1.25;
   overflow: visible;
@@ -642,28 +613,62 @@ body,
   width: 10px;
 }
 
-.side-nav-tool-section { gap: 2px; }
+.side-nav-tool-section {
+  border: 0;
+  border-radius: 0;
+  gap: 0;
+}
 
-.side-nav-tool-section > header {
+.side-nav-tool-section > summary {
   align-items: center;
   background: color-mix(in srgb, var(--nav-raised), var(--nav) 30%);
   border-block: 1px solid color-mix(in srgb, var(--line-strong), transparent 22%);
   border-left: 2px solid color-mix(in srgb, var(--depth-primary), transparent 18%);
+  border-radius: 0;
   color: #d8dfdc;
+  cursor: pointer;
   display: grid;
   gap: 7px;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: 10px minmax(0, 1fr) auto 12px;
+  list-style: none;
   min-height: 29px;
   padding: 5px 7px;
 }
 
-.side-nav-tool-section > header strong {
+.side-nav-tool-section > summary::-webkit-details-marker { display: none; }
+.side-nav-tool-section > summary::marker { content: ""; }
+
+.side-nav-tool-section > summary:hover,
+.side-nav-tool-section > summary:focus-visible,
+.side-nav-tool-section[open] > summary {
+  background: color-mix(in srgb, var(--depth-primary), transparent 88%);
+  color: #ffffff;
+}
+
+.side-nav-tool-section > summary:focus-visible {
+  outline: 1px solid var(--depth-primary);
+  outline-offset: -1px;
+}
+
+.side-nav-tool-section > summary strong {
   color: inherit;
   font-size: 0.59rem;
   font-weight: 790;
   letter-spacing: 0.095em;
   line-height: 1.2;
   text-transform: uppercase;
+}
+
+.side-nav-tool-section > summary small {
+  color: #8f9e97;
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+
+.side-nav-tool-section > .side-nav-flat-tool-list {
+  border-left: 1px solid color-mix(in srgb, var(--line-strong), transparent 34%);
+  margin-left: 5px;
+  padding-left: 5px;
 }
 
 .side-nav-section-accent {
@@ -1959,87 +1964,100 @@ dialog::backdrop { background: rgb(5 8 10 / 68%); }
   .side-nav-help { padding: 6px 9px; }
   .side-nav-category-body { gap: 2px; padding-top: 1px; }
   .side-nav-tool-section { gap: 0; }
-  .side-nav-tool-section > header { min-height: 22px; padding: 2px 7px; }
-  .side-nav-category-panel .side-nav-tool-link,
+  .side-nav-tool-section > summary { min-height: 22px; padding: 2px 7px; }
+  .side-nav-category-body .side-nav-tool-link,
   .side-nav-category-direct .side-nav-tool-link {
     line-height: 1.08;
     min-height: 22px;
     padding: 2px 7px;
   }
 
-  [data-layout="focus"] .app-sidebar {
-    transition: width 140ms ease, box-shadow 140ms ease;
-    width: var(--ui-sidebar-width);
-    z-index: 40;
+  [data-layout="focus"] .app-layout.with-sidebar {
+    transition: grid-template-columns 140ms ease;
   }
 
-  [data-layout="focus"] .app-sidebar:hover,
-  [data-layout="focus"] .app-sidebar:focus-within {
-    box-shadow: 14px 0 32px rgb(0 0 0 / 28%);
+  [data-layout="focus"] .app-sidebar {
+    transition: width 140ms ease;
+    width: var(--ui-sidebar-width);
+  }
+
+  /* Focus mode expands as a real tile. Keeping the grid column and sidebar at
+     the same width prevents the navigation from covering or clipping tools. */
+  [data-layout="focus"] body.focus-sidebar-expanded .app-layout.with-sidebar {
+    grid-template-columns: var(--ui-sidebar-expanded-width) minmax(0, 1fr);
+  }
+
+  [data-layout="focus"] body.focus-sidebar-expanded .app-sidebar {
     width: var(--ui-sidebar-expanded-width);
   }
 
   [data-layout="focus"] .sidebar-resizer { display: none; }
 
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-category-button {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-category-summary {
     grid-template-columns: 18px;
     justify-content: center;
     padding-inline: 5px;
   }
 
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-category-button .side-nav-label,
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-category-button small,
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-forward {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-category-summary .side-nav-label,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-category-summary small,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-disclosure {
     display: none;
   }
 
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-search,
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-label,
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-section summary small,
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-favorite-form,
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-version,
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-instance,
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-section:not(.side-nav-singleton) > :not(summary) {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-search,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-label,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-section summary small,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-favorite-form,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-version,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-instance,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-section:not(.side-nav-singleton) > :not(summary),
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-category-accordion > :not(summary) {
     display: none;
   }
 
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-scroll {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-scroll {
     padding: 6px;
   }
 
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-section {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-section {
     border: 0;
     padding: 0;
   }
 
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-section summary,
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-home,
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-section a {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-category-accordion {
+    border-inline: 0;
+  }
+
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-section summary,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-category-summary,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-home,
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-section a {
     justify-content: center;
     padding: 5px;
   }
 
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-section summary::after {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-section summary::after {
     display: none;
   }
 
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-icon {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-icon {
     flex-basis: 18px;
     width: 18px;
   }
 
   /* Keep the search row's height in the rail so hover expansion cannot move a
      category out from underneath the pointer. */
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-search {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-search {
     display: block;
   }
 
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-search label {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-search label {
     justify-content: center;
     padding: 0;
   }
 
-  [data-layout="focus"] .app-sidebar:not(:hover):not(:focus-within) .side-nav-search input {
+  [data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar .side-nav-search input {
     display: none;
   }
 
@@ -2079,9 +2097,9 @@ dialog::backdrop { background: rgb(5 8 10 / 68%); }
   .side-nav-home,
   .side-nav-section a,
   .side-nav-parent-label { min-height: 38px; }
-  .side-nav-category-button,
-  .side-nav-back,
-  .side-nav-category-panel .side-nav-tool-link { min-height: 42px; }
+  .side-nav-category-summary,
+  .side-nav-category-body .side-nav-tool-link { min-height: 42px; }
+  .side-nav-tool-section > summary { min-height: 38px; }
   .live-tool-tray { left: 0; }
   .shell { padding: 4px; }
   .shell > * + * { margin-top: 4px; }
