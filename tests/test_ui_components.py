@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -525,6 +526,17 @@ class UIComponentTests(unittest.TestCase):
         ):
             rule = stylesheet.split(selector, 1)[1].split("}", 1)[0]
             self.assertIn("border-radius: var(--ui-radius, 0);", rule)
+
+    def test_raspberry_pi_networking_uses_shared_theme_geometry(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        pi_styles = stylesheet.split("/* Raspberry Pi networking settings */", 1)[
+            1
+        ].split("/* LLDP Lab */", 1)[0]
+
+        self.assertEqual(pi_styles.count("border-radius: var(--ui-radius, 0);"), 13)
+        self.assertIsNone(re.search(r"border-radius:\s*\d", pi_styles))
 
     def test_account_management_controls_and_metadata_keep_theme_contrast(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
