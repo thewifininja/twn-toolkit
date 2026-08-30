@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import action_row, case_recorded_notice, profile_card, profile_create, profile_section, section_header, workspace_intro %}
+{% from "components/ui.html" import action_row, case_recorded_notice, profile_card, profile_create, profile_section, section_header, tool_result_runbar, tool_settings_backdrop, workspace_intro %}
 
 {% block content %}
 {{ workspace_intro("SNMP Tester", "Manage SNMP access, map devices to credentials, build reusable OID collections, and validate multiple hosts.") }}
@@ -7,6 +7,21 @@
 
 {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
+{% set initial_snmp_tab = 'tests' if results is not none else ('monitor' if requested_live_session else 'tests') %}
+<div class="snmp-workspace" data-workspace-tabs data-initial-tab="{{ initial_snmp_tab }}" data-forced-tab="{{ 'true' if results is not none or requested_live_session else 'false' }}" data-workspace-tabs-key="twn.snmp-workspace-tab">
+  <nav class="tool-workspace-tabs snmp-workspace-tabs" role="tablist" aria-label="SNMP workspace">
+    <button id="snmp-tests-tab" type="button" role="tab" data-workspace-tab="tests" aria-controls="snmp-tests-panel" aria-selected="{{ 'true' if initial_snmp_tab == 'tests' else 'false' }}">
+      <span>Run tests</span><small>{{ hosts|length }} host{{ '' if hosts|length == 1 else 's' }} · {{ oid_profiles|length }} collection{{ '' if oid_profiles|length == 1 else 's' }}</small>
+    </button>
+    <button id="snmp-monitor-tab" type="button" role="tab" data-workspace-tab="monitor" aria-controls="snmp-monitor-panel" aria-selected="{{ 'true' if initial_snmp_tab == 'monitor' else 'false' }}">
+      <span>Bandwidth monitor</span><small>Live interface graphs</small>
+    </button>
+    <button id="snmp-profiles-tab" type="button" role="tab" data-workspace-tab="profiles" aria-controls="snmp-profiles-panel" aria-selected="false">
+      <span>Profiles</span><small>{{ credentials|length + hosts|length + oid_profiles|length }} saved items</small>
+    </button>
+  </nav>
+
+<div id="snmp-profiles-panel" class="snmp-workspace-panel" role="tabpanel" aria-labelledby="snmp-profiles-tab" data-workspace-panel="profiles" tabindex="0" hidden>
 <section class="panel snmp-management-panel saved-profile-library-panel">
   {{ section_header("SNMP profiles", "Manage credentials, target hosts, and reusable OID collections. Secret values are never rendered back into this page.", class_name="profile-manager-head") }}
   <div class="access-profile-list snmp-management-list saved-profile-library">
@@ -191,7 +206,9 @@
     {% endcall %}
   </div>
 </section>
+</div>
 
+<div id="snmp-monitor-panel" class="snmp-workspace-panel" role="tabpanel" aria-labelledby="snmp-monitor-tab" data-workspace-panel="monitor" tabindex="0" {% if initial_snmp_tab != 'monitor' %}hidden{% endif %}>
 <section
   class="panel snmp-interface-monitor"
   id="snmp-interface-monitor-workspace"
@@ -276,16 +293,23 @@
   </div>
   <button class="snmp-monitor-restore-inline" type="button">Restore monitor</button>
 </section>
+</div>
 
-<section class="panel">
-  <div class="panel-head">
-    <h2>Run Tests</h2>
-    <p>Select one or more hosts and OID collections. Each host uses its mapped SNMP profile.</p>
+{% set has_results = results is not none %}
+{% set success_count = results|selectattr('status', 'equalto', 'success')|list|length if has_results else 0 %}
+<div id="snmp-tests-panel" class="snmp-workspace-panel" role="tabpanel" aria-labelledby="snmp-tests-tab" data-workspace-panel="tests" tabindex="0" {% if initial_snmp_tab != 'tests' %}hidden{% endif %}>
+<div class="tool-workspace snmp-test-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
+{{ tool_result_runbar('Test complete', 'SNMP tests', (success_count ~ ' of ' ~ (results|length) ~ ' test(s) succeeded') if has_results else '', 'snmp-test-form', 'snmp-test-settings', has_results, 'Test again') }}
+<section class="panel tool-setup-panel" id="snmp-test-settings" data-tool-settings-panel>
+  <div class="panel-head tool-setup-heading">
+    <div><h2>Run Tests</h2><p>Select one or more hosts and OID collections. Each host uses its mapped SNMP profile.</p></div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
-  <form class="form" method="post" data-loading-message="Running SNMP tests…">
-    <div class="grid two">
-      <fieldset class="choice-group snmp-run-choices">
-        <legend>Hosts</legend>
+  <form class="form compact-tool-form snmp-test-form" id="snmp-test-form" method="post" data-loading-message="Running SNMP tests…">
+    <div class="snmp-test-config-grid">
+      <fieldset class="choice-group snmp-run-choices compact-tool-config-card">
+        <legend><span class="eyebrow">Targets</span>Saved hosts</legend>
+        <p class="field-note">Each device uses the credential profile already mapped to it.</p>
         {% for host in hosts %}
           <label class="check">
             <input name="host_names" type="checkbox" value="{{ host.name }}" {% if host.name in selected_hosts %}checked{% endif %}>
@@ -295,8 +319,9 @@
           <span class="empty">Create a host profile first.</span>
         {% endfor %}
       </fieldset>
-      <fieldset class="choice-group snmp-run-choices">
-        <legend>OID profiles</legend>
+      <fieldset class="choice-group snmp-run-choices compact-tool-config-card">
+        <legend><span class="eyebrow">Measurements</span>OID collections</legend>
+        <p class="field-note">Select one or more reusable GET, walk, or calculated collections.</p>
         {% for profile in oid_profiles %}
           <label class="check">
             <input name="oid_profile_names" type="checkbox" value="{{ profile.name }}" {% if profile.name in selected_oid_profiles %}checked{% endif %}>
@@ -305,12 +330,15 @@
         {% endfor %}
       </fieldset>
     </div>
-    <div class="button-row">
+    <div class="compact-tool-runbar snmp-test-runbar">
+      <div><strong>Run the selected combinations</strong><span>Each selected collection is tested against every selected host.</span></div>
       <button type="submit" {% if not hosts %}disabled{% endif %}>Run SNMP tests</button>
     </div>
   </form>
 </section>
+{{ tool_settings_backdrop('SNMP test') }}
 
+<div data-tool-results-anchor tabindex="-1">
 {% if results is not none %}
 <section class="panel">
   <div class="panel-head">
@@ -354,6 +382,10 @@
   </div>
 </section>
 {% endif %}
+</div>
+</div>
+</div>
+</div>
 
 <script src="{{ url_for('static', filename='snmp-test.js') }}"></script>
 <script src="{{ url_for('static', filename='snmp-interface-monitor.js') }}"></script>

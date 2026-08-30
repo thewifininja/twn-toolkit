@@ -968,11 +968,11 @@ class NetworkToolTests(unittest.TestCase):
 
             self.assertIn(b"DNS Tester", client.get("/").data)
             home_page = client.get("/")
-            self.assertIn(b"brand/dragon-mark-128.png", home_page.data)
-            self.assertIn(b"brand/favicon-32.png", home_page.data)
+            self.assertIn(b"&gt;_TWN:~$", home_page.data)
+            self.assertIn(b"TWN Toolkit", home_page.data)
+            self.assertNotIn(b"dragon-mark", home_page.data)
             favicon = client.get("/favicon.ico")
-            self.assertEqual(favicon.status_code, 200)
-            self.assertEqual(favicon.mimetype, "image/png")
+            self.assertEqual(favicon.status_code, 204)
             favicon.close()
             self.assertIn(b"RADIUS Authentication Test", client.get("/").data)
             self.assertIn(b"Wi-Fi / LAN Speed Test", client.get("/").data)
@@ -1210,6 +1210,10 @@ class NetworkToolTests(unittest.TestCase):
                 )
             self.assertIn(b"192.0.2.10", response.data)
             self.assertIn(b"12.3 ms", response.data)
+            self.assertIn(b'data-dns-rerun', response.data)
+            self.assertIn(b'form="dns-form"', response.data)
+            self.assertIn(b">Run again</button>", response.data)
+            self.assertIn(b">Edit settings</button>", response.data)
 
             load_result = {
                 "record_type": "A",

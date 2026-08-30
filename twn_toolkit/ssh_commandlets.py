@@ -25,6 +25,8 @@ SSH_MATRIX_COLUMN_LIMIT = 20
 SSH_MATRIX_VALUE_LIMIT = 500
 SSH_COMMANDLET_DESCRIPTION_LIMIT = 500
 SSH_COMMANDLET_PLATFORM_LIMIT = 80
+SSH_MATRIX_ACTION_LIMIT = 100
+SSH_PROFILE_NAME_LIMIT = 100
 SSH_PREVIEW_MAX_AGE_SECONDS = 30 * 60
 
 _VARIABLE_REFERENCE = re.compile(r"\{\{\s*([A-Za-z][A-Za-z0-9 _/-]*?)\s*\}\}")
@@ -39,11 +41,96 @@ class SSHCommandletStore(JsonListStore):
     def __init__(self, instance_path: str) -> None:
         super().__init__(instance_path, "ssh_commandlets.json")
 
+    def all(self) -> list[dict[str, Any]]:
+        _migrate_legacy_ssh_profiles(str(self.instance_path))
+        matrices = {
+            matrix["name"]: matrix
+            for matrix in SSHHostMatrixStore(str(self.instance_path)).all()
+        }
+        return [
+            _resolved_commandlet(commandlet, matrices)
+            for commandlet in super().all()
+        ]
+
+    def get(self, name: str) -> dict[str, Any] | None:
+        return next(
+            (commandlet for commandlet in self.all() if commandlet["name"] == name),
+            None,
+        )
+
     def upsert(self, commandlet: dict[str, Any], original_name: str = "") -> None:
+        _migrate_legacy_ssh_profiles(str(self.instance_path))
+        commandlet = dict(commandlet)
+        embedded = str(commandlet.get("target_matrix", "")).strip()
+        if embedded:
+            matrix_store = SSHHostMatrixStore(str(self.instance_path))
+            matrices = matrix_store.all()
+            fingerprint = _matrix_fingerprint(embedded)
+            matrix_name = next(
+                (
+                    str(matrix["name"])
+                    for matrix in matrices
+                    if _matrix_fingerprint(str(matrix["matrix"])) == fingerprint
+                ),
+                "",
+            )
+            if not matrix_name:
+                base = f"{str(commandlet.get('name', 'Command set')).strip()} targets"
+                base = base[:SSH_PROFILE_NAME_LIMIT].strip() or "Saved targets"
+                matrix_name = _unique_profile_name(
+                    base, {str(matrix["name"]) for matrix in matrices}
+                )
+                matrix_store.upsert(
+                    {
+                        "name": matrix_name,
+                        "description": (
+                            f"Targets saved with the {commandlet.get('name', 'command')} command set."
+                        ),
+                        "matrix": embedded,
+                        "created_at": commandlet.get("created_at", ""),
+                    }
+                )
+            raw_matrix_names = commandlet.get("matrix_names", [])
+            matrix_names = (
+                [raw_matrix_names]
+                if isinstance(raw_matrix_names, str)
+                else list(raw_matrix_names)
+                if isinstance(raw_matrix_names, list)
+                else []
+            )
+            if matrix_name not in matrix_names:
+                matrix_names.append(matrix_name)
+            commandlet["matrix_names"] = matrix_names
         self._upsert(
             normalize_ssh_commandlet(commandlet),
             original_name=original_name,
         )
+
+
+class SSHHostMatrixStore(JsonListStore):
+    def __init__(self, instance_path: str) -> None:
+        super().__init__(instance_path, "ssh_host_matrices.json")
+
+    def all(self) -> list[dict[str, Any]]:
+        _migrate_legacy_ssh_profiles(str(self.instance_path))
+        _migrate_matrix_actions(str(self.instance_path))
+        return super().all()
+
+    def get(self, name: str) -> dict[str, Any] | None:
+        return next(
+            (matrix for matrix in self.all() if matrix["name"] == name),
+            None,
+        )
+
+    def upsert(self, matrix: dict[str, Any], original_name: str = "") -> None:
+        _migrate_legacy_ssh_profiles(str(self.instance_path))
+        self._upsert(
+            normalize_ssh_host_matrix(matrix),
+            original_name=original_name,
+        )
+
+
+SSHCommandSetStore = SSHCommandletStore
 
 
 def normalize_variable_name(value: str) -> str:
@@ -244,6 +331,40 @@ def build_ssh_command_plans(
     }
 
 
+def ssh_matrix_command_compatibility(
+    matrix_text: str,
+    commands: list[str] | str,
+) -> dict[str, Any]:
+    matrix = parse_ssh_target_matrix(matrix_text)
+    referenced = referenced_ssh_variables(commands)
+    available = list(matrix["variable_names"])
+    missing_variables = [name for name in referenced if name not in available]
+    incomplete_targets: list[dict[str, Any]] = []
+    if not missing_variables:
+        for target in matrix["targets"]:
+            missing_values = [
+                name
+                for name in referenced
+                if not str(target["variables"].get(name, "")).strip()
+            ]
+            if missing_values:
+                incomplete_targets.append(
+                    {
+                        "host": target["host"],
+                        "label": target["label"] or target["host"],
+                        "missing_variables": missing_values,
+                    }
+                )
+    return {
+        "compatible": not missing_variables and not incomplete_targets,
+        "required_variables": referenced,
+        "available_variables": available,
+        "missing_variables": missing_variables,
+        "incomplete_targets": incomplete_targets,
+        "target_count": len(matrix["targets"]),
+    }
+
+
 def ssh_command_plan_digest(plans: list[dict[str, Any]]) -> str:
     preview = [
         {
@@ -267,11 +388,12 @@ def normalize_ssh_commandlet(commandlet: dict[str, Any]) -> dict[str, Any]:
     description = str(commandlet.get("description", "")).strip()
     platform = " ".join(str(commandlet.get("platform", "")).split())
     commands = str(commandlet.get("commands", "")).strip()
-    target_matrix = str(commandlet.get("target_matrix", "")).strip()
     if not name:
-        raise ToolInputError("Enter a Commandlet name.")
-    if len(name) > 100:
-        raise ToolInputError("Commandlet names must be 100 characters or fewer.")
+        raise ToolInputError("Enter a command-set name.")
+    if len(name) > SSH_PROFILE_NAME_LIMIT:
+        raise ToolInputError(
+            f"Command-set names must be {SSH_PROFILE_NAME_LIMIT} characters or fewer."
+        )
     if len(description) > SSH_COMMANDLET_DESCRIPTION_LIMIT:
         raise ToolInputError(
             f"Commandlet descriptions must be {SSH_COMMANDLET_DESCRIPTION_LIMIT} characters or fewer."
@@ -287,15 +409,16 @@ def normalize_ssh_commandlet(commandlet: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError) as exc:
         raise ToolInputError("Default command timeout must be a whole number.") from exc
     command_lines = [line for line in commands.splitlines() if line.strip()]
-    target_count = 0
-    if target_matrix:
-        plans = build_ssh_command_plans(
-            target_matrix, command_lines, default_timeout
-        )
-        target_count = len(plans["targets"])
-    else:
-        parse_ssh_commands(command_lines, default_timeout)
+    parse_ssh_commands(command_lines, default_timeout)
     variables = referenced_ssh_variables(command_lines)
+    raw_matrix_names = commandlet.get("matrix_names", [])
+    if isinstance(raw_matrix_names, str):
+        raw_matrix_names = [raw_matrix_names]
+    matrix_names: list[str] = []
+    for raw_name in raw_matrix_names if isinstance(raw_matrix_names, list) else []:
+        matrix_name = " ".join(str(raw_name).split())
+        if matrix_name and matrix_name not in matrix_names:
+            matrix_names.append(matrix_name[:SSH_PROFILE_NAME_LIMIT])
     now = datetime.now(timezone.utc).isoformat()
     created_at = str(commandlet.get("created_at", "")).strip() or now
     return {
@@ -304,12 +427,237 @@ def normalize_ssh_commandlet(commandlet: dict[str, Any]) -> dict[str, Any]:
         "platform": platform,
         "commands": commands,
         "command_timeout": default_timeout,
-        "target_matrix": target_matrix,
-        "target_count": target_count,
         "variables": variables,
+        "matrix_names": matrix_names,
         "created_at": created_at,
         "updated_at": now,
     }
+
+
+def normalize_ssh_matrix_action(action: dict[str, Any]) -> dict[str, Any]:
+    if not " ".join(str(action.get("name", "")).split()):
+        raise ToolInputError("Enter a CLI-action name.")
+    normalized = normalize_ssh_commandlet(action)
+    return {
+        key: normalized[key]
+        for key in (
+            "name",
+            "description",
+            "platform",
+            "commands",
+            "command_timeout",
+            "variables",
+            "created_at",
+            "updated_at",
+        )
+    }
+
+
+def ssh_matrix_actions_to_commands(actions: list[dict[str, Any]]) -> str:
+    if not actions:
+        raise ToolInputError("Select at least one CLI action.")
+    if len(actions) > SSH_MATRIX_ACTION_LIMIT:
+        raise ToolInputError(
+            f"A maximum of {SSH_MATRIX_ACTION_LIMIT} CLI actions is allowed per matrix."
+        )
+    command_lines: list[str] = []
+    for action in actions:
+        normalized = normalize_ssh_matrix_action(action)
+        parsed = parse_ssh_commands(
+            str(normalized["commands"]).splitlines(),
+            int(normalized["command_timeout"]),
+        )
+        command_lines.extend(
+            f"[timeout={int(spec['timeout'])}] {spec['command']}" for spec in parsed
+        )
+    return "\n".join(command_lines)
+
+
+def normalize_ssh_host_matrix(matrix: dict[str, Any]) -> dict[str, Any]:
+    name = " ".join(str(matrix.get("name", "")).split())
+    description = str(matrix.get("description", "")).strip()
+    matrix_text = str(matrix.get("matrix", "")).strip()
+    if not name:
+        raise ToolInputError("Enter a host-matrix name.")
+    if len(name) > SSH_PROFILE_NAME_LIMIT:
+        raise ToolInputError(
+            f"Host-matrix names must be {SSH_PROFILE_NAME_LIMIT} characters or fewer."
+        )
+    if len(description) > SSH_COMMANDLET_DESCRIPTION_LIMIT:
+        raise ToolInputError(
+            f"Host-matrix descriptions must be {SSH_COMMANDLET_DESCRIPTION_LIMIT} characters or fewer."
+        )
+    parsed = parse_ssh_target_matrix(matrix_text)
+    raw_actions = matrix.get("actions", [])
+    actions = (
+        [normalize_ssh_matrix_action(action) for action in raw_actions]
+        if isinstance(raw_actions, list)
+        else []
+    )
+    if len(actions) > SSH_MATRIX_ACTION_LIMIT:
+        raise ToolInputError(
+            f"A maximum of {SSH_MATRIX_ACTION_LIMIT} CLI actions is allowed per matrix."
+        )
+    action_names: set[str] = set()
+    for action in actions:
+        comparable = str(action["name"]).casefold()
+        if comparable in action_names:
+            raise ToolInputError("CLI-action names must be unique within a host matrix.")
+        action_names.add(comparable)
+    now = datetime.now(timezone.utc).isoformat()
+    created_at = str(matrix.get("created_at", "")).strip() or now
+    action_schema_version = 1 if "actions" in matrix else int(
+        matrix.get("action_schema_version", 0) or 0
+    )
+    return {
+        "name": name,
+        "description": description,
+        "matrix": matrix_text,
+        "target_count": len(parsed["targets"]),
+        "variables": list(parsed["variable_names"]),
+        "actions": actions,
+        "action_schema_version": action_schema_version,
+        "created_at": created_at,
+        "updated_at": now,
+    }
+
+
+def _resolved_commandlet(
+    commandlet: dict[str, Any],
+    matrices: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    normalized = dict(commandlet)
+    normalized["matrix_names"] = list(normalized.get("matrix_names", []))
+    related = [
+        matrices[name]
+        for name in normalized.get("matrix_names", [])
+        if name in matrices
+    ]
+    return {
+        **normalized,
+        "target_matrix": related[0]["matrix"] if related else "",
+        "target_count": int(related[0]["target_count"]) if related else 0,
+        "related_matrix_count": len(related),
+    }
+
+
+def _migrate_legacy_ssh_profiles(instance_path: str) -> None:
+    command_store = JsonListStore(instance_path, "ssh_commandlets.json")
+    raw_commandlets = command_store.all()
+    if not any(str(item.get("target_matrix", "")).strip() for item in raw_commandlets):
+        return
+
+    matrix_store = JsonListStore(instance_path, "ssh_host_matrices.json")
+    matrices = [normalize_ssh_host_matrix(item) for item in matrix_store.all()]
+    fingerprints = {
+        _matrix_fingerprint(matrix["matrix"]): matrix["name"] for matrix in matrices
+    }
+    known_names = {str(matrix["name"]) for matrix in matrices}
+    migrated_commandlets: list[dict[str, Any]] = []
+    for raw in raw_commandlets:
+        embedded = str(raw.get("target_matrix", "")).strip()
+        raw_matrix_names = raw.get("matrix_names", [])
+        matrix_names = (
+            [str(raw_matrix_names)]
+            if isinstance(raw_matrix_names, str)
+            else [str(name) for name in raw_matrix_names]
+            if isinstance(raw_matrix_names, list)
+            else []
+        )
+        if embedded:
+            fingerprint = _matrix_fingerprint(embedded)
+            matrix_name = fingerprints.get(fingerprint)
+            if not matrix_name:
+                base = f"{str(raw.get('name', 'Command set')).strip()} targets"
+                base = base[:SSH_PROFILE_NAME_LIMIT].strip() or "Migrated targets"
+                matrix_name = _unique_profile_name(base, known_names)
+                migrated_matrix = normalize_ssh_host_matrix(
+                    {
+                        "name": matrix_name,
+                        "description": (
+                            f"Targets migrated from the {raw.get('name', 'legacy')} command set."
+                        ),
+                        "matrix": embedded,
+                        "created_at": raw.get("created_at", ""),
+                    }
+                )
+                matrices.append(migrated_matrix)
+                fingerprints[fingerprint] = matrix_name
+                known_names.add(matrix_name)
+            if matrix_name not in matrix_names:
+                matrix_names.append(matrix_name)
+        migrated_commandlets.append(
+            normalize_ssh_commandlet({**raw, "matrix_names": matrix_names})
+        )
+    matrix_store.replace_all(matrices)
+    command_store.replace_all(migrated_commandlets)
+
+
+def _migrate_matrix_actions(instance_path: str) -> None:
+    matrix_store = JsonListStore(instance_path, "ssh_host_matrices.json")
+    matrices = matrix_store.all()
+    pending = [
+        matrix
+        for matrix in matrices
+        if int(matrix.get("action_schema_version", 0) or 0) < 1
+    ]
+    if not pending:
+        return
+
+    command_store = JsonListStore(instance_path, "ssh_commandlets.json")
+    commandlets = command_store.all()
+    migrated: list[dict[str, Any]] = []
+    for raw_matrix in matrices:
+        if int(raw_matrix.get("action_schema_version", 0) or 0) >= 1:
+            migrated.append(raw_matrix)
+            continue
+        matrix_name = str(raw_matrix.get("name", ""))
+        related_actions = [
+            normalize_ssh_matrix_action(commandlet)
+            for commandlet in commandlets
+            if matrix_name
+            in (
+                [str(commandlet.get("matrix_names", ""))]
+                if isinstance(commandlet.get("matrix_names"), str)
+                else [str(name) for name in commandlet.get("matrix_names", [])]
+                if isinstance(commandlet.get("matrix_names"), list)
+                else []
+            )
+        ]
+        migrated.append(
+            normalize_ssh_host_matrix(
+                {
+                    **raw_matrix,
+                    "actions": related_actions,
+                    "action_schema_version": 1,
+                }
+            )
+        )
+    matrix_store.replace_all(migrated)
+
+
+def _matrix_fingerprint(matrix_text: str) -> str:
+    parsed = parse_ssh_target_matrix(matrix_text)
+    payload = {
+        "headers": parsed["headers"],
+        "targets": [target["variables"] for target in parsed["targets"]],
+    }
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _unique_profile_name(base: str, existing: set[str]) -> str:
+    if base not in existing:
+        return base
+    suffix = 2
+    while True:
+        ending = f" ({suffix})"
+        candidate = f"{base[: SSH_PROFILE_NAME_LIMIT - len(ending)]}{ending}"
+        if candidate not in existing:
+            return candidate
+        suffix += 1
 
 
 def _canonical_header(value: str) -> str:

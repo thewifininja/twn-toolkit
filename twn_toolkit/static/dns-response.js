@@ -131,6 +131,8 @@
         }
         sessionStorage.setItem(`twn:dns:${kind}`, payload.profile.name);
         status.textContent = `Saved ${kind === "hosts" ? "query" : "resolver"} profile “${payload.profile.name}”. Reloading…`;
+        button.closest("[data-saved-profile-manager]")
+          ?.dispatchEvent(new Event("savedprofilesaved"));
         window.location.reload();
       } catch (_error) {
         status.textContent = "The profile could not be saved. Try again.";

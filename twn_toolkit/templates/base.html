@@ -1,3 +1,4 @@
+{% from "components/ui.html" import brand_wordmark %}
 <!doctype html>
 <html
   lang="en"
@@ -12,10 +13,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% if page_title %}{{ page_title }} · {% endif %}{% if instance_name %}{{ instance_name }} · {% endif %}The WiFi Ninja’s Toolkit</title>
+    <title>{% if page_title %}{{ page_title }} · {% endif %}{% if instance_name %}{{ instance_name }} · {% endif %}TWN Toolkit</title>
     <meta name="theme-color" content="{{ '#0e0e14' if user_theme == 'dark' else '#f2f0e5' }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png', v=app_version) }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='brand/apple-touch-icon.png', v=app_version) }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=asset_version) }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='appearance.css', v=asset_version) }}">
   </head>
@@ -35,11 +34,7 @@
           <span></span>
         </button>
       {% endif %}
-      <a class="brand" href="{{ url_for('index') }}">
-        <img src="{{ url_for('static', filename='brand/dragon-mark-128.png', v=app_version) }}" alt="">
-        <span>The WiFi Ninja’s Toolkit</span>
-      </a>
-      <span class="subtitle">Fortinet workflows and network diagnostics</span>
+      <a class="brand" href="{{ url_for('index') }}" aria-label="TWN Toolkit">{{ brand_wordmark() }}</a>
       <nav class="topnav">
         {% if current_user %}
           <details class="appearance-menu" id="appearance-menu">
@@ -73,7 +68,7 @@
               <fieldset>
                 <legend>Workspace</legend>
                 <div class="appearance-choice-row">
-                  {% for value, label in [('tiled', 'Tiled'), ('compact', 'Compact'), ('focus', 'Focus')] %}
+                  {% for value, label in [('tiled', 'Tiled'), ('focus', 'Focus')] %}
                     <button type="button" data-appearance-key="layout" data-appearance-value="{{ value }}" aria-pressed="{{ 'true' if user_appearance.layout == value else 'false' }}">{{ label }}</button>
                   {% endfor %}
                 </div>
@@ -464,8 +459,11 @@
     <script src="{{ url_for('static', filename='checkbox-actions.js') }}"></script>
     <script src="{{ url_for('static', filename='profile-duplicate.js', v=asset_version) }}"></script>
     <script src="{{ url_for('static', filename='saved-profile-manager.js', v=asset_version) }}"></script>
+    <script src="{{ url_for('static', filename='select-control.js', v=asset_version) }}"></script>
     <script src="{{ url_for('static', filename='loading.js') }}"></script>
     <script src="{{ url_for('static', filename='sidebar.js', v=asset_version) }}"></script>
+    <script src="{{ url_for('static', filename='workspace-tabs.js', v=asset_version) }}"></script>
+    <script src="{{ url_for('static', filename='tool-results-workspace.js', v=asset_version) }}"></script>
     {% if active_investigation %}
       <script src="{{ url_for('static', filename='case-note.js', v=asset_version) }}"></script>
     {% endif %}

@@ -1,15 +1,48 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager %}
+{% from "components/ui.html" import case_recorded_notice %}
 
 {% block content %}
-<section class="panel dns-workspace-panel">
+{% set dns_has_results = results is not none or load_result is not none %}
+<div class="tool-workspace dns-tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if dns_has_results else 'setup' }}">
+<section class="tool-runbar" data-tool-runbar {% if not dns_has_results %}hidden{% endif %} aria-label="DNS result controls">
+  <div class="tool-runbar-state">
+    <span class="tool-runbar-indicator complete" aria-hidden="true"></span>
+    <div>
+      <span class="eyebrow">Test complete</span>
+      <strong>{{ 'DNS load test' if load_result is not none else 'DNS comparison' }}</strong>
+      <small>
+        {% if load_result is not none %}
+          {{ load_result.completed_queries }} queries · {{ load_result.success_rate }}% successful · {{ load_result.record_type }}
+        {% elif results is not none %}
+          {{ lookup_summary.queries }} lookup{{ '' if lookup_summary.queries == 1 else 's' }} · {{ lookup_summary.successful }} successful · {{ form.record_type }}
+        {% else %}
+          Ready to run
+        {% endif %}
+      </small>
+    </div>
+  </div>
+  <div class="tool-runbar-actions">
+    <button
+      type="submit"
+      form="dns-form"
+      data-dns-rerun
+      data-loading-message="{{ 'Running controlled DNS load test…' if form.mode == 'load' else 'Comparing DNS responses…' }}"
+    >Run again</button>
+    <button class="secondary" type="button" data-tool-settings-open aria-controls="dns-settings" aria-expanded="false">Edit settings</button>
+  </div>
+</section>
+
+<section class="panel dns-workspace-panel tool-setup-panel" id="dns-settings" data-tool-settings-panel>
   <header class="panel-head dns-workspace-head">
     <div>
       <span class="eyebrow">Resolution workspace</span>
       <h1>DNS Tester</h1>
       <p>Compare answers and latency across resolvers, or apply a controlled query load to DNS servers you are authorized to test.</p>
     </div>
-    <span class="dns-workspace-badge">Compare · Load test</span>
+    <div class="tool-setup-heading-actions">
+      <span class="dns-workspace-badge">Compare · Load test</span>
+      <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not dns_has_results %}hidden{% endif %}>Close settings</button>
+    </div>
   </header>
 
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
@@ -47,32 +80,29 @@
           <div>
             <span class="eyebrow">Step 1</span>
             <h2>Query names</h2>
-            <p>Names are distributed across every selected resolver.</p>
           </div>
           <span class="dns-card-limit">Up to 100</span>
         </header>
 
-        {% call saved_profile_manager("Query profiles", "Load or maintain reusable query-name lists.", host_profiles|length, "dns-profile-manager") %}
-          <div class="saved-profile-fields">
-            <label>Saved profile<select class="dns-profile-select" data-kind="hosts" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in host_profiles %}<option value="{{ profile.name }}" data-values='{{ profile["values"]|tojson }}'>{{ profile.name }}</option>{% endfor %}</select></label>
-            <label>Profile name<input class="profile-name-input" data-kind="hosts" data-saved-profile-name placeholder="Production domains" maxlength="100"></label>
-          </div>
-          <div class="saved-profile-manager-actions">
-            <span class="saved-profile-state" data-saved-profile-state>New profile</span>
-            <div class="button-row dns-profile-actions">
-              <button class="secondary dns-save-profile profile-save-action" data-kind="hosts" data-saved-profile-save type="button">Save profile</button>
-              <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_dns_profile', kind='hosts') }}" data-profile-select=".dns-profile-select[data-kind='hosts']" disabled>Duplicate</button>
-              <button class="danger dns-delete-profile" data-kind="hosts" data-saved-profile-delete type="button" disabled>Delete</button>
+        <section class="saved-profile-manager compact-profile-manager dns-profile-manager dns-inline-profile-manager" data-saved-profile-manager data-profile-state="new" aria-label="Query profiles">
+          <div class="compact-profile-controls">
+            <label class="compact-profile-select"><span class="sr-only">Saved query list</span><select class="dns-profile-select" data-kind="hosts" data-saved-profile-select aria-label="Saved query list"><option value="">New / unsaved list</option>{% for profile in host_profiles %}<option value="{{ profile.name }}" data-values='{{ profile["values"]|tojson }}'>{{ profile.name }}</option>{% endfor %}</select></label>
+            <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
+            <details class="compact-profile-more" data-saved-profile-more><summary aria-label="More query profile actions" title="More profile actions">•••</summary><div><button class="secondary" type="button" data-saved-profile-rename>Rename…</button><button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_dns_profile', kind='hosts') }}" data-profile-select=".dns-profile-select[data-kind='hosts']" disabled>Duplicate</button><button class="danger dns-delete-profile" data-kind="hosts" data-saved-profile-delete type="button" disabled>Delete</button></div></details>
+            <div class="compact-profile-naming" data-saved-profile-naming hidden>
+              <label>List name<input class="profile-name-input" data-kind="hosts" data-saved-profile-name placeholder="Production domains" maxlength="100"></label>
+              <button class="dns-save-profile profile-save-action" data-kind="hosts" data-saved-profile-save type="button">Save list</button>
+              <button class="secondary" type="button" data-saved-profile-cancel>Cancel</button>
             </div>
           </div>
-        {% endcall %}
+        </section>
 
         <label class="dns-source-field">
           <span>Hostnames, addresses, or ranges</span>
-          <textarea name="hosts" id="dns-hosts" rows="8" placeholder="Website = example.com&#10;Gateways = 192.0.2.1-192.0.2.4&#10;gateway.example.net" required>{{ form.hosts }}</textarea>
+          <textarea name="hosts" id="dns-hosts" rows="5" placeholder="Website = example.com&#10;Gateways = 192.0.2.1-192.0.2.4&#10;gateway.example.net" required>{{ form.hosts }}</textarea>
         </label>
 
-        <p class="field-note dns-card-note">{{ host_range_guidance(100, 'hosts') }}</p>
+        <p class="field-note dns-card-note">Labels: <code>Name = target</code> · ranges supported · 100 expanded hosts max.</p>
 
       </article>
 
@@ -81,32 +111,29 @@
           <div>
             <span class="eyebrow">Step 2</span>
             <h2>Resolvers</h2>
-            <p>Use IP addresses so each query follows the intended path.</p>
           </div>
           <span class="dns-card-limit">20 compare · {{ load_limits.servers }} load</span>
         </header>
 
-        {% call saved_profile_manager("Resolver profiles", "Load or maintain reusable DNS server lists.", server_profiles|length, "dns-profile-manager") %}
-          <div class="saved-profile-fields">
-            <label>Saved profile<select class="dns-profile-select" data-kind="servers" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in server_profiles %}<option value="{{ profile.name }}" data-values='{{ profile["values"]|tojson }}'>{{ profile.name }}</option>{% endfor %}</select></label>
-            <label>Profile name<input class="profile-name-input" data-kind="servers" data-saved-profile-name placeholder="Public resolvers" maxlength="100"></label>
-          </div>
-          <div class="saved-profile-manager-actions">
-            <span class="saved-profile-state" data-saved-profile-state>New profile</span>
-            <div class="button-row dns-profile-actions">
-              <button class="secondary dns-save-profile profile-save-action" data-kind="servers" data-saved-profile-save type="button">Save profile</button>
-              <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_dns_profile', kind='servers') }}" data-profile-select=".dns-profile-select[data-kind='servers']" disabled>Duplicate</button>
-              <button class="danger dns-delete-profile" data-kind="servers" data-saved-profile-delete type="button" disabled>Delete</button>
+        <section class="saved-profile-manager compact-profile-manager dns-profile-manager dns-inline-profile-manager" data-saved-profile-manager data-profile-state="new" aria-label="Resolver profiles">
+          <div class="compact-profile-controls">
+            <label class="compact-profile-select"><span class="sr-only">Saved resolver list</span><select class="dns-profile-select" data-kind="servers" data-saved-profile-select aria-label="Saved resolver list"><option value="">New / unsaved list</option>{% for profile in server_profiles %}<option value="{{ profile.name }}" data-values='{{ profile["values"]|tojson }}'>{{ profile.name }}</option>{% endfor %}</select></label>
+            <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
+            <details class="compact-profile-more" data-saved-profile-more><summary aria-label="More resolver profile actions" title="More profile actions">•••</summary><div><button class="secondary" type="button" data-saved-profile-rename>Rename…</button><button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_dns_profile', kind='servers') }}" data-profile-select=".dns-profile-select[data-kind='servers']" disabled>Duplicate</button><button class="danger dns-delete-profile" data-kind="servers" data-saved-profile-delete type="button" disabled>Delete</button></div></details>
+            <div class="compact-profile-naming" data-saved-profile-naming hidden>
+              <label>List name<input class="profile-name-input" data-kind="servers" data-saved-profile-name placeholder="Public resolvers" maxlength="100"></label>
+              <button class="dns-save-profile profile-save-action" data-kind="servers" data-saved-profile-save type="button">Save list</button>
+              <button class="secondary" type="button" data-saved-profile-cancel>Cancel</button>
             </div>
           </div>
-        {% endcall %}
+        </section>
 
         <label class="dns-source-field">
           <span>DNS server addresses</span>
-          <textarea name="servers" id="dns-servers" rows="8" placeholder="Cloudflare = 1.1.1.1&#10;Google = 8.8.8.8" required>{{ form.servers }}</textarea>
+          <textarea name="servers" id="dns-servers" rows="5" placeholder="Cloudflare = 1.1.1.1&#10;Google = 8.8.8.8" required>{{ form.servers }}</textarea>
         </label>
 
-        <p class="field-note dns-card-note">Enter one IPv4 or IPv6 address per line. Optional labels use <code>Name = address</code>.</p>
+        <p class="field-note dns-card-note">IPv4/IPv6 addresses · optional labels: <code>Name = address</code>.</p>
 
       </article>
     </div>
@@ -175,8 +202,10 @@
   </form>
 </section>
 
+<button class="tool-settings-backdrop" type="button" data-tool-settings-close hidden aria-label="Close DNS settings"></button>
+
 {% if results is not none %}
-<section class="panel dns-results-panel">
+<section class="panel dns-results-panel" data-tool-results-anchor tabindex="-1">
   <header class="panel-head dns-results-head">
     <div>
       <span class="eyebrow">Comparison complete</span>
@@ -211,7 +240,7 @@
 {% endif %}
 
 {% if load_result is not none %}
-<section class="panel dns-results-panel">
+<section class="panel dns-results-panel" data-tool-results-anchor tabindex="-1">
   <header class="panel-head dns-results-head">
     <div>
       <span class="eyebrow">Load test complete</span>
@@ -255,6 +284,8 @@
   </div>
 </section>
 {% endif %}
+</div>
 
+<script src="{{ url_for('static', filename='tool-results-workspace.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='dns-response.js', v=app_version) }}"></script>
 {% endblock %}

@@ -327,6 +327,19 @@ class AutomationStore:
             })
         if not normalized:
             raise ValueError("Select at least one automation action.")
+        # Older versions rendered the continuation selector inside every stage,
+        # including the final stage where it could never be evaluated. If the
+        # only non-default route was placed on that final card, treat it as the
+        # transition into that card. This repairs the common fallback-action
+        # configuration without changing pipelines that already put their rule
+        # on the preceding stage.
+        if (
+            len(normalized) > 1
+            and normalized[-1]["continue_policy"] != "all_completed"
+            and normalized[-2]["continue_policy"] == "all_completed"
+        ):
+            normalized[-2]["continue_policy"] = normalized[-1]["continue_policy"]
+            normalized[-1]["continue_policy"] = "all_completed"
         return normalized
 
     def save_condition_definition(

@@ -172,6 +172,28 @@ def test_legacy_theme_endpoint_maps_to_semantic_palette(tmp_path):
     assert client.post("/settings/theme", json={"theme": "sepia"}).status_code == 400
 
 
+def test_legacy_compact_workspace_migrates_to_tiled(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+
+    auth_path = tmp_path / "auth.json"
+    auth_data = json.loads(auth_path.read_text(encoding="utf-8"))
+    auth_data["users"][0]["appearance"]["layout"] = "compact"
+    auth_path.write_text(json.dumps(auth_data), encoding="utf-8")
+
+    assert AuthStore(str(tmp_path)).get_user("admin")["appearance"]["layout"] == "compact"
+    assert AuthStore(str(tmp_path)).user_appearance(auth_data["users"][0]["id"])["layout"] == "tiled"
+    page = client.get("/")
+    assert b'data-layout="tiled"' in page.data
+    assert b'data-appearance-value="compact"' not in page.data.split(
+        b"<legend>Workspace</legend>", 1
+    )[1].split(b"</fieldset>", 1)[0]
+    assert client.post(
+        "/settings/appearance", json={"layout": "compact"}
+    ).status_code == 400
+
+
 def test_admin_can_manage_users_timeout_and_passwords(tmp_path):
     app = create_app(str(tmp_path))
     client = app.test_client()
@@ -479,7 +501,7 @@ def test_admin_can_save_server_access_and_trigger_restart(tmp_path):
     assert settings["instance_name"] == "branch-tools"
     assert settings["preferred_fqdn"] == "branch-tools.example.test"
     page = client.get("/settings")
-    assert b"Settings \xc2\xb7 branch-tools \xc2\xb7 The WiFi Ninja" in page.data
+    assert b"Settings \xc2\xb7 branch-tools \xc2\xb7 TWN Toolkit" in page.data
 
 
 def test_admin_can_explicitly_regenerate_managed_certificate_for_fqdn(tmp_path):

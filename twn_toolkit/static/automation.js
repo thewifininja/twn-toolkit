@@ -159,6 +159,19 @@
           const delayValue = delaySeconds / delayDivisor;
           const delayLabel = delayValue === 1 ? delayUnit.slice(0, -1) : delayUnit;
           const timingSummary = index === 0 ? "starts immediately" : delaySeconds ? `wait ${delayValue} ${delayLabel}` : "no delay";
+          const policyControl = index < stages.length - 1 ? `
+            <label>Run Stage ${index + 2} when<select data-stage-policy>
+              <optgroup label="Normal paths">
+                <option value="all_completed" ${stage.continue_policy === "all_completed" ? "selected" : ""}>Always — regardless of result</option>
+                <option value="success_or_partial" ${stage.continue_policy === "success_or_partial" ? "selected" : ""}>Success or partial — no action errors</option>
+                <option value="all_success" ${stage.continue_policy === "all_success" ? "selected" : ""}>Full success — every action succeeds</option>
+              </optgroup>
+              <optgroup label="Failure paths">
+                <option value="any_failed" ${stage.continue_policy === "any_failed" ? "selected" : ""}>One or more actions fail</option>
+                <option value="all_failed" ${stage.continue_policy === "all_failed" ? "selected" : ""}>Every action fails</option>
+              </optgroup>
+            </select><small class="field-note" data-stage-policy-note>${escapeHtml(policyNotes[stage.continue_policy] || policyNotes.all_completed)}</small></label>` : `
+            <div class="automation-stage-timing"><span>Pipeline route</span><strong>Final stage</strong><small>No continuation rule is needed after this stage.</small></div>`;
           const delayControl = index === 0 ? `
             <div class="automation-stage-timing"><span>Delay before stage</span><strong>Immediate</strong><small>Begins as soon as the trigger fires.</small></div>` : `
             <label class="automation-stage-delay">Delay before stage
@@ -191,17 +204,7 @@
             </header>
             <div class="automation-stage-settings">
               <label>Name<input data-stage-name maxlength="100" value="${escapeHtml(stageName)}" required></label>
-              <label>Continue when<select data-stage-policy>
-                <optgroup label="Normal paths">
-                  <option value="all_completed" ${stage.continue_policy === "all_completed" ? "selected" : ""}>Always — regardless of result</option>
-                  <option value="success_or_partial" ${stage.continue_policy === "success_or_partial" ? "selected" : ""}>Success or partial — no action errors</option>
-                  <option value="all_success" ${stage.continue_policy === "all_success" ? "selected" : ""}>Full success — every action succeeds</option>
-                </optgroup>
-                <optgroup label="Failure paths">
-                  <option value="any_failed" ${stage.continue_policy === "any_failed" ? "selected" : ""}>One or more actions fail</option>
-                  <option value="all_failed" ${stage.continue_policy === "all_failed" ? "selected" : ""}>Every action fails</option>
-                </optgroup>
-              </select><small class="field-note" data-stage-policy-note>${escapeHtml(policyNotes[stage.continue_policy] || policyNotes.all_completed)}</small></label>
+              ${policyControl}
               ${delayControl}
             </div>
             <section class="automation-stage-action-section">
@@ -214,7 +217,7 @@
             card.querySelector("[data-stage-title]").textContent = event.target.value.trim() || `Stage ${index + 1}`;
             syncStages();
           });
-          card.querySelector("[data-stage-policy]").addEventListener("change", (event) => {
+          card.querySelector("[data-stage-policy]")?.addEventListener("change", (event) => {
             stage.continue_policy = event.target.value;
             card.querySelector("[data-stage-policy-note]").textContent = policyNotes[stage.continue_policy] || "";
             syncStages();

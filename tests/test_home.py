@@ -79,6 +79,11 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"appearance-toggle-label", topnav)
         self.assertIn(b'data-appearance-value="tokyo-night"', topnav)
         self.assertIn(b'data-appearance-value="focus"', topnav)
+        workspace_choices = topnav.split(b"<legend>Workspace</legend>", 1)[1].split(
+            b"</fieldset>", 1
+        )[0]
+        self.assertIn(b'data-appearance-value="tiled"', workspace_choices)
+        self.assertNotIn(b'data-appearance-value="compact"', workspace_choices)
         self.assertIn(b"Packet Replay", response.data)
         self.assertIn(b"FortiGate", response.data)
         self.assertIn(b"Certificate Automation", response.data)
@@ -111,7 +116,7 @@ class HomePageTests(unittest.TestCase):
             response = client.get("/help")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Using The WiFi Ninja", response.data)
+        self.assertIn(b"Using TWN Toolkit", response.data)
         self.assertIn(b"Profiles, secrets, and configuration backups", response.data)
         self.assertIn(b"Packet Replay", response.data)
         self.assertIn(b"Automations, schedules, conditions, and actions", response.data)
@@ -284,9 +289,12 @@ class HomePageTests(unittest.TestCase):
             backup = client.get("/settings/backup")
 
         self.assertNotIn(b">Configuration backup</h2>", settings.data)
-        self.assertIn(b">Configuration backups</a>", updates.data)
+        self.assertIn(b"><span>Configuration backups</span></a>", updates.data)
         self.assertIn(b"Create a configuration backup", backup.data)
-        self.assertIn(b'aria-current="page">Configuration backups</a>', backup.data)
+        self.assertIn(
+            b'aria-current="page"><span>Configuration backups</span></a>',
+            backup.data,
+        )
         self.assert_sidebar_category_active(backup.data.decode(), "Administration")
 
     def test_fortinet_pages_show_workflows_without_self_profile_card(self) -> None:

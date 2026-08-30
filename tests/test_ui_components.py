@@ -397,6 +397,172 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(".saved-profile-create.card-action-details:not([open])", stylesheet)
         self.assertIn("@container saved-profile-manager (max-width: 650px)", stylesheet)
 
+    def test_ping_and_dns_use_compact_saved_profile_controls(self) -> None:
+        ping_template = (TEMPLATE_ROOT / "tools" / "ping.html").read_text(
+            encoding="utf-8"
+        )
+        dns_template = (TEMPLATE_ROOT / "tools" / "dns_response.html").read_text(
+            encoding="utf-8"
+        )
+        script = (TEMPLATE_ROOT.parent / "static" / "saved-profile-manager.js").read_text(
+            encoding="utf-8"
+        )
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual(ping_template.count("compact=true"), 1)
+        self.assertEqual(dns_template.count("dns-inline-profile-manager"), 2)
+        for template in (ping_template, dns_template):
+            self.assertIn("data-saved-profile-primary", template)
+            self.assertIn("data-saved-profile-more", template)
+            self.assertIn("data-saved-profile-naming", template)
+            self.assertIn("data-saved-profile-cancel", template)
+        self.assertIn('openNaming("new")', script)
+        self.assertIn('openNaming("rename")', script)
+        self.assertIn('primary.textContent = hasSavedProfile ? "Save changes" : "Save current…"', script)
+        self.assertIn(".compact-profile-controls {", stylesheet)
+        self.assertIn(".compact-profile-naming[hidden]", stylesheet)
+        self.assertIn(".compact-profile-controls .toolkit-select-trigger,", stylesheet)
+        self.assertIn("height: var(--ui-control-height);", stylesheet)
+
+    def test_selects_use_the_shared_theme_aware_control(self) -> None:
+        base_template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+        script = (TEMPLATE_ROOT.parent / "static" / "select-control.js").read_text(
+            encoding="utf-8"
+        )
+        appearance = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("select-control.js", base_template)
+        self.assertIn('trigger.setAttribute("role", "combobox")', script)
+        self.assertIn('menu.setAttribute("role", "listbox")', script)
+        self.assertIn('button.setAttribute("role", "option")', script)
+        self.assertIn('select.dispatchEvent(new Event("change", {bubbles: true}))', script)
+        self.assertIn("new MutationObserver", script)
+        self.assertIn("select.multiple", script)
+        self.assertIn("window.TwnSelectControls", script)
+        self.assertIn(".toolkit-select-chevron {", appearance)
+        self.assertIn(".toolkit-select-menu {", appearance)
+        self.assertIn('content: "✓";', appearance)
+
+    def test_file_pickers_use_the_shared_theme_aware_control(self) -> None:
+        appearance = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('input[type="file"]::file-selector-button {', appearance)
+        self.assertIn(
+            "background: var(--action-secondary) !important;",
+            appearance,
+        )
+        self.assertIn(
+            'input[type="file"]::file-selector-button:hover {',
+            appearance,
+        )
+        self.assertIn("border-color: var(--depth-primary) !important;", appearance)
+
+    def test_tiled_surfaces_and_mobile_actions_keep_shared_geometry(self) -> None:
+        appearance = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(
+            encoding="utf-8"
+        )
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "main :is(article, details) { border-radius: var(--ui-radius) !important; }",
+            appearance,
+        )
+        self.assertIn(
+            "main :is(.link-button, .link-button.subtle) { min-height: 36px !important; }",
+            appearance,
+        )
+        self.assertIn(".multi-ssh-matrix-row-actions .link-button", appearance)
+        add_icon_rule = stylesheet.split(".multi-ssh-sheet-add > span {", 1)[1].split(
+            "}", 1
+        )[0]
+        self.assertIn("border-radius: var(--ui-radius, 0);", add_icon_rule)
+
+    def test_multicast_firewall_warning_uses_palette_surfaces(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        appearance = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "background: color-mix(in srgb, var(--panel), var(--warn) 8%);",
+            stylesheet,
+        )
+        self.assertIn(
+            "background: var(--surface-inset, var(--panel));",
+            stylesheet,
+        )
+        self.assertIn(".multicast-pf-warning pre code {", stylesheet)
+        self.assertIn("border-radius: var(--ui-radius, 0);", stylesheet)
+        self.assertIn(
+            "background: color-mix(in srgb, var(--panel), var(--warn) 10%);",
+            appearance,
+        )
+
+    def test_help_and_release_notes_use_squared_theme_geometry(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        for selector in (
+            ".help-card {",
+            ".help-search small:not(:empty) {",
+            ".help-toc a {",
+            ".help-topic {",
+            ".release-note-archive {",
+            ".help-topic-body code {",
+            ".help-topic-body pre {",
+            ".help-definitions > div {",
+        ):
+            rule = stylesheet.split(selector, 1)[1].split("}", 1)[0]
+            self.assertIn("border-radius: var(--ui-radius, 0);", rule)
+
+    def test_account_management_controls_and_metadata_keep_theme_contrast(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        appearance = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(
+            encoding="utf-8"
+        )
+
+        action_rule = stylesheet.split(
+            ".card-action-details > summary > .card-action-label {", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("border: 1px solid var(--line-strong);", action_rule)
+        self.assertIn("color: var(--ink);", action_rule)
+        self.assertNotIn("color: #fff;", action_rule)
+        self.assertIn(".builtin-profile-card > div {", stylesheet)
+        self.assertIn(".settings-page :is(", appearance)
+        self.assertIn(".settings-page .builtin-profile-card > div {", appearance)
+        self.assertIn(
+            "color: color-mix(in srgb, var(--ink), var(--muted) 55%);",
+            appearance,
+        )
+
+    def test_settings_save_actions_do_not_stretch_across_forms(self) -> None:
+        template = (TEMPLATE_ROOT / "auth" / "settings.html").read_text(
+            encoding="utf-8"
+        )
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual(template.count('class="settings-save-action"'), 2)
+        action_rule = stylesheet.split(".settings-save-action {", 1)[1].split(
+            "}", 1
+        )[0]
+        self.assertIn("justify-self: start;", action_rule)
+        self.assertIn("width: auto;", action_rule)
+
     def test_data_dense_network_tools_can_use_the_full_content_width(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
@@ -411,6 +577,28 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("max-width: none;", tool_panel_rule)
         self.assertIn("max-width: none;", dns_panel_rule)
         self.assertIn("max-width: none;", traceroute_path_rule)
+
+    def test_expanded_traceroute_uses_a_dense_responsive_timeline(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        hop_rule = stylesheet.split(".traceroute-hop {", 1)[1].split("}", 1)[0]
+        card_rule = stylesheet.split(".traceroute-hop-card {", 1)[1].split(
+            "}", 1
+        )[0]
+        metrics_rule = stylesheet.split(".traceroute-hop-metrics {", 1)[1].split(
+            "}", 1
+        )[0]
+        self.assertIn("grid-template-columns: 30px minmax(0, 1fr);", hop_rule)
+        self.assertIn("padding-bottom: 7px;", hop_rule)
+        self.assertIn(
+            "grid-template-columns: auto minmax(140px, 1fr) minmax(0, auto);",
+            card_rule,
+        )
+        self.assertIn("min-height: 42px;", card_rule)
+        self.assertIn("grid-column: 3;", metrics_rule)
+        self.assertIn("@media (max-width: 720px)", stylesheet)
 
     def test_all_tool_workflow_entry_panels_use_the_full_content_width(self) -> None:
         workflow_templates = (
@@ -653,6 +841,9 @@ class UIComponentTests(unittest.TestCase):
             encoding="utf-8"
         )
         template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+        sidebar_script = (
+            TEMPLATE_ROOT.parent / "static" / "sidebar.js"
+        ).read_text(encoding="utf-8")
 
         self.assertIn('class="side-nav-panel side-nav-category-panel"', template)
         self.assertIn('class="side-nav-flat-tool-list"', template)
@@ -665,6 +856,12 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(
             "{% if show_icon %}<span class=\"side-nav-icon\"", template
         )
+        self.assertIn("const closeFocusPanel = () => {", sidebar_script)
+        self.assertIn(
+            'if (!sidebar.contains(event.target)) closeFocusPanel();',
+            sidebar_script,
+        )
+        self.assertIn('sidebar.addEventListener("focusout"', sidebar_script)
 
     def test_automation_threshold_rows_share_aligned_label_space(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
@@ -684,6 +881,9 @@ class UIComponentTests(unittest.TestCase):
         )
         script = (
             TEMPLATE_ROOT.parent / "static" / "ping-tool.js"
+        ).read_text(encoding="utf-8")
+        results_template = (
+            TEMPLATE_ROOT / "tools" / "_ping_results.html"
         ).read_text(encoding="utf-8")
 
         self.assertIn(".ping-results-workspace {", stylesheet)
@@ -720,7 +920,14 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("new ResizeObserver((entries) => {", script)
         self.assertIn("const cssWidth = Math.floor(view.chart.clientWidth);", script)
         self.assertIn("if (cssWidth <= 0) return;", script)
-        self.assertIn('data-view-mode="graphs"', (TEMPLATE_ROOT / "tools" / "_ping_results.html").read_text(encoding="utf-8"))
+        self.assertIn('data-view-mode="graphs"', results_template)
+        self.assertIn('class="ping-results-control-deck"', results_template)
+        self.assertIn('class="ping-results-toolbar-actions"', results_template)
+        self.assertIn(
+            '#ping-results[data-view-mode="grid"] .ping-host-browser {',
+            stylesheet,
+        )
+        self.assertIn("grid-template-rows: auto;", stylesheet)
         self.assertIn('data-ping-size="small"', (TEMPLATE_ROOT / "tools" / "_ping_results.html").read_text(encoding="utf-8"))
         self.assertIn('id="ping-health-grid"', (TEMPLATE_ROOT / "tools" / "_ping_results.html").read_text(encoding="utf-8"))
         self.assertIn('id="ping-grid-preview"', (TEMPLATE_ROOT / "tools" / "_ping_results.html").read_text(encoding="utf-8"))
@@ -800,6 +1007,9 @@ class UIComponentTests(unittest.TestCase):
         script = (
             TEMPLATE_ROOT.parent / "static" / "snmp-interface-monitor.js"
         ).read_text(encoding="utf-8")
+        stylesheet = (
+            TEMPLATE_ROOT.parent / "static" / "styles.css"
+        ).read_text(encoding="utf-8")
 
         self.assertIn('data-requested-session="{{ requested_live_session }}"', template)
         self.assertIn("snmp-monitor-minimize", template)
@@ -816,8 +1026,32 @@ class UIComponentTests(unittest.TestCase):
             script,
         )
         self.assertIn('remove.setAttribute("aria-label", removeLabel);', script)
+        self.assertIn(
+            ".snmp-monitor-set {\n  background: color-mix(in srgb, var(--bg), var(--brand-green) 4%);\n  border: 1px solid var(--line);\n  border-radius: var(--ui-radius, 0);",
+            stylesheet,
+        )
+        self.assertIn(
+            ".snmp-monitor-target {\n  background: var(--panel);\n  border: 1px solid var(--line);\n  border-radius: var(--ui-radius, 0);",
+            stylesheet,
+        )
+        self.assertIn(
+            ".snmp-monitor-chart-wrap {\n  background: color-mix(in srgb, var(--panel), var(--bg) 32%);\n  border: 1px solid var(--line);\n  border-radius: var(--ui-radius, 0);",
+            stylesheet,
+        )
+        self.assertIn(
+            ".graph-close-button {\n  background: color-mix(in srgb, var(--panel), var(--bad) 9%);\n  border: 1px solid color-mix(in srgb, var(--bad), transparent 62%);\n  border-radius: var(--ui-radius, 0);",
+            stylesheet,
+        )
+        self.assertIn(
+            ".snmp-rule-card {\n  background: color-mix(in srgb, var(--panel), var(--brand-green) 3%);\n  border: 1px solid var(--line);\n  border-radius: var(--ui-radius, 0);",
+            stylesheet,
+        )
+        self.assertIn(
+            ".snmp-result {\n  border: 1px solid var(--line);\n  border-radius: var(--ui-radius, 0);",
+            stylesheet,
+        )
 
-    def test_port_scanner_profile_columns_share_aligned_rows(self) -> None:
+    def test_port_scanner_uses_compact_guided_configuration(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
         )
@@ -825,10 +1059,17 @@ class UIComponentTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('class="grid two port-profile-grid"', template)
-        self.assertEqual(template.count("button-row port-profile-actions"), 2)
-        self.assertIn("grid-template-rows: auto auto minmax(3.6em, auto) auto;", stylesheet)
-        self.assertIn("grid-template-columns: minmax(0, 1fr) auto auto;", stylesheet)
+        self.assertIn('class="compact-tool-form"', template)
+        self.assertIn("compact-tool-config-grid port-scan-config-grid", template)
+        self.assertEqual(template.count("compact-tool-source-card port-inline-profile"), 2)
+        self.assertEqual(template.count("compact=true"), 2)
+        self.assertEqual(template.count("data-saved-profile-primary"), 2)
+        self.assertEqual(template.count("data-saved-profile-naming"), 2)
+        self.assertIn("compact-tool-run-card port-scan-run-card", template)
+        self.assertIn("port-scan-options compact-tool-option-grid", template)
+        self.assertIn(".port-scan-config-grid {", stylesheet)
+        self.assertIn(".port-scan-run-card {", stylesheet)
+        self.assertIn(".port-open-only > span {", stylesheet)
 
     def test_dns_workspace_aligns_inputs_and_bounds_load_testing(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
@@ -845,9 +1086,306 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("I am authorized to load test these DNS servers", template)
         self.assertIn(".dns-input-card {", stylesheet)
         self.assertIn(
-            "grid-template-rows: auto auto minmax(0, 1fr) minmax(68px, auto) auto;",
+            "grid-template-rows: auto auto minmax(0, auto) auto;",
             stylesheet,
         )
+        self.assertEqual(template.count('rows="5"'), 2)
+        self.assertIn("height: 112px;", stylesheet)
+
+    def test_ping_and_dns_shift_from_setup_to_results_without_losing_settings(self) -> None:
+        ping_template = (TEMPLATE_ROOT / "tools" / "ping.html").read_text(
+            encoding="utf-8"
+        )
+        dns_template = (TEMPLATE_ROOT / "tools" / "dns_response.html").read_text(
+            encoding="utf-8"
+        )
+        workspace_script = (
+            TEMPLATE_ROOT.parent / "static" / "tool-results-workspace.js"
+        ).read_text(encoding="utf-8")
+        ping_script = (
+            TEMPLATE_ROOT.parent / "static" / "ping-tool.js"
+        ).read_text(encoding="utf-8")
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        base_template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+
+        for template in (ping_template, dns_template):
+            self.assertIn("data-tool-workspace", template)
+            self.assertIn("data-tool-runbar", template)
+            self.assertIn("data-tool-settings-panel", template)
+            self.assertIn("data-tool-settings-open", template)
+            self.assertIn("data-tool-settings-close", template)
+        self.assertIn("tool-results-workspace.js", base_template)
+        self.assertIn("data-tool-results-anchor", dns_template)
+        self.assertIn('form="dns-form"', dns_template)
+        self.assertIn("data-dns-rerun", dns_template)
+        self.assertIn(">Run again</button>", dns_template)
+        self.assertIn(">Edit settings</button>", dns_template)
+        self.assertNotIn("Edit &amp; rerun", dns_template)
+        self.assertIn(
+            'workspaceController.setState("results", {focusResults});', ping_script
+        )
+        self.assertIn(
+            'scrollIntoView({behavior: "smooth", block: "start"})', workspace_script
+        )
+        self.assertIn('event.key === "Escape"', workspace_script)
+        self.assertIn(".tool-setup-panel.is-drawer {", stylesheet)
+        self.assertIn(".tool-settings-backdrop:hover,", stylesheet)
+        self.assertIn(".tool-settings-backdrop:active {", stylesheet)
+        self.assertIn(".tool-workspace > * {", stylesheet)
+
+    def test_ntp_and_traceroute_use_results_first_workspaces(self) -> None:
+        ntp_template = (TEMPLATE_ROOT / "tools" / "ntp_test.html").read_text(
+            encoding="utf-8"
+        )
+        traceroute_template = (
+            TEMPLATE_ROOT / "tools" / "traceroute.html"
+        ).read_text(encoding="utf-8")
+        traceroute_script = (
+            TEMPLATE_ROOT.parent / "static" / "traceroute.js"
+        ).read_text(encoding="utf-8")
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        base_template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+
+        for template in (ntp_template, traceroute_template):
+            self.assertIn("data-tool-workspace", template)
+            self.assertIn("data-tool-runbar", template)
+            self.assertIn("data-tool-settings-panel", template)
+            self.assertIn("data-tool-settings-open", template)
+            self.assertIn("data-tool-settings-close", template)
+            self.assertIn("data-tool-results-anchor", template)
+            self.assertIn(">Run again</button>", template)
+            self.assertIn(">Edit settings</button>", template)
+            self.assertIn('class="compact-tool-form"', template)
+            self.assertIn("compact-tool-config-grid", template)
+            self.assertIn("compact-tool-source-card", template)
+            self.assertIn("compact-tool-run-card", template)
+            self.assertIn("compact=true", template)
+            self.assertIn("data-saved-profile-primary", template)
+            self.assertIn("data-saved-profile-naming", template)
+        self.assertIn("tool-results-workspace.js", base_template)
+        self.assertIn(
+            'workspaceController.setState("results", {focusResults: true});',
+            traceroute_script,
+        )
+        self.assertIn(
+            'runbarCancelButton.addEventListener("click", () => {',
+            traceroute_script,
+        )
+        self.assertNotIn('id="traceroute-cancel"', traceroute_template)
+        self.assertIn('status.textContent = "Cancelling active traceroutes…";', traceroute_script)
+        self.assertIn(".compact-tool-config-grid {", stylesheet)
+        self.assertIn(".compact-tool-config-card {", stylesheet)
+        self.assertIn(".compact-tool-run-footer {", stylesheet)
+        self.assertIn(".compact-tool-option-grid > label,", stylesheet)
+        self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", stylesheet)
+        self.assertIn("overflow-wrap: anywhere;", stylesheet)
+
+    def test_result_first_workspaces_cover_applicable_tool_catalog(self) -> None:
+        template_names = (
+            "api_request.html",
+            "certificate_inspector.html",
+            "dhcp_discover.html",
+            "iperf3.html",
+            "multi_sftp.html",
+            "multi_ssh.html",
+            "multicast.html",
+            "packet_capture.html",
+            "path_mtu.html",
+            "port_scanner.html",
+            "radius_test.html",
+            "snmp_test.html",
+            "subnet_excluder.html",
+            "syslog_receiver.html",
+            "wake_on_lan.html",
+        )
+        for name in template_names:
+            with self.subTest(template=name):
+                template = (TEMPLATE_ROOT / "tools" / name).read_text(
+                    encoding="utf-8"
+                )
+                self.assertIn("data-tool-workspace", template)
+                self.assertIn("data-tool-settings-panel", template)
+                self.assertIn("data-tool-results-anchor", template)
+                self.assertIn("tool_settings_backdrop", template)
+
+        base_template = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+        workspace_script = (
+            TEMPLATE_ROOT.parent / "static" / "tool-results-workspace.js"
+        ).read_text(encoding="utf-8")
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("tool-results-workspace.js", base_template)
+        self.assertIn("root.twnToolWorkspaceController", workspace_script)
+        self.assertIn('if (inResultsState()) {', workspace_script)
+        self.assertIn(".tool-runbar {", stylesheet)
+        self.assertIn("top: var(--topbar-height);", stylesheet)
+        self.assertNotIn(
+            "top: calc(var(--topbar-height) + 4px);",
+            stylesheet,
+        )
+
+    def test_bulk_and_snmp_workspaces_use_compact_task_hierarchy(self) -> None:
+        bulk_ssh = (TEMPLATE_ROOT / "tools" / "multi_ssh.html").read_text(
+            encoding="utf-8"
+        )
+        bulk_transfer = (TEMPLATE_ROOT / "tools" / "multi_sftp.html").read_text(
+            encoding="utf-8"
+        )
+        snmp = (TEMPLATE_ROOT / "tools" / "snmp_test.html").read_text(
+            encoding="utf-8"
+        )
+        workspace_tabs = (
+            TEMPLATE_ROOT.parent / "static" / "workspace-tabs.js"
+        ).read_text(encoding="utf-8")
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertLess(bulk_ssh.index("1 · Hosts"), bulk_ssh.index("2 · CLI actions"))
+        self.assertLess(bulk_ssh.index("2 · CLI actions"), bulk_ssh.index("3 · Run"))
+        self.assertIn('name="host_matrix"', bulk_ssh)
+        self.assertIn("Build a host matrix", bulk_ssh)
+        self.assertIn("Create CLI action", bulk_ssh)
+        self.assertIn("Build this run", bulk_ssh)
+        self.assertIn("Add one or more saved actions", bulk_ssh)
+        self.assertIn("Saving an action never selects it automatically", bulk_ssh)
+        self.assertIn('data-ssh-runbook', bulk_ssh)
+        self.assertIn("bulk-transfer-config-grid", bulk_transfer)
+        self.assertIn("Targets and access", bulk_transfer)
+        self.assertIn("Files to fetch", bulk_transfer)
+        self.assertIn("Keep or download", bulk_transfer)
+        self.assertIn('class="compact-tool-config-head"', bulk_transfer)
+        self.assertIn('role="tablist" aria-label="SNMP workspace"', snmp)
+        self.assertIn('data-workspace-tab="tests"', snmp)
+        self.assertIn('data-workspace-tab="monitor"', snmp)
+        self.assertIn('data-workspace-tab="profiles"', snmp)
+        self.assertIn('data-workspace-tabs-key="twn.snmp-workspace-tab"', snmp)
+        self.assertIn("sessionStorage", workspace_tabs)
+        self.assertIn(".snmp-workspace-tabs {", stylesheet)
+        self.assertIn(".bulk-transfer-config-grid {", stylesheet)
+        self.assertIn(
+            ".tool-setup-panel.is-drawer .multi-ssh-run-grid {",
+            stylesheet,
+        )
+        self.assertIn(
+            ".tool-setup-panel.is-drawer .multi-ssh-matrix-facts {",
+            stylesheet,
+        )
+
+    def test_tool_workspaces_share_the_snmp_tab_language(self) -> None:
+        base = (TEMPLATE_ROOT / "base.html").read_text(encoding="utf-8")
+        fortigate = (TEMPLATE_ROOT / "index.html").read_text(encoding="utf-8")
+        fortiauthenticator = (
+            TEMPLATE_ROOT / "fortiauthenticator" / "index.html"
+        ).read_text(encoding="utf-8")
+        radius = (TEMPLATE_ROOT / "tools" / "radius_test.html").read_text(
+            encoding="utf-8"
+        )
+        iperf = (TEMPLATE_ROOT / "tools" / "iperf3.html").read_text(
+            encoding="utf-8"
+        )
+        syslog = (TEMPLATE_ROOT / "tools" / "syslog_receiver.html").read_text(
+            encoding="utf-8"
+        )
+        lldp = (TEMPLATE_ROOT / "tools" / "lldp_lab.html").read_text(
+            encoding="utf-8"
+        )
+        appearance = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(
+            encoding="utf-8"
+        )
+        workspace_tabs = (
+            TEMPLATE_ROOT.parent / "static" / "workspace-tabs.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("workspace-tabs.js", base)
+        for template in (fortigate, fortiauthenticator, radius):
+            self.assertIn('data-workspace-tab="workflows"', template)
+            self.assertIn('data-workspace-tab="profiles"', template)
+        self.assertIn('data-workspace-tab="client"', iperf)
+        self.assertIn('data-workspace-tab="server"', iperf)
+        self.assertIn("tool-workspace-tabs syslog-task-switch", syslog)
+        self.assertIn("'tool-workspace-tabs lldp-workspace-tabs'", lldp)
+        self.assertIn(".tool-workspace-tabs {", appearance)
+        self.assertIn(".lldp-workspace-tabs > :is(button, a, label)", appearance)
+        self.assertIn("ArrowRight", workspace_tabs)
+        self.assertIn("sessionStorage", workspace_tabs)
+        self.assertIn('data-workspace-tabs-persist="false"', fortigate)
+        self.assertIn('data-workspace-tabs-persist="false"', fortiauthenticator)
+        self.assertIn('workspace.dataset.workspaceTabsPersist !== "false"', workspace_tabs)
+
+    def test_live_result_metrics_use_deliberate_lines_and_available_height(self) -> None:
+        ping_script = (
+            TEMPLATE_ROOT.parent / "static" / "ping-tool.js"
+        ).read_text(encoding="utf-8")
+        snmp_script = (
+            TEMPLATE_ROOT.parent / "static" / "snmp-interface-monitor.js"
+        ).read_text(encoding="utf-8")
+        remote_script = (
+            TEMPLATE_ROOT.parent / "static" / "remote-connections.js"
+        ).read_text(encoding="utf-8")
+        stylesheet = (
+            TEMPLATE_ROOT.parent / "static" / "styles.css"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("detail.replaceChildren(loss, jitter)", ping_script)
+        self.assertIn("ui.peaks.value.replaceChildren(peakDownload, peakUpload)", snmp_script)
+        self.assertIn(".dns-results-panel .preview-table-wrap {", stylesheet)
+        dns_rule = stylesheet.split(
+            ".dns-results-panel .preview-table-wrap {", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("max-height: none;", dns_rule)
+        self.assertIn("let openedFolders = new Set();", remote_script)
+        self.assertNotIn(
+            "let openedFolders = new Set((library.folders || [])",
+            remote_script,
+        )
+
+    def test_automation_stage_editor_places_routes_on_transitions(self) -> None:
+        script = (
+            TEMPLATE_ROOT.parent / "static" / "automation.js"
+        ).read_text(encoding="utf-8")
+        stylesheet = (
+            TEMPLATE_ROOT.parent / "static" / "styles.css"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("Run Stage ${index + 2} when", script)
+        self.assertIn("No continuation rule is needed after this stage.", script)
+        self.assertIn('querySelector("[data-stage-policy]")?.addEventListener', script)
+        mobile_rule = stylesheet.split("@media (max-width: 700px) {", 1)[1]
+        self.assertIn(".automation-stage-toolbar {", mobile_rule)
+        self.assertIn("flex-direction: column;", mobile_rule)
+
+    def test_syslog_tools_separate_send_and_receive_workspaces(self) -> None:
+        template = (
+            TEMPLATE_ROOT / "tools" / "syslog_receiver.html"
+        ).read_text(encoding="utf-8")
+        script = (
+            TEMPLATE_ROOT.parent / "static" / "syslog-tools.js"
+        ).read_text(encoding="utf-8")
+        stylesheet = (
+            TEMPLATE_ROOT.parent / "static" / "styles.css"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('role="tablist"', template)
+        self.assertEqual(template.count('role="tab"'), 2)
+        self.assertEqual(template.count('role="tabpanel"'), 2)
+        self.assertIn('data-initial-syslog-task="{{ selected_syslog_mode }}"', template)
+        self.assertEqual(template.count('class="compact-tool-form"'), 2)
+        self.assertIn("syslog-send-config-grid", template)
+        self.assertIn("syslog-receive-config-grid", template)
+        self.assertIn("Collector endpoint", template)
+        self.assertIn("Message identity and payload", template)
+        self.assertIn("Listener endpoint", template)
+        self.assertIn("Capture bounds", template)
+        self.assertIn("syslog-tools.js", template)
+        self.assertIn('event.key === "ArrowRight"', script)
+        self.assertIn(".syslog-task-switch {", stylesheet)
+        self.assertIn(".syslog-task-panel[hidden] {", stylesheet)
 
     def test_iperf_workspace_has_client_and_managed_server_history(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
@@ -868,10 +1406,16 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("data-iperf-server-started", template)
         self.assertIn('data-iperf-server-results', template)
         self.assertIn("The toolkit never installs", template)
+        self.assertEqual(template.count('data-workspace-panel='), 2)
+        self.assertIn("iperf-client-results-panel", template)
+        self.assertNotIn(
+            'class="panel iperf-results-panel" data-workspace-panel=',
+            template,
+        )
         self.assertIn(".iperf-action-grid {", stylesheet)
         self.assertIn(".iperf-server-result-card {", stylesheet)
         self.assertIn(
-            "grid-template-columns: repeat(2, minmax(0, 1fr));",
+            "grid-template-columns: repeat(4, minmax(0, 1fr));",
             stylesheet,
         )
 
@@ -891,7 +1435,7 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("Source-specific multicast (SSM)", template)
         self.assertIn("RTP version 2", template)
         self.assertIn("mDNS · 224.0.0.251:5353", template)
-        self.assertIn("multicast-mode-icon", template)
+        self.assertIn("tool-workspace-tabs multicast-mode-picker", template)
         self.assertIn("multicast-live-panel", template)
         self.assertIn("multicast-live-timeline", template)
         self.assertIn("multicast-cancel", template)
@@ -899,6 +1443,17 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("one million packets per run", template)
         self.assertIn(".multicast-mode-picker {", stylesheet)
         self.assertIn(".multicast-mode-card:has(input:focus-visible)", stylesheet)
+        self.assertIn('class="compact-tool-form multicast-compact-form"', template)
+        self.assertIn("compact-tool-config-grid multicast-config-grid", template)
+        self.assertIn("multicast-stream-card", template)
+        self.assertIn("multicast-receiver-card", template)
+        self.assertIn("multicast-generator-card", template)
+        self.assertIn("compact-tool-run-card multicast-run-card", template)
+        self.assertIn("Group and service", template)
+        self.assertIn("Join behavior", template)
+        self.assertIn("Bounded network test", template)
+        self.assertIn(".multicast-run-body {", stylesheet)
+        self.assertIn(".multicast-authorization-block {", stylesheet)
         script = (TEMPLATE_ROOT.parent / "static" / "multicast.js").read_text(
             encoding="utf-8"
         )
@@ -907,6 +1462,8 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("response.body.getReader()", script)
         self.assertIn("handleProgress", script)
         self.assertIn("activeController?.abort()", script)
+        self.assertIn('listen: {button: "Listen to group"', script)
+        self.assertIn('path: {button: "Run end-to-end test"', script)
 
 
 if __name__ == "__main__":

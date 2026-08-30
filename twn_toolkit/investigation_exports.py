@@ -64,7 +64,7 @@ def build_case_report_pdf(
         topMargin=0.55 * inch,
         bottomMargin=0.55 * inch,
         title=_plain(investigation.get("title")),
-        author="The WiFi Ninja's Toolkit",
+        author="TWN Toolkit",
         subject="Troubleshooting case report",
     )
     styles = _styles()

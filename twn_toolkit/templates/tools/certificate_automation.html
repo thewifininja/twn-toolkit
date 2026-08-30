@@ -190,10 +190,17 @@
         <h4>Recent ACME requests</h4>
         <div class="acme-history-list">
           {% for job in acme_jobs %}
-            <a href="{{ url_for('tools.certificate_automation', section='acme', acme=job.id) }}#acme-issuance" class="{{ 'selected' if selected_acme and selected_acme.id == job.id else '' }}">
-              <span><strong>{{ job.name }}</strong><small>{{ job.created_at_display }} · {{ job.environment|title }}</small></span>
-              <span class="pill {{ 'success' if job.status == 'issued' else 'error' if job.status in ['failed', 'cancelled', 'interrupted'] else 'warning' }}">{{ job.status|replace('_', ' ')|title }}</span>
-            </a>
+            <div class="acme-history-row">
+              <a href="{{ url_for('tools.certificate_automation', section='acme', acme=job.id) }}#acme-issuance" class="{{ 'selected' if selected_acme and selected_acme.id == job.id else '' }}">
+                <span><strong>{{ job.name }}</strong><small>{{ job.created_at_display }} · {{ job.environment|title }}</small></span>
+                <span class="pill {{ 'success' if job.status == 'issued' else 'error' if job.status in ['failed', 'cancelled', 'interrupted'] else 'warning' }}">{{ job.status|replace('_', ' ')|title }}</span>
+              </a>
+              {% if job.status in ['failed', 'cancelled', 'interrupted'] %}
+                <form method="post" action="{{ url_for('tools.delete_failed_acme_dns_request', job_id=job.id) }}" onsubmit="return confirm('Delete failed ACME request {{ job.name }}?');">
+                  <button class="danger compact" type="submit">Delete</button>
+                </form>
+              {% endif %}
+            </div>
           {% else %}
             <p class="field-note">Issued, failed, and in-progress requests will appear here.</p>
           {% endfor %}

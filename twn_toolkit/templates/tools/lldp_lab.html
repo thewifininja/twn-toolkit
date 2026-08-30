@@ -8,13 +8,15 @@
   'Decode the local LLDP view, test voice-policy assignment, and transmit bounded device identities on one selected interface.',
   'Layer 2 discovery',
   [
-    {'label': 'Observe neighbors', 'href': url_for('tools.lldp_lab', view='observe'), 'active': view == 'observe'},
-    {'label': 'Emulate a device', 'href': url_for('tools.lldp_lab', view='emulate'), 'active': view == 'emulate'}
+    {'label': 'Observe neighbors', 'description': 'Decode local interfaces and control this host’s advertisements', 'href': url_for('tools.lldp_lab', view='observe'), 'active': view == 'observe'},
+    {'label': 'Emulate a device', 'description': 'Build, import, and transmit a bounded LLDP identity', 'href': url_for('tools.lldp_lab', view='emulate'), 'active': view == 'emulate'}
   ],
   'LLDP Lab views',
   'Decoder',
   capability.version or ('Ready' if capability.connected else 'Unavailable'),
-  'lldpd / lldpcli'
+  'lldpd / lldpcli',
+  '',
+  'tool-workspace-tabs lldp-workspace-tabs'
 ) }}
 
 {% if error %}<div class="message error">{{ error }}</div>{% endif %}

@@ -137,6 +137,11 @@
     }
   };
 
+  const closeFocusPanel = () => {
+    if (root.dataset.layout !== "focus" || !desktopQuery.matches || !activePanel) return;
+    showPanel("");
+  };
+
   categoryButtons.forEach((categoryButton) => {
     categoryButton.addEventListener("click", () => {
       showPanel(categoryButton.dataset.navOpen || "", {focus: true});
@@ -299,6 +304,17 @@
       document.body.classList.remove("sidebar-open");
       applyState();
     }
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!sidebar.contains(event.target)) closeFocusPanel();
+  });
+  sidebar.addEventListener("focusout", (event) => {
+    if (event.relatedTarget && sidebar.contains(event.relatedTarget)) return;
+    window.requestAnimationFrame(() => {
+      if (!sidebar.matches(":hover") && !sidebar.contains(document.activeElement)) {
+        closeFocusPanel();
+      }
+    });
   });
   desktopQuery.addEventListener("change", () => {
     document.body.classList.remove("sidebar-open");

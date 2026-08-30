@@ -102,7 +102,7 @@ def build_handler(instance: str, settings: dict):
     ContainedFTP.authorizer = authorizer
     ContainedFTP.dtp_handler = BoundedDTPHandler
     ContainedFTP.passive_ports = range(settings["passive_start"], settings["passive_end"] + 1)
-    ContainedFTP.banner = "The WiFi Ninja's Toolkit contained FTP service"
+    ContainedFTP.banner = "TWN Toolkit contained FTP service"
     return ContainedFTP
 
 

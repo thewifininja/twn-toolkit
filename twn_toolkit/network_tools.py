@@ -1429,4 +1429,4 @@ def _bounded_output(value: str, limit: int = SSH_OUTPUT_LIMIT) -> str:
     cleaned = value.strip()
     if len(cleaned) <= limit:
         return cleaned
-    return f"{cleaned[:limit]}\n\n[Output truncated by The WiFi Ninja's Toolkit]"
+    return f"{cleaned[:limit]}\n\n[Output truncated by TWN Toolkit]"

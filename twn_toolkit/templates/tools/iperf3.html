@@ -1,18 +1,27 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import case_recorded_notice %}
+{% from "components/ui.html" import case_recorded_notice, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
+{% set has_results = result is not none %}
+{% set initial_iperf_tab = 'client' if has_results or not active_server else 'server' %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}" data-workspace-tabs data-initial-tab="{{ initial_iperf_tab }}" data-forced-tab="{{ 'true' if has_results else 'false' }}" data-workspace-tabs-key="twn.iperf-workspace-tab">
+{% if has_results %}
+{{ tool_result_runbar('Client test complete', 'iPerf3 throughput', (result.protocol ~ ' · ' ~ result.direction ~ ' · ' ~ result.transferred_display) if has_results else '', 'iperf-client-form', 'iperf-settings', has_results, '') }}
+{% endif %}
 {{ case_recorded_notice(journal_event) }}
-<section class="panel iperf-workspace-panel">
+<section class="panel iperf-workspace-panel tool-setup-panel" id="iperf-settings" data-tool-settings-panel>
   <header class="panel-head iperf-workspace-head">
     <div>
       <span class="eyebrow">Throughput workspace</span>
       <h1>iPerf3 Tester</h1>
       <p>Run an authorized client test or manage a multi-test iPerf3 listener using the binary already installed on this toolkit host.</p>
     </div>
-    <span class="iperf-capability {{ 'available' if capability.available else 'missing' }}">
-      {{ capability.version if capability.available and capability.version else ('iPerf3 ready' if capability.available else 'iPerf3 unavailable') }}
-    </span>
+    <div class="tool-setup-heading-actions">
+      <span class="iperf-capability {{ 'available' if capability.available else 'missing' }}">
+        {{ capability.version if capability.available and capability.version else ('iPerf3 ready' if capability.available else 'iPerf3 unavailable') }}
+      </span>
+      <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
+    </div>
   </header>
 
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
@@ -23,8 +32,17 @@
     </div>
   {% endif %}
 
+  <nav class="tool-workspace-tabs" role="tablist" aria-label="iPerf3 workspace">
+    <button id="iperf-client-tab" type="button" role="tab" data-workspace-tab="client" aria-controls="iperf-client-panel" aria-selected="{{ 'true' if initial_iperf_tab == 'client' else 'false' }}">
+      <span>Client mode</span><small>Connect outward and run a bounded throughput test</small>
+    </button>
+    <button id="iperf-server-tab" type="button" role="tab" data-workspace-tab="server" aria-controls="iperf-server-panel" aria-selected="{{ 'true' if initial_iperf_tab == 'server' else 'false' }}">
+      <span>Server mode</span><small>{{ 'Listener active · ' ~ active_server.test_count ~ ' completed test(s)' if active_server else 'Start and supervise a reusable listener' }}</small>
+    </button>
+  </nav>
+
   <div class="iperf-action-grid">
-    <article class="iperf-action-card selected">
+    <article class="iperf-action-card selected" id="iperf-client-panel" role="tabpanel" aria-labelledby="iperf-client-tab" data-workspace-panel="client" {% if initial_iperf_tab != 'client' %}hidden{% endif %}>
       <header>
         <div>
           <span class="eyebrow">Action 1</span>
@@ -33,7 +51,7 @@
         </div>
         <span class="iperf-action-badge">Outbound</span>
       </header>
-      <form class="iperf-action-form" method="post" data-loading-message="Running the bounded iPerf3 client test…">
+      <form class="iperf-action-form" id="iperf-client-form" method="post" data-loading-message="Running the bounded iPerf3 client test…">
         <div class="iperf-fields">
           <label class="wide">Destination
             <input name="client_host" value="{{ client_form.host }}" placeholder="iperf.example.net or 192.0.2.10" required>
@@ -92,6 +110,11 @@
 
     <article
       class="iperf-action-card {{ 'selected' if active_server else '' }}"
+      id="iperf-server-panel"
+      role="tabpanel"
+      aria-labelledby="iperf-server-tab"
+      data-workspace-panel="server"
+      {% if initial_iperf_tab != 'server' %}hidden{% endif %}
       {% if active_server %}
         data-iperf-server-workspace
         data-status-url="{{ url_for('tools.iperf3_server_status', session_id=active_server.id) }}"
@@ -171,9 +194,11 @@
     </article>
   </div>
 </section>
+{{ tool_settings_backdrop('iPerf3') }}
 
+<div data-tool-results-anchor tabindex="-1">
 {% if result %}
-<section class="panel iperf-results-panel">
+<section class="panel iperf-results-panel iperf-client-results-panel">
   <header class="panel-head iperf-results-head">
     <div>
       <span class="eyebrow">Client test complete</span>
@@ -285,6 +310,8 @@
     {% include "tools/_iperf_server_results.html" %}
   </div>
 </section>
+</div>
 
 <script src="{{ url_for('static', filename='iperf3.js', v=app_version) }}"></script>
+</div>
 {% endblock %}

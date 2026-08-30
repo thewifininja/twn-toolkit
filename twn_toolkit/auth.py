@@ -27,7 +27,7 @@ APPEARANCE_PALETTES = {
     "toolkit-classic": "light",
 }
 APPEARANCE_DENSITIES = {"compact", "comfortable"}
-APPEARANCE_LAYOUTS = {"tiled", "compact", "focus"}
+APPEARANCE_LAYOUTS = {"tiled", "focus"}
 APPEARANCE_TEXT_SCALES = {"90", "100", "110", "125"}
 MIN_SIDEBAR_WIDTH = 220
 MAX_SIDEBAR_WIDTH = 400
@@ -504,6 +504,8 @@ def _appearance_from_user(user: dict[str, Any]) -> dict[str, str]:
         palette = "tokyo-night" if legacy_theme == "dark" else "toolkit-classic"
         return {**DEFAULT_APPEARANCE, "palette": palette}
     appearance = dict(DEFAULT_APPEARANCE)
+    if str(raw.get("layout", "")) == "compact":
+        raw = {**raw, "layout": "tiled"}
     allowed_values = {
         "palette": APPEARANCE_PALETTES,
         "density": APPEARANCE_DENSITIES,

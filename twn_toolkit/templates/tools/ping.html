@@ -2,11 +2,29 @@
 {% from "components/ui.html" import host_range_guidance, saved_profile_manager %}
 
 {% block content %}
-<div id="ping-workspace">
-<section class="panel tool-panel" id="ping-controls">
-  <div class="panel-head">
-    <h1>Ping</h1>
-    <p>Troubleshoot reachability, latency, and packet loss for up to {{ ping_target_limit }} hosts from this machine.</p>
+<div class="tool-workspace" id="ping-workspace" data-tool-workspace data-tool-state="setup">
+<section class="tool-runbar" id="ping-runbar" data-tool-runbar hidden aria-label="Ping run controls">
+  <div class="tool-runbar-state">
+    <span class="tool-runbar-indicator" data-ping-run-indicator aria-hidden="true"></span>
+    <div>
+      <span class="eyebrow" data-ping-run-state>Live run</span>
+      <strong data-ping-run-title>Ping</strong>
+      <small data-ping-run-summary>Preparing results…</small>
+    </div>
+  </div>
+  <div class="tool-runbar-actions">
+    <button class="secondary" type="button" data-tool-settings-open aria-controls="ping-controls" aria-expanded="false">Edit settings</button>
+    <button class="secondary" id="ping-runbar-stop" type="button">Stop</button>
+  </div>
+</section>
+
+<section class="panel tool-panel tool-setup-panel" id="ping-controls" data-tool-settings-panel>
+  <div class="panel-head tool-setup-heading">
+    <div>
+      <h1>Ping</h1>
+      <p>Troubleshoot reachability, latency, and packet loss for up to {{ ping_target_limit }} hosts from this machine.</p>
+    </div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close hidden>Close settings</button>
   </div>
   {% if ping_capability.accelerated %}
     <div class="message success" role="status">
@@ -28,9 +46,9 @@
     data-validate-url="{{ url_for('tools.ping_validate_targets') }}"
     data-save-profile-url="{{ url_for('tools.save_ping_profile') }}"
   >
-    {% call saved_profile_manager("Ping profiles", "Load a saved target and timing set, or name the current settings to reuse them later.", profiles|length, "ping-profile-manager") %}
-      <div class="saved-profile-fields">
-        <label>Saved profile
+    {% call saved_profile_manager("Ping profiles", "Reuse a saved target and timing set.", profiles|length, "ping-profile-manager", compact=true) %}
+      <div class="compact-profile-controls">
+        <label class="compact-profile-select">Saved profile
           <select id="ping-profile" data-saved-profile-select>
             <option value="">New / unsaved profile</option>
             {% for profile in profiles %}
@@ -38,14 +56,19 @@
             {% endfor %}
           </select>
         </label>
-        <label>Profile name<input id="ping-profile-name" data-saved-profile-name type="text" maxlength="100" placeholder="Branch offices"></label>
-      </div>
-      <div class="saved-profile-manager-actions">
-        <span class="saved-profile-state" data-saved-profile-state>New profile</span>
-        <div class="button-row ping-profile-actions">
-          <button class="secondary profile-save-action" id="ping-profile-save" data-saved-profile-save type="button">Save profile</button>
-          <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_ping_profile') }}" data-profile-select="#ping-profile" disabled>Duplicate</button>
-          <button class="danger" id="ping-profile-delete" data-saved-profile-delete type="button" disabled>Delete</button>
+        <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
+        <details class="compact-profile-more" data-saved-profile-more>
+          <summary aria-label="More Ping profile actions" title="More profile actions">•••</summary>
+          <div>
+            <button class="secondary" type="button" data-saved-profile-rename>Rename…</button>
+            <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_ping_profile') }}" data-profile-select="#ping-profile" disabled>Duplicate</button>
+            <button class="danger" id="ping-profile-delete" data-saved-profile-delete type="button" disabled>Delete</button>
+          </div>
+        </details>
+        <div class="compact-profile-naming" data-saved-profile-naming hidden>
+          <label>Profile name<input id="ping-profile-name" data-saved-profile-name type="text" maxlength="100" placeholder="Branch offices"></label>
+          <button class="profile-save-action" id="ping-profile-save" data-saved-profile-save type="button">Save profile</button>
+          <button class="secondary" type="button" data-saved-profile-cancel>Cancel</button>
         </div>
       </div>
     {% endcall %}
@@ -71,23 +94,17 @@
       <button id="ping-start" type="submit">Start</button>
       <button class="secondary" id="ping-stop" type="button" disabled>Stop</button>
       <button class="secondary" id="ping-update-targets" type="button" disabled>Apply changes</button>
-      <button class="secondary" id="ping-minimize" type="button" disabled>Minimize</button>
     </div>
     <span class="tool-status" id="ping-status"></span>
     <div class="message warning" id="ping-validation-warning" hidden></div>
   </form>
 </section>
 
+<button class="tool-settings-backdrop" type="button" data-tool-settings-close hidden aria-label="Close Ping settings"></button>
+
 {% set ping_popout = false %}
 {% include "tools/_ping_results.html" %}
 </div>
-<section class="panel tool-panel ping-minimized-placeholder" id="ping-minimized" hidden>
-  <div>
-    <span class="eyebrow">Live tool</span>
-    <h1>Ping is minimized</h1>
-    <p>The run is still collecting results. You can navigate anywhere in the toolkit and restore it from the Live tools footer dock.</p>
-  </div>
-  <button id="ping-restore-inline" type="button">Restore workspace</button>
-</section>
+<script src="{{ url_for('static', filename='tool-results-workspace.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='ping-tool.js') }}"></script>
 {% endblock %}

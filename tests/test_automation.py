@@ -1096,6 +1096,28 @@ class AutomationStoreTests(unittest.TestCase):
                     stage_should_continue(policy, statuses), expected
                 )
 
+    def test_legacy_final_stage_route_is_moved_to_the_preceding_transition(self) -> None:
+        stages = self.store._normalize_action_stages(
+            [
+                {
+                    "id": "primary",
+                    "name": "Primary",
+                    "continue_policy": "all_completed",
+                    "action_definition_ids": ["primary-action"],
+                },
+                {
+                    "id": "fallback",
+                    "name": "Fallback",
+                    "continue_policy": "all_failed",
+                    "action_definition_ids": ["fallback-action"],
+                },
+            ],
+            [],
+        )
+
+        self.assertEqual(stages[0]["continue_policy"], "all_failed")
+        self.assertEqual(stages[1]["continue_policy"], "all_completed")
+
     def test_any_failed_stage_routes_to_backup_action_with_failure_context(self) -> None:
         condition_id = self.store.save_condition_definition(
             name="Startup", type_id="test.condition", config={}
@@ -1776,11 +1798,15 @@ class AutomationRouteTests(unittest.TestCase):
         self.assertEqual(initial.status_code, 200)
         self.assertIn(b"Build this action directly below.", initial.data)
         self.assertIn(
-            b"Optional shortcut: load a Stored Commandlet",
+            b"Optional shortcut: load a saved Bulk SSH action",
             initial.data,
         )
         self.assertNotIn(b"<h4>Starting point</h4>", initial.data)
         self.assertIn(b"Collect AP diagnostics", initial.data)
+        self.assertIn(
+            b"Collect AP diagnostics targets \xc2\xb7 Collect AP diagnostics",
+            initial.data,
+        )
         self.assertIn(b"data-automation-ssh-commandlets", initial.data)
         self.assertIn(b"data-ssh-matrix-editor", initial.data)
         self.assertIn(b'data-ssh-target-limit="5000"', initial.data)
@@ -2272,9 +2298,15 @@ class AutomationRouteTests(unittest.TestCase):
         self.assertNotIn(b"New automation", conditions_page.data)
         self.assertIn(b"New action", actions_page.data)
         self.assertNotIn(b"New automation", actions_page.data)
-        self.assertIn(b'aria-current="page">Conditions', conditions_page.data)
-        self.assertIn(b'aria-current="page">Schedules', schedules_page.data)
-        self.assertIn(b'aria-current="page">Actions', actions_page.data)
+        self.assertIn(
+            b'aria-current="page"><span>Conditions</span>', conditions_page.data
+        )
+        self.assertIn(
+            b'aria-current="page"><span>Schedules</span>', schedules_page.data
+        )
+        self.assertIn(
+            b'aria-current="page"><span>Actions</span>', actions_page.data
+        )
 
     def test_manual_mode_runs_actions_and_collected_data_can_be_deleted(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
@@ -3419,7 +3451,7 @@ class AutomationUiRegressionTests(unittest.TestCase):
         self.assertIn("form.dataset.sessionStartUrl", script)
         self.assertIn("activeSession.targets_url", script)
         self.assertIn('id="ping-update-targets"', template)
-        self.assertIn('id="ping-minimize"', template)
+        self.assertNotIn('id="ping-minimize"', template)
         self.assertIn('id="ping-timeout"', template)
         self.assertIn("data-timeout", template)
         self.assertIn("Existing history was preserved", script)

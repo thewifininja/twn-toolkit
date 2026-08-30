@@ -6,10 +6,7 @@
   const startButton = document.getElementById("ping-start");
   const stopButton = document.getElementById("ping-stop");
   const updateTargetsButton = document.getElementById("ping-update-targets");
-  const minimizeButton = document.getElementById("ping-minimize");
   const workspace = document.getElementById("ping-workspace");
-  const minimizedPlaceholder = document.getElementById("ping-minimized");
-  const restoreInlineButton = document.getElementById("ping-restore-inline");
   const profileSelect = document.getElementById("ping-profile");
   const profileNameInput = document.getElementById("ping-profile-name");
   const profileSaveButton = document.getElementById("ping-profile-save");
@@ -50,9 +47,15 @@
   const gridPreviewCanvas = document.getElementById("ping-grid-preview-canvas");
   const gridPreviewClose = document.getElementById("ping-grid-preview-close");
   const gridPreviewDetail = document.getElementById("ping-grid-preview-detail");
+  const runbarStopButton = document.getElementById("ping-runbar-stop");
+  const runbarState = document.querySelector("[data-ping-run-state]");
+  const runbarTitle = document.querySelector("[data-ping-run-title]");
+  const runbarSummary = document.querySelector("[data-ping-run-summary]");
+  const runbarIndicator = document.querySelector("[data-ping-run-indicator]");
+  const workspaceController = window.TwnToolWorkspace?.forElement(workspace);
 
   if (!form || !hostsInput || !intervalInput || !timeoutInput || !startButton || !stopButton || !updateTargetsButton ||
-      !minimizeButton || !workspace || !minimizedPlaceholder || !restoreInlineButton ||
+      !workspace ||
       !profileSelect || !profileNameInput || !profileSaveButton ||
       !profileDeleteButton || !status || !validationWarning || !resultsPanel ||
       !hostList || !hostFilter || !hostStatusFilter || !hostCount ||
@@ -64,7 +67,9 @@
       !healthGrid || !healthSummary || !viewButtons.length ||
       !sizeButtons.length || !gridPreview || !gridPreviewTitle ||
       !gridPreviewAddress || !gridPreviewStatus || !gridPreviewStatistics ||
-      !gridPreviewCanvas || !gridPreviewClose || !gridPreviewDetail) {
+      !gridPreviewCanvas || !gridPreviewClose || !gridPreviewDetail ||
+      !runbarStopButton || !runbarState ||
+      !runbarTitle || !runbarSummary || !runbarIndicator || !workspaceController) {
     return;
   }
 
@@ -172,18 +177,7 @@
   setGraphSize(readDisplayPreference(sizeStorageKey, ["small", "medium", "large"], "large"), {persist: false});
   updateHealthSettingsSummary();
 
-  minimizeButton.addEventListener("click", () => {
-    if (!activeSession) return;
-    workspace.hidden = true;
-    minimizedPlaceholder.hidden = false;
-    window.TwnLiveTools?.collapse();
-    window.TwnLiveTools?.refresh();
-  });
-  restoreInlineButton.addEventListener("click", () => {
-    workspace.hidden = false;
-    minimizedPlaceholder.hidden = true;
-    renderAllCharts();
-  });
+  runbarStopButton.addEventListener("click", () => stopButton.click());
 
   historyRange.addEventListener("change", () => {
     if (!followLive.checked && lockedViewEnd != null) {
@@ -279,6 +273,8 @@
       sessionStorage.setItem(profileStorageKey, data.profile.name);
       profileNameInput.value = data.profile.name;
       status.textContent = `Saved profile '${data.profile.name}'.`;
+      profileSelect.closest("[data-saved-profile-manager]")
+        ?.dispatchEvent(new Event("savedprofilesaved"));
     } catch (error) {
       status.textContent = error.message;
     } finally {
@@ -354,7 +350,7 @@
       if (!response.ok) {
         throw new Error(data.error || "The persistent ping session could not be started.");
       }
-      activateSession(data.session, {resetHistory: true});
+      activateSession(data.session, {resetHistory: true, focusResults: true});
       status.textContent = "Persistent ping session started. Waiting for the first round...";
       window.history.replaceState(
         null,
@@ -404,7 +400,9 @@
         }
       });
       applyHostFilters();
+      updateRunbar();
       status.textContent = `Updated the live run to ${targets.length} targets. Existing history was preserved.`;
+      workspaceController.closeSettings();
       window.TwnLiveTools?.refresh();
     } catch (error) {
       status.textContent = error.message;
@@ -531,11 +529,11 @@
     startButton.disabled = false;
     stopButton.disabled = true;
     updateTargetsButton.disabled = true;
-    minimizeButton.disabled = true;
+    updateRunbar();
     status.textContent = message;
   }
 
-  function activateSession(session, {resetHistory = false} = {}) {
+  function activateSession(session, {resetHistory = false, focusResults = false} = {}) {
     activeSession = session;
     running = session.state === "running";
     sampleCursor = 0;
@@ -552,9 +550,24 @@
     startButton.disabled = running;
     stopButton.disabled = !running;
     updateTargetsButton.disabled = !running;
-    minimizeButton.disabled = !running;
     resultsPanel.hidden = false;
     if (popoutButton) popoutButton.disabled = !session.popout_url;
+    updateRunbar();
+    workspaceController.setState("results", {focusResults});
+  }
+
+  function updateRunbar() {
+    if (!activeSession) return;
+    const config = activeSession.config || {};
+    const targets = Array.isArray(config.targets) ? config.targets : [];
+    const interval = Number(config.interval || activeSession.interval || 2);
+    const timeout = Number(config.timeout || activeSession.timeout || 1);
+    const targetLabel = `${targets.length} target${targets.length === 1 ? "" : "s"}`;
+    runbarTitle.textContent = activeSession.title || "Ping";
+    runbarSummary.textContent = `${targetLabel} · every ${interval}s · ${timeout}s timeout`;
+    runbarState.textContent = running ? "Live run" : "Results retained";
+    runbarIndicator.classList.toggle("stopped", !running);
+    runbarStopButton.disabled = !running;
   }
 
   function resetResultsWorkspace() {
@@ -1121,9 +1134,15 @@
       : "No reply";
     view.healthCard.card.dataset.state = view.state;
     view.healthCard.current.textContent = latency;
-    view.healthCard.detail.textContent = metrics.total
-      ? `${metrics.lossPct.toFixed(1)}% loss · ${metrics.jitter.toFixed(1)} ms jitter`
-      : "Waiting for history";
+    if (metrics.total) {
+      const loss = document.createElement("span");
+      const jitter = document.createElement("span");
+      loss.textContent = `${metrics.lossPct.toFixed(1)}% loss`;
+      jitter.textContent = `${metrics.jitter.toFixed(1)} ms jitter`;
+      view.healthCard.detail.replaceChildren(loss, jitter);
+    } else {
+      view.healthCard.detail.textContent = "Waiting for history";
+    }
     view.healthCard.state.textContent = healthStateLabel(view.state);
     view.healthCard.card.setAttribute(
       "aria-label",

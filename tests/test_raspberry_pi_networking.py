@@ -1895,7 +1895,7 @@ class RaspberryPiSettingsRouteTests(unittest.TestCase):
                 )
             self.assertEqual(page.status_code, 200)
             self.assertIn(b"Raspberry Pi networking", page.data)
-            self.assertIn(b">Pi networking</a>", page.data)
+            self.assertIn(b"><span>Pi networking</span></a>", page.data)
             self.assertIn(b"PEAP-MSCHAPv2", page.data)
             self.assertIn(b"EAP-TLS", page.data)
             self.assertIn(b'class="pi-profile-new-actions"', page.data)

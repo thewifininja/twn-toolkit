@@ -1,3 +1,7 @@
+{% macro brand_wordmark() -%}
+<span class="brand-wordmark" aria-hidden="true"><strong>&gt;_TWN:~$</strong><span>toolkit</span></span>
+{%- endmacro %}
+
 {% macro workspace_intro(title, description='', eyebrow='') -%}
 <section class="workspace-intro">
   {% if eyebrow %}<span class="eyebrow">{{ eyebrow }}</span>{% endif %}
@@ -26,7 +30,7 @@
 {% macro workspace_tabs(label, tabs, class_name='') -%}
 <nav class="workspace-tabs{% if class_name %} {{ class_name }}{% endif %}" aria-label="{{ label }}">
   {% for tab in tabs %}
-    <a class="workspace-tab{% if tab.active %} is-active{% endif %}" href="{{ tab.href }}"{% if tab.active %} aria-current="page"{% endif %}>{{ tab.label }}</a>
+    <a class="workspace-tab{% if tab.active %} is-active{% endif %}" href="{{ tab.href }}"{% if tab.active %} aria-current="page"{% endif %}><span>{{ tab.label }}</span>{% if tab.description %}<small>{{ tab.description }}</small>{% endif %}</a>
   {% endfor %}
 </nav>
 {%- endmacro %}
@@ -74,8 +78,8 @@
 {% endif %}
 {%- endmacro %}
 
-{% macro saved_profile_manager(title, description='', count=0, class_name='') -%}
-<section class="saved-profile-manager{% if class_name %} {{ class_name }}{% endif %}" data-saved-profile-manager data-profile-state="new" aria-label="{{ title }}">
+{% macro saved_profile_manager(title, description='', count=0, class_name='', compact=false) -%}
+<section class="saved-profile-manager{% if compact %} compact-profile-manager{% endif %}{% if class_name %} {{ class_name }}{% endif %}" data-saved-profile-manager data-profile-state="new" aria-label="{{ title }}">
   <header class="saved-profile-manager-head">
     <div>
       <span class="saved-profile-kicker">Saved configuration</span>
@@ -129,4 +133,25 @@
 
 {% macro host_range_guidance(limit, noun='targets') -%}
 One hostname, IP address, or inclusive IP range per line. Optional names use <code>Name = target</code>; named ranges become <code>Name-0001</code>, <code>Name-0002</code>, and so on. Maximum {{ limit }} {{ noun }} after expansion.
+{%- endmacro %}
+
+{% macro tool_result_runbar(label, title, summary, form_id, settings_id, has_results, rerun_label='Run again', class_name='') -%}
+<section class="tool-runbar{% if class_name %} {{ class_name }}{% endif %}" data-tool-runbar {% if not has_results %}hidden{% endif %} aria-label="{{ title }} result controls">
+  <div class="tool-runbar-state">
+    <span class="tool-runbar-indicator complete" aria-hidden="true"></span>
+    <div>
+      <span class="eyebrow">{{ label }}</span>
+      <strong>{{ title }}</strong>
+      <small>{{ summary }}</small>
+    </div>
+  </div>
+  <div class="tool-runbar-actions">
+    {% if rerun_label %}<button type="submit" form="{{ form_id }}">{{ rerun_label }}</button>{% endif %}
+    <button class="secondary" type="button" data-tool-settings-open aria-controls="{{ settings_id }}" aria-expanded="false">Edit settings</button>
+  </div>
+</section>
+{%- endmacro %}
+
+{% macro tool_settings_backdrop(label) -%}
+<button class="tool-settings-backdrop" type="button" data-tool-settings-close hidden aria-label="Close {{ label }} settings"></button>
 {%- endmacro %}

@@ -1,3 +1,4 @@
+{% from "components/ui.html" import brand_wordmark %}
 <!doctype html>
 <html lang="en" data-theme="{{ user_theme }}" data-palette="{{ user_palette }}" data-density="{{ user_appearance.density }}" data-layout="{{ user_appearance.layout }}" data-text-scale="{{ user_appearance.text_scale }}">
   <head>
@@ -5,13 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ popout_session.title }} · Remote Terminal</title>
     <meta name="theme-color" content="{{ '#0e0e14' if user_theme == 'dark' else '#f2f0e5' }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png', v=app_version) }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=app_version) }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='appearance.css', v=app_version) }}">
   </head>
   <body class="remote-terminal-popout-page">
     <header class="remote-terminal-popout-head">
-      <a class="brand" href="{{ url_for('tools.remote_terminal', session=popout_session.id) }}" target="_blank"><img src="{{ url_for('static', filename='brand/dragon-mark-128.png', v=app_version) }}" alt=""><span>The WiFi Ninja’s Toolkit</span></a>
+      <a class="brand" href="{{ url_for('tools.remote_terminal', session=popout_session.id) }}" target="_blank" aria-label="TWN Toolkit">{{ brand_wordmark() }}</a>
       <a class="button-link secondary" href="{{ url_for('tools.remote_terminal', session=popout_session.id) }}">Open full workspace</a>
     </header>
     <main class="remote-terminal-popout-shell">

@@ -239,6 +239,25 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
         )
         return jsonify({"job": _public_acme_job(job)})
 
+    @tools_bp.post("/certificate-automation/acme/<job_id>/delete")
+    def delete_failed_acme_dns_request(job_id: str):
+        try:
+            job = _acme_manager().delete_failed(job_id)
+        except AcmeDnsError as exc:
+            flash(str(exc), "error")
+            return _redirect_home(anchor="acme-issuance", section="acme")
+        annotate_audit_event(
+            category="Network tools",
+            action="certificate_automation.acme_failed_deleted",
+            summary=f"Deleted failed ACME DNS request {job['name']}.",
+            resource_type="acme_certificate_request",
+            resource_id=job_id,
+            resource_name=job["name"],
+            details={"status": job.get("status", "")},
+        )
+        flash(f"Deleted failed ACME request {job['name']}.", "success")
+        return _redirect_home(anchor="acme-issuance", section="acme")
+
     @tools_bp.get("/certificate-automation/acme/<job_id>/download")
     def download_acme_dns_certificate(job_id: str):
         manager = _acme_manager()

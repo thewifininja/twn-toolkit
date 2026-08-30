@@ -1,14 +1,17 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import case_recorded_notice %}
+{% from "components/ui.html" import case_recorded_notice, tool_result_runbar, tool_settings_backdrop %}
 {% block content %}
-<section class="panel">
-  <div class="panel-head">
-    <h1>Path MTU Tester</h1>
-    <p>Find the largest unfragmented ICMP packet that reaches a destination using a bounded binary search.</p>
+{% set has_results = result is not none %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
+{{ tool_result_runbar('Test complete', 'Path MTU', (result.host ~ ' · ' ~ (result.mtu ~ ' bytes' if result.conclusive else 'inconclusive')) if has_results else '', 'path-mtu-form', 'path-mtu-settings', has_results, 'Test again') }}
+<section class="panel tool-setup-panel" id="path-mtu-settings" data-tool-settings-panel>
+  <div class="panel-head tool-setup-heading">
+    <div><h1>Path MTU Tester</h1><p>Find the largest unfragmented ICMP packet that reaches a destination using a bounded binary search.</p></div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {{ case_recorded_notice(journal_event) }}
-  <form class="form" method="post" data-loading-message="Testing path MTU…">
+  <form class="form" id="path-mtu-form" method="post" data-loading-message="Testing path MTU…">
     <label>Destination
       <input name="host" value="{{ form.host }}" placeholder="host.example.com or 192.0.2.1" required>
     </label>
@@ -36,6 +39,8 @@
     <span class="field-note">ICMP must be permitted. A silent destination can make the result inconclusive.</span>
   </form>
 </section>
+{{ tool_settings_backdrop('Path MTU') }}
+<div data-tool-results-anchor tabindex="-1">
 {% if result %}
 <section class="panel">
   <div class="certificate-result-head">
@@ -58,4 +63,6 @@
   </table></div>
 </section>
 {% endif %}
+</div>
+</div>
 {% endblock %}

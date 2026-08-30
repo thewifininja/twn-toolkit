@@ -24,7 +24,9 @@
   const quickProtocol = document.getElementById("remote-terminal-protocol");
   const hostProtocol = document.getElementById("remote-host-protocol");
   let library = JSON.parse(initial.textContent || "{}");
-  let openedFolders = new Set((library.folders || []).map((folder) => folder.id));
+  // A large connection library should open as an index, not as an already
+  // expanded wall of hosts. Searching still opens every matching path.
+  let openedFolders = new Set();
   let selectionMode = false;
   const selectedHosts = new Set();
   const selectedFolders = new Set();
@@ -669,6 +671,7 @@
       select.append(option);
     }
     select.value = value;
+    window.TwnSelectControls?.sync(select);
   }
 
   async function refreshConsoleDevices(button = null) {

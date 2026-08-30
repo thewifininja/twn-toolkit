@@ -1,17 +1,22 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
-<section class="panel">
-  <div class="panel-head">
-    <h1>Packet Capture</h1>
-    <p>Collect a bounded PCAP from a local interface, including dedicated interfaces connected to switch SPAN or mirror ports.</p>
+{% set has_results = captures|length > 0 %}
+{% set active_count = captures|selectattr('active')|list|length %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
+{{ tool_result_runbar('Capture library', 'Packet Capture', (captures|length ~ ' retained · ' ~ active_count ~ ' active') if has_results else '', 'packet-capture-form', 'packet-capture-settings', has_results, '') }}
+<section class="panel tool-setup-panel" id="packet-capture-settings" data-tool-settings-panel>
+  <div class="panel-head tool-setup-heading">
+    <div><h1>Packet Capture</h1><p>Collect a bounded PCAP from a local interface, including dedicated interfaces connected to switch SPAN or mirror ports.</p></div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
 
   {% if not capability.available %}
     <div class="message error">{{ capability.detail }}</div>
   {% endif %}
 
-  <form class="form" method="post" action="{{ url_for('tools.start_packet_capture') }}" data-loading-message="Starting packet capture…">
+  <form class="form" id="packet-capture-form" method="post" action="{{ url_for('tools.start_packet_capture') }}" data-loading-message="Starting packet capture…">
     <div class="form-grid packet-capture-primary-grid">
       <label>Capture interface
         <select name="interface" required {% if not capability.available %}disabled{% endif %}>
@@ -60,7 +65,9 @@
     </div>
   </form>
 </section>
+{{ tool_settings_backdrop('Packet Capture') }}
 
+<div data-tool-results-anchor tabindex="-1">
 <section class="panel">
   <div class="panel-head packet-capture-history-head">
     <div>
@@ -146,6 +153,8 @@
     </div>
   {% endif %}
 </section>
+</div>
 
 <script src="{{ url_for('static', filename='packet-capture.js', v=app_version) }}"></script>
+</div>
 {% endblock %}

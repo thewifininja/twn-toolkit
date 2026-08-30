@@ -120,6 +120,11 @@ class NTPToolTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Clock offset", response.data)
         self.assertIn(b"+0.500 ms", response.data)
+        self.assertIn(b'data-tool-state="results"', response.data)
+        self.assertIn(b'data-ntp-rerun', response.data)
+        self.assertIn(b'form="ntp-form"', response.data)
+        self.assertIn(b">Edit settings</button>", response.data)
+        self.assertIn(b"tool-results-workspace.js", response.data)
         self.assertEqual(summary["counters"]["ntp"]["queries"], 1)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
 

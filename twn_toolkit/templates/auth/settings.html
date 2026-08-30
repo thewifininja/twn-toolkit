@@ -110,7 +110,7 @@
       <div class="form-grid"><label>Concurrent automation workers<input type="number" name="max_concurrent_automations" min="1" max="32" value="{{ operational_settings.max_concurrent_automations }}" required></label><label>Queued automation runs<input type="number" name="max_queued_automations" min="0" max="200" value="{{ operational_settings.max_queued_automations }}" required></label></div>
       <label class="check"><input type="checkbox" name="skip_overlapping_automations" {% if operational_settings.skip_overlapping_automations %}checked{% endif %}>Skip a new check when the same automation is still running</label>
       <div class="form-grid"><label>Datastore quota<input type="number" name="datastore_quota_gib" min="1" max="1024" value="{{ operational_settings.datastore_quota_gib }}" required><small class="field-note">GiB</small></label><label>Automation artifact quota<input type="number" name="automation_artifact_quota_gib" min="1" max="1024" value="{{ operational_settings.automation_artifact_quota_gib }}" required><small class="field-note">GiB</small></label><label>Minimum free disk reserve<input type="number" name="minimum_free_gib" min="0" max="100" value="{{ operational_settings.minimum_free_gib }}" required><small class="field-note">GiB</small></label></div>
-      <button type="submit">Save operational limits</button>
+      <button class="settings-save-action" type="submit">Save operational limits</button>
     </form>
     <div class="button-row"><a class="button-link secondary" href="{{ url_for('diagnostics') }}">Open system diagnostics</a></div>
   </section>
@@ -294,7 +294,7 @@
         {% for timezone_name in timezone_choices %}<option value="{{ timezone_name }}">{% endfor %}
       </datalist>
       <p class="field-note">Localized automation templates can use <code>{{ '{{timestamp.local}}' }}</code>, <code>{{ '{{timestamp.display}}' }}</code>, and <code>{{ '{{toolkit.timezone}}' }}</code>. Existing <code>{{ '{{timestamp}}' }}</code> and stored records remain UTC.</p>
-      <button type="submit">Save timezone</button>
+      <button class="settings-save-action" type="submit">Save timezone</button>
     </form>
   </section>
 

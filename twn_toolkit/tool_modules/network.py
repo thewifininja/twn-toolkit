@@ -15,7 +15,7 @@ from twn_toolkit.profiles import (
     WOLTargetProfileStore,
     LLDPPersonaStore,
 )
-from twn_toolkit.ssh_commandlets import SSHCommandletStore
+from twn_toolkit.ssh_commandlets import SSHCommandletStore, SSHHostMatrixStore
 
 
 def backup_items(instance_path: str) -> list[dict[str, Any]]:
@@ -127,9 +127,16 @@ def backup_items(instance_path: str) -> list[dict[str, Any]]:
         },
         {
             "id": "ssh_commandlets",
-            "label": "SSH Commandlets",
-            "description": "Saved Bulk SSH command templates, optional target matrices, and metadata.",
+            "label": "SSH command sets",
+            "description": "Reusable Bulk SSH command templates and compatibility metadata.",
             "store": SSHCommandletStore(instance_path),
+            "sensitive": True,
+        },
+        {
+            "id": "ssh_host_matrices",
+            "label": "SSH host matrices",
+            "description": "Reusable Bulk SSH hosts and per-host variable values.",
+            "store": SSHHostMatrixStore(instance_path),
             "sensitive": True,
         },
     ]
@@ -176,7 +183,7 @@ def register_tools(registry: Any) -> None:
             ToolLink(
                 "tools.multi_ssh",
                 "Bulk SSH",
-                "Run shared or variable-aware Commandlets across multiple SSH hosts.",
+                "Run reusable command sets against compatible host matrices over SSH.",
                 "tools.multi_ssh",
                 "network",
                 "Network Tools",
@@ -466,6 +473,7 @@ def register_tools(registry: Any) -> None:
             "tools.check_acme_dns_request": "tools.certificate_automation",
             "tools.continue_acme_dns_request": "tools.certificate_automation",
             "tools.cancel_acme_dns_request": "tools.certificate_automation",
+            "tools.delete_failed_acme_dns_request": "tools.certificate_automation",
             "tools.download_acme_dns_certificate": "tools.certificate_automation",
             "tools.save_pki_credential": "tools.certificate_automation",
             "tools.duplicate_pki_credential": "tools.certificate_automation",
@@ -518,6 +526,7 @@ def register_tools(registry: Any) -> None:
             "tools.import_ssh_hosts": "tools.multi_ssh",
             "tools.retry_multi_ssh_host_key": "tools.multi_ssh",
             "tools.delete_ssh_commandlet": "tools.multi_ssh",
+            "tools.delete_ssh_host_matrix": "tools.multi_ssh",
             "tools.remote_terminal": "tools.remote_terminal",
             "tools.remote_terminal_library": "tools.remote_terminal",
             "tools.remote_terminal_devices": "tools.remote_terminal",

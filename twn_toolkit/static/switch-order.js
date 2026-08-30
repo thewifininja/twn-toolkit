@@ -20,6 +20,7 @@
 
   profile.addEventListener("change", () => {
     vdom.value = profile.selectedOptions[0]?.dataset.vdom || "root";
+    window.TwnSelectControls?.sync(vdom);
   });
 
   loadButton.addEventListener("click", async () => {
@@ -39,6 +40,7 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to load managed switches.");
       vdom.value = data.vdom;
+      window.TwnSelectControls?.sync(vdom);
       renderSwitches(data.switches || []);
       originalIds = currentIds();
       const switchLabel = data.row_count === 1 ? "FortiSwitch" : "FortiSwitches";

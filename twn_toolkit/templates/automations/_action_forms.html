@@ -13,7 +13,7 @@
       </select>
     </label>
     <div data-action-fields="ssh.collect">
-      <p class="field-note"><strong>Build this action directly below.</strong> Add targets and commands here; a Stored Commandlet is only an optional shortcut. Per-host output is retained with each run, and credentials are encrypted.</p>
+      <p class="field-note"><strong>Build this action directly below.</strong> Add targets and commands here; a saved Bulk SSH action is only an optional shortcut. Per-host output is retained with each run, and credentials are encrypted.</p>
 
       <section class="automation-form-section automation-ssh-matrix-editor" data-ssh-matrix-editor data-ssh-target-limit="{{ ssh_target_limit }}">
         <div class="automation-ssh-matrix-head">
@@ -25,17 +25,17 @@
         </div>
         {% if ssh_commandlets %}
           <details class="automation-helper-details">
-            <summary>Optional shortcut: load a Stored Commandlet</summary>
+            <summary>Optional shortcut: load a saved Bulk SSH action</summary>
             <div class="automation-helper-body">
-              <label>Stored Commandlet
+              <label>Bulk SSH action
                 <select data-automation-ssh-commandlet>
-                  <option value="">Choose a Commandlet…</option>
+                  <option value="">Choose a command set…</option>
                   {% for commandlet in ssh_commandlets %}
                     <option value="{{ commandlet.name }}">{{ commandlet.name }}{% if commandlet.platform %} · {{ commandlet.platform }}{% endif %}{% if commandlet.target_count %} · {{ commandlet.target_count }} target(s){% endif %}</option>
                   {% endfor %}
                 </select>
               </label>
-              <p>Loading copies the commands, timeout, and saved target matrix into this form. The action keeps its own snapshot, so later Commandlet edits do not change it.</p>
+              <p>Loading copies the commands, timeout, and host matrix into this form. The automation keeps its own snapshot, so later Bulk SSH edits do not change it.</p>
             </div>
           </details>
         {% endif %}

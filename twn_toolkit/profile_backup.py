@@ -105,6 +105,7 @@ def build_reset_stores(instance_path: str) -> list[Any]:
             "traceroute_host_profiles",
             "wol_target_profiles",
             "ssh_commandlets",
+            "ssh_host_matrices",
             "automation_definitions",
             "dashboard_layout",
         }

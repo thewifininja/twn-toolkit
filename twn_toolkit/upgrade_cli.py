@@ -47,7 +47,7 @@ def _wait(manager: UpgradeManager, request_id: str) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Upgrade and recover The WiFi Ninja's Toolkit.")
+    parser = argparse.ArgumentParser(description="Upgrade and recover TWN Toolkit.")
     parser.add_argument("--root", required=True)
     parser.add_argument("--instance", required=True)
     subparsers = parser.add_subparsers(dest="command", required=True)

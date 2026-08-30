@@ -44,7 +44,11 @@ from .packet_capture import capture_interfaces
 from .schedule_tools import describe_schedule_rule, schedule_preview
 from .profiles import SNMPHostProfileStore, SNMPOidProfileStore
 from .snmp_tools import parse_oid_profile
-from .ssh_commandlets import SSHCommandletStore, ssh_hosts_to_matrix
+from .ssh_commandlets import (
+    SSHCommandletStore,
+    SSHHostMatrixStore,
+    ssh_hosts_to_matrix,
+)
 from .system_identity import collect_system_identity
 from .time_settings import TimeSettingsStore
 
@@ -236,7 +240,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             ).resolved_timezone(),
             datastore_folders=LocalDatastore(store.instance_path).folders(),
             capture_interfaces=capture_interfaces(),
-            ssh_commandlets=SSHCommandletStore(store.instance_path).all(),
+            ssh_commandlets=_ssh_automation_shortcuts(store.instance_path),
             ssh_target_limit=SSH_TARGET_LIMIT,
             ssh_target_limit_label=f"{SSH_TARGET_LIMIT:,}",
             ssh_batch_size=SSH_EXECUTION_BATCH_SIZE,
@@ -1157,6 +1161,40 @@ def _snmp_oid_choices(instance_path: Path) -> list[dict[str, str]]:
                 "display": f"{profile['name']} · {entry['label']} ({entry['oid']})",
             })
     return choices
+
+
+def _ssh_automation_shortcuts(instance_path: Path) -> list[dict[str, Any]]:
+    matrices = SSHHostMatrixStore(instance_path).all()
+    shortcuts: list[dict[str, Any]] = []
+    represented_legacy: set[tuple[str, str, str]] = set()
+    for matrix in matrices:
+        for action in matrix.get("actions", []):
+            shortcuts.append(
+                {
+                    **action,
+                    "name": f"{matrix['name']} · {action['name']}",
+                    "action_name": action["name"],
+                    "matrix_name": matrix["name"],
+                    "target_matrix": matrix["matrix"],
+                    "target_count": matrix["target_count"],
+                }
+            )
+            represented_legacy.add(
+                (
+                    str(matrix["name"]),
+                    str(action["name"]),
+                    str(action["commands"]),
+                )
+            )
+    for commandlet in SSHCommandletStore(instance_path).all():
+        represented = any(
+            (str(matrix_name), str(commandlet["name"]), str(commandlet["commands"]))
+            in represented_legacy
+            for matrix_name in commandlet.get("matrix_names", [])
+        )
+        if not represented:
+            shortcuts.append(commandlet)
+    return shortcuts
 
 
 def _format_time(value: Any) -> str:

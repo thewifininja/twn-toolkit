@@ -1,16 +1,19 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import case_recorded_notice %}
+{% from "components/ui.html" import case_recorded_notice, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
-<section class="panel">
-  <div class="panel-head">
-    <h1>DHCP Discover</h1>
-    <p>Broadcast one DHCP Discover from the toolkit host and inspect every matching Offer. This tool never sends a DHCP Request, so it does not accept or configure the offered address.</p>
+{% set has_results = offers is not none %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
+{{ tool_result_runbar('Discovery complete', 'DHCP Discover', (offers|length ~ ' offer(s) · ' ~ form.interface) if has_results else '', 'dhcp-discover-form', 'dhcp-discover-settings', has_results, 'Discover again') }}
+<section class="panel tool-setup-panel" id="dhcp-discover-settings" data-tool-settings-panel>
+  <div class="panel-head tool-setup-heading">
+    <div><h1>DHCP Discover</h1><p>Broadcast one DHCP Discover from the toolkit host and inspect every matching Offer. This tool never sends a DHCP Request, so it does not accept or configure the offered address.</p></div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {{ case_recorded_notice(journal_event) }}
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
-  <form class="form" method="post" data-loading-message="Sending DHCP Discover…">
+  <form class="form" id="dhcp-discover-form" method="post" data-loading-message="Sending DHCP Discover…">
     <div class="ntp-options">
       <label>Network interface
         <select name="interface" id="dhcp-interface" required>
@@ -56,7 +59,9 @@
     <span class="tool-status">The probe uses DHCP ports 68 → 67 on the selected local interface. Linux binds client port 68; macOS sends and captures the bounded exchange through BPF so the normal-user service needs BPF read/write access.</span>
   </form>
 </section>
+{{ tool_settings_backdrop('DHCP Discover') }}
 
+<div data-tool-results-anchor tabindex="-1">
 {% if offers is not none and not offers %}
 <section class="panel">
   <div class="message error">No matching DHCP Offers arrived before the timeout.</div>
@@ -100,6 +105,7 @@
   </div>
 </section>
 {% endfor %}
+</div>
 
 <script>
   document.getElementById("dhcp-interface")?.addEventListener("change", (event) => {
@@ -107,4 +113,5 @@
     if (option?.dataset.mac) document.getElementById("dhcp-mac").value = option.dataset.mac;
   });
 </script>
+</div>
 {% endblock %}

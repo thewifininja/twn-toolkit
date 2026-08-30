@@ -90,7 +90,7 @@ class TlsToolsTests(unittest.TestCase):
             app.config["TESTING"] = True
             response = app.test_client().get("/settings")
             self.assertIn(
-                b"Settings \xc2\xb7 home-tools \xc2\xb7 The WiFi Ninja",
+                b"Settings \xc2\xb7 home-tools \xc2\xb7 TWN Toolkit",
                 response.data,
             )
 

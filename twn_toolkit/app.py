@@ -749,7 +749,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         remote_connection_store.clear()
         certificate_automation_store.clear()
         acme_dns_manager.clear()
-        click.echo("The WiFi Ninja's Toolkit local profile data has been reset.")
+        click.echo("TWN Toolkit local profile data has been reset.")
 
     @app.get("/")
     def index():
@@ -994,7 +994,7 @@ def create_app(instance_path: str | None = None) -> Flask:
 
     @app.get("/favicon.ico")
     def favicon():
-        return app.send_static_file("brand/favicon-32.png")
+        return Response(status=204)
 
     return app
 

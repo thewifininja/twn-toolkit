@@ -1,12 +1,24 @@
 {% extends "base.html" %}
-{% from "components/ui.html" import case_recorded_notice %}
+{% from "components/ui.html" import case_recorded_notice, tool_settings_backdrop %}
 
 {% block content %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if result else 'setup' }}">
+<section class="tool-runbar" data-tool-runbar {% if not result %}hidden{% endif %} aria-label="Multicast result controls">
+  <div class="tool-runbar-state">
+    <span class="tool-runbar-indicator {{ 'complete' if result else '' }}" data-multicast-run-indicator aria-hidden="true"></span>
+    <div><span class="eyebrow" data-multicast-run-state>{{ 'Test complete' if result else 'Live test' }}</span><strong data-multicast-run-title>Multicast test</strong><small data-multicast-run-summary>{{ result.summary if result else 'Preparing results…' }}</small></div>
+  </div>
+  <div class="tool-runbar-actions">
+    <button type="submit" form="multicast-form">Run again</button>
+    <button class="secondary" type="button" data-tool-settings-open aria-controls="multicast-settings" aria-expanded="false">Edit settings</button>
+    <button class="secondary" id="multicast-runbar-cancel" type="button" hidden>Cancel</button>
+  </div>
+</section>
 {{ case_recorded_notice(journal_event) }}
-<section class="panel multicast-workspace">
-  <div class="panel-head">
-    <h1>Multicast Tester</h1>
-    <p>Join and inspect an existing IPv4 multicast stream, generate a bounded sequenced stream, or measure delivery between two toolkit-host interfaces.</p>
+<section class="panel multicast-workspace compact-tool-workspace-panel tool-setup-panel" id="multicast-settings" data-tool-settings-panel>
+  <div class="panel-head compact-tool-workspace-head tool-setup-heading">
+    <div><span class="eyebrow">Group traffic</span><h1>Multicast Tester</h1><p>Join and inspect an existing IPv4 multicast stream, generate a bounded sequenced stream, or measure delivery between two toolkit-host interfaces.</p></div>
+    <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not result %}hidden{% endif %}>Close settings</button>
   </div>
 
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
@@ -32,155 +44,172 @@
   {% endif %}
 
   <form
-    class="form"
+    class="compact-tool-form multicast-compact-form"
     method="post"
     id="multicast-form"
     data-loading-message="Running multicast test…"
     data-run-url="{{ url_for('tools.multicast_live') }}"
   >
-    <fieldset class="multicast-mode-picker">
-      <legend>Test mode</legend>
+    <fieldset class="tool-workspace-tabs multicast-mode-picker">
+      <legend>Choose a test mode</legend>
       <label class="multicast-mode-card">
         <input type="radio" name="mode" value="listen" {{ 'checked' if form.mode == 'listen' else '' }}>
         <span class="multicast-mode-card-body">
-          <span class="multicast-mode-title"><span class="multicast-mode-icon" aria-hidden="true">↓</span><strong>Listen</strong></span>
+          <span class="multicast-mode-title"><strong>Listen</strong></span>
           <small>Join a group and inspect an existing stream.</small>
         </span>
       </label>
       <label class="multicast-mode-card">
         <input type="radio" name="mode" value="send" {{ 'checked' if form.mode == 'send' else '' }}>
         <span class="multicast-mode-card-body">
-          <span class="multicast-mode-title"><span class="multicast-mode-icon" aria-hidden="true">↑</span><strong>Send</strong></span>
+          <span class="multicast-mode-title"><strong>Send</strong></span>
           <small>Generate a bounded, sequenced TWN test stream.</small>
         </span>
       </label>
       <label class="multicast-mode-card">
         <input type="radio" name="mode" value="path" {{ 'checked' if form.mode == 'path' else '' }}>
         <span class="multicast-mode-card-body">
-          <span class="multicast-mode-title"><span class="multicast-mode-icon" aria-hidden="true">⇄</span><strong>End-to-end</strong></span>
+          <span class="multicast-mode-title"><strong>End-to-end</strong></span>
           <small>Send on one interface and receive on another.</small>
         </span>
       </label>
     </fieldset>
 
-    <div class="multicast-section">
-      <div class="section-head compact">
-        <div><span class="eyebrow">Stream</span><h2>Destination and observation window</h2></div>
-      </div>
-      <div class="ntp-options multicast-common-grid">
-        <label>Quick setup
-          <select id="multicast-preset">
-            <option value="custom">Custom group and port</option>
-            <option value="mdns">mDNS · 224.0.0.251:5353</option>
-            <option value="llmnr">LLMNR · 224.0.0.252:5355</option>
-            <option value="ssdp">SSDP / UPnP · 239.255.255.250:1900</option>
-            <option value="ws-discovery">WS-Discovery · 239.255.255.250:3702</option>
-          </select>
-        </label>
-        <label>IPv4 multicast group
-          <input name="group" id="multicast-group" value="{{ form.group }}" placeholder="239.192.10.20" required>
-        </label>
-        <label>UDP destination port
-          <input name="port" id="multicast-port" type="number" min="1" max="65535" value="{{ form.port }}" required>
-        </label>
-        <label>Duration (seconds)
-          <input name="duration" type="number" min="1" max="{{ limits.duration }}" value="{{ form.duration }}" required>
-        </label>
-      </div>
-      <span class="field-note">Use an assigned group and its matching UDP port. For example, mDNS is <code>224.0.0.251:5353</code>; a packet capture showing the group on another port or interface will not reach this socket.</span>
-    </div>
+    <div class="compact-tool-config-grid multicast-config-grid">
+      <article class="compact-tool-config-card compact-tool-source-card multicast-stream-card">
+        <header>
+          <div><span class="eyebrow">Stream</span><h2>Group and service</h2><p>Identify the IPv4 multicast destination shared by the sender and receiver.</p></div>
+          <span class="compact-tool-card-meta">IPv4 UDP</span>
+        </header>
+        <div class="compact-tool-option-grid multicast-common-grid">
+          <label class="multicast-preset-field">Quick setup
+            <select id="multicast-preset">
+              <option value="custom">Custom group and port</option>
+              <option value="mdns">mDNS · 224.0.0.251:5353</option>
+              <option value="llmnr">LLMNR · 224.0.0.252:5355</option>
+              <option value="ssdp">SSDP / UPnP · 239.255.255.250:1900</option>
+              <option value="ws-discovery">WS-Discovery · 239.255.255.250:3702</option>
+            </select>
+          </label>
+          <label>IPv4 multicast group
+            <input name="group" id="multicast-group" value="{{ form.group }}" placeholder="239.192.10.20" required>
+          </label>
+          <label>UDP destination port
+            <input name="port" id="multicast-port" type="number" min="1" max="65535" value="{{ form.port }}" required>
+          </label>
+        </div>
+        <p class="field-note compact-tool-card-note">Use an assigned group and matching UDP port. A packet on another port or interface will not reach this socket.</p>
+      </article>
 
-    <div class="multicast-section" data-mode-section="listen path">
-      <div class="section-head compact">
-        <div><span class="eyebrow">Receiver</span><h2>Join and inspect</h2></div>
-      </div>
-      <div class="ntp-options multicast-receiver-grid">
-        <label>Receive interface
-          <select name="receive_interface" required>
-            {% for interface in interfaces %}
-              <option value="{{ interface.name }}" {{ 'selected' if form.receive_interface == interface.name else '' }}>{{ interface.name }} · {{ interface.address }}{% if interface.point_to_point %} · point-to-point{% endif %}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Membership type
-          <select name="membership" id="multicast-membership">
-            <option value="asm" {{ 'selected' if form.membership == 'asm' else '' }}>Any-source multicast (ASM)</option>
-            <option value="ssm" {{ 'selected' if form.membership == 'ssm' else '' }} {{ 'disabled' if not capability.ssm else '' }}>Source-specific multicast (SSM)</option>
-          </select>
-        </label>
-        <label>Expected/source IPv4
-          <input name="source" id="multicast-source" value="{{ form.source }}" placeholder="Optional for ASM">
-        </label>
-        <label data-listen-only>Stream format
-          <select name="stream_format" id="multicast-stream-format">
-            <option value="generic" {{ 'selected' if form.stream_format == 'generic' else '' }}>Generic UDP</option>
-            <option value="rtp" {{ 'selected' if form.stream_format == 'rtp' else '' }}>RTP version 2</option>
-            <option value="twn" {{ 'selected' if form.stream_format == 'twn' else '' }}>TWN sequenced payload</option>
-          </select>
-        </label>
-        <label id="multicast-rtp-clock" data-listen-only>RTP clock rate (Hz)
-          <input name="rtp_clock_rate" type="number" min="1000" max="1000000000" value="{{ form.rtp_clock_rate }}">
-        </label>
-      </div>
-      <span class="field-note">ASM accepts any sender; an expected source highlights other senders. SSM asks the host to join only the selected <code>(source, group)</code> channel.</span>
-    </div>
+      <article class="compact-tool-config-card compact-tool-source-card multicast-receiver-card" data-mode-section="listen path">
+        <header>
+          <div><span class="eyebrow">Receiver</span><h2>Join behavior</h2><p>Select the local interface and define which multicast sources and payloads are expected.</p></div>
+          <span class="compact-tool-card-meta">ASM or SSM</span>
+        </header>
+        <div class="compact-tool-option-grid multicast-receiver-grid">
+          <label class="multicast-interface-field">Receive interface
+            <select name="receive_interface" required>
+              {% for interface in interfaces %}
+                <option value="{{ interface.name }}" {{ 'selected' if form.receive_interface == interface.name else '' }}>{{ interface.name }} · {{ interface.address }}{% if interface.point_to_point %} · point-to-point{% endif %}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Membership type
+            <select name="membership" id="multicast-membership">
+              <option value="asm" {{ 'selected' if form.membership == 'asm' else '' }}>Any-source multicast (ASM)</option>
+              <option value="ssm" {{ 'selected' if form.membership == 'ssm' else '' }} {{ 'disabled' if not capability.ssm else '' }}>Source-specific multicast (SSM)</option>
+            </select>
+          </label>
+          <label>Expected/source IPv4
+            <input name="source" id="multicast-source" value="{{ form.source }}" placeholder="Optional for ASM">
+          </label>
+          <label data-listen-only>Stream format
+            <select name="stream_format" id="multicast-stream-format">
+              <option value="generic" {{ 'selected' if form.stream_format == 'generic' else '' }}>Generic UDP</option>
+              <option value="rtp" {{ 'selected' if form.stream_format == 'rtp' else '' }}>RTP version 2</option>
+              <option value="twn" {{ 'selected' if form.stream_format == 'twn' else '' }}>TWN sequenced payload</option>
+            </select>
+          </label>
+          <label id="multicast-rtp-clock" data-listen-only>RTP clock rate
+            <span class="compact-tool-input-with-unit"><input name="rtp_clock_rate" type="number" min="1000" max="1000000000" value="{{ form.rtp_clock_rate }}"><span>Hz</span></span>
+          </label>
+        </div>
+        <p class="field-note compact-tool-card-note">ASM accepts any sender. SSM joins only the selected <code>(source, group)</code> channel.</p>
+      </article>
 
-    <div class="multicast-section" data-mode-section="send path">
-      <div class="section-head compact">
-        <div><span class="eyebrow">Generator</span><h2>Sequenced test stream</h2></div>
-      </div>
-      <div class="ntp-options multicast-sender-grid">
-        <label>Send interface
-          <select name="send_interface" required>
-            {% for interface in interfaces %}
-              <option value="{{ interface.name }}" {{ 'selected' if form.send_interface == interface.name else '' }}>{{ interface.name }} · {{ interface.address }}{% if interface.point_to_point %} · point-to-point{% endif %}</option>
-            {% endfor %}
-          </select>
+      <article class="compact-tool-config-card compact-tool-source-card multicast-generator-card" data-mode-section="send path">
+        <header>
+          <div><span class="eyebrow">Generator</span><h2>Sequenced test stream</h2><p>Control the source interface, payload size, transmission rate, and packet markings.</p></div>
+          <span class="compact-tool-card-meta">Bounded output</span>
+        </header>
+        <div class="compact-tool-option-grid multicast-sender-grid">
+          <label class="multicast-interface-field">Send interface
+            <select name="send_interface" required>
+              {% for interface in interfaces %}
+                <option value="{{ interface.name }}" {{ 'selected' if form.send_interface == interface.name else '' }}>{{ interface.name }} · {{ interface.address }}{% if interface.point_to_point %} · point-to-point{% endif %}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>UDP payload size
+            <span class="compact-tool-input-with-unit"><input name="packet_size" type="number" min="{{ limits.packet_size_min }}" max="{{ limits.packet_size_max }}" value="{{ form.packet_size }}" required><span>bytes</span></span>
+          </label>
+          <label>Target rate
+            <input name="rate" type="number" min="0.01" step="0.01" value="{{ form.rate }}" required>
+          </label>
+          <label>Rate unit
+            <select name="rate_unit">
+              <option value="mbps" {{ 'selected' if form.rate_unit == 'mbps' else '' }}>Mbps of UDP payload</option>
+              <option value="pps" {{ 'selected' if form.rate_unit == 'pps' else '' }}>Packets per second</option>
+            </select>
+          </label>
+          <label>Multicast TTL
+            <input name="ttl" type="number" min="1" max="255" value="{{ form.ttl }}" required>
+          </label>
+          <label>DSCP
+            <input name="dscp" type="number" min="0" max="63" value="{{ form.dscp }}" required>
+          </label>
+          <label>Source UDP port
+            <input name="source_port" type="number" min="0" max="65535" value="{{ form.source_port }}" required>
+          </label>
+        </div>
+        <label class="check multicast-loopback-check" data-mode-section="send">
+          <input name="loopback" type="checkbox" {{ 'checked' if form.loopback else '' }}>
+          <span><strong>Local loopback copy</strong><small>Also deliver the generated stream to receivers on this host.</small></span>
         </label>
-        <label>UDP payload size
-          <input name="packet_size" type="number" min="{{ limits.packet_size_min }}" max="{{ limits.packet_size_max }}" value="{{ form.packet_size }}" required>
-        </label>
-        <label>Target rate
-          <input name="rate" type="number" min="0.01" step="0.01" value="{{ form.rate }}" required>
-        </label>
-        <label>Rate unit
-          <select name="rate_unit">
-            <option value="mbps" {{ 'selected' if form.rate_unit == 'mbps' else '' }}>Mbps of UDP payload</option>
-            <option value="pps" {{ 'selected' if form.rate_unit == 'pps' else '' }}>Packets per second</option>
-          </select>
-        </label>
-        <label>Multicast TTL
-          <input name="ttl" type="number" min="1" max="255" value="{{ form.ttl }}" required>
-        </label>
-        <label>DSCP
-          <input name="dscp" type="number" min="0" max="63" value="{{ form.dscp }}" required>
-        </label>
-        <label>Source UDP port
-          <input name="source_port" type="number" min="0" max="65535" value="{{ form.source_port }}" required>
-        </label>
-      </div>
-      <label class="check" data-mode-section="send">
-        <input name="loopback" type="checkbox" {{ 'checked' if form.loopback else '' }}>
-        Deliver a local loopback copy to receivers on this host
-      </label>
-      <span class="field-note">Generator limits: {{ limits.megabits }} Mbps, {{ '{:,}'.format(limits.packets_per_second) }} packets/second, {{ limits.duration }} seconds, and one million packets per run. Payloads carry a session ID, sequence number, and timestamp.</span>
-    </div>
+        <p class="field-note compact-tool-card-note">Limits: {{ limits.megabits }} Mbps, {{ '{:,}'.format(limits.packets_per_second) }} packets/second, {{ limits.duration }} seconds, and one million packets per run.</p>
+      </article>
 
-    <div class="message warning">
-      Multicast joins affect switch snooping state, and generated streams consume network bandwidth. Use only on networks where you are authorized to test. End-to-end mode disables local loopback and requires two different interfaces.
+      <article class="compact-tool-config-card compact-tool-run-card multicast-run-card">
+        <header>
+          <div><span class="eyebrow">Run</span><h2>Bounded network test</h2><p>Set the observation window, acknowledge the network impact, and begin the selected test.</p></div>
+          <span class="compact-tool-card-meta" id="multicast-run-mode-meta">Listen mode</span>
+        </header>
+        <div class="multicast-run-body">
+          <label class="multicast-duration-field">Duration
+            <span class="compact-tool-input-with-unit"><input name="duration" type="number" min="1" max="{{ limits.duration }}" value="{{ form.duration }}" required><span>seconds</span></span>
+          </label>
+          <div class="multicast-authorization-block">
+            <p><strong>Network impact</strong> Joins affect switch snooping state, and generated streams consume bandwidth. End-to-end mode requires two different interfaces.</p>
+            <label class="check multicast-authorization-check">
+              <input name="authorized" type="checkbox" required {{ 'checked' if form.authorized else '' }}>
+              <span><strong>Authorized test</strong><small>I am authorized to join or generate multicast traffic on the selected network.</small></span>
+            </label>
+          </div>
+        </div>
+        <footer class="compact-tool-run-footer">
+          <span class="tool-status">{{ capability.detail }}{% if capability.available and not capability.ssm %} Source-specific joins are unavailable on this host.{% endif %}{% if macos_pf.applicable and macos_pf.ready %} macOS PF compatibility is configured.{% endif %}</span>
+          <div class="multicast-run-actions">
+            <button type="button" class="secondary" id="multicast-cancel" hidden>Cancel test</button>
+            <button type="submit" id="multicast-run" {% if not capability.available %}disabled{% endif %}>Listen to group</button>
+          </div>
+        </footer>
+      </article>
     </div>
-    <label class="check risk-confirmation">
-      <input name="authorized" type="checkbox" required {{ 'checked' if form.authorized else '' }}>
-      I am authorized to join or generate multicast traffic on the selected network.
-    </label>
-    <div class="button-row">
-      <button type="submit" id="multicast-run" {% if not capability.available %}disabled{% endif %}>Run multicast test</button>
-      <button type="button" class="secondary" id="multicast-cancel" hidden>Cancel test</button>
-    </div>
-    <span class="tool-status">{{ capability.detail }}{% if capability.available and not capability.ssm %} Source-specific joins are unavailable on this host.{% endif %}{% if macos_pf.applicable and macos_pf.ready %} macOS PF compatibility is configured.{% endif %}</span>
   </form>
 </section>
+{{ tool_settings_backdrop('Multicast test') }}
 
+<div data-tool-results-anchor tabindex="-1">
 <section class="panel multicast-live-panel" id="multicast-live-panel" aria-live="polite" hidden>
   <div class="certificate-result-head">
     <div>
@@ -337,6 +366,8 @@
   </section>
 {% endif %}
 </div>
+</div>
 
 <script src="{{ url_for('static', filename='multicast.js', v=app_version) }}"></script>
+</div>
 {% endblock %}

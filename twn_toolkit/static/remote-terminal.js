@@ -1133,6 +1133,7 @@
     );
     if (preset) {
       widthControl.value = preset.value;
+      window.TwnSelectControls?.sync(widthControl);
       return;
     }
     const option = document.createElement("option");
@@ -1141,6 +1142,7 @@
     option.dataset.currentWidth = "true";
     widthControl.prepend(option);
     widthControl.value = option.value;
+    window.TwnSelectControls?.sync(widthControl);
   }
 
   function initializeTerminalHeight() {
