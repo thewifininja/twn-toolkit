@@ -1,6 +1,51 @@
-APP_VERSION = "0.22.0"
+APP_VERSION = "0.22.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.22.1",
+        "date": "2026-08-30",
+        "title": "Resilient accordion navigation and unified Pi styling",
+        "summary": (
+            "Removes navigation dead ends and page overlap with an in-place "
+            "accordion sidebar, preserves Favorites and Focus-mode behavior "
+            "across navigation, keeps updated assets coherent, and finishes "
+            "the Raspberry Pi networking workspace's shared theme geometry."
+        ),
+        "groups": (
+            {
+                "title": "Navigation without backtracking",
+                "items": (
+                    "Replaces category paging and Back links with in-place Fortinet Tools, Network Tools, Operations, and Administration accordions, keeping every top-level destination one click away.",
+                    "Keeps one top-level category and one nested tool group open at a time, automatically reveals the active destination, and restores the operator's open category and subgroup on later pages.",
+                    "Retains the searchable flat-results view, personal Favorites, active-tool highlighting, complete keyboard operation, and independently scrolling desktop and mobile navigation.",
+                ),
+            },
+            {
+                "title": "Focus, Favorites, and asset reliability",
+                "items": (
+                    "Expands Focus navigation as a real workspace tile instead of covering page content, then collapses it without closing the selected accordion or disabling its links.",
+                    "Persists both the collapsed and expanded Favorites state, restores it before first paint to prevent page-load flashing, and improves the closed label's contrast in Flexoki Light and Toolkit Classic.",
+                    "Revises browser asset URLs when static files change so updated sidebar JavaScript and CSS cannot be mixed with stale cached files after an upgrade or service restart.",
+                ),
+            },
+            {
+                "title": "Raspberry Pi theme consistency",
+                "items": (
+                    "Moves Raspberry Pi network runtime cards, adapter selectors, configuration panels, scan results, profile summaries, client groups, and table rows onto the shared squared theme geometry.",
+                    "Preserves the existing hardware-bound Ethernet and Wi-Fi profile workflow, protected broker boundary, reachability confirmation, and automatic rollback behavior.",
+                    "Keeps all Raspberry Pi network surfaces on the same palette, border, control, and responsive layout system used by the rest of TWN Toolkit.",
+                ),
+            },
+            {
+                "title": "Upgrade and compatibility",
+                "items": (
+                    "Adds no Python dependency, database migration, profile-format change, privileged-helper change, or service-layout change and retains the v0.9.0 minimum direct-upgrade boundary.",
+                    "Requires no service reinstall when upgrading from v0.22.0; Raspberry Pi installations coming from an earlier release still need the v0.22.0 protected broker refresh with sudo ./twn service install.",
+                    "Preserves saved appearance settings, navigation width, tool Favorites and ordering, profiles, automations, retained results, and existing platform service identifiers.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.22.0",
         "date": "2026-08-30",
