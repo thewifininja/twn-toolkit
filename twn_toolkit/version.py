@@ -1,6 +1,42 @@
-APP_VERSION = "0.22.1"
+APP_VERSION = "0.22.2"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.22.2",
+        "date": "2026-08-30",
+        "title": "Osaka Jade and wide-screen layout resilience",
+        "summary": (
+            "Adds a complete Osaka Jade appearance palette and keeps wide "
+            "touch-capable Chromium and Brave installations in the desktop "
+            "workspace instead of misclassifying them as narrow mobile layouts."
+        ),
+        "groups": (
+            {
+                "title": "Osaka Jade appearance",
+                "items": (
+                    "Adds Osaka Jade as a saved dark appearance using Omarchy's mineral-black surfaces, jade accents, warm cream text, cyan depth color, and restrained status colors.",
+                    "Integrates the palette with the top-bar picker, immediate client-side switching, browser theme color, floating surfaces, navigation chrome, shared controls, and every semantic component role.",
+                    "Keeps primary actions, muted copy, warnings, errors, and raised panels readable while preserving the palette's terminal-first character across compact and comfortable density.",
+                ),
+            },
+            {
+                "title": "Wide touch-capable browser correction",
+                "items": (
+                    "Uses viewport width rather than mouse or touch capability to select desktop versus mobile navigation geometry, so a wide touchscreen laptop retains the full tiled workspace.",
+                    "Prevents Chromium and Brave on Omarchy and similar Linux installations from opening the sidebar as a mobile overlay that clips or blocks the dashboard and tool links.",
+                    "Preserves the existing phone and narrow-window navigation behavior, Focus expansion, accordion state, Favorites state, and responsive control sizing.",
+                ),
+            },
+            {
+                "title": "Upgrade and compatibility",
+                "items": (
+                    "Adds no Python dependency, database migration, saved-profile change, privileged-helper change, or service-layout change and retains the v0.9.0 minimum direct-upgrade boundary.",
+                    "Requires no service reinstall from v0.22.1 and preserves every existing appearance preference; Osaka Jade remains opt-in while Tokyo Night stays the default.",
+                    "Extends appearance regression coverage so future palettes must define the complete semantic variable contract and a matching client-side light or dark mode.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.22.1",
         "date": "2026-08-30",

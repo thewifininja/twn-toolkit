@@ -13,17 +13,14 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.22.1**
+Current release: **v0.22.2**
 
-v0.22.1 replaces paged sidebar navigation with in-place category accordions,
-keeps Focus expansion from covering tools, restores Favorites before first
-paint, prevents stale interface assets after updates, and finishes the shared
-theme geometry across Raspberry Pi networking. It adds no Python dependency,
-database migration, profile-format change, or service change. Existing
-installations accepted by the standard v0.9.0 minimum upgrade boundary can
-upgrade directly. No service reinstall is required from v0.22.0; Raspberry Pi
-installations coming from an earlier release must still refresh the protected
-network broker once with `sudo ./twn service install`.
+v0.22.2 adds the complete Osaka Jade appearance palette and corrects responsive
+layout detection on wide touch-capable Chromium and Brave installations, keeping
+Omarchy and similar Linux laptops in the full desktop workspace. It adds no
+Python dependency, database migration, profile-format change, or service change.
+Existing installations accepted by the standard v0.9.0 minimum upgrade boundary
+can upgrade directly, and no service reinstall is required from v0.22.1.
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
