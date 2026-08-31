@@ -162,6 +162,7 @@
 
                 <details
                   class="side-nav-section side-nav-favorites"
+                  data-nav-favorites
                   data-favorites-reorder
                   {{ 'open' if sidebar_favorites or sidebar_favorites_active else '' }}
                 >
@@ -169,6 +170,19 @@
                     <span class="side-nav-section-title"><span class="side-nav-icon" aria-hidden="true">★</span><span class="side-nav-label">Favorites</span></span>
                     <small>{{ sidebar_favorites|length }}</small>
                   </summary>
+                  <script>
+                    // Restore the disclosure before its contents are parsed and painted.
+                    // sidebar.js owns subsequent changes and persistence.
+                    (() => {
+                      try {
+                        const section = document.currentScript.parentElement;
+                        const stored = localStorage.getItem("twn-sidebar-favorites-open");
+                        if (stored !== null) section.open = stored === "1";
+                      } catch (_error) {
+                        // Keep the server-rendered default when storage is unavailable.
+                      }
+                    })();
+                  </script>
                   {% if sidebar_favorites %}
                     {% if sidebar_favorites|length > 1 %}
                       <form data-favorites-order-form method="post" action="{{ url_for('reorder_tool_favorites') }}" hidden>
@@ -205,96 +219,89 @@
                         {{ sidebar_tool_row(group.tools[0], group.label, category_label=group.label) }}
                       </div>
                     {% else %}
-                      <button
-                        type="button"
-                        class="side-nav-category-button {{ 'active' if group.active else '' }}"
-                        data-nav-open="category-{{ loop.index0 }}"
-                        aria-controls="side-nav-category-{{ loop.index0 }}"
-                        aria-label="{{ group.label }}"
-                        title="{{ group.label }}"
+                      <details
+                        class="side-nav-category-accordion {{ 'active' if group.active else '' }}"
+                        data-nav-category="category-{{ loop.index0 }}"
+                        data-nav-label="{{ group.label }}"
+                        data-nav-active="{{ 'true' if group.active else 'false' }}"
+                        {{ 'open' if group.active else '' }}
                       >
-                        <span class="side-nav-icon" aria-hidden="true">{{ group.icon|default('•') }}</span>
-                        <span class="side-nav-label">{{ group.label }}</span>
-                        <small>{{ group.count|default((group.tools|default([])|length) + (group.children|default([])|length)) }}</small>
-                        <span class="side-nav-forward" aria-hidden="true">→</span>
-                      </button>
+                        <summary
+                          class="side-nav-category-summary"
+                          aria-label="{{ group.label }}"
+                          title="{{ group.label }}"
+                        >
+                          <span class="side-nav-icon" aria-hidden="true">{{ group.icon|default('•') }}</span>
+                          <span class="side-nav-label">{{ group.label }}</span>
+                          <small>{{ group.count|default((group.tools|default([])|length) + (group.children|default([])|length)) }}</small>
+                          <span class="side-nav-disclosure" aria-hidden="true">›</span>
+                        </summary>
+                        <div class="side-nav-category-body">
+                          {% if group.tools %}
+                            <ul class="side-nav-flat-tool-list">
+                              {% for tool in group.tools %}
+                                <li>{{ sidebar_tool_row(tool, show_icon=false, category_label=group.label) }}</li>
+                              {% endfor %}
+                            </ul>
+                          {% endif %}
+                          {% if group.children %}
+                            {% for child in group.children %}
+                              {% set child_index = loop.index0 %}
+                              {% if child.tool %}
+                                <div class="side-nav-category-direct">
+                                  {{ sidebar_tool_row(child.tool, child.label, false, child.favorite_enabled|default(true), true, child.direct|default(false), group.label, child.label) }}
+                                </div>
+                              {% endif %}
+                              {% if child.tools %}
+                                <details
+                                  class="side-nav-tool-section"
+                                  data-nav-subgroup="child-{{ child_index }}"
+                                  data-nav-active="{{ 'true' if child.active else 'false' }}"
+                                  {{ 'open' if child.active else '' }}
+                                >
+                                  <summary>
+                                    <span class="side-nav-section-accent" aria-hidden="true">{{ child.icon|default('•') }}</span>
+                                    <strong>{{ child.label }}</strong>
+                                    <small>{{ child.tools|length }}</small>
+                                    <span class="side-nav-disclosure" aria-hidden="true">›</span>
+                                  </summary>
+                                  <ul class="side-nav-flat-tool-list">
+                                    {% for tool in child.tools %}
+                                      <li>{{ sidebar_tool_row(tool, show_icon=false, category_label=group.label, subgroup_label=child.label) }}</li>
+                                    {% endfor %}
+                                  </ul>
+                                </details>
+                              {% endif %}
+                              {% if child.children %}
+                                {% for nested in child.children %}
+                                  <details
+                                    class="side-nav-tool-section"
+                                    data-nav-subgroup="child-{{ child_index }}-nested-{{ loop.index0 }}"
+                                    data-nav-active="{{ 'true' if nested.active else 'false' }}"
+                                    {{ 'open' if nested.active else '' }}
+                                  >
+                                    <summary>
+                                      <span class="side-nav-section-accent" aria-hidden="true">{{ nested.icon|default('•') }}</span>
+                                      <strong>{{ nested.label }}</strong>
+                                      <small>{{ nested.tools|length }}</small>
+                                      <span class="side-nav-disclosure" aria-hidden="true">›</span>
+                                    </summary>
+                                    <ul class="side-nav-flat-tool-list">
+                                      {% for tool in nested.tools %}
+                                        <li>{{ sidebar_tool_row(tool, show_icon=false, category_label=group.label, subgroup_label=nested.label) }}</li>
+                                      {% endfor %}
+                                    </ul>
+                                  </details>
+                                {% endfor %}
+                              {% endif %}
+                            {% endfor %}
+                          {% endif %}
+                        </div>
+                      </details>
                     {% endif %}
                   {% endfor %}
                 </div>
               </div>
-
-              {% for group in sidebar_tool_groups %}
-                {% if not (group.tools|default([])|length == 1 and not group.children|default([])) %}
-                  <section
-                    class="side-nav-panel side-nav-category-panel"
-                    id="side-nav-category-{{ loop.index0 }}"
-                    data-nav-panel="category-{{ loop.index0 }}"
-                    data-nav-label="{{ group.label }}"
-                    data-nav-active="{{ 'true' if group.active else 'false' }}"
-                    hidden
-                  >
-                    <header class="side-nav-category-header">
-                      <button class="side-nav-back" type="button" data-nav-back title="All tools">
-                        <span aria-hidden="true">←</span>
-                        <span>All tools</span>
-                      </button>
-                      <div class="side-nav-category-heading">
-                        <span class="side-nav-icon" aria-hidden="true">{{ group.icon|default('•') }}</span>
-                        <strong>{{ group.label }}</strong>
-                        <small>{{ group.count|default((group.tools|default([])|length) + (group.children|default([])|length)) }}</small>
-                      </div>
-                    </header>
-                    <div class="side-nav-category-body">
-                      {% if group.tools %}
-                        <ul class="side-nav-flat-tool-list">
-                          {% for tool in group.tools %}
-                            <li>{{ sidebar_tool_row(tool, show_icon=false, category_label=group.label) }}</li>
-                          {% endfor %}
-                        </ul>
-                      {% endif %}
-                      {% if group.children %}
-                        {% for child in group.children %}
-                          {% if child.tool %}
-                            <div class="side-nav-category-direct">
-                              {{ sidebar_tool_row(child.tool, child.label, false, child.favorite_enabled|default(true), true, child.direct|default(false), group.label, child.label) }}
-                            </div>
-                          {% endif %}
-                          {% if child.tools %}
-                            <section class="side-nav-tool-section">
-                              <header>
-                                <span class="side-nav-section-accent" aria-hidden="true">{{ child.icon|default('•') }}</span>
-                                <strong>{{ child.label }}</strong>
-                                <small>{{ child.tools|length }}</small>
-                              </header>
-                              <ul class="side-nav-flat-tool-list">
-                                {% for tool in child.tools %}
-                                  <li>{{ sidebar_tool_row(tool, show_icon=false, category_label=group.label, subgroup_label=child.label) }}</li>
-                                {% endfor %}
-                              </ul>
-                            </section>
-                          {% endif %}
-                          {% if child.children %}
-                            {% for nested in child.children %}
-                              <section class="side-nav-tool-section">
-                                <header>
-                                  <span class="side-nav-section-accent" aria-hidden="true">{{ nested.icon|default('•') }}</span>
-                                  <strong>{{ nested.label }}</strong>
-                                  <small>{{ nested.tools|length }}</small>
-                                </header>
-                                <ul class="side-nav-flat-tool-list">
-                                  {% for tool in nested.tools %}
-                                    <li>{{ sidebar_tool_row(tool, show_icon=false, category_label=group.label, subgroup_label=nested.label) }}</li>
-                                  {% endfor %}
-                                </ul>
-                              </section>
-                            {% endfor %}
-                          {% endif %}
-                        {% endfor %}
-                      {% endif %}
-                    </div>
-                  </section>
-                {% endif %}
-              {% endfor %}
             </div>
             <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}" title="Help &amp; release notes">
               <span class="side-nav-help-title"><span class="side-nav-icon" aria-hidden="true">?</span><span class="side-nav-label">Help &amp; release notes{% if instance_name %}<small class="side-nav-instance">{{ instance_name }}</small>{% endif %}</span></span>

@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import secrets
 import time
+from hashlib import blake2s
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -69,10 +71,34 @@ from .remote_sessions import RemoteSessionManager, RemoteSessionStore
 from .remote_connections import RemoteConnectionStore
 
 
+def _asset_tree_revision(static_folder: str | os.PathLike[str]) -> str:
+    """Return a cheap, deterministic revision for browser-served assets."""
+    root = Path(static_folder)
+    digest = blake2s(digest_size=8)
+    try:
+        paths = sorted(path for path in root.rglob("*") if path.is_file())
+    except OSError:
+        paths = []
+    for path in paths:
+        try:
+            stat = path.stat()
+            relative = path.relative_to(root).as_posix()
+        except OSError:
+            continue
+        digest.update(relative.encode("utf-8", "surrogateescape"))
+        digest.update(b"\0")
+        digest.update(str(stat.st_mtime_ns).encode("ascii"))
+        digest.update(b":")
+        digest.update(str(stat.st_size).encode("ascii"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def create_app(instance_path: str | None = None) -> Flask:
     app = Flask(__name__, instance_relative_config=True, instance_path=instance_path)
     app.config.from_mapping(
         BOOT_ID=secrets.token_hex(12),
+        ASSET_REVISION_CHECK_INTERVAL_SECONDS=1.0,
         SECRET_KEY=load_or_create_secret_key(app.instance_path),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Strict",
@@ -121,6 +147,26 @@ def create_app(instance_path: str | None = None) -> Flask:
         logger=app.logger,
     )
     app.extensions["remote_session_manager"] = remote_session_manager
+    asset_revision_state: dict[str, Any] = {
+        "checked_at": 0.0,
+        "revision": "",
+    }
+
+    def current_asset_version() -> str:
+        now = time.monotonic()
+        interval = float(
+            app.config.get("ASSET_REVISION_CHECK_INTERVAL_SECONDS", 1.0)
+        )
+        if (
+            not asset_revision_state["revision"]
+            or now - float(asset_revision_state["checked_at"]) >= interval
+        ):
+            asset_revision_state["revision"] = _asset_tree_revision(app.static_folder)
+            asset_revision_state["checked_at"] = now
+        return (
+            f"{APP_VERSION}-{app.config['BOOT_ID']}-"
+            f"{asset_revision_state['revision']}"
+        )
 
     @app.before_request
     def require_authentication():
@@ -514,7 +560,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             "preferred_fqdn": identity["preferred_fqdn"],
             "page_title": page_title,
             "app_version": APP_VERSION,
-            "asset_version": f"{APP_VERSION}-{app.config['BOOT_ID']}",
+            "asset_version": current_asset_version(),
             "release_notes": RELEASE_NOTES,
             "min_password_length": password_policy["min_length"],
             "password_policy": password_policy,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -15,6 +16,28 @@ from twn_toolkit.version import RELEASE_NOTES
 
 
 class HomePageTests(unittest.TestCase):
+    def test_static_asset_version_changes_without_a_service_restart(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as instance,
+            tempfile.TemporaryDirectory() as static,
+        ):
+            static_root = Path(static)
+            probe = static_root / "probe.css"
+            probe.write_text("body { color: black; }", encoding="utf-8")
+            app = create_app(instance_path=instance)
+            app.testing = True
+            app.static_folder = str(static_root)
+            app.config["ASSET_REVISION_CHECK_INTERVAL_SECONDS"] = 0
+            client = app.test_client()
+
+            first = client.get("/").data.decode()
+            first_version = re.search(r"styles\.css\?v=([^\"&]+)", first).group(1)
+            probe.write_text("body { color: chartreuse; }", encoding="utf-8")
+            second = client.get("/").data.decode()
+            second_version = re.search(r"styles\.css\?v=([^\"&]+)", second).group(1)
+
+        self.assertNotEqual(first_version, second_version)
+
     def test_readme_wordmark_is_the_single_horizontal_twn_identity(self) -> None:
         root = Path(__file__).resolve().parents[1]
         readme = (root / "README.md").read_text(encoding="utf-8")
@@ -39,15 +62,16 @@ class HomePageTests(unittest.TestCase):
     def sidebar_category_panel(self, html: str, label: str) -> str:
         marker = f'data-nav-label="{label}"'
         start = html.index(marker)
-        end = html.find('class="side-nav-panel side-nav-category-panel"', start + len(marker))
+        end = html.find('data-nav-category="category-', start + len(marker))
         return html[start : end if end >= 0 else html.index('class="side-nav-help', start)]
 
     def assert_sidebar_category_active(self, html: str, label: str) -> None:
         marker = f'data-nav-label="{label}"'
         marker_index = html.index(marker)
-        section_index = html.rfind("<section", 0, marker_index)
-        section_tag = html[section_index : html.index(">", marker_index)]
-        self.assertIn('data-nav-active="true"', section_tag)
+        details_index = html.rfind("<details", 0, marker_index)
+        details_tag = html[details_index : html.index(">", marker_index)]
+        self.assertIn('data-nav-active="true"', details_tag)
+        self.assertIn(" open", details_tag)
 
     def test_home_renders_launchpad_and_packet_replay_for_admin(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -117,7 +141,8 @@ class HomePageTests(unittest.TestCase):
         sidebar_script = client.get("/static/sidebar.js")
         self.assertEqual(sidebar_script.status_code, 200)
         self.assertIn(b'link.closest(".side-nav-favorites")', sidebar_script.data)
-        self.assertIn(b"showPanel", sidebar_script.data)
+        self.assertIn(b"openCategory", sidebar_script.data)
+        self.assertIn(b"openSubgroup", sidebar_script.data)
         self.assertIn(b"setSidebarWidth", sidebar_script.data)
         self.assertIn(b'scroll.classList.toggle("searching"', sidebar_script.data)
         self.assertIn(b"renderDashboardSearch", sidebar_script.data)

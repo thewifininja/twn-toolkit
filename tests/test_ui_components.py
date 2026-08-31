@@ -848,7 +848,10 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("Help &amp; release notes", template)
         self.assertIn("filename='sidebar.js', v=asset_version", template)
 
-    def test_sidebar_drills_into_flat_text_only_tool_lists(self) -> None:
+    def test_sidebar_expands_categories_and_subgroups_in_place(self) -> None:
+        primary_stylesheet = (
+            TEMPLATE_ROOT.parent / "static" / "styles.css"
+        ).read_text(encoding="utf-8")
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(
             encoding="utf-8"
         )
@@ -857,23 +860,67 @@ class UIComponentTests(unittest.TestCase):
             TEMPLATE_ROOT.parent / "static" / "sidebar.js"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('class="side-nav-panel side-nav-category-panel"', template)
+        self.assertIn('class="side-nav-category-accordion', template)
+        self.assertIn("data-nav-favorites", template)
+        self.assertIn("document.currentScript.parentElement", template)
+        self.assertIn(
+            'localStorage.getItem("twn-sidebar-favorites-open")',
+            template,
+        )
+        self.assertLess(
+            template.index("document.currentScript.parentElement"),
+            template.index("{% if sidebar_favorites %}"),
+        )
+        self.assertIn('class="side-nav-category-summary"', template)
+        self.assertIn('class="side-nav-category-body"', template)
         self.assertIn('class="side-nav-flat-tool-list"', template)
         self.assertIn('class="side-nav-tool-section"', template)
-        self.assertIn('data-nav-open="category-{{ loop.index0 }}"', template)
+        self.assertIn('data-nav-category="category-{{ loop.index0 }}"', template)
+        self.assertIn('data-nav-subgroup="child-{{ child_index }}"', template)
+        self.assertNotIn('data-nav-back', template)
+        self.assertNotIn('class="side-nav-back"', template)
         self.assertIn(".side-nav-flat-tool-list {", stylesheet)
-        self.assertIn(".side-nav-category-panel .side-nav-label", stylesheet)
+        self.assertIn(".side-nav-category-accordion {", stylesheet)
+        self.assertIn(".side-nav-category-summary {", stylesheet)
+        self.assertIn(".side-nav-category-body .side-nav-label", stylesheet)
+        self.assertIn(".side-nav-tool-section > summary", stylesheet)
+        self.assertIn("Structural fallback for the in-place navigation hierarchy", primary_stylesheet)
+        self.assertIn(".side-nav-category-summary,", primary_stylesheet)
+        self.assertIn("pointer-events: auto;", primary_stylesheet)
         self.assertIn("overflow-wrap: anywhere;", stylesheet)
         self.assertIn("sidebar_tool_row(tool, show_icon=false, category_label=group.label)", template)
         self.assertIn(
             "{% if show_icon %}<span class=\"side-nav-icon\"", template
         )
-        self.assertIn("const closeFocusPanel = () => {", sidebar_script)
+        self.assertIn("const openCategory = (category", sidebar_script)
+        self.assertIn("const openSubgroup = (subgroup", sidebar_script)
+        self.assertIn('querySelectorAll("details[data-nav-category]")', sidebar_script)
+        self.assertIn('querySelectorAll("details[data-nav-subgroup]")', sidebar_script)
+        self.assertIn('const categoryStorageKey = "twn-sidebar-category";', sidebar_script)
+        self.assertIn('const favoritesStorageKey = "twn-sidebar-favorites-open";', sidebar_script)
+        self.assertIn("storedFavoritesState === \"1\"", sidebar_script)
+        self.assertIn("favoritesSection.open ? \"1\" : \"0\"", sidebar_script)
+        self.assertIn("`twn-sidebar-subgroup:${category?.dataset.navCategory", sidebar_script)
+        self.assertNotIn("closeFocusPanel", sidebar_script)
+        self.assertIn("const expandFocusSidebar = () =>", sidebar_script)
+        self.assertIn("const collapseFocusSidebar = () =>", sidebar_script)
+        self.assertIn('classList.remove("focus-sidebar-expanded")', sidebar_script)
         self.assertIn(
-            'if (!sidebar.contains(event.target)) closeFocusPanel();',
-            sidebar_script,
+            '[data-layout="focus"] body.focus-sidebar-expanded .app-layout.with-sidebar',
+            stylesheet,
         )
-        self.assertIn('sidebar.addEventListener("focusout"', sidebar_script)
+        self.assertIn(
+            "grid-template-columns: var(--ui-sidebar-expanded-width) minmax(0, 1fr);",
+            stylesheet,
+        )
+        self.assertIn(
+            '[data-layout="focus"] body:not(.focus-sidebar-expanded) .app-sidebar',
+            stylesheet,
+        )
+        self.assertIn(
+            ".side-nav-favorites:not([open]) > summary { color: var(--chrome-muted, #9aa8a2); }",
+            stylesheet,
+        )
 
     def test_automation_threshold_rows_share_aligned_label_space(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
