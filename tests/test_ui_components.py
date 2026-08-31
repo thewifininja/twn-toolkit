@@ -820,14 +820,6 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("overscroll-behavior: contain;", stylesheet)
         self.assertIn("scrollbar-gutter: stable;", stylesheet)
         self.assertIn(
-            "@media (min-width: 901px) and (hover: hover) and (pointer: fine) {",
-            stylesheet,
-        )
-        self.assertIn(
-            "@media (max-width: 900px), (hover: none) and (pointer: coarse) {",
-            stylesheet,
-        )
-        self.assertIn(
             "var(--mobile-visual-viewport-height, 100dvh)",
             stylesheet,
         )
@@ -839,14 +831,36 @@ class UIComponentTests(unittest.TestCase):
             'window.visualViewport?.addEventListener("resize", updateSidebarGeometry);',
             sidebar_script,
         )
-        self.assertIn(
-            '"(min-width: 901px) and (hover: hover) and (pointer: fine)"',
-            sidebar_script,
-        )
         self.assertIn("env(safe-area-inset-bottom)", stylesheet)
         self.assertIn("overflow-wrap: anywhere;", stylesheet)
         self.assertIn("Help &amp; release notes", template)
         self.assertIn("filename='sidebar.js', v=asset_version", template)
+
+    def test_wide_coarse_pointer_uses_desktop_sidebar_geometry(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
+            encoding="utf-8"
+        )
+        appearance_stylesheet = (
+            TEMPLATE_ROOT.parent / "static" / "appearance.css"
+        ).read_text(encoding="utf-8")
+        sidebar_script = (
+            TEMPLATE_ROOT.parent / "static" / "sidebar.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("@media (min-width: 901px) {", stylesheet)
+        self.assertIn("@media (max-width: 900px) {", stylesheet)
+        self.assertIn("@media (min-width: 901px) {", appearance_stylesheet)
+        self.assertIn("@media (max-width: 900px) {", appearance_stylesheet)
+        self.assertNotIn(
+            "@media (max-width: 900px), (hover: none) and (pointer: coarse) {",
+            stylesheet,
+        )
+        self.assertNotIn(
+            "@media (max-width: 900px), (any-pointer: coarse) {",
+            appearance_stylesheet,
+        )
+        self.assertIn('window.matchMedia("(min-width: 901px)")', sidebar_script)
+        self.assertNotIn("pointer: fine", sidebar_script)
 
     def test_sidebar_expands_categories_and_subgroups_in_place(self) -> None:
         primary_stylesheet = (

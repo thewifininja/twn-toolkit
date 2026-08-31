@@ -15,9 +15,10 @@
   const subgroupAccordions = Array.from(sidebar?.querySelectorAll("details[data-nav-subgroup]") || []);
   const resizer = sidebar?.querySelector(".sidebar-resizer");
   const root = document.documentElement;
-  const desktopQuery = window.matchMedia(
-    "(min-width: 901px) and (hover: hover) and (pointer: fine)",
-  );
+  // Layout mode is a viewport decision. Chromium on touch-capable Linux
+  // systems can report a coarse/non-hover primary pointer even when a mouse or
+  // touchpad is in use, which must not turn a wide workspace into an overlay.
+  const desktopQuery = window.matchMedia("(min-width: 901px)");
   const minimumWidth = 220;
   const maximumWidth = 400;
   const categoryStorageKey = "twn-sidebar-category";
