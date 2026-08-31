@@ -127,6 +127,9 @@ The persistent sidebar is the primary navigation:
 
 - Use **Find a tool** above Dashboard to filter permitted destinations by tool
   name or category path without changing which menu sections are expanded.
+- Select a top-level category to expand it in place. One category and one nested
+  Network Tools group stay open at a time, and the current destination opens
+  automatically without a separate Back step.
 - **Fortinet Tools** contains FortiGate and FortiAuthenticator profiles and
   workflows.
 - **Network Tools** is divided into Addressing & Reachability, Services &
@@ -139,7 +142,9 @@ The persistent sidebar is the primary navigation:
 - **Administration** contains server-wide configuration and diagnostics.
 
 Hover or focus a tool in the sidebar and select its star to add or remove a
-personal Favorite.
+personal Favorite. The Favorites section remembers whether it was collapsed or
+expanded. In Focus layout, opening the narrow navigation rail resizes the
+workspace instead of covering it.
 
 Pages with peer views place their tab navigator first. Saved configuration
 panels follow one workflow: select a record to load it, edit and save it, or use

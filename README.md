@@ -13,15 +13,17 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.22.0**
+Current release: **v0.22.1**
 
-v0.22.0 introduces the themeable, terminal-inspired TWN Toolkit interface,
-results-first diagnostic workspaces, reusable Bulk SSH host matrices with
-ordered runbooks, and simultaneous hardware-bound Raspberry Pi wired and Wi-Fi
-profiles. It adds no Python dependency or database-schema migration. Existing
+v0.22.1 replaces paged sidebar navigation with in-place category accordions,
+keeps Focus expansion from covering tools, restores Favorites before first
+paint, prevents stale interface assets after updates, and finishes the shared
+theme geometry across Raspberry Pi networking. It adds no Python dependency,
+database migration, profile-format change, or service change. Existing
 installations accepted by the standard v0.9.0 minimum upgrade boundary can
-upgrade directly; Raspberry Pi service installations must refresh the protected
-network broker once with `sudo ./twn service install` after upgrading.
+upgrade directly. No service reinstall is required from v0.22.0; Raspberry Pi
+installations coming from an earlier release must still refresh the protected
+network broker once with `sudo ./twn service install`.
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -45,6 +47,13 @@ network broker once with `sudo ./twn service install` after upgrading.
 - **Administration** — Settings, access, backups, operational limits, and
   System Diagnostics
 - **Help** — searchable operator guidance and release notes
+
+The sidebar expands these categories in place rather than opening a separate
+navigation page. One category and one nested Network Tools group stay open at a
+time, the active destination opens automatically, and Favorites remembers its
+collapsed or expanded state without flashing during page loads. Focus layout
+temporarily widens the navigation as a real tile so it never covers the tool
+workspace.
 
 Tabbed workspaces use one tabs-first, full-width responsive layout across
 desktop and mobile views. Saved configurations share a consistent manager or
