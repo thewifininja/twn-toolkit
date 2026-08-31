@@ -24,7 +24,7 @@ from flask import (
     url_for,
 )
 
-from .auth import AuthStore
+from .auth import APPEARANCE_PALETTES, AuthStore
 from .automation import AutomationStore
 from .profile_backup import (
     ConfigurationImportStore,
@@ -463,11 +463,7 @@ def register_admin_routes(
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         g.current_user["appearance"] = appearance
-        g.current_user["theme"] = (
-            "light"
-            if appearance["palette"] in {"flexoki-light", "toolkit-classic"}
-            else "dark"
-        )
+        g.current_user["theme"] = APPEARANCE_PALETTES[appearance["palette"]]
         return jsonify({"appearance": appearance})
 
     @app.get("/settings")

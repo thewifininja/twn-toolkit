@@ -464,6 +464,34 @@ class UIComponentTests(unittest.TestCase):
         )
         self.assertIn("border-color: var(--depth-primary) !important;", appearance)
 
+    def test_osaka_jade_defines_the_complete_semantic_palette(self) -> None:
+        appearance = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(
+            encoding="utf-8"
+        )
+        theme_script = (TEMPLATE_ROOT.parent / "static" / "theme.js").read_text(
+            encoding="utf-8"
+        )
+        palettes = dict(
+            re.findall(
+                r'\[data-palette="([^"]+)"\]\s*\{([^}]+)\}',
+                appearance,
+            )
+        )
+
+        tokyo_variables = set(re.findall(r"--([\w-]+)\s*:", palettes["tokyo-night"]))
+        osaka_variables = set(re.findall(r"--([\w-]+)\s*:", palettes["osaka-jade"]))
+        self.assertEqual(osaka_variables, tokyo_variables)
+        for canonical_color in (
+            "--panel: #111c18;",
+            "--accent: #509475;",
+            "--ink: #d6d5bc;",
+            "--muted: #81b8a8;",
+            "--depth-secondary: #2dd5b7;",
+        ):
+            self.assertIn(canonical_color, palettes["osaka-jade"])
+        self.assertIn(".theme-preview-osaka-jade", appearance)
+        self.assertIn('"osaka-jade": "dark"', theme_script)
+
     def test_tiled_surfaces_and_mobile_actions_keep_shared_geometry(self) -> None:
         appearance = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(
             encoding="utf-8"

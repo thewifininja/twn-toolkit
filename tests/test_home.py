@@ -125,6 +125,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b'aria-label="Appearance settings"', topnav)
         self.assertIn(b"appearance-toggle-label", topnav)
         self.assertIn(b'data-appearance-value="tokyo-night"', topnav)
+        self.assertIn(b'data-appearance-value="osaka-jade"', topnav)
         self.assertIn(b'data-appearance-value="focus"', topnav)
         workspace_choices = topnav.split(b"<legend>Workspace</legend>", 1)[1].split(
             b"</fieldset>", 1
