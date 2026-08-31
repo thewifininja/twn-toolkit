@@ -156,6 +156,27 @@ def test_appearance_preference_is_saved_per_user(tmp_path):
     assert AuthStore(str(tmp_path)).get_user("admin")["appearance"]["sidebar_width"] == "336"
 
 
+def test_osaka_jade_appearance_is_available_and_dark(tmp_path):
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    _setup(client)
+
+    response = client.post(
+        "/settings/appearance",
+        json={"palette": "osaka-jade"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["appearance"]["palette"] == "osaka-jade"
+    user = AuthStore(str(tmp_path)).get_user("admin")
+    assert user["theme"] == "dark"
+    page = client.get("/")
+    assert b'data-theme="dark"' in page.data
+    assert b'data-palette="osaka-jade"' in page.data
+    assert b'data-appearance-value="osaka-jade"' in page.data
+    assert b"Osaka Jade" in page.data
+
+
 def test_legacy_theme_endpoint_maps_to_semantic_palette(tmp_path):
     app = create_app(str(tmp_path))
     client = app.test_client()

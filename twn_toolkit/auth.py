@@ -21,6 +21,7 @@ MAX_CONFIGURABLE_PASSWORD_LENGTH = 128
 DEFAULT_IDLE_TIMEOUT_MINUTES = 30
 APPEARANCE_PALETTES = {
     "tokyo-night": "dark",
+    "osaka-jade": "dark",
     "catppuccin": "dark",
     "gruvbox": "dark",
     "flexoki-light": "light",

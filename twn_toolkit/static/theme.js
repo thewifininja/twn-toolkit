@@ -8,6 +8,7 @@
   const controls = Array.from(menu.querySelectorAll("[data-appearance-key]"));
   const paletteModes = {
     "tokyo-night": "dark",
+    "osaka-jade": "dark",
     catppuccin: "dark",
     gruvbox: "dark",
     "flexoki-light": "light",

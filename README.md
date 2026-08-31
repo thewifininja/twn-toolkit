@@ -62,7 +62,7 @@ complete automations, schedule rules, and action stages can be duplicated before
 they are adapted for another site or workflow.
 
 Each operator can save an appearance profile from the top bar. Semantic palettes
-(Tokyo Night, Catppuccin, Gruvbox, Flexoki Light, and Toolkit Classic), compact
+(Tokyo Night, Osaka Jade, Catppuccin, Gruvbox, Flexoki Light, and Toolkit Classic), compact
 or comfortable density, tiled or focus workspace layouts, and four text scales
 all use the same tiled component system and bundled JetBrains Mono typography.
 
