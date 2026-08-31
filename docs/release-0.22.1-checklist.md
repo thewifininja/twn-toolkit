@@ -46,9 +46,12 @@
 - [x] Squash-merge the accordion navigation as PR #156 and pass CI run
   `33343316348` on Ubuntu Python 3.10/3.13 and macOS Python 3.13, including
   repository checks and dependency audit.
-- [ ] Pass the v0.22.1 release-preparation PR on Ubuntu Python 3.10/3.13 and
-  macOS Python 3.13, including repository checks and dependency audit.
-- [ ] Squash-merge the release-preparation PR and pass merged-main CI.
+- [x] Pass v0.22.1 release-preparation PR #157 in CI run `33343796478` on
+  Ubuntu Python 3.10/3.13 and macOS Python 3.13, including repository checks
+  and dependency audit.
+- [x] Squash-merge PR #157 as
+  `ddc55d4fcb09c05057e286602ba0118ca50e2cef` and pass merged-main CI run
+  `33344059301`.
 
 ## Publication gate
 
