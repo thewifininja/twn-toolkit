@@ -513,7 +513,9 @@ make state, risk, and the next action obvious.
   after recoverable errors and explain the next corrective action.
 - Mobile, narrow desktop, and wide desktop are one responsive system. Avoid
   clipped actions and accidental page-level horizontal scrolling; allow bounded
-  data regions to scroll when comparison requires it.
+  data regions to scroll when comparison requires it. Select the desktop or
+  mobile layout from viewport width rather than pointer or hover capability;
+  wide touch-capable laptops still need the full desktop workspace.
 - Support keyboard operation, visible focus, semantic labels, readable contrast,
   reduced motion, and every semantic appearance palette. The per-user appearance
   profile includes palette, density, workspace layout, and text scale; preserve
@@ -547,7 +549,9 @@ make state, risk, and the next action obvious.
 - JetBrains Mono is bundled locally under the SIL Open Font License and is the
   interface font. Keep terminal ligatures disabled and use the semantic
   appearance variables from `appearance.css` instead of palette-specific colors
-  in page-level styles.
+  in page-level styles. Every added palette must define the complete established
+  variable set, declare its light or dark mode in both server and client theme
+  registries, and remain selectable through the saved per-user appearance model.
 - Saved-record actions use `.button-row`. When independent forms require the
   actions to sit outside the edit form, add the shared `.profile-form-actions`
   modifier so padding, spacing, and child-form margins remain consistent. Do not
