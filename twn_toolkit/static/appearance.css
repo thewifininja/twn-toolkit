@@ -1954,7 +1954,7 @@ dialog::backdrop { background: rgb(5 8 10 / 68%); }
   border-radius: 0;
 }
 
-@media (min-width: 901px) and (hover: hover) and (pointer: fine) {
+@media (min-width: 901px) {
   .side-nav-scroll { gap: 3px; padding: 7px 6px; }
   .side-nav-home,
   .side-nav-section a,
@@ -2069,7 +2069,7 @@ dialog::backdrop { background: rgb(5 8 10 / 68%); }
   .appearance-toggle-mark { letter-spacing: -0.1em; transform: translateX(-0.04em); }
 }
 
-@media (max-width: 900px), (any-pointer: coarse) {
+@media (max-width: 900px) {
   :root { --ui-control-height: 40px; }
   main details > summary { min-height: 34px; }
   main :is(.link-button, .link-button.subtle) { min-height: 36px !important; }
