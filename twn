@@ -18,6 +18,7 @@ SCHEME_FILE="$INSTANCE/twn-toolkit.scheme"
 HOST_FILE="$INSTANCE/twn-toolkit.host"
 PORT_FILE="$INSTANCE/twn-toolkit.port"
 AUTOMATION_PIDFILE="$INSTANCE/twn-automation.pid"
+DISTRIBUTED_PIDFILE="$INSTANCE/twn-distributed.pid"
 SUPERVISOR_PIDFILE="$INSTANCE/twn-supervisor.pid"
 SERVICE_LAUNCHER_PIDFILE="$INSTANCE/twn-service-launcher.pid"
 SERVICE_PAUSE_FILE="$INSTANCE/twn-service-paused"
@@ -36,6 +37,7 @@ FTP_READYFILE="$INSTANCE/twn-ftp.ready"
 ACCESS_LOG="$INSTANCE/twn-toolkit-access.log"
 ERROR_LOG="$INSTANCE/twn-toolkit-error.log"
 AUTOMATION_LOG="$INSTANCE/twn-automation.log"
+DISTRIBUTED_LOG="$INSTANCE/twn-distributed.log"
 SUPERVISOR_LOG="$INSTANCE/twn-supervisor.log"
 TFTP_LOG="$INSTANCE/twn-tftp.log"
 TFTP_SETTINGS="$INSTANCE/tftp_settings.json"
@@ -48,6 +50,7 @@ FTP_SETTINGS="$INSTANCE/ftp_settings.json"
 FTP_LAUNCHD_MARKER="$INSTANCE/twn-ftp.launchd-enabled"
 IPERF_LOG="$INSTANCE/twn-iperf3.log"
 SERVER_SETTINGS="$INSTANCE/server_settings.json"
+DISTRIBUTED_SETTINGS="$INSTANCE/distributed_settings.json"
 PREVIOUS_SERVER_SETTINGS="$INSTANCE/server_settings.previous.json"
 TLS_DIR="$INSTANCE/tls"
 TLS_CERT_DEFAULT="$TLS_DIR/cert.pem"
@@ -221,6 +224,10 @@ is_running() {
 
 automation_is_running() {
   [ -f "$AUTOMATION_PIDFILE" ] && pid_is_running "$(cat "$AUTOMATION_PIDFILE")"
+}
+
+distributed_is_running() {
+  [ -f "$DISTRIBUTED_PIDFILE" ] && pid_is_running "$(cat "$DISTRIBUTED_PIDFILE")"
 }
 
 supervisor_is_running() {
@@ -882,6 +889,71 @@ stop_automation() {
   cleanup_worker_processes "twn_toolkit.automation_worker" 0
 }
 
+distributed_enabled() {
+  [ -x "$PYTHON" ] && [ -f "$DISTRIBUTED_SETTINGS" ] && "$PYTHON" -c '
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        enabled = json.load(handle).get("role") in {"mainframe", "agent"}
+except (OSError, ValueError):
+    enabled = False
+raise SystemExit(0 if enabled else 1)
+' "$DISTRIBUTED_SETTINGS"
+}
+
+start_distributed() {
+  if ! distributed_enabled; then
+    stop_distributed
+    return 0
+  fi
+  if distributed_is_running; then
+    cleanup_worker_processes "twn_toolkit.distributed_worker" "$(cat "$DISTRIBUTED_PIDFILE")"
+    return 0
+  fi
+  cleanup_worker_processes "twn_toolkit.distributed_worker" 0
+  rm -f "$DISTRIBUTED_PIDFILE"
+  cd "$ROOT"
+  if launchd_foreground_children; then
+    "$PYTHON" -m twn_toolkit.distributed_worker \
+      --instance "$INSTANCE" \
+      --pid-file "$DISTRIBUTED_PIDFILE" \
+      --log-file "$DISTRIBUTED_LOG" \
+      </dev/null >> "$DISTRIBUTED_LOG" 2>&1 &
+  else
+    "$PYTHON" -m twn_toolkit.distributed_worker \
+      --instance "$INSTANCE" \
+      --daemon \
+      --pid-file "$DISTRIBUTED_PIDFILE" \
+      --log-file "$DISTRIBUTED_LOG"
+  fi
+  attempts=0
+  while [ "$attempts" -lt 30 ]; do
+    if distributed_is_running; then return 0; fi
+    attempts=$((attempts + 1))
+    sleep 0.1
+  done
+  echo "The Mainframe enrollment listener did not start. Check: $DISTRIBUTED_LOG" >&2
+  return 1
+}
+
+stop_distributed() {
+  if ! distributed_is_running; then
+    rm -f "$DISTRIBUTED_PIDFILE"
+    cleanup_worker_processes "twn_toolkit.distributed_worker" 0
+    return 0
+  fi
+  distributed_pid=$(cat "$DISTRIBUTED_PIDFILE")
+  kill "$distributed_pid" 2>/dev/null || true
+  attempts=0
+  while pid_is_running "$distributed_pid" && [ "$attempts" -lt 50 ]; do
+    attempts=$((attempts + 1))
+    sleep 0.1
+  done
+  if pid_is_running "$distributed_pid"; then kill -KILL "$distributed_pid" 2>/dev/null || true; fi
+  rm -f "$DISTRIBUTED_PIDFILE"
+  cleanup_worker_processes "twn_toolkit.distributed_worker" 0
+}
+
 stop_packet_captures() {
   cleanup_daemon_processes "twn_toolkit.packet_capture_worker" 0
 }
@@ -1145,6 +1217,7 @@ start() {
       SCHEME=$(cat "$SCHEME_FILE")
     fi
     start_automation
+    start_distributed || true
     start_transfer_services
     start_supervisor || true
     echo "TWN Toolkit is already running (PID $(cat "$PIDFILE"))."
@@ -1216,6 +1289,7 @@ start() {
         "$PYTHON" -m twn_toolkit.system_identity mark-start --instance "$INSTANCE" >/dev/null
       fi
       start_automation
+      start_distributed || true
       start_transfer_services
       if ! start_iperf_servers; then
         echo "Warning: enabled iPerf3 listeners could not be restored. Check: $IPERF_LOG" >&2
@@ -1265,6 +1339,7 @@ stop() {
     rm -f "$PIDFILE"
     rm -f "$SCHEME_FILE"
     stop_supervisor
+    stop_distributed
     stop_packet_captures
     stop_iperf_servers
     stop_automation
@@ -1274,6 +1349,7 @@ stop() {
   fi
 
   stop_supervisor
+  stop_distributed
   stop_packet_captures
   stop_iperf_servers
   stop_automation
@@ -1324,6 +1400,13 @@ status() {
       echo "Automation scheduler is running (PID $(cat "$AUTOMATION_PIDFILE"))."
     else
       echo "Automation scheduler is not running." >&2
+    fi
+    if distributed_is_running; then
+      echo "Mainframe enrollment listener is running (PID $(cat "$DISTRIBUTED_PIDFILE"))."
+    elif distributed_enabled; then
+      echo "Distributed toolkit worker is enabled but not running." >&2
+    else
+      echo "Distributed toolkit worker is disabled."
     fi
     if supervisor_is_running; then
       echo "Worker supervisor is running (PID $(cat "$SUPERVISOR_PIDFILE"))."

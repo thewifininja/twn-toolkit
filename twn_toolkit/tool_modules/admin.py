@@ -85,6 +85,19 @@ def register_tools(registry) -> None:
 
     registry.add_tool(
         ToolLink(
+            "admin.mainframe",
+            "Mainframe",
+            "Coordinate remote toolkit agents, manage enrollment, and configure this instance's distributed role.",
+            "mainframe",
+            "administration",
+            "Administration",
+            admin_only=True,
+            grantable=False,
+            nav_icon="⌘",
+        )
+    )
+    registry.add_tool(
+        ToolLink(
             "admin.settings",
             "System Settings",
             "Configure server access, timezone, email delivery, operational limits, users, and access profiles.",
@@ -114,6 +127,14 @@ def register_tools(registry) -> None:
     )
     registry.map_endpoints(
         {
+            "mainframe": "admin.mainframe",
+            "agent_workspace": "admin.mainframe",
+            "agent_dns_response": "admin.mainframe",
+            "refresh_agent_workspace_identity": "admin.mainframe",
+            "begin_mainframe_enrollment": "admin.mainframe",
+            "update_mainframe_enrollment_window": "admin.mainframe",
+            "poll_mainframe_enrollment": "admin.mainframe",
+            "run_distributed_system_identity": "admin.mainframe",
             "backup_settings": "admin.updates",
             "create_user": "admin.settings",
             "update_user_access": "admin.settings",
@@ -123,6 +144,8 @@ def register_tools(registry) -> None:
             "delete_user": "admin.settings",
             "update_session_settings": "admin.settings",
             "update_server_settings": "admin.settings",
+            "update_distributed_settings": "admin.mainframe",
+            "update_distributed_agent": "admin.mainframe",
             "update_time_settings": "admin.settings",
             "apply_raspberry_pi_networking": "admin.settings",
             "confirm_raspberry_pi_networking": "admin.settings",

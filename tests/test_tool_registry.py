@@ -125,6 +125,7 @@ class ToolRegistryTests(unittest.TestCase):
             "task_preview",
         }
         public_or_self_service = {
+            "agent_ui",
             "favicon",
             "health",
             "help_page",
@@ -145,6 +146,7 @@ class ToolRegistryTests(unittest.TestCase):
             "tools.rename_live_tool_session",
             "tools.stop_live_tool_session",
             "update_appearance",
+            "update_execution_context",
             "update_theme",
             "change_user_password",
             "toggle_tool_favorite",

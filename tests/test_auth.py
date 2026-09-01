@@ -215,6 +215,20 @@ def test_legacy_compact_workspace_migrates_to_tiled(tmp_path):
     ).status_code == 400
 
 
+def test_appearance_is_independent_for_each_fabric_instance(tmp_path):
+    store = AuthStore(str(tmp_path))
+    user = store.create_user("admin", "correct horse battery staple", is_admin=True)
+    agent_id = "agent_0123456789abcdef"
+
+    store.set_user_appearance(user["id"], {"palette": "gruvbox"}, agent_id)
+
+    assert store.user_appearance(user["id"])["palette"] == "tokyo-night"
+    assert store.user_appearance(user["id"], agent_id)["palette"] == "gruvbox"
+    assert store.user_appearance(
+        user["id"], "agent_fedcba9876543210"
+    )["palette"] == "tokyo-night"
+
+
 def test_admin_can_manage_users_timeout_and_passwords(tmp_path):
     app = create_app(str(tmp_path))
     client = app.test_client()
@@ -293,6 +307,15 @@ def test_admin_settings_categories_only_render_the_selected_section(tmp_path):
     assert b'id="smtp-delivery"' not in system_page.data
     assert b'id="operational-limits"' not in system_page.data
     assert b'id="authentication-policy"' not in system_page.data
+
+    mainframe_page = client.get("/mainframe")
+    assert b'id="distributed-configuration"' in mainframe_page.data
+    assert b'id="distributed-identity"' in mainframe_page.data
+    assert b'name="mainframe_advertised_hosts"' in mainframe_page.data
+    assert b"Execution test" not in mainframe_page.data
+    assert b'id="distributed-jobs"' not in mainframe_page.data
+    assert b'id="server-access"' not in mainframe_page.data
+    assert b">Mainframe</span>" in mainframe_page.data
 
     email_page = client.get("/settings?section=email")
     assert b'id="smtp-delivery"' in email_page.data

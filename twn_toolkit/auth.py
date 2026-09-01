@@ -115,19 +115,31 @@ class AuthStore:
         user["appearance"] = appearance
         self._write(data)
 
-    def user_appearance(self, user_id: str) -> dict[str, str]:
+    def user_appearance(
+        self, user_id: str, context_id: str = "local"
+    ) -> dict[str, str]:
         try:
             user = _find_user(self._read(), user_id)
         except ValueError:
             return dict(DEFAULT_APPEARANCE)
+        context_id = _appearance_context_id(context_id)
+        if context_id != "local":
+            scoped = user.get("appearance_by_context", {})
+            if isinstance(scoped, dict) and isinstance(scoped.get(context_id), dict):
+                return _appearance_from_user({"appearance": scoped[context_id]})
+            return dict(DEFAULT_APPEARANCE)
         return _appearance_from_user(user)
 
     def set_user_appearance(
-        self, user_id: str, appearance: dict[str, Any]
+        self,
+        user_id: str,
+        appearance: dict[str, Any],
+        context_id: str = "local",
     ) -> dict[str, str]:
         data = self._read()
         user = _find_user(data, user_id)
-        updated = _appearance_from_user(user)
+        context_id = _appearance_context_id(context_id)
+        updated = self.user_appearance(user_id, context_id)
         validators = {
             "palette": APPEARANCE_PALETTES,
             "density": APPEARANCE_DENSITIES,
@@ -152,8 +164,15 @@ class AuthStore:
                     f"{MAX_SIDEBAR_WIDTH} pixels."
                 )
             updated["sidebar_width"] = str(sidebar_width)
-        user["appearance"] = updated
-        user["theme"] = APPEARANCE_PALETTES[updated["palette"]]
+        if context_id == "local":
+            user["appearance"] = updated
+            user["theme"] = APPEARANCE_PALETTES[updated["palette"]]
+        else:
+            scoped = user.get("appearance_by_context", {})
+            if not isinstance(scoped, dict):
+                scoped = {}
+            scoped[context_id] = updated
+            user["appearance_by_context"] = scoped
         self._write(data)
         return dict(updated)
 
@@ -164,6 +183,25 @@ class AuthStore:
             return []
         favorites = user.get("favorite_tools", [])
         return [str(tool_id) for tool_id in favorites if isinstance(tool_id, str)]
+
+    def execution_context(self, user_id: str) -> str:
+        try:
+            user = _find_user(self._read(), user_id)
+        except ValueError:
+            return "local"
+        value = str(user.get("execution_context", "local"))
+        return value if value == "local" or value.startswith("agent_") else "local"
+
+    def set_execution_context(self, user_id: str, context_id: str) -> None:
+        context_id = str(context_id).strip()
+        if context_id != "local" and (
+            not context_id.startswith("agent_") or len(context_id) > 80
+        ):
+            raise ValueError("Select a valid execution context.")
+        data = self._read()
+        user = _find_user(data, user_id)
+        user["execution_context"] = context_id
+        self._write(data)
 
     def toggle_favorite_tool(self, user_id: str, tool_id: str) -> bool:
         data = self._read()
@@ -524,6 +562,15 @@ def _appearance_from_user(user: dict[str, Any]) -> dict[str, str]:
     if MIN_SIDEBAR_WIDTH <= sidebar_width <= MAX_SIDEBAR_WIDTH:
         appearance["sidebar_width"] = str(sidebar_width)
     return appearance
+
+
+def _appearance_context_id(value: str) -> str:
+    context_id = str(value).strip()
+    if context_id == "local":
+        return context_id
+    if context_id.startswith("agent_") and len(context_id) <= 80:
+        return context_id
+    raise ValueError("Appearance context is invalid.")
 
 
 def load_or_create_secret_key(instance_path: str) -> str:

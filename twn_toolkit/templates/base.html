@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='appearance.css', v=asset_version) }}">
   </head>
   <body>
-    <header class="topbar {{ 'with-sidebar' if current_user else '' }}">
+    <header class="topbar{{ ' with-sidebar' if current_user else '' }}{{ ' remote-execution-context' if selected_execution_agent else '' }}">
       {% if current_user %}
         <button
           type="button"
@@ -37,12 +37,26 @@
       <a class="brand" href="{{ url_for('index') }}" aria-label="TWN Toolkit">{{ brand_wordmark() }}</a>
       <nav class="topnav">
         {% if current_user %}
+          {% if execution_context_enabled %}
+            <form method="post" action="{{ execution_context_url }}" class="execution-context-form" data-execution-context-form>
+              <input type="hidden" name="next" value="{{ request.full_path }}">
+              <label for="execution-context-select"><span>Instance</span>
+                <select id="execution-context-select" name="context_id" data-execution-context-select>
+                  <option value="local" {% if execution_context_id == 'local' %}selected{% endif %}>This instance{% if execution_local_name %} · {{ execution_local_name }}{% endif %}</option>
+                  {% for agent in execution_agents %}
+                    <option value="{{ agent.id }}" {% if execution_context_id == agent.id %}selected{% endif %} {% if not agent.online and execution_context_id != agent.id %}disabled{% endif %}>{{ agent.name }}{% if not agent.online %} · Offline{% endif %}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <noscript><button type="submit">Switch</button></noscript>
+            </form>
+          {% endif %}
           <details class="appearance-menu" id="appearance-menu">
             <summary class="appearance-toggle" aria-label="Appearance settings" title="Appearance settings">
               <span class="appearance-toggle-mark" aria-hidden="true">Aa</span>
               <span class="appearance-toggle-label">Appearance</span>
             </summary>
-            <div class="appearance-popover" data-update-url="{{ url_for('update_appearance') }}">
+            <div class="appearance-popover" data-update-url="{{ appearance_url }}">
               <header>
                 <span>Appearance</span>
                 <small>Saved for {{ current_user.username }}</small>
@@ -93,7 +107,7 @@
               <p class="appearance-status" data-appearance-status role="status" aria-live="polite"></p>
             </div>
           </details>
-          <form method="post" action="{{ url_for('logout') }}" class="nav-logout">
+          <form method="post" action="{{ logout_url }}" class="nav-logout">
             <button type="submit" class="link-button" aria-label="Sign out {{ current_user.username }}">
               Sign out <span class="nav-logout-username">({{ current_user.username }})</span>
             </button>
@@ -133,7 +147,7 @@
           class="app-sidebar"
           id="app-sidebar"
           aria-label="Primary navigation"
-          data-appearance-url="{{ url_for('update_appearance') }}"
+          data-appearance-url="{{ appearance_url }}"
         >
           <nav class="side-nav">
             <div class="side-nav-scroll">
@@ -155,6 +169,34 @@
                 <div class="side-nav-search-results" id="side-nav-search-results" hidden></div>
                 <p class="side-nav-search-empty" id="side-nav-search-empty" hidden>No matching tools.</p>
               </div>
+              {% if selected_execution_agent %}
+              <div class="side-nav-panel side-nav-root-panel remote-side-nav" data-nav-root>
+                <a class="side-nav-home {{ 'active' if request.endpoint == 'agent_workspace' else '' }}" href="{{ url_for('agent_workspace', agent_id=selected_execution_agent.id) }}" title="{{ selected_execution_agent.name }} workspace">
+                  <span class="side-nav-icon" aria-hidden="true">⌂</span>
+                  <span class="side-nav-label">Dashboard</span>
+                </a>
+                <div class="side-nav-category-list" aria-label="Remote tools">
+                  <details class="side-nav-category-accordion {{ 'active' if request.endpoint == 'agent_dns_response' else '' }}" open>
+                    <summary class="side-nav-category-summary" aria-label="Network Tools" title="Network Tools">
+                      <span class="side-nav-icon" aria-hidden="true">⌁</span>
+                      <span class="side-nav-label">Network Tools</span>
+                      <small>1</small>
+                      <span class="side-nav-disclosure" aria-hidden="true">›</span>
+                    </summary>
+                    <div class="side-nav-category-body">
+                      <div class="side-nav-category-direct">
+                        <div class="side-nav-item text-only direct">
+                          <a class="side-nav-tool-link {{ 'active' if request.endpoint == 'agent_dns_response' else '' }}" href="{{ url_for('agent_dns_response', agent_id=selected_execution_agent.id) }}" title="DNS Lookup" data-nav-tool data-nav-category="Network Tools" data-nav-subgroup="Services &amp; Protocols">
+                            <span class="side-nav-label">DNS Lookup</span>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+                <p class="side-nav-empty remote-side-nav-note">Only remote-enabled tools are shown.</p>
+              </div>
+              {% else %}
               <div class="side-nav-panel side-nav-root-panel" data-nav-root>
                 <a class="side-nav-home {{ 'active' if request.endpoint == 'index' else '' }}" href="{{ url_for('index') }}" title="Dashboard">
                   <span class="side-nav-icon" aria-hidden="true">⌂</span>
@@ -303,9 +345,10 @@
                   {% endfor %}
                 </div>
               </div>
+              {% endif %}
             </div>
-            <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('help_page') }}" title="Help &amp; release notes">
-              <span class="side-nav-help-title"><span class="side-nav-icon" aria-hidden="true">?</span><span class="side-nav-label">Help &amp; release notes{% if instance_name %}<small class="side-nav-instance">{{ instance_name }}</small>{% endif %}</span></span>
+            <a class="side-nav-help {{ 'active' if request.endpoint == 'help_page' else '' }}" href="{{ url_for('agent_workspace', agent_id=selected_execution_agent.id) if selected_execution_agent else url_for('help_page') }}" title="{{ 'Agent workspace' if selected_execution_agent else 'Help &amp; release notes' }}">
+              <span class="side-nav-help-title"><span class="side-nav-icon" aria-hidden="true">{{ '⌘' if selected_execution_agent else '?' }}</span><span class="side-nav-label">{{ selected_execution_agent.name if selected_execution_agent else 'Help & release notes' }}{% if instance_name and not selected_execution_agent %}<small class="side-nav-instance">{{ instance_name }}</small>{% elif selected_execution_agent %}<small class="side-nav-instance">Remote agent</small>{% endif %}</span></span>
               <span class="side-nav-version">v{{ app_version }}</span>
             </a>
           </nav>
@@ -487,7 +530,8 @@
       or 'tools.iperf3' in allowed_tool_ids
       or 'tools.remote_terminal' in allowed_tool_ids
     ) %}
-      <script src="{{ url_for('static', filename='live-tools.js', v=asset_version) }}"></script>
+    <script src="{{ url_for('static', filename='live-tools.js', v=asset_version) }}"></script>
+    <script src="{{ url_for('static', filename='execution-context.js', v=asset_version) }}"></script>
     {% endif %}
   </body>
 </html>

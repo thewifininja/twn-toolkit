@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import section_header, workspace_chrome %}
+{% block content %}
+<div class="workspace-page settings-page">
+  {{ workspace_chrome(
+    'Mainframe',
+    'Coordinate toolkit instances, manage trust, and choose how this instance participates.',
+    'Administration'
+  ) }}
+  <div class="settings-organizer">
+    <section class="panel server-access-panel" id="distributed-configuration">
+      {{ section_header("Instance role", "Operate independently, coordinate remote agents, or connect outward to one mainframe.") }}
+      <div class="message info">
+        Listener-role changes take effect when the toolkit restarts. Agent enrollment is always outbound from the agent instance.
+      </div>
+      <form method="post" action="{{ url_for('update_distributed_settings') }}" class="form mainframe-config-form" data-mainframe-role-form>
+        <label>Coordination role
+          <select name="role" data-mainframe-role>
+            {% for value, label in [('standalone', 'Standalone'), ('mainframe', 'Mainframe'), ('agent', 'Agent')] %}
+              <option value="{{ value }}" {% if distributed_settings.role == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <small class="field-note">Every role retains the complete local toolkit. The role only adds distributed coordination.</small>
+        </label>
+        <label data-role-fields="mainframe" {% if distributed_settings.role != 'mainframe' %}hidden{% endif %}>Mainframe listen interfaces
+          <textarea name="mainframe_listen_interfaces" rows="3" placeholder="192.168.1.20&#10;2001:db8::20">{{ distributed_settings.mainframe_listen_interfaces | join('\n') }}</textarea>
+          <small class="field-note">Literal local IPv4 or IPv6 addresses, one per line. Use <code>0.0.0.0</code> or <code>::</code> deliberately to listen on every interface.</small>
+        </label>
+        <label data-role-fields="mainframe" {% if distributed_settings.role != 'mainframe' %}hidden{% endif %}>Mainframe agent port
+          <input type="number" name="mainframe_port" min="1" max="65535" value="{{ distributed_settings.mainframe_port }}" required>
+          <small class="field-note">This is separate from the toolkit browser port. Ports below 1024 require operating-system privileges; forwarding external TCP 443 to internal 5051 is usually preferable.</small>
+        </label>
+        <label data-role-fields="mainframe" {% if distributed_settings.role != 'mainframe' %}hidden{% endif %}>Advertised hostnames or addresses
+          <textarea name="mainframe_advertised_hosts" rows="2" placeholder="mainframe.example.com">{{ distributed_settings.mainframe_advertised_hosts | join('\n') }}</textarea>
+          <small class="field-note">Optional names or public addresses used by agents through DNS, NAT, or port forwarding. They are added to the listener certificate; they do not create firewall rules.</small>
+        </label>
+        <label data-role-fields="agent" {% if distributed_settings.role != 'agent' %}hidden{% endif %}>Agent mainframe address
+          <input type="url" name="agent_mainframe_url" value="{{ distributed_settings.agent_mainframe_url }}" placeholder="https://192.168.1.20:5051">
+          <small class="field-note">Required only in Agent mode. Enrollment verifies the mainframe during code comparison.</small>
+        </label>
+        <label data-role-fields="agent" {% if distributed_settings.role != 'agent' %}hidden{% endif %}>Fallback mainframe address
+          <input type="url" name="agent_mainframe_fallback_url" value="{{ distributed_settings.agent_mainframe_fallback_url }}" placeholder="https://192.168.1.20:5051">
+          <small class="field-note">Optional. Used only when the primary cannot be reached. Its hostname or IP must be included in the Mainframe certificate.</small>
+        </label>
+        <div class="button-row mainframe-form-actions">
+          <button type="submit">Save configuration</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel server-access-panel" id="distributed-identity">
+      {{ section_header("Instance identity", "This public identity is generated automatically. Its private key remains owner-readable on this instance and is never displayed or transmitted.") }}
+      <dl class="detail-list">
+        <div><dt>Device ID</dt><dd><code>{{ distributed_identity.device_id }}</code></dd></div>
+        <div><dt>SHA-256 fingerprint</dt><dd><code>{{ distributed_identity.fingerprint }}</code></dd></div>
+        {% if distributed_pki_status %}
+          <div><dt>Mainframe CA fingerprint</dt><dd><code>{{ distributed_pki_status.ca_fingerprint }}</code></dd></div>
+          <div><dt>Listener certificate expires</dt><dd>{{ distributed_pki_status.server_expires_at }}</dd></div>
+        {% endif %}
+      </dl>
+    </section>
+
+    {% if distributed_settings.role == 'agent' %}
+      <section class="panel server-access-panel" id="agent-enrollment">
+        {{ section_header("Mainframe enrollment", "Connect outward and compare the displayed code before the Mainframe administrator approves this instance.") }}
+        {% if agent_enrolled %}
+          <div class="message {{ 'success' if agent_runtime_status.state == 'approved' else 'warning' }}">
+            <strong>{{ 'Connected.' if agent_runtime_status.state == 'approved' else 'Enrolled.' }}</strong>
+            This instance has Mainframe-issued credentials.
+            {% if agent_runtime_status.state and agent_runtime_status.state != 'approved' %} Current state: {{ agent_runtime_status.state | replace('_', ' ') }}.{% endif %}
+          </div>
+          {% if agent_runtime_status.error %}<p class="field-note">{{ agent_runtime_status.error }}</p>{% endif %}
+        {% elif agent_enrollment_pending %}
+          <div class="message warning"><strong>Pairing code:</strong> <code>{{ agent_enrollment_pending.pairing_code }}</code></div>
+          <p>Compare this code with the pending agent shown on <code>{{ agent_enrollment_pending.mainframe_url }}</code>. It expires automatically.</p>
+          <form method="post" action="{{ url_for('poll_mainframe_enrollment') }}"><button type="submit">Check approval</button></form>
+        {% else %}
+          <form method="post" action="{{ url_for('begin_mainframe_enrollment') }}">
+            <button type="submit">Request Mainframe enrollment</button>
+          </form>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if distributed_settings.role == 'mainframe' %}
+      <section class="panel server-access-panel" id="enrollment-window">
+        {{ section_header("Agent enrollment", "Temporarily permit new agents to request administrator approval. Existing agents remain connected when enrollment is closed.") }}
+        <div class="mainframe-enrollment-status">
+          <span class="status-chip {{ 'success' if enrollment_window.open else 'muted' }}">{{ 'Open' if enrollment_window.open else 'Closed' }}</span>
+          {% if enrollment_window.open %}
+            <span class="field-note">Closes automatically in {{ (enrollment_window.remaining_seconds / 60) | round(0, 'ceil') | int }} minute(s).</span>
+          {% else %}
+            <span class="field-note">New enrollment requests are rejected.</span>
+          {% endif %}
+        </div>
+        <form method="post" action="{{ url_for('update_mainframe_enrollment_window') }}" class="form mainframe-enrollment-form">
+          <label for="enrollment-window-minutes">Enrollment duration (minutes)
+            <input id="enrollment-window-minutes" type="number" name="minutes" min="1" max="1440" value="15" required>
+          </label>
+          <div class="button-row mainframe-enrollment-buttons">
+            <button type="submit" name="action" value="open">{{ 'Extend enrollment' if enrollment_window.open else 'Open enrollment' }}</button>
+            {% if enrollment_window.open %}
+              <button type="submit" name="action" value="close" class="secondary" formnovalidate>Close now</button>
+            {% endif %}
+          </div>
+        </form>
+      </section>
+
+    <section class="panel server-access-panel" id="distributed-enrollments">
+      {{ section_header("Connected agents", "Approve an agent only after its displayed pairing code matches the code shown here once the secure transport is available.") }}
+      {% if distributed_agents %}
+        <div class="table-wrap mainframe-agent-table-wrap">
+          <table class="mainframe-agent-table">
+            <thead><tr><th>Agent</th><th>Connection</th><th>State</th><th>Capabilities</th><th>Pairing code</th><th>Last address</th><th>Fingerprint</th><th>Action</th></tr></thead>
+            <tbody>
+              {% for agent in distributed_agents %}
+                <tr>
+                  <td><strong>{{ agent.name }}</strong><br><small>{{ agent.hostname or agent.id }}</small>{% if agent.toolkit_version %}<br><small>Toolkit {{ agent.toolkit_version }} · protocol {{ agent.protocol_version }}</small>{% endif %}{% if agent.platform %}<br><small>{{ agent.platform }}</small>{% endif %}</td>
+                  <td><span class="status-chip {{ 'success' if agent.online else 'muted' }}">{{ 'Online' if agent.online else 'Offline' }}</span></td>
+                  <td><span class="status-chip {{ 'success' if agent.state == 'approved' else ('warning' if agent.state == 'pending' else 'muted') }}">{{ agent.state | capitalize }}</span></td>
+                  <td>{% if agent.capabilities %}<div class="mainframe-capability-list">{% for capability in agent.capabilities %}{% if capability.id == 'system.http.tunnel' %}<code>Full interface</code>{% else %}<code>{{ capability.id }}@{{ capability.version }}</code>{% endif %}{% endfor %}</div>{% else %}<span class="field-note">None reported</span>{% endif %}</td>
+                  <td>{% if distributed_pairings.get(agent.id) %}<code class="mainframe-pairing-code">{{ distributed_pairings[agent.id].pairing_code }}</code>{% else %}<span class="field-note">Not pairing</span>{% endif %}</td>
+                  <td><code>{{ agent.last_address or 'Not observed' }}</code></td>
+                  <td><code title="{{ agent.fingerprint }}">{{ agent.fingerprint[:16] }}…</code></td>
+                  <td>
+                    {% if agent.state == 'pending' %}
+                      <div class="mainframe-agent-actions">
+                        <form method="post" action="{{ url_for('update_distributed_agent', agent_id=agent.id, action='approve') }}" class="mainframe-approval-form">
+                          <label class="check mainframe-code-confirmation"><input type="checkbox" name="pairing_code_confirmed" required><span>I verified the pairing codes match</span></label>
+                          <button type="submit" class="compact">Approve agent</button>
+                        </form>
+                        <form method="post" action="{{ url_for('update_distributed_agent', agent_id=agent.id, action='deny') }}" class="inline-form"><button type="submit" class="secondary compact">Deny</button></form>
+                      </div>
+                    {% elif agent.state == 'approved' %}
+                      <form method="post" action="{{ url_for('update_distributed_agent', agent_id=agent.id, action='revoke') }}" class="inline-form" onsubmit="return confirm('Revoke this agent identity?')"><button type="submit" class="danger compact">Revoke</button></form>
+                    {% elif agent.state == 'revoked' %}
+                      <form method="post" action="{{ url_for('update_distributed_agent', agent_id=agent.id, action='remove') }}" class="inline-form" onsubmit="return confirm('Remove this revoked agent from the list? Its revoked certificate will remain unusable.')"><button type="submit" class="danger compact">Remove</button></form>
+                    {% else %}
+                      <span class="field-note">No actions available</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="empty-state">No agents have requested enrollment.</p>
+      {% endif %}
+    </section>
+
+    {% endif %}
+  </div>
+</div>
+<script src="{{ url_for('static', filename='mainframe.js', v=asset_version) }}"></script>
+{% endblock %}

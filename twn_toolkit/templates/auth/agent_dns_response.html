@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import section_header, workspace_chrome %}
+{% block content %}
+<div class="workspace-page agent-workspace-page remote-dns-page" {% if remote_dns_job and remote_dns_job.state in ['queued', 'running'] %}data-agent-workspace-pending{% endif %}>
+  {{ workspace_chrome(
+    'DNS Lookup',
+    'Run resolver comparisons from ' ~ workspace_agent.name ~ ' through its authenticated Agent connection.',
+    'Remote network tool'
+  ) }}
+
+  <section class="agent-workspace-context">
+    <div><span class="eyebrow">Executing on</span><strong>{{ workspace_agent.name }}</strong><small>{{ workspace_agent.hostname or workspace_agent.last_address or workspace_agent.id }}</small></div>
+    <div class="agent-workspace-state"><span class="status-chip {{ 'success' if workspace_agent.online else 'error' }}">{{ 'Online' if workspace_agent.online else 'Offline' }}</span><small><code>tools.dns.lookup@1</code></small></div>
+  </section>
+
+  {% if not remote_dns_supported %}
+    <div class="message warning"><strong>Capability unavailable.</strong><span>The selected agent has not advertised remote DNS Lookup yet.</span></div>
+  {% endif %}
+
+  <section class="panel remote-dns-panel">
+    {{ section_header("Query settings", "Each query is executed by the selected agent. Up to 25 names and 8 literal resolver addresses are accepted per run.") }}
+    <form method="post" action="{{ url_for('agent_dns_response', agent_id=workspace_agent.id) }}" class="form remote-dns-form">
+      <div class="remote-dns-input-grid">
+        <label>Query names
+          <textarea name="hosts" rows="6" maxlength="8192" required placeholder="Example = example.com">{{ form.hosts }}</textarea>
+          <small class="field-note">One hostname per line. Optional friendly names use <code>Name = hostname</code>.</small>
+        </label>
+        <label>DNS servers
+          <textarea name="servers" rows="6" maxlength="2048" required placeholder="Cloudflare = 1.1.1.1">{{ form.servers }}</textarea>
+          <small class="field-note">Literal IPv4 or IPv6 addresses only, one per line.</small>
+        </label>
+      </div>
+      <div class="remote-dns-options">
+        <label>Record type
+          <select name="record_type">
+            {% for record_type in ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT'] %}<option value="{{ record_type }}" {% if form.record_type == record_type %}selected{% endif %}>{{ record_type }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Timeout
+          <select name="timeout">
+            {% for timeout in ['1', '2', '3', '5', '10'] %}<option value="{{ timeout }}" {% if form.timeout == timeout %}selected{% endif %}>{{ timeout }} seconds</option>{% endfor %}
+          </select>
+        </label>
+        <button type="submit" {% if not workspace_agent.online or not remote_dns_supported or (remote_dns_job and remote_dns_job.state in ['queued', 'running']) %}disabled{% endif %}>Run on {{ workspace_agent.name }}</button>
+      </div>
+    </form>
+  </section>
+
+  {% if remote_dns_job and remote_dns_job.state in ['queued', 'running'] %}
+    <div class="message warning" role="status"><strong>DNS Lookup is running on {{ workspace_agent.name }}.</strong><span>This page will update when the Agent returns its bounded result.</span></div>
+  {% elif remote_dns_job and remote_dns_job.state == 'failed' %}
+    <div class="message error"><strong>Remote DNS Lookup failed.</strong><span>{{ remote_dns_job.error }}</span></div>
+  {% elif remote_dns_output %}
+    <section class="panel remote-dns-results">
+      {{ section_header("Remote results", remote_dns_output.summary.successful ~ ' of ' ~ remote_dns_output.summary.queries ~ ' queries succeeded on ' ~ workspace_agent.name ~ '.') }}
+      <div class="remote-dns-summary">
+        <div><span>Queries</span><strong>{{ remote_dns_output.summary.queries }}</strong></div>
+        <div><span>Successful</span><strong>{{ remote_dns_output.summary.successful }}</strong></div>
+        <div><span>Failed</span><strong>{{ remote_dns_output.summary.failed }}</strong></div>
+        <div><span>Average response</span><strong>{{ remote_dns_output.summary.average_ms ~ ' ms' if remote_dns_output.summary.average_ms is not none else '—' }}</strong></div>
+      </div>
+      <div class="table-wrap remote-dns-table-wrap">
+        <table class="remote-dns-table">
+          <thead><tr><th>Name</th><th>Resolver</th><th>Type</th><th>Status</th><th>Answers</th><th>Time</th></tr></thead>
+          <tbody>{% for result in remote_dns_output.results %}<tr>
+            <td>{% if result.host_label %}<strong>{{ result.host_label }}</strong><br>{% endif %}<code>{{ result.host }}</code></td>
+            <td>{% if result.server_label %}<strong>{{ result.server_label }}</strong><br>{% endif %}<code>{{ result.server }}</code></td>
+            <td>{{ result.record_type }}</td>
+            <td><span class="status-chip {{ 'success' if result.status == 'success' else 'error' }}">{{ result.status }}</span></td>
+            <td>{% if result.answers %}{% for answer in result.answers %}<code class="remote-dns-answer">{{ answer }}</code>{% endfor %}{% else %}<span class="field-note">{{ result.error or 'No answer' }}</span>{% endif %}</td>
+            <td>{{ result.response_ms }} ms</td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+</div>
+<script src="{{ url_for('static', filename='agent-workspace.js', v=asset_version) }}"></script>
+{% endblock %}

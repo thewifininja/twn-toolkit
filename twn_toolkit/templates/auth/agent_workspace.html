@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "components/ui.html" import section_header, workspace_chrome %}
+{% block content %}
+<div class="workspace-page agent-workspace-page" data-agent-workspace {% if workspace_job and workspace_job.state in ['queued', 'running'] %}data-agent-workspace-pending{% endif %}>
+  {{ workspace_chrome(
+    workspace_agent.name,
+    'Remote toolkit workspace delivered through this Mainframe.',
+    'Agent instance'
+  ) }}
+
+  <section class="agent-workspace-context">
+    <div>
+      <span class="eyebrow">Active instance</span>
+      <strong>{{ workspace_agent.name }}</strong>
+      <small>{{ workspace_agent.hostname or workspace_agent.id }}{% if workspace_agent.last_address %} · {{ workspace_agent.last_address }}{% endif %}</small>
+    </div>
+    <div class="agent-workspace-state">
+      <span class="status-chip {{ 'success' if workspace_agent.online else 'error' }}">{{ 'Online' if workspace_agent.online else 'Offline' }}</span>
+      {% if workspace_agent.toolkit_version %}<small>Toolkit {{ workspace_agent.toolkit_version }}</small>{% endif %}
+    </div>
+  </section>
+
+  {% if not workspace_agent.online %}
+    <div class="message error"><strong>Agent unavailable.</strong><span>This workspace remains selected. Nothing will run on the Mainframe as a fallback.</span></div>
+  {% endif %}
+
+  <div class="agent-workspace-grid">
+    <section class="panel agent-workspace-primary">
+      {{ section_header("System information", "A read-only snapshot collected on the selected agent through its authenticated outbound connection.") }}
+      <div class="agent-workspace-toolbar">
+        <div>
+          <span class="eyebrow">Remote capability</span>
+          <code>system.identity@1</code>
+        </div>
+        <form method="post" action="{{ url_for('refresh_agent_workspace_identity', agent_id=workspace_agent.id) }}">
+          <button type="submit" {% if not workspace_agent.online or (workspace_job and workspace_job.state in ['queued', 'running']) %}disabled{% endif %}>Refresh snapshot</button>
+        </form>
+      </div>
+
+      {% if workspace_job and workspace_job.state in ['queued', 'running'] %}
+        <div class="message warning" role="status"><strong>Contacting {{ workspace_agent.name }}.</strong><span>The page will update when the agent returns its snapshot.</span></div>
+      {% elif workspace_job and workspace_job.state == 'failed' %}
+        <div class="message error"><strong>Remote snapshot failed.</strong><span>{{ workspace_job.error or 'The agent did not return system information.' }}</span></div>
+      {% elif workspace_identity and workspace_identity.toolkit %}
+        {% set toolkit = workspace_identity.toolkit %}
+        <dl class="detail-list agent-identity-details">
+          <div><dt>Instance name</dt><dd>{{ toolkit.instance_name }}</dd></div>
+          <div><dt>Hostname</dt><dd><code>{{ toolkit.hostname }}</code></dd></div>
+          <div><dt>Toolkit version</dt><dd>{{ toolkit.version }}</dd></div>
+          <div><dt>Primary IPv4</dt><dd><code>{{ toolkit.primary_ipv4 or 'Not reported' }}</code></dd></div>
+          <div><dt>Timezone</dt><dd>{{ toolkit.timezone }}</dd></div>
+          <div><dt>Primary local URL</dt><dd><code>{{ toolkit.primary_url or 'Not reported' }}</code></dd></div>
+          <div><dt>IPv4 addresses</dt><dd>{{ toolkit.ipv4_addresses | join(', ') if toolkit.ipv4_addresses else 'None reported' }}</dd></div>
+          <div><dt>IPv6 addresses</dt><dd>{{ toolkit.ipv6_addresses | join(', ') if toolkit.ipv6_addresses else 'None reported' }}</dd></div>
+        </dl>
+      {% else %}
+        <div class="empty-state agent-workspace-empty"><strong>No remote snapshot yet.</strong><span>Refresh once the agent is online.</span></div>
+      {% endif %}
+    </section>
+
+    <aside class="panel agent-workspace-scope">
+      {{ section_header("Remote workspace rollout", "This is the first toolset connected to the instance-scoped transport.") }}
+      <div class="agent-workspace-tool-state is-ready"><strong>System information</strong><span>Remote-enabled</span></div>
+      <div class="agent-workspace-tool-state"><strong>Other toolkit modules</strong><span>Not remote-enabled yet</span></div>
+      <p class="field-note">Unsupported modules are not executed locally. They will be enabled individually as their storage and execution boundaries are adapted.</p>
+    </aside>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='agent-workspace.js', v=asset_version) }}"></script>
+{% endblock %}
