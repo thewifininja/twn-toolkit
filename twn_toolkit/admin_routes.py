@@ -95,7 +95,7 @@ from .distributed_agents import (
 from .distributed_pki import DistributedPkiStore, PairingSessionStore
 from .distributed_transport import EnrollmentClient, EnrollmentTransportError
 from .distributed_agents import DistributedEnrollmentWindow
-from .distributed_jobs import DistributedJobStore
+from .distributed_job_epochs import DistributedJobStore
 
 
 DATABASE_LIVE_CHECK_TIMEOUT_SECONDS = 0.25

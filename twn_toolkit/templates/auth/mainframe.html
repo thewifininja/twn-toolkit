@@ -11,7 +11,7 @@
     <section class="panel server-access-panel" id="distributed-configuration">
       {{ section_header("Instance role", "Operate independently, coordinate remote agents, or connect outward to one mainframe.") }}
       <div class="message info">
-        Listener-role changes take effect when the toolkit restarts. Agent enrollment is always outbound from the agent instance.
+        Listener-role changes take effect when the toolkit restarts. Standalone stops all distributed network activity while retaining enrollment credentials as inactive for deliberate reuse. Agent enrollment is always outbound from the agent instance.
       </div>
       <form method="post" action="{{ url_for('update_distributed_settings') }}" class="form mainframe-config-form" data-mainframe-role-form>
         <label>Coordination role
