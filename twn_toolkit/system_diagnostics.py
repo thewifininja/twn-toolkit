@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .network_tools import ping_engine_capability
+from .serial_diagnostics import linux_serial_capability
 
 
 CHMOD_BPF_PLIST = Path("/Library/LaunchDaemons/org.wireshark.ChmodBPF.plist")
@@ -272,4 +273,5 @@ def platform_capabilities(*, system: str | None = None) -> list[dict[str, Any]]:
         capabilities.append(_macos_bpf_capability())
     elif detected_system == "Linux":
         capabilities.append(_linux_network_capability())
+        capabilities.append(linux_serial_capability())
     return capabilities

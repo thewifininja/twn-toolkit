@@ -8,6 +8,7 @@ from typing import Any, Iterable
 
 import serial
 from serial.tools import list_ports
+from .serial_permissions import serial_permission_message
 
 
 SERIAL_BAUD_RATES = (
@@ -323,16 +324,7 @@ def _clean_metadata(value: object) -> str:
 
 
 def _permission_message(path: str) -> str:
-    if sys.platform.startswith("linux"):
-        return (
-            f"The toolkit service cannot open {path}. Add its service account "
-            "to the device's serial-access group (commonly dialout), then "
-            "restart the toolkit service."
-        )
-    return (
-        f"The toolkit service cannot read and write {path}. Grant the service "
-        "account access to that serial device, then restart the toolkit service."
-    )
+    return serial_permission_message(path)
 
 
 __all__ = [
