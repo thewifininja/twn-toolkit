@@ -1,6 +1,42 @@
-APP_VERSION = "0.22.2"
+APP_VERSION = "0.23.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.23.0",
+        "date": "2026-08-31",
+        "title": "Distributed Mainframe and native agent workspaces",
+        "summary": (
+            "Adds secure Mainframe and agent roles so administrators can move "
+            "between toolkit instances, operate each agent's native interface "
+            "through an outbound tunnel, and retain standalone local operation."
+        ),
+        "groups": (
+            {
+                "title": "Mainframe and agent operation",
+                "items": (
+                    "Adds standalone, Mainframe, and agent roles while keeping every toolkit instance fully usable on its own; standalone remains the default.",
+                    "Adds a per-user instance selector that preserves compatible paths, keeps remote profiles and interfaces authoritative, and stores an independent appearance for each selected agent.",
+                    "Carries the remote agent's native web interface through concurrent outbound lanes, substantially improving Remote Terminal interaction while retaining durable remote jobs for orchestration.",
+                ),
+            },
+            {
+                "title": "Private trust and enrollment",
+                "items": (
+                    "Creates a private Mainframe CA and listener identity automatically, derives matching first-contact pairing codes, and requires administrator approval before issuing an agent certificate.",
+                    "Requires mutual TLS for normal agent traffic, treats certificates rather than addresses as identity, and supports durable denial, revocation, audited removal, bounded requests, listener concurrency limits, and persistent enrollment throttling.",
+                    "Keeps new enrollment closed by default and lets administrators open a one-minute-to-24-hour window without interrupting approved agents or pairings already in progress.",
+                ),
+            },
+            {
+                "title": "Network resilience and compatibility",
+                "items": (
+                    "Supports explicit listener interfaces, advertised DNS or IP certificate identities, and an ordered optional agent fallback URL without weakening hostname or CA verification.",
+                    "Uses outbound-only agent connections with long polling at about three dormant heartbeat requests per minute; ordinary agent installations require no inbound firewall opening.",
+                    "Adds no Python dependency and retains the v0.9.0 direct-upgrade boundary. The upgrade creates new distributed stores and automatically migrates per-user execution and appearance state; role changes require a toolkit restart but no service reinstall.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.22.2",
         "date": "2026-08-30",

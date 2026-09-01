@@ -13,14 +13,17 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.22.2**
+Current release: **v0.23.0**
 
-v0.22.2 adds the complete Osaka Jade appearance palette and corrects responsive
-layout detection on wide touch-capable Chromium and Brave installations, keeping
-Omarchy and similar Linux laptops in the full desktop workspace. It adds no
-Python dependency, database migration, profile-format change, or service change.
-Existing installations accepted by the standard v0.9.0 minimum upgrade boundary
-can upgrade directly, and no service reinstall is required from v0.22.1.
+v0.23.0 adds distributed Mainframe and agent roles. A Mainframe administrator
+can approve outbound agent connections, switch between instances from the top
+bar, and operate each agent's native toolkit interface, local profiles, and
+interfaces through a mutually authenticated reverse tunnel. Every instance
+retains complete standalone operation. Enrollment is closed by default, trust is
+managed by an automatically generated private CA, and agents may define a
+certificate-verified fallback address. The release adds no Python dependency,
+retains the v0.9.0 minimum direct-upgrade boundary, and requires a toolkit
+restart—but no service reinstall—when a distributed role changes.
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -403,6 +406,9 @@ model, pipeline contract, security boundaries, and extension points.
 
 The built-in system administrator can manage:
 
+- Mainframe and agent roles, temporary enrollment windows, approved or revoked
+  agent identities, remote execution context, and native tunneled agent
+  workspaces;
 - users, password policy, idle timeout, and password changes;
 - reusable custom access profiles with individual-tool permissions;
 - duplication of custom access profiles before permissions are adapted for a
