@@ -54,7 +54,10 @@
   squash-merge it as `0e8b4d6aba8601fdce55c7e3aa7a40ca7ddb799e`, and pass
   merged-main CI run `33455600422` on Ubuntu Python 3.10/3.13 and macOS Python
   3.13, including repository checks and dependency audit.
-- [ ] Pass the v0.23.0 release-preparation pull request and merged-main CI.
+- [x] Pass v0.23.0 release-preparation PR #164 in CI run `33456533764`,
+  squash-merge it as `2d355d763791f32036a24e0e0bbd05b263efc48b`, and pass
+  merged-main CI run `33456762659` on Ubuntu Python 3.10/3.13 and macOS Python
+  3.13, including repository checks and dependency audit.
 
 ## Publication gate
 
