@@ -940,6 +940,9 @@ stop_distributed() {
   if ! distributed_is_running; then
     rm -f "$DISTRIBUTED_PIDFILE"
     cleanup_worker_processes "twn_toolkit.distributed_worker" 0
+    if ! distributed_enabled && [ -x "$PYTHON" ]; then
+      "$PYTHON" -m twn_toolkit.distributed_runtime clear-inactive --instance "$INSTANCE"
+    fi
     return 0
   fi
   distributed_pid=$(cat "$DISTRIBUTED_PIDFILE")
@@ -952,6 +955,9 @@ stop_distributed() {
   if pid_is_running "$distributed_pid"; then kill -KILL "$distributed_pid" 2>/dev/null || true; fi
   rm -f "$DISTRIBUTED_PIDFILE"
   cleanup_worker_processes "twn_toolkit.distributed_worker" 0
+  if ! distributed_enabled && [ -x "$PYTHON" ]; then
+    "$PYTHON" -m twn_toolkit.distributed_runtime clear-inactive --instance "$INSTANCE"
+  fi
 }
 
 stop_packet_captures() {

@@ -76,7 +76,7 @@ from .distributed_agents import (
     DistributedSettingsStore,
 )
 from .distributed_pki import DistributedPkiStore, PairingSessionStore
-from .distributed_jobs import DistributedJobStore
+from .distributed_job_epochs import DistributedJobStore
 
 
 def _asset_tree_revision(static_folder: str | os.PathLike[str]) -> str:

@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from .distributed_agents import DistributedSettingsStore
+from .distributed_runtime import agent_activation, clear_inactive_distributed_runtime
 from .distributed_transport import EnrollmentServer
 from .distributed_transport import EnrollmentClient, EnrollmentTransportError
 from .pidfiles import (
@@ -44,6 +45,7 @@ def main() -> None:
     record_lock_owner(singleton)
     settings = DistributedSettingsStore(instance).get()
     if settings["role"] == "standalone":
+        clear_inactive_distributed_runtime(instance)
         remove_own_pid_file(args.pid_file)
         return
 
@@ -109,10 +111,13 @@ def _interactive_lane(
         str(settings["agent_mainframe_url"]),
         str(settings.get("agent_mainframe_fallback_url", "")),
     )
+    activation_id = agent_activation(instance)["activation_id"]
     results: list[dict[str, object]] = []
     while callable(running) and running():
         try:
-            response = client.interactive(results, wait_seconds=20)
+            response = client.interactive(
+                results, wait_seconds=20, activation_id=activation_id
+            )
             results = _execute_jobs(instance, response.get("requests", []))
         except (EnrollmentTransportError, OSError, ValueError):
             time.sleep(0.5)
@@ -124,6 +129,7 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
         str(settings["agent_mainframe_url"]),
         str(settings.get("agent_mainframe_fallback_url", "")),
     )
+    activation_id = agent_activation(instance)["activation_id"]
     status_path = instance / "distributed-status.json"
     results_path = instance / "distributed-job-results.json"
     now = time.time()
@@ -157,6 +163,7 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
             toolkit_version=APP_VERSION,
             platform=f"{platform.system()} {platform.release()}".strip(),
             hostname=socket.gethostname(),
+            activation_id=activation_id,
             results=pending_results,
             wait_seconds=wait_seconds,
         )
@@ -170,6 +177,7 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
                     toolkit_version=APP_VERSION,
                     platform=f"{platform.system()} {platform.release()}".strip(),
                     hostname=socket.gethostname(),
+                    activation_id=activation_id,
                     results=completed,
                     wait_seconds=wait_seconds,
                 )
@@ -201,6 +209,7 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
 def _execute_jobs(instance: Path, jobs: object) -> list[dict[str, object]]:
     if not isinstance(jobs, list):
         return []
+    activation_id = agent_activation(instance)["activation_id"]
     results: list[dict[str, object]] = []
     for job in jobs[:16]:
         if not isinstance(job, dict):

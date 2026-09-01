@@ -28,7 +28,7 @@ from .distributed_pki import (
     canonical_pairing_transcript,
 )
 from .distributed_agents import pairing_code
-from .distributed_jobs import DistributedJobStore
+from .distributed_job_epochs import DistributedJobStore
 
 
 PROTOCOL_VERSION = 1
@@ -199,6 +199,8 @@ class EnrollmentServer:
             platform=str(payload.get("platform", "")),
             hostname=str(payload.get("hostname", "")),
         )
+        activation_id = str(payload.get("activation_id", ""))
+        self.job_store.activate_agent(agent_id, activation_id)
         results = payload.get("results", [])
         if not isinstance(results, list) or len(results) > 16:
             raise ValueError("Agent job results must be a bounded list.")
@@ -220,12 +222,16 @@ class EnrollmentServer:
         deadline = time.monotonic() + wait_seconds
         excluded_capability = "system.http.tunnel" if wait_seconds > 0 else ""
         jobs = self.job_store.claim(
-            agent_id, exclude_capability_id=excluded_capability
+            agent_id,
+            exclude_capability_id=excluded_capability,
+            activation_id=activation_id,
         )
         while not jobs and time.monotonic() < deadline:
             time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
             jobs = self.job_store.claim(
-                agent_id, exclude_capability_id=excluded_capability
+                agent_id,
+            exclude_capability_id=excluded_capability,
+            activation_id=activation_id,
             )
         return {
             "protocol": PROTOCOL_VERSION,
@@ -241,6 +247,8 @@ class EnrollmentServer:
         agent_id = self._approved_certificate_agent(certificate_der)
         if int(payload.get("protocol", 0)) != PROTOCOL_VERSION:
             raise ValueError("Unsupported agent protocol version.")
+        activation_id = str(payload.get("activation_id", ""))
+        self.job_store.activate_agent(agent_id, activation_id)
         results = payload.get("results", [])
         if not isinstance(results, list) or len(results) > 8:
             raise ValueError("Interactive results must be a bounded list.")
@@ -254,10 +262,16 @@ class EnrollmentServer:
             )
         wait_seconds = max(0.0, min(float(payload.get("wait_seconds", 0) or 0), MAX_LONG_POLL_SECONDS))
         deadline = time.monotonic() + wait_seconds
-        jobs = self.job_store.claim(agent_id, limit=1, capability_id="system.http.tunnel")
+        jobs = self.job_store.claim(
+            agent_id, limit=1, capability_id="system.http.tunnel",
+            activation_id=activation_id,
+        )
         while not jobs and time.monotonic() < deadline:
             time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
-            jobs = self.job_store.claim(agent_id, limit=1, capability_id="system.http.tunnel")
+            jobs = self.job_store.claim(
+            agent_id, limit=1, capability_id="system.http.tunnel",
+            activation_id=activation_id,
+        )
         return {"protocol": PROTOCOL_VERSION, "state": "approved", "requests": jobs}
 
     def _approved_certificate_agent(self, certificate_der: bytes | None) -> str:
@@ -378,6 +392,7 @@ class EnrollmentClient:
         toolkit_version: str = "",
         platform: str = "",
         hostname: str = "",
+        activation_id: str = "",
         results: list[dict[str, Any]] | None = None,
         wait_seconds: float = 0,
     ) -> dict[str, Any]:
@@ -392,6 +407,7 @@ class EnrollmentClient:
                 "toolkit_version": toolkit_version,
                 "platform": platform,
                 "hostname": hostname,
+                "activation_id": activation_id,
                 "results": results or [],
                 "wait_seconds": max(0.0, min(float(wait_seconds), MAX_LONG_POLL_SECONDS)),
             },
@@ -403,14 +419,20 @@ class EnrollmentClient:
         )
 
     def interactive(
-        self, results: list[dict[str, Any]] | None = None, *, wait_seconds: float = 20
+        self, results: list[dict[str, Any]] | None = None, *,
+        wait_seconds: float = 20, activation_id: str = ""
     ) -> dict[str, Any]:
         if not self.enrolled():
             raise EnrollmentTransportError("This agent has not completed enrollment.")
         wait_seconds = max(0.0, min(float(wait_seconds), MAX_LONG_POLL_SECONDS))
         return self._request(
             "POST", "/v1/interactive",
-            {"protocol": PROTOCOL_VERSION, "results": results or [], "wait_seconds": wait_seconds},
+            {
+                "protocol": PROTOCOL_VERSION,
+                "activation_id": activation_id,
+                "results": results or [],
+                "wait_seconds": wait_seconds,
+            },
             authenticated=True,
             request_timeout=max(REQUEST_TIMEOUT_SECONDS, wait_seconds + 5),
         )
