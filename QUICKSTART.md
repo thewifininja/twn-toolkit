@@ -139,7 +139,8 @@ The persistent sidebar is the primary navigation:
 - **Local Tools** contains the Datastore and managed File Transfers.
 - **Automation** contains reusable Automations, Schedules, Conditions, and
   Actions.
-- **Administration** contains server-wide configuration and diagnostics.
+- **Administration** contains Mainframe coordination, server-wide configuration,
+  updates, and diagnostics.
 
 Hover or focus a tool in the sidebar and select its star to add or remove a
 personal Favorite. The Favorites section remembers whether it was collapsed or
@@ -150,6 +151,33 @@ Pages with peer views place their tab navigator first. Saved configuration
 panels follow one workflow: select a record to load it, edit and save it, or use
 **Duplicate** to create an independent copy before changing it. Multi-record
 libraries expose the same action on each expandable record.
+
+## Coordinate toolkit instances
+
+Every installation begins in **Standalone** mode and remains fully usable
+locally in every role. Open **Administration → Mainframe** to configure one of
+these additional roles:
+
+- **Mainframe** listens on explicit local interfaces for outbound agent
+  connections. Add every DNS name or public address agents may use to the
+  advertised identities before restarting so the listener certificate covers
+  them.
+- **Agent** connects outward to one required Mainframe HTTPS URL and may define
+  one optional fallback URL for DNS or path failure. Both URLs must reach the
+  same Mainframe and match its certificate.
+
+On the Mainframe, open **Agent enrollment** for a short interval. Request
+enrollment from the agent, compare the six-digit code displayed by both
+instances, and approve only when it matches. Closing enrollment does not
+disconnect approved agents. Revocation immediately prevents reconnection; a
+revoked record may then be removed from the inventory.
+
+After the agent reports online, use the top-bar instance selector. Selecting an
+agent opens its native toolkit interface through the Mainframe while keeping the
+agent's own profiles, interfaces, history, and theme authoritative. Switching
+instances preserves the current tool path when the destination supports it.
+Agents need no inbound firewall opening; their control and interface traffic is
+outbound mutual TLS.
 
 ## Start a troubleshooting case
 

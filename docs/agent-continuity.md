@@ -474,6 +474,16 @@ accepted replay frames.
   credentials. Wake-on-LAN sends are bounded and report local delivery separately
   from optional remote ping confirmation because routed forwarding remains an
   environmental responsibility.
+  The 0.23.0 feature release adds optional Mainframe and agent roles while
+  retaining complete local operation and standalone as the default. New
+  distributed stores and per-user execution/appearance fields initialize or
+  migrate automatically. Mainframe trust is instance identity: complete
+  recovery points preserve its private CA, while portable configuration exports
+  intentionally do not clone it. Agents connect outward with mutual TLS and may
+  use a certificate-covered fallback address. Role changes require a toolkit
+  restart but no service reinstall. Certificate rotation, proactive client
+  renewal, and large streaming tunnel bodies remain explicit future lifecycle
+  work rather than implied release guarantees.
 - Keep release notes beside `APP_VERSION` in `twn_toolkit/version.py` as
   structured data. The Help page renders that source as collapsible release
   history; every intentional version bump must add a dated release entry.
