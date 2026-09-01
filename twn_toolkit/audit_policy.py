@@ -22,6 +22,7 @@ class AuditRoutePolicy(str, Enum):
 AUDIT_ANNOTATED_ENDPOINTS = frozenset(
     {
         "apply_switch_order",
+        "begin_mainframe_enrollment",
         "apply_raspberry_pi_networking",
         "bulk_delete_datastore_files",
         "bulk_download_datastore_files",
@@ -71,10 +72,13 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "add_investigation_note",
         "add_investigation_participant",
         "add_automation_run_to_case",
+        "agent_dns_response",
         "login",
         "logout",
         "optimize_automation_database",
         "prune_automation_history",
+        "poll_mainframe_enrollment",
+        "refresh_agent_workspace_identity",
         "rename_datastore_entry",
         "reset_activity_metric",
         "reset_activity_scoreboard",
@@ -84,6 +88,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "rollback_update",
         "rollback_raspberry_pi_networking",
         "run_automation_now",
+        "run_distributed_system_identity",
         "save_access_profile",
         "save_automation",
         "save_automation_action",
@@ -207,6 +212,10 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.duplicate_traceroute_profile",
         "tools.duplicate_wol_profile",
         "update_automation_retention",
+        "update_distributed_agent",
+        "update_mainframe_enrollment_window",
+        "update_distributed_settings",
+        "update_execution_context",
         "update_investigation_state",
         "remove_investigation_participant",
         "update_investigation_report_contents",
@@ -240,6 +249,9 @@ AUDIT_CONDITIONAL_ENDPOINTS = frozenset(
 
 AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
     {
+        # The relay itself does not perform the operation. The agent's native
+        # endpoint records the delegated administrator and its local mutation.
+        "agent_ui",
         "tools.import_ssh_hosts",
         "tools.ping_run",
         "tools.ping_validate_targets",

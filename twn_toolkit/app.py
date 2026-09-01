@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import base64
 import secrets
 import time
 from hashlib import blake2s
@@ -69,6 +70,13 @@ from .migrations import run_toolkit_migrations
 from .operational import OperationalSettingsStore
 from .remote_sessions import RemoteSessionManager, RemoteSessionStore
 from .remote_connections import RemoteConnectionStore
+from .distributed_agents import (
+    DistributedAgentStore,
+    DistributedIdentityStore,
+    DistributedSettingsStore,
+)
+from .distributed_pki import DistributedPkiStore, PairingSessionStore
+from .distributed_jobs import DistributedJobStore
 
 
 def _asset_tree_revision(static_folder: str | os.PathLike[str]) -> str:
@@ -92,6 +100,16 @@ def _asset_tree_revision(static_folder: str | os.PathLike[str]) -> str:
         digest.update(str(stat.st_size).encode("ascii"))
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def _appearance_from_delegation(value: dict[str, Any]) -> dict[str, str]:
+    appearance = dict(DEFAULT_APPEARANCE)
+    for key in appearance:
+        if key in value:
+            appearance[key] = str(value[key])
+    if appearance["palette"] not in APPEARANCE_PALETTES:
+        return dict(DEFAULT_APPEARANCE)
+    return appearance
 
 
 def create_app(instance_path: str | None = None) -> Flask:
@@ -129,6 +147,18 @@ def create_app(instance_path: str | None = None) -> Flask:
     activity_store = ActivityStore(app.instance_path)
     dashboard_layout_store = DashboardLayoutStore(app.instance_path)
     server_settings_store = ServerSettingsStore(app.instance_path)
+    distributed_settings_store = DistributedSettingsStore(app.instance_path)
+    distributed_identity_store = DistributedIdentityStore(app.instance_path)
+    distributed_agent_store = DistributedAgentStore(app.instance_path)
+    distributed_pki_store = DistributedPkiStore(app.instance_path)
+    distributed_pairing_store = PairingSessionStore(app.instance_path)
+    distributed_job_store = DistributedJobStore(app.instance_path)
+    app.extensions["distributed_settings_store"] = distributed_settings_store
+    app.extensions["distributed_identity_store"] = distributed_identity_store
+    app.extensions["distributed_agent_store"] = distributed_agent_store
+    app.extensions["distributed_pki_store"] = distributed_pki_store
+    app.extensions["distributed_pairing_store"] = distributed_pairing_store
+    app.extensions["distributed_job_store"] = distributed_job_store
     store = ProfileStore(app.instance_path)
     fortiauthenticator_store = FortiAuthenticatorProfileStore(app.instance_path)
     backup_catalog = build_backup_catalog(app.instance_path)
@@ -170,6 +200,13 @@ def create_app(instance_path: str | None = None) -> Flask:
 
     @app.before_request
     def require_authentication():
+        delegated_user = request.environ.get("twn.delegated_user")
+        if app.config.get("DISTRIBUTED_AGENT_DISPATCH") and isinstance(
+            delegated_user, dict
+        ):
+            g.current_user = delegated_user
+            g.allowed_tool_ids = None
+            return None
         if _is_cross_origin_mutation():
             return Response(
                 "Cross-origin state-changing requests are not allowed.",
@@ -240,6 +277,129 @@ def create_app(instance_path: str | None = None) -> Flask:
         if denied_tool_id and not _tool_access_allowed(denied_tool_id):
             return Response("This user does not have access to that tool.", status=403)
         return None
+
+    @app.before_request
+    def enforce_agent_workspace_boundary():
+        user = getattr(g, "current_user", None)
+        if not user or distributed_settings_store.get()["role"] != "mainframe":
+            return None
+        agent_id = auth_store.execution_context(user["id"])
+        if agent_id == "local":
+            return None
+        endpoint = request.endpoint or ""
+        allowed = {
+            "static",
+            "favicon",
+            "health",
+            "logout",
+            "update_appearance",
+            "update_execution_context",
+            "agent_workspace",
+            "agent_dns_response",
+            "refresh_agent_workspace_identity",
+            "run_distributed_system_identity",
+            "agent_ui",
+        }
+        if endpoint in allowed:
+            return None
+        agent = distributed_agent_store.get(agent_id)
+        if not agent or agent["state"] != "approved":
+            auth_store.set_execution_context(user["id"], "local")
+            flash("The selected agent is no longer approved. Returned to this instance.", "error")
+            return redirect(url_for("index"))
+        if request.method == "GET" and request.accept_mimetypes.accept_html:
+            return redirect(f"/agents/{agent_id}/ui{request.full_path.rstrip('?')}")
+        return Response(
+            "This operation is not remote-enabled for the selected agent.",
+            status=409,
+            mimetype="text/plain",
+        )
+
+    @app.route("/agents/<agent_id>/ui/", defaults={"remote_path": ""}, methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
+    @app.route("/agents/<agent_id>/ui/<path:remote_path>", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
+    def agent_ui(agent_id: str, remote_path: str):
+        if distributed_settings_store.get()["role"] != "mainframe":
+            abort(404)
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        if auth_store.execution_context(g.current_user["id"]) != agent_id:
+            return Response("Select this agent before accessing it.", status=409)
+        agent = distributed_agent_store.get(agent_id)
+        if not agent or agent["state"] != "approved":
+            abort(404)
+        if not agent["online"]:
+            return Response("The selected agent is offline.", status=503)
+        if ("system.http.tunnel", "1") not in {
+            (item["id"], item["version"]) for item in agent["capabilities"]
+        }:
+            return Response("The selected agent does not support GUI access.", status=503)
+        if remote_path.startswith("static/"):
+            return app.send_static_file(remote_path[len("static/"):])
+        body = request.get_data(cache=False)
+        if len(body) > 192 * 1024:
+            return Response("This request is too large for the agent tunnel.", status=413)
+        path = "/" + remote_path
+        if request.query_string:
+            path += "?" + request.query_string.decode("latin-1")
+        job = distributed_job_store.enqueue(
+            agent_id=agent_id, requester_id=g.current_user["id"],
+            capability_id="system.http.tunnel", capability_version="1",
+            inputs={
+                "method": request.method, "path": path,
+                "prefix": f"/agents/{agent_id}/ui",
+                "headers": {name: value for name, value in request.headers.items() if name.lower() in {"accept", "content-type", "range"}},
+                "body": base64.b64encode(body).decode("ascii"),
+                "user": {"id": g.current_user["id"], "username": g.current_user.get("username", ""), "is_admin": bool(g.current_user.get("is_admin"))},
+                "fabric": {
+                    "context_id": agent_id,
+                    "context_url": url_for("update_execution_context"),
+                    "logout_url": url_for("logout"),
+                    "appearance_url": url_for("update_appearance"),
+                    "appearance": auth_store.user_appearance(
+                        g.current_user["id"], agent_id
+                    ),
+                    "local_name": server_settings_store.get()["instance_name"],
+                    "agents": [
+                        {"id": item["id"], "name": item["name"], "online": item["online"]}
+                        for item in distributed_agent_store.list("approved")
+                    ],
+                },
+            },
+        )
+        # First use may initialize the agent application and its local stores;
+        # subsequent requests reuse the warm per-user dispatcher.
+        deadline = time.monotonic() + 30
+        current = None
+        while time.monotonic() < deadline:
+            current = distributed_job_store.get(job["id"])
+            if current and current["state"] in {"succeeded", "failed", "cancelled"}:
+                break
+            time.sleep(0.05)
+        else:
+            return Response("The selected agent did not respond in time.", status=504)
+        distributed_job_store.delete(job["id"], requester_id=g.current_user["id"])
+        if current["state"] != "succeeded" or not current.get("output"):
+            return Response(current.get("error") or "The agent request failed.", status=502)
+        output = current["output"]
+        try:
+            content = base64.b64decode(str(output.get("body", "")), validate=True)
+            status = int(output.get("status", 502))
+        except (ValueError, TypeError):
+            return Response("The agent returned an invalid response.", status=502)
+        if (
+            status == 404
+            and request.method == "GET"
+            and remote_path
+            and request.accept_mimetypes.accept_html
+        ):
+            flash("That page is not available on the selected instance.", "warning")
+            return redirect(url_for("agent_ui", agent_id=agent_id))
+        response = Response(content, status=status)
+        for pair in output.get("headers", []):
+            if isinstance(pair, list) and len(pair) == 2:
+                response.headers[str(pair[0])] = str(pair[1])
+        response.headers["X-TWN-Instance"] = agent_id
+        return response
 
     @app.after_request
     def audit_administrative_mutations(response: Response):
@@ -508,6 +668,33 @@ def create_app(instance_path: str | None = None) -> Flask:
                     }
                 )
         identity = server_settings_store.get()
+        distributed_settings = distributed_settings_store.get()
+        delegated_fabric = request.environ.get("twn.delegated_fabric")
+        execution_agents = (
+            list(delegated_fabric.get("agents", []))
+            if isinstance(delegated_fabric, dict)
+            else
+            distributed_agent_store.list("approved")
+            if distributed_settings["role"] == "mainframe" and current_user
+            else []
+        )
+        execution_context_id = (
+            str(delegated_fabric.get("context_id", "local"))
+            if isinstance(delegated_fabric, dict)
+            else
+            auth_store.execution_context(current_user["id"])
+            if current_user and distributed_settings["role"] == "mainframe"
+            else "local"
+        )
+        selected_execution_agent = next(
+            (agent for agent in execution_agents if agent["id"] == execution_context_id),
+            None,
+        )
+        if isinstance(delegated_fabric, dict):
+            # The remote app should render its complete native navigation. The
+            # selected ID remains in the top-bar selector, but does not trigger
+            # the Mainframe's transitional remote-only sidebar.
+            selected_execution_agent = None
         page_title = ""
         if current_tool_id and current_tool_id in TOOL_BY_ID:
             page_title = TOOL_BY_ID[current_tool_id].label
@@ -538,8 +725,15 @@ def create_app(instance_path: str | None = None) -> Flask:
                 app.logger.exception(
                     "Active investigation context could not be loaded"
                 )
+        delegated_appearance = (
+            delegated_fabric.get("appearance")
+            if isinstance(delegated_fabric, dict)
+            else None
+        )
         appearance = (
-            auth_store.user_appearance(current_user["id"])
+            _appearance_from_delegation(delegated_appearance)
+            if isinstance(delegated_appearance, dict)
+            else auth_store.user_appearance(current_user["id"], execution_context_id)
             if current_user
             else dict(DEFAULT_APPEARANCE)
         )
@@ -566,6 +760,37 @@ def create_app(instance_path: str | None = None) -> Flask:
             "password_policy": password_policy,
             "investigation_access": investigation_access,
             "active_investigation": active_investigation,
+            "execution_context_enabled": bool(
+                current_user
+                and current_user.get("is_admin")
+                and (
+                    distributed_settings["role"] == "mainframe"
+                    or isinstance(delegated_fabric, dict)
+                )
+            ),
+            "execution_context_url": (
+                str(delegated_fabric.get("context_url", "/execution-context"))
+                if isinstance(delegated_fabric, dict)
+                else url_for("update_execution_context")
+            ),
+            "execution_local_name": (
+                str(delegated_fabric.get("local_name", "Mainframe"))
+                if isinstance(delegated_fabric, dict)
+                else identity["instance_name"]
+            ),
+            "logout_url": (
+                str(delegated_fabric.get("logout_url", "/logout"))
+                if isinstance(delegated_fabric, dict)
+                else url_for("logout")
+            ),
+            "appearance_url": (
+                str(delegated_fabric.get("appearance_url", "/settings/appearance"))
+                if isinstance(delegated_fabric, dict)
+                else url_for("update_appearance")
+            ),
+            "execution_context_id": execution_context_id,
+            "execution_agents": execution_agents,
+            "selected_execution_agent": selected_execution_agent,
         }
 
     def _tool_access_allowed(tool_id: str) -> bool:
@@ -762,6 +987,12 @@ def create_app(instance_path: str | None = None) -> Flask:
         auth_store=auth_store,
         automation_store=automation_store,
         server_settings_store=server_settings_store,
+        distributed_settings_store=distributed_settings_store,
+        distributed_identity_store=distributed_identity_store,
+        distributed_agent_store=distributed_agent_store,
+        distributed_pki_store=distributed_pki_store,
+        distributed_pairing_store=distributed_pairing_store,
+        distributed_job_store=distributed_job_store,
         backup_catalog=backup_catalog,
         start_session=_start_session,
         audit_store=audit_store,
@@ -1011,6 +1242,51 @@ def create_app(instance_path: str | None = None) -> Flask:
             abort(403)
         auth_store.toggle_favorite_tool(g.current_user["id"], tool_id)
         return redirect(_validated_next_url(request.form.get("next", "")))
+
+    @app.post("/execution-context")
+    def update_execution_context():
+        settings = distributed_settings_store.get()
+        if settings["role"] != "mainframe":
+            return Response("Execution contexts require Mainframe mode.", status=409)
+        context_id = str(request.form.get("context_id", "local"))
+        selected_agent = None
+        if context_id != "local":
+            selected_agent = distributed_agent_store.get(context_id)
+            if not selected_agent or selected_agent["state"] != "approved":
+                flash("Select an approved agent.", "error")
+                return redirect(_validated_next_url(request.form.get("next", "")))
+            if not selected_agent["online"]:
+                flash("That agent is offline and cannot be selected.", "error")
+                return redirect(_validated_next_url(request.form.get("next", "")))
+        before = auth_store.execution_context(g.current_user["id"])
+        auth_store.set_execution_context(g.current_user["id"], context_id)
+        annotate_audit_event(
+            category="Mainframe",
+            action="distributed.execution_context_changed",
+            summary=(
+                f"Changed execution context to {selected_agent['name']}."
+                if selected_agent
+                else "Changed execution context to this instance."
+            ),
+            resource_type="execution context",
+            resource_id=context_id,
+            resource_name=selected_agent["name"] if selected_agent else "This instance",
+            before={"context": before},
+            after={"context": context_id},
+        )
+        next_url = _validated_next_url(request.form.get("next", ""))
+        if before != "local":
+            prefix = f"/agents/{before}/ui"
+            if next_url == prefix:
+                next_url = "/"
+            elif next_url.startswith(prefix + "/"):
+                next_url = next_url[len(prefix):]
+        if not next_url.startswith("/"):
+            next_url = "/"
+        if selected_agent:
+            destination = f"/agents/{selected_agent['id']}/ui"
+            return redirect(destination + (next_url if next_url != "/" else "/"))
+        return redirect(next_url)
 
     @app.post("/favorites/order")
     def reorder_tool_favorites():

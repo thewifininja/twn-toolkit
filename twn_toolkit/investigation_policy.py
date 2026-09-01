@@ -70,6 +70,7 @@ CAPTURE_POLICIES: dict[str, InvestigationCapturePolicy] = {
     "local.datastore": _policy("explicit", "attachment", "Files enter a case only through deliberate evidence attachment."),
     "local.file_transfers": _policy("explicit", "attachment", "Listener configuration is audit data; received files may be attached."),
     "admin.settings": _policy("excluded", "none", "Administrative configuration is not automatic case evidence."),
+    "admin.mainframe": _policy("excluded", "none", "Distributed trust and role changes belong in the system audit trail."),
     "admin.diagnostics": _policy("explicit", "snapshot", "A system-health snapshot should be deliberately attached."),
     "admin.updates": _policy("excluded", "none", "Release operations belong in the system audit trail."),
 }

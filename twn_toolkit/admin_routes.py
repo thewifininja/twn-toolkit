@@ -78,6 +78,7 @@ from .system_diagnostics import (
     platform_capabilities,
     readonly_sqlite_connection,
 )
+from .system_identity import collect_system_identity
 from .tftp import tftp_process_status
 from .time_settings import COMMON_TIMEZONES, TimeSettingsStore
 from .ssh_transfer_server import ssh_transfer_process_status
@@ -85,6 +86,16 @@ from .ftp_server import ftp_process_status
 from .iperf_server import iperf3_process_status
 from .upgrade_manager import ReleaseClient, UpgradeError, UpgradeManager
 from .version import APP_VERSION
+from .distributed_agents import (
+    DistributedAgentStore,
+    DistributedIdentityStore,
+    DistributedSettingsStore,
+    split_mainframe_certificate_hosts,
+)
+from .distributed_pki import DistributedPkiStore, PairingSessionStore
+from .distributed_transport import EnrollmentClient, EnrollmentTransportError
+from .distributed_agents import DistributedEnrollmentWindow
+from .distributed_jobs import DistributedJobStore
 
 
 DATABASE_LIVE_CHECK_TIMEOUT_SECONDS = 0.25
@@ -354,6 +365,12 @@ def register_admin_routes(
     auth_store: AuthStore,
     automation_store: AutomationStore,
     server_settings_store: ServerSettingsStore,
+    distributed_settings_store: DistributedSettingsStore,
+    distributed_identity_store: DistributedIdentityStore,
+    distributed_agent_store: DistributedAgentStore,
+    distributed_pki_store: DistributedPkiStore,
+    distributed_pairing_store: PairingSessionStore,
+    distributed_job_store: DistributedJobStore,
     backup_catalog: list[dict[str, Any]],
     start_session: Callable[[dict[str, Any]], None],
     audit_store: AuditStore,
@@ -369,6 +386,7 @@ def register_admin_routes(
     configuration_import_store = ConfigurationImportStore(
         app.instance_path, str(app.config["SECRET_KEY"])
     )
+    distributed_enrollment_window = DistributedEnrollmentWindow(app.instance_path)
 
     def _balanced_category_columns(
         values: list[dict[str, Any]],
@@ -457,8 +475,13 @@ def register_admin_routes(
         if not isinstance(payload, dict):
             return jsonify({"error": "Appearance settings must be an object."}), 400
         try:
+            appearance_context = (
+                auth_store.execution_context(g.current_user["id"])
+                if distributed_settings_store.get()["role"] == "mainframe"
+                else "local"
+            )
             appearance = auth_store.set_user_appearance(
-                g.current_user["id"], payload
+                g.current_user["id"], payload, appearance_context
             )
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
@@ -583,6 +606,439 @@ def register_admin_routes(
             pi_service_install_command=pi_service_install_command,
             pi_service_network_capabilities=pi_service_network_capabilities,
         )
+
+    @app.get("/mainframe")
+    def mainframe():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        distributed_settings = distributed_settings_store.get()
+        pki_status = None
+        if distributed_settings["role"] == "mainframe":
+            certificate_addresses, certificate_names = split_mainframe_certificate_hosts(
+                distributed_settings["mainframe_listen_interfaces"],
+                distributed_settings["mainframe_advertised_hosts"],
+            )
+            pki_status = distributed_pki_store.ensure_mainframe_identity(
+                certificate_addresses, dns_names=certificate_names
+            )
+        enrollment_client = (
+            EnrollmentClient(
+                app.instance_path,
+                distributed_settings["agent_mainframe_url"],
+                distributed_settings["agent_mainframe_fallback_url"],
+            )
+            if distributed_settings["role"] == "agent"
+            else None
+        )
+        try:
+            agent_runtime_status = json.loads(
+                (Path(app.instance_path) / "distributed-status.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            if not isinstance(agent_runtime_status, dict):
+                agent_runtime_status = {}
+        except (OSError, json.JSONDecodeError):
+            agent_runtime_status = {}
+        agents = distributed_agent_store.list()
+        return render_template(
+            "auth/mainframe.html",
+            distributed_settings=distributed_settings,
+            distributed_identity=distributed_identity_store.load_or_create(),
+            distributed_agents=agents,
+            distributed_pki_status=pki_status,
+            distributed_pairings={
+                agent["id"]: distributed_pairing_store.active_for_agent(agent["id"])
+                for agent in agents
+            },
+            agent_enrollment_pending=(
+                enrollment_client.pending() if enrollment_client else None
+            ),
+            agent_enrolled=(enrollment_client.enrolled() if enrollment_client else False),
+            agent_runtime_status=agent_runtime_status,
+            distributed_jobs=distributed_job_store.recent(
+                requester_id=g.current_user["id"]
+            ),
+            enrollment_window=distributed_enrollment_window.status(),
+        )
+
+    @app.post("/mainframe/enrollment-window")
+    def update_mainframe_enrollment_window():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        if distributed_settings_store.get()["role"] != "mainframe":
+            return Response("Enrollment windows require Mainframe mode.", status=409)
+        action = request.form.get("action", "open")
+        try:
+            if action == "close":
+                status = distributed_enrollment_window.close()
+                summary = "Closed new agent enrollment."
+                audit_action = "distributed.enrollment_window_closed"
+            else:
+                minutes = int(request.form.get("minutes", "15"))
+                status = distributed_enrollment_window.open(minutes)
+                summary = f"Opened new agent enrollment for {minutes} minute(s)."
+                audit_action = "distributed.enrollment_window_opened"
+        except (TypeError, ValueError) as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("mainframe", _anchor="enrollment-window"))
+        annotate_audit_event(
+            category="Mainframe",
+            action=audit_action,
+            summary=summary,
+            resource_type="distributed enrollment",
+            resource_id="mainframe",
+            resource_name="Agent enrollment window",
+            details={"open until": status["open_until"]},
+        )
+        flash(summary, "success")
+        return redirect(url_for("mainframe", _anchor="enrollment-window"))
+
+    @app.post("/mainframe/system-identity")
+    def run_distributed_system_identity():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        context_id = auth_store.execution_context(g.current_user["id"])
+        if context_id == "local":
+            identity = collect_system_identity(app.instance_path)["toolkit"]
+            flash(
+                f"This instance is {identity['hostname']} running toolkit {identity['version']}.",
+                "success",
+            )
+            return redirect(url_for("mainframe", _anchor="distributed-jobs"))
+        agent = distributed_agent_store.get(context_id)
+        if not agent or agent["state"] != "approved" or not agent["online"]:
+            flash("The selected execution agent is offline or unavailable.", "error")
+            return redirect(url_for("mainframe", _anchor="distributed-jobs"))
+        capabilities = {
+            (item["id"], item["version"]) for item in agent["capabilities"]
+        }
+        if ("system.identity", "1") not in capabilities:
+            flash("The selected agent does not support system identity version 1.", "error")
+            return redirect(url_for("mainframe", _anchor="distributed-jobs"))
+        job = distributed_job_store.enqueue(
+            agent_id=agent["id"],
+            requester_id=g.current_user["id"],
+            capability_id="system.identity",
+            capability_version="1",
+        )
+        annotate_audit_event(
+            category="Mainframe",
+            action="distributed.job_queued",
+            summary=f"Queued system identity on {agent['name']}.",
+            resource_type="distributed job",
+            resource_id=job["id"],
+            resource_name="System identity",
+            details={"agent id": agent["id"], "capability": "system.identity@1"},
+        )
+        flash(f"System identity queued on {agent['name']}.", "success")
+        return redirect(url_for("mainframe", _anchor="distributed-jobs"))
+
+    @app.get("/agents/<agent_id>/")
+    def agent_workspace(agent_id: str):
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        if distributed_settings_store.get()["role"] != "mainframe":
+            return Response("Agent workspaces require Mainframe mode.", status=409)
+        agent = distributed_agent_store.get(agent_id)
+        if not agent or agent["state"] != "approved":
+            return Response("That agent workspace is unavailable.", status=404)
+        if auth_store.execution_context(g.current_user["id"]) != agent_id:
+            flash("Select that agent from the Instance menu before entering its workspace.", "error")
+            return redirect(url_for("mainframe"))
+        job = distributed_job_store.latest(
+            agent_id=agent_id,
+            requester_id=g.current_user["id"],
+            capability_id="system.identity",
+            capability_version="1",
+        )
+        identity = (
+            job["output"]
+            if job and job["state"] == "succeeded" and job["output"]
+            else None
+        )
+        return render_template(
+            "auth/agent_workspace.html",
+            workspace_agent=agent,
+            workspace_job=job,
+            workspace_identity=identity,
+        )
+
+    @app.post("/agents/<agent_id>/system-information/refresh")
+    def refresh_agent_workspace_identity(agent_id: str):
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        agent = distributed_agent_store.get(agent_id)
+        if (
+            not agent
+            or agent["state"] != "approved"
+            or auth_store.execution_context(g.current_user["id"]) != agent_id
+        ):
+            return Response("That agent workspace is unavailable.", status=409)
+        if not agent["online"]:
+            flash(f"{agent['name']} is offline. The workspace remained selected.", "error")
+            return redirect(url_for("agent_workspace", agent_id=agent_id))
+        capabilities = {(item["id"], item["version"]) for item in agent["capabilities"]}
+        if ("system.identity", "1") not in capabilities:
+            flash("This agent does not support the System Information workspace.", "error")
+            return redirect(url_for("agent_workspace", agent_id=agent_id))
+        job = distributed_job_store.enqueue(
+            agent_id=agent_id,
+            requester_id=g.current_user["id"],
+            capability_id="system.identity",
+            capability_version="1",
+            inputs={"workspace_snapshot": True},
+        )
+        annotate_audit_event(
+            category="Mainframe",
+            action="distributed.workspace_snapshot_queued",
+            summary=f"Refreshed the remote workspace for {agent['name']}.",
+            resource_type="distributed job",
+            resource_id=job["id"],
+            resource_name=agent["name"],
+            details={"agent id": agent_id, "capability": "system.identity@1"},
+        )
+        flash(f"Refreshing the {agent['name']} workspace.", "success")
+        return redirect(url_for("agent_workspace", agent_id=agent_id))
+
+    @app.route("/agents/<agent_id>/tools/dns-response", methods=["GET", "POST"])
+    def agent_dns_response(agent_id: str):
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        agent = distributed_agent_store.get(agent_id)
+        if (
+            distributed_settings_store.get()["role"] != "mainframe"
+            or not agent
+            or agent["state"] != "approved"
+            or auth_store.execution_context(g.current_user["id"]) != agent_id
+        ):
+            return Response("That agent workspace is unavailable.", status=409)
+        capabilities = {(item["id"], item["version"]) for item in agent["capabilities"]}
+        supported = ("tools.dns.lookup", "1") in capabilities
+        if request.method == "POST":
+            if not agent["online"]:
+                flash(f"{agent['name']} is offline. DNS was not run locally.", "error")
+                return redirect(url_for("agent_dns_response", agent_id=agent_id))
+            if not supported:
+                flash("This agent does not advertise remote DNS Lookup.", "error")
+                return redirect(url_for("agent_dns_response", agent_id=agent_id))
+            inputs = {
+                "hosts": request.form.get("hosts", "").strip(),
+                "servers": request.form.get("servers", "").strip(),
+                "record_type": request.form.get("record_type", "A").strip(),
+                "timeout": request.form.get("timeout", "3").strip(),
+            }
+            job = distributed_job_store.enqueue(
+                agent_id=agent_id,
+                requester_id=g.current_user["id"],
+                capability_id="tools.dns.lookup",
+                capability_version="1",
+                inputs=inputs,
+            )
+            annotate_audit_event(
+                category="Mainframe",
+                action="distributed.remote_dns_queued",
+                summary=f"Queued DNS Lookup on {agent['name']}.",
+                resource_type="distributed job",
+                resource_id=job["id"],
+                resource_name="DNS Lookup",
+                details={"agent id": agent_id, "capability": "tools.dns.lookup@1"},
+            )
+            return redirect(
+                url_for("agent_dns_response", agent_id=agent_id, job=job["id"])
+            )
+        job_id = request.args.get("job", "").strip()
+        job = (
+            distributed_job_store.get(job_id)
+            if job_id
+            else distributed_job_store.latest(
+                agent_id=agent_id,
+                requester_id=g.current_user["id"],
+                capability_id="tools.dns.lookup",
+                capability_version="1",
+            )
+        )
+        if job and (
+            job["agent_id"] != agent_id
+            or job["requester_id"] != g.current_user["id"]
+            or job["capability_id"] != "tools.dns.lookup"
+            or job["capability_version"] != "1"
+        ):
+            return Response("That remote DNS request is unavailable.", status=404)
+        form = {
+            "hosts": "example.com",
+            "servers": "Cloudflare = 1.1.1.1\nGoogle = 8.8.8.8",
+            "record_type": "A",
+            "timeout": "3",
+        }
+        if job:
+            form.update({key: str(job["inputs"].get(key, value)) for key, value in form.items()})
+        return render_template(
+            "auth/agent_dns_response.html",
+            workspace_agent=agent,
+            remote_dns_supported=supported,
+            remote_dns_job=job,
+            remote_dns_output=(job["output"] if job and job["state"] == "succeeded" else None),
+            form=form,
+        )
+
+    @app.post("/mainframe/enroll")
+    def begin_mainframe_enrollment():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        settings = distributed_settings_store.get()
+        if settings["role"] != "agent":
+            flash("Configure this instance as an Agent before requesting enrollment.", "error")
+            return redirect(url_for("mainframe"))
+        name = server_settings_store.get()["instance_name"] or "TWN Toolkit Agent"
+        try:
+            pending = EnrollmentClient(
+                app.instance_path,
+                settings["agent_mainframe_url"],
+                settings["agent_mainframe_fallback_url"],
+            ).begin(name)
+        except (EnrollmentTransportError, ValueError) as exc:
+            flash(str(exc), "error")
+        else:
+            annotate_audit_event(
+                category="Administration",
+                action="distributed.enrollment_requested",
+                summary="Requested enrollment with a Mainframe.",
+                resource_type="distributed enrollment",
+                resource_id=pending["session_id"],
+                resource_name=settings["agent_mainframe_url"],
+                details={"pairing code": pending["pairing_code"]},
+            )
+            flash("Enrollment requested. Compare the pairing code on both instances.", "success")
+        return redirect(url_for("mainframe"))
+
+    @app.post("/mainframe/enroll/poll")
+    def poll_mainframe_enrollment():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        settings = distributed_settings_store.get()
+        if settings["role"] != "agent":
+            return Response("This instance is not configured as an agent.", status=409)
+        try:
+            result = EnrollmentClient(
+                app.instance_path,
+                settings["agent_mainframe_url"],
+                settings["agent_mainframe_fallback_url"],
+            ).poll()
+        except EnrollmentTransportError as exc:
+            flash(str(exc), "error")
+        else:
+            flash(
+                "Enrollment approved and credentials installed."
+                if result["state"] == "approved"
+                else f"Enrollment is {result['state']}.",
+                "success" if result["state"] == "approved" else "info",
+            )
+        return redirect(url_for("mainframe"))
+
+    @app.post("/settings/agents/configuration")
+    def update_distributed_settings():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        before = distributed_settings_store.get()
+        try:
+            after = distributed_settings_store.save(
+                {
+                    "role": request.form.get("role", "standalone"),
+                    "mainframe_listen_interfaces": request.form.get(
+                        "mainframe_listen_interfaces", ""
+                    ),
+                    "mainframe_port": request.form.get("mainframe_port", ""),
+                    "mainframe_advertised_hosts": request.form.get(
+                        "mainframe_advertised_hosts", ""
+                    ),
+                    "agent_mainframe_url": request.form.get(
+                        "agent_mainframe_url", ""
+                    ),
+                    "agent_mainframe_fallback_url": request.form.get(
+                        "agent_mainframe_fallback_url", ""
+                    ),
+                }
+            )
+        except ValueError as exc:
+            flash(str(exc), "error")
+        else:
+            if after["role"] == "mainframe":
+                certificate_addresses, certificate_names = split_mainframe_certificate_hosts(
+                    after["mainframe_listen_interfaces"],
+                    after["mainframe_advertised_hosts"],
+                )
+                distributed_pki_store.ensure_mainframe_identity(
+                    certificate_addresses, dns_names=certificate_names
+                )
+            annotate_audit_event(
+                category="Administration",
+                action="distributed.configuration_updated",
+                summary="Updated distributed toolkit configuration.",
+                resource_type="settings",
+                resource_id="distributed-agents",
+                resource_name="Distributed agents",
+                before=before,
+                after=after,
+            )
+            flash(
+                "Mainframe configuration saved. Restart the toolkit to apply listener-role changes.",
+                "success",
+            )
+        return redirect(url_for("mainframe"))
+
+    @app.post("/settings/agents/<agent_id>/<action>")
+    def update_distributed_agent(agent_id: str, action: str):
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        transitions = {"approve": "approved", "deny": "denied", "revoke": "revoked"}
+        if action == "remove":
+            before = distributed_agent_store.get(agent_id)
+            if before is None:
+                return Response("Agent enrollment does not exist.", status=404)
+            try:
+                removed = distributed_agent_store.remove_revoked(agent_id)
+            except ValueError as exc:
+                flash(str(exc), "error")
+            else:
+                annotate_audit_event(
+                    category="Administration",
+                    action="distributed.agent_removed",
+                    summary=f"Removed revoked agent {removed['name']}.",
+                    resource_type="distributed agent",
+                    resource_id=agent_id,
+                    resource_name=removed["name"],
+                    before={"state": removed["state"]},
+                    after=None,
+                )
+                flash(f"Removed revoked agent {removed['name']}.", "success")
+            return redirect(url_for("mainframe"))
+        state = transitions.get(action)
+        if state is None:
+            return Response("Unknown agent action.", status=404)
+        before = distributed_agent_store.get(agent_id)
+        if before is None:
+            return Response("Agent enrollment does not exist.", status=404)
+        if action == "approve" and request.form.get("pairing_code_confirmed") != "on":
+            flash("Confirm that the pairing codes match before approving the agent.", "error")
+            return redirect(url_for("mainframe"))
+        try:
+            after = distributed_agent_store.set_state(agent_id, state)
+        except ValueError as exc:
+            flash(str(exc), "error")
+        else:
+            annotate_audit_event(
+                category="Administration",
+                action=f"distributed.agent_{state}",
+                summary=f"{state.capitalize()} agent {after['name']}.",
+                resource_type="distributed agent",
+                resource_id=agent_id,
+                resource_name=after["name"],
+                before={"state": before["state"]},
+                after={"state": after["state"]},
+            )
+            flash(f"Agent {after['name']} is now {state}.", "success")
+        return redirect(url_for("mainframe"))
 
     def _pi_admin_required() -> Response | None:
         if not g.current_user.get("is_admin"):
