@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import stat
+from unittest.mock import patch
 
 import pytest
 
@@ -239,6 +240,30 @@ def test_admin_can_save_distributed_configuration(tmp_path):
     assert DistributedSettingsStore(tmp_path).get()["role"] == "mainframe"
     assert app.extensions["distributed_pki_store"].ca_cert_path.exists()
     assert app.extensions["distributed_pki_store"].server_cert_path.exists()
+
+
+def test_admin_can_save_distributed_configuration_and_restart(tmp_path):
+    app = create_app(str(tmp_path))
+    app.config.update(TESTING=True)
+    with patch("twn_toolkit.admin_routes.subprocess.Popen") as popen:
+        response = app.test_client().post(
+            "/settings/agents/configuration",
+            data={
+                "role": "agent",
+                "mainframe_listen_interfaces": "127.0.0.1",
+                "mainframe_port": "5051",
+                "agent_mainframe_url": "https://mainframe.example.test:5051",
+                "apply_restart": "on",
+            },
+        )
+
+    assert response.status_code == 200
+    assert b"Restarting the toolkit" in response.data
+    assert b"distributed role and listener settings are being applied" in response.data
+    assert b'data-settings-url="/mainframe"' in response.data
+    popen.assert_called_once()
+    command = popen.call_args.args[0]
+    assert command[-1] == "web-restart"
 
 
 def test_admin_can_approve_and_revoke_pending_agent(tmp_path):

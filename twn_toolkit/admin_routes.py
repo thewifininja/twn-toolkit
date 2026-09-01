@@ -388,6 +388,19 @@ def register_admin_routes(
     )
     distributed_enrollment_window = DistributedEnrollmentWindow(app.instance_path)
 
+    def _launch_toolkit_restart() -> None:
+        restart_log_path = Path(app.instance_path) / "twn-toolkit-restart.log"
+        restart_log_path.parent.mkdir(parents=True, exist_ok=True)
+        with restart_log_path.open("a", encoding="utf-8") as restart_log:
+            subprocess.Popen(
+                [str(project_root / "twn"), "web-restart"],
+                cwd=project_root,
+                stdin=subprocess.DEVNULL,
+                stdout=restart_log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+
     def _balanced_category_columns(
         values: list[dict[str, Any]],
     ) -> list[list[tuple[str, list[dict[str, Any]]]]]:
@@ -981,6 +994,24 @@ def register_admin_routes(
                 before=before,
                 after=after,
             )
+            if request.form.get("apply_restart") == "on":
+                try:
+                    _launch_toolkit_restart()
+                except OSError as exc:
+                    flash(
+                        f"Configuration was saved, but automatic restart failed: {exc}",
+                        "error",
+                    )
+                    return redirect(url_for("mainframe"))
+                return render_template(
+                    "auth/restarting.html",
+                    previous_boot_id=app.config["BOOT_ID"],
+                    restart_destination=url_for("mainframe"),
+                    restart_eyebrow="Mainframe",
+                    restart_message=(
+                        "The distributed role and listener settings are being applied."
+                    ),
+                )
             flash(
                 "Mainframe configuration saved. Restart the toolkit to apply listener-role changes.",
                 "success",
@@ -2501,19 +2532,8 @@ def register_admin_routes(
             flash(str(exc), "error")
             return redirect(url_for("settings"))
 
-        project_root = Path(__file__).resolve().parent.parent
-        restart_log_path = Path(app.instance_path) / "twn-toolkit-restart.log"
-        restart_log_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with restart_log_path.open("a", encoding="utf-8") as restart_log:
-                subprocess.Popen(
-                    [str(project_root / "twn"), "web-restart"],
-                    cwd=project_root,
-                    stdin=subprocess.DEVNULL,
-                    stdout=restart_log,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True,
-                )
+            _launch_toolkit_restart()
         except OSError as exc:
             server_settings_store.restore_previous()
             flash(f"Settings were saved, but automatic restart failed: {exc}", "error")
@@ -2529,6 +2549,11 @@ def register_admin_routes(
         return render_template(
             "auth/restarting.html",
             previous_boot_id=app.config["BOOT_ID"],
+            restart_destination=url_for("settings"),
+            restart_eyebrow="Server access",
+            restart_message=(
+                "The new listener and trusted-host settings are being applied."
+            ),
         )
 
     @app.get("/settings/backup")
