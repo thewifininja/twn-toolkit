@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 from typing import Sequence
+from .serial_permissions import linux_serial_service_groups
 
 
 SYSTEMD_UNIT_NAME = "twn-toolkit.service"
@@ -1033,11 +1034,13 @@ def install_service(
         if not shutil.which("systemctl"):
             raise ServiceError("systemctl is unavailable; this Linux installation is not systemd-managed.")
         lldp_groups = linux_lldp_service_groups()
+        serial_groups = linux_serial_service_groups()
+        service_groups = (*lldp_groups, *serial_groups)
         unit = render_systemd_unit(
             root,
             user,
             network_capabilities=network_capabilities,
-            supplementary_groups=lldp_groups,
+            supplementary_groups=service_groups,
         ).encode()
         _write_system_file(SYSTEMD_UNIT_PATH, unit)
         if raspberry_pi_hardware():
@@ -1082,6 +1085,8 @@ def install_service(
             print("Raw capture/replay and ports below 1024 may need: ./twn service install --network-capabilities")
         if lldp_groups:
             print("Enabled scoped access to the local lldpd control socket for LLDP Lab.")
+        if serial_groups:
+            print("Enabled scoped access to local serial console devices.")
         return
 
     if not shutil.which("launchctl"):
