@@ -303,6 +303,20 @@ def test_browser_flow_requests_compares_approves_and_installs(tmp_path):
         assert completed["state"] == "succeeded"
         assert completed["output"]["toolkit"]["hostname"]
         assert completed["output"]["toolkit"]["version"]
+
+        agent_store = mainframe_app.extensions["distributed_agent_store"]
+        offline_agent = dict(agent_store.get(enrollment["id"]))
+        offline_agent["online"] = False
+        with patch.object(agent_store, "get", return_value=offline_agent):
+            recovery = mainframe_web.get(
+                f"/agents/{enrollment['id']}/ui/tools/multi-ssh?folder=network",
+                headers={"Accept": "text/html"},
+            )
+        assert recovery.status_code == 302
+        assert recovery.headers["Location"].endswith(
+            "/tools/multi-ssh?folder=network"
+        )
+        assert mainframe_auth.execution_context(administrator["id"]) == "local"
     finally:
         server.stop()
 

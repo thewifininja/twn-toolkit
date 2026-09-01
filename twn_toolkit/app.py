@@ -318,6 +318,16 @@ def create_app(instance_path: str | None = None) -> Flask:
     @app.route("/agents/<agent_id>/ui/", defaults={"remote_path": ""}, methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
     @app.route("/agents/<agent_id>/ui/<path:remote_path>", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
     def agent_ui(agent_id: str, remote_path: str):
+        def return_to_local_instance(message: str):
+            if request.method not in {"GET", "HEAD"} or not request.accept_mimetypes.accept_html:
+                return None
+            auth_store.set_execution_context(g.current_user["id"], "local")
+            flash(f"{message} Returned to this instance.", "error")
+            destination = "/" + remote_path
+            if request.query_string:
+                destination += "?" + request.query_string.decode("latin-1")
+            return redirect(destination)
+
         if distributed_settings_store.get()["role"] != "mainframe":
             abort(404)
         if not g.current_user.get("is_admin"):
@@ -326,13 +336,16 @@ def create_app(instance_path: str | None = None) -> Flask:
             return Response("Select this agent before accessing it.", status=409)
         agent = distributed_agent_store.get(agent_id)
         if not agent or agent["state"] != "approved":
-            abort(404)
+            recovery = return_to_local_instance("The selected agent is no longer approved.")
+            return recovery if recovery is not None else abort(404)
         if not agent["online"]:
-            return Response("The selected agent is offline.", status=503)
+            recovery = return_to_local_instance("The selected agent is offline.")
+            return recovery if recovery is not None else Response("The selected agent is offline.", status=503)
         if ("system.http.tunnel", "1") not in {
             (item["id"], item["version"]) for item in agent["capabilities"]
         }:
-            return Response("The selected agent does not support GUI access.", status=503)
+            recovery = return_to_local_instance("The selected agent does not support GUI access.")
+            return recovery if recovery is not None else Response("The selected agent does not support GUI access.", status=503)
         if remote_path.startswith("static/"):
             return app.send_static_file(remote_path[len("static/"):])
         body = request.get_data(cache=False)
@@ -376,16 +389,20 @@ def create_app(instance_path: str | None = None) -> Flask:
                 break
             time.sleep(0.05)
         else:
-            return Response("The selected agent did not respond in time.", status=504)
+            recovery = return_to_local_instance("The selected agent did not respond in time.")
+            return recovery if recovery is not None else Response("The selected agent did not respond in time.", status=504)
         distributed_job_store.delete(job["id"], requester_id=g.current_user["id"])
         if current["state"] != "succeeded" or not current.get("output"):
-            return Response(current.get("error") or "The agent request failed.", status=502)
+            message = current.get("error") or "The agent request failed."
+            recovery = return_to_local_instance(message)
+            return recovery if recovery is not None else Response(message, status=502)
         output = current["output"]
         try:
             content = base64.b64decode(str(output.get("body", "")), validate=True)
             status = int(output.get("status", 502))
         except (ValueError, TypeError):
-            return Response("The agent returned an invalid response.", status=502)
+            recovery = return_to_local_instance("The agent returned an invalid response.")
+            return recovery if recovery is not None else Response("The agent returned an invalid response.", status=502)
         if (
             status == 404
             and request.method == "GET"
