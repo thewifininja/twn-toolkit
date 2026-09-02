@@ -44,7 +44,7 @@
                 <select id="execution-context-select" name="context_id" data-execution-context-select>
                   <option value="local" {% if execution_context_id == 'local' %}selected{% endif %}>This instance{% if execution_local_name %} · {{ execution_local_name }}{% endif %}</option>
                   {% for agent in execution_agents %}
-                    <option value="{{ agent.id }}" {% if execution_context_id == agent.id %}selected{% endif %} {% if not agent.online and execution_context_id != agent.id %}disabled{% endif %}>{{ agent.name }}{% if not agent.online %} · Offline{% endif %}</option>
+                    <option value="{{ agent.id }}" {% if execution_context_id == agent.id %}selected{% endif %}>{{ agent.name }}</option>
                   {% endfor %}
                 </select>
               </label>
