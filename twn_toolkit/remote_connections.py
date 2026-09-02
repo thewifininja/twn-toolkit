@@ -20,6 +20,10 @@ class RemoteConnectionError(ValueError):
     pass
 
 
+VISIBILITY_VALUES = {"global", "admins_only", "private"}
+VISIBILITY_MODES = VISIBILITY_VALUES | {"inherit"}
+
+
 class RemoteConnectionStore:
     """Per-operator folders, remote hosts, and encrypted credential records."""
 
@@ -40,11 +44,12 @@ class RemoteConnectionStore:
         except OSError:
             pass
 
-    def library_for_user(self, user_id: str) -> dict[str, list[dict[str, Any]]]:
+    def library_for_user(
+        self, user_id: str, *, is_admin: bool = False
+    ) -> dict[str, list[dict[str, Any]]]:
         with self._connect() as connection:
             folders = connection.execute(
-                "SELECT * FROM remote_connection_folders WHERE user_id = ? ORDER BY name COLLATE NOCASE",
-                (user_id,),
+                "SELECT * FROM remote_connection_folders ORDER BY name COLLATE NOCASE"
             ).fetchall()
             credentials = connection.execute(
                 """
@@ -59,10 +64,8 @@ class RemoteConnectionStore:
                 FROM remote_connection_credentials c
                 LEFT JOIN remote_connection_hosts scoped
                   ON scoped.id = c.scope_host_id AND scoped.user_id = c.user_id
-                WHERE c.user_id = ?
                 ORDER BY c.name COLLATE NOCASE
-                """,
-                (user_id,),
+                """
             ).fetchall()
             hosts = connection.execute(
                 """
@@ -72,51 +75,105 @@ class RemoteConnectionStore:
                 FROM remote_connection_hosts h
                 LEFT JOIN remote_connection_credentials c
                   ON c.id = h.credential_id AND c.user_id = h.user_id
-                WHERE h.user_id = ?
                 ORDER BY h.name COLLATE NOCASE
-                """,
-                (user_id,),
+                """
             ).fetchall()
         folder_items = [self._folder(row) for row in folders]
         credential_items = [self._public_credential(row) for row in credentials]
         host_items = [self._host(row) for row in hosts]
+        all_folder_items = folder_items
+        self._annotate_effective_visibility(folder_items, host_items)
+        folder_items = [
+            item for item in folder_items
+            if self._visibility_allows(item, user_id=user_id, is_admin=is_admin)
+        ]
+        credential_items = [
+            item for item in credential_items
+            if self._visibility_allows(item, user_id=user_id, is_admin=is_admin)
+        ]
+        host_items = [
+            item for item in host_items
+            if self._visibility_allows(item, user_id=user_id, is_admin=is_admin)
+        ]
         self._annotate_effective_credentials(
-            folder_items, host_items, credential_items
+            all_folder_items, host_items, credential_items
         )
+        visible_folder_ids = {str(item["id"]) for item in folder_items}
+        for folder in folder_items:
+            if str(folder.get("parent_id", "")) not in visible_folder_ids:
+                folder["parent_id"] = ""
+        for host in host_items:
+            if str(host.get("folder_id", "")) not in visible_folder_ids:
+                host["folder_id"] = ""
+                if host.get("credential_source_folder_name"):
+                    host["credential_source_folder_name"] = "Shared policy"
+
+        visible_credential_ids = {
+            str(item["id"]) for item in credential_items
+        }
+        for host in host_items:
+            credential_id = str(host.get("effective_credential_id", ""))
+            host["credential_available"] = not credential_id or credential_id in visible_credential_ids
+        for collection in (folder_items, credential_items, host_items):
+            for item in collection:
+                item["owned"] = str(item["user_id"]) == user_id
         return {
             "folders": folder_items,
             "credentials": credential_items,
             "hosts": host_items,
         }
 
-    def get_host(self, host_id: str, *, user_id: str) -> dict[str, Any] | None:
+    def get_host(
+        self, host_id: str, *, user_id: str, is_admin: bool = False
+    ) -> dict[str, Any] | None:
         return next(
             (
                 host
-                for host in self.library_for_user(user_id)["hosts"]
+                for host in self.library_for_user(
+                    user_id, is_admin=is_admin
+                )["hosts"]
                 if host["id"] == host_id
             ),
             None,
         )
 
     def resolve_credential(
-        self, credential_id: str, *, user_id: str, host_id: str = ""
+        self,
+        credential_id: str,
+        *,
+        user_id: str,
+        host_id: str = "",
+        is_admin: bool = False,
     ) -> dict[str, str]:
         with self._connect() as connection:
             row = connection.execute(
-                """
-                SELECT * FROM remote_connection_credentials
-                WHERE id = ? AND user_id = ?
-                """,
-                (credential_id, user_id),
+                "SELECT * FROM remote_connection_credentials WHERE id = ?",
+                (credential_id,),
             ).fetchone()
-        if not row:
+        if not row or not self._visibility_allows(
+            {
+                "user_id": str(row["user_id"]),
+                "visibility": str(row["visibility"]),
+            },
+            user_id=user_id,
+            is_admin=is_admin,
+        ):
             raise RemoteConnectionError("Select a valid saved credential.")
         scope_host_id = str(row["scope_host_id"])
         if scope_host_id and scope_host_id != host_id:
             raise RemoteConnectionError(
                 "That credential is restricted to its assigned saved host."
             )
+        if host_id:
+            owner_host = self.get_host(
+                host_id, user_id=str(row["user_id"])
+            )
+            if not owner_host or self._visibility_rank(
+                owner_host.get("effective_visibility", "private")
+            ) > self._visibility_rank(row["visibility"]):
+                raise RemoteConnectionError(
+                    "This host is more broadly available than its credential."
+                )
         try:
             password = self._cipher.decrypt(
                 str(row["secret_encrypted"]).encode("ascii")
@@ -129,6 +186,44 @@ class RemoteConnectionStore:
             "username": str(row["remote_username"]),
             "password": password,
         }
+
+    def set_visibility(
+        self,
+        resource_type: str,
+        resource_id: str,
+        *,
+        user_id: str,
+        visibility: str,
+    ) -> None:
+        tables = {
+            "folder": "remote_connection_folders",
+            "host": "remote_connection_hosts",
+            "credential": "remote_connection_credentials",
+        }
+        table = tables.get(str(resource_type))
+        if not table:
+            raise RemoteConnectionError("Unknown Remote Terminal resource type.")
+        clean = self._clean_visibility(
+            visibility, allow_inherit=resource_type in {"folder", "host"}
+        )
+        with self._connect() as connection:
+            row = connection.execute(
+                f"SELECT parent_id FROM {table} WHERE id = ? AND user_id = ?"
+                if resource_type == "folder"
+                else f"SELECT id FROM {table} WHERE id = ? AND user_id = ?",
+                (resource_id, user_id),
+            ).fetchone()
+            if not row:
+                raise RemoteConnectionError("Saved library item not found.")
+            if resource_type == "folder" and clean == "inherit" and not row["parent_id"]:
+                raise RemoteConnectionError(
+                    "A root folder must choose Global, Admins Only, or Private."
+                )
+            connection.execute(
+                f"UPDATE {table} SET visibility = ?, updated_at = ? "
+                "WHERE id = ? AND user_id = ?",
+                (clean, time.time(), resource_id, user_id),
+            )
 
     def create_folder(
         self,
@@ -244,6 +339,10 @@ class RemoteConnectionStore:
             parent_id=str(source["parent_id"]),
             credential_mode=str(source["credential_mode"]),
             credential_id=str(source["credential_id"]),
+        )
+        self.set_visibility(
+            "folder", str(copied["id"]), user_id=user_id,
+            visibility=str(source["visibility"]),
         )
         self._copy_folder_children(
             source_id=folder_id, destination_id=str(copied["id"]), user_id=user_id
@@ -658,7 +757,7 @@ class RemoteConnectionStore:
                 "password": resolved["password"],
             }
             credential_id = ""
-        return self.save_host(
+        copied = self.save_host(
             user_id=user_id,
             name=copied_name,
             host=str(source["host"]),
@@ -680,6 +779,17 @@ class RemoteConnectionStore:
             console_stop_bits=str(source.get("console_stop_bits", "1")),
             console_flow_control=str(source.get("console_flow_control", "none")),
         )
+        self.set_visibility(
+            "host", str(copied["id"]), user_id=user_id,
+            visibility=str(source["visibility"]),
+        )
+        copied = self.get_host(str(copied["id"]), user_id=user_id)
+        if copied and copied.get("credential_scope_host_id") == copied.get("id"):
+            self.set_visibility(
+                "credential", str(copied["credential_id"]), user_id=user_id,
+                visibility=str(copied["effective_visibility"]),
+            )
+        return copied  # type: ignore[return-value]
 
     def import_hosts(
         self,
@@ -947,7 +1057,7 @@ class RemoteConnectionStore:
                     "password": resolved["password"],
                 }
                 credential_id = ""
-            self.save_host(
+            copied_host = self.save_host(
                 user_id=user_id,
                 name=str(host["name"]),
                 host=str(host["host"]),
@@ -969,6 +1079,16 @@ class RemoteConnectionStore:
                 console_stop_bits=str(host.get("console_stop_bits", "1")),
                 console_flow_control=str(host.get("console_flow_control", "none")),
             )
+            self.set_visibility(
+                "host", str(copied_host["id"]), user_id=user_id,
+                visibility=str(host["visibility"]),
+            )
+            copied_host = self.get_host(str(copied_host["id"]), user_id=user_id)
+            if copied_host and copied_host.get("credential_scope_host_id") == copied_host.get("id"):
+                self.set_visibility(
+                    "credential", str(copied_host["credential_id"]), user_id=user_id,
+                    visibility=str(copied_host["effective_visibility"]),
+                )
         for folder in [item for item in library["folders"] if item["parent_id"] == source_id]:
             copied_folder = self.create_folder(
                 user_id=user_id,
@@ -976,6 +1096,10 @@ class RemoteConnectionStore:
                 parent_id=destination_id,
                 credential_mode=str(folder.get("credential_mode", "inherit")),
                 credential_id=str(folder.get("credential_id", "")),
+            )
+            self.set_visibility(
+                "folder", str(copied_folder["id"]), user_id=user_id,
+                visibility=str(folder["visibility"]),
             )
             self._copy_folder_children(
                 source_id=str(folder["id"]),
@@ -1041,6 +1165,79 @@ class RemoteConnectionStore:
                 "Folder inheritance requires a shared credential."
             )
         return clean_mode, clean_credential_id
+
+    @staticmethod
+    def _clean_visibility(value: object, *, allow_inherit: bool = False) -> str:
+        clean = str(value).strip().lower()
+        allowed = VISIBILITY_MODES if allow_inherit else VISIBILITY_VALUES
+        if clean not in allowed:
+            choices = "Global, Admins Only, Private" + (", or Inherit" if allow_inherit else "")
+            raise RemoteConnectionError(f"Choose {choices}.")
+        return clean
+
+    @classmethod
+    def _annotate_effective_visibility(
+        cls,
+        folders: list[dict[str, Any]],
+        hosts: list[dict[str, Any]],
+    ) -> None:
+        folder_map = {str(item["id"]): item for item in folders}
+        resolving: set[str] = set()
+
+        def resolve(folder: dict[str, Any]) -> str:
+            folder_id = str(folder["id"])
+            current = str(folder.get("visibility", "private"))
+            if current != "inherit":
+                folder["effective_visibility"] = current
+                return current
+            if folder_id in resolving:
+                folder["effective_visibility"] = "private"
+                return "private"
+            resolving.add(folder_id)
+            parent = folder_map.get(str(folder.get("parent_id", "")))
+            effective = (
+                resolve(parent)
+                if parent and parent.get("user_id") == folder.get("user_id")
+                else "private"
+            )
+            resolving.discard(folder_id)
+            folder["effective_visibility"] = effective
+            return effective
+
+        for folder in folders:
+            resolve(folder)
+        for host in hosts:
+            current = str(host.get("visibility", "inherit"))
+            parent = folder_map.get(str(host.get("folder_id", "")))
+            host["effective_visibility"] = (
+                str(parent.get("effective_visibility", "private"))
+                if current == "inherit"
+                and parent
+                and parent.get("user_id") == host.get("user_id")
+                else "private"
+                if current == "inherit"
+                else current
+            )
+
+    @staticmethod
+    def _visibility_allows(
+        item: dict[str, Any], *, user_id: str, is_admin: bool
+    ) -> bool:
+        if str(item.get("user_id", "")) == user_id:
+            return True
+        visibility = str(
+            item.get("effective_visibility", item.get("visibility", "private"))
+        )
+        return visibility == "global" or (visibility == "admins_only" and is_admin)
+
+    @staticmethod
+    def _visibility_rank(value: object) -> int:
+        return {
+            "private": 1,
+            "admins_only": 2,
+            "global": 3,
+
+        }.get(str(value), 0)
 
     @staticmethod
     def _annotate_effective_credentials(
@@ -1171,6 +1368,8 @@ class RemoteConnectionStore:
     def _folder(row: sqlite3.Row) -> dict[str, Any]:
         return {
             "id": str(row["id"]),
+            "user_id": str(row["user_id"]),
+            "visibility": str(row["visibility"]),
             "name": str(row["name"]),
             "parent_id": str(row["parent_id"]),
             "credential_mode": str(row["credential_mode"]),
@@ -1183,6 +1382,8 @@ class RemoteConnectionStore:
     def _public_credential(row: sqlite3.Row) -> dict[str, Any]:
         return {
             "id": str(row["id"]),
+            "user_id": str(row["user_id"]),
+            "visibility": str(row["visibility"]),
             "name": str(row["name"]),
             "username": str(row["remote_username"]),
             "scope_host_id": str(row["scope_host_id"]),
@@ -1198,6 +1399,8 @@ class RemoteConnectionStore:
     def _host(row: sqlite3.Row) -> dict[str, Any]:
         return {
             "id": str(row["id"]),
+            "user_id": str(row["user_id"]),
+            "visibility": str(row["visibility"]),
             "name": str(row["name"]),
             "host": str(row["host"]),
             "port": int(row["port"]),
@@ -1390,6 +1593,7 @@ class RemoteConnectionStore:
                 parent_id TEXT NOT NULL DEFAULT '',
                 credential_mode TEXT NOT NULL DEFAULT 'inherit',
                 credential_id TEXT NOT NULL DEFAULT '',
+                visibility TEXT NOT NULL DEFAULT 'private',
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL
             );
@@ -1403,6 +1607,7 @@ class RemoteConnectionStore:
                 remote_username TEXT NOT NULL,
                 secret_encrypted TEXT NOT NULL,
                 scope_host_id TEXT NOT NULL DEFAULT '',
+                visibility TEXT NOT NULL DEFAULT 'private',
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL
             );
@@ -1419,6 +1624,7 @@ class RemoteConnectionStore:
                 folder_id TEXT NOT NULL DEFAULT '',
                 credential_mode TEXT NOT NULL DEFAULT 'credential',
                 credential_id TEXT NOT NULL,
+                visibility TEXT NOT NULL DEFAULT 'inherit',
                 allow_unknown_hosts INTEGER NOT NULL DEFAULT 0,
                 allow_legacy_algorithms INTEGER NOT NULL DEFAULT 0,
                 notes TEXT NOT NULL DEFAULT '',
@@ -1499,6 +1705,21 @@ class RemoteConnectionStore:
                     "ALTER TABLE remote_connection_folders "
                     "ADD COLUMN credential_id TEXT NOT NULL DEFAULT ''"
                 )
+            for table in (
+                "remote_connection_folders",
+                "remote_connection_credentials",
+                "remote_connection_hosts",
+            ):
+                columns = {
+                    str(row["name"])
+                    for row in connection.execute(f"PRAGMA table_info({table})")
+                }
+                if "visibility" not in columns:
+                    connection.execute(
+                        f"ALTER TABLE {table} "
+                        "ADD COLUMN visibility TEXT NOT NULL DEFAULT 'admins_only'"
+                    )
+
         except Exception:
             connection.rollback()
             raise

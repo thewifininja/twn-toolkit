@@ -89,8 +89,69 @@ class RemoteConnectionStoreTests(unittest.TestCase):
         telnet_host = next(item for item in library["hosts"] if item["id"] == "telnet-host")
 
         self.assertEqual(library["folders"][0]["credential_mode"], "inherit")
+        self.assertEqual(library["folders"][0]["visibility"], "admins_only")
+        self.assertEqual(library["credentials"][0]["visibility"], "admins_only")
+        self.assertTrue(all(item["visibility"] == "admins_only" for item in library["hosts"]))
         self.assertEqual(ssh_host["credential_mode"], "credential")
         self.assertEqual(telnet_host["credential_mode"], "none")
+
+    def test_visibility_allows_global_and_admin_only_use_without_secret_disclosure(self) -> None:
+        credential = self.store.save_credential(
+            user_id="owner",
+            name="Shared admin",
+            remote_username="admin",
+            password="shared-secret",
+        )
+        self.store.set_visibility(
+            "credential",
+            credential["id"],
+            user_id="owner",
+            visibility="global",
+        )
+        folder = self.store.create_folder(
+            user_id="owner", name="Shared", credential_mode="credential",
+            credential_id=credential["id"],
+        )
+        self.store.set_visibility(
+            "folder", folder["id"], user_id="owner", visibility="global"
+        )
+        host = self.store.save_host(
+            user_id="owner", name="Switch", host="192.0.2.10", port=22,
+            folder_id=folder["id"], credential_id="", credential_mode="inherit",
+            allow_unknown_hosts=False, allow_legacy_algorithms=False,
+        )
+        self.store.set_visibility(
+            "host", host["id"], user_id="owner", visibility="inherit"
+        )
+
+        shared = self.store.library_for_user("operator")
+        self.assertEqual([item["name"] for item in shared["hosts"]], ["Switch"])
+        self.assertEqual([item["name"] for item in shared["credentials"]], ["Shared admin"])
+        self.assertNotIn("password", shared["credentials"][0])
+        self.assertEqual(
+            self.store.resolve_credential(
+                credential["id"], user_id="operator", host_id=host["id"]
+            )["password"],
+            "shared-secret",
+        )
+
+        self.store.set_visibility(
+            "credential",
+            credential["id"],
+            user_id="owner",
+            visibility="admins_only",
+        )
+        self.assertEqual(
+            self.store.library_for_user("operator")["credentials"], []
+        )
+        self.assertEqual(
+            len(self.store.library_for_user("administrator", is_admin=True)["credentials"]),
+            1,
+        )
+        with self.assertRaises(RemoteConnectionError):
+            self.store.resolve_credential(
+                credential["id"], user_id="operator", host_id=host["id"]
+            )
 
     def test_concurrent_workers_serialize_schema_migration(self) -> None:
         self.store.clear()

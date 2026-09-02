@@ -140,6 +140,10 @@ class RemoteConnectionBackupStore:
         for user in self.auth_store.users():
             user_id = str(user["id"])
             library = self.store.library_for_user(user_id)
+            library = {
+                key: [item for item in items if item.get("owned")]
+                for key, items in library.items()
+            }
             if not any(library.values()):
                 continue
             credentials = []
@@ -156,6 +160,7 @@ class RemoteConnectionBackupStore:
                         "username": resolved["username"],
                         "password": resolved["password"],
                         "scope_host_id": credential["scope_host_id"],
+                        "visibility": credential["visibility"],
                     }
                 )
             records.append(
@@ -211,8 +216,8 @@ class RemoteConnectionBackupStore:
                         """
                         INSERT INTO remote_connection_folders
                             (id, user_id, name, parent_id, credential_mode,
-                             credential_id, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                             credential_id, visibility, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         folder,
                     )
@@ -221,8 +226,8 @@ class RemoteConnectionBackupStore:
                         """
                         INSERT INTO remote_connection_credentials
                             (id, user_id, name, remote_username, secret_encrypted,
-                             scope_host_id, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                             scope_host_id, visibility, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         credential,
                     )
@@ -231,13 +236,14 @@ class RemoteConnectionBackupStore:
                         """
                         INSERT INTO remote_connection_hosts
                             (id, user_id, name, host, port, protocol, folder_id,
-                             credential_mode, credential_id, allow_unknown_hosts,
+                             credential_mode, credential_id, visibility,
+                             allow_unknown_hosts,
                              allow_legacy_algorithms, notes, console_device_id,
                              console_device_path, console_device_label,
                              console_baud_rate, console_data_bits, console_parity,
                              console_stop_bits, console_flow_control,
                              created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         host,
                     )
@@ -369,6 +375,11 @@ class RemoteConnectionBackupStore:
                 raise ValueError("Remote Terminal folders must be unique within a parent.")
             folder_names.add(unique_key)
             parents[old_id] = old_parent
+            visibility = self.store._clean_visibility(
+                item.get("visibility", "admins_only"), allow_inherit=True
+            )
+            if visibility == "inherit" and not parent_id:
+                raise ValueError("A root Remote Terminal folder cannot inherit visibility.")
             folder_rows.append(
                 (
                     folder_ids[old_id],
@@ -377,6 +388,7 @@ class RemoteConnectionBackupStore:
                     parent_id,
                     credential_mode,
                     credential_ids.get(old_credential, ""),
+                    visibility,
                     now,
                     now,
                 )
@@ -404,10 +416,14 @@ class RemoteConnectionBackupStore:
             old_scope = str(item.get("scope_host_id", ""))
             if old_scope and old_scope not in host_ids:
                 raise ValueError("Remote Terminal credential references a missing host.")
+            visibility = self.store._clean_visibility(
+                item.get("visibility", "admins_only")
+            )
             credential_rows.append(
                 (
                     credential_ids[old_id], user_id, name, username, encrypted,
-                    host_ids.get(old_scope, ""), now, now,
+                    host_ids.get(old_scope, ""), visibility,
+                    now, now,
                 )
             )
 
@@ -484,11 +500,15 @@ class RemoteConnectionBackupStore:
                 raise ValueError("Remote Terminal ports must be 1–65535.")
             notes = str(item.get("notes", "")).strip()[:1000]
             host_credentials[old_id] = old_credential
+            visibility = self.store._clean_visibility(
+                item.get("visibility", "admins_only"), allow_inherit=True
+            )
             host_rows.append(
                 (
                     host_ids[old_id], user_id, name, host, port, protocol, folder_id,
                     credential_mode,
                     credential_ids.get(old_credential, ""),
+                    visibility,
                     int(bool(item.get("allow_unknown_hosts")) and protocol == "ssh"),
                     int(bool(item.get("allow_legacy_algorithms")) and protocol == "ssh"),
                     notes,

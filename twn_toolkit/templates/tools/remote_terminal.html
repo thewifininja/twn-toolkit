@@ -5,7 +5,7 @@
   <div>
     <span class="eyebrow">Persistent remote access</span>
     <h1>Remote Terminal</h1>
-    <p>Open persistent SSH, Telnet, or locally attached console sessions, and organize reusable connections in your private library.</p>
+    <p>Open persistent SSH, Telnet, or locally attached console sessions, and organize reusable connections with per-item availability controls.</p>
   </div>
   <div class="remote-terminal-primary-actions">
     <button type="button" data-open-quick-connect>Quick connect</button>
@@ -193,6 +193,7 @@
     <input id="remote-folder-id" type="hidden">
     <label>Folder name<input id="remote-folder-name" maxlength="100" required></label>
     <label>Parent folder<select id="remote-folder-parent"></select></label>
+    <label>Availability<select id="remote-folder-visibility"><option value="inherit">Inherit from parent</option><option value="global">Global</option><option value="admins_only">Admins Only</option><option value="private">Private</option></select></label>
     <fieldset class="remote-terminal-credential-choice">
       <legend>Credential inheritance</legend>
       <div class="remote-terminal-choice-row">
@@ -218,6 +219,7 @@
     <div class="form-grid remote-terminal-dialog-grid">
       <label>Display name<input id="remote-host-name" maxlength="100" required placeholder="Core Switch 01"></label>
       <label>Folder<select id="remote-host-folder"></select></label>
+      <label>Availability<select id="remote-host-visibility"><option value="inherit">Inherit from folder</option><option value="global">Global</option><option value="admins_only">Admins Only</option><option value="private">Private</option></select></label>
       <label>Protocol<select id="remote-host-protocol"><option value="ssh">SSH</option><option value="telnet">Telnet</option><option value="console">Console</option></select></label>
       <label class="remote-host-address-field" data-host-network>Host<input id="remote-host-address" maxlength="255" required placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"></label>
       <label data-host-network><span id="remote-host-port-label">SSH port</span><input id="remote-host-port" type="number" min="1" max="65535" value="22" required></label>
@@ -268,7 +270,7 @@
 
 <dialog class="remote-terminal-dialog remote-credential-dialog" id="remote-credential-dialog" aria-labelledby="remote-credential-title">
   <div class="remote-credential-manager">
-    <header><div><span class="eyebrow">Private encrypted storage</span><h2 id="remote-credential-title">Credential vault</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
+    <header><div><span class="eyebrow">Encrypted credential storage</span><h2 id="remote-credential-title">Credential vault</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro">Save a credential once, then assign it to multiple hosts or select it during Quick Connect. Passwords remain write-only after saving.</p>
     <div class="remote-credential-manager-body">
       <aside>
@@ -286,6 +288,7 @@
         <div class="form-grid remote-credential-core-fields">
           <label>Credential name<input id="remote-credential-name" maxlength="100" required placeholder="Network administrator"></label>
           <label>Username<input id="remote-credential-username" maxlength="128" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="admin"></label>
+          <label>Availability<select id="remote-credential-visibility"><option value="global">Global</option><option value="admins_only">Admins Only</option><option value="private">Private</option></select></label>
         </div>
         <label>Password <span class="inline-label-note">(write-only)</span><input id="remote-credential-password" type="password" autocomplete="new-password" placeholder="Required for a new credential"></label>
         <p class="field-note" id="remote-credential-scope-note">Shared credentials can be assigned to multiple saved hosts or used by Quick Connect.</p>

@@ -105,7 +105,8 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             source_host_id = str(payload.get("host_id", "")).strip()
             if source_host_id:
                 saved_host = _connection_store().get_host(
-                    source_host_id, user_id=user["id"]
+                    source_host_id, user_id=user["id"],
+                    is_admin=bool(user.get("is_admin")),
                 )
                 if not saved_host:
                     raise RemoteSessionError("Saved host not found.")
@@ -141,6 +142,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                         credential = _connection_store().resolve_credential(
                             credential_id,
                             user_id=user["id"],
+                            is_admin=bool(user.get("is_admin")),
                             host_id=source_host_id,
                         )
                         remote_username = credential["username"]
@@ -185,7 +187,9 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                     credential_id = str(payload.get("credential_id", "")).strip()
                     if credential_id:
                         credential = _connection_store().resolve_credential(
-                            credential_id, user_id=user["id"]
+                            credential_id,
+                            user_id=user["id"],
+                            is_admin=bool(user.get("is_admin")),
                         )
                         remote_username = credential["username"]
                         password = credential["password"]
@@ -280,13 +284,29 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
     def create_remote_terminal_folder():
         payload = request.get_json(silent=True) or {}
         user = _current_user()
+        parent_id = str(payload.get("parent_id", ""))
+        visibility = str(
+            payload.get("visibility", "inherit" if parent_id else "private")
+        )
         try:
+            RemoteConnectionStore._clean_visibility(
+                visibility, allow_inherit=True
+            )
             folder = _connection_store().create_folder(
                 user_id=user["id"],
                 name=str(payload.get("name", "")),
-                parent_id=str(payload.get("parent_id", "")),
+                parent_id=parent_id,
                 credential_mode=str(payload.get("credential_mode", "inherit")),
                 credential_id=str(payload.get("credential_id", "")),
+            )
+            _connection_store().set_visibility(
+                "folder",
+                str(folder["id"]),
+                user_id=user["id"],
+                visibility=visibility,
+            )
+            folder = _connection_store().get_folder(
+                str(folder["id"]), user_id=user["id"]
             )
         except RemoteConnectionError as exc:
             suppress_audit_event()
@@ -311,6 +331,16 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 ),
                 credential_id=str(payload.get("credential_id", "")),
             )
+            if "visibility" in payload:
+                _connection_store().set_visibility(
+                    "folder",
+                    folder_id,
+                    user_id=user["id"],
+                    visibility=str(payload["visibility"]),
+                )
+                folder = _connection_store().get_folder(
+                    folder_id, user_id=user["id"]
+                )
         except RemoteConnectionError as exc:
             suppress_audit_event()
             return jsonify({"error": str(exc)}), 400
@@ -502,6 +532,10 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
     @tools_bp.post("/remote-terminal/hosts/<host_id>/duplicate")
     def duplicate_remote_terminal_host(host_id: str):
         user = _current_user()
+        existing = _connection_store().get_host(host_id, user_id=user["id"])
+        if not existing or not existing.get("owned"):
+            suppress_audit_event()
+            return jsonify({"error": "Saved host not found."}), 404
         try:
             host = _connection_store().duplicate_host(host_id, user_id=user["id"])
         except RemoteConnectionError as exc:
@@ -517,7 +551,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
     def delete_remote_terminal_host(host_id: str):
         user = _current_user()
         existing = _connection_store().get_host(host_id, user_id=user["id"])
-        if not existing:
+        if not existing or not existing.get("owned"):
             suppress_audit_event()
             return jsonify({"error": "Saved host not found."}), 404
         _connection_store().delete_host(host_id, user_id=user["id"])
@@ -888,15 +922,14 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
 def _save_remote_terminal_credential(credential_id: str = ""):
     payload = request.get_json(silent=True) or {}
     user = _current_user()
+    existing = None
     scope_host_id = ""
     if credential_id:
         existing = next(
             (
                 item
-                for item in _connection_store().library_for_user(user["id"])[
-                    "credentials"
-                ]
-                if item["id"] == credential_id
+                for item in _connection_library(user["id"])["credentials"]
+                if item["id"] == credential_id and item.get("owned")
             ),
             None,
         )
@@ -904,7 +937,14 @@ def _save_remote_terminal_credential(credential_id: str = ""):
             suppress_audit_event()
             return jsonify({"error": "Saved credential not found."}), 404
         scope_host_id = str(existing["scope_host_id"])
+    visibility = str(
+        payload.get(
+            "visibility",
+            existing.get("visibility", "private") if existing else "private",
+        )
+    )
     try:
+        RemoteConnectionStore._clean_visibility(visibility)
         credential = _connection_store().save_credential(
             user_id=user["id"],
             credential_id=credential_id,
@@ -912,6 +952,17 @@ def _save_remote_terminal_credential(credential_id: str = ""):
             remote_username=str(payload.get("username", "")),
             password=str(payload.get("password", "")),
             scope_host_id=scope_host_id,
+        )
+        _connection_store().set_visibility(
+            "credential",
+            str(credential["id"]),
+            user_id=user["id"],
+            visibility=visibility,
+        )
+        credential = next(
+            item
+            for item in _connection_library(user["id"])["credentials"]
+            if item["id"] == credential["id"]
         )
     except RemoteConnectionError as exc:
         suppress_audit_event()
@@ -928,15 +979,26 @@ def _save_remote_terminal_credential(credential_id: str = ""):
         details={
             "username": credential["username"],
             "host scoped": bool(credential["scope_host_id"]),
+            "visibility": credential["visibility"],
             "secret replaced": bool(payload.get("password")),
         },
     )
     return _library_response(user["id"], 200 if credential_id else 201)
 
-
 def _save_remote_terminal_host(host_id: str = ""):
     payload = request.get_json(silent=True) or {}
     user = _current_user()
+    existing_host = (
+        _connection_store().get_host(host_id, user_id=user["id"])
+        if host_id
+        else None
+    )
+    if host_id and (not existing_host or not existing_host.get("owned")):
+        suppress_audit_event()
+        return jsonify({"error": "Saved host not found."}), 404
+    visibility = str(
+        payload.get("visibility", existing_host.get("visibility", "inherit") if existing_host else "inherit")
+    )
     protocol_value = str(payload.get("protocol", "ssh")).strip().lower()
     credential_mode = (
         "none"
@@ -962,6 +1024,7 @@ def _save_remote_terminal_host(host_id: str = ""):
             }
         ), 400
     try:
+        RemoteConnectionStore._clean_visibility(visibility, allow_inherit=True)
         protocol = _protocol(protocol_value)
         console_device_id = ""
         console_device_path = ""
@@ -1046,6 +1109,26 @@ def _save_remote_terminal_host(host_id: str = ""):
             console_stop_bits=str(console["stop_bits"]),
             console_flow_control=str(console["flow_control"]),
         )
+        _connection_store().set_visibility(
+            "host",
+            str(host["id"]),
+            user_id=user["id"],
+            visibility=visibility,
+        )
+        host = _connection_store().get_host(
+            str(host["id"]), user_id=user["id"]
+        )
+        if host and host.get("credential_scope_host_id") == host.get("id"):
+            _connection_store().set_visibility(
+                "credential",
+                str(host["credential_id"]),
+                user_id=user["id"],
+                visibility=str(host["effective_visibility"]),
+            )
+            host = _connection_store().get_host(
+                str(host["id"]), user_id=user["id"]
+            )
+
     except (RemoteConnectionError, SerialConsoleError, TypeError, ValueError) as exc:
         suppress_audit_event()
         return jsonify({"error": str(exc)}), 400
@@ -1059,6 +1142,7 @@ def _save_remote_terminal_host(host_id: str = ""):
             "port": host["port"],
             "protocol": str(host["protocol"]).upper(),
             "folder assigned": bool(host["folder_id"]),
+            "visibility": host["effective_visibility"],
             "credential mode": (
                 "host-specific"
                 if host["credential_scope_host_id"] == host["id"]
@@ -1258,7 +1342,10 @@ def _serial_devices() -> list[dict[str, object]]:
 
 
 def _connection_library(user_id: str) -> dict[str, list[dict[str, object]]]:
-    library = _connection_store().library_for_user(user_id)
+    library = _connection_store().library_for_user(
+        user_id,
+        is_admin=bool(getattr(g, "current_user", {}).get("is_admin")),
+    )
     devices = {str(item["id"]): item for item in _serial_devices()}
     for host in library["hosts"]:
         if str(host.get("protocol", "")) != "console":
@@ -1292,6 +1379,13 @@ def _annotate_library_change(
     resource_type: str = "remote_folder",
     details: dict[str, object] | None = None,
 ) -> None:
+    audit_details = dict(details or {})
+    for key in ("user_id", "visibility", "effective_visibility"):
+        if key in item:
+            audit_details[
+                "owner id" if key == "user_id" else key.replace("_", " ")
+            ] = item[key]
+
     annotate_audit_event(
         category="Network tools",
         action=f"remote_terminal.{action}",
@@ -1299,7 +1393,7 @@ def _annotate_library_change(
         resource_type=resource_type,
         resource_id=str(item["id"]),
         resource_name=str(item["name"]),
-        details=details or {},
+        details=audit_details,
     )
 
 
