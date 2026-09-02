@@ -16,6 +16,7 @@ from twn_toolkit.service_cli import (
     LAUNCHD_NETWORK_BROKER_LABEL,
     LAUNCHD_NETWORK_BROKER_PLIST_PATH,
     LAUNCHD_TRANSFER_MARKERS,
+    LLDPD_SOCKET_PATHS,
     MACOS_NETWORK_BROKER_HELPER_PATH,
     MACOS_NETWORK_BROKER_SOCKET,
     NETWORK_CAPABILITIES,
@@ -139,6 +140,51 @@ class ServiceCliTests(unittest.TestCase):
             )
 
         self.assertEqual(groups, ("adm", "_lldpd"))
+
+    def test_detects_arch_lldpd_nested_socket_group(self) -> None:
+        executable = Path("/usr/bin/lldpcli")
+        socket_path = Path("/run/lldpd/socket")
+
+        self.assertIn(socket_path, LLDPD_SOCKET_PATHS)
+
+        def path_stat(path: Path, *_args: object, **_kwargs: object) -> mock.Mock:
+            if path == executable:
+                return mock.Mock(
+                    st_mode=stat.S_IFREG | stat.S_IRUSR | stat.S_IXUSR,
+                    st_uid=0,
+                    st_gid=0,
+                )
+            return mock.Mock(
+                st_mode=(
+                    stat.S_IFSOCK
+                    | stat.S_IRUSR
+                    | stat.S_IWUSR
+                    | stat.S_IRGRP
+                    | stat.S_IWGRP
+                ),
+                st_uid=961,
+                st_gid=960,
+            )
+
+        with (
+            mock.patch(
+                "twn_toolkit.service_cli.Path.is_file",
+                autospec=True,
+                side_effect=lambda path: path == executable,
+            ),
+            mock.patch(
+                "twn_toolkit.service_cli.Path.stat",
+                autospec=True,
+                side_effect=path_stat,
+            ),
+            mock.patch(
+                "twn_toolkit.service_cli.grp.getgrgid",
+                return_value=mock.Mock(gr_name="lldpd"),
+            ),
+        ):
+            groups = linux_lldp_service_groups((executable,), (socket_path,))
+
+        self.assertEqual(groups, ("lldpd",))
 
     def test_systemd_network_capabilities_are_explicit_and_bounded(self) -> None:
         unit = render_systemd_unit(

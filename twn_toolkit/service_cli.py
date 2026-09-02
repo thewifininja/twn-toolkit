@@ -63,7 +63,12 @@ LLDPCLI_PATHS = (
     Path("/usr/bin/lldpcli"),
     Path("/usr/local/sbin/lldpcli"),
 )
-LLDPD_SOCKET_PATHS = (Path("/run/lldpd.socket"), Path("/var/run/lldpd.socket"))
+LLDPD_SOCKET_PATHS = (
+    Path("/run/lldpd.socket"),
+    Path("/var/run/lldpd.socket"),
+    Path("/run/lldpd/socket"),
+    Path("/var/run/lldpd/socket"),
+)
 
 
 class ServiceError(RuntimeError):
@@ -187,13 +192,14 @@ def linux_lldp_service_groups(
     executable_paths: Sequence[Path] = LLDPCLI_PATHS,
     socket_paths: Sequence[Path] = LLDPD_SOCKET_PATHS,
 ) -> tuple[str, ...]:
-    """Return the bounded local groups needed by Debian-style lldpcli installs.
+    """Return the bounded local groups needed by packaged lldpcli installs.
 
     Debian grants execution through the binary's group and uses a setuid lldpd
     account to reach the control socket. The toolkit unit deliberately enables
     NoNewPrivileges, which suppresses that setuid transition. Adding the
-    package-owned socket group to this service only preserves the hardening while
-    allowing lldpcli to perform its intended local control operation.
+    package-owned socket group to this service also supports Arch's nested
+    control-socket layout while preserving the hardening and allowing lldpcli to
+    perform its intended local control operation.
     """
 
     executable = next((path for path in executable_paths if path.is_file()), None)
