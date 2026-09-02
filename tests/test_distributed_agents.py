@@ -12,10 +12,44 @@ from twn_toolkit.distributed_agents import (
     DistributedAgentStore,
     DistributedIdentityStore,
     DistributedSettingsStore,
+    selectable_gui_agents,
     normalize_distributed_settings,
     pairing_code,
     normalize_capabilities,
 )
+
+
+def test_selectable_gui_agents_require_approval_liveness_and_tunnel_capability():
+    capable = {
+        "id": "agent-capable",
+        "name": "Capable",
+        "state": "approved",
+        "online": True,
+        "capabilities": [
+            {"id": "system.http.tunnel", "version": "1"}
+        ],
+    }
+    agents = [
+        capable,
+        {**capable, "id": "offline", "online": False},
+        {**capable, "id": "pending", "state": "pending"},
+        {
+            **capable,
+            "id": "incompatible",
+            "capabilities": [
+                {"id": "system.http.tunnel", "version": "2"}
+            ],
+        },
+        {
+            **capable,
+            "id": "identity-only",
+            "capabilities": [
+                {"id": "system.identity", "version": "1"}
+            ],
+        },
+    ]
+
+    assert selectable_gui_agents(agents) == [capable]
 
 
 def test_settings_default_to_standalone_and_save_privately(tmp_path):

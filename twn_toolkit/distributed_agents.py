@@ -23,6 +23,7 @@ DEFAULT_AGENT_PORT = 5051
 PAIRING_CODE_DIGITS = 6
 AGENT_ONLINE_SECONDS = 30
 MAX_ENROLLMENT_WINDOW_MINUTES = 24 * 60
+GUI_TUNNEL_CAPABILITY = ("system.http.tunnel", "1")
 
 
 class DistributedSettingsStore:
@@ -538,6 +539,29 @@ def _agent_record(row: sqlite3.Row) -> dict[str, Any]:
         and time.time() - last_seen <= AGENT_ONLINE_SECONDS
     )
     return item
+
+
+def agent_supports_capability(
+    agent: dict[str, Any], capability_id: str, capability_version: str
+) -> bool:
+    return any(
+        isinstance(item, dict)
+        and str(item.get("id", "")) == capability_id
+        and str(item.get("version", "")) == capability_version
+        for item in agent.get("capabilities", [])
+    )
+
+
+def selectable_gui_agents(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return approved, online agents that can serve their native web UI."""
+    capability_id, capability_version = GUI_TUNNEL_CAPABILITY
+    return [
+        agent
+        for agent in agents
+        if agent.get("state") == "approved"
+        and agent.get("online") is True
+        and agent_supports_capability(agent, capability_id, capability_version)
+    ]
 
 
 def normalize_capabilities(values: Any) -> list[dict[str, str]]:

@@ -71,9 +71,12 @@ from .operational import OperationalSettingsStore
 from .remote_sessions import RemoteSessionManager, RemoteSessionStore
 from .remote_connections import RemoteConnectionStore
 from .distributed_agents import (
+    GUI_TUNNEL_CAPABILITY,
     DistributedAgentStore,
     DistributedIdentityStore,
     DistributedSettingsStore,
+    agent_supports_capability,
+    selectable_gui_agents,
 )
 from .distributed_pki import DistributedPkiStore, PairingSessionStore
 from .distributed_job_epochs import DistributedJobStore
@@ -341,9 +344,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         if not agent["online"]:
             recovery = return_to_local_instance("The selected agent is offline.")
             return recovery if recovery is not None else Response("The selected agent is offline.", status=503)
-        if ("system.http.tunnel", "1") not in {
-            (item["id"], item["version"]) for item in agent["capabilities"]
-        }:
+        if not agent_supports_capability(agent, *GUI_TUNNEL_CAPABILITY):
             recovery = return_to_local_instance("The selected agent does not support GUI access.")
             return recovery if recovery is not None else Response("The selected agent does not support GUI access.", status=503)
         if remote_path.startswith("static/"):
@@ -374,7 +375,9 @@ def create_app(instance_path: str | None = None) -> Flask:
                     "local_name": server_settings_store.get()["instance_name"],
                     "agents": [
                         {"id": item["id"], "name": item["name"], "online": item["online"]}
-                        for item in distributed_agent_store.list("approved")
+                        for item in selectable_gui_agents(
+                            distributed_agent_store.list("approved")
+                        )
                     ],
                 },
             },
@@ -691,7 +694,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             list(delegated_fabric.get("agents", []))
             if isinstance(delegated_fabric, dict)
             else
-            distributed_agent_store.list("approved")
+            selectable_gui_agents(distributed_agent_store.list("approved"))
             if distributed_settings["role"] == "mainframe" and current_user
             else []
         )
@@ -1274,6 +1277,11 @@ def create_app(instance_path: str | None = None) -> Flask:
                 return redirect(_validated_next_url(request.form.get("next", "")))
             if not selected_agent["online"]:
                 flash("That agent is offline and cannot be selected.", "error")
+                return redirect(_validated_next_url(request.form.get("next", "")))
+            if not agent_supports_capability(
+                selected_agent, *GUI_TUNNEL_CAPABILITY
+            ):
+                flash("That agent does not support GUI access.", "error")
                 return redirect(_validated_next_url(request.form.get("next", "")))
         before = auth_store.execution_context(g.current_user["id"])
         auth_store.set_execution_context(g.current_user["id"], context_id)
