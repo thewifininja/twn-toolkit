@@ -326,7 +326,9 @@ does not know the v0.17.0 worker and connector paths.
   install and start `lldpd`, then run
   `sudo ./twn service install --network-capabilities`. The installer adds only
   the package-owned LLDP execution and socket groups to the hardened toolkit
-  service. Rerun it if `lldpd` was installed after the toolkit service.
+  service. Debian-style `/run/lldpd.socket` and Arch/Omarchy-style
+  `/run/lldpd/socket` layouts are supported. Rerun the installer if `lldpd` was
+  installed after the toolkit service.
 - **Terminal reaches a local device but toolkit SSH or TCP reports `No route to
   host` on macOS:** test the same address and port with the toolkit TCP Port
   Scanner. An immediate errno 65 failure can be a Local Network Privacy denial
