@@ -14918,6 +14918,53 @@ button.compact,
   gap: 12px;
 }
 
+.automation-network-change-fields {
+  display: grid;
+  gap: 1rem;
+}
+
+.automation-network-change-intro {
+  border-left: 3px solid var(--accent);
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.2rem 0 0.2rem 0.85rem;
+}
+
+.automation-network-change-intro span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.automation-network-family-choice,
+.automation-network-scope,
+.automation-network-interface-choice,
+.automation-network-filter-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.automation-network-change-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.5fr);
+}
+
+.automation-network-advanced {
+  margin: 0;
+}
+
+.automation-network-filter-grid {
+  display: grid;
+  gap: 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .automation-network-family-choice,
+  .automation-network-scope,
+  .automation-network-interface-choice,
+  .automation-network-filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .automation-startup-note {
   background: color-mix(in srgb, var(--panel), var(--accent) 5%);
   border: 1px solid color-mix(in srgb, var(--line), var(--accent) 12%);

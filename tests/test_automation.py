@@ -2062,6 +2062,36 @@ class AutomationRouteTests(unittest.TestCase):
         self.assertIn(b"DNS performance", page.data)
         self.assertIn(b"125.0 ms limit", page.data)
 
+    def test_admin_can_create_network_interface_change_automation(self) -> None:
+        with tempfile.TemporaryDirectory() as instance_path:
+            app = create_app(instance_path)
+            app.testing = True
+            client = app.test_client()
+            store = AutomationStore(instance_path, load_or_create_secret_key(instance_path))
+            action_id = store.save_action_definition(
+                name="Notify inventory", type_id="test.action", config={}
+            )
+            response = client.post("/automations/save", data={
+                "name": "Address changed",
+                "run_mode": "network_change",
+                "network_family": ["ipv4", "ipv6"],
+                "network_scope": "selected",
+                "network_interface": ["enp1s0", "wlan0"],
+                "network_stabilization_seconds": "8",
+                "cooldown_seconds": "60",
+                "action_definition_id": action_id,
+            })
+            automation = store.all()[0]
+            page = client.get("/automations")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(automation["condition"]["type"], "network.interface_change")
+        self.assertEqual(automation["condition"]["config"]["interfaces"], ["enp1s0", "wlan0"])
+        self.assertEqual(automation["condition"]["config"]["stabilization_seconds"], 8)
+        self.assertEqual(automation["trigger_after"], 1)
+        self.assertEqual(automation["recover_after"], 1)
+        self.assertIn(b"When an interface address changes", page.data)
+
     def test_admin_can_create_calendar_schedule_with_multiple_rules(self) -> None:
         with tempfile.TemporaryDirectory() as instance_path:
             app = create_app(instance_path)

@@ -404,6 +404,19 @@
       automationRunMode.addEventListener("change", syncAutomationPolicy);
       syncAutomationPolicy();
     }
+    const networkScope = form.querySelectorAll('input[name="network_scope"]');
+    const networkChoices = form.querySelector("[data-network-interface-choices]");
+    if (networkScope.length && networkChoices) {
+      const syncNetworkScope = () => {
+        const selected = form.querySelector('input[name="network_scope"]:checked')?.value === "selected";
+        networkChoices.hidden = !selected;
+        networkChoices.querySelectorAll("input").forEach((input) => {
+          input.disabled = !selected;
+        });
+      };
+      networkScope.forEach((input) => input.addEventListener("change", syncNetworkScope));
+      syncNetworkScope();
+    }
   });
 
   document.querySelectorAll("[data-automation-edit-toggle]").forEach((button) => {
