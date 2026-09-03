@@ -14936,12 +14936,15 @@ button.compact,
 }
 
 .automation-network-family-choice,
+.automation-network-scope,
+.automation-network-interface-choice,
 .automation-network-filter-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .automation-network-change-grid {
-  align-items: start;
+  display: grid;
+  grid-template-columns: minmax(240px, 0.5fr);
 }
 
 .automation-network-advanced {
@@ -14955,6 +14958,8 @@ button.compact,
 
 @media (max-width: 720px) {
   .automation-network-family-choice,
+  .automation-network-scope,
+  .automation-network-interface-choice,
   .automation-network-filter-grid {
     grid-template-columns: 1fr;
   }

@@ -215,6 +215,17 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 config["target_count"] = 0
         render_started = time.perf_counter()
         context_duration = (render_started - context_started) * 1000
+        try:
+            interface_snapshot = collect_interface_snapshot()
+            network_interfaces = [
+                {
+                    "name": name,
+                    "addresses": [str(item["address"]) for item in addresses],
+                }
+                for name, addresses in sorted(interface_snapshot.items())
+            ]
+        except Exception:
+            network_interfaces = []
         body = render_template(
             "automations/index.html",
             automations=automations,
@@ -243,6 +254,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             ).resolved_timezone(),
             datastore_folders=LocalDatastore(store.instance_path).folders(),
             capture_interfaces=capture_interfaces(),
+            network_interfaces=network_interfaces,
             ssh_commandlets=_ssh_automation_shortcuts(store.instance_path),
             ssh_target_limit=SSH_TARGET_LIMIT,
             ssh_target_limit_label=f"{SSH_TARGET_LIMIT:,}",

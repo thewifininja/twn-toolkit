@@ -92,11 +92,22 @@
           <label class="check"><input type="checkbox" name="network_family" value="ipv4" {% if 'ipv4' in network_config.get('families', ['ipv4', 'ipv6']) %}checked{% endif %}><span><strong>IPv4</strong><small>DHCP and manually assigned IPv4 addresses</small></span></label>
           <label class="check"><input type="checkbox" name="network_family" value="ipv6" {% if 'ipv6' in network_config.get('families', ['ipv4', 'ipv6']) %}checked{% endif %}><span><strong>IPv6</strong><small>Stable global and unique-local IPv6 addresses</small></span></label>
         </fieldset>
-        <div class="form-grid automation-network-change-grid">
-          <label>Interfaces <span class="inline-label-note">(optional)</span>
-            <input name="network_interfaces" value="{{ network_config.get('interfaces', [])|join(', ') }}" placeholder="enp1s0, wlan0">
-            <small class="field-note">Leave blank to watch every eligible interface. Separate specific names with commas.</small>
-          </label>
+        <fieldset class="choice-group compact-choice-group automation-network-scope">
+          <legend>Interfaces to monitor</legend>
+          <label class="check"><input type="radio" name="network_scope" value="all" {% if not network_config.get('interfaces') %}checked{% endif %}><span><strong>All eligible interfaces</strong><small>Automatically includes newly attached physical interfaces</small></span></label>
+          <label class="check"><input type="radio" name="network_scope" value="selected" {% if network_config.get('interfaces') %}checked{% endif %}><span><strong>Selected interfaces</strong><small>Monitor only the interfaces chosen below</small></span></label>
+        </fieldset>
+        <fieldset class="choice-group compact-choice-group automation-network-interface-choice" data-network-interface-choices {% if not network_config.get('interfaces') %}hidden{% endif %}>
+          <legend>Available interfaces</legend>
+          {% for interface in network_interfaces %}
+            <label class="check"><input type="checkbox" name="network_interface" value="{{ interface.name }}" {% if interface.name in network_config.get('interfaces', []) %}checked{% endif %}><span><strong>{{ interface.name }}</strong><small>{{ interface.addresses|join(' · ') if interface.addresses else 'No address currently assigned' }}</small></span></label>
+          {% endfor %}
+          {% for saved_name in network_config.get('interfaces', []) if saved_name not in network_interfaces|map(attribute='name')|list %}
+            <label class="check"><input type="checkbox" name="network_interface" value="{{ saved_name }}" checked><span><strong>{{ saved_name }}</strong><small>Saved interface · not currently present</small></span></label>
+          {% endfor %}
+          {% if not network_interfaces and not network_config.get('interfaces') %}<p class="empty">No interfaces could be enumerated.</p>{% endif %}
+        </fieldset>
+        <div class="automation-network-change-grid">
           <label>Wait for changes to settle
             <div class="input-suffix"><input name="network_stabilization_seconds" type="number" min="1" max="300" value="{{ network_config.get('stabilization_seconds', '5') }}" required><span>seconds</span></div>
             <small class="field-note">Coalesces rapid DHCP, VPN, and interface churn into one event.</small>

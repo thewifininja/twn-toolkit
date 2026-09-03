@@ -90,6 +90,12 @@ def _parse_interface_change_form(form: Mapping[str, Any]) -> dict[str, Any]:
     interfaces = (
         [item.strip() for item in str(form.get("network_interfaces", "")).split(",") if item.strip()]
     )
+    if getlist:
+        interfaces = [str(item).strip() for item in getlist("network_interface") if str(item).strip()]
+    if form.get("network_scope", "all") == "all":
+        interfaces = []
+    elif not interfaces:
+        raise ToolInputError("Select at least one interface or watch all eligible interfaces.")
     return {
         "families": families,
         "interfaces": interfaces,
