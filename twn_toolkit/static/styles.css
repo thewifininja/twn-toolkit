@@ -17686,21 +17686,21 @@ th {
 }
 
 .remote-terminal-dialog-grid {
-  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.35fr) 130px;
+  grid-template-columns: 140px minmax(220px, 1fr) 130px;
 }
 
-.remote-terminal-dialog-grid label:first-child,
 .remote-terminal-dialog-grid label:nth-child(2) {
-  grid-column: span 1;
+  grid-column: span 2;
 }
 
 .remote-terminal-dialog-grid .remote-host-availability-field {
-  grid-column: span 2;
+  grid-column: 1 / -1;
   min-width: 0;
 }
 
 .remote-host-address-field {
-  grid-column: span 2;
+  grid-column: span 1;
+  min-width: 0;
 }
 
 .remote-console-settings {
@@ -18240,6 +18240,8 @@ th {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .remote-terminal-dialog-grid label:nth-child(2),
+  .remote-terminal-dialog-grid .remote-host-availability-field,
   .remote-host-address-field {
     grid-column: auto;
   }
