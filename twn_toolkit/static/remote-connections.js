@@ -36,6 +36,12 @@
   const maximumLibraryWidth = 620;
   const libraryWidthKey = "twn.remote-terminal.library-width.v1";
   const libraryCollapsedKey = "twn.remote-terminal.library-collapsed.v1";
+  function visibilityLabel(item) {
+    const value = String(item.effective_visibility || item.visibility || "private");
+    const label = value === "admins_only" ? "Admins Only" : value.charAt(0).toUpperCase() + value.slice(1);
+    return item.visibility === "inherit" ? `${label} (inherited)` : label;
+  }
+
 
   initializeLibraryLayout();
 
@@ -210,7 +216,7 @@
     const itemCount = document.createElement("small");
     itemCount.textContent = String(directHosts.length + childFolders.length);
     toggle.append(folderIcon, name, itemCount);
-    toggle.title = folderCredentialSummary(folder);
+    toggle.title = `${folderCredentialSummary(folder)} Availability: ${visibilityLabel(folder)}.${folder.owned ? "" : ` Owner ID: ${folder.user_id}.`}`;
 
     const menuWrap = document.createElement("div");
     menuWrap.className = "remote-connection-folder-menu-wrap";
@@ -228,6 +234,7 @@
     menu.setAttribute("role", "menu");
     menu.hidden = true;
     menuTrigger.setAttribute("aria-controls", menu.id);
+    menuTrigger.hidden = !folder.owned;
     menu.append(
       folderMenuAction("Add host", () => editHost(folder.id)),
       folderMenuAction("Add subfolder", () => editFolder(null, folder.id)),
@@ -242,7 +249,7 @@
       if (willOpen && event.detail === 0) menu.querySelector("button")?.focus();
     });
     menuWrap.append(menuTrigger);
-    if (selectionMode) {
+    if (selectionMode && folder.owned) {
       head.append(selectionControl("folder", folder.id, folder.name));
     }
     head.append(toggle, menuWrap);
@@ -279,22 +286,27 @@
     icon.textContent = ">_";
     const identity = document.createElement("span");
     const title = document.createElement("strong");
-    title.textContent = host.name;
+    title.textContent = `${host.name}${host.owned ? "" : " · Shared"}`;
     const target = document.createElement("small");
     const remoteUsername = String(host.effective_remote_username || "").trim();
     const inherited = host.credential_source === "folder";
     const missing = !host.effective_credential_id;
+    const unavailable = !missing && host.credential_available === false;
     if (host.protocol === "console") {
       const line = `${host.console_baud_rate} ${host.console_data_bits}${String(host.console_parity || "none").charAt(0).toUpperCase()}${host.console_stop_bits}`;
       const state = host.console_in_use ? " · in use" : host.console_available ? "" : " · detached";
       target.textContent = `CONSOLE · ${host.console_device_label || host.console_device_path} · ${line}${state}`;
     } else {
-      target.textContent = `${String(host.protocol || "ssh").toUpperCase()} · ${remoteUsername ? `${remoteUsername}@` : ""}${host.host}:${host.port}${inherited ? " · inherited" : missing ? " · no credential" : ""}`;
+      target.textContent = `${String(host.protocol || "ssh").toUpperCase()} · ${remoteUsername ? `${remoteUsername}@` : ""}${host.host}:${host.port}${unavailable ? " · credential unavailable" : inherited ? " · inherited" : missing ? " · no credential" : ""}`;
     }
-    target.title = hostCredentialSummary(host);
+    target.title = `${hostCredentialSummary(host)} Availability: ${visibilityLabel(host)}.${host.owned ? "" : ` Owner ID: ${host.user_id}.`}`;
     identity.append(title, target);
     connect.append(icon, identity);
     connect.title = `Connect to ${host.name}`;
+    if (unavailable) {
+      connect.disabled = true;
+      connect.title = "This host is more broadly available than its credential.";
+    }
     connect.addEventListener("click", () => {
       if (selectionMode) {
         toggleSelected("host", host.id);
@@ -309,7 +321,8 @@
     manage.title = `Manage ${host.name}`;
     manage.setAttribute("aria-label", `Manage ${host.name}`);
     manage.addEventListener("click", () => editHost(host));
-    if (selectionMode) {
+    manage.hidden = !host.owned;
+    if (selectionMode && host.owned) {
       row.append(selectionControl("host", host.id, host.name));
     }
     row.append(connect, manage);
@@ -815,6 +828,7 @@
     ];
     document.getElementById("remote-folder-id").value = existing?.id || "";
     document.getElementById("remote-folder-name").value = existing?.name || "";
+    document.getElementById("remote-folder-visibility").value = existing?.visibility || (selectedParent ? "inherit" : "private");
     setOptions(
       document.getElementById("remote-folder-parent"),
       parentOptions,
@@ -841,6 +855,7 @@
           parent_id: document.getElementById("remote-folder-parent").value,
           credential_mode: folderForm.querySelector('input[name="folder_credential_mode"]:checked').value,
           credential_id: document.getElementById("remote-folder-credential").value,
+          visibility: document.getElementById("remote-folder-visibility").value,
         },
       });
       folderDialog.close();
@@ -878,6 +893,7 @@
     const presetFolderId = typeof host === "string" ? host : "";
     document.getElementById("remote-host-id").value = existing?.id || "";
     document.getElementById("remote-host-name").value = existing?.name || session?.title || "";
+    document.getElementById("remote-host-visibility").value = existing?.visibility || "inherit";
     const protocol = existing?.protocol || session?.protocol || "ssh";
     hostProtocol.value = protocol;
     hostProtocol.dataset.previousProtocol = protocol;
@@ -918,7 +934,9 @@
     document.getElementById("remote-host-credential").value = isScoped
       ? ""
       : existing?.credential_id || sharedCredentials[0]?.id || "";
-    document.getElementById("remote-host-credential-name").value = isScoped ? existing.credential_name : `${existing?.name || session?.title || "Host"} credentials`;
+    document.getElementById("remote-host-credential-name").value = isScoped
+      ? existing.credential_name
+      : "";
     document.getElementById("remote-host-username").value = isScoped ? existing.remote_username : session?.remote_username || "";
     syncHostCredentialMode();
     syncProtocolControls("host", true);
@@ -939,6 +957,7 @@
           host: document.getElementById("remote-host-address").value,
           port: document.getElementById("remote-host-port").value,
           folder_id: document.getElementById("remote-host-folder").value,
+          visibility: document.getElementById("remote-host-visibility").value,
           credential_mode: mode,
           credential_id: document.getElementById("remote-host-credential").value,
           host_credential_name: document.getElementById("remote-host-credential-name").value,
@@ -1094,7 +1113,7 @@
 
   function openCredentials(credential = null) {
     renderCredentials();
-    editCredential(credential || library.credentials.find((item) => !item.scope_host_id) || null);
+    editCredential(credential || library.credentials.find((item) => item.owned && !item.scope_host_id) || null);
     openDialog(credentialDialog);
   }
 
@@ -1114,7 +1133,12 @@
         ? `${credential.username} · ${credential.scoped_host_name || "host-specific"}`
         : `${credential.username} · ${credential.usage_count} host${credential.usage_count === 1 ? "" : "s"} · ${credential.folder_usage_count || 0} folder${credential.folder_usage_count === 1 ? "" : "s"}`;
       button.append(name, metadata);
-      button.addEventListener("click", () => editCredential(credential));
+      if (credential.owned) {
+        button.addEventListener("click", () => editCredential(credential));
+      } else {
+        button.disabled = true;
+        button.title = "Available for connections; only its owner can edit it.";
+      }
       return button;
     }));
     if (!library.credentials.length) {
@@ -1129,6 +1153,7 @@
     document.getElementById("remote-credential-id").value = credential?.id || "";
     document.getElementById("remote-credential-name").value = credential?.name || "";
     document.getElementById("remote-credential-username").value = credential?.username || "";
+    document.getElementById("remote-credential-visibility").value = credential?.visibility || "private";
     document.getElementById("remote-credential-password").value = "";
     document.getElementById("remote-credential-password").required = !credential;
     document.getElementById("remote-credential-password").placeholder = credential ? "Leave blank to keep the saved password" : "Required for a new credential";
@@ -1154,6 +1179,7 @@
           name: document.getElementById("remote-credential-name").value,
           username: document.getElementById("remote-credential-username").value,
           password: document.getElementById("remote-credential-password").value,
+          visibility: document.getElementById("remote-credential-visibility").value,
         },
       });
       const updated = id
