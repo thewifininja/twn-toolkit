@@ -24,6 +24,7 @@ from .automation_registry import (
     ConditionResult,
 )
 from .automation_types.models import evaluation_result
+from .network_interface_events import evaluate_interface_change
 from .schedule_tools import schedule_occurrence, schedule_should_fire
 from .system_diagnostics import readonly_sqlite_connection
 from .system_identity import collect_system_identity, startup_event
@@ -505,6 +506,41 @@ class AutomationStore:
                 VALUES (?, ?, 'system.startup', ?, ?, ?)
                 """,
                 (definition_id, name, config_json, now, now),
+            )
+        return definition_id
+
+    def ensure_interface_change_trigger_definition(
+        self, config: dict[str, Any]
+    ) -> str:
+        type_id = "network.interface_change"
+        normalized = AUTOMATION_REGISTRY.validate_trigger(type_id, config)
+        config_json = json.dumps(normalized, separators=(",", ":"), sort_keys=True)
+        now = time.time()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT id, config_json FROM automation_conditions WHERE type = ?",
+                (type_id,),
+            ).fetchall()
+            for row in rows:
+                existing = json.dumps(
+                    AUTOMATION_REGISTRY.validate_trigger(
+                        type_id, json.loads(row["config_json"])
+                    ),
+                    separators=(",", ":"), sort_keys=True,
+                )
+                if existing == config_json:
+                    return str(row["id"])
+            definition_id = secrets.token_hex(12)
+            name = self._unique_definition_name(
+                connection, "automation_conditions", "Network interface change"
+            )
+            connection.execute(
+                """
+                INSERT INTO automation_conditions
+                    (id, name, type, config_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (definition_id, name, type_id, config_json, now, now),
             )
         return definition_id
 
@@ -2824,6 +2860,15 @@ class AutomationEngine:
         observed_at: float | None = None,
     ) -> ConditionResult:
         conditions = automation.get("conditions") or [automation["condition"]]
+        if conditions[0]["type"] == "network.interface_change":
+            return evaluation_result(
+                evaluate_interface_change(
+                    self.store.instance_path, automation["id"],
+                    conditions[0]["config"], now=observed_at,
+                ),
+                kind="network_change", type_id="network.interface_change",
+                observed_at=observed_at,
+            )
         if len(conditions) == 1:
             if conditions[0]["type"] in self.registry.triggers:
                 return self.registry.evaluate_trigger(

@@ -337,6 +337,28 @@ Startup cards expose `Arm`/`Pause` plus `Test now`. Arming waits for the next
 configured event; testing executes the action immediately with current system
 identity and does not consume the next real startup.
 
+### Network interface change events
+
+Network interface change mode observes normalized address sets rather than
+enumeration order. The first successful observation establishes a silent,
+host-local baseline. A changed snapshot must remain identical for the selected
+stabilization period before one event is queued; the next unchanged check
+re-arms the automation. Evidence contains bounded per-interface added, removed,
+previous, and current CIDR arrays suitable for JSON webhook templates.
+
+By default the observer includes IPv4 and IPv6 while excluding loopback,
+link-local, temporary/privacy, multicast, unspecified, container, virtual, and
+tunnel addresses. Administrators can select interfaces or opt into the noisy
+classes. Linux discovery uses the distribution-neutral JSON interface provided
+by `iproute2`, and is tested for Debian-family and Arch-family hosts. macOS uses
+the system `ifconfig` inventory. Enumeration failures record an Automation
+error without changing the last-known-good baseline or inventing removals.
+
+The baseline file is runtime state and is intentionally excluded from
+configuration backups. A restored definition establishes a new baseline on its
+destination host. **Test condition** previews the current filtered snapshot
+without changing that baseline or sending actions.
+
 ## Security and backups
 
 Automation administration is initially system-administrator-only. SSH action configuration

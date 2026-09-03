@@ -83,6 +83,8 @@ class AutomationRegistry:
                 if type_id == "schedule.calendar"
                 else "startup"
                 if type_id == "system.startup"
+                else "network_change"
+                if type_id == "network.interface_change"
                 else "manual"
             ),
             type_id=type_id,

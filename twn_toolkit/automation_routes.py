@@ -40,6 +40,7 @@ from .network_tools import (
     ToolInputError,
     ping_engine_capability,
 )
+from .network_interface_events import collect_interface_snapshot, filter_snapshot
 from .packet_capture import capture_interfaces
 from .schedule_tools import describe_schedule_rule, schedule_preview
 from .profiles import SNMPHostProfileStore, SNMPOidProfileStore
@@ -142,6 +143,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 if automation["condition"]["type"] == "manual.trigger"
                 else "startup"
                 if automation["condition"]["type"] == "system.startup"
+                else "network_change"
+                if automation["condition"]["type"] == "network.interface_change"
                 else "schedule"
                 if automation["condition"]["type"] == "schedule.calendar"
                 else "condition"
@@ -312,6 +315,14 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                         startup_config
                     )
                     source_definition_ids = [source_definition_id]
+                elif run_mode == "network_change":
+                    network_config = AUTOMATION_REGISTRY.trigger_config_from_form(
+                        "network.interface_change", request.form
+                    )
+                    source_definition_id = (
+                        store.ensure_interface_change_trigger_definition(network_config)
+                    )
+                    source_definition_ids = [source_definition_id]
                 elif run_mode == "schedule":
                     source_definition_id = request.form.get(
                         "schedule_definition_id", ""
@@ -349,8 +360,14 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 automation_id=automation_id,
                 name=request.form.get("name", ""),
                 interval_seconds=int(request.form.get("interval_seconds", "30")),
-                trigger_after=int(request.form.get("trigger_after", "3")),
-                recover_after=int(request.form.get("recover_after", "3")),
+                trigger_after=(
+                    1 if run_mode == "network_change"
+                    else int(request.form.get("trigger_after", "3"))
+                ),
+                recover_after=(
+                    1 if run_mode == "network_change"
+                    else int(request.form.get("recover_after", "3"))
+                ),
                 cooldown_seconds=int(request.form.get("cooldown_seconds", "300")),
                 condition_definition_id=source_definition_id,
                 condition_definition_ids=source_definition_ids,
@@ -870,7 +887,25 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             resource_name=automation["name"],
         )
         try:
-            result = AutomationEngine(store).test_condition(automation)
+            if automation["condition"]["type"] == "network.interface_change":
+                config = automation["condition"]["config"]
+                current = filter_snapshot(
+                    collect_interface_snapshot(),
+                    interfaces=config["interfaces"], families=config["families"],
+                    include_loopback=config["include_loopback"],
+                    include_link_local=config["include_link_local"],
+                    include_temporary=config["include_temporary"],
+                    include_virtual=config["include_virtual"],
+                )
+                address_count = sum(len(items) for items in current.values())
+                from .automation_registry import ConditionResult
+                result = ConditionResult(
+                    met=False, status="preview",
+                    summary=f"Observed {address_count} eligible addresses on {len(current)} interfaces; the saved baseline was not changed.",
+                    evidence={"trigger": "network_interface_change", "current": current},
+                )
+            else:
+                result = AutomationEngine(store).test_condition(automation)
             test_result = {
                 "automation_id": automation_id,
                 "status": result.status,
