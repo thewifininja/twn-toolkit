@@ -336,6 +336,26 @@ class RemoteConnectionStoreTests(unittest.TestCase):
         self.assertEqual(len(remaining["hosts"]), 1)
         self.assertEqual(len(remaining["credentials"]), 1)
 
+    def test_new_host_specific_credential_names_are_disambiguated(self) -> None:
+        hosts = []
+        for name, address in (("Admin one", "192.0.2.10"), ("Global one", "192.0.2.11")):
+            hosts.append(self.store.save_host(
+                user_id="operator", name=name, host=address, port=22,
+                folder_id="", credential_id="", allow_unknown_hosts=False,
+                allow_legacy_algorithms=False, host_credential={
+                    "name": "Host credentials", "username": "admin",
+                    "password": f"{name}-secret",
+                },
+            ))
+
+        library = self.store.library_for_user("operator")
+        self.assertEqual(
+            [item["name"] for item in library["credentials"]],
+            ["Host credentials", "Host credentials copy"],
+        )
+        self.assertNotEqual(hosts[0]["credential_id"], hosts[1]["credential_id"])
+
+
     def test_telnet_host_preserves_protocol_and_ignores_ssh_options(self) -> None:
         credential = self.store.save_credential(
             user_id="operator",

@@ -934,7 +934,9 @@
     document.getElementById("remote-host-credential").value = isScoped
       ? ""
       : existing?.credential_id || sharedCredentials[0]?.id || "";
-    document.getElementById("remote-host-credential-name").value = isScoped ? existing.credential_name : `${existing?.name || session?.title || "Host"} credentials`;
+    document.getElementById("remote-host-credential-name").value = isScoped
+      ? existing.credential_name
+      : "";
     document.getElementById("remote-host-username").value = isScoped ? existing.remote_username : session?.remote_username || "";
     syncHostCredentialMode();
     syncProtocolControls("host", true);

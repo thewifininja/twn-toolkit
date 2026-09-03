@@ -588,12 +588,25 @@ class RemoteConnectionStore:
                     host_credential.get("username", "")
                 )
                 password = str(host_credential.get("password", ""))
-                self._require_unique_credential_name(
-                    connection,
-                    user_id,
-                    credential_name,
-                    exclude_id=old_scoped_credential_id,
-                )
+                if old_scoped_credential_id:
+                    self._require_unique_credential_name(
+                        connection, user_id, credential_name,
+                        exclude_id=old_scoped_credential_id,
+                    )
+                else:
+                    existing_credential_names = [
+                        str(row[0])
+                        for row in connection.execute(
+                            "SELECT name FROM remote_connection_credentials WHERE user_id = ?",
+                            (user_id,),
+                        )
+                    ]
+                    if credential_name.casefold() in {
+                        name.casefold() for name in existing_credential_names
+                    }:
+                        credential_name = duplicate_name(
+                            credential_name, existing_credential_names
+                        )
                 if old_scoped_credential_id:
                     old = self._require_credential_row(
                         connection, old_scoped_credential_id, user_id
