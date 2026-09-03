@@ -828,7 +828,7 @@
     ];
     document.getElementById("remote-folder-id").value = existing?.id || "";
     document.getElementById("remote-folder-name").value = existing?.name || "";
-    document.getElementById("remote-folder-visibility").value = existing?.visibility || (selectedParent ? "inherit" : "private");
+    document.getElementById("remote-folder-visibility").value = existing?.visibility || (selectedParent ? "inherit" : "admins_only");
     setOptions(
       document.getElementById("remote-folder-parent"),
       parentOptions,

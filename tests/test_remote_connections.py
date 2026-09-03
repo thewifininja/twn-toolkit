@@ -153,6 +153,28 @@ class RemoteConnectionStoreTests(unittest.TestCase):
                 credential["id"], user_id="operator", host_id=host["id"]
             )
 
+    def test_top_level_inherited_visibility_defaults_to_admins_only(self) -> None:
+        host = self.store.save_host(
+            user_id="owner",
+            name="Top-level switch",
+            host="192.0.2.10",
+            port=23,
+            protocol="telnet",
+            folder_id="",
+            credential_id="",
+            credential_mode="none",
+            allow_unknown_hosts=False,
+            allow_legacy_algorithms=False,
+        )
+        self.store.set_visibility(
+            "host", host["id"], user_id="owner", visibility="inherit"
+        )
+
+        self.assertEqual(self.store.library_for_user("operator")["hosts"], [])
+        visible = self.store.library_for_user("administrator", is_admin=True)["hosts"]
+        self.assertEqual([item["name"] for item in visible], ["Top-level switch"])
+        self.assertEqual(visible[0]["effective_visibility"], "admins_only")
+
     def test_concurrent_workers_serialize_schema_migration(self) -> None:
         self.store.clear()
         with sqlite3.connect(self.store.path) as connection:

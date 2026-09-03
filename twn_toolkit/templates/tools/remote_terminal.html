@@ -219,7 +219,7 @@
     <div class="form-grid remote-terminal-dialog-grid">
       <label>Display name<input id="remote-host-name" maxlength="100" required placeholder="Core Switch 01"></label>
       <label>Folder<select id="remote-host-folder"></select></label>
-      <label>Availability<select id="remote-host-visibility"><option value="inherit">Inherit from folder</option><option value="global">Global</option><option value="admins_only">Admins Only</option><option value="private">Private</option></select></label>
+      <label class="remote-host-availability-field">Availability<select id="remote-host-visibility"><option value="inherit">Inherit from folder</option><option value="global">Global</option><option value="admins_only">Admins Only</option><option value="private">Private</option></select><small>Top-level hosts inherit Admins Only.</small></label>
       <label>Protocol<select id="remote-host-protocol"><option value="ssh">SSH</option><option value="telnet">Telnet</option><option value="console">Console</option></select></label>
       <label class="remote-host-address-field" data-host-network>Host<input id="remote-host-address" maxlength="255" required placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"></label>
       <label data-host-network><span id="remote-host-port-label">SSH port</span><input id="remote-host-port" type="number" min="1" max="65535" value="22" required></label>

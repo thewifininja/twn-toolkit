@@ -17694,6 +17694,11 @@ th {
   grid-column: span 1;
 }
 
+.remote-terminal-dialog-grid .remote-host-availability-field {
+  grid-column: span 2;
+  min-width: 0;
+}
+
 .remote-host-address-field {
   grid-column: span 2;
 }

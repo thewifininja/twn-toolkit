@@ -168,9 +168,15 @@ class RemoteConnectionStore:
             owner_host = self.get_host(
                 host_id, user_id=str(row["user_id"])
             )
-            if not owner_host or self._visibility_rank(
-                owner_host.get("effective_visibility", "private")
-            ) > self._visibility_rank(row["visibility"]):
+            credential_is_narrower = (
+                str(row["user_id"]) != user_id
+                and owner_host
+                and self._visibility_rank(
+                    owner_host.get("effective_visibility", "private")
+                )
+                > self._visibility_rank(row["visibility"])
+            )
+            if not owner_host or credential_is_narrower:
                 raise RemoteConnectionError(
                     "This host is more broadly available than its credential."
                 )
@@ -1211,7 +1217,7 @@ class RemoteConnectionStore:
             effective = (
                 resolve(parent)
                 if parent and parent.get("user_id") == folder.get("user_id")
-                else "private"
+                else "admins_only"
             )
             resolving.discard(folder_id)
             folder["effective_visibility"] = effective
@@ -1223,11 +1229,11 @@ class RemoteConnectionStore:
             current = str(host.get("visibility", "inherit"))
             parent = folder_map.get(str(host.get("folder_id", "")))
             host["effective_visibility"] = (
-                str(parent.get("effective_visibility", "private"))
+                str(parent.get("effective_visibility", "admins_only"))
                 if current == "inherit"
                 and parent
                 and parent.get("user_id") == host.get("user_id")
-                else "private"
+                else "admins_only"
                 if current == "inherit"
                 else current
             )
