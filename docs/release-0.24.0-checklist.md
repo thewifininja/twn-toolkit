@@ -40,12 +40,13 @@
 
 ## Pull-request and merged-main gates
 
-- [x] Pass feature PR #180 in CI on Ubuntu Python 3.10/3.13 and macOS Python
-  3.13, including repository checks and dependency audit, then squash-merge it
-  as `e42b979`.
-- [ ] Pass the v0.24.0 release-preparation PR in CI and squash-merge it.
-- [ ] Pass merged-main CI on Ubuntu Python 3.10/3.13 and macOS Python 3.13,
-  including repository checks and dependency audit.
+- [x] Pass feature PR #180 in CI run `33711875436` on Ubuntu Python 3.10/3.13
+  and macOS Python 3.13, including repository checks and dependency audit, then
+  squash-merge it as `e42b979424625e79b77b3f309d84b01d86623593`.
+- [x] Pass v0.24.0 release-preparation PR #181 in CI run `33752918973` and
+  squash-merge it as `10d3c1bf12c0fd517a354613171fdf5d8b943a28`.
+- [x] Pass merged-main CI run `33753284484` on Ubuntu Python 3.10/3.13 and
+  macOS Python 3.13, including repository checks and dependency audit.
 
 ## Publication gate
 
