@@ -13,17 +13,16 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.23.0**
+Current release: **v0.24.0**
 
-v0.23.0 adds distributed Mainframe and agent roles. A Mainframe administrator
-can approve outbound agent connections, switch between instances from the top
-bar, and operate each agent's native toolkit interface, local profiles, and
-interfaces through a mutually authenticated reverse tunnel. Every instance
-retains complete standalone operation. Enrollment is closed by default, trust is
-managed by an automatically generated private CA, and agents may define a
-certificate-verified fallback address. The release adds no Python dependency,
-retains the v0.9.0 minimum direct-upgrade boundary, and requires a toolkit
-restart—but no service reinstall—when a distributed role changes.
+v0.24.0 makes distributed workspaces safer to operate with an in-product
+restart action, reliable escape from unavailable agents, hardened standalone
+transitions, and an online-only instance selector. Remote Terminal definitions
+now support Global, Admins Only, and Private availability, with existing data
+migrated to Admins Only. The release also adds stable IPv4 and IPv6 interface-
+change automations plus Arch and Omarchy compatibility improvements for serial
+access and LLDP. It adds no Python dependency, retains the v0.9.0 minimum
+direct-upgrade boundary, and requires no general service reinstall.
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,

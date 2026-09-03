@@ -1,6 +1,50 @@
-APP_VERSION = "0.23.0"
+APP_VERSION = "0.24.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.24.0",
+        "date": "2026-09-03",
+        "title": "Shared terminals, resilient agents, and interface automation",
+        "summary": (
+            "Makes distributed workspaces safer to operate, adds controlled "
+            "sharing for Remote Terminal definitions, improves Arch Linux "
+            "support, and introduces interface-address change automations."
+        ),
+        "groups": (
+            {
+                "title": "Resilient distributed workspaces",
+                "items": (
+                    "Adds an in-product restart action for distributed role changes and guarantees a Mainframe escape path when a selected agent becomes unavailable or returns to standalone mode.",
+                    "Filters the top-bar instance selector to the local Mainframe and currently available agents while retaining complete agent inventory and administration on the Mainframe page.",
+                    "Hardens transitions back to standalone operation so stale agent state cannot strand a Mainframe operator inside an unreachable remote workspace.",
+                ),
+            },
+            {
+                "title": "Shared Remote Terminal definitions",
+                "items": (
+                    "Adds Global, Admins Only, and Private availability to Remote Terminal folders, hosts, and credentials, including inherited visibility where appropriate.",
+                    "Migrates existing definitions to Admins Only by default, preserving their contents while avoiding unintended disclosure to non-administrator accounts.",
+                    "Corrects host-specific credential naming so separate hosts can reuse a credential label without first saving an inherited credential.",
+                ),
+            },
+            {
+                "title": "Interface-aware automation",
+                "items": (
+                    "Adds a network interface change trigger that detects stable IPv4 or IPv6 address changes and fires once per confirmed transition.",
+                    "Offers live eligible interface choices in the automation editor, preserves temporarily missing selections, and keeps noisy virtual, loopback, link-local, and temporary addresses opt-in.",
+                    "Stores per-automation baselines privately, initializes without a false alert, debounces transient changes, and retains bounded diagnostic evidence.",
+                ),
+            },
+            {
+                "title": "Linux compatibility and upgrade",
+                "items": (
+                    "Supports Arch and Omarchy serial-access service permissions and the Arch lldpd control-socket layout alongside existing Debian-family behavior.",
+                    "Adds no Python dependency and retains the v0.9.0 direct-upgrade boundary; existing Remote Terminal definitions migrate automatically and no service reinstall is required for other installations.",
+                    "Extends Ubuntu, macOS, Debian-style, and Arch-style regression coverage for the new distributed, visibility, platform, and automation behavior.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.23.0",
         "date": "2026-08-31",
