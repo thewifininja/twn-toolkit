@@ -82,28 +82,36 @@
         <input type="hidden" name="startup_network_wait_seconds" value="{{ startup_network_wait_seconds }}">
         <p class="field-note automation-startup-note">After you arm it, the current startup is recorded as the baseline. The next matching startup waits up to {{ startup_network_wait_seconds }} seconds for a usable address, then runs once—even if the scheduler restarts.</p>
       </div>
-      <div data-automation-run-fields="network_change" hidden>
-        <div class="form-grid">
-          <label>Address families
-            <select name="network_family" multiple required>
-              <option value="ipv4" {% if 'ipv4' in network_config.get('families', ['ipv4', 'ipv6']) %}selected{% endif %}>IPv4</option>
-              <option value="ipv6" {% if 'ipv6' in network_config.get('families', ['ipv4', 'ipv6']) %}selected{% endif %}>IPv6</option>
-            </select>
-          </label>
+      <div class="automation-network-change-fields" data-automation-run-fields="network_change" hidden>
+        <div class="automation-network-change-intro">
+          <strong>Observe address changes</strong>
+          <span>The first check establishes a silent baseline. Actions run only after a changed address set remains stable.</span>
+        </div>
+        <fieldset class="choice-group compact-choice-group automation-network-family-choice">
+          <legend>Address families</legend>
+          <label class="check"><input type="checkbox" name="network_family" value="ipv4" {% if 'ipv4' in network_config.get('families', ['ipv4', 'ipv6']) %}checked{% endif %}><span><strong>IPv4</strong><small>DHCP and manually assigned IPv4 addresses</small></span></label>
+          <label class="check"><input type="checkbox" name="network_family" value="ipv6" {% if 'ipv6' in network_config.get('families', ['ipv4', 'ipv6']) %}checked{% endif %}><span><strong>IPv6</strong><small>Stable global and unique-local IPv6 addresses</small></span></label>
+        </fieldset>
+        <div class="form-grid automation-network-change-grid">
           <label>Interfaces <span class="inline-label-note">(optional)</span>
-            <input name="network_interfaces" value="{{ network_config.get('interfaces', [])|join(', ') }}" placeholder="Blank watches all eligible interfaces">
+            <input name="network_interfaces" value="{{ network_config.get('interfaces', [])|join(', ') }}" placeholder="enp1s0, wlan0">
+            <small class="field-note">Leave blank to watch every eligible interface. Separate specific names with commas.</small>
           </label>
-          <label>Stabilization
+          <label>Wait for changes to settle
             <div class="input-suffix"><input name="network_stabilization_seconds" type="number" min="1" max="300" value="{{ network_config.get('stabilization_seconds', '5') }}" required><span>seconds</span></div>
+            <small class="field-note">Coalesces rapid DHCP, VPN, and interface churn into one event.</small>
           </label>
         </div>
-        <div class="automation-options-grid">
-          <label class="check"><input type="checkbox" name="network_include_loopback" {% if network_config.get('include_loopback') %}checked{% endif %}><span>Include loopback</span></label>
-          <label class="check"><input type="checkbox" name="network_include_link_local" {% if network_config.get('include_link_local') %}checked{% endif %}><span>Include link-local</span></label>
-          <label class="check"><input type="checkbox" name="network_include_temporary" {% if network_config.get('include_temporary') %}checked{% endif %}><span>Include temporary IPv6</span></label>
-          <label class="check"><input type="checkbox" name="network_include_virtual" {% if network_config.get('include_virtual') %}checked{% endif %}><span>Include virtual and tunnel interfaces</span></label>
-        </div>
-        <p class="field-note">The first successful observation silently establishes a host-local baseline. Rapid DHCP or VPN changes are coalesced until the snapshot remains stable.</p>
+        <details class="advanced-options automation-network-advanced">
+          <summary>Additional address classes</summary>
+          <p class="field-note">These commonly produce noisy or host-local changes and are excluded by default.</p>
+          <div class="automation-network-filter-grid">
+            <label class="check"><input type="checkbox" name="network_include_link_local" {% if network_config.get('include_link_local') %}checked{% endif %}><span><strong>Link-local</strong><small>Self-assigned IPv4 and scoped IPv6</small></span></label>
+            <label class="check"><input type="checkbox" name="network_include_temporary" {% if network_config.get('include_temporary') %}checked{% endif %}><span><strong>Temporary IPv6</strong><small>Privacy addresses that may rotate regularly</small></span></label>
+            <label class="check"><input type="checkbox" name="network_include_virtual" {% if network_config.get('include_virtual') %}checked{% endif %}><span><strong>Virtual and tunnels</strong><small>Containers, bridges, VPNs, and tunnel adapters</small></span></label>
+            <label class="check"><input type="checkbox" name="network_include_loopback" {% if network_config.get('include_loopback') %}checked{% endif %}><span><strong>Loopback</strong><small>Local-only loopback addresses</small></span></label>
+          </div>
+        </details>
       </div>
     </fieldset>
     <fieldset class="automation-builder-block automation-pipeline-builder">
