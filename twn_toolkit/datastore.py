@@ -88,7 +88,7 @@ class LocalDatastore:
         filename: str,
         stream: BinaryIO,
         *,
-        max_bytes: int = MAX_UPLOAD_BYTES,
+        max_bytes: int | None = None,
         overwrite: bool = False,
     ) -> tuple[Path, int]:
         with self.begin_upload(relative_path, filename, max_bytes=max_bytes, overwrite=overwrite) as upload:
@@ -97,13 +97,20 @@ class LocalDatastore:
             return upload.commit()
 
     def begin_upload(self, relative_path: str, filename: str, *,
-                     max_bytes: int = MAX_UPLOAD_BYTES, overwrite: bool = False,
+                     max_bytes: int | None = None, overwrite: bool = False,
                      expected_bytes: int | None = None):
         from .uploads import Upload
         parent = self.folder(relative_path)
         destination = parent / self._validate_name(filename)
-        return Upload(self, destination, max_bytes=max_bytes, overwrite=overwrite,
+        limit = self.upload_limit()
+        if max_bytes is not None:
+            limit = min(limit, max_bytes)
+        return Upload(self, destination, max_bytes=limit, overwrite=overwrite,
                       expected_bytes=expected_bytes)
+
+    def upload_limit(self) -> int:
+        from .operational import OperationalSettingsStore
+        return int(OperationalSettingsStore(str(self.instance)).get().get("max_upload_mib", 1024)) * 1024**2
 
     def file(self, relative_path: str) -> Path:
         path = self._resolve(relative_path, must_exist=True)

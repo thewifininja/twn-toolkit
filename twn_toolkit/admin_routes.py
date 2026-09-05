@@ -1840,6 +1840,7 @@ def register_admin_routes(
                 "datastore_quota_gib": request.form.get("datastore_quota_gib", ""),
                 "automation_artifact_quota_gib": request.form.get("automation_artifact_quota_gib", ""),
                 "minimum_free_gib": request.form.get("minimum_free_gib", ""),
+                "max_upload_mib": request.form.get("max_upload_mib", before["max_upload_mib"]),
             })
         except ValueError as exc: flash(str(exc), "error")
         else:

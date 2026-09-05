@@ -23,7 +23,21 @@ from .tftp import format_incoming_filename, validate_incoming_filename_pattern
 from .file_transactions import file_transaction
 
 
+# Operator policy: defaults are starting points, not protocol requirements.
+# Keep validation and UI ranges together so administrators see what is enforced.
+SSH_TRANSFER_LIMITS = {
+    "max_connections": (32, 1, 256, "Maximum connections", "Includes clients still authenticating."),
+    "max_connections_per_ip": (4, 1, 256, "Maximum connections per client IP", "Clients behind the same NAT share this allowance."),
+    "max_channels": (4, 1, 32, "Channels per connection", "Each SFTP session or SCP command consumes one channel."),
+    "max_open_handles": (16, 1, 256, "Open handles per SFTP channel", "Includes upload, download, and directory handles."),
+    "max_directory_entries": (10000, 100, 100000, "Entries per directory listing", "Larger listings return an error; files remain accessible by name."),
+    "authentication_timeout_seconds": (30, 1, 300, "Authentication deadline (seconds)", "Total time from TCP acceptance through SSH authentication."),
+    "idle_timeout_seconds": (30, 1, 3600, "Idle timeout (seconds)", "Closes idle channels and connections; active transfers may continue."),
+}
+
+
 DEFAULT_SSH_TRANSFER_SETTINGS = {
+    **{key: spec[0] for key, spec in SSH_TRANSFER_LIMITS.items()},
     "enabled": False, "bind_host": "127.0.0.1", "port": 2022,
     "username": "toolkit", "password_hash": "", "allow_sftp": True,
     "allow_scp": True, "allow_read": True, "allow_write": False,
@@ -92,7 +106,22 @@ class SSHTransferSettingsStore:
         if enabled and not (allow_read or allow_write): raise ValueError("Enable downloads, uploads, or both.")
         datastore_root = str(value.get("datastore_root", "")).replace("\\", "/").strip("/")
         if any(part == ".." for part in Path(datastore_root).parts): raise ValueError("Datastore root is invalid.")
+        limits = {}
+        for key, (default, minimum, maximum, label, _description) in SSH_TRANSFER_LIMITS.items():
+            raw = value.get(key, default)
+            try:
+                if isinstance(raw, bool) or str(raw).strip() != str(int(raw)):
+                    raise ValueError
+                limit = int(raw)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"{label} must be a whole number.") from exc
+            if not minimum <= limit <= maximum:
+                raise ValueError(f"{label} must be {minimum}–{maximum}.")
+            limits[key] = limit
+        if limits["max_connections_per_ip"] > limits["max_connections"]:
+            raise ValueError("Connections per client IP cannot exceed total connections.")
         return {
+            **limits,
             "enabled": enabled, "bind_host": bind_host, "port": port,
             "username": username, "password_hash": str(value.get("password_hash", "")),
             "allow_sftp": allow_sftp, "allow_scp": allow_scp,

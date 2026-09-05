@@ -15,7 +15,7 @@ from pathlib import Path
 from string import Formatter
 from typing import Any, Callable
 
-from .datastore import DatastoreConflictError, DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES
+from .datastore import DatastoreConflictError, DatastoreError, LocalDatastore
 from .pidfiles import process_marker_ready
 
 from .file_transactions import file_transaction
@@ -321,8 +321,8 @@ class TFTPServer:
         self, request: dict[str, Any], client: tuple[Any, ...], family: int
     ) -> tuple[int, str]:
         declared_size = int(request["options"].get("tsize", "0"))
-        if declared_size < 0 or declared_size > MAX_UPLOAD_BYTES:
-            raise DatastoreError("Declared TFTP upload size exceeds the 1 GiB datastore limit.")
+        if declared_size < 0 or declared_size > self.datastore.upload_limit():
+            raise DatastoreError("Declared TFTP upload size exceeds the configured file limit.")
         block_size, timeout, oack = self._options(
             request["options"], declared_size, write=True
         )
@@ -344,7 +344,7 @@ class TFTPServer:
         total = 0
         expected = 1
         with self.datastore.begin_upload(
-            parent, name, max_bytes=MAX_UPLOAD_BYTES,
+            parent, name,
             overwrite=self.settings["allow_overwrite"],
         ) as upload, socket.socket(family, socket.SOCK_DGRAM) as transfer:
             transfer.connect(client)
@@ -371,9 +371,6 @@ class TFTPServer:
                         continue
                     payload = packet[4:]
                     total += len(payload)
-                    if total > MAX_UPLOAD_BYTES:
-                        self._send_error(transfer, None, 3, "Upload exceeds datastore limit")
-                        raise DatastoreError("TFTP upload exceeds the 1 GiB datastore limit.")
                     try:
                         upload.write(payload)
                     except (DatastoreError, OSError) as exc:

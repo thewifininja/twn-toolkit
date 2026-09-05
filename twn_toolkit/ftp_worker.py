@@ -13,7 +13,7 @@ from pyftpdlib.filesystems import AbstractedFS
 from pyftpdlib.log import logger
 from werkzeug.security import check_password_hash
 
-from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES
+from .datastore import DatastoreError, LocalDatastore
 from .uploads import Upload
 from .ftp_server import FTPSettingsStore, clear_ftp_runtime
 from .pidfiles import (
@@ -44,9 +44,9 @@ class BoundedDTPHandler(DTPHandler):
         if not chunk:
             self.transfer_finished = True
             return
-        if self.receive and self.tot_bytes_received + len(chunk) > MAX_UPLOAD_BYTES:
+        if self.receive and self.tot_bytes_received + len(chunk) > self.file_obj.max_bytes:
             self.cmd_channel._upload_limit_exceeded = True
-            self._resp = ("552 Upload exceeds the 1 GiB file limit.", logger.warning)
+            self._resp = ("552 Upload exceeds the configured file limit.", logger.warning)
             self.close()
             return
         self.tot_bytes_received += len(chunk)
@@ -103,6 +103,11 @@ def build_handler(instance: str, settings: dict):
             if not any(ipaddress.ip_address(self.remote_ip) in network for network in trusted):
                 self.close_when_done()
 
+        def ftp_STOU(self, line):
+            # pyftpdlib's STOU creates a served file directly through mkstemp,
+            # bypassing STOR's private staging, rewrite, and quota lifecycle.
+            return self.respond("502 Unique-name uploads are unsupported; use STOR.")
+
         def ftp_STOR(self, file, mode="w"):
             if not settings["allow_write"]:
                 return self.respond("550 Uploads disabled.")
@@ -115,7 +120,7 @@ def build_handler(instance: str, settings: dict):
             stored = format_incoming_filename(settings["incoming_filename_pattern"], requested, self.remote_ip)
             try:
                 self._pending_upload = store.begin_upload(
-                    store.relative(root), stored, max_bytes=MAX_UPLOAD_BYTES,
+                    store.relative(root), stored,
                     overwrite=settings["allow_overwrite"],
                 )
             except (OSError, DatastoreError) as exc:
@@ -144,7 +149,7 @@ def build_handler(instance: str, settings: dict):
             if upload is None:
                 return
             upload.abort()
-            message = self._upload_error or ("Upload exceeded the 1 GiB file limit." if self._upload_limit_exceeded else "Upload did not complete.")
+            message = self._upload_error or ("Upload exceeded the configured file limit." if self._upload_limit_exceeded else "Upload did not complete.")
             history.record(client=self.remote_ip, protocol="FTP", operation="upload",
                            filename=self._requested_upload, stored_filename="", bytes=upload.total,
                            status="error", message=message)
