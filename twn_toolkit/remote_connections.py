@@ -126,16 +126,84 @@ class RemoteConnectionStore:
     def get_host(
         self, host_id: str, *, user_id: str, is_admin: bool = False
     ) -> dict[str, Any] | None:
-        return next(
-            (
-                host
-                for host in self.library_for_user(
-                    user_id, is_admin=is_admin
-                )["hosts"]
-                if host["id"] == host_id
-            ),
-            None,
+        """Return one visible host without rebuilding the complete library."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT h.*, c.name AS credential_name,
+                       c.remote_username AS remote_username,
+                       c.scope_host_id AS credential_scope_host_id
+                FROM remote_connection_hosts h
+                LEFT JOIN remote_connection_credentials c
+                  ON c.id = h.credential_id AND c.user_id = h.user_id
+                WHERE h.id = ?
+                """,
+                (host_id,),
+            ).fetchone()
+            if not row:
+                return None
+            host = self._host(row)
+            folders = self._folder_lineage(
+                connection,
+                folder_id=str(host["folder_id"]),
+                owner_id=str(host["user_id"]),
+            )
+            credential_ids = {
+                str(host["credential_id"]),
+                *(str(folder["credential_id"]) for folder in folders),
+            }
+            credential_ids.discard("")
+            credentials: list[dict[str, Any]] = []
+            if credential_ids:
+                placeholders = ", ".join("?" for _ in credential_ids)
+                rows = connection.execute(
+                    f"""
+                    SELECT id, user_id, visibility, name, remote_username
+                    FROM remote_connection_credentials
+                    WHERE id IN ({placeholders})
+                    """,
+                    tuple(credential_ids),
+                ).fetchall()
+                credentials = [
+                    {
+                        "id": str(item["id"]),
+                        "user_id": str(item["user_id"]),
+                        "visibility": str(item["visibility"]),
+                        "name": str(item["name"]),
+                        "username": str(item["remote_username"]),
+                    }
+                    for item in rows
+                ]
+
+        self._annotate_effective_visibility(folders, [host])
+        if not self._visibility_allows(host, user_id=user_id, is_admin=is_admin):
+            return None
+        visible_folder_ids = {
+            str(folder["id"])
+            for folder in folders
+            if self._visibility_allows(folder, user_id=user_id, is_admin=is_admin)
+        }
+        visible_credentials = [
+            credential
+            for credential in credentials
+            if self._visibility_allows(
+                credential, user_id=user_id, is_admin=is_admin
+            )
+        ]
+        self._annotate_effective_credentials(folders, [host], visible_credentials)
+        visible_credential_ids = {
+            str(credential["id"]) for credential in visible_credentials
+        }
+        credential_id = str(host.get("effective_credential_id", ""))
+        host["credential_available"] = (
+            not credential_id or credential_id in visible_credential_ids
         )
+        if str(host.get("folder_id", "")) not in visible_folder_ids:
+            host["folder_id"] = ""
+            if host.get("credential_source_folder_name"):
+                host["credential_source_folder_name"] = "Shared policy"
+        host["owned"] = str(host["user_id"]) == user_id
+        return host
 
     def resolve_credential(
         self,
@@ -1052,6 +1120,33 @@ class RemoteConnectionStore:
                 path.unlink()
             except FileNotFoundError:
                 pass
+
+    def _folder_lineage(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        folder_id: str,
+        owner_id: str,
+    ) -> list[dict[str, Any]]:
+        """Fetch only the folders that can affect one host's policy."""
+        folders: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        current_id = folder_id
+        while current_id and current_id not in seen:
+            row = connection.execute(
+                """
+                SELECT * FROM remote_connection_folders
+                WHERE id = ? AND user_id = ?
+                """,
+                (current_id, owner_id),
+            ).fetchone()
+            if not row:
+                break
+            folder = self._folder(row)
+            folders.append(folder)
+            seen.add(current_id)
+            current_id = str(folder["parent_id"])
+        return folders
 
     def _copy_folder_children(
         self, *, source_id: str, destination_id: str, user_id: str
