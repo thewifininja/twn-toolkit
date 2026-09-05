@@ -55,3 +55,55 @@ leave a completed file whose client did not receive confirmation. Check the
 stored destination before retrying. Atomic publication does not provide
 exactly-once delivery or a power-loss durability guarantee for the directory
 entry. No database or configuration migration is required.
+
+## Administrator controls
+
+**Settings → Operations → Maximum incoming file size** applies to new web,
+TFTP, SFTP, SCP, and FTP uploads. The default remains 1024 MiB; the supported
+range is 1–65536 MiB. Each upload snapshots this limit when it begins. A smaller
+explicit caller limit still applies, so this setting cannot bypass narrower
+case/import policies. Web upload requests allow the configured total plus
+1 MiB of multipart overhead. Other web endpoints retain their existing request
+limits. Saving this setting does not require a service restart.
+
+**Local Tools → File Transfers → SFTP / SCP → Connection and resource limits**
+controls the SSH listener. Saving these settings restarts it and disconnects
+active clients. Older settings files receive the following defaults without a
+migration. These are adjustable starting policies, not protocol requirements.
+
+| Setting | Default | Supported range | Purpose |
+| --- | ---: | ---: | --- |
+| Connections | 32 | 1–256 | Bound accepted clients, including authentication and cleanup. |
+| Connections per client IP | 4 | 1–256, no more than total | Limit one client; NAT clients share an allowance. |
+| Channels per connection | 4 | 1–32 | Permit several transfers while bounding subsystem/command workers. |
+| Open handles per SFTP channel | 16 | 1–256 | Bound file and directory handles; closing releases capacity. |
+| Directory listing entries | 10000 | 100–100000 | Bound materialized listings; oversized listings fail without truncation. |
+| Authentication deadline | 30 seconds | 1–300 | Includes handshake and authentication; keepalives cannot extend it. |
+| Idle timeout | 30 seconds | 1–3600 | Expire idle channels and unused authenticated connections. |
+
+The connection/channel defaults accommodate several devices and sessions while
+putting a finite ceiling on work. The idle default preserves the previous SCP
+idle allowance; the authentication and listing defaults are conservative
+starting choices to tune for host capacity and device behavior. Maximum values
+are validation bounds, not a claim that every supported host can sustain all
+of them simultaneously. Lower connection/channel/handle counts on smaller
+hosts. Temporary file-descriptor exhaustion pauses admission instead of
+terminating the listener.
+
+Idle activity means completed SFTP requests or SCP network progress. Slow
+trickles that never complete an SFTP packet do not keep a session alive.
+Active transfers may run longer than the idle timeout. Repeated subsystem or
+exec requests on a channel cannot create extra workers. Shutdown and disconnect
+hold the connection allowance until owned workers finish cleanup.
+
+Internal tuning stays centralized in code: upload buffers/reservation windows
+are in `uploads.py`; SFTP packets are bounded to 1 MiB and reads to 64 KiB in
+`ssh_transfer_worker.py`. These are implementation bounds rather than operator
+policy. Atomic publication and abort-on-interruption remain mandatory.
+
+SFTP CLOSE now returns publication failures on the wire. Some clients,
+including Paramiko's `SFTPFile.close()`, suppress these errors; operators should
+also consult transfer history. Download history starts at completion/abort,
+counts bytes actually read, and marks success only after an explicit CLOSE
+with complete sequential coverage. Arbitrary out-of-order reads can be recorded
+as incomplete when full coverage cannot be confirmed.

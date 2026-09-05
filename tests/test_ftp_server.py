@@ -98,7 +98,7 @@ class FTPServerTests(unittest.TestCase):
                 "incoming_filename_pattern": "{filename}",
             }, "127.0.0.1")
             handle = AtomicWriteHandle(context, "oversized.bin")
-            with patch("twn_toolkit.ssh_transfer_worker.MAX_UPLOAD_BYTES", 4):
+            with patch.object(handle.upload, "max_bytes", 4):
                 self.assertEqual(handle.write(0, b"1234"), 0)
                 self.assertNotEqual(handle.write(4, b"5"), 0)
                 self.assertNotEqual(handle.close(), 0)
@@ -135,7 +135,7 @@ class FTPServerTests(unittest.TestCase):
                 client.login("toolkit", "correct horse battery")
                 client.storbinary("STOR config.cfg", io.BytesIO(b"configuration"))
                 payload = bytearray(); client.retrbinary("RETR 127.0.0.1-config.cfg", payload.extend)
-                with patch("twn_toolkit.ftp_worker.MAX_UPLOAD_BYTES", 4):
+                with patch("twn_toolkit.datastore.LocalDatastore.upload_limit", return_value=4):
                     with self.assertRaises(ftplib.Error):
                         client.storbinary("STOR too-big.bin", io.BytesIO(b"12345"))
                 with patch("twn_toolkit.uploads.Upload.commit", side_effect=OSError("injected publication failure")):

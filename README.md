@@ -340,7 +340,10 @@ corresponding service stops. Transfer history remains visible in the web UI.
 Web, TFTP, SFTP, SCP, and FTP uploads share private staging, cross-process
 capacity reservations, and atomic publication. Interrupted uploads are discarded;
 protocol completion is acknowledged only after publication. FTP uploads must be
-complete sequential transfers (no append or restart). See
+complete sequential transfers (no append or restart). Administrators can adjust
+the shared upload-size limit in Settings → Operations and SSH connection,
+channel, handle, listing, authentication, and idle limits in the SFTP / SCP
+service settings. See
 [upload lifecycle and storage requirements](docs/upload-lifecycle.md).
 
 ### Automation

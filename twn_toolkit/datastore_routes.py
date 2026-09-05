@@ -11,12 +11,13 @@ from flask import Flask, abort, flash, g, jsonify, redirect, render_template, re
 
 from .activity_context import record_current_activity
 from .audit import annotate_audit_event
-from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES, format_bytes
+from .datastore import DatastoreError, LocalDatastore, format_bytes
 from .network_tools import ToolInputError
 from .pcap_viewer import SUPPORTED_CAPTURE_SUFFIXES, inspect_packet_capture
 from .tftp import TFTPHistoryStore, TFTPSettingsStore, tftp_process_status
 from .ssh_transfer_server import (
     SSHTransferHistoryStore, SSHTransferSettingsStore, ssh_transfer_process_status,
+    SSH_TRANSFER_LIMITS,
 )
 from .ftp_server import FTPSettingsStore, ftp_process_status
 
@@ -194,7 +195,7 @@ def register_datastore_routes(
             "local/datastore.html",
             listing=listing,
             usage=usage,
-            max_upload_display=format_bytes(MAX_UPLOAD_BYTES),
+            max_upload_display=format_bytes(store.upload_limit()),
             datastore_folders=store.folders(),
         )
 
@@ -205,13 +206,14 @@ def register_datastore_routes(
         ftp_transfers = decorate_history(ssh_transfer_history_store.recent(20, {"FTP"}))
         return render_template(
             "local/file_transfers.html",
-            max_upload_display=format_bytes(MAX_UPLOAD_BYTES),
+            max_upload_display=format_bytes(store.upload_limit()),
             tftp_settings=tftp_settings_store.get(),
             tftp_status=tftp_process_status(app.instance_path),
             tftp_transfers=transfers,
             datastore_folders=store.folders(),
             temporary_file=temporary_file(tftp_runtime_store),
             ssh_transfer_settings=ssh_transfer_settings_store.get(),
+            ssh_transfer_limits=SSH_TRANSFER_LIMITS,
             ssh_transfer_status=ssh_transfer_process_status(app.instance_path),
             ssh_transfers=ssh_transfers,
             ssh_temporary_file=temporary_file(ssh_transfer_runtime_store),
@@ -283,8 +285,8 @@ def register_datastore_routes(
         if settings["root_mode"] != "temporary" or not status["running"]:
             flash("Enable the running TFTP service in temporary-file mode before uploading.", "error")
             return redirect(url_for("file_transfers", _anchor="tftp-service"))
-        if request.content_length and request.content_length > MAX_UPLOAD_BYTES + 1024 * 1024:
-            flash(f"Temporary TFTP files may not exceed {format_bytes(MAX_UPLOAD_BYTES)}.", "error")
+        if request.content_length and request.content_length > store.upload_limit() + 1024 * 1024:
+            flash(f"Temporary TFTP files may not exceed {format_bytes(store.upload_limit())}.", "error")
             return redirect(url_for("file_transfers", _anchor="tftp-service"))
         upload = request.files.get("file")
         if not upload or not upload.filename:
@@ -331,6 +333,7 @@ def register_datastore_routes(
                 "allowed_networks": request.form.get("allowed_networks", ""),
             }
             if candidate["root_mode"] == "datastore": store.list(str(candidate["datastore_root"]))
+            candidate.update({key: request.form.get(key, before[key]) for key in SSH_TRANSFER_LIMITS})
             settings = ssh_transfer_settings_store.save(candidate, request.form.get("password", ""))
             saved = True
             apply_service("ssh-transfer-restart", "SSH transfer service did not start.")
@@ -468,8 +471,8 @@ def register_datastore_routes(
     @app.post("/local/datastore/uploads")
     def upload_datastore_files():
         path = request.args.get("path", "")
-        if request.content_length and request.content_length > MAX_UPLOAD_BYTES + 1024 * 1024:
-            flash(f"Each upload request may not exceed {format_bytes(MAX_UPLOAD_BYTES)}.", "error")
+        if request.content_length and request.content_length > store.upload_limit() + 1024 * 1024:
+            flash(f"Each upload request may not exceed {format_bytes(store.upload_limit())}.", "error")
             return return_to(path)
         path = request.form.get("path", path)
         uploads = [item for item in request.files.getlist("files") if item.filename]

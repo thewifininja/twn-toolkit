@@ -13040,6 +13040,11 @@ button.compact,
   margin-top: 1rem;
 }
 
+.transfer-limits-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
 .tftp-enable-check {
   background: var(--card-tint);
   border: 1px solid var(--line);

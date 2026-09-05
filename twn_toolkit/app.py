@@ -202,6 +202,15 @@ def create_app(instance_path: str | None = None) -> Flask:
         )
 
     @app.before_request
+    def apply_datastore_request_limit():
+        if request.endpoint in {
+            "upload_datastore_files", "upload_tftp_temporary_file",
+            "upload_ssh_transfer_temporary_file", "upload_ftp_temporary_file",
+        }:
+            # Request-local: concurrent clients must not mutate app-wide limits.
+            request.max_content_length = datastore_store.upload_limit() + 1024 * 1024
+
+    @app.before_request
     def require_authentication():
         delegated_user = request.environ.get("twn.delegated_user")
         if app.config.get("DISTRIBUTED_AGENT_DISPATCH") and isinstance(

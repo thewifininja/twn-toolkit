@@ -146,6 +146,15 @@
           <label class="check"><input type="checkbox" name="allow_write" {% if ssh_transfer_settings.allow_write %}checked{% endif %}>Allow uploads into the selected root</label>
           <label class="check"><input type="checkbox" name="allow_overwrite" {% if ssh_transfer_settings.allow_overwrite %}checked{% endif %}>Allow atomic replacement of existing filenames</label>
         </fieldset>
+        <details>
+          <summary>Connection and resource limits</summary>
+          <p class="field-note">These are adjustable starting defaults. Saving settings restarts the service and disconnects active clients.</p>
+          <div class="form-grid transfer-limits-grid">
+          {% for key, spec in ssh_transfer_limits.items() %}
+            <label>{{ spec[3] }}<input name="{{ key }}" type="number" min="{{ spec[1] }}" max="{{ spec[2] }}" value="{{ ssh_transfer_settings[key] }}" required><small class="field-note">{{ spec[4] }} Default: {{ spec[0] }}.</small></label>
+          {% endfor %}
+          </div>
+        </details>
         <label>Incoming upload filename pattern<input name="incoming_filename_pattern" maxlength="200" value="{{ ssh_transfer_settings.incoming_filename_pattern }}" required><small class="field-note">Tokens: <code>{timestamp}</code>, <code>{client_ip}</code>, <code>{filename}</code>, <code>{stem}</code>, and <code>{suffix}</code>. Uploads are stored at the selected root.</small></label>
         <label>Trusted client addresses and networks<textarea name="allowed_networks" rows="5" required>{{ ssh_transfer_settings.allowed_networks|join('\n') }}</textarea><small class="field-note">Untrusted sources are disconnected before SSH authentication.</small></label>
         <button type="submit">Save and apply SFTP / SCP settings</button>

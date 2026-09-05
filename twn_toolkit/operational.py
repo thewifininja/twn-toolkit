@@ -17,6 +17,7 @@ DEFAULT_OPERATIONAL_SETTINGS = {
     "datastore_quota_gib": 10,
     "automation_artifact_quota_gib": 10,
     "minimum_free_gib": 2,
+    "max_upload_mib": 1024,
 }
 
 
@@ -49,13 +50,19 @@ class OperationalSettingsStore:
             datastore = int(values["datastore_quota_gib"])
             artifacts = int(values["automation_artifact_quota_gib"])
             minimum_free = int(values["minimum_free_gib"])
+            raw_upload = values.get("max_upload_mib", 1024)
+            upload = int(raw_upload)
+            if isinstance(raw_upload, bool) or str(raw_upload).strip() != str(upload):
+                raise ValueError
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("Operational limits must be whole numbers.") from exc
         if not 1 <= concurrent <= 32: raise ValueError("Concurrent automations must be 1–32.")
         if not 0 <= queued <= 200: raise ValueError("Queued automations must be 0–200.")
         if not 1 <= datastore <= 1024 or not 1 <= artifacts <= 1024: raise ValueError("Storage quotas must be 1–1024 GiB.")
         if not 0 <= minimum_free <= 100: raise ValueError("Minimum free space must be 0–100 GiB.")
+        if not 1 <= upload <= 65536: raise ValueError("Upload size must be 1–65536 MiB.")
         return {
+            "max_upload_mib": upload,
             "max_concurrent_automations": concurrent,
             "max_queued_automations": queued,
             "skip_overlapping_automations": bool(values.get("skip_overlapping_automations", True)),
