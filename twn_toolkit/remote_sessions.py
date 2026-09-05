@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import hashlib
 import json
 import os
@@ -30,6 +31,20 @@ REMOTE_SESSION_CHECKPOINT_VERSION = 1
 REMOTE_SESSION_IDLE_SECONDS = 8 * 60 * 60
 REMOTE_SESSION_RETENTION_SECONDS = 7 * 24 * 60 * 60
 ACTIVE_REMOTE_SESSION_STATES = frozenset({"connecting", "running"})
+
+
+class _TerminalOutputDecoder:
+    """Preserve UTF-8 characters that arrive across terminal reads."""
+
+    def __init__(self) -> None:
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+
+    def decode(self, data: bytes) -> str:
+        return self._decoder.decode(data, final=False)
+
+    def finish(self) -> str:
+        return self._decoder.decode(b"", final=True)
+
 
 _ANSI_ESCAPE = re.compile(
     r"(?:\x1B[@-_][0-?]*[ -/]*[@-~]|\x1B\][^\x07]*(?:\x07|\x1B\\))"
@@ -1291,6 +1306,7 @@ class RemoteSessionManager:
         client = None
         channel = None
         password = str(runtime.pop("password", ""))
+        decoder = _TerminalOutputDecoder()
         try:
             if runtime["stop"].is_set():
                 password = ""
@@ -1348,9 +1364,7 @@ class RemoteSessionManager:
                         continue
                     if not data:
                         break
-                    self.store.append_output(
-                        session_id, data.decode("utf-8", errors="replace")
-                    )
+                    self._append_terminal_bytes(session_id, decoder, data)
                 elif channel.exit_status_ready():
                     break
                 else:
@@ -1360,6 +1374,7 @@ class RemoteSessionManager:
                         runtime["termination"] = "idle_timeout"
                         break
                     time.sleep(0.05)
+            self._flush_terminal_output(session_id, decoder)
             self.store.finish(
                 session_id,
                 state="stopped",
@@ -1374,6 +1389,7 @@ class RemoteSessionManager:
                 ),
             )
         except (socket.timeout, TimeoutError) as exc:
+            self._flush_terminal_output(session_id, decoder)
             self.store.finish(
                 session_id,
                 state="error",
@@ -1381,6 +1397,7 @@ class RemoteSessionManager:
                 error=self._connection_error(exc, protocol),
             )
         except Exception as exc:
+            self._flush_terminal_output(session_id, decoder)
             if runtime["stop"].is_set():
                 self.store.finish(
                     session_id,
@@ -1413,6 +1430,25 @@ class RemoteSessionManager:
             self._finalize_case(completed)
             with self._lock:
                 self._runtimes.pop(session_id, None)
+
+    def _append_terminal_bytes(
+        self,
+        session_id: str,
+        decoder: _TerminalOutputDecoder,
+        data: bytes,
+    ) -> None:
+        output = decoder.decode(data)
+        if output:
+            self.store.append_output(session_id, output)
+
+    def _flush_terminal_output(
+        self,
+        session_id: str,
+        decoder: _TerminalOutputDecoder,
+    ) -> None:
+        output = decoder.finish()
+        if output:
+            self.store.append_output(session_id, output)
 
     @staticmethod
     def _connection_error(exc: Exception, protocol: str) -> str:

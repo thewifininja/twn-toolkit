@@ -209,7 +209,10 @@ class RemoteConnectionStoreTests(unittest.TestCase):
         def initialize_worker() -> None:
             connection = sqlite3.connect(self.store.path, timeout=5)
             connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA journal_mode = WAL")
+            # The fixture store already selected WAL mode. Re-selecting it in
+            # both test threads races before the schema initializer's own
+            # transaction boundary and can hide a test failure as a thread
+            # warning. The concurrent operation under test starts below.
             connection.execute("PRAGMA busy_timeout = 5000")
 
             def pause_on_legacy_schema_read(statement: str) -> None:

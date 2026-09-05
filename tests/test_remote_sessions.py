@@ -14,6 +14,7 @@ from twn_toolkit.remote_sessions import (
     REMOTE_SESSION_INPUT_LIMIT_BYTES,
     REMOTE_SESSION_LIMIT_PER_USER,
     RemoteSessionError,
+    _TerminalOutputDecoder,
     RemoteSessionManager,
     RemoteSessionStore,
     sanitize_terminal_text,
@@ -21,8 +22,10 @@ from twn_toolkit.remote_sessions import (
 
 
 class FakeChannel:
-    def __init__(self, output: bytes = b"switch# \x1b[32mready\x1b[0m\r\n") -> None:
-        self.output = deque([output])
+    def __init__(
+        self, output: bytes | list[bytes] = b"switch# \x1b[32mready\x1b[0m\r\n"
+    ) -> None:
+        self.output = deque([output] if isinstance(output, bytes) else output)
         self.sent: list[bytes] = []
         self.closed = False
         self.size = (0, 0)
@@ -65,13 +68,16 @@ class FakeClient:
 
 
 class FakeSshOpener:
-    def __init__(self) -> None:
+    def __init__(
+        self, output: bytes | list[bytes] = b"switch# \x1b[32mready\x1b[0m\r\n"
+    ) -> None:
+        self.output = output
         self.calls: list[dict[str, object]] = []
         self.clients: list[FakeClient] = []
 
     def __call__(self, **options: object) -> FakeClient:
         self.calls.append(options)
-        client = FakeClient(FakeChannel())
+        client = FakeClient(FakeChannel(self.output))
         self.clients.append(client)
         return client
 
@@ -122,6 +128,28 @@ def wait_for_output(
             return session
         time.sleep(0.01)
     raise AssertionError(f"Session {session_id} did not retain output.")
+
+
+class TerminalOutputDecoderTests(unittest.TestCase):
+    def test_preserves_every_utf8_split_position(self) -> None:
+        expected = "switch € — 東京 😀\r\n"
+        encoded = expected.encode("utf-8")
+
+        for split in range(len(encoded) + 1):
+            decoder = _TerminalOutputDecoder()
+            decoded = decoder.decode(encoded[:split])
+            decoded += decoder.decode(encoded[split:])
+            decoded += decoder.finish()
+            self.assertEqual(decoded, expected, f"split at byte {split}")
+
+    def test_flushes_one_replacement_for_an_incomplete_or_malformed_sequence(self) -> None:
+        decoder = _TerminalOutputDecoder()
+        self.assertEqual(decoder.decode(b"before \xe2\x82"), "before ")
+        self.assertEqual(decoder.finish(), "�")
+
+        decoder = _TerminalOutputDecoder()
+        self.assertEqual(decoder.decode(b"before \xff after"), "before � after")
+        self.assertEqual(decoder.finish(), "")
 
 
 class RemoteSessionStoreTests(unittest.TestCase):
@@ -537,6 +565,24 @@ class RemoteSessionRouteTests(unittest.TestCase):
         }
         payload.update(overrides)
         return self.client.post("/tools/remote-terminal/sessions", json=payload)
+
+    def test_remote_session_preserves_utf8_split_across_terminal_reads(self) -> None:
+        expected = "switch € — 東京 😀\r\n"
+        encoded = expected.encode("utf-8")
+        self.opener.output = [encoded[:9], encoded[9:17], encoded[17:]]
+
+        response = self.start_session()
+        self.assertEqual(response.status_code, 201)
+        session = response.get_json()["session"]
+        deadline = time.time() + 2
+        output = ""
+        while time.time() < deadline:
+            page = self.client.get(session["output_url"]).get_json()
+            output = "".join(chunk["output"] for chunk in page["chunks"])
+            if output == expected:
+                break
+            time.sleep(0.01)
+        self.assertEqual(output, expected)
 
     def test_start_reconnect_input_resize_and_stop(self) -> None:
         response = self.start_session()
