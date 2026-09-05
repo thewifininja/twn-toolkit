@@ -48,6 +48,14 @@
       </details>
     {% endif %}
     {% if task.kind == "export" %}
+      <label>
+        CSV download format
+        <select name="csv_format">
+          <option value="spreadsheet" selected>Spreadsheet-safe CSV</option>
+          <option value="raw">Raw CSV for machine processing</option>
+        </select>
+      </label>
+      <p class="field-note">Spreadsheet-safe downloads preserve formula-looking values as text. Raw CSV is lossless for machine processing; generated case evidence always keeps the raw CSV.</p>
       <details class="advanced-options">
         <summary>Advanced options</summary>
         <label>

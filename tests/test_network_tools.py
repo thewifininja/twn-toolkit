@@ -1431,6 +1431,44 @@ class NetworkToolTests(unittest.TestCase):
             self.assertEqual(summary["counters"]["actions"]["total"], 8)
             self.assertEqual(summary["recent"][0]["title"], "Ran Bulk SSH")
 
+    def test_fortigate_csv_download_formats_are_safe_and_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance_path=instance)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            client.post(
+                "/profiles",
+                data={
+                    "name": "Lab",
+                    "host": "https://fortigate.example",
+                    "api_key": "profile-secret",
+                    "default_vdom": "root",
+                },
+            )
+            raw_csv = "serial,name\nS124,=command\n"
+            with patch(
+                "twn_toolkit.fortigate_routes.ExportTask.run",
+                return_value=raw_csv,
+            ):
+                spreadsheet_download = client.post(
+                    "/tasks/export-switches/run",
+                    data={"profile": "Lab"},
+                )
+                raw_download = client.post(
+                    "/tasks/export-switches/run",
+                    data={"profile": "Lab", "csv_format": "raw"},
+                )
+            form = client.get("/tasks/export-switches")
+
+        self.assertEqual(spreadsheet_download.status_code, 200)
+        self.assertEqual(spreadsheet_download.get_data(as_text=True), "serial,name\nS124,'=command\n")
+        self.assertIn("-spreadsheet.csv", spreadsheet_download.headers["Content-Disposition"])
+        self.assertEqual(raw_download.status_code, 200)
+        self.assertEqual(raw_download.get_data(as_text=True), raw_csv)
+        self.assertIn("-raw.csv", raw_download.headers["Content-Disposition"])
+        self.assertIn(b"Spreadsheet-safe CSV", form.data)
+        self.assertIn(b"Raw CSV for machine processing", form.data)
+
 
 if __name__ == "__main__":
     unittest.main()
