@@ -14,6 +14,7 @@ from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
 from twn_toolkit.certificate_tools import (
     check_certificate_hostname,
+    _validate_with_system_trust,
     inspect_certificate_chain,
     normalize_certificate_target,
     summarize_certificate,
@@ -91,7 +92,11 @@ class CertificateToolTests(unittest.TestCase):
             ),
             patch(
                 "twn_toolkit.certificate_tools._validate_with_system_trust",
-                return_value={"valid": True, "error": ""},
+                return_value={
+                    "valid": True,
+                    "error": "",
+                    "_leaf_sha256": self.leaf.fingerprint(hashes.SHA256()).hex(),
+                },
             ),
         ):
             result = inspect_certificate_chain("portal.example.com", 443, 3)
@@ -101,6 +106,63 @@ class CertificateToolTests(unittest.TestCase):
         self.assertTrue(result["hostname"]["valid"])
         self.assertTrue(result["overall_valid"])
         self.assertEqual(result["certificates"][1]["role"], "Self-issued root / CA")
+        self.assertNotIn("_leaf_sha256", result["trust"])
+
+    def test_trust_validation_returns_the_connected_leaf_fingerprint(self) -> None:
+        leaf = self.leaf.public_bytes(serialization.Encoding.DER)
+        raw_socket = unittest.mock.MagicMock()
+        raw_socket.__enter__.return_value = raw_socket
+        tls_socket = unittest.mock.MagicMock()
+        tls_socket.__enter__.return_value = tls_socket
+        tls_socket.getpeercert.return_value = leaf
+        context = unittest.mock.MagicMock()
+        context.wrap_socket.return_value = tls_socket
+        with (
+            patch(
+                "twn_toolkit.certificate_tools.socket.create_connection",
+                return_value=raw_socket,
+            ),
+            patch(
+                "twn_toolkit.certificate_tools.ssl.create_default_context",
+                return_value=context,
+            ),
+        ):
+            trust = _validate_with_system_trust("portal.example.com", 443, 3)
+
+        self.assertEqual(
+            trust["_leaf_sha256"],
+            self.leaf.fingerprint(hashes.SHA256()).hex(),
+        )
+
+    def test_inspection_rejects_trust_for_a_different_leaf(self) -> None:
+        chain = [self.leaf.public_bytes(serialization.Encoding.DER)]
+        tls = {
+            "version": "TLSv1.3",
+            "cipher": "TLS_AES_256_GCM_SHA384",
+            "cipher_protocol": "TLSv1.3",
+            "cipher_bits": 256,
+            "alpn": "h2",
+        }
+        with (
+            patch(
+                "twn_toolkit.certificate_tools._retrieve_presented_chain",
+                return_value=(chain, tls),
+            ),
+            patch(
+                "twn_toolkit.certificate_tools._validate_with_system_trust",
+                return_value={
+                    "valid": True,
+                    "error": "",
+                    "_leaf_sha256": self.ca.fingerprint(hashes.SHA256()).hex(),
+                },
+            ),
+        ):
+            result = inspect_certificate_chain("portal.example.com", 443, 3)
+
+        self.assertFalse(result["trust"]["valid"])
+        self.assertIn("different leaf certificate", result["trust"]["error"])
+        self.assertFalse(result["overall_valid"])
+        self.assertNotIn("_leaf_sha256", result["trust"])
 
     def test_certificate_route_records_activity(self) -> None:
         result = {
