@@ -55,6 +55,15 @@ Expired leases may redeliver work. Lease renewal, attempt fencing, durable
 operation deduplication, cancellation, and unknown-outcome recovery need one
 coherent execution contract before non-idempotent actions can be retried safely.
 
+The distributed listener must accept TCP and enforce its connection cap before
+performing TLS negotiation. Handshakes have a five-second timeout, HTTP headers
+and body share an absolute ten-second read deadline, and response writes reset
+to a separate ten-second I/O timeout after server-side processing. Buffered
+reads must reduce the remaining budget on every socket read so trickled bytes
+cannot extend it. Release slots on every exit path; preserve error reporting
+for unexpected backend failures. Keep certificate validation and enrollment
+policy separate from these transport resource limits.
+
 ## Product direction
 
 - The home page is an operator workspace, not a launch grid or a gamification

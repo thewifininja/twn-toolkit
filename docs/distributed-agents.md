@@ -42,6 +42,14 @@ Wildcard addresses (`0.0.0.0` and `::`) are supported but must be deliberate.
 The listener is separate from the browser listener so its protocol, client
 authentication, limits, and exposure can evolve independently.
 
+The listener admits at most 32 TCP connections before starting TLS work. Each
+admitted connection gets five seconds to finish its handshake and then one
+absolute ten-second budget to read HTTP headers and body. Sending bytes slowly
+does not restart that budget. Response writes have an independent ten-second
+I/O timeout; legitimate server-side long polling is outside the request-read
+budget. Failed or expired connections release their slot, while unexpected
+handler errors remain visible in server error reporting.
+
 Optional advertised hostnames or public IP addresses are explicit certificate
 identities, separate from local bind addresses. This supports DNS and raw TCP
 port forwarding such as public TCP 443 to internal TCP 5051. Directly binding a

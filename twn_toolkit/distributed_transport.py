@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import ssl
@@ -39,6 +40,9 @@ MAX_LONG_POLL_SECONDS = 25
 ENROLLMENT_ATTEMPT_WINDOW_SECONDS = 60
 MAX_ENROLLMENT_ATTEMPTS_PER_WINDOW = 5
 MAX_LISTENER_CONNECTIONS = 32
+LISTENER_HANDSHAKE_TIMEOUT_SECONDS = 5
+LISTENER_READ_TIMEOUT_SECONDS = 10
+LISTENER_WRITE_TIMEOUT_SECONDS = 10
 
 
 class EnrollmentTransportError(RuntimeError):
@@ -86,9 +90,6 @@ class EnrollmentServer:
         self.pki_store.ensure_mainframe_identity(addresses, dns_names=dns_names)
         handler = _handler_for(self)
         server_class = _IPv6ThreadingHTTPServer if ":" in host else _BoundedThreadingHTTPServer
-        self.httpd = server_class((host, self.port), handler)
-        self.httpd.daemon_threads = True
-        self.httpd.timeout = 1
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.load_cert_chain(
@@ -96,7 +97,11 @@ class EnrollmentServer:
         )
         context.load_verify_locations(cafile=str(self.pki_store.ca_cert_path))
         context.verify_mode = ssl.CERT_OPTIONAL
-        self.httpd.socket = context.wrap_socket(self.httpd.socket, server_side=True)
+        # Accept plain TCP first so a silent TLS peer cannot stall the accept
+        # loop before the bounded worker admission check.
+        self.httpd = server_class((host, self.port), handler, tls_context=context)
+        self.httpd.daemon_threads = True
+        self.httpd.timeout = 1
         self.port = int(self.httpd.server_address[1])
         self._thread: threading.Thread | None = None
 
@@ -507,7 +512,10 @@ class EnrollmentClient:
 
 
 class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self, *args: Any, tls_context: ssl.SSLContext, **kwargs: Any
+    ) -> None:
+        self._tls_context = tls_context
         self._connection_slots = threading.BoundedSemaphore(MAX_LISTENER_CONNECTIONS)
         super().__init__(*args, **kwargs)
 
@@ -522,10 +530,24 @@ class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
             raise
 
     def process_request_thread(self, request: Any, client_address: Any) -> None:
+        connection = request
         try:
-            super().process_request_thread(request, client_address)
+            connection = self._tls_context.wrap_socket(
+                request, server_side=True, do_handshake_on_connect=False
+            )
+            connection.settimeout(LISTENER_HANDSHAKE_TIMEOUT_SECONDS)
+            connection.do_handshake()
+            self.finish_request(connection, client_address)
+        except (ConnectionError, TimeoutError, ssl.SSLError):
+            # TLS failures, timeouts, and disconnects are normal peer failures.
+            pass
+        except Exception:
+            self.handle_error(connection, client_address)
         finally:
-            self._connection_slots.release()
+            try:
+                self.shutdown_request(connection)
+            finally:
+                self._connection_slots.release()
 
 
 class _IPv6ThreadingHTTPServer(_BoundedThreadingHTTPServer):
@@ -534,10 +556,36 @@ class _IPv6ThreadingHTTPServer(_BoundedThreadingHTTPServer):
     address_family = socket.AF_INET6
 
 
+class _DeadlineSocketReader(io.RawIOBase):
+    """Give buffered HTTP parsing one absolute budget for headers and body."""
+
+    def __init__(self, connection: ssl.SSLSocket, timeout: float) -> None:
+        super().__init__()
+        self.connection = connection
+        self.deadline = time.monotonic() + timeout
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("HTTP request read deadline exceeded.")
+        self.connection.settimeout(remaining)
+        return self.connection.recv_into(buffer)
+
+
 def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHandler]:
     class EnrollmentHandler(BaseHTTPRequestHandler):
         server_version = "TWNEnrollment/1"
         sys_version = ""
+
+        def setup(self) -> None:
+            super().setup()
+            self.rfile.close()
+            self.rfile = io.BufferedReader(
+                _DeadlineSocketReader(self.connection, LISTENER_READ_TIMEOUT_SECONDS)
+            )
 
         def do_POST(self) -> None:
             if self.path not in {"/v1/enrollment", "/v1/heartbeat", "/v1/interactive"}:
@@ -602,6 +650,9 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
             return
 
         def _json(self, status: int, payload: dict[str, Any]) -> None:
+            # Server-side long polling does not consume the request-read budget.
+            # Bound response writes independently after the result is ready.
+            self.connection.settimeout(LISTENER_WRITE_TIMEOUT_SECONDS)
             content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
