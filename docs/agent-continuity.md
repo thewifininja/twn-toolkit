@@ -866,7 +866,10 @@ make state, risk, and the next action obvious.
   deduplication state. Use this runner—not new ad-hoc column checks—for future
   material schema changes. Toolkit migrations 2 and 3 perform pre-change
   database snapshots and prepare the corresponding automation schema. The
-  internal runner remains the fresh-database and compatibility fallback.
+  internal runner remains the fresh-database and compatibility fallback. Store
+  construction serializes this schema boundary across web and worker processes;
+  normal writable connections only apply connection-local safety settings and
+  execute application queries.
 - Editing a shared definition pauses all dependent automations. Deletion is
   blocked while references remain. Existing embedded definitions are migrated
   automatically into reusable records.

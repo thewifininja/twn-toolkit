@@ -26,6 +26,7 @@ from .automation_registry import (
 from .automation_types.models import evaluation_result
 from .network_interface_events import evaluate_interface_change
 from .schedule_tools import schedule_occurrence, schedule_should_fire
+from .sqlite_store import bootstrap_sqlite_store, sqlite_store_connection
 from .system_diagnostics import readonly_sqlite_connection
 from .system_identity import collect_system_identity, startup_event
 
@@ -83,8 +84,7 @@ class AutomationStore:
             hashlib.sha256(secret_key.encode("utf-8")).digest()
         )
         self._cipher = Fernet(encryption_key)
-        with self._connect():
-            pass
+        self._bootstrap_schema()
 
     def save(
         self,
@@ -2440,26 +2440,35 @@ class AutomationStore:
         except (InvalidToken, ValueError, TypeError, json.JSONDecodeError) as exc:
             raise RuntimeError("Could not decrypt saved automation actions.") from exc
 
+    def _bootstrap_schema(self) -> None:
+        try:
+            bootstrap_sqlite_store(self.path, self._initialize_schema)
+        finally:
+            self._secure_database_files()
+
+    def _initialize_schema(self, connection: sqlite3.Connection) -> None:
+        self._initialize(connection)
+        self._migrate_reusable_definitions(connection)
+        self._run_migrations(connection)
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        self.instance_path.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.path, timeout=10)
-        connection.row_factory = sqlite3.Row
         try:
-            connection.execute("PRAGMA journal_mode = WAL")
-            connection.execute("PRAGMA busy_timeout = 10000")
-            self._initialize(connection)
-            self._migrate_reusable_definitions(connection)
-            self._run_migrations(connection)
-            yield connection
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
+            with sqlite_store_connection(self.path) as connection:
+                yield connection
         finally:
-            connection.close()
-            if self.path.exists():
-                os.chmod(self.path, 0o600)
+            self._secure_database_files()
+
+    def _secure_database_files(self) -> None:
+        for candidate in (
+            self.path,
+            self.path.with_name(f"{self.path.name}-wal"),
+            self.path.with_name(f"{self.path.name}-shm"),
+        ):
+            try:
+                os.chmod(candidate, 0o600)
+            except FileNotFoundError:
+                pass
 
     @staticmethod
     def _initialize(connection: sqlite3.Connection) -> None:

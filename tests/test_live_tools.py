@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -30,6 +31,31 @@ class LiveToolStoreTests(unittest.TestCase):
             interval=2,
             timeout=1,
         )
+
+    def test_writable_reads_do_not_repeat_schema_setup(self) -> None:
+        statements: list[str] = []
+        original_connect = sqlite3.connect
+
+        def observed_connect(*args: object, **kwargs: object) -> sqlite3.Connection:
+            connection = original_connect(*args, **kwargs)
+            connection.set_trace_callback(statements.append)
+            return connection
+
+        with patch(
+            "twn_toolkit.sqlite_store.sqlite3.connect",
+            side_effect=observed_connect,
+        ), patch.object(
+            self.store,
+            "_initialize",
+            side_effect=AssertionError("ordinary reads must not initialize the schema"),
+        ):
+            self.assertIsNone(self.store.get_session("missing", user_id="operator-1"))
+
+        normalized = "\n".join(statements).upper()
+        self.assertIn("SELECT * FROM LIVE_TOOL_SESSIONS", normalized)
+        self.assertNotIn("CREATE TABLE", normalized)
+        self.assertNotIn("ALTER TABLE", normalized)
+        self.assertNotIn("PRAGMA TABLE_INFO", normalized)
 
     def test_sessions_are_owned_and_can_be_stopped(self) -> None:
         session = self.create_session()

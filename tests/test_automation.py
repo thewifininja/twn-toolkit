@@ -46,6 +46,33 @@ class AutomationStoreTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
+    def test_writable_reads_do_not_repeat_schema_setup(self) -> None:
+        statements: list[str] = []
+        original_connect = sqlite3.connect
+
+        def observed_connect(*args: object, **kwargs: object) -> sqlite3.Connection:
+            connection = original_connect(*args, **kwargs)
+            connection.set_trace_callback(statements.append)
+            return connection
+
+        with patch(
+            "twn_toolkit.sqlite_store.sqlite3.connect",
+            side_effect=observed_connect,
+        ), patch.object(
+            self.store,
+            "_initialize_schema",
+            side_effect=AssertionError("ordinary reads must not initialize the schema"),
+        ):
+            snapshot = self.store.job_stats()
+
+        self.assertEqual(snapshot["queued_jobs"], 0)
+        normalized = "\n".join(statements).upper()
+        self.assertIn("SELECT STATUS, COUNT(*)", normalized)
+        self.assertNotIn("CREATE TABLE", normalized)
+        self.assertNotIn("ALTER TABLE", normalized)
+        self.assertNotIn("PRAGMA TABLE_INFO", normalized)
+        self.assertNotIn("AUTOMATION_SCHEMA_MIGRATIONS", normalized)
+
     def test_diagnostics_snapshot_is_read_only_and_uses_one_bounded_connection(self) -> None:
         with patch.object(
             self.store,
