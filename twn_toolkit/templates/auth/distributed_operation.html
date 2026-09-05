@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<main class="workspace-page">
+  <section class="panel server-access-panel distributed-operation-status">
+    <p class="eyebrow">Distributed operation</p>
+    <h1>Operation <span class="distributed-operation-id">{{ operation.id }}</span></h1>
+    <p class="field-note">Agent <code>{{ operation.agent_id }}</code> · {{ operation.capability_id }}</p>
+    <p class="message {{ 'success' if operation.state == 'succeeded' else ('error' if operation.state in ['failed', 'cancelled', 'unknown'] else 'warning') }}">
+      <strong>{{ operation.state | replace('_', ' ') | capitalize }}.</strong>
+      {% if operation.state == 'unknown' %}
+        The agent may have completed work before the result connection was lost. Reconcile the target before retrying.
+      {% elif operation.state == 'cancel_requested' %}
+        Cancellation was requested, but arbitrary remote work cannot always be interrupted. Do not resubmit while this status is unresolved.
+      {% elif operation.state in ['queued', 'claimed', 'running'] %}
+        This operation is still tracked. Do not resubmit it.
+      {% endif %}
+    </p>
+    {% if operation.error %}<p>{{ operation.error }}</p>{% endif %}
+    <dl class="detail-list">
+      <div><dt>Created</dt><dd>{{ operation.created_display }}</dd></div>
+      {% if operation.started_at %}<div><dt>Started</dt><dd>{{ operation.started_display }}</dd></div>{% endif %}
+      {% if operation.completed_at %}<div><dt>Last outcome</dt><dd>{{ operation.completed_display }}</dd></div>{% endif %}
+    </dl>
+    <p class="field-note">This page intentionally does not replay the original request or expose its stored body.{% if operation.state in ['queued', 'claimed', 'running', 'cancel_requested'] %} It refreshes every five seconds while the outcome is unresolved.{% endif %}</p>
+    {% if operation.state in ['queued', 'claimed', 'running', 'cancel_requested'] %}<script>window.setTimeout(function () { window.location.reload(); }, 5000);</script>{% endif %}
+  </section>
+</main>
+{% endblock %}

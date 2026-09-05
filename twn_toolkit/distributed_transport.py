@@ -30,6 +30,7 @@ from .distributed_pki import (
 )
 from .distributed_agents import pairing_code
 from .distributed_job_epochs import DistributedJobStore
+from .distributed_jobs import JOB_PROTOCOL_VERSION
 
 
 PROTOCOL_VERSION = 1
@@ -206,19 +207,10 @@ class EnrollmentServer:
         )
         activation_id = str(payload.get("activation_id", ""))
         self.job_store.activate_agent(agent_id, activation_id)
-        results = payload.get("results", [])
-        if not isinstance(results, list) or len(results) > 16:
-            raise ValueError("Agent job results must be a bounded list.")
-        for result in results:
-            if not isinstance(result, dict):
-                raise ValueError("Agent job result must be an object.")
-            self.job_store.complete(
-                str(result.get("id", "")),
-                agent_id=agent_id,
-                state=str(result.get("state", "")),
-                output=result.get("output") or {},
-                error=str(result.get("error", "")),
-            )
+        acknowledgements = self._accept_results(agent_id, activation_id, payload.get("results", []))
+        if payload.get("job_protocol") != JOB_PROTOCOL_VERSION:
+            return {"protocol": PROTOCOL_VERSION, "job_protocol": JOB_PROTOCOL_VERSION,
+                    "state": "upgrade_required", "jobs": [], "requests": [], "acknowledgements": acknowledgements}
         try:
             wait_seconds = float(payload.get("wait_seconds", 0) or 0)
         except (TypeError, ValueError) as exc:
@@ -227,19 +219,21 @@ class EnrollmentServer:
         deadline = time.monotonic() + wait_seconds
         excluded_capability = "system.http.tunnel" if wait_seconds > 0 else ""
         jobs = self.job_store.claim(
-            agent_id,
+            agent_id, limit=1,
             exclude_capability_id=excluded_capability,
             activation_id=activation_id,
         )
         while not jobs and time.monotonic() < deadline:
             time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
             jobs = self.job_store.claim(
-                agent_id,
+                agent_id, limit=1,
             exclude_capability_id=excluded_capability,
             activation_id=activation_id,
             )
         return {
             "protocol": PROTOCOL_VERSION,
+            "job_protocol": JOB_PROTOCOL_VERSION,
+            "acknowledgements": acknowledgements,
             "state": "approved",
             "agent_id": agent["id"],
             "server_time": time.time(),
@@ -254,17 +248,10 @@ class EnrollmentServer:
             raise ValueError("Unsupported agent protocol version.")
         activation_id = str(payload.get("activation_id", ""))
         self.job_store.activate_agent(agent_id, activation_id)
-        results = payload.get("results", [])
-        if not isinstance(results, list) or len(results) > 8:
-            raise ValueError("Interactive results must be a bounded list.")
-        for result in results:
-            if not isinstance(result, dict):
-                raise ValueError("Interactive result must be an object.")
-            self.job_store.complete(
-                str(result.get("id", "")), agent_id=agent_id,
-                state=str(result.get("state", "")),
-                output=result.get("output") or {}, error=str(result.get("error", "")),
-            )
+        acknowledgements = self._accept_results(agent_id, activation_id, payload.get("results", []))
+        if payload.get("job_protocol") != JOB_PROTOCOL_VERSION:
+            return {"protocol": PROTOCOL_VERSION, "job_protocol": JOB_PROTOCOL_VERSION,
+                    "state": "upgrade_required", "jobs": [], "requests": [], "acknowledgements": acknowledgements}
         wait_seconds = max(0.0, min(float(payload.get("wait_seconds", 0) or 0), MAX_LONG_POLL_SECONDS))
         deadline = time.monotonic() + wait_seconds
         jobs = self.job_store.claim(
@@ -277,7 +264,33 @@ class EnrollmentServer:
             agent_id, limit=1, capability_id="system.http.tunnel",
             activation_id=activation_id,
         )
-        return {"protocol": PROTOCOL_VERSION, "state": "approved", "requests": jobs}
+        return {"protocol": PROTOCOL_VERSION, "job_protocol": JOB_PROTOCOL_VERSION, "acknowledgements": acknowledgements, "state": "approved", "requests": jobs}
+
+    def _accept_results(self, agent_id, activation_id, results):
+        if not isinstance(results, list) or len(results) > 16:
+            raise ValueError("Operation results must be a bounded list.")
+        acknowledgements = []
+        for result in results:
+            if not isinstance(result, dict):
+                raise ValueError("Operation result must be an object.")
+            try:
+                self.job_store.complete(str(result.get("id", "")), agent_id=agent_id,
+                    attempt_token=str(result.get("attempt_token", "")), activation_id=activation_id,
+                    state=str(result.get("state", "")), output=result.get("output") or {}, error=str(result.get("error", "")))
+            except ValueError:
+                status = "rejected"
+            else:
+                status = "accepted"
+            acknowledgements.append({"id": result.get("id"), "attempt_token": result.get("attempt_token"), "status": status})
+        return acknowledgements
+
+    def job_control(self, certificate_der, payload):
+        agent_id = self._approved_certificate_agent(certificate_der)
+        if payload.get("job_protocol") != JOB_PROTOCOL_VERSION:
+            raise ValueError("Upgrade both peers for owned operation delivery.")
+        return self.job_store.control(str(payload.get("id", "")), agent_id=agent_id,
+            attempt_token=str(payload.get("attempt_token", "")), activation_id=str(payload.get("activation_id", "")),
+            action=str(payload.get("action", "")))
 
     def _approved_certificate_agent(self, certificate_der: bytes | None) -> str:
         if not certificate_der:
@@ -413,6 +426,7 @@ class EnrollmentClient:
                 "platform": platform,
                 "hostname": hostname,
                 "activation_id": activation_id,
+                "job_protocol": JOB_PROTOCOL_VERSION,
                 "results": results or [],
                 "wait_seconds": max(0.0, min(float(wait_seconds), MAX_LONG_POLL_SECONDS)),
             },
@@ -435,12 +449,17 @@ class EnrollmentClient:
             {
                 "protocol": PROTOCOL_VERSION,
                 "activation_id": activation_id,
+                "job_protocol": JOB_PROTOCOL_VERSION,
                 "results": results or [],
                 "wait_seconds": wait_seconds,
             },
             authenticated=True,
             request_timeout=max(REQUEST_TIMEOUT_SECONDS, wait_seconds + 5),
         )
+
+    def job_control(self, job, action):
+        return self._request("POST", "/v1/jobs/control", {"job_protocol": JOB_PROTOCOL_VERSION,
+            "id": job["id"], "attempt_token": job["attempt_token"], "activation_id": job.get("activation_id", ""), "action": action}, authenticated=True)
 
     def _request(
         self,
@@ -588,7 +607,7 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
             )
 
         def do_POST(self) -> None:
-            if self.path not in {"/v1/enrollment", "/v1/heartbeat", "/v1/interactive"}:
+            if self.path not in {"/v1/enrollment", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control"}:
                 self._json(404, {"error": "Not found."})
                 return
             try:
@@ -598,7 +617,7 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
                 return
             maximum = (
                 MAX_AGENT_RPC_BYTES
-                if self.path in {"/v1/heartbeat", "/v1/interactive"}
+                if self.path in {"/v1/heartbeat", "/v1/interactive", "/v1/jobs/control"}
                 else MAX_ENROLLMENT_REQUEST_BYTES
             )
             if not 0 < length <= maximum:
@@ -618,6 +637,8 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
                         payload,
                         str(self.client_address[0]),
                     )
+                elif self.path == "/v1/jobs/control":
+                    result = enrollment_server.job_control(self.connection.getpeercert(binary_form=True), payload)
                 else:
                     result = enrollment_server.interactive(
                         self.connection.getpeercert(binary_form=True), payload

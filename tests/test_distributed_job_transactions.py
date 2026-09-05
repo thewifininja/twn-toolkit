@@ -90,7 +90,7 @@ def test_simultaneous_claimers_receive_disjoint_jobs(tmp_path, epoch, count):
         assert len(ids) == len(set(ids)), "A job was delivered to both claimers."
         assert set(ids) == expected
         assert blocked
-        assert all(store.get(job_id)["state"] == "running" for job_id in expected)
+        assert all(store.get(job_id)["state"] == "claimed" for job_id in expected)
     finally:
         release.set()
         for process in (first, second):
@@ -102,16 +102,14 @@ def test_simultaneous_claimers_receive_disjoint_jobs(tmp_path, epoch, count):
         results.join_thread()
 
 
-def test_expired_lease_can_be_reclaimed_without_resetting_start_time(tmp_path):
+def test_expired_claim_is_cancelled_without_redelivery(tmp_path):
     store = EpochStore(tmp_path)
     store.activate_agent("agent_a", EPOCH)
     job = _enqueue(store)
     assert store.claim("agent_a", activation_id=EPOCH)[0]["id"] == job["id"]
-    original_start = store.get(job["id"])["started_at"]
     with sqlite3.connect(store.path) as connection:
         connection.execute("UPDATE distributed_jobs SET lease_expires_at = 0 WHERE id = ?", (job["id"],))
-    assert store.claim("agent_a", activation_id=EPOCH)[0]["id"] == job["id"]
-    assert store.get(job["id"])["started_at"] == original_start
+    assert store.get(job["id"])["state"] == "cancelled"
     assert store.claim("agent_a", activation_id=EPOCH) == []
 
 
@@ -139,7 +137,7 @@ def test_claim_rolls_back_the_entire_batch_on_write_failure(tmp_path):
 
         def execute(self, sql, *args):
             cursor = self.connection.execute(sql, *args)
-            if "SET state = 'running'" in sql:
+            if "SET state = 'claimed'" in sql:
                 raise sqlite3.OperationalError("Injected interrupted claim")
             return cursor
 
@@ -153,7 +151,7 @@ def test_claim_rolls_back_the_entire_batch_on_write_failure(tmp_path):
         store.claim("agent_a", activation_id=EPOCH)
     store._connect = connect
     assert [store.get(j["id"])["state"] for j in jobs] == ["queued"] * 3
-    assert len(store.claim("agent_a", activation_id=EPOCH)) == 3
+    assert len(store.claim("agent_a", limit=3, activation_id=EPOCH)) == 3
 
 
 def test_enqueue_cannot_rebind_a_committed_job_to_a_later_activation(tmp_path):
@@ -179,9 +177,9 @@ def test_enqueue_cannot_rebind_a_committed_job_to_a_later_activation(tmp_path):
     assert retained["state"] == "cancelled"
     assert other.claim("agent_a", activation_id=NEXT_EPOCH) == []
     assert _enqueue(other)["activation_id"] == NEXT_EPOCH
-    # A late result must not undo cancellation, even through the legacy import.
-    result = BaseStore(tmp_path).complete(job["id"], agent_id="agent_a", state="succeeded")
-    assert result["state"] == "cancelled"
+    # A stale activation has no ownership token and cannot alter the outcome.
+    with pytest.raises(ValueError, match="ownership"):
+        BaseStore(tmp_path).complete(job["id"], agent_id="agent_a", state="succeeded")
 
 
 def test_concurrent_results_preserve_the_first_committed_terminal_state(tmp_path):
@@ -190,7 +188,8 @@ def test_concurrent_results_preserve_the_first_committed_terminal_state(tmp_path
 
     store, other = EpochStore(tmp_path), EpochStore(tmp_path)
     job = _enqueue(store)
-    store.claim("agent_a")
+    delivery = store.claim("agent_a")[0]
+    store.control(job["id"], agent_id="agent_a", attempt_token=delivery["attempt_token"], activation_id="", action="start")
     ready, release, started, done = (Event() for _ in range(4))
     connect = store._connect
     paused = False
@@ -226,12 +225,12 @@ def test_concurrent_results_preserve_the_first_committed_terminal_state(tmp_path
 
     def second_result():
         started.set()
-        result = other.complete(job["id"], agent_id="agent_a", state="failed", error="duplicate result")
+        result = other.complete(job["id"], agent_id="agent_a", attempt_token=delivery["attempt_token"], activation_id="", state="failed", error="duplicate result")
         done.set()
         return result
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        first = pool.submit(store.complete, job["id"], agent_id="agent_a", state="succeeded", output={"winner": True})
+        first = pool.submit(store.complete, job["id"], agent_id="agent_a", attempt_token=delivery["attempt_token"], activation_id="", state="succeeded", output={"winner": True})
         try:
             assert ready.wait(15)
             second = pool.submit(second_result)

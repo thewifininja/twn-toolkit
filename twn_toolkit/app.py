@@ -4,6 +4,7 @@ import os
 import base64
 import secrets
 import time
+from datetime import datetime
 from hashlib import blake2s
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,7 @@ from .distributed_agents import (
     selectable_gui_agents,
 )
 from .distributed_pki import DistributedPkiStore, PairingSessionStore
+from .distributed_http import MAX_TUNNEL_BODY_BYTES
 from .distributed_job_epochs import DistributedJobStore
 
 
@@ -113,6 +115,17 @@ def _appearance_from_delegation(value: dict[str, Any]) -> dict[str, str]:
     if appearance["palette"] not in APPEARANCE_PALETTES:
         return dict(DEFAULT_APPEARANCE)
     return appearance
+
+
+def _operation_time(value: object) -> str:
+    if value is None:
+        return ""
+    try:
+        return datetime.fromtimestamp(float(value)).astimezone().strftime(
+            "%Y-%m-%d %H:%M:%S %Z"
+        )
+    except (TypeError, ValueError, OverflowError, OSError):
+        return "Unavailable"
 
 
 def create_app(instance_path: str | None = None) -> Flask:
@@ -319,6 +332,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             "logout",
             "update_appearance",
             "session_activity",
+            "distributed_operation",
             "update_execution_context",
             "agent_workspace",
             "agent_dns_response",
@@ -373,7 +387,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         if remote_path.startswith("static/"):
             return app.send_static_file(remote_path[len("static/"):])
         body = request.get_data(cache=False)
-        if len(body) > 192 * 1024:
+        if len(body) > MAX_TUNNEL_BODY_BYTES:
             return Response("This request is too large for the agent tunnel.", status=413)
         path = "/" + remote_path
         if request.query_string:
@@ -409,17 +423,39 @@ def create_app(instance_path: str | None = None) -> Flask:
         )
         # First use may initialize the agent application and its local stores;
         # subsequent requests reuse the warm per-user dispatcher.
-        deadline = time.monotonic() + 30
+        def operation_status_response(current):
+            location = url_for("distributed_operation", job_id=job["id"])
+            if request.accept_mimetypes.accept_html:
+                return redirect(location, code=303)
+            response = jsonify(
+                operation_id=job["id"], state=current["state"], status_url=location,
+                detail="The remote operation is retained for inspection. Do not resubmit it.",
+            )
+            response.status_code = 202
+            response.headers["Location"] = location
+            return response
+
+        deadline = time.monotonic() + float(
+            operational_store.get()["distributed_tunnel_wait_seconds"]
+        )
         current = None
         while time.monotonic() < deadline:
             current = distributed_job_store.get(job["id"])
-            if current and current["state"] in {"succeeded", "failed", "cancelled"}:
+            if current and current["state"] in {"succeeded", "failed", "cancelled", "unknown"}:
                 break
             time.sleep(0.05)
         else:
-            recovery = return_to_local_instance("The selected agent did not respond in time.")
-            return recovery if recovery is not None else Response("The selected agent did not respond in time.", status=504)
-        distributed_job_store.delete(job["id"], requester_id=g.current_user["id"])
+            # A timeout says nothing about an agent that may already be executing.
+            # Cancel only work whose coordinator state proves it never started.
+            current = distributed_job_store.cancel(
+                job["id"], requester_id=g.current_user["id"]
+            )
+            if current["state"] not in {"succeeded", "failed"}:
+                return operation_status_response(current)
+        if current["state"] == "unknown":
+            return operation_status_response(current)
+        # Terminal operations remain visible to the requester. Never make a
+        # timeout or a browser disconnect silently erase the only outcome record.
         if current["state"] != "succeeded" or not current.get("output"):
             message = current.get("error") or "The agent request failed."
             recovery = return_to_local_instance(message)
@@ -445,6 +481,34 @@ def create_app(instance_path: str | None = None) -> Flask:
                 response.headers[str(pair[0])] = str(pair[1])
         response.headers["X-TWN-Instance"] = agent_id
         return response
+
+    @app.get("/operations/<job_id>")
+    def distributed_operation(job_id: str):
+        operation = distributed_job_store.get_for_requester(
+            job_id, g.current_user["id"]
+        )
+        if operation is None:
+            abort(404)
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({
+                "id": operation["id"],
+                "agent_id": operation["agent_id"],
+                "capability_id": operation["capability_id"],
+                "state": operation["state"],
+                "created_at": operation["created_at"],
+                "started_at": operation["started_at"],
+                "completed_at": operation["completed_at"],
+                "error": operation["error"],
+            })
+        return render_template(
+            "auth/distributed_operation.html",
+            operation={
+                **operation,
+                "created_display": _operation_time(operation["created_at"]),
+                "started_display": _operation_time(operation["started_at"]),
+                "completed_display": _operation_time(operation["completed_at"]),
+            },
+        )
 
     @app.after_request
     def audit_administrative_mutations(response: Response):

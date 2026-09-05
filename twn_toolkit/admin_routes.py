@@ -608,6 +608,7 @@ def register_admin_routes(
             automation_storage=automation_storage,
             operational_settings=operational_store.get(),
             operational_storage=_format_storage_summary(operational_store.storage_summary()),
+            distributed_role=distributed_settings_store.get()["role"],
             smtp_settings=smtp_store.get(),
             time_settings=time_store.snapshot(),
             timezone_choices=COMMON_TIMEZONES,
@@ -1845,6 +1846,10 @@ def register_admin_routes(
                 "minimum_free_gib": request.form.get("minimum_free_gib", ""),
                 "max_upload_mib": request.form.get("max_upload_mib", before["max_upload_mib"]),
                 "max_multipart_files": request.form.get("max_multipart_files", before["max_multipart_files"]),
+                "distributed_job_lease_seconds": request.form.get("distributed_job_lease_seconds", before["distributed_job_lease_seconds"]),
+                "distributed_tunnel_wait_seconds": request.form.get("distributed_tunnel_wait_seconds", before["distributed_tunnel_wait_seconds"]),
+                "distributed_receipt_limit": request.form.get("distributed_receipt_limit", before["distributed_receipt_limit"]),
+                "distributed_receipt_retention_hours": request.form.get("distributed_receipt_retention_hours", before["distributed_receipt_retention_hours"]),
             })
         except ValueError as exc: flash(str(exc), "error")
         else:

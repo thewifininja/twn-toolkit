@@ -22244,3 +22244,6 @@ body.remote-terminal-resizing * {
   box-shadow: 0 4px 24px #0006;
 }
 .session-expiry-notice a { color: inherit; text-decoration: underline; font-weight: 700; }
+.distributed-operation-id {
+  overflow-wrap: anywhere;
+}

@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any
 
 
-MAX_TUNNEL_BODY_BYTES = 192 * 1024
+# The base64 representation plus job metadata must remain below the 256 KiB
+# durable-control envelope. Leave room for the delegated user, route, and headers.
+MAX_TUNNEL_BODY_BYTES = 160 * 1024
 _clients: dict[tuple[str, str], Any] = {}
 _client_locks: dict[tuple[str, str], threading.Lock] = {}
 _clients_lock = threading.Lock()

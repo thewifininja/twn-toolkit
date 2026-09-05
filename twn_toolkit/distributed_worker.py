@@ -23,6 +23,8 @@ from .pidfiles import (
 )
 from .version import APP_VERSION
 from .distributed_capabilities import advertised_capabilities, execute_capability
+from .distributed_operations import OperationReceipts, execute_owned
+from .distributed_jobs import JOB_PROTOCOL_VERSION
 
 
 def main() -> None:
@@ -112,13 +114,17 @@ def _interactive_lane(
         str(settings.get("agent_mainframe_fallback_url", "")),
     )
     activation_id = agent_activation(instance)["activation_id"]
-    results: list[dict[str, object]] = []
+    receipts = OperationReceipts(instance)
+    receipts.discard_other_activations(activation_id)
     while callable(running) and running():
         try:
             response = client.interactive(
-                results, wait_seconds=20, activation_id=activation_id
+                receipts.pending("interactive", activation_id), wait_seconds=20, activation_id=activation_id
             )
-            results = _execute_jobs(instance, response.get("requests", []))
+            if response.get("job_protocol") != JOB_PROTOCOL_VERSION:
+                raise ValueError("Upgrade the Mainframe for owned operation delivery.")
+            receipts.acknowledge(response.get("acknowledgements", []))
+            _execute_jobs(instance, response.get("requests", []), client=client, lane="interactive")
         except (EnrollmentTransportError, OSError, ValueError):
             time.sleep(0.5)
 
@@ -157,7 +163,12 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
             }
             _write_status(status_path, status)
             return status
-        pending_results = _read_results(results_path)
+        receipts = OperationReceipts(instance)
+        receipts.discard_other_activations(activation_id)
+        # A pre-owned-operation worker persisted results without an ownership
+        # token. The Mainframe migration has already made their outcome unknown.
+        results_path.unlink(missing_ok=True)
+        pending_results = receipts.pending("regular", activation_id)
         result = client.heartbeat(
             advertised_capabilities(),
             toolkit_version=APP_VERSION,
@@ -167,25 +178,17 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
             results=pending_results,
             wait_seconds=wait_seconds,
         )
-        if pending_results:
-            results_path.unlink(missing_ok=True)
-        completed = _execute_jobs(instance, result.get("jobs", []))
+        if result.get("job_protocol") != JOB_PROTOCOL_VERSION:
+            raise ValueError("Upgrade the Mainframe for owned operation delivery.")
+        receipts.acknowledge(result.get("acknowledgements", []))
+        _execute_jobs(instance, result.get("jobs", []), client=client, lane="regular")
+        completed = receipts.pending("regular", activation_id)
         if completed:
-            try:
-                followup = client.heartbeat(
-                    advertised_capabilities(),
-                    toolkit_version=APP_VERSION,
-                    platform=f"{platform.system()} {platform.release()}".strip(),
-                    hostname=socket.gethostname(),
-                    activation_id=activation_id,
-                    results=completed,
-                    wait_seconds=wait_seconds,
-                )
-                more_completed = _execute_jobs(instance, followup.get("jobs", []))
-                if more_completed:
-                    _write_status(results_path, more_completed)
-            except (EnrollmentTransportError, OSError, ValueError):
-                _write_status(results_path, completed)
+            followup = client.heartbeat(advertised_capabilities(), toolkit_version=APP_VERSION,
+                platform=f"{platform.system()} {platform.release()}".strip(), hostname=socket.gethostname(),
+                activation_id=activation_id, results=completed, wait_seconds=0)
+            receipts.acknowledge(followup.get("acknowledgements", []))
+            _execute_jobs(instance, followup.get("jobs", []), client=client, lane="regular")
         status = {
             "role": "agent",
             "state": str(result.get("state", "connected")),
@@ -206,40 +209,8 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
     return status
 
 
-def _execute_jobs(instance: Path, jobs: object) -> list[dict[str, object]]:
-    if not isinstance(jobs, list):
-        return []
-    activation_id = agent_activation(instance)["activation_id"]
-    results: list[dict[str, object]] = []
-    for job in jobs[:16]:
-        if not isinstance(job, dict):
-            continue
-        job_id = str(job.get("id", ""))
-        capability = str(job.get("capability_id", ""))
-        version = str(job.get("capability_version", ""))
-        try:
-            output = execute_capability(
-                instance, capability, version, job.get("inputs", {})
-            )
-        except Exception as exc:
-            results.append(
-                {
-                    "id": job_id,
-                    "state": "failed",
-                    "output": {},
-                    "error": " ".join(str(exc).split())[:1000],
-                }
-            )
-        else:
-            results.append(
-                {
-                    "id": job_id,
-                    "state": "succeeded",
-                    "output": output,
-                    "error": "",
-                }
-            )
-    return results
+def _execute_jobs(instance: Path, jobs: object, *, client, lane="regular") -> None:
+    execute_owned(instance, jobs, client, lane, execute_capability)
 
 
 def _read_results(path: Path) -> list[dict[str, object]]:
