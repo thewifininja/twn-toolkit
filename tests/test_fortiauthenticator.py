@@ -341,7 +341,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
                 "device": "/api/v1/macdevices/42/",
                 "device_name": "Printer",
                 "group": "/api/v1/macgroups/8/",
-                "group_name": "Office Devices",
+                "group_name": "=Office Devices",
                 "expiry_time": None,
                 "resource_uri": "/api/v1/macgroup-memberships/91/",
             }
@@ -368,7 +368,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             response.get_data(as_text=True),
             "Membership ID,Device ID,Device Name,Device URI,Group ID,Group Name,Group URI,"
             "Expiry Time,Resource URI\n"
-            "91,42,Printer,/api/v1/macdevices/42/,8,Office Devices,/api/v1/macgroups/8/,,"
+            "91,42,Printer,/api/v1/macdevices/42/,8,'=Office Devices,/api/v1/macgroups/8/,,"
             "/api/v1/macgroup-memberships/91/\n",
         )
         summary = ActivityStore(self.temporary_directory.name).summary()
@@ -559,6 +559,38 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
 
         self.assertIn(b"selected targets changed after the preview", response.data)
         delete_device.assert_not_called()
+
+    @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
+    def test_mac_device_csv_download_formats_are_safe_and_explicit(
+        self, get_all_mac_devices: Mock
+    ) -> None:
+        self.create_profile()
+        get_all_mac_devices.return_value = [
+            {
+                "address": "11:22:33:44:55:66",
+                "name": "=command",
+                "description": "\t@command",
+                "resource_uri": "/api/v1/macdevices/42/",
+            }
+        ]
+
+        spreadsheet_download = self.client.post(
+            "/fortiauthenticator/mac-devices.csv",
+            data={"profile": "Lab"},
+        )
+        raw_download = self.client.post(
+            "/fortiauthenticator/mac-devices.csv",
+            data={"profile": "Lab", "csv_format": "raw"},
+        )
+
+        self.assertEqual(spreadsheet_download.status_code, 200)
+        self.assertIn("'=command", spreadsheet_download.get_data(as_text=True))
+        self.assertIn("'\t@command", spreadsheet_download.get_data(as_text=True))
+        self.assertIn("-spreadsheet.csv", spreadsheet_download.headers["Content-Disposition"])
+        self.assertEqual(raw_download.status_code, 200)
+        self.assertIn(",=command,\t@command,", raw_download.get_data(as_text=True))
+        self.assertIn("-raw.csv", raw_download.headers["Content-Disposition"])
+
 
 def _cleanup_memberships() -> list[dict[str, object]]:
     return [

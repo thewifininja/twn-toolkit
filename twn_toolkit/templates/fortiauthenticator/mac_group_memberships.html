@@ -25,6 +25,14 @@
           {% endfor %}
         </select>
       </label>
+      <label>
+        CSV download format
+        <select name="csv_format">
+          <option value="spreadsheet" selected>Spreadsheet-safe CSV</option>
+          <option value="raw">Raw CSV for machine processing</option>
+        </select>
+      </label>
+      <p class="field-note">Spreadsheet-safe downloads preserve formula-looking values as text. Raw CSV is lossless for machine processing; generated case evidence always keeps the raw CSV.</p>
       <div class="button-row">
         <button class="secondary" type="submit">Fetch data</button>
         <button formaction="{{ url_for('export_fortiauthenticator_mac_group_memberships') }}" type="submit">Export CSV</button>

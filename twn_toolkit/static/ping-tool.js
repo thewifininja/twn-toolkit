@@ -1740,14 +1740,17 @@
     const url = URL.createObjectURL(new Blob([csv], {type: "text/csv;charset=utf-8"}));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `ping-history-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+    link.download = `ping-history-spreadsheet-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function csvValue(value) {
     const text = String(value);
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    const formulaCandidate = text.replace(/^[ \t\r\n]+/, "");
+    const numeric = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d)?$/.test(text);
+    const literal = /^[=+\-@]/.test(formulaCandidate) && !numeric ? `'${text}` : text;
+    return /[",\n]/.test(literal) ? `"${literal.replace(/"/g, '""')}"` : literal;
   }
 
   function formatTimestamp(value) {

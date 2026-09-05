@@ -1644,13 +1644,17 @@ class InvestigationRouteTests(unittest.TestCase):
 
             with patch(
                 "twn_toolkit.fortigate_routes.ExportTask.run",
-                return_value="serial,name\nS124,Private Switch\n",
+                return_value="serial,name\nS124,=Private Switch\n",
             ):
                 export = client.post(
                     "/tasks/export-switches/run",
                     data={"profile": "Lab"},
                 )
             self.assertEqual(export.status_code, 200)
+            self.assertEqual(
+                export.get_data(as_text=True),
+                "serial,name\nS124,'=Private Switch\n",
+            )
 
             switches = [
                 {"switch-id": "switch-a", "name": "Switch A"},
@@ -1695,7 +1699,7 @@ class InvestigationRouteTests(unittest.TestCase):
             )
             self.assertEqual(
                 store.datastore.file(export_artifact["relative_path"]).read_text(),
-                "serial,name\nS124,Private Switch\n",
+                "serial,name\nS124,=Private Switch\n",
             )
             report = client.get(f"/investigations/{investigation_id}/report")
             self.assertIn(b"Export FortiSwitch Data", report.data)

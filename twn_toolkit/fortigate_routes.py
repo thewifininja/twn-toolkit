@@ -29,6 +29,12 @@ from .audit import (
     suppress_audit_event,
     suppress_case_bridge_event,
 )
+from .csv_exports import (
+    CSV_DOWNLOAD_FORMAT_RAW,
+    csv_download_filename,
+    csv_for_download,
+    normalize_csv_download_format,
+)
 from .fortigate import FortiGateClient, FortiGateError, normalize_api_key, normalize_host
 from .fortiap_history import (
     LocalFortiGateWirelessHistorySource,
@@ -697,8 +703,9 @@ def register_fortigate_routes(
         client = FortiGateClient.from_profile(profile)
         if isinstance(task, ExportTask):
             fields = request.form.get("fields", "").strip()
+            download_format = normalize_csv_download_format(request.form.get("csv_format"))
             try:
-                csv_data = task.run(
+                raw_csv_data = task.run(
                     client=client,
                     endpoint_template=endpoint_template or task.endpoint_template,
                     default_vdom=profile.get("default_vdom", "root"),
@@ -724,13 +731,16 @@ def register_fortigate_routes(
                 f"{profile['name']}: {task.label}",
             )
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            filename = f"{task.id}-{profile['name']}-{stamp}.csv".replace(" ", "_")
+            base_filename = f"{task.id}-{profile['name']}-{stamp}.csv".replace(" ", "_")
+            filename = csv_download_filename(base_filename, download_format)
+            evidence_filename = csv_download_filename(base_filename, CSV_DOWNLOAD_FORMAT_RAW)
+            download_csv_data = csv_for_download(raw_csv_data, download_format)
             suppress_case_bridge_event()
             _annotate_fortigate_export(
                 profile,
                 task,
                 outcome="succeeded",
-                export_size_bytes=len(csv_data.encode("utf-8")),
+                export_size_bytes=len(raw_csv_data.encode("utf-8")),
             )
             now = time.time()
             add_current_investigation_generated_evidence_event(
@@ -742,17 +752,17 @@ def register_fortigate_routes(
                 outcome="succeeded",
                 summary=f"Exported {task.label} from FortiGate profile {profile['name']}.",
                 targets={"profile": profile["name"]},
-                parameters={"format": "CSV"},
-                metrics={"export_size_bytes": len(csv_data.encode("utf-8"))},
+                parameters={"format": "CSV", "download_format": download_format},
+                metrics={"export_size_bytes": len(raw_csv_data.encode("utf-8"))},
                 details={},
                 started_at=now,
                 completed_at=now,
-                filename=filename,
+                filename=evidence_filename,
                 content_type="text/csv",
-                content=csv_data.encode("utf-8"),
+                content=raw_csv_data.encode("utf-8"),
             )
             return Response(
-                csv_data,
+                download_csv_data,
                 mimetype="text/csv",
                 headers={"Content-Disposition": f"attachment; filename={filename}"},
             )

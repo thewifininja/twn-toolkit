@@ -32,6 +32,12 @@ from .audit import (
     suppress_audit_event,
     suppress_case_bridge_event,
 )
+from .csv_exports import (
+    CSV_DOWNLOAD_FORMAT_RAW,
+    csv_download_filename,
+    csv_for_download,
+    normalize_csv_download_format,
+)
 from .fortiauthenticator import (
     FortiAuthenticatorClient,
     FortiAuthenticatorError,
@@ -295,6 +301,7 @@ def register_fortiauthenticator_routes(
     @app.post("/fortiauthenticator/mac-devices.csv")
     def export_fortiauthenticator_mac_devices():
         profile = profile_store.get(request.form.get("profile", ""))
+        download_format = normalize_csv_download_format(request.form.get("csv_format"))
         if not profile:
             annotate_audit_event(
                 category="FortiAuthenticator",
@@ -345,7 +352,10 @@ def register_fortiauthenticator_routes(
         writer.writerows(_format_mac_device(item) for item in objects)
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         safe_profile_name = _safe_filename_profile_name(profile["name"])
-        filename = f"mac-devices-{safe_profile_name}-{stamp}.csv"
+        base_filename = f"mac-devices-{safe_profile_name}-{stamp}.csv"
+        filename = csv_download_filename(base_filename, download_format)
+        evidence_filename = csv_download_filename(base_filename, CSV_DOWNLOAD_FORMAT_RAW)
+        raw_csv_data = output.getvalue()
         suppress_case_bridge_event()
         annotate_audit_event(
             category="FortiAuthenticator",
@@ -361,6 +371,7 @@ def register_fortiauthenticator_routes(
                 ),
                 "record count": len(objects),
                 "format": "CSV",
+                "download format": download_format,
             },
         )
         now = time.time()
@@ -372,17 +383,17 @@ def register_fortiauthenticator_routes(
             outcome="succeeded",
             summary=f"Exported {len(objects)} FortiAuthenticator MAC device(s).",
             targets={"profile": profile["name"]},
-            parameters={"format": "CSV"},
+            parameters={"format": "CSV", "download_format": download_format},
             metrics={"record_count": len(objects)},
             details={},
             started_at=now,
             completed_at=now,
-            filename=filename,
+            filename=evidence_filename,
             content_type="text/csv",
-            content=output.getvalue().encode("utf-8"),
+            content=raw_csv_data.encode("utf-8"),
         )
         return Response(
-            output.getvalue(),
+            csv_for_download(raw_csv_data, download_format),
             mimetype="text/csv",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
@@ -434,6 +445,7 @@ def register_fortiauthenticator_routes(
     @app.post("/fortiauthenticator/mac-group-memberships.csv")
     def export_fortiauthenticator_mac_group_memberships():
         profile = profile_store.get(request.form.get("profile", ""))
+        download_format = normalize_csv_download_format(request.form.get("csv_format"))
         if not profile:
             annotate_audit_event(
                 category="FortiAuthenticator",
@@ -496,7 +508,10 @@ def register_fortiauthenticator_routes(
         writer.writerows(_format_mac_group_membership(item) for item in objects)
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         safe_profile_name = _safe_filename_profile_name(profile["name"])
-        filename = f"mac-group-memberships-{safe_profile_name}-{stamp}.csv"
+        base_filename = f"mac-group-memberships-{safe_profile_name}-{stamp}.csv"
+        filename = csv_download_filename(base_filename, download_format)
+        evidence_filename = csv_download_filename(base_filename, CSV_DOWNLOAD_FORMAT_RAW)
+        raw_csv_data = output.getvalue()
         suppress_case_bridge_event()
         annotate_audit_event(
             category="FortiAuthenticator",
@@ -512,6 +527,7 @@ def register_fortiauthenticator_routes(
                 ),
                 "record count": len(objects),
                 "format": "CSV",
+                "download format": download_format,
             },
         )
         now = time.time()
@@ -523,17 +539,17 @@ def register_fortiauthenticator_routes(
             outcome="succeeded",
             summary=f"Exported {len(objects)} FortiAuthenticator MAC group membership(s).",
             targets={"profile": profile["name"]},
-            parameters={"format": "CSV"},
+            parameters={"format": "CSV", "download_format": download_format},
             metrics={"record_count": len(objects)},
             details={},
             started_at=now,
             completed_at=now,
-            filename=filename,
+            filename=evidence_filename,
             content_type="text/csv",
-            content=output.getvalue().encode("utf-8"),
+            content=raw_csv_data.encode("utf-8"),
         )
         return Response(
-            output.getvalue(),
+            csv_for_download(raw_csv_data, download_format),
             mimetype="text/csv",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
