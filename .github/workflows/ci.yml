@@ -79,6 +79,31 @@ jobs:
             --ignore-vuln PYSEC-2026-2858 \
             --ignore-vuln GHSA-cq46-m9x9-j8w2
 
+  arch:
+    name: Arch Linux / current Python
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Arch build and Python prerequisites
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git python python-pip rust
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements-dev.txt
+
+      - name: Compile Python sources
+        run: .venv/bin/python -m compileall -q twn_toolkit tests
+
+      - name: Run test suite
+        run: .venv/bin/python -m pytest -q --durations=50
+
   test:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
