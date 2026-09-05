@@ -200,7 +200,12 @@ class SftpRouteTests(unittest.TestCase):
             self.assertEqual(page.status_code, 200)
             self.assertIn(b"Fetch and download", page.data)
 
+            from twn_toolkit.operational import OperationalSettingsStore
+            OperationalSettingsStore(instance).save({"transfer_workers": 3, "transfer_deadline_seconds": 42})
+
             def fake_fetch(**kwargs):
+                self.assertEqual(kwargs["policy"].workers, 3)
+                self.assertEqual(kwargs["policy"].deadline_seconds, 42)
                 filename = "20260712153000-switch-config.cfg"
                 (kwargs["output_dir"] / filename).write_bytes(b"config")
                 return [{

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from twn_toolkit.transfer_deadlines import TransferPolicy
+from twn_toolkit.operational import OperationalSettingsStore
+
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -177,6 +180,7 @@ def _execute_sftp(config: dict[str, Any], trigger: ConditionResult) -> ActionRes
             ),
             output_dir=staging, filename_pattern=normalized["filename_pattern"],
             protocol=normalized["protocol"],
+            policy=TransferPolicy.from_settings(OperationalSettingsStore(instance_path).get()) if instance_path else TransferPolicy(),
         )
         successes = [item for item in results if item["status"] == "success"]
         artifacts: list[dict[str, Any]] = []

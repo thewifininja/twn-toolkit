@@ -31,9 +31,14 @@ capacity in growing windows, up to 64 MiB per extension. Buffers are bounded at
 256 KiB per upload. Directory scans occur at reservation changes and commit,
 rather than once per packet. Every buffer flush checks current disk space.
 
-HTTP multipart parsing can spool request parts to system temporary storage
-before the shared upload lifecycle starts. Request-size limits bound these
-spools, but their bytes are not included in lifecycle reservations yet.
+HTTP multipart files use private, request-owned staging from the first parser
+write. These spools share physical-space reservations with protocol uploads.
+Datastore quota is checked when the destination becomes known; publication
+reuses the spool without a second file copy. Rejected, malformed, or interrupted
+requests discard their spools, and owner locks allow crash recovery. Other
+multipart consumers read the same accounted staging and retain their existing
+endpoint-specific request limits. The file count defaults to 64 per request
+(adjustable from 1 to 256 in Operations).
 
 These guarantees coordinate uploads using this API. Other toolkit writers and
 manual filesystem changes can still consume space independently; reservation
@@ -114,3 +119,38 @@ also consult transfer history. Download history starts at completion/abort,
 counts bytes actually read, and marks success only after an explicit CLOSE
 with complete sequential coverage. Arbitrary out-of-order reads can be recorded
 as incomplete when full coverage cannot be confirmed.
+
+## Outgoing collections
+
+Settings → Operations → Outgoing transfer limits applies to new Bulk Transfer
+and file-collection automation runs. Each run snapshots the settings from the
+executing instance; distributed execution uses that instance's local policy.
+Saving these values does not restart services or alter an active run.
+
+| Setting | Default | Supported range |
+| --- | ---: | ---: |
+| Concurrent remote hosts per run | 8 | 1–32 |
+| Socket idle timeout | 15 seconds | 1–300 |
+| Deadline per remote host | 300 seconds | 1–86400 |
+| Remote file size | 256 MiB | 1–65536 |
+| Combined downloaded bytes per run | 1024 MiB | 1–1048576 |
+
+The host deadline starts when a worker begins that host, covering setup and all
+requested files. Progress and keepalives do not reset it. A bounded watchdog
+closes SSH transports and FTP control/data sockets to interrupt stalled network
+operations, including SFTP subsystem setup, metadata, reads, and close. SSH
+connection/authentication retain their existing ten-second caps and banner
+negotiation its fifteen-second cap; a smaller idle allowance lowers these caps.
+Operating-system DNS resolution and blocked local filesystem calls cannot be
+forcibly interrupted by closing a transport, so this is not a hard wall-clock
+execution guarantee for those operations.
+
+Completed files remain available if a later file fails. Partial files are
+removed, their run budget is released, and declared-size mismatches fail rather
+than publishing truncated or growing files. FTP servers without SIZE support
+are bounded by actual bytes received. Download staging is bounded by these
+per-run budgets but does not yet participate in incoming upload disk
+reservations. Independent simultaneous runs each have their own allowance.
+
+Existing request-shape caps remain 50 hosts, 50 paths, and 200 host/path pairs;
+these have not become administrator settings. Network reads use bounded chunks.

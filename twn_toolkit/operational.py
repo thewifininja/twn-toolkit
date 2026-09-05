@@ -8,9 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from .file_transactions import file_transaction
+from .transfer_deadlines import OUTGOING_TRANSFER_LIMITS, validate_transfer_limits
 
 
 DEFAULT_OPERATIONAL_SETTINGS = {
+    **{key: spec[0] for key, spec in OUTGOING_TRANSFER_LIMITS.items()},
     "max_concurrent_automations": 4,
     "max_queued_automations": 20,
     "skip_overlapping_automations": True,
@@ -18,6 +20,7 @@ DEFAULT_OPERATIONAL_SETTINGS = {
     "automation_artifact_quota_gib": 10,
     "minimum_free_gib": 2,
     "max_upload_mib": 1024,
+    "max_multipart_files": 64,
 }
 
 
@@ -52,6 +55,10 @@ class OperationalSettingsStore:
             minimum_free = int(values["minimum_free_gib"])
             raw_upload = values.get("max_upload_mib", 1024)
             upload = int(raw_upload)
+            raw_multipart = values.get("max_multipart_files", 64)
+            if isinstance(raw_multipart, bool) or not isinstance(raw_multipart, (str, int)):
+                raise ValueError
+            multipart = int(raw_multipart)
             if isinstance(raw_upload, bool) or str(raw_upload).strip() != str(upload):
                 raise ValueError
         except (KeyError, TypeError, ValueError) as exc:
@@ -61,7 +68,10 @@ class OperationalSettingsStore:
         if not 1 <= datastore <= 1024 or not 1 <= artifacts <= 1024: raise ValueError("Storage quotas must be 1–1024 GiB.")
         if not 0 <= minimum_free <= 100: raise ValueError("Minimum free space must be 0–100 GiB.")
         if not 1 <= upload <= 65536: raise ValueError("Upload size must be 1–65536 MiB.")
+        if not 1 <= multipart <= 256: raise ValueError("Files per upload request must be 1–256.")
         return {
+            **validate_transfer_limits(values),
+            "max_multipart_files": multipart,
             "max_upload_mib": upload,
             "max_concurrent_automations": concurrent,
             "max_queued_automations": queued,

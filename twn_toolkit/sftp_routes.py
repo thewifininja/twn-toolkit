@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from twn_toolkit.transfer_deadlines import TransferPolicy
+from twn_toolkit.operational import OperationalSettingsStore
+
 import io
 import json
 import os
@@ -104,6 +107,7 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                         output_dir=output_dir,
                         filename_pattern=filename_pattern,
                         protocol=str(form["protocol"]),
+                        policy=TransferPolicy.from_settings(OperationalSettingsStore(current_app.instance_path).get()),
                     )
                     successes = [result for result in results if result["status"] == "success"]
                     if form["output_mode"] == "download":

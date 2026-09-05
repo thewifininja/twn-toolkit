@@ -2657,12 +2657,16 @@ class AutomationRegistryTests(unittest.TestCase):
             "twn_toolkit.automation_types.actions.fetch_ssh_files",
             side_effect=fake_fetch,
         ):
+            from twn_toolkit.operational import OperationalSettingsStore
+            OperationalSettingsStore(instance).save({"transfer_workers": 2, "transfer_file_mib": 17})
             retained = action.execute(
                 {**base, "destination_mode": "run", "_instance_path": instance},
                 ConditionResult(True, "met", "manual", {}),
             )
             self.assertEqual(retained.status, "success")
             self.assertTrue(fetch_calls[-1]["allow_legacy_algorithms"])
+            self.assertEqual(fetch_calls[-1]["policy"].workers, 2)
+            self.assertEqual(fetch_calls[-1]["policy"].file_bytes, 17 * 1024**2)
             source = Path(retained.output["_artifact_sources"][0]["source_path"])
             self.assertEqual(source.read_bytes(), b"config")
             source.unlink()

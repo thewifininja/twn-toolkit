@@ -289,7 +289,9 @@ def test_authentication_deadline_is_not_extended_by_keepalives(tmp_path):
             while transport.is_active() and time.monotonic() < deadline:
                 try:
                     transport.send_ignore()
-                except OSError:
+                except (OSError, EOFError):
+                    # The deadline can close the socket between is_active() and
+                    # send_ignore(); Paramiko reports that race as EOF on macOS.
                     break
                 time.sleep(0.1)
             wait_for(lambda: not transport.is_active())

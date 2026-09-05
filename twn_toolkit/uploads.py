@@ -38,7 +38,7 @@ def _credit(record):
 
 
 class Upload:
-    def __init__(self, store, destination, *, max_bytes, overwrite, expected_bytes=None):
+    def __init__(self, store, destination, *, max_bytes, overwrite, expected_bytes=None, staging_only=False):
         self.store, self.destination = store, destination
         self.max_bytes, self.overwrite = max_bytes, overwrite
         self.expected_bytes = expected_bytes
@@ -72,9 +72,9 @@ class Upload:
                 self._owner = os.open(self.directory / "owner", os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_CLOEXEC, 0o600)
                 fcntl.flock(self._owner, fcntl.LOCK_EX)
                 self._record = {"destination": str(destination), "root": str(store.root),
-                                "original": _identity(destination), "capacity": 0}
+                                "original": _identity(destination), "capacity": 0, "staging_only": staging_only}
                 self._save_record()
-                self._file = self.temporary.open("xb", buffering=0)
+                self._file = self.temporary.open("xb+", buffering=0)
                 os.chmod(self.temporary, 0o600)
                 self._reserve(expected_bytes or 0, records, exact=True)
         except BaseException:
@@ -153,11 +153,11 @@ class Upload:
                 written, device = stat.st_size, stat.st_dev
             if device == disk.st_dev:
                 pending += max(0, record["capacity"] - written)
-            if record["root"] == str(self.store.root):
+            if record["root"] == str(self.store.root) and not record.get("staging_only", False):
                 growth += max(0, record["capacity"] - _credit(record))
         physical = disk.st_size + shutil.disk_usage(self.registry).free - int(settings["minimum_free_gib"]) * 1024**3 - pending
         logical = self.max_bytes
-        if self.store.root_name == "datastore":
+        if self.store.root_name == "datastore" and not self._record.get("staging_only", False):
             logical = int(settings["datastore_quota_gib"]) * 1024**3 - directory_bytes(self.store.root) + _credit(self._record) - growth
         return logical, physical
 
@@ -239,12 +239,52 @@ class Upload:
             raise ValueError("I/O operation on closed upload.")
         return self._file.fileno()
 
+    def promote(self, store, relative_path, filename, *, max_bytes=None, overwrite=False):
+        """Bind a completed multipart spool to its final destination, without copying."""
+        if self.closed or not self._record.get("staging_only", False):
+            raise DatastoreError("Only an open multipart spool can be promoted.")
+        try:
+            if store.instance != self.store.instance:
+                raise DatastoreError("Upload staging belongs to another instance.")
+            self.flush()
+            with file_transaction(self._lock):
+                records = self._records()
+                parent = store.folder(relative_path)
+                destination = parent / store._validate_name(filename)
+                if any(token != self.token and record["destination"] == str(destination)
+                       for token, record in records.items()):
+                    raise DatastoreError("Another upload is already writing this destination.")
+                if destination.is_symlink() or (destination.exists() and not destination.is_file()):
+                    raise DatastoreError("The upload destination must be a regular file.")
+                if not overwrite:
+                    store._ensure_available(destination)
+                limit = min(self.max_bytes, max_bytes) if max_bytes is not None else self.max_bytes
+                if self.total > limit:
+                    raise DatastoreError("Upload exceeds the configured file limit.")
+                descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+                if os.fstat(descriptor).st_dev != self.registry.stat().st_dev:
+                    os.close(descriptor)
+                    raise DatastoreError("Upload staging and destination must be on the same filesystem.")
+                os.close(self._parent)
+                self._parent = descriptor
+                self.store, self.destination = store, destination
+                self.max_bytes, self.overwrite = limit, overwrite
+                self._record.update(destination=str(destination), root=str(store.root),
+                                    original=_identity(destination), staging_only=False)
+                self._reserve(self.total, records, exact=True)
+            return self
+        except BaseException:
+            self.abort()
+            raise
+
     def commit(self):
         if self.committed:
             return self.destination, self.total
         if self.closed:
             raise DatastoreError("The upload is closed; it cannot be published.")
         try:
+            if self._record.get("staging_only", False):
+                raise DatastoreError("Multipart staging must have a destination before publication.")
             if self.expected_bytes is not None and self.total != self.expected_bytes:
                 raise DatastoreError("Upload ended before its declared size was received.")
             self.flush()
@@ -309,3 +349,34 @@ class Upload:
 
     def __exit__(self, *_exc):
         self.abort()
+
+
+class MultipartSpool:
+    def __init__(self, store, limit):
+        self._sealed = False
+        self.upload = Upload(store, store.root / secrets.token_hex(16),
+                             max_bytes=limit, overwrite=False, staging_only=True)
+
+    @property
+    def closed(self):
+        return self.upload.closed
+
+    def write(self, data):
+        if self._sealed:
+            raise ValueError("Multipart parsing has finished; this spool is read-only.")
+        return self.upload.write(data)
+
+    def seek(self, *args):
+        self.upload.flush()
+        self._sealed = True
+        return self.upload._file.seek(*args)
+
+    def tell(self):
+        return self.upload._file.tell() if self._sealed else self.upload.total
+
+    def read(self, size=-1):
+        self.upload.flush()
+        return self.upload._file.read(size)
+
+    def close(self):
+        self.upload.abort()

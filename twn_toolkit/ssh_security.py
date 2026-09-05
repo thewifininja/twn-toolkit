@@ -58,6 +58,8 @@ def open_ssh_client(
     connect_timeout: float = 10,
     auth_timeout: float = 10,
     required_host_key_fingerprint: str = "",
+    on_client_created=None,
+    banner_timeout: float = SSH_BANNER_TIMEOUT_SECONDS,
 ) -> Any:
     """Open an SSH client with one bounded retry for a missing server banner."""
     import paramiko
@@ -72,6 +74,8 @@ def open_ssh_client(
     known_hosts_path = Path.home() / ".ssh" / "known_hosts"
     for attempt in range(SSH_BANNER_ATTEMPTS):
         client = paramiko.SSHClient()
+        if on_client_created is not None:
+            on_client_created(client)
         if required_fingerprint and known_hosts_path.is_file():
             client.load_host_keys(str(known_hosts_path))
         else:
@@ -100,7 +104,7 @@ def open_ssh_client(
                 look_for_keys=False,
                 timeout=connect_timeout,
                 auth_timeout=auth_timeout,
-                banner_timeout=SSH_BANNER_TIMEOUT_SECONDS,
+                banner_timeout=banner_timeout,
                 disabled_algorithms=disabled_ssh_algorithms(
                     allow_legacy_algorithms=allow_legacy_algorithms
                 ),
