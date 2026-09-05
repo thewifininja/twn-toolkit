@@ -441,6 +441,93 @@ class RemoteSessionStoreTests(unittest.TestCase):
         self.assertEqual(interrupted["state"], "interrupted")
         self.assertEqual(interrupted["termination"], "toolkit_restart")
 
+    def test_user_reconciliation_is_scoped_and_rate_limited(self) -> None:
+        manager = RemoteSessionManager(
+            self.store,
+            InvestigationStore(self.directory.name),
+            ssh_opener=FakeSshOpener(),
+        )
+        first = self.store.create_session(
+            user_id="user-one",
+            username="operator",
+            title="First orphan",
+            host="switch-one.example",
+            port=22,
+            remote_username="admin",
+            record_transcript=False,
+        )
+        second = self.store.create_session(
+            user_id="user-two",
+            username="operator",
+            title="Second orphan",
+            host="switch-two.example",
+            port=22,
+            remote_username="admin",
+            record_transcript=False,
+        )
+        self.store.mark_connected(str(first["id"]))
+        self.store.mark_connected(str(second["id"]))
+        try:
+            with patch.object(
+                self.store, "active_sessions", wraps=self.store.active_sessions
+            ) as active_sessions:
+                self.assertEqual(manager.sessions_for_user("user-one"), [])
+                self.assertEqual(manager.sessions_for_user("user-one"), [])
+                self.assertEqual(active_sessions.call_count, 1)
+                active_sessions.assert_called_once_with(user_id="user-one")
+                with patch(
+                    "twn_toolkit.remote_sessions.time.monotonic",
+                    return_value=time.monotonic() + 6,
+                ):
+                    self.assertEqual(manager.sessions_for_user("user-one"), [])
+                self.assertEqual(active_sessions.call_count, 2)
+            self.assertEqual(
+                self.store.get_session(str(first["id"]))["state"], "interrupted"
+            )
+            self.assertEqual(
+                self.store.get_session(str(second["id"]))["state"], "running"
+            )
+        finally:
+            manager.close()
+
+    def test_idle_terminal_avoids_repeated_session_database_reads(self) -> None:
+        manager = RemoteSessionManager(
+            self.store,
+            InvestigationStore(self.directory.name),
+            ssh_opener=FakeSshOpener(output=[]),
+        )
+        try:
+            with patch(
+                "twn_toolkit.remote_sessions.REMOTE_SESSION_IDLE_SECONDS", 0.8
+            ):
+                session = manager.start_ssh_session(
+                    user_id="user-one",
+                    username="operator",
+                    title="Idle shell",
+                    host="switch.example",
+                    port=22,
+                    remote_username="admin",
+                    password="not-retained",
+                    record_transcript=False,
+                )
+                wait_for_state(self.store, str(session["id"]), "running")
+                with patch.object(
+                    self.store, "get_session", wraps=self.store.get_session
+                ) as get_session:
+                    deadline = time.monotonic() + 2
+                    while (
+                        manager._runtime(str(session["id"])) is not None
+                        and time.monotonic() < deadline
+                    ):
+                        time.sleep(0.01)
+                    self.assertIsNone(manager._runtime(str(session["id"])))
+                self.assertLessEqual(get_session.call_count, 2)
+                stopped = self.store.get_session(str(session["id"]))
+                self.assertEqual(stopped["state"], "stopped")
+                self.assertEqual(stopped["termination"], "idle_timeout")
+        finally:
+            manager.close()
+
     def test_terminal_text_removes_ansi_without_losing_lines(self) -> None:
         self.assertEqual(
             sanitize_terminal_text("one\r\n\x1b[31mtwo\x1b[0m\x00\n"),
@@ -1366,9 +1453,17 @@ class RemoteSessionRouteTests(unittest.TestCase):
             ssh_opener=FakeSshOpener(),
         )
 
-        second_worker.send_input(
-            session["id"], user_id="test-user", data="show version\r"
-        )
+        runtime = self.manager._runtime(str(session["id"]))
+        self.assertIsNotNone(runtime)
+        activity_at = float(runtime["last_activity_monotonic"])
+        with patch(
+            "twn_toolkit.remote_sessions.time.monotonic",
+            return_value=activity_at + 1,
+        ):
+            second_worker.send_input(
+                session["id"], user_id="test-user", data="show version\r"
+            )
+        self.assertEqual(runtime["last_activity_monotonic"], activity_at + 1)
         self.assertEqual(
             self.opener.clients[0].channel.sent,
             [b"show version\r"],

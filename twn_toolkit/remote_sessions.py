@@ -30,6 +30,7 @@ REMOTE_SESSION_CHECKPOINT_LIMIT_BYTES = 8 * 1024 * 1024
 REMOTE_SESSION_CHECKPOINT_VERSION = 1
 REMOTE_SESSION_IDLE_SECONDS = 8 * 60 * 60
 REMOTE_SESSION_RETENTION_SECONDS = 7 * 24 * 60 * 60
+REMOTE_SESSION_RECONCILIATION_INTERVAL_SECONDS = 5.0
 ACTIVE_REMOTE_SESSION_STATES = frozenset({"connecting", "running"})
 
 
@@ -228,15 +229,18 @@ class RemoteSessionStore:
             )
         return self.get_session(session_id)
 
-    def active_sessions(self) -> list[dict[str, Any]]:
+    def active_sessions(self, *, user_id: str = "") -> list[dict[str, Any]]:
+        query = """
+            SELECT * FROM remote_sessions
+            WHERE state IN ('connecting', 'running')
+        """
+        values: tuple[Any, ...] = ()
+        if user_id:
+            query += " AND user_id = ?"
+            values = (user_id,)
+        query += " ORDER BY created_at"
         with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT * FROM remote_sessions
-                WHERE state IN ('connecting', 'running')
-                ORDER BY created_at
-                """
-            ).fetchall()
+            rows = connection.execute(query, values).fetchall()
         return [self._session(row) for row in rows]
 
     def create_session(
@@ -907,11 +911,13 @@ class RemoteSessionManager:
             self.control_root / f"{self.pid}-{secrets.token_hex(4)}.sock"
         )
         self._lock = threading.RLock()
+        self._reconciliation_lock = threading.Lock()
+        self._next_reconciliation_at: dict[str, float] = {}
         self._runtimes: dict[str, dict[str, Any]] = {}
         self._control_socket: socket.socket | None = None
         self._control_thread: threading.Thread | None = None
         self._control_unavailable = False
-        self._reconcile_orphaned_sessions()
+        self._reconcile_orphaned_sessions(force=True)
         for session in self.store.sessions_needing_evidence_finalization():
             self._finalize_case(session)
 
@@ -1031,6 +1037,7 @@ class RemoteSessionManager:
             "termination": "manual",
             "client": None,
             "channel": None,
+            "last_activity_monotonic": time.monotonic(),
             "password": password if clean_protocol == "ssh" else "",
             "telnet_credentials": {
                 "username": remote_username if clean_protocol == "telnet" else "",
@@ -1357,6 +1364,7 @@ class RemoteSessionManager:
             channel.settimeout(0.25)
             runtime["channel"] = channel
             self.store.mark_connected(session_id)
+            self._record_runtime_activity(session_id)
             while not runtime["stop"].is_set():
                 if channel.recv_ready():
                     data = channel.recv(65535)
@@ -1365,12 +1373,12 @@ class RemoteSessionManager:
                     if not data:
                         break
                     self._append_terminal_bytes(session_id, decoder, data)
+                    self._record_runtime_activity(session_id)
                 elif channel.exit_status_ready():
                     break
                 else:
-                    current = self.store.get_session(session_id)
-                    last_activity = float(current["last_activity_at"]) if current else 0
-                    if time.time() - last_activity >= REMOTE_SESSION_IDLE_SECONDS:
+                    last_activity = float(runtime["last_activity_monotonic"])
+                    if time.monotonic() - last_activity >= REMOTE_SESSION_IDLE_SECONDS:
                         runtime["termination"] = "idle_timeout"
                         break
                     time.sleep(0.05)
@@ -1589,6 +1597,11 @@ class RemoteSessionManager:
         with self._lock:
             return self._runtimes.get(session_id)
 
+    def _record_runtime_activity(self, session_id: str) -> None:
+        runtime = self._runtime(session_id)
+        if runtime is not None:
+            runtime["last_activity_monotonic"] = time.monotonic()
+
     def _ensure_control_server(self) -> None:
         with self._lock:
             if self._control_socket is not None or self._control_unavailable:
@@ -1712,6 +1725,7 @@ class RemoteSessionManager:
                 raise RemoteSessionError(
                     "Terminal input could not be delivered."
                 ) from exc
+            self._record_runtime_activity(session_id)
             return {"accepted_bytes": len(encoded)}
         if action == "telnet_credential":
             if session.get("protocol") != "telnet":
@@ -1738,6 +1752,7 @@ class RemoteSessionManager:
                 raise RemoteSessionError(
                     f"The Telnet {field} could not be delivered."
                 ) from exc
+            self._record_runtime_activity(session_id)
             return {"accepted_bytes": len(encoded)}
         if action == "resize":
             columns = int(message.get("columns", 0))
@@ -1795,12 +1810,27 @@ class RemoteSessionManager:
             )
         return response
 
-    def _reconcile_orphaned_sessions(self, *, user_id: str = "") -> None:
-        for session in self.store.active_sessions():
-            if user_id and str(session["user_id"]) != user_id:
-                continue
-            if not self._worker_endpoint_available(session):
-                self._interrupt_orphan(session)
+    def _reconcile_orphaned_sessions(
+        self, *, user_id: str = "", force: bool = False
+    ) -> None:
+        """Probe one user's active owners at most once per short interval."""
+        key = user_id
+        now = time.monotonic()
+        with self._reconciliation_lock:
+            if not force and now < self._next_reconciliation_at.get(key, 0.0):
+                return
+            self._next_reconciliation_at[key] = (
+                now + REMOTE_SESSION_RECONCILIATION_INTERVAL_SECONDS
+            )
+        try:
+            sessions = self.store.active_sessions(user_id=user_id)
+            for session in sessions:
+                if not self._worker_endpoint_available(session):
+                    self._interrupt_orphan(session)
+        except Exception:
+            with self._reconciliation_lock:
+                self._next_reconciliation_at.pop(key, None)
+            raise
 
     def _interrupt_orphan(self, session: dict[str, Any]) -> None:
         interrupted = self.store.interrupt_session(str(session["id"]))
