@@ -7,7 +7,7 @@ Closing the stream or leaving its context without committing always aborts.
 
 ## Storage and concurrency
 
-Unfinished files live under the owner-only `instance/.upload-reservations/`
+Lifecycle staging files live under the owner-only `instance/.upload-reservations/`
 directory, outside the folders served to clients. The instance staging area and
 upload destination must share a filesystem; an upload to a separately mounted
 destination is rejected before receiving content. Files are published with
@@ -30,6 +30,10 @@ commits. Known SCP lengths are reserved up front. Unknown lengths reserve
 capacity in growing windows, up to 64 MiB per extension. Buffers are bounded at
 256 KiB per upload. Directory scans occur at reservation changes and commit,
 rather than once per packet. Every buffer flush checks current disk space.
+
+HTTP multipart parsing can spool request parts to system temporary storage
+before the shared upload lifecycle starts. Request-size limits bound these
+spools, but their bytes are not included in lifecycle reservations yet.
 
 These guarantees coordinate uploads using this API. Other toolkit writers and
 manual filesystem changes can still consume space independently; reservation
