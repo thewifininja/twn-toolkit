@@ -401,6 +401,136 @@ class LiveToolStoreTests(unittest.TestCase):
             "9007199254740993",
         )
 
+    def test_runner_snapshots_snmp_profiles_once_per_round(self) -> None:
+        credential = {
+            "name": "Lab",
+            "version": "v2c",
+            "community": "private-community",
+        }
+        host = {
+            "name": "Core",
+            "host": "192.0.2.10",
+            "port": 161,
+            "timeout": 2,
+            "retries": 1,
+            "credential_name": "Lab",
+        }
+        SNMPCredentialProfileStore(self.temporary.name).upsert(credential)
+        SNMPHostProfileStore(self.temporary.name).upsert(host)
+        session = self.store.create_snmp_interface_session(
+            user_id="operator-1",
+            username="operator",
+            title="Core bandwidth",
+            targets=[
+                {"host_name": "Core", "interface_index": 2},
+                {"host_name": "Core", "interface_index": 3},
+                {"host_name": "Missing", "interface_index": 4},
+            ],
+            interval=5,
+            round_timeout=20,
+        )
+        claimed = self.store.claim_due()[0]
+        host_all = SNMPHostProfileStore.all
+        credential_all = SNMPCredentialProfileStore.all
+
+        def poll(prepared):
+            return [
+                {
+                    "host_name": host_profile["name"],
+                    "interface_index": interface_index,
+                    "status": "error",
+                    "error": "planned test failure",
+                }
+                for host_profile, _credential, interface_index in prepared
+            ]
+
+        with patch(
+            "twn_toolkit.live_tools.SNMPHostProfileStore.all",
+            autospec=True,
+            side_effect=host_all,
+        ) as read_hosts, patch(
+            "twn_toolkit.live_tools.SNMPCredentialProfileStore.all",
+            autospec=True,
+            side_effect=credential_all,
+        ) as read_credentials, patch(
+            "twn_toolkit.live_tools.SNMPHostProfileStore.get",
+            autospec=True,
+        ) as get_host, patch(
+            "twn_toolkit.live_tools.SNMPCredentialProfileStore.get",
+            autospec=True,
+        ) as get_credential, patch(
+            "twn_toolkit.live_tools.poll_snmp_interfaces",
+            side_effect=poll,
+        ) as poll_interfaces:
+            LiveToolRunner(self.store).process(claimed)
+
+        read_hosts.assert_called_once()
+        read_credentials.assert_called_once()
+        get_host.assert_not_called()
+        get_credential.assert_not_called()
+        poll_interfaces.assert_called_once_with(
+            [(host, credential, 2), (host, credential, 3)]
+        )
+        detail = self.store.get_session(
+            str(session["id"]), user_id="operator-1"
+        )
+        self.assertEqual(detail["rounds_completed"], 1)
+        self.assertEqual(
+            detail["last_error"],
+            "3 interfaces failed on the latest round.",
+        )
+
+    def test_runner_uses_updated_snmp_profile_on_the_next_round(self) -> None:
+        credential_store = SNMPCredentialProfileStore(self.temporary.name)
+        credential_store.upsert(
+            {"name": "Lab", "version": "v2c", "community": "before"}
+        )
+        SNMPHostProfileStore(self.temporary.name).upsert(
+            {
+                "name": "Core",
+                "host": "192.0.2.10",
+                "port": 161,
+                "timeout": 2,
+                "retries": 1,
+                "credential_name": "Lab",
+            }
+        )
+        session = self.store.create_snmp_interface_session(
+            user_id="operator-1",
+            username="operator",
+            title="Core bandwidth",
+            targets=[{"host_name": "Core", "interface_index": 2}],
+            interval=5,
+            round_timeout=20,
+        )
+        claimed = self.store.claim_due()[0]
+        communities = []
+
+        def poll(prepared):
+            communities.append(prepared[0][1]["community"])
+            return [
+                {
+                    "host_name": "Core",
+                    "interface_index": 2,
+                    "status": "error",
+                    "error": "planned test failure",
+                }
+            ]
+
+        runner = LiveToolRunner(self.store)
+        with patch("twn_toolkit.live_tools.poll_snmp_interfaces", side_effect=poll):
+            runner.process(claimed)
+            credential_store.upsert(
+                {"name": "Lab", "version": "v2c", "community": "after"}
+            )
+            runner.process(claimed)
+
+        self.assertEqual(communities, ["before", "after"])
+        detail = self.store.get_session(
+            str(session["id"]), user_id="operator-1"
+        )
+        self.assertEqual(detail["rounds_completed"], 2)
+
 
 class LiveToolRouteTests(unittest.TestCase):
     def test_ping_session_lifecycle_and_tray_payload(self) -> None:
