@@ -22,6 +22,7 @@ from flask import (
     url_for,
 )
 
+from .automation_heartbeat import read_automation_heartbeat
 from .automation import (
     STAGE_CONTINUATION_LABELS,
     AutomationEngine,
@@ -1301,8 +1302,27 @@ def _scheduler_status(instance_path: Path) -> dict[str, Any]:
         pid = int(pid_path.read_text(encoding="utf-8").strip())
         os.kill(pid, 0)
     except (OSError, ValueError):
-        return {"running": False, "pid": None}
-    return {"running": True, "pid": pid}
+        return {
+            "running": False,
+            "process_running": False,
+            "pid": None,
+            "heartbeat_age": None,
+            "scheduler_progress_age": None,
+            "last_work_completion_age": None,
+            "stopping": False,
+        }
+    heartbeat = read_automation_heartbeat(
+        instance_path / "automation-heartbeat.json"
+    )
+    return {
+        "running": bool(heartbeat["fresh"]),
+        "process_running": True,
+        "pid": pid,
+        "heartbeat_age": heartbeat["age"],
+        "scheduler_progress_age": heartbeat["scheduler_progress_age"],
+        "last_work_completion_age": heartbeat["last_work_completion_age"],
+        "stopping": heartbeat["state"] == "stopping",
+    }
 
 
 def _safe_filename(value: str) -> str:

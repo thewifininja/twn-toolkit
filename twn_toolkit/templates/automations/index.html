@@ -241,10 +241,12 @@
 {% if page_section == 'automations' %}
 <section class="panel automation-manager">
   <div class="section-head"><div><h2>Automations</h2><p>{{ automations|length }} configured · checks continue without an open browser</p></div></div>
-  {% if not scheduler.running %}<div class="message warning automation-scheduler-warning"><strong>Automation scheduler is not running.</strong> Armed automations will not run until the toolkit is restarted with <code>./twn restart</code>.</div>{% endif %}
+  {% if not scheduler.running %}<div class="message warning automation-scheduler-warning"><strong>Automation scheduler is {{ 'not responding' if scheduler.process_running else 'not running' }}.</strong> Armed automations will not run until the toolkit is restarted with <code>./twn restart</code>.</div>{% endif %}
   {% if scheduler.failed_jobs %}<div class="message error automation-scheduler-warning"><strong>{{ scheduler.failed_jobs }} automation job{{ '' if scheduler.failed_jobs == 1 else 's' }} exhausted automatic retries.</strong> Review the scheduler logs, then retry the durable job{{ '' if scheduler.failed_jobs == 1 else 's' }}.<form method="post" action="{{ url_for('retry_failed_automation_jobs') }}"><button class="secondary" type="submit">Retry failed jobs</button></form></div>{% endif %}
   <div class="automation-status-grid">
-    <div><span>Scheduler</span><strong>{{ 'Running' if scheduler.running else 'Stopped' }}</strong></div>
+    <div><span>Scheduler</span><strong>{{ 'Stopping' if scheduler.stopping else 'Running' if scheduler.running else 'Unresponsive' if scheduler.process_running else 'Stopped' }}</strong></div>
+    <div><span>Worker heartbeat</span><strong>{{ scheduler.heartbeat_age ~ 's ago' if scheduler.heartbeat_age is not none else 'None' }}</strong></div>
+    <div><span>Last scheduler pass</span><strong>{{ scheduler.scheduler_progress_age ~ 's ago' if scheduler.scheduler_progress_age is not none else 'None' }}</strong></div>
     <div><span>Queued action jobs</span><strong>{{ scheduler.queued_jobs }}</strong></div>
     <div><span>Waiting between stages</span><strong>{{ scheduler.waiting_jobs }}</strong></div>
     <div><span>Running action jobs</span><strong>{{ scheduler.running_jobs }}</strong></div>

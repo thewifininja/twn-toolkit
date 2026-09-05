@@ -5,12 +5,11 @@ import os
 import signal
 import sys
 import time
-import json
-import secrets
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 from .automation import AutomationEngine, AutomationStore
+from .automation_heartbeat import AutomationHeartbeat
 from .auth import load_or_create_secret_key
 from .live_tools import LiveToolRunner, LiveToolStore
 from .operational import OperationalSettingsStore
@@ -63,6 +62,7 @@ def main() -> None:
     futures: dict[object, dict[str, str]] = {}
     live_futures: dict[object, str] = {}
     heartbeat_path = Path(instance_path) / "automation-heartbeat.json"
+    heartbeat = AutomationHeartbeat(heartbeat_path, max_workers=max_workers)
     running = True
     next_retention_check = 0.0
     next_lease_renewal = 0.0
@@ -72,11 +72,14 @@ def main() -> None:
     def stop(_signum: int, _frame: object) -> None:
         nonlocal running
         running = False
+        heartbeat.request_shutdown()
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
+    heartbeat.start()
     try:
         while running:
+            heartbeat.record_scheduler_cycle(futures, live_futures)
             now = time.time()
             if now >= next_live_finalization:
                 try:
@@ -125,8 +128,10 @@ def main() -> None:
                         file=sys.stderr,
                     )
                 next_startup_check = now + 1
+            completed_work = False
             for future in list(futures):
                 if future.done():
+                    completed_work = True
                     work = futures.pop(future)
                     try:
                         future.result()
@@ -148,7 +153,7 @@ def main() -> None:
                 for work in futures.values()
                 if work["kind"] == "check"
             }
-            while available:
+            while running and available:
                 jobs = store.claim_jobs(
                     limit=1,
                     exclude_automation_ids=active_ids,
@@ -169,10 +174,12 @@ def main() -> None:
                     limit=max(1, available),
                     exclude_automation_ids=checking_ids,
                 )
-                if available
+                if running and available
                 else []
             )
             for automation in due_automations:
+                if not running:
+                    break
                 if operational["skip_overlapping_automations"] and automation["id"] in active_ids:
                     store.record_observation(automation["id"], "skipped", "Skipped because the previous run is still active.")
                     continue
@@ -185,6 +192,7 @@ def main() -> None:
                 active_ids.add(automation["id"])
             for future in list(live_futures):
                 if future.done():
+                    completed_work = True
                     session_id = live_futures.pop(future)
                     try:
                         future.result()
@@ -196,12 +204,14 @@ def main() -> None:
                         )
             live_available = max(0, live_max_workers - len(live_futures))
             for live_session in (
-                live_store.claim_due(limit=live_available) if live_available else []
+                live_store.claim_due(limit=live_available) if running and live_available else []
             ):
+                if not running:
+                    break
                 future = live_executor.submit(live_runner.process, live_session)
                 live_futures[future] = live_session["id"]
-            _write_heartbeat(
-                heartbeat_path, max_workers, futures, live_futures=live_futures
+            heartbeat.record_scheduler_cycle(
+                futures, live_futures, completed_work=completed_work
             )
             wait_seconds = live_store.seconds_until_next_due(
                 maximum=max(0.2, args.poll_seconds)
@@ -216,8 +226,10 @@ def main() -> None:
             else:
                 time.sleep(wait_seconds)
     finally:
+        heartbeat.request_shutdown()
         executor.shutdown(wait=False, cancel_futures=True)
         live_executor.shutdown(wait=False, cancel_futures=True)
+        heartbeat.close()
         heartbeat_path.unlink(missing_ok=True)
         remove_own_pid_file(args.pid_file)
 
@@ -244,37 +256,6 @@ def _daemonize(pid_file: str, log_file: str) -> None:
     os.close(log_fd)
     write_pid_file(pid_file)
 
-
-def _write_heartbeat(
-    path: Path,
-    max_workers: int,
-    futures: dict[object, dict[str, str]],
-    *,
-    live_futures: dict[object, str] | None = None,
-) -> None:
-    live_futures = live_futures or {}
-    payload = {
-        "updated_at": time.time(), "pid": os.getpid(), "max_workers": max_workers,
-        "active": sum(1 for future in futures if future.running()),
-        "queued": sum(1 for future in futures if not future.running() and not future.done()),
-        "tracked": len(futures),
-        "active_checks": sum(
-            1
-            for future, work in futures.items()
-            if work["kind"] == "check" and future.running()
-        ),
-        "active_jobs": sum(
-            1
-            for future, work in futures.items()
-            if work["kind"] == "job" and future.running()
-        ),
-        "live_tools_active": sum(
-            1 for future in live_futures if future.running()
-        ),
-        "live_tools_tracked": len(live_futures),
-    }
-    temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
-    temporary.write_text(json.dumps(payload), encoding="utf-8"); os.chmod(temporary, 0o600); os.replace(temporary, path)
 
 
 if __name__ == "__main__":
