@@ -1400,13 +1400,26 @@ class LiveToolRunner:
             credential_store = SNMPCredentialProfileStore(
                 str(self.store.instance_path)
             )
+            # Each profile file is read once per round. This gives every target
+            # a consistent configuration while allowing saved edits to take
+            # effect on the following round.
+            # Reversing preserves JsonListStore.get's first match if a legacy
+            # import contains duplicate names.
+            hosts_by_name = {
+                profile["name"]: profile
+                for profile in reversed(host_store.all())
+            }
+            credentials_by_name = {
+                profile["name"]: profile
+                for profile in reversed(credential_store.all())
+            }
             prepared = []
             prepared_indexes = []
             results: list[dict[str, Any] | None] = [None] * len(targets)
             for index, target in enumerate(targets):
                 host_name = str(target.get("host_name", ""))
                 interface_index = int(target.get("interface_index", 0))
-                host = host_store.get(host_name)
+                host = hosts_by_name.get(host_name)
                 if not host:
                     results[index] = {
                         "host_name": host_name,
@@ -1415,7 +1428,7 @@ class LiveToolRunner:
                         "error": "The saved SNMP host no longer exists.",
                     }
                     continue
-                credential = credential_store.get(
+                credential = credentials_by_name.get(
                     str(host.get("credential_name", ""))
                 )
                 if not credential:
