@@ -906,7 +906,7 @@ def create_app(instance_path: str | None = None) -> Flask:
                 flash("Passwords do not match.", "error")
             else:
                 try:
-                    user = auth_store.create_user(username, password, is_admin=True)
+                    user = auth_store.create_initial_admin(username, password)
                 except ValueError as exc:
                     _record_authentication_event(
                         action="authentication.setup_failed",

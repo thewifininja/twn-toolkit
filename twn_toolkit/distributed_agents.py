@@ -16,6 +16,8 @@ from urllib.parse import urlsplit
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from .file_transactions import file_transaction
+
 
 COORDINATION_ROLES = {"standalone", "mainframe", "agent"}
 ENROLLMENT_STATES = {"pending", "approved", "denied", "revoked"}
@@ -54,23 +56,24 @@ class DistributedSettingsStore:
             return defaults
 
     def save(self, settings: dict[str, Any]) -> dict[str, Any]:
-        normalized = normalize_distributed_settings(settings)
-        self.instance_path.mkdir(parents=True, exist_ok=True)
-        fd, temporary_name = tempfile.mkstemp(
-            dir=self.instance_path, prefix=".distributed-settings-", suffix=".json"
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(normalized, handle, indent=2)
-                handle.write("\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(temporary_name, 0o600)
-            os.replace(temporary_name, self.path)
-        finally:
-            if os.path.exists(temporary_name):
-                os.unlink(temporary_name)
-        return normalized
+        with file_transaction(self.path):
+            normalized = normalize_distributed_settings(settings)
+            self.instance_path.mkdir(parents=True, exist_ok=True)
+            fd, temporary_name = tempfile.mkstemp(
+                dir=self.instance_path, prefix=".distributed-settings-", suffix=".json"
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(normalized, handle, indent=2)
+                    handle.write("\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.chmod(temporary_name, 0o600)
+                os.replace(temporary_name, self.path)
+            finally:
+                if os.path.exists(temporary_name):
+                    os.unlink(temporary_name)
+            return normalized
 
 
 class DistributedEnrollmentWindow:

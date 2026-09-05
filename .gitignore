@@ -6,3 +6,4 @@ instance/
 .twn-*.lock
 dist/
 .DS_Store
+.local-reviews/

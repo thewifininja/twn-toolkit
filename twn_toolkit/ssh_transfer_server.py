@@ -20,6 +20,8 @@ from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES
 from .pidfiles import process_marker_ready
 from .tftp import format_incoming_filename, validate_incoming_filename_pattern
 
+from .file_transactions import file_transaction
+
 
 DEFAULT_SSH_TRANSFER_SETTINGS = {
     "enabled": False, "bind_host": "127.0.0.1", "port": 2022,
@@ -44,21 +46,22 @@ class SSHTransferSettingsStore:
         return self.validate({**DEFAULT_SSH_TRANSFER_SETTINGS, **raw})
 
     def save(self, value: dict[str, Any], password: str = "") -> dict[str, Any]:
-        existing = self.get()
-        candidate = {**existing, **value}
-        if password:
-            if len(password) < 12:
-                raise ValueError("SSH transfer passwords must be at least 12 characters.")
-            candidate["password_hash"] = generate_password_hash(password)
-        settings = self.validate(candidate)
-        if settings["enabled"] and not settings["password_hash"]:
-            raise ValueError("Set a service password before enabling SSH file transfers.")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.{secrets.token_hex(6)}.tmp")
-        temporary.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, self.path)
-        return settings
+        with file_transaction(self.path):
+            existing = self.get()
+            candidate = {**existing, **value}
+            if password:
+                if len(password) < 12:
+                    raise ValueError("SSH transfer passwords must be at least 12 characters.")
+                candidate["password_hash"] = generate_password_hash(password)
+            settings = self.validate(candidate)
+            if settings["enabled"] and not settings["password_hash"]:
+                raise ValueError("Set a service password before enabling SSH file transfers.")
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_name(f".{self.path.name}.{secrets.token_hex(6)}.tmp")
+            temporary.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self.path)
+            return settings
 
     @staticmethod
     def validate(value: dict[str, Any]) -> dict[str, Any]:
