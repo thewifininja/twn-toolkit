@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import re
 import socket
@@ -89,6 +90,21 @@ def inspect_certificate_chain(host: str, port: int = 443, timeout: float = 8.0) 
         raise CertificateInspectionError("The server completed TLS but did not provide a certificate.")
 
     certificates = [x509.load_der_x509_certificate(raw) for raw in chain_der]
+    trusted_leaf_sha256 = str(trust_result.pop("_leaf_sha256", ""))
+    captured_leaf_sha256 = certificates[0].fingerprint(hashes.SHA256()).hex()
+    if (
+        trust_result.get("valid")
+        and trusted_leaf_sha256
+        and trusted_leaf_sha256.casefold() != captured_leaf_sha256.casefold()
+    ):
+        trust_result = {
+            "valid": False,
+            "error": (
+                "The trusted TLS connection presented a different leaf "
+                "certificate, so trust could not be verified for the "
+                "captured chain."
+            ),
+        }
     hostname_result = check_certificate_hostname(certificates[0], host)
     now = datetime.now(timezone.utc)
     summaries = [summarize_certificate(cert, index, now) for index, cert in enumerate(certificates)]
@@ -183,8 +199,13 @@ def _validate_with_system_trust(host: str, port: int, timeout: float) -> dict[st
     context = ssl.create_default_context()
     try:
         with socket.create_connection((host, port), timeout=timeout) as raw_socket:
-            with context.wrap_socket(raw_socket, server_hostname=host):
-                return {"valid": True, "error": ""}
+            with context.wrap_socket(raw_socket, server_hostname=host) as tls_socket:
+                leaf = tls_socket.getpeercert(binary_form=True)
+                return {
+                    "valid": True,
+                    "error": "",
+                    "_leaf_sha256": hashlib.sha256(leaf).hexdigest() if leaf else "",
+                }
     except ssl.SSLCertVerificationError as exc:
         return {
             "valid": False,
