@@ -12,6 +12,7 @@ from typing import Any, Iterator
 from .activity import ActivityStore
 from .network_tools import ping_engine_capability, ping_hosts
 from .profiles import SNMPCredentialProfileStore, SNMPHostProfileStore
+from .sqlite_store import bootstrap_sqlite_store, sqlite_store_connection
 from .snmp_tools import poll_snmp_interfaces
 
 
@@ -28,8 +29,7 @@ class LiveToolStore:
     def __init__(self, instance_path: str) -> None:
         self.instance_path = Path(instance_path)
         self.path = self.instance_path / "live_tools.sqlite3"
-        with self._connect():
-            pass
+        self._bootstrap_schema()
 
     def create_ping_session(
         self,
@@ -1193,23 +1193,18 @@ class LiveToolStore:
             scheduled_at = sampled_at
         return max(completed_at, scheduled_at + interval)
 
+    def _bootstrap_schema(self) -> None:
+        try:
+            bootstrap_sqlite_store(self.path, self._initialize)
+        finally:
+            self._secure_database_files()
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        self.instance_path.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.path, timeout=10)
-        connection.row_factory = sqlite3.Row
         try:
-            connection.execute("PRAGMA journal_mode = WAL")
-            connection.execute("PRAGMA busy_timeout = 10000")
-            connection.execute("PRAGMA foreign_keys = ON")
-            self._initialize(connection)
-            yield connection
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
+            with sqlite_store_connection(self.path) as connection:
+                yield connection
         finally:
-            connection.close()
             self._secure_database_files()
 
     def _secure_database_files(self) -> None:
@@ -1333,7 +1328,6 @@ class LiveToolStore:
                 WHERE tool_key = 'ping'
                 """
             )
-        connection.commit()
 
 
 class LiveToolRunner:
