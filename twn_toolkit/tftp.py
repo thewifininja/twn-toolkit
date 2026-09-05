@@ -19,6 +19,8 @@ from typing import Any, Callable
 from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES
 from .pidfiles import process_marker_ready
 
+from .file_transactions import file_transaction
+
 
 DEFAULT_SETTINGS = {
     "enabled": False,
@@ -46,13 +48,14 @@ class TFTPSettingsStore:
         return self.validate({**DEFAULT_SETTINGS, **raw})
 
     def save(self, value: dict[str, Any]) -> dict[str, Any]:
-        settings = self.validate(value)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.{secrets.token_hex(6)}.tmp")
-        temporary.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, self.path)
-        return settings
+        with file_transaction(self.path):
+            settings = self.validate(value)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_name(f".{self.path.name}.{secrets.token_hex(6)}.tmp")
+            temporary.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self.path)
+            return settings
 
     @staticmethod
     def validate(value: dict[str, Any]) -> dict[str, Any]:

@@ -7,6 +7,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from .file_transactions import file_transaction
+
 
 DEFAULT_OPERATIONAL_SETTINGS = {
     "max_concurrent_automations": 4,
@@ -31,12 +33,13 @@ class OperationalSettingsStore:
         return self.validate({**DEFAULT_OPERATIONAL_SETTINGS, **raw})
 
     def save(self, values: dict[str, Any]) -> dict[str, Any]:
-        settings = self.validate({**self.get(), **values})
-        self.instance_path.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.{secrets.token_hex(5)}.tmp")
-        temporary.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
-        os.chmod(temporary, 0o600); os.replace(temporary, self.path)
-        return settings
+        with file_transaction(self.path):
+            settings = self.validate({**self.get(), **values})
+            self.instance_path.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_name(f".{self.path.name}.{secrets.token_hex(5)}.tmp")
+            temporary.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+            os.chmod(temporary, 0o600); os.replace(temporary, self.path)
+            return settings
 
     @staticmethod
     def validate(values: dict[str, Any]) -> dict[str, Any]:

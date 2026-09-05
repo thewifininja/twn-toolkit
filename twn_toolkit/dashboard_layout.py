@@ -6,6 +6,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from .file_transactions import file_transaction
+
 
 class DashboardLayoutStore:
     """Persist the administrator-managed metric-card order and visibility."""
@@ -53,8 +55,9 @@ class DashboardLayoutStore:
         return {"order": normalized_order, "hidden": normalized_hidden}
 
     def reset(self) -> None:
-        if self.path.exists():
-            self.path.unlink()
+        with file_transaction(self.path):
+            if self.path.exists():
+                self.path.unlink()
 
     def _read(self) -> dict[str, Any]:
         if not self.path.exists():
@@ -77,21 +80,22 @@ class DashboardLayoutStore:
         ]
 
     def _write(self, data: dict[str, Any]) -> None:
-        self.instance_path.mkdir(parents=True, exist_ok=True)
-        fd, temporary_name = tempfile.mkstemp(
-            dir=self.instance_path, prefix=".dashboard-layout-", suffix=".json"
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, indent=2)
-                handle.write("\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(temporary_name, 0o600)
-            os.replace(temporary_name, self.path)
-        finally:
-            if os.path.exists(temporary_name):
-                os.unlink(temporary_name)
+        with file_transaction(self.path):
+            self.instance_path.mkdir(parents=True, exist_ok=True)
+            fd, temporary_name = tempfile.mkstemp(
+                dir=self.instance_path, prefix=".dashboard-layout-", suffix=".json"
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(data, handle, indent=2)
+                    handle.write("\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.chmod(temporary_name, 0o600)
+                os.replace(temporary_name, self.path)
+            finally:
+                if os.path.exists(temporary_name):
+                    os.unlink(temporary_name)
 
 
 class DashboardLayoutBackupStore:
@@ -100,6 +104,7 @@ class DashboardLayoutBackupStore:
     def __init__(self, store: DashboardLayoutStore) -> None:
         self.store = store
         self.path = store.path
+        self.transaction_path = store.path
 
     def all(self) -> list[dict[str, Any]]:
         raw = self.store._read()

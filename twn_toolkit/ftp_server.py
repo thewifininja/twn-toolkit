@@ -12,6 +12,8 @@ from werkzeug.security import generate_password_hash
 from .pidfiles import process_marker_ready
 from .tftp import validate_incoming_filename_pattern
 
+from .file_transactions import file_transaction
+
 
 DEFAULT_FTP_SETTINGS = {
     "enabled": False, "bind_host": "127.0.0.1", "port": 2121,
@@ -31,16 +33,17 @@ class FTPSettingsStore:
         except (FileNotFoundError, OSError, json.JSONDecodeError): return dict(DEFAULT_FTP_SETTINGS)
         return self.validate({**DEFAULT_FTP_SETTINGS, **raw})
     def save(self, value: dict[str, Any], password: str = "") -> dict[str, Any]:
-        candidate = {**self.get(), **value}
-        if password:
-            if len(password) < 12: raise ValueError("FTP passwords must be at least 12 characters.")
-            candidate["password_hash"] = generate_password_hash(password)
-        settings = self.validate(candidate)
-        if settings["enabled"] and not settings["password_hash"]: raise ValueError("Set a password before enabling FTP.")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.{secrets.token_hex(6)}.tmp")
-        temporary.write_text(json.dumps(settings, indent=2) + "\n"); os.chmod(temporary, 0o600); os.replace(temporary, self.path)
-        return settings
+        with file_transaction(self.path):
+            candidate = {**self.get(), **value}
+            if password:
+                if len(password) < 12: raise ValueError("FTP passwords must be at least 12 characters.")
+                candidate["password_hash"] = generate_password_hash(password)
+            settings = self.validate(candidate)
+            if settings["enabled"] and not settings["password_hash"]: raise ValueError("Set a password before enabling FTP.")
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_name(f".{self.path.name}.{secrets.token_hex(6)}.tmp")
+            temporary.write_text(json.dumps(settings, indent=2) + "\n"); os.chmod(temporary, 0o600); os.replace(temporary, self.path)
+            return settings
     @staticmethod
     def validate(value: dict[str, Any]) -> dict[str, Any]:
         bind = str(value.get("bind_host", "")).strip()

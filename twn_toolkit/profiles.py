@@ -9,6 +9,8 @@ from typing import Any
 
 from .duplication import duplicate_name
 
+from .file_transactions import file_transaction
+
 
 class JsonListStore:
     """Small owner-readable JSON list store used by toolkit profile classes."""
@@ -16,6 +18,7 @@ class JsonListStore:
     def __init__(self, instance_path: str, filename: str) -> None:
         self.instance_path = Path(instance_path)
         self.path = self.instance_path / filename
+        self.transaction_path = self.path
 
     def all(self) -> list[dict[str, Any]]:
         return sorted(self._read(), key=lambda profile: profile["name"].lower())
@@ -30,51 +33,57 @@ class JsonListStore:
         original_name: str = "",
         clear_existing_default: bool = False,
     ) -> None:
-        replaced_names = {profile["name"]}
-        if original_name:
-            replaced_names.add(original_name)
-        profiles = [item for item in self._read() if item["name"] not in replaced_names]
-        if clear_existing_default:
-            profiles = [{**item, "is_default": False} for item in profiles]
-        profiles.append(profile)
-        self._write(profiles)
+        with file_transaction(self.path):
+            replaced_names = {profile["name"]}
+            if original_name:
+                replaced_names.add(original_name)
+            profiles = [item for item in self._read() if item["name"] not in replaced_names]
+            if clear_existing_default:
+                profiles = [{**item, "is_default": False} for item in profiles]
+            profiles.append(profile)
+            self._write(profiles)
 
     def delete(self, name: str) -> bool:
-        profiles = self._read()
-        remaining = [profile for profile in profiles if profile["name"] != name]
-        if len(remaining) == len(profiles):
-            return False
-        self._write(remaining)
-        return True
+        with file_transaction(self.path):
+            profiles = self._read()
+            remaining = [profile for profile in profiles if profile["name"] != name]
+            if len(remaining) == len(profiles):
+                return False
+            self._write(remaining)
+            return True
 
     def duplicate(self, name: str) -> dict[str, Any]:
-        profiles = self._read()
-        source = next((profile for profile in profiles if profile["name"] == name), None)
-        if source is None:
-            raise ValueError("Profile not found.")
-        copied = deepcopy(source)
-        copied["name"] = duplicate_name(
-            str(source["name"]),
-            (str(profile["name"]) for profile in profiles),
-        )
-        if "is_default" in copied:
-            copied["is_default"] = False
-        profiles.append(copied)
-        self._write(profiles)
-        return copied
+        with file_transaction(self.path):
+            profiles = self._read()
+            source = next((profile for profile in profiles if profile["name"] == name), None)
+            if source is None:
+                raise ValueError("Profile not found.")
+            copied = deepcopy(source)
+            copied["name"] = duplicate_name(
+                str(source["name"]),
+                (str(profile["name"]) for profile in profiles),
+            )
+            if "is_default" in copied:
+                copied["is_default"] = False
+            profiles.append(copied)
+            self._write(profiles)
+            return copied
 
     def clear(self) -> None:
-        if self.path.exists():
-            self.path.unlink()
+        with file_transaction(self.path):
+            if self.path.exists():
+                self.path.unlink()
 
     def replace_all(self, profiles: list[dict[str, Any]]) -> None:
-        self._write(profiles)
+        with file_transaction(self.path):
+            self._write(profiles)
 
     def _read(self) -> list[dict[str, Any]]:
-        if not self.path.exists():
+        try:
+            with self.path.open("r", encoding="utf-8") as handle:
+                return json.load(handle)
+        except FileNotFoundError:
             return self._default_profiles()
-        with self.path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
 
     def _default_profiles(self) -> list[dict[str, Any]]:
         return []

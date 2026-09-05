@@ -17,6 +17,8 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from .network_tools import ToolInputError
 
+from .file_transactions import file_transaction
+
 
 DEFAULT_SMTP_SETTINGS = {
     "host": "",
@@ -61,26 +63,27 @@ class SMTPSettingsStore:
         password: str = "",
         clear_password: bool = False,
     ) -> dict[str, Any]:
-        existing = self._read()
-        settings = validate_smtp_settings(values, require_configured=True)
-        encrypted = str(existing.get("password_encrypted", ""))
-        if clear_password:
-            encrypted = ""
-        elif password:
-            encrypted = self._encrypt(password)
-        if settings["username"] and not encrypted:
-            raise ToolInputError("Enter an SMTP password for the configured username.")
-        if not settings["username"]:
-            encrypted = ""
-        payload = {**settings, "password_encrypted": encrypted}
-        self.instance_path.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(
-            f".{self.path.name}.{secrets.token_hex(5)}.tmp"
-        )
-        temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, self.path)
-        return self.get()
+        with file_transaction(self.path):
+            existing = self._read()
+            settings = validate_smtp_settings(values, require_configured=True)
+            encrypted = str(existing.get("password_encrypted", ""))
+            if clear_password:
+                encrypted = ""
+            elif password:
+                encrypted = self._encrypt(password)
+            if settings["username"] and not encrypted:
+                raise ToolInputError("Enter an SMTP password for the configured username.")
+            if not settings["username"]:
+                encrypted = ""
+            payload = {**settings, "password_encrypted": encrypted}
+            self.instance_path.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_name(
+                f".{self.path.name}.{secrets.token_hex(5)}.tmp"
+            )
+            temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self.path)
+            return self.get()
 
     def _read(self) -> dict[str, Any]:
         try:

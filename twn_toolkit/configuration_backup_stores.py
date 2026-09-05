@@ -4,9 +4,11 @@ from copy import deepcopy
 import json
 import secrets
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 from .auth import AuthStore
+from .file_transactions import file_transaction
 from .certificate_automation import (
     CertificateAutomationStore,
     VALID_KEY_SIZES,
@@ -31,25 +33,29 @@ class SingleRecordBackupStore:
         read: Callable[[], dict[str, Any]],
         write: Callable[[dict[str, Any]], Any],
         clear: Callable[[], Any],
+        transaction_path: Path,
     ) -> None:
         self.label = label
         self._read = read
         self._write = write
         self._clear = clear
+        self.transaction_path = transaction_path
 
     def all(self) -> list[dict[str, Any]]:
         return [{"name": self.label, "settings": deepcopy(self._read())}]
 
     def replace_all(self, values: list[dict[str, Any]]) -> None:
-        if not values:
-            self.clear()
-            return
-        if len(values) != 1 or not isinstance(values[0].get("settings"), dict):
-            raise ValueError(f"{self.label} backup data is invalid.")
-        self._write(deepcopy(values[0]["settings"]))
+        with file_transaction(self.transaction_path):
+            if not values:
+                self.clear()
+                return
+            if len(values) != 1 or not isinstance(values[0].get("settings"), dict):
+                raise ValueError(f"{self.label} backup data is invalid.")
+            self._write(deepcopy(values[0]["settings"]))
 
     def clear(self) -> None:
-        self._clear()
+        with file_transaction(self.transaction_path):
+            self._clear()
 
 
 class TimeSettingsBackupStore(SingleRecordBackupStore):
@@ -59,6 +65,7 @@ class TimeSettingsBackupStore(SingleRecordBackupStore):
             read=store.get,
             write=lambda settings: store.save(settings.get("timezone", "")),
             clear=lambda: store.path.unlink(missing_ok=True),
+            transaction_path=store.path,
         )
         self.store = store
 
@@ -91,6 +98,7 @@ class SMTPSettingsBackupStore(SingleRecordBackupStore):
             read=read,
             write=write,
             clear=lambda: store.path.unlink(missing_ok=True),
+            transaction_path=store.path,
         )
         self.store = store
 
@@ -104,6 +112,7 @@ class SMTPSettingsBackupStore(SingleRecordBackupStore):
 class AccessProfilesBackupStore:
     def __init__(self, store: AuthStore) -> None:
         self.store = store
+        self.transaction_path = store.path
 
     def all(self) -> list[dict[str, Any]]:
         return self.store.access_profiles()

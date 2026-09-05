@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from copy import deepcopy
+from contextlib import ExitStack
 import hashlib
 import json
 import os
@@ -13,6 +14,7 @@ from datetime import datetime
 from typing import Any
 
 from .version import APP_VERSION
+from .file_transactions import file_transaction
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
@@ -481,54 +483,64 @@ def import_backup_items(
         raise ValueError("None of the selected profile groups were present in the backup.")
 
     validated.sort(key=lambda pair: bool(pair[0].get("atomic_last")))
-    imported: list[tuple[str, int]] = []
-    snapshots: list[tuple[dict[str, Any], Any, bool]] = []
-    try:
-        for item, profiles in validated:
-            store = item["store"]
-            snapshotter = getattr(store, "backup_snapshot", None)
-            custom_snapshot = callable(snapshotter)
-            snapshot = (
-                snapshotter()
-                if custom_snapshot
-                else deepcopy(store.all())
-            )
-            snapshots.append((item, snapshot, custom_snapshot))
-            custom_import = getattr(store, "import_records", None)
-            if callable(custom_import):
-                count = int(custom_import(deepcopy(profiles), import_mode))
-            else:
-                imported_profiles = deepcopy(profiles)
-                if import_mode == "merge":
-                    # A custom snapshot may contain private rollback state
-                    # rather than the portable records exposed by all().
-                    imported_profiles = merge_profiles_by_name(
-                        deepcopy(store.all()), imported_profiles
-                    )
-                store.replace_all(imported_profiles)
-                count = len(imported_profiles)
-            imported.append((item["label"], count))
-    except BaseException as exc:
-        rollback_errors = []
-        for item, snapshot, custom_snapshot in reversed(snapshots):
-            try:
-                if custom_snapshot:
-                    item["store"].restore_backup_snapshot(snapshot)
+    # Hold every participating JSON store from snapshot through rollback.
+    # Canonical ordering also prevents concurrent multi-store imports deadlocking.
+    transaction_paths = sorted({
+        Path(item["store"].transaction_path).resolve()
+        for item, _profiles in validated
+        if getattr(item["store"], "transaction_path", None) is not None
+    })
+    with ExitStack() as transactions:
+        for path in transaction_paths:
+            transactions.enter_context(file_transaction(path))
+        imported: list[tuple[str, int]] = []
+        snapshots: list[tuple[dict[str, Any], Any, bool]] = []
+        try:
+            for item, profiles in validated:
+                store = item["store"]
+                snapshotter = getattr(store, "backup_snapshot", None)
+                custom_snapshot = callable(snapshotter)
+                snapshot = (
+                    snapshotter()
+                    if custom_snapshot
+                    else deepcopy(store.all())
+                )
+                snapshots.append((item, snapshot, custom_snapshot))
+                custom_import = getattr(store, "import_records", None)
+                if callable(custom_import):
+                    count = int(custom_import(deepcopy(profiles), import_mode))
                 else:
-                    item["store"].replace_all(snapshot)
-            except BaseException as rollback_exc:  # pragma: no cover - defensive
-                rollback_errors.append(str(rollback_exc))
-        if rollback_errors:
-            raise RuntimeError(
-                "Configuration import failed and its rollback was incomplete: "
-                + "; ".join(rollback_errors)
-            ) from exc
-        if isinstance(exc, Exception):
-            raise ValueError(
-                f"{item['label']} could not be imported: {exc}"
-            ) from exc
-        raise
-    return imported
+                    imported_profiles = deepcopy(profiles)
+                    if import_mode == "merge":
+                        # A custom snapshot may contain private rollback state
+                        # rather than the portable records exposed by all().
+                        imported_profiles = merge_profiles_by_name(
+                            deepcopy(store.all()), imported_profiles
+                        )
+                    store.replace_all(imported_profiles)
+                    count = len(imported_profiles)
+                imported.append((item["label"], count))
+        except BaseException as exc:
+            rollback_errors = []
+            for item, snapshot, custom_snapshot in reversed(snapshots):
+                try:
+                    if custom_snapshot:
+                        item["store"].restore_backup_snapshot(snapshot)
+                    else:
+                        item["store"].replace_all(snapshot)
+                except BaseException as rollback_exc:  # pragma: no cover - defensive
+                    rollback_errors.append(str(rollback_exc))
+            if rollback_errors:
+                raise RuntimeError(
+                    "Configuration import failed and its rollback was incomplete: "
+                    + "; ".join(rollback_errors)
+                ) from exc
+            if isinstance(exc, Exception):
+                raise ValueError(
+                    f"{item['label']} could not be imported: {exc}"
+                ) from exc
+            raise
+        return imported
 
 
 def merge_profiles_by_name(

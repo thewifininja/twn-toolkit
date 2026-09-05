@@ -13,6 +13,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from .duplication import duplicate_name
 
+from .file_transactions import file_transaction
+
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.@-]{3,64}$")
 MIN_PASSWORD_LENGTH = 8
@@ -70,6 +72,13 @@ class AuthStore:
             return None
         return user if check_password_hash(user["password_hash"], password) else None
 
+    def create_initial_admin(self, username: str, password: str) -> dict[str, Any]:
+        """Consume first-run setup once, including simultaneous setup requests."""
+        with file_transaction(self.path):
+            if self.is_configured():
+                raise ValueError("Initial administrator setup has already been completed.")
+            return self.create_user(username, password, is_admin=True)
+
     def create_user(
         self,
         username: str,
@@ -78,42 +87,44 @@ class AuthStore:
         is_admin: bool = False,
         access_profile_ids: list[str] | None = None,
     ) -> dict[str, Any]:
-        username = validate_username(username)
-        validate_password(password, self.password_policy())
-        data = self._read()
-        users = data.setdefault("users", [])
-        if any(user["username"].casefold() == username.casefold() for user in users):
-            raise ValueError("That username already exists.")
-        if not users:
-            is_admin = True
-        user = {
-            "id": secrets.token_hex(16),
-            "username": username,
-            "password_hash": generate_password_hash(password, method="scrypt"),
-            "is_admin": bool(is_admin),
-            "enabled": True,
-            "theme": "dark",
-            "appearance": dict(DEFAULT_APPEARANCE),
-            "access_profile_ids": _valid_profile_ids(data, access_profile_ids or []),
-            "session_version": 1,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        users.append(user)
-        self._write(data)
-        return user
+        with file_transaction(self.path):
+            username = validate_username(username)
+            validate_password(password, self.password_policy())
+            data = self._read()
+            users = data.setdefault("users", [])
+            if any(user["username"].casefold() == username.casefold() for user in users):
+                raise ValueError("That username already exists.")
+            if not users:
+                is_admin = True
+            user = {
+                "id": secrets.token_hex(16),
+                "username": username,
+                "password_hash": generate_password_hash(password, method="scrypt"),
+                "is_admin": bool(is_admin),
+                "enabled": True,
+                "theme": "dark",
+                "appearance": dict(DEFAULT_APPEARANCE),
+                "access_profile_ids": _valid_profile_ids(data, access_profile_ids or []),
+                "session_version": 1,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            users.append(user)
+            self._write(data)
+            return user
 
     def set_user_theme(self, user_id: str, theme: str) -> None:
-        if theme not in {"light", "dark"}:
-            raise ValueError("Theme must be light or dark.")
-        data = self._read()
-        user = _find_user(data, user_id)
-        user["theme"] = theme
-        appearance = _appearance_from_user(user)
-        appearance["palette"] = (
-            "tokyo-night" if theme == "dark" else "toolkit-classic"
-        )
-        user["appearance"] = appearance
-        self._write(data)
+        with file_transaction(self.path):
+            if theme not in {"light", "dark"}:
+                raise ValueError("Theme must be light or dark.")
+            data = self._read()
+            user = _find_user(data, user_id)
+            user["theme"] = theme
+            appearance = _appearance_from_user(user)
+            appearance["palette"] = (
+                "tokyo-night" if theme == "dark" else "toolkit-classic"
+            )
+            user["appearance"] = appearance
+            self._write(data)
 
     def user_appearance(
         self, user_id: str, context_id: str = "local"
@@ -136,45 +147,46 @@ class AuthStore:
         appearance: dict[str, Any],
         context_id: str = "local",
     ) -> dict[str, str]:
-        data = self._read()
-        user = _find_user(data, user_id)
-        context_id = _appearance_context_id(context_id)
-        updated = self.user_appearance(user_id, context_id)
-        validators = {
-            "palette": APPEARANCE_PALETTES,
-            "density": APPEARANCE_DENSITIES,
-            "layout": APPEARANCE_LAYOUTS,
-            "text_scale": APPEARANCE_TEXT_SCALES,
-        }
-        for key, allowed in validators.items():
-            if key not in appearance:
-                continue
-            value = str(appearance[key]).strip()
-            if value not in allowed:
-                raise ValueError(f"Unsupported appearance {key}: {value or 'empty'}.")
-            updated[key] = value
-        if "sidebar_width" in appearance:
-            try:
-                sidebar_width = int(str(appearance["sidebar_width"]).strip())
-            except (TypeError, ValueError) as exc:
-                raise ValueError("Sidebar width must be a whole number.") from exc
-            if not MIN_SIDEBAR_WIDTH <= sidebar_width <= MAX_SIDEBAR_WIDTH:
-                raise ValueError(
-                    f"Sidebar width must be between {MIN_SIDEBAR_WIDTH} and "
-                    f"{MAX_SIDEBAR_WIDTH} pixels."
-                )
-            updated["sidebar_width"] = str(sidebar_width)
-        if context_id == "local":
-            user["appearance"] = updated
-            user["theme"] = APPEARANCE_PALETTES[updated["palette"]]
-        else:
-            scoped = user.get("appearance_by_context", {})
-            if not isinstance(scoped, dict):
-                scoped = {}
-            scoped[context_id] = updated
-            user["appearance_by_context"] = scoped
-        self._write(data)
-        return dict(updated)
+        with file_transaction(self.path):
+            data = self._read()
+            user = _find_user(data, user_id)
+            context_id = _appearance_context_id(context_id)
+            updated = self.user_appearance(user_id, context_id)
+            validators = {
+                "palette": APPEARANCE_PALETTES,
+                "density": APPEARANCE_DENSITIES,
+                "layout": APPEARANCE_LAYOUTS,
+                "text_scale": APPEARANCE_TEXT_SCALES,
+            }
+            for key, allowed in validators.items():
+                if key not in appearance:
+                    continue
+                value = str(appearance[key]).strip()
+                if value not in allowed:
+                    raise ValueError(f"Unsupported appearance {key}: {value or 'empty'}.")
+                updated[key] = value
+            if "sidebar_width" in appearance:
+                try:
+                    sidebar_width = int(str(appearance["sidebar_width"]).strip())
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("Sidebar width must be a whole number.") from exc
+                if not MIN_SIDEBAR_WIDTH <= sidebar_width <= MAX_SIDEBAR_WIDTH:
+                    raise ValueError(
+                        f"Sidebar width must be between {MIN_SIDEBAR_WIDTH} and "
+                        f"{MAX_SIDEBAR_WIDTH} pixels."
+                    )
+                updated["sidebar_width"] = str(sidebar_width)
+            if context_id == "local":
+                user["appearance"] = updated
+                user["theme"] = APPEARANCE_PALETTES[updated["palette"]]
+            else:
+                scoped = user.get("appearance_by_context", {})
+                if not isinstance(scoped, dict):
+                    scoped = {}
+                scoped[context_id] = updated
+                user["appearance_by_context"] = scoped
+            self._write(data)
+            return dict(updated)
 
     def favorite_tool_ids(self, user_id: str) -> list[str]:
         try:
@@ -193,65 +205,69 @@ class AuthStore:
         return value if value == "local" or value.startswith("agent_") else "local"
 
     def set_execution_context(self, user_id: str, context_id: str) -> None:
-        context_id = str(context_id).strip()
-        if context_id != "local" and (
-            not context_id.startswith("agent_") or len(context_id) > 80
-        ):
-            raise ValueError("Select a valid execution context.")
-        data = self._read()
-        user = _find_user(data, user_id)
-        user["execution_context"] = context_id
-        self._write(data)
+        with file_transaction(self.path):
+            context_id = str(context_id).strip()
+            if context_id != "local" and (
+                not context_id.startswith("agent_") or len(context_id) > 80
+            ):
+                raise ValueError("Select a valid execution context.")
+            data = self._read()
+            user = _find_user(data, user_id)
+            user["execution_context"] = context_id
+            self._write(data)
 
     def toggle_favorite_tool(self, user_id: str, tool_id: str) -> bool:
-        data = self._read()
-        user = _find_user(data, user_id)
-        favorites = [
-            str(item)
-            for item in user.get("favorite_tools", [])
-            if isinstance(item, str)
-        ]
-        if tool_id in favorites:
-            favorites = [item for item in favorites if item != tool_id]
-            enabled = False
-        else:
-            favorites.append(tool_id)
-            enabled = True
-        user["favorite_tools"] = favorites
-        self._write(data)
-        return enabled
+        with file_transaction(self.path):
+            data = self._read()
+            user = _find_user(data, user_id)
+            favorites = [
+                str(item)
+                for item in user.get("favorite_tools", [])
+                if isinstance(item, str)
+            ]
+            if tool_id in favorites:
+                favorites = [item for item in favorites if item != tool_id]
+                enabled = False
+            else:
+                favorites.append(tool_id)
+                enabled = True
+            user["favorite_tools"] = favorites
+            self._write(data)
+            return enabled
 
     def reorder_favorite_tools(
         self, user_id: str, ordered_tool_ids: list[str]
     ) -> None:
-        data = self._read()
-        user = _find_user(data, user_id)
-        favorites = list(
-            dict.fromkeys(
-                str(item)
-                for item in user.get("favorite_tools", [])
-                if isinstance(item, str)
+        with file_transaction(self.path):
+            data = self._read()
+            user = _find_user(data, user_id)
+            favorites = list(
+                dict.fromkeys(
+                    str(item)
+                    for item in user.get("favorite_tools", [])
+                    if isinstance(item, str)
+                )
             )
-        )
-        ordered = [str(tool_id).strip() for tool_id in ordered_tool_ids]
-        if any(not tool_id for tool_id in ordered):
-            raise ValueError("Favorite order contains an empty tool.")
-        if len(ordered) != len(set(ordered)):
-            raise ValueError("Favorite order contains a duplicate tool.")
-        if any(tool_id not in favorites for tool_id in ordered):
-            raise ValueError("Favorite order contains an unknown tool.")
-        user["favorite_tools"] = ordered + [
-            tool_id for tool_id in favorites if tool_id not in ordered
-        ]
-        self._write(data)
+            ordered = [str(tool_id).strip() for tool_id in ordered_tool_ids]
+            if any(not tool_id for tool_id in ordered):
+                raise ValueError("Favorite order contains an empty tool.")
+            if len(ordered) != len(set(ordered)):
+                raise ValueError("Favorite order contains a duplicate tool.")
+            if any(tool_id not in favorites for tool_id in ordered):
+                raise ValueError("Favorite order contains an unknown tool.")
+            user["favorite_tools"] = ordered + [
+                tool_id for tool_id in favorites if tool_id not in ordered
+            ]
+            self._write(data)
 
     def update_password(self, user_id: str, password: str) -> None:
-        validate_password(password, self.password_policy())
-        data = self._read()
-        user = _find_user(data, user_id)
-        user["password_hash"] = generate_password_hash(password, method="scrypt")
-        user["session_version"] = int(user.get("session_version", 1)) + 1
-        self._write(data)
+        with file_transaction(self.path):
+            validate_password(password, self.password_policy())
+            data = self._read()
+            user = _find_user(data, user_id)
+            user["password_hash"] = generate_password_hash(password, method="scrypt")
+            user["session_version"] = int(user.get("session_version", 1)) + 1
+            self._write(data)
 
     def update_user_access(
         self,
@@ -260,24 +276,26 @@ class AuthStore:
         is_admin: bool,
         access_profile_ids: list[str],
     ) -> None:
-        data = self._read()
-        user = _find_user(data, user_id)
-        users = data.get("users", [])
-        if user.get("is_admin") and not is_admin and sum(bool(item.get("is_admin")) for item in users) <= 1:
-            raise ValueError("The only administrator cannot be changed to a standard user.")
-        user["is_admin"] = bool(is_admin)
-        user["access_profile_ids"] = [] if is_admin else _valid_profile_ids(data, access_profile_ids)
-        user["session_version"] = int(user.get("session_version", 1)) + 1
-        self._write(data)
+        with file_transaction(self.path):
+            data = self._read()
+            user = _find_user(data, user_id)
+            users = data.get("users", [])
+            if user.get("is_admin") and not is_admin and sum(bool(item.get("is_admin")) for item in users) <= 1:
+                raise ValueError("The only administrator cannot be changed to a standard user.")
+            user["is_admin"] = bool(is_admin)
+            user["access_profile_ids"] = [] if is_admin else _valid_profile_ids(data, access_profile_ids)
+            user["session_version"] = int(user.get("session_version", 1)) + 1
+            self._write(data)
 
     def delete_user(self, user_id: str) -> None:
-        data = self._read()
-        user = _find_user(data, user_id)
-        users = data.get("users", [])
-        if user.get("is_admin") and sum(bool(item.get("is_admin")) for item in users) <= 1:
-            raise ValueError("The only administrator cannot be deleted.")
-        data["users"] = [item for item in users if item["id"] != user_id]
-        self._write(data)
+        with file_transaction(self.path):
+            data = self._read()
+            user = _find_user(data, user_id)
+            users = data.get("users", [])
+            if user.get("is_admin") and sum(bool(item.get("is_admin")) for item in users) <= 1:
+                raise ValueError("The only administrator cannot be deleted.")
+            data["users"] = [item for item in users if item["id"] != user_id]
+            self._write(data)
 
     def access_profiles(self) -> list[dict[str, Any]]:
         profiles = self._read().get("access_profiles", [])
@@ -300,103 +318,107 @@ class AuthStore:
         description: str = "",
         profile_id: str = "",
     ) -> dict[str, Any]:
-        name = _validate_access_profile_name(name)
-        cleaned_tool_ids = _clean_tool_ids(tool_ids)
-        data = self._read()
-        profiles = data.setdefault("access_profiles", [])
-        folded = name.casefold()
-        if profile_id:
-            profile = _find_access_profile(data, profile_id)
-            if any(
-                item.get("id") != profile_id
-                and str(item.get("name", "")).casefold() == folded
-                for item in profiles
-            ):
-                raise ValueError("That access profile name already exists.")
-        else:
-            if any(str(item.get("name", "")).casefold() == folded for item in profiles):
-                raise ValueError("That access profile name already exists.")
-            profile = {"id": secrets.token_hex(12)}
-            profiles.append(profile)
-        profile["name"] = name
-        profile["description"] = description.strip()[:240]
-        profile["tool_ids"] = cleaned_tool_ids
-        self._write(data)
-        return _normalize_access_profile(profile)
+        with file_transaction(self.path):
+            name = _validate_access_profile_name(name)
+            cleaned_tool_ids = _clean_tool_ids(tool_ids)
+            data = self._read()
+            profiles = data.setdefault("access_profiles", [])
+            folded = name.casefold()
+            if profile_id:
+                profile = _find_access_profile(data, profile_id)
+                if any(
+                    item.get("id") != profile_id
+                    and str(item.get("name", "")).casefold() == folded
+                    for item in profiles
+                ):
+                    raise ValueError("That access profile name already exists.")
+            else:
+                if any(str(item.get("name", "")).casefold() == folded for item in profiles):
+                    raise ValueError("That access profile name already exists.")
+                profile = {"id": secrets.token_hex(12)}
+                profiles.append(profile)
+            profile["name"] = name
+            profile["description"] = description.strip()[:240]
+            profile["tool_ids"] = cleaned_tool_ids
+            self._write(data)
+            return _normalize_access_profile(profile)
 
     def duplicate_access_profile(self, profile_id: str) -> dict[str, Any]:
-        source = self.get_access_profile(profile_id)
-        if source is None:
-            raise ValueError("Access profile not found.")
-        return self.save_access_profile(
-            name=duplicate_name(
-                source["name"],
-                (profile["name"] for profile in self.access_profiles()),
-                max_length=80,
-            ),
-            description=source["description"],
-            tool_ids=list(source["tool_ids"]),
-        )
+        with file_transaction(self.path):
+            source = self.get_access_profile(profile_id)
+            if source is None:
+                raise ValueError("Access profile not found.")
+            return self.save_access_profile(
+                name=duplicate_name(
+                    source["name"],
+                    (profile["name"] for profile in self.access_profiles()),
+                    max_length=80,
+                ),
+                description=source["description"],
+                tool_ids=list(source["tool_ids"]),
+            )
 
     def delete_access_profile(self, profile_id: str) -> None:
-        data = self._read()
-        _find_access_profile(data, profile_id)
-        data["access_profiles"] = [
-            profile for profile in data.get("access_profiles", []) if profile.get("id") != profile_id
-        ]
-        for user in data.get("users", []):
-            existing_profile_ids = user.get("access_profile_ids", [])
-            updated_profile_ids = [
-                item for item in existing_profile_ids if item != profile_id
+        with file_transaction(self.path):
+            data = self._read()
+            _find_access_profile(data, profile_id)
+            data["access_profiles"] = [
+                profile for profile in data.get("access_profiles", []) if profile.get("id") != profile_id
             ]
-            if updated_profile_ids != existing_profile_ids:
-                user["access_profile_ids"] = updated_profile_ids
-                user["session_version"] = int(user.get("session_version", 1)) + 1
-        self._write(data)
+            for user in data.get("users", []):
+                existing_profile_ids = user.get("access_profile_ids", [])
+                updated_profile_ids = [
+                    item for item in existing_profile_ids if item != profile_id
+                ]
+                if updated_profile_ids != existing_profile_ids:
+                    user["access_profile_ids"] = updated_profile_ids
+                    user["session_version"] = int(user.get("session_version", 1)) + 1
+            self._write(data)
 
     def replace_access_profiles(
         self, profiles: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Replace portable role definitions without importing user assignments."""
-        data = self._read()
-        existing = {
-            str(profile.get("name", "")).casefold(): _normalize_access_profile(profile)
-            for profile in data.get("access_profiles", [])
-            if isinstance(profile, dict)
-        }
-        normalized: list[dict[str, Any]] = []
-        seen_names: set[str] = set()
-        for value in profiles:
-            if not isinstance(value, dict):
-                raise ValueError("Access profile backup data is invalid.")
-            name = _validate_access_profile_name(str(value.get("name", "")))
-            folded = name.casefold()
-            if folded in seen_names:
-                raise ValueError("Access profile backup names must be unique.")
-            seen_names.add(folded)
-            retained_id = str(existing.get(folded, {}).get("id", ""))
-            normalized.append(
-                {
-                    "id": retained_id or secrets.token_hex(12),
-                    "name": name,
-                    "description": str(value.get("description", "")).strip()[:240],
-                    "tool_ids": _clean_tool_ids(value.get("tool_ids", [])),
-                }
-            )
+        with file_transaction(self.path):
+            data = self._read()
+            existing = {
+                str(profile.get("name", "")).casefold(): _normalize_access_profile(profile)
+                for profile in data.get("access_profiles", [])
+                if isinstance(profile, dict)
+            }
+            normalized: list[dict[str, Any]] = []
+            seen_names: set[str] = set()
+            for value in profiles:
+                if not isinstance(value, dict):
+                    raise ValueError("Access profile backup data is invalid.")
+                name = _validate_access_profile_name(str(value.get("name", "")))
+                folded = name.casefold()
+                if folded in seen_names:
+                    raise ValueError("Access profile backup names must be unique.")
+                seen_names.add(folded)
+                retained_id = str(existing.get(folded, {}).get("id", ""))
+                normalized.append(
+                    {
+                        "id": retained_id or secrets.token_hex(12),
+                        "name": name,
+                        "description": str(value.get("description", "")).strip()[:240],
+                        "tool_ids": _clean_tool_ids(value.get("tool_ids", [])),
+                    }
+                )
 
-        retained_ids = {profile["id"] for profile in normalized}
-        for user in data.get("users", []):
-            assignments = [
-                profile_id
-                for profile_id in user.get("access_profile_ids", [])
-                if profile_id in retained_ids
-            ]
-            if assignments != user.get("access_profile_ids", []):
-                user["access_profile_ids"] = assignments
-                user["session_version"] = int(user.get("session_version", 1)) + 1
-        data["access_profiles"] = normalized
-        self._write(data)
-        return self.access_profiles()
+            retained_ids = {profile["id"] for profile in normalized}
+            for user in data.get("users", []):
+                assignments = [
+                    profile_id
+                    for profile_id in user.get("access_profile_ids", [])
+                    if profile_id in retained_ids
+                ]
+                if assignments != user.get("access_profile_ids", []):
+                    user["access_profile_ids"] = assignments
+                    user["session_version"] = int(user.get("session_version", 1)) + 1
+            data["access_profiles"] = normalized
+            self._write(data)
+            return self.access_profiles()
 
     def effective_tool_ids(self, user: dict[str, Any]) -> set[str] | None:
         if user.get("is_admin"):
@@ -420,13 +442,14 @@ class AuthStore:
             return DEFAULT_IDLE_TIMEOUT_MINUTES
 
     def set_idle_timeout_minutes(self, minutes: int) -> None:
-        if not 0 <= minutes <= 1440:
-            raise ValueError(
-                "Idle timeout must be 0 (never expire) or between 1 minute and 24 hours."
-            )
-        data = self._read()
-        data.setdefault("settings", {})["idle_timeout_minutes"] = minutes
-        self._write(data)
+        with file_transaction(self.path):
+            if not 0 <= minutes <= 1440:
+                raise ValueError(
+                    "Idle timeout must be 0 (never expire) or between 1 minute and 24 hours."
+                )
+            data = self._read()
+            data.setdefault("settings", {})["idle_timeout_minutes"] = minutes
+            self._write(data)
 
     def min_password_length(self) -> int:
         value = self._read().get("settings", {}).get(
@@ -451,15 +474,16 @@ class AuthStore:
         }
 
     def set_min_password_length(self, length: int) -> None:
-        if not MIN_CONFIGURABLE_PASSWORD_LENGTH <= length <= MAX_CONFIGURABLE_PASSWORD_LENGTH:
-            raise ValueError(
-                "Minimum password length must be between "
-                f"{MIN_CONFIGURABLE_PASSWORD_LENGTH} and "
-                f"{MAX_CONFIGURABLE_PASSWORD_LENGTH} characters."
-            )
-        data = self._read()
-        data.setdefault("settings", {})["min_password_length"] = length
-        self._write(data)
+        with file_transaction(self.path):
+            if not MIN_CONFIGURABLE_PASSWORD_LENGTH <= length <= MAX_CONFIGURABLE_PASSWORD_LENGTH:
+                raise ValueError(
+                    "Minimum password length must be between "
+                    f"{MIN_CONFIGURABLE_PASSWORD_LENGTH} and "
+                    f"{MAX_CONFIGURABLE_PASSWORD_LENGTH} characters."
+                )
+            data = self._read()
+            data.setdefault("settings", {})["min_password_length"] = length
+            self._write(data)
 
     def set_policy(
         self,
@@ -471,29 +495,30 @@ class AuthStore:
         require_number: bool = False,
         require_special: bool = False,
     ) -> None:
-        if not 0 <= idle_timeout_minutes <= 1440:
-            raise ValueError(
-                "Idle timeout must be 0 (never expire) or between 1 minute and 24 hours."
-            )
-        if not (
-            MIN_CONFIGURABLE_PASSWORD_LENGTH
-            <= min_password_length
-            <= MAX_CONFIGURABLE_PASSWORD_LENGTH
-        ):
-            raise ValueError(
-                "Minimum password length must be between "
-                f"{MIN_CONFIGURABLE_PASSWORD_LENGTH} and "
-                f"{MAX_CONFIGURABLE_PASSWORD_LENGTH} characters."
-            )
-        data = self._read()
-        settings = data.setdefault("settings", {})
-        settings["idle_timeout_minutes"] = idle_timeout_minutes
-        settings["min_password_length"] = min_password_length
-        settings["require_uppercase"] = bool(require_uppercase)
-        settings["require_lowercase"] = bool(require_lowercase)
-        settings["require_number"] = bool(require_number)
-        settings["require_special"] = bool(require_special)
-        self._write(data)
+        with file_transaction(self.path):
+            if not 0 <= idle_timeout_minutes <= 1440:
+                raise ValueError(
+                    "Idle timeout must be 0 (never expire) or between 1 minute and 24 hours."
+                )
+            if not (
+                MIN_CONFIGURABLE_PASSWORD_LENGTH
+                <= min_password_length
+                <= MAX_CONFIGURABLE_PASSWORD_LENGTH
+            ):
+                raise ValueError(
+                    "Minimum password length must be between "
+                    f"{MIN_CONFIGURABLE_PASSWORD_LENGTH} and "
+                    f"{MAX_CONFIGURABLE_PASSWORD_LENGTH} characters."
+                )
+            data = self._read()
+            settings = data.setdefault("settings", {})
+            settings["idle_timeout_minutes"] = idle_timeout_minutes
+            settings["min_password_length"] = min_password_length
+            settings["require_uppercase"] = bool(require_uppercase)
+            settings["require_lowercase"] = bool(require_lowercase)
+            settings["require_number"] = bool(require_number)
+            settings["require_special"] = bool(require_special)
+            self._write(data)
 
     def _read(self) -> dict[str, Any]:
         if not self.path.exists():
@@ -519,21 +544,22 @@ class AuthStore:
         return data
 
     def _write(self, data: dict[str, Any]) -> None:
-        self.instance_path.mkdir(parents=True, exist_ok=True)
-        fd, temporary_name = tempfile.mkstemp(
-            dir=self.instance_path, prefix=".auth-", suffix=".json"
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, indent=2)
-                handle.write("\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(temporary_name, 0o600)
-            os.replace(temporary_name, self.path)
-        finally:
-            if os.path.exists(temporary_name):
-                os.unlink(temporary_name)
+        with file_transaction(self.path):
+            self.instance_path.mkdir(parents=True, exist_ok=True)
+            fd, temporary_name = tempfile.mkstemp(
+                dir=self.instance_path, prefix=".auth-", suffix=".json"
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(data, handle, indent=2)
+                    handle.write("\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.chmod(temporary_name, 0o600)
+                os.replace(temporary_name, self.path)
+            finally:
+                if os.path.exists(temporary_name):
+                    os.unlink(temporary_name)
 
 
 def _appearance_from_user(user: dict[str, Any]) -> dict[str, str]:
@@ -579,17 +605,18 @@ def load_or_create_secret_key(instance_path: str) -> str:
         return override
     directory = Path(instance_path)
     path = directory / "session_secret"
-    if path.exists():
-        return path.read_text(encoding="utf-8").strip()
-    directory.mkdir(parents=True, exist_ok=True)
-    secret = secrets.token_urlsafe(48)
-    try:
-        with path.open("x", encoding="utf-8") as handle:
-            handle.write(secret)
-        os.chmod(path, 0o600)
-        return secret
-    except FileExistsError:
-        return path.read_text(encoding="utf-8").strip()
+    with file_transaction(path):
+        if path.exists():
+            return path.read_text(encoding="utf-8").strip()
+        directory.mkdir(parents=True, exist_ok=True)
+        secret = secrets.token_urlsafe(48)
+        try:
+            with path.open("x", encoding="utf-8") as handle:
+                handle.write(secret)
+            os.chmod(path, 0o600)
+            return secret
+        except FileExistsError:
+            return path.read_text(encoding="utf-8").strip()
 
 
 def validate_username(username: str) -> str:

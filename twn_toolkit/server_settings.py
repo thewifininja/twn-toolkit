@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .file_transactions import file_transaction
+
 
 DEFAULT_LISTEN_HOST = "0.0.0.0"
 DEFAULT_INSTANCE_NAME = ""
@@ -70,23 +72,24 @@ class ServerSettingsStore:
         instance_name: str | None = None,
         preferred_fqdn: str | None = None,
     ) -> dict[str, Any]:
-        if listen_host not in ALLOWED_LISTEN_HOSTS:
-            raise ValueError("Choose localhost-only or all network interfaces.")
-        networks = normalize_allowed_networks(allowed_networks)
-        current = self.get()
-        settings = {
-            "listen_host": listen_host,
-            "allowed_networks": networks,
-            "instance_name": normalize_instance_name(
-                current["instance_name"] if instance_name is None else instance_name
-            ),
-            "preferred_fqdn": normalize_preferred_fqdn(
-                current["preferred_fqdn"] if preferred_fqdn is None else preferred_fqdn
-            ),
-        }
-        self._write(self.previous_path, self.get())
-        self._write(self.path, settings)
-        return settings
+        with file_transaction(self.path):
+            if listen_host not in ALLOWED_LISTEN_HOSTS:
+                raise ValueError("Choose localhost-only or all network interfaces.")
+            networks = normalize_allowed_networks(allowed_networks)
+            current = self.get()
+            settings = {
+                "listen_host": listen_host,
+                "allowed_networks": networks,
+                "instance_name": normalize_instance_name(
+                    current["instance_name"] if instance_name is None else instance_name
+                ),
+                "preferred_fqdn": normalize_preferred_fqdn(
+                    current["preferred_fqdn"] if preferred_fqdn is None else preferred_fqdn
+                ),
+            }
+            self._write(self.previous_path, self.get())
+            self._write(self.path, settings)
+            return settings
 
     def client_allowed(
         self,
@@ -109,10 +112,11 @@ class ServerSettingsStore:
         return False
 
     def restore_previous(self) -> bool:
-        if not self.previous_path.exists():
-            return False
-        os.replace(self.previous_path, self.path)
-        return True
+        with file_transaction(self.path):
+            if not self.previous_path.exists():
+                return False
+            os.replace(self.previous_path, self.path)
+            return True
 
     def _write(self, path: Path, data: dict[str, Any]) -> None:
         self.instance_path.mkdir(parents=True, exist_ok=True)

@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .schedule_tools import local_timezone_name
 
+from .file_transactions import file_transaction
+
 
 DEFAULT_TIMEZONE = ""
 COMMON_TIMEZONES = (
@@ -54,20 +56,21 @@ class TimeSettingsStore:
         return {"timezone": configured}
 
     def save(self, timezone_name: Any) -> dict[str, str]:
-        settings = {"timezone": normalize_timezone_name(timezone_name)}
-        self.instance_path.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(
-            f".{self.path.name}.{secrets.token_hex(5)}.tmp"
-        )
-        try:
-            temporary.write_text(
-                json.dumps(settings, indent=2) + "\n", encoding="utf-8"
+        with file_transaction(self.path):
+            settings = {"timezone": normalize_timezone_name(timezone_name)}
+            self.instance_path.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_name(
+                f".{self.path.name}.{secrets.token_hex(5)}.tmp"
             )
-            os.chmod(temporary, 0o600)
-            os.replace(temporary, self.path)
-        finally:
-            temporary.unlink(missing_ok=True)
-        return settings
+            try:
+                temporary.write_text(
+                    json.dumps(settings, indent=2) + "\n", encoding="utf-8"
+                )
+                os.chmod(temporary, 0o600)
+                os.replace(temporary, self.path)
+            finally:
+                temporary.unlink(missing_ok=True)
+            return settings
 
     def resolved_timezone(self) -> str:
         return self.get()["timezone"] or local_timezone_name()
