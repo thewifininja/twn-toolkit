@@ -7,7 +7,6 @@ import secrets
 import socket
 import sqlite3
 import struct
-import tempfile
 import threading
 import time
 from contextlib import contextmanager
@@ -16,7 +15,7 @@ from pathlib import Path
 from string import Formatter
 from typing import Any, Callable
 
-from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES
+from .datastore import DatastoreConflictError, DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES
 from .pidfiles import process_marker_ready
 
 from .file_transactions import file_transaction
@@ -275,7 +274,7 @@ class TFTPServer:
                     self._send_error(
                         error_socket,
                         client,
-                        2 if isinstance(exc, (DatastoreError, PermissionError)) else 0,
+                        6 if isinstance(exc, DatastoreConflictError) else 2 if isinstance(exc, (DatastoreError, PermissionError)) else 0,
                         message,
                     )
             except OSError:
@@ -344,7 +343,10 @@ class TFTPServer:
             raise DatastoreError("A destination filename is required.")
         total = 0
         expected = 1
-        with tempfile.TemporaryFile() as temporary, socket.socket(family, socket.SOCK_DGRAM) as transfer:
+        with self.datastore.begin_upload(
+            parent, name, max_bytes=MAX_UPLOAD_BYTES,
+            overwrite=self.settings["allow_overwrite"],
+        ) as upload, socket.socket(family, socket.SOCK_DGRAM) as transfer:
             transfer.connect(client)
             transfer.settimeout(timeout)
             response = self._oack(oack) if oack else struct.pack("!HH", 4, 0)
@@ -372,16 +374,16 @@ class TFTPServer:
                     if total > MAX_UPLOAD_BYTES:
                         self._send_error(transfer, None, 3, "Upload exceeds datastore limit")
                         raise DatastoreError("TFTP upload exceeds the 1 GiB datastore limit.")
-                    temporary.write(payload)
+                    try:
+                        upload.write(payload)
+                    except (DatastoreError, OSError) as exc:
+                        self._send_error(transfer, None, 3, str(exc))
+                        raise
                     response = struct.pack("!HH", 4, block)
                     if len(payload) < block_size:
-                        temporary.seek(0)
                         try:
-                            self.datastore.save_upload(
-                                parent, name, temporary,
-                                overwrite=self.settings["allow_overwrite"],
-                            )
-                        except DatastoreError as exc:
+                            upload.commit()
+                        except (DatastoreError, OSError) as exc:
                             self._send_error(transfer, None, 6, str(exc))
                             raise
                         transfer.send(response)

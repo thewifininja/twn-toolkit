@@ -13,6 +13,7 @@ import unittest
 from werkzeug.security import check_password_hash
 
 from twn_toolkit import create_app
+from twn_toolkit.datastore import DatastoreError
 from twn_toolkit.ftp_server import FTPSettingsStore
 from twn_toolkit.ftp_worker import build_handler, main as ftp_worker_main
 from pyftpdlib.servers import FTPServer
@@ -137,6 +138,15 @@ class FTPServerTests(unittest.TestCase):
                 with patch("twn_toolkit.ftp_worker.MAX_UPLOAD_BYTES", 4):
                     with self.assertRaises(ftplib.Error):
                         client.storbinary("STOR too-big.bin", io.BytesIO(b"12345"))
+                with patch("twn_toolkit.uploads.Upload.commit", side_effect=OSError("injected publication failure")):
+                    with self.assertRaisesRegex(ftplib.error_perm, "552"):
+                        client.storbinary("STOR failed.bin", io.BytesIO(b"complete data"))
+                self.assertFalse((Path(instance) / "datastore" / "127.0.0.1-failed.bin").exists())
+                # The same control connection remains usable after a failed commit.
+                client.storbinary("STOR recovered.bin", io.BytesIO(b"recovered"))
+                with patch("twn_toolkit.uploads.Upload.write", side_effect=DatastoreError("injected quota failure")):
+                    with self.assertRaisesRegex(ftplib.error_perm, "552"):
+                        client.storbinary("STOR quota.bin", io.BytesIO(b"data"))
                 client.quit()
                 self.assertEqual(bytes(payload), b"configuration")
                 self.assertFalse((Path(instance) / "datastore" / "127.0.0.1-too-big.bin").exists())

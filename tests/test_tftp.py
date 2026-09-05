@@ -157,6 +157,29 @@ class TFTPTransferTests(unittest.TestCase):
         self.assertIn(b"already exists", message)
         self.assertEqual(self.datastore.file("selected-root/incoming.cfg").read_bytes(), b"new configuration")
 
+    def test_upload_commit_failure_returns_error_instead_of_final_ack(self) -> None:
+        from unittest.mock import patch
+        with patch("twn_toolkit.uploads.Upload.commit", side_effect=OSError("injected failure")):
+            opcode, _code, message = self._upload("failed", b"complete data", expect_error=True)
+        self.assertEqual(opcode, 5)
+        self.assertIn(b"injected", message)
+        self.assertFalse((self.datastore.root / "selected-root" / "failed").exists())
+
+    def test_upload_cancellation_discards_accepted_blocks(self) -> None:
+        request = struct.pack("!H", 2) + b"cancelled\0octet\0"
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+            client.settimeout(2)
+            client.sendto(request, ("127.0.0.1", self.port))
+            response, transfer = client.recvfrom(65535)
+            self.assertEqual(struct.unpack("!HH", response[:4]), (4, 0))
+            client.sendto(struct.pack("!HH", 3, 1) + b"x" * 512, transfer)
+            response, _ = client.recvfrom(65535)
+            self.assertEqual(struct.unpack("!HH", response[:4]), (4, 1))
+            client.sendto(struct.pack("!HH", 5, 0) + b"cancel\0", transfer)
+        self._wait_for_history()
+        self.assertEqual(self.history.recent()[0]["status"], "error")
+        self.assertFalse((self.datastore.root / "selected-root" / "cancelled").exists())
+
     def test_wrq_custom_pattern_renames_from_client_ip(self) -> None:
         self.server.settings["incoming_filename_pattern"] = (
             "{timestamp}-{client_ip}-{filename}"
@@ -180,6 +203,8 @@ class TFTPTransferTests(unittest.TestCase):
             client.settimeout(2)
             client.sendto(request, ("127.0.0.1", self.port))
             response, transfer = client.recvfrom(65535)
+            if expect_error and struct.unpack("!H", response[:2])[0] == 5:
+                return (*struct.unpack("!HH", response[:4]), response[4:-1])
             self.assertEqual(struct.unpack("!HH", response[:4]), (4, 0))
             client.sendto(struct.pack("!HH", 3, 1) + payload, transfer)
             response, _source = client.recvfrom(65535)
