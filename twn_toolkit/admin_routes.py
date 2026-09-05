@@ -24,6 +24,8 @@ from flask import (
     url_for,
 )
 
+from .transfer_deadlines import OUTGOING_TRANSFER_LIMITS
+
 from .auth import APPEARANCE_PALETTES, AuthStore
 from .automation import AutomationStore
 from .profile_backup import (
@@ -1834,6 +1836,7 @@ def register_admin_routes(
         before = operational_store.get()
         try:
             after = operational_store.save({
+                **{key: request.form.get(key, before[key]) for key in OUTGOING_TRANSFER_LIMITS},
                 "max_concurrent_automations": request.form.get("max_concurrent_automations", ""),
                 "max_queued_automations": request.form.get("max_queued_automations", ""),
                 "skip_overlapping_automations": request.form.get("skip_overlapping_automations") == "on",
@@ -1841,6 +1844,7 @@ def register_admin_routes(
                 "automation_artifact_quota_gib": request.form.get("automation_artifact_quota_gib", ""),
                 "minimum_free_gib": request.form.get("minimum_free_gib", ""),
                 "max_upload_mib": request.form.get("max_upload_mib", before["max_upload_mib"]),
+                "max_multipart_files": request.form.get("max_multipart_files", before["max_multipart_files"]),
             })
         except ValueError as exc: flash(str(exc), "error")
         else:

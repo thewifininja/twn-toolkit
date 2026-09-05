@@ -117,6 +117,10 @@ def _appearance_from_delegation(value: dict[str, Any]) -> dict[str, str]:
 
 def create_app(instance_path: str | None = None) -> Flask:
     app = Flask(__name__, instance_relative_config=True, instance_path=instance_path)
+    from .multipart_uploads import AccountedUploadRequest
+    app.request_class = AccountedUploadRequest
+    from .transfer_deadlines import OUTGOING_TRANSFER_LIMITS
+    app.jinja_env.globals["outgoing_transfer_limits"] = OUTGOING_TRANSFER_LIMITS
     app.config.from_mapping(
         BOOT_ID=secrets.token_hex(12),
         ASSET_REVISION_CHECK_INTERVAL_SECONDS=1.0,

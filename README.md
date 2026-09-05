@@ -344,7 +344,9 @@ complete sequential transfers (no append or restart). Administrators can adjust
 the shared upload-size limit in Settings → Operations and SSH connection,
 channel, handle, listing, authentication, and idle limits in the SFTP / SCP
 service settings. See
-[upload lifecycle and storage requirements](docs/upload-lifecycle.md).
+[upload lifecycle and storage requirements](docs/upload-lifecycle.md). Multipart
+file staging shares incoming disk reservations. Operations settings also expose
+outgoing collection concurrency, idle and host deadlines, and file/run budgets.
 
 ### Automation
 

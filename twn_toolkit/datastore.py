@@ -91,6 +91,10 @@ class LocalDatastore:
         max_bytes: int | None = None,
         overwrite: bool = False,
     ) -> tuple[Path, int]:
+        from .uploads import MultipartSpool
+        if isinstance(stream, MultipartSpool) and stream.tell() == 0:
+            return stream.upload.promote(self, relative_path, filename,
+                                         max_bytes=max_bytes, overwrite=overwrite).commit()
         with self.begin_upload(relative_path, filename, max_bytes=max_bytes, overwrite=overwrite) as upload:
             while chunk := stream.read(1024 * 1024):
                 upload.write(chunk)

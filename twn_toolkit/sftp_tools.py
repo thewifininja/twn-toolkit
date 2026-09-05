@@ -13,6 +13,7 @@ from string import Formatter
 from typing import Any
 
 from .network_tools import ToolInputError
+from .transfer_deadlines import TransferDeadline, TransferPolicy, close_socket
 from .ssh_security import (
     close_ssh_client,
     format_ssh_connection_error,
@@ -113,7 +114,7 @@ class _TransferBudget:
     def reserve(self, size: int) -> None:
         with self.lock:
             if self.used + size > self.limit:
-                raise ToolInputError("The combined file-transfer download exceeds the 1 GiB run limit.")
+                raise ToolInputError("The combined download exceeds the configured run limit.")
             self.used += size
 
     def release(self, size: int) -> None:
@@ -134,7 +135,9 @@ def fetch_ssh_files(
     filename_pattern: str = SFTP_DEFAULT_FILENAME_PATTERN,
     protocol: str = "sftp",
     allow_legacy_algorithms: bool = False,
+    policy: TransferPolicy | None = None,
 ) -> list[dict[str, Any]]:
+    policy = policy or TransferPolicy()
     protocol = str(protocol).lower()
     if protocol not in {"sftp", "scp", "ftp"}:
         raise ToolInputError("Transfer protocol must be SFTP, SCP, or FTP.")
@@ -153,7 +156,7 @@ def fetch_ssh_files(
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = timestamp or datetime.now().astimezone().strftime("%Y%m%d%H%M%S")
     pattern = validate_sftp_filename_pattern(filename_pattern)
-    budget = _TransferBudget(SFTP_MAX_RUN_BYTES)
+    budget = _TransferBudget(policy.run_bytes)
     name_lock = threading.Lock()
     used_names: set[str] = set()
 
@@ -175,10 +178,11 @@ def fetch_ssh_files(
         )
         if protocol != "ftp":
             arguments["allow_legacy_algorithms"] = allow_legacy_algorithms
-        return fetcher(**arguments)
+        with TransferDeadline(policy.deadline_seconds) as deadline:
+            return fetcher(**arguments, policy=policy, deadline=deadline)
 
     results: list[dict[str, Any]] = []
-    with ThreadPoolExecutor(max_workers=min(SFTP_WORKERS, len(hosts))) as executor:
+    with ThreadPoolExecutor(max_workers=min(policy.workers, len(hosts))) as executor:
         futures = {executor.submit(run_host, host): index for index, host in enumerate(hosts)}
         ordered: dict[int, list[dict[str, Any]]] = {}
         for future in as_completed(futures):
@@ -208,6 +212,7 @@ def _fetch_sftp_host(
     used_names: set[str],
     name_lock: threading.Lock,
     allow_legacy_algorithms: bool = False,
+    policy: TransferPolicy, deadline: TransferDeadline,
 ) -> list[dict[str, Any]]:
     address = host["host"]
     label = host.get("label", "")
@@ -220,10 +225,15 @@ def _fetch_sftp_host(
             password=password,
             allow_unknown_hosts=allow_unknown_hosts,
             allow_legacy_algorithms=allow_legacy_algorithms,
-            connect_timeout=10,
-            auth_timeout=10,
+            connect_timeout=min(10, policy.idle_seconds, deadline.remaining()),
+            auth_timeout=min(10, policy.idle_seconds, deadline.remaining()),
+            banner_timeout=min(15, policy.idle_seconds, deadline.remaining()),
+            on_client_created=lambda pending: deadline.watch("ssh", lambda: close_ssh_client(pending)),
         )
+        deadline.check()
         sftp = client.open_sftp()
+        sftp.get_channel().settimeout(policy.idle_seconds)
+        deadline.check()
     except Exception as exc:
         close_ssh_client(client)
         return [
@@ -237,10 +247,11 @@ def _fetch_sftp_host(
             reserved = 0
             temporary: Path | None = None
             try:
+                deadline.check()
                 attributes = sftp.stat(remote_path)
                 size = int(attributes.st_size)
-                if size < 0 or size > SFTP_MAX_FILE_BYTES:
-                    raise ToolInputError("Remote file exceeds the 256 MiB per-file limit.")
+                if size < 0 or size > policy.file_bytes:
+                    raise ToolInputError("Remote file exceeds the configured per-file limit.")
                 budget.reserve(size)
                 reserved = size
                 preferred_filename = format_sftp_filename(
@@ -259,13 +270,17 @@ def _fetch_sftp_host(
                 written = 0
                 with sftp.open(remote_path, "rb") as source, temporary.open("wb") as target:
                     while True:
-                        chunk = source.read(1024 * 1024)
+                        deadline.check()
+                        chunk = source.read(64 * 1024)
                         if not chunk:
                             break
                         written += len(chunk)
-                        if written > SFTP_MAX_FILE_BYTES or written > size + 1024 * 1024:
+                        if written > policy.file_bytes or written > size:
                             raise ToolInputError("Remote file changed size or exceeded its transfer limit.")
                         target.write(chunk)
+                deadline.check()
+                if written != size:
+                    raise ToolInputError("Remote file ended before its declared size was received.")
                 os.chmod(temporary, 0o600)
                 temporary.replace(destination)
                 results.append(
@@ -286,6 +301,8 @@ def _fetch_sftp_host(
     finally:
         try:
             sftp.close()
+        except Exception:
+            pass
         finally:
             close_ssh_client(client)
     return results
@@ -296,6 +313,7 @@ def _fetch_scp_host(
     port: int, allow_unknown_hosts: bool, output_dir: Path, timestamp: str,
     filename_pattern: str, budget: _TransferBudget, used_names: set[str],
     name_lock: threading.Lock, allow_legacy_algorithms: bool = False,
+    policy: TransferPolicy, deadline: TransferDeadline,
 ) -> list[dict[str, Any]]:
     address, label = host["host"], host.get("label", "")
     client = None
@@ -307,8 +325,10 @@ def _fetch_scp_host(
             password=password,
             allow_unknown_hosts=allow_unknown_hosts,
             allow_legacy_algorithms=allow_legacy_algorithms,
-            connect_timeout=10,
-            auth_timeout=10,
+            connect_timeout=min(10, policy.idle_seconds, deadline.remaining()),
+            auth_timeout=min(10, policy.idle_seconds, deadline.remaining()),
+            banner_timeout=min(15, policy.idle_seconds, deadline.remaining()),
+            on_client_created=lambda pending: deadline.watch("ssh", lambda: close_ssh_client(pending)),
         )
     except Exception as exc:
         close_ssh_client(client)
@@ -321,17 +341,19 @@ def _fetch_scp_host(
             temporary: Path | None = None
             channel = None
             try:
+                deadline.check()
                 if remote_path.lstrip().startswith("-"):
                     raise ToolInputError("SCP remote paths cannot begin with a dash.")
                 transport = client.get_transport()
                 if transport is None or not transport.is_active():
                     raise OSError("SSH transport is not active.")
-                channel = transport.open_session(timeout=10)
-                channel.settimeout(15)
+                channel = transport.open_session(timeout=min(policy.idle_seconds, deadline.remaining()))
+                channel.settimeout(policy.idle_seconds)
                 channel.exec_command(f"scp -f {shlex.quote(remote_path)}")
                 channel.sendall(b"\x00")
                 header = _scp_read_line(channel)
                 while header.startswith(b"T"):
+                    deadline.check()
                     channel.sendall(b"\x00")
                     header = _scp_read_line(channel)
                 if header[:1] in {b"\x01", b"\x02"}:
@@ -342,8 +364,8 @@ def _fetch_scp_host(
                 if len(parts) != 3:
                     raise OSError("Remote SCP file header is invalid.")
                 size = int(parts[1])
-                if size < 0 or size > SFTP_MAX_FILE_BYTES:
-                    raise ToolInputError("Remote file exceeds the 256 MiB per-file limit.")
+                if size < 0 or size > policy.file_bytes:
+                    raise ToolInputError("Remote file exceeds the configured per-file limit.")
                 budget.reserve(size)
                 reserved = size
                 preferred_filename = format_sftp_filename(
@@ -363,6 +385,7 @@ def _fetch_scp_host(
                 with temporary.open("wb") as target:
                     remaining = size
                     while remaining:
+                        deadline.check()
                         chunk = channel.recv(min(1024 * 1024, remaining))
                         if not chunk:
                             raise OSError("SCP connection closed before the file completed.")
@@ -373,6 +396,7 @@ def _fetch_scp_host(
                     message = _scp_read_line(channel).decode("utf-8", errors="replace").strip()
                     raise OSError(message or "Remote SCP transfer failed.")
                 channel.sendall(b"\x00")
+                deadline.check()
                 os.chmod(temporary, 0o600)
                 temporary.replace(destination)
                 results.append(_result(
@@ -398,12 +422,22 @@ def _fetch_ftp_host(
     port: int, allow_unknown_hosts: bool, output_dir: Path, timestamp: str,
     filename_pattern: str, budget: _TransferBudget, used_names: set[str],
     name_lock: threading.Lock,
+    policy: TransferPolicy, deadline: TransferDeadline,
 ) -> list[dict[str, Any]]:
     del allow_unknown_hosts
     address, label = host["host"], host.get("label", "")
     ftp = ftplib.FTP()
     try:
-        ftp.connect(address, port, timeout=15); ftp.login(username, password); ftp.voidcmd("TYPE I")
+        deadline.watch("ftp", lambda: close_socket(ftp.sock))
+        ftp.connect(address, port, timeout=min(policy.idle_seconds, deadline.remaining()))
+        ftp.login(username, password)
+        ftp.voidcmd("TYPE I")
+        original_transfer = ftp.ntransfercmd
+        def transfer_socket(*args, **kwargs):
+            sock, size = original_transfer(*args, **kwargs)
+            deadline.watch("ftp-data", lambda: close_socket(sock))
+            return sock, size
+        ftp.ntransfercmd = transfer_socket
     except Exception as exc:
         try: ftp.close()
         except Exception: pass
@@ -413,12 +447,13 @@ def _fetch_ftp_host(
         for remote_path in remote_paths:
             reserved = 0; temporary = None
             try:
+                deadline.check()
                 try:
                     reported_size = ftp.size(remote_path)
                 except ftplib.all_errors:
                     reported_size = None
-                if reported_size is not None and (int(reported_size) < 0 or int(reported_size) > SFTP_MAX_FILE_BYTES):
-                    raise ToolInputError("Remote file exceeds the 256 MiB per-file limit.")
+                if reported_size is not None and (int(reported_size) < 0 or int(reported_size) > policy.file_bytes):
+                    raise ToolInputError("Remote file exceeds the configured per-file limit.")
                 preferred_filename = format_sftp_filename(
                     filename_pattern,
                     timestamp=timestamp,
@@ -431,11 +466,16 @@ def _fetch_ftp_host(
                 with temporary.open("wb") as target:
                     def consume(chunk: bytes) -> None:
                         nonlocal written, reserved
-                        if written + len(chunk) > SFTP_MAX_FILE_BYTES:
-                            raise ToolInputError("Remote file exceeded the 256 MiB per-file limit.")
+                        deadline.check()
+                        if written + len(chunk) > policy.file_bytes:
+                            raise ToolInputError("Remote file exceeded the configured per-file limit.")
                         budget.reserve(len(chunk)); reserved += len(chunk); written += len(chunk)
                         target.write(chunk)
-                    ftp.retrbinary(f"RETR {remote_path}", consume, blocksize=1024 * 1024)
+                    ftp.retrbinary(f"RETR {remote_path}", consume, blocksize=64 * 1024)
+                    deadline.unwatch("ftp-data")
+                deadline.check()
+                if reported_size is not None and written != int(reported_size):
+                    raise ToolInputError("Remote file size changed during transfer.")
                 os.chmod(temporary, 0o600); temporary.replace(destination)
                 results.append(_result(
                     address, label, remote_path, "success",
