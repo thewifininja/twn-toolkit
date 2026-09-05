@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 from twn_toolkit.remote_connections import (
     RemoteConnectionError,
@@ -152,6 +153,106 @@ class RemoteConnectionStoreTests(unittest.TestCase):
             self.store.resolve_credential(
                 credential["id"], user_id="operator", host_id=host["id"]
             )
+
+    def test_targeted_host_lookup_matches_library_without_rebuilding_it(self) -> None:
+        credential = self.store.save_credential(
+            user_id="owner",
+            name="Shared admin",
+            remote_username="admin",
+            password="shared-secret",
+        )
+        self.store.set_visibility(
+            "credential", credential["id"], user_id="owner", visibility="global"
+        )
+        parent = self.store.create_folder(
+            user_id="owner",
+            name="Shared",
+            credential_mode="credential",
+            credential_id=credential["id"],
+        )
+        self.store.set_visibility(
+            "folder", parent["id"], user_id="owner", visibility="global"
+        )
+        child = self.store.create_folder(
+            user_id="owner", name="Core", parent_id=parent["id"]
+        )
+        self.store.set_visibility(
+            "folder", child["id"], user_id="owner", visibility="inherit"
+        )
+        shared = self.store.save_host(
+            user_id="owner",
+            name="Core switch",
+            host="192.0.2.10",
+            port=22,
+            folder_id=child["id"],
+            credential_id="",
+            credential_mode="inherit",
+            allow_unknown_hosts=False,
+            allow_legacy_algorithms=False,
+        )
+        self.store.set_visibility(
+            "host", shared["id"], user_id="owner", visibility="inherit"
+        )
+        private = self.store.save_host(
+            user_id="owner",
+            name="Private switch",
+            host="192.0.2.11",
+            port=23,
+            protocol="telnet",
+            folder_id="",
+            credential_id="",
+            credential_mode="none",
+            allow_unknown_hosts=False,
+            allow_legacy_algorithms=False,
+        )
+        self.store.set_visibility(
+            "host", private["id"], user_id="owner", visibility="private"
+        )
+
+        cases = (
+            (shared["id"], "owner", False),
+            (shared["id"], "operator", False),
+            (shared["id"], "administrator", True),
+            (private["id"], "owner", False),
+            (private["id"], "operator", False),
+        )
+        for host_id, user_id, is_admin in cases:
+            expected = next(
+                (
+                    host
+                    for host in self.store.library_for_user(
+                        user_id, is_admin=is_admin
+                    )["hosts"]
+                    if host["id"] == host_id
+                ),
+                None,
+            )
+            with patch.object(
+                self.store,
+                "library_for_user",
+                side_effect=AssertionError("single-host lookup rebuilt the library"),
+            ):
+                actual = self.store.get_host(
+                    host_id, user_id=user_id, is_admin=is_admin
+                )
+            self.assertEqual(actual, expected)
+
+        self.store.set_visibility(
+            "credential", credential["id"], user_id="owner", visibility="admins_only"
+        )
+        expected = next(
+            host
+            for host in self.store.library_for_user("operator")["hosts"]
+            if host["id"] == shared["id"]
+        )
+        with patch.object(
+            self.store,
+            "library_for_user",
+            side_effect=AssertionError("single-host lookup rebuilt the library"),
+        ):
+            actual = self.store.get_host(shared["id"], user_id="operator")
+        self.assertEqual(actual, expected)
+        self.assertFalse(actual["credential_available"])
 
     def test_top_level_inherited_visibility_defaults_to_admins_only(self) -> None:
         host = self.store.save_host(
