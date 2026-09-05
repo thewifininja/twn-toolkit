@@ -337,6 +337,12 @@ Datastore folder or a runtime-only single file:
 All listeners are disabled by default. Runtime-only files are removed when the
 corresponding service stops. Transfer history remains visible in the web UI.
 
+Web, TFTP, SFTP, SCP, and FTP uploads share private staging, cross-process
+capacity reservations, and atomic publication. Interrupted uploads are discarded;
+protocol completion is acknowledged only after publication. FTP uploads must be
+complete sequential transfers (no append or restart). See
+[upload lifecycle and storage requirements](docs/upload-lifecycle.md).
+
 ### Automation
 
 Automation is built from four reusable layers:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import tempfile
 from pathlib import Path
 from typing import BinaryIO
 
@@ -14,13 +13,19 @@ class DatastoreError(ValueError):
     pass
 
 
+class DatastoreConflictError(DatastoreError):
+    pass
+
+
 class LocalDatastore:
     """Owner-only file storage strictly contained beneath the toolkit instance."""
 
     def __init__(self, instance_path: str, root_name: str = "datastore") -> None:
         if root_name not in {"datastore", "tftp_runtime", "ssh_transfer_runtime", "ftp_runtime"}:
             raise ValueError("Unsupported local datastore root.")
-        root = Path(instance_path) / root_name
+        self.root_name = root_name
+        self.instance = Path(instance_path).resolve()
+        root = self.instance / root_name
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.root = root.resolve()
         os.chmod(self.root, 0o700)
@@ -86,49 +91,19 @@ class LocalDatastore:
         max_bytes: int = MAX_UPLOAD_BYTES,
         overwrite: bool = False,
     ) -> tuple[Path, int]:
-        parent = self._resolve(relative_path, must_exist=True)
-        if not parent.is_dir():
-            raise DatastoreError("The upload destination is not a folder.")
+        with self.begin_upload(relative_path, filename, max_bytes=max_bytes, overwrite=overwrite) as upload:
+            while chunk := stream.read(1024 * 1024):
+                upload.write(chunk)
+            return upload.commit()
+
+    def begin_upload(self, relative_path: str, filename: str, *,
+                     max_bytes: int = MAX_UPLOAD_BYTES, overwrite: bool = False,
+                     expected_bytes: int | None = None):
+        from .uploads import Upload
+        parent = self.folder(relative_path)
         destination = parent / self._validate_name(filename)
-        if destination.exists() and destination.is_dir():
-            raise DatastoreError(f"{destination.name} is an existing folder.")
-        if not overwrite:
-            self._ensure_available(destination)
-        temporary_name = ""
-        total = 0
-        existing_bytes = destination.stat().st_size if overwrite and destination.is_file() else 0
-        baseline_bytes = None
-        if self.root.name == "datastore":
-            from .operational import directory_bytes
-            baseline_bytes = directory_bytes(self.root) - existing_bytes
-        try:
-            with tempfile.NamedTemporaryFile(dir=parent, prefix=".upload-", delete=False) as target:
-                temporary_name = target.name
-                while True:
-                    chunk = stream.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    total += len(chunk)
-                    if total > max_bytes:
-                        raise DatastoreError(
-                            f"Uploads may not exceed {max_bytes // (1024 * 1024)} MiB per file."
-                        )
-                    if baseline_bytes is not None:
-                        from .operational import OperationalSettingsStore
-                        settings = OperationalSettingsStore(str(self.root.parent)).get()
-                        if baseline_bytes + total > int(settings["datastore_quota_gib"]) * 1024**3:
-                            raise DatastoreError("The configured datastore quota would be exceeded.")
-                        if shutil.disk_usage(self.root).free - total < int(settings["minimum_free_gib"]) * 1024**3:
-                            raise DatastoreError("The upload would cross the configured minimum free-disk reserve.")
-                    target.write(chunk)
-            os.chmod(temporary_name, 0o600)
-            if not overwrite:
-                self._ensure_available(destination)
-            os.replace(temporary_name, destination)
-            return destination, total
-        finally:
-            if temporary_name and os.path.exists(temporary_name):
-                os.unlink(temporary_name)
+        return Upload(self, destination, max_bytes=max_bytes, overwrite=overwrite,
+                      expected_bytes=expected_bytes)
 
     def file(self, relative_path: str) -> Path:
         path = self._resolve(relative_path, must_exist=True)
@@ -350,7 +325,7 @@ class LocalDatastore:
     @staticmethod
     def _ensure_available(path: Path) -> None:
         if path.exists() or path.is_symlink():
-            raise DatastoreError(f"{path.name} already exists. Rename or remove it first.")
+            raise DatastoreConflictError(f"{path.name} already exists. Rename or remove it first.")
 
 
 def format_bytes(value: int) -> str:

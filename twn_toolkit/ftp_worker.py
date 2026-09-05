@@ -9,10 +9,12 @@ from pathlib import Path
 
 from pyftpdlib.authorizers import DummyAuthorizer, AuthenticationFailed
 from pyftpdlib.handlers import DTPHandler, FTPHandler
+from pyftpdlib.filesystems import AbstractedFS
 from pyftpdlib.log import logger
 from werkzeug.security import check_password_hash
 
-from .datastore import LocalDatastore, MAX_UPLOAD_BYTES
+from .datastore import DatastoreError, LocalDatastore, MAX_UPLOAD_BYTES
+from .uploads import Upload
 from .ftp_server import FTPSettingsStore, clear_ftp_runtime
 from .pidfiles import (
     acquire_singleton_lock,
@@ -52,8 +54,24 @@ class BoundedDTPHandler(DTPHandler):
             chunk = self._data_wrapper(chunk)
         try:
             self.file_obj.write(chunk)
-        except OSError:
-            self.handle_error()
+        except (OSError, DatastoreError) as exc:
+            self.cmd_channel._upload_error = str(exc)
+            self._resp = ("552 Upload could not be stored.", logger.warning)
+            self.close()
+
+    def close(self):
+        upload = getattr(self, "file_obj", None)
+        if isinstance(upload, Upload) and not upload.closed:
+            if self.transfer_finished and not self.cmd_channel._upload_limit_exceeded:
+                try:
+                    upload.commit()
+                except (OSError, DatastoreError) as exc:
+                    self.cmd_channel._upload_error = str(exc)
+                    self.transfer_finished = False
+                    self._resp = ("552 Upload could not be published.", logger.warning)
+            else:
+                upload.abort()
+        super().close()
 
     handle_read_event = handle_read
 
@@ -68,37 +86,74 @@ def build_handler(instance: str, settings: dict):
     permissions = "el" + ("r" if settings["allow_read"] else "") + ("w" if settings["allow_write"] else "")
     authorizer.add_user(settings["username"], "unused", str(root), perm=permissions)
 
+    class UploadFilesystem(AbstractedFS):
+        def open(self, filename, mode):
+            upload = self.cmd_channel._pending_upload
+            if upload is not None and str(filename) == upload.name and "w" in mode:
+                return upload
+            return super().open(filename, mode)
+
     class ContainedFTP(FTPHandler):
         _pending_upload = None
         _requested_upload = ""
         _upload_limit_exceeded = False
+        _upload_error = ""
+
         def on_connect(self):
-            if not any(ipaddress.ip_address(self.remote_ip) in network for network in trusted): self.close_when_done()
+            if not any(ipaddress.ip_address(self.remote_ip) in network for network in trusted):
+                self.close_when_done()
+
         def ftp_STOR(self, file, mode="w"):
-            if not settings["allow_write"]: return self.respond("550 Uploads disabled.")
+            if not settings["allow_write"]:
+                return self.respond("550 Uploads disabled.")
+            if mode != "w" or self._restart_position:
+                self._restart_position = 0
+                return self.respond("550 Only complete sequential uploads are supported.")
+            if self._pending_upload is not None and not self._pending_upload.closed:
+                return self.respond("450 An upload is already in progress.")
             requested = Path(file).name
             stored = format_incoming_filename(settings["incoming_filename_pattern"], requested, self.remote_ip)
-            destination = root / stored
-            if destination.exists() and not settings["allow_overwrite"]: return self.respond("550 Destination exists.")
-            temporary = root / f".{stored}.{os.getpid()}.{id(self)}.part"
-            self._pending_upload, self._requested_upload = destination, requested
-            self._upload_limit_exceeded = False
-            return super().ftp_STOR(str(temporary), mode)
-        def on_file_received(self, file):
-            source = Path(file); destination = self._pending_upload
             try:
-                if self._upload_limit_exceeded: raise OSError("Upload exceeded the 1 GiB file limit.")
-                os.chmod(source, 0o600); os.replace(source, destination)
-                history.record(client=self.remote_ip, protocol="FTP", operation="upload", filename=self._requested_upload, stored_filename=destination.name, bytes=destination.stat().st_size, status="success", message="")
-            except Exception as exc:
-                source.unlink(missing_ok=True); history.record(client=self.remote_ip, protocol="FTP", operation="upload", filename=self._requested_upload, stored_filename="", bytes=0, status="error", message=str(exc))
+                self._pending_upload = store.begin_upload(
+                    store.relative(root), stored, max_bytes=MAX_UPLOAD_BYTES,
+                    overwrite=settings["allow_overwrite"],
+                )
+            except (OSError, DatastoreError) as exc:
+                return self.respond(f"550 {exc}")
+            self._requested_upload = requested
+            self._upload_limit_exceeded = False
+            self._upload_error = ""
+            result = super().ftp_STOR(self._pending_upload.name, mode)
+            if result is None:
+                self._pending_upload.abort()
+            return result
+
+        def on_disconnect(self):
+            if self._pending_upload is not None:
+                self._pending_upload.abort()
+
+        def on_file_received(self, file):
+            upload = self._pending_upload
+            history.record(client=self.remote_ip, protocol="FTP", operation="upload",
+                           filename=self._requested_upload, stored_filename=upload.destination.name,
+                           bytes=upload.total, status="success", message="")
+            self._pending_upload = None
+
         def on_incomplete_file_received(self, file):
-            path = Path(file); size = path.stat().st_size if path.exists() else 0; path.unlink(missing_ok=True)
-            message = "Upload exceeded the 1 GiB file limit." if self._upload_limit_exceeded else "Upload did not complete."
-            history.record(client=self.remote_ip, protocol="FTP", operation="upload", filename=self._requested_upload or path.name, stored_filename="", bytes=size, status="error", message=message)
+            upload = self._pending_upload
+            if upload is None:
+                return
+            upload.abort()
+            message = self._upload_error or ("Upload exceeded the 1 GiB file limit." if self._upload_limit_exceeded else "Upload did not complete.")
+            history.record(client=self.remote_ip, protocol="FTP", operation="upload",
+                           filename=self._requested_upload, stored_filename="", bytes=upload.total,
+                           status="error", message=message)
+            self._pending_upload = None
+
         def on_file_sent(self, file):
             path = Path(file); history.record(client=self.remote_ip, protocol="FTP", operation="download", filename=path.name, stored_filename=path.name, bytes=path.stat().st_size, status="success", message="")
 
+    ContainedFTP.abstracted_fs = UploadFilesystem
     ContainedFTP.authorizer = authorizer
     ContainedFTP.dtp_handler = BoundedDTPHandler
     ContainedFTP.passive_ports = range(settings["passive_start"], settings["passive_end"] + 1)

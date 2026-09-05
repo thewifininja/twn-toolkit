@@ -51,6 +51,7 @@ SAVED_DATA_INVENTORY: tuple[dict[str, str], ...] = (
     {"id": "tls_and_issued_certificates", "boundary": "recovery", "reason": "Private keys and issued material remain bound to the instance."},
     {"id": "investigations", "boundary": "case", "reason": "Cases use portable case export and explicit merge workflows."},
     {"id": "datastore", "boundary": "recovery", "reason": "Operational files are protected by full recovery points."},
+    {"id": "upload_reservations", "boundary": "recovery", "reason": "Private staging and process-owned reservations are runtime state; restored orphans are discarded, never resumed."},
     {"id": "runtime_and_history", "boundary": "recovery", "reason": "Audit, activity, scrollback, captures, artifacts, and live state are not configuration."},
 )
 

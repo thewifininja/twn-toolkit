@@ -3,13 +3,13 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import os
-import secrets
 import shlex
 import signal
 import socket
 import threading
 import time
 import sys
+import weakref
 from pathlib import Path
 from typing import Any, Callable
 
@@ -60,41 +60,68 @@ class TransferContext:
 
 
 class AtomicWriteHandle(paramiko.SFTPHandle):
+    """Only an explicit SFTP CLOSE commits; session cleanup calls abort first."""
     def __init__(self, context: TransferContext, requested: str) -> None:
         super().__init__()
-        self.context, self.requested, self.total, self.failed = context, requested, 0, False
+        self.context, self.requested = context, requested
+        self.total, self.failed = 0, False
+        self._status = None
         self.destination = context.path(requested, write=True)
-        if self.destination.exists() and not context.settings["allow_overwrite"]:
-            raise OSError("Destination already exists.")
-        self.temporary = self.destination.with_name(f".{self.destination.name}.{os.getpid()}.{threading.get_ident()}.part")
-        self.file = self.temporary.open("wb")
+        self.upload = context.store.begin_upload(
+            context.store.relative(self.destination.parent), self.destination.name,
+            max_bytes=MAX_UPLOAD_BYTES, overwrite=context.settings["allow_overwrite"],
+        )
+        self.temporary = self.upload.temporary
 
     def write(self, offset: int, data: bytes):
-        if offset != self.file.tell(): return paramiko.SFTP_BAD_MESSAGE
-        self.total += len(data)
-        if self.total > MAX_UPLOAD_BYTES:
-            self.failed = True
+        if self._status is not None:
             return paramiko.SFTP_FAILURE
-        self.file.write(data); return paramiko.SFTP_OK
+        if offset != self.total:
+            self.abort("Upload writes must use consecutive offsets.")
+            return paramiko.SFTP_BAD_MESSAGE
+        try:
+            if self.total + len(data) > MAX_UPLOAD_BYTES:
+                raise DatastoreError("File exceeds upload limit.")
+            self.upload.write(data)
+            self.total += len(data)
+            return paramiko.SFTP_OK
+        except (OSError, DatastoreError) as exc:
+            self.abort(str(exc))
+            return paramiko.SFTP_FAILURE
+
+    def abort(self, message="Upload session ended before the file was closed."):
+        if self._status is not None:
+            return
+        self.failed = True
+        self._status = paramiko.SFTP_FAILURE
+        self.upload.abort()
+        self.context.record("SFTP", "upload", self.requested, "error",
+                            stored_filename="", bytes=self.total, message=message)
 
     def close(self):
+        if self._status is not None:
+            return self._status
         try:
-            self.file.flush(); os.fsync(self.file.fileno()); self.file.close()
-            if self.failed:
-                raise OSError("File exceeds upload limit.")
-            os.chmod(self.temporary, 0o600); os.replace(self.temporary, self.destination)
-            self.context.record("SFTP", "upload", self.requested, "success", stored_filename=self.destination.name, bytes=self.total, message="")
-            return paramiko.SFTP_OK
-        except Exception as exc:
-            self.context.record("SFTP", "upload", self.requested, "error", stored_filename="", bytes=self.total, message=str(exc))
+            self.upload.commit()
+        except (OSError, DatastoreError) as exc:
+            self.abort(str(exc))
             return paramiko.SFTP_FAILURE
-        finally:
-            if self.temporary.exists(): self.temporary.unlink()
+        self._status = paramiko.SFTP_OK
+        self.context.record("SFTP", "upload", self.requested, "success",
+                            stored_filename=self.destination.name, bytes=self.total, message="")
+        return self._status
 
 
 class ContainedSFTP(paramiko.SFTPServerInterface):
     def __init__(self, server, *args, context: TransferContext, **kwargs):
         super().__init__(server, *args, **kwargs); self.context = context
+        self._uploads = weakref.WeakSet()
+
+    def session_ended(self):
+        # Paramiko subsequently closes its handle table. Invalidate unfinished
+        # uploads first so that cleanup cannot publish partial files.
+        for handle in list(self._uploads):
+            handle.abort()
 
     def list_folder(self, path):
         if not self.context.settings["allow_read"]: return paramiko.SFTP_PERMISSION_DENIED
@@ -118,8 +145,11 @@ class ContainedSFTP(paramiko.SFTPServerInterface):
         writing = bool(flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC))
         if writing:
             if not self.context.settings["allow_write"]: return paramiko.SFTP_PERMISSION_DENIED
-            try: return AtomicWriteHandle(self.context, path)
-            except OSError as exc:
+            try:
+                handle = AtomicWriteHandle(self.context, path)
+                self._uploads.add(handle)
+                return handle
+            except (OSError, DatastoreError) as exc:
                 self.context.record("SFTP", "upload", path, "error", stored_filename="", bytes=0, message=str(exc)); return paramiko.SFTP_FAILURE
         if not self.context.settings["allow_read"]: return paramiko.SFTP_PERMISSION_DENIED
         try:
@@ -187,7 +217,7 @@ def _scp_send(channel, context: TransferContext, requested: str):
 
 
 def _scp_receive(channel, context: TransferContext, requested: str):
-    temporary = None; total = 0
+    upload = None; total = 0
     try:
         if not context.settings["allow_write"]: raise OSError("Uploads disabled.")
         channel.sendall(b"\x00"); header = _read_line(channel)
@@ -196,24 +226,27 @@ def _scp_receive(channel, context: TransferContext, requested: str):
         size = int(size_text)
         if size < 0 or size > MAX_UPLOAD_BYTES: raise OSError("File exceeds upload limit.")
         destination = context.path(sent_name or requested, write=True)
-        if destination.exists() and not context.settings["allow_overwrite"]: raise OSError("Destination already exists.")
-        temporary = destination.with_name(f".{destination.name}.{secrets.token_hex(6)}.part")
+        upload = context.store.begin_upload(
+            context.store.relative(destination.parent), destination.name,
+            max_bytes=MAX_UPLOAD_BYTES, overwrite=context.settings["allow_overwrite"],
+            expected_bytes=size,
+        )
         channel.sendall(b"\x00")
-        with temporary.open("wb") as target:
-            remaining = size
-            while remaining:
-                chunk = channel.recv(min(1024 * 1024, remaining))
-                if not chunk: raise OSError("Connection closed during upload.")
-                target.write(chunk); remaining -= len(chunk); total += len(chunk)
+        remaining = size
+        while remaining:
+            chunk = channel.recv(min(1024 * 1024, remaining))
+            if not chunk: raise OSError("Connection closed during upload.")
+            upload.write(chunk); remaining -= len(chunk); total += len(chunk)
         if _recv_exact(channel, 1) != b"\x00": raise OSError("Remote SCP client reported failure.")
-        os.chmod(temporary, 0o600); os.replace(temporary, destination); channel.sendall(b"\x00")
+        upload.commit()
+        channel.sendall(b"\x00")
         context.record("SCP", "upload", sent_name, "success", stored_filename=destination.name, bytes=total, message="")
     except Exception as exc:
         try: channel.sendall(b"\x01" + str(exc).encode()[:1000] + b"\n")
         except Exception: pass
         context.record("SCP", "upload", requested, "error", stored_filename="", bytes=total, message=str(exc))
     finally:
-        if temporary and temporary.exists(): temporary.unlink()
+        if upload is not None: upload.abort()
         channel.close()
 
 
