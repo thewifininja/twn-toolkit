@@ -118,7 +118,7 @@ protocol version, and bounded payload. Peers advertise toolkit version,
 protocol range, platform, and capability versions. The mainframe may dispatch a
 job only when the selected agent advertises a compatible capability.
 
-A job contract includes:
+The target job contract includes:
 
 - stable job, tool, operation, requester, and target-agent identifiers;
 - validated structured input and capability version;
@@ -126,9 +126,21 @@ A job contract includes:
 - ordered progress events and one terminal status;
 - structured output, bounded logs, and content-addressed artifact descriptors.
 
-Delivery is at-least-once. Agent execution must use the job identifier as an
-idempotency key. Terminal results remain queryable after reconnect. Duplicate
-requests must return the existing state rather than repeat side effects.
+The current queue uses one SQLite transaction boundary for enqueue, activation
+changes, claims, and completion. Enqueue binds an activation before publishing
+the job. Claims reserve the writer before selecting eligible rows, so concurrent
+lanes cannot receive the same unexpired claim. Lease time begins after that
+reservation. Competing completions retain the first committed terminal result;
+late results cannot undo a committed cancellation. Schema initialization uses
+the same reservation and preserves existing queue records.
+
+Delivery remains at-least-once: a running job becomes eligible again when its
+30-second lease expires. Atomic claims do not establish exactly-once execution.
+Renewable leases, attempt ownership, durable operation deduplication, and
+reconciliation of uncertain side effects remain execution-contract work. Until
+those are implemented, arbitrary tunneled mutations must not be assumed safe to
+retry solely because a request timed out. Terminal results remain queryable
+after reconnect.
 
 ## Execution classes
 
@@ -160,8 +172,9 @@ with owner-only permissions. `distributed_agents.sqlite3` stores peer identity,
 enrollment state, permissions, connection metadata, and revocation state.
 `distributed_enrollment_window.json` stores only the enrollment deadline with
 owner-only permissions; a missing, invalid, or expired file means closed.
-Later job persistence uses a separate SQLite database so retention and cleanup
-cannot interfere with trust decisions.
+`distributed_jobs.sqlite3` stores queued work, activation bindings, leases, and
+results separately from trust records. Both historical queue import paths use
+the same implementation and existing schema; no new wire fields are required.
 
 Enrollment request, approval, denial, certificate renewal, permission change,
 job dispatch, cancellation, completion, failure, and revocation are audited.
