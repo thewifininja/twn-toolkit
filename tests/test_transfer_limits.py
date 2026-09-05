@@ -193,12 +193,14 @@ def test_sftp_commit_failure_is_visible_to_client(tmp_path):
 def test_download_history_tracks_actual_bytes_and_explicit_completion(tmp_path):
     context = TransferContext(str(tmp_path), {}, "127.0.0.1")
     (context.root / "file").write_bytes(b"complete")
-    handle = ReadHandle(context, "file")
+    with patch("twn_toolkit.ssh_transfer_worker.time.time", return_value=1111):
+        handle = ReadHandle(context, "file")
     assert context.history.recent() == []
     assert handle.read(0, 3) == b"com"
     handle.abort()
     row = context.history.recent()[0]
     assert row["bytes"] == 3 and row["status"] == "error"
+    assert row["started_at"] == 1111
     handle = ReadHandle(context, "file")
     assert handle.read(0, 1000) == b"complete"
     handle.close()
@@ -343,3 +345,17 @@ def test_listener_survives_temporary_descriptor_exhaustion(tmp_path):
         factory.return_value.__enter__.return_value = fake
         serve(str(tmp_path), stop)
     assert fake.accept.call_count == 2
+
+
+def test_sftp_append_and_read_write_modes_cannot_replace_existing_files(tmp_path):
+    store = LocalDatastore(str(tmp_path))
+    (store.root / "original").write_bytes(b"original")
+    with listener(tmp_path, allow_overwrite=True) as (port, _):
+        with connected(port) as client, client.open_sftp() as sftp:
+            for mode in ("a", "r+", "wx"):
+                with pytest.raises(OSError):
+                    sftp.open("original", mode)
+            from paramiko.sftp import CMD_OPEN, SFTP_FLAG_WRITE
+            with pytest.raises(OSError):
+                sftp._request(CMD_OPEN, "original", SFTP_FLAG_WRITE, paramiko.SFTPAttributes())
+            assert (store.root / "original").read_bytes() == b"original"

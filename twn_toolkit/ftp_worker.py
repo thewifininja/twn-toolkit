@@ -103,6 +103,11 @@ def build_handler(instance: str, settings: dict):
             if not any(ipaddress.ip_address(self.remote_ip) in network for network in trusted):
                 self.close_when_done()
 
+        def ftp_STOU(self, line):
+            # pyftpdlib's STOU creates a served file directly through mkstemp,
+            # bypassing STOR's private staging, rewrite, and quota lifecycle.
+            return self.respond("502 Unique-name uploads are unsupported; use STOR.")
+
         def ftp_STOR(self, file, mode="w"):
             if not settings["allow_write"]:
                 return self.respond("550 Uploads disabled.")

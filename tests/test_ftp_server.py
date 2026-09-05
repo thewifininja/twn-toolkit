@@ -133,6 +133,9 @@ class FTPServerTests(unittest.TestCase):
             try:
                 client = ftplib.FTP(); client.connect("127.0.0.1", control, timeout=3)
                 client.login("toolkit", "correct horse battery")
+                with self.assertRaisesRegex(ftplib.error_perm, "502"):
+                    client.sendcmd("STOU bypass.bin")
+                self.assertEqual(list((Path(instance) / "datastore").iterdir()), [])
                 client.storbinary("STOR config.cfg", io.BytesIO(b"configuration"))
                 payload = bytearray(); client.retrbinary("RETR 127.0.0.1-config.cfg", payload.extend)
                 with patch("twn_toolkit.datastore.LocalDatastore.upload_limit", return_value=4):

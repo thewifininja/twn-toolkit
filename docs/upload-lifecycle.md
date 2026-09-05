@@ -48,7 +48,10 @@ filesystems are not certified for this locking model.
   the initial acknowledgement.
 - FTP commits before sending its final successful completion response. Storage
   and publication failures return an error; partial transfers are discarded.
-  Append and restart uploads are unsupported.
+  Append, restart, and unique-name (STOU) uploads are unsupported; use STOR.
+  SFTP append/read-write handles are also rejected; uploads replace complete files.
+  Existing files require explicit truncation and overwrite permission; exclusive
+  creation never replaces an existing file.
 
 An interrupted connection after publication but before the final response can
 leave a completed file whose client did not receive confirmation. Check the

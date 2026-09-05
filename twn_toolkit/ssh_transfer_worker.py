@@ -101,15 +101,16 @@ class TransferContext:
 
 class AtomicWriteHandle(paramiko.SFTPHandle):
     """Only an explicit SFTP CLOSE commits; session cleanup calls abort first."""
-    def __init__(self, context: TransferContext, requested: str) -> None:
+    def __init__(self, context: TransferContext, requested: str, *, overwrite: bool | None = None) -> None:
         super().__init__()
         self.context, self.requested = context, requested
+        self.started_at = time.time()
         self.total, self.failed = 0, False
         self._status = None
         self.destination = context.path(requested, write=True)
         self.upload = context.store.begin_upload(
             context.store.relative(self.destination.parent), self.destination.name,
-            overwrite=context.settings["allow_overwrite"],
+            overwrite=context.settings["allow_overwrite"] if overwrite is None else overwrite,
         )
         self.temporary = self.upload.temporary
 
@@ -134,7 +135,7 @@ class AtomicWriteHandle(paramiko.SFTPHandle):
         self._status = paramiko.SFTP_FAILURE
         self.upload.abort()
         self.context.record("SFTP", "upload", self.requested, "error",
-                            stored_filename="", bytes=self.total, message=message)
+                            stored_filename="", bytes=self.total, message=message, started_at=self.started_at)
 
     def close(self):
         if self._status is not None:
@@ -146,7 +147,7 @@ class AtomicWriteHandle(paramiko.SFTPHandle):
             return paramiko.SFTP_FAILURE
         self._status = paramiko.SFTP_OK
         self.context.record("SFTP", "upload", self.requested, "success",
-                            stored_filename=self.destination.name, bytes=self.total, message="")
+                            stored_filename=self.destination.name, bytes=self.total, message="", started_at=self.started_at)
         return self._status
 
 
@@ -155,6 +156,7 @@ class ReadHandle(paramiko.SFTPHandle):
     def __init__(self, context, path):
         super().__init__()
         self.context, self.requested = context, path
+        self.started_at = time.time()
         self.target = context.path(path)
         descriptor = os.open(self.target, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
         metadata = os.fstat(descriptor)
@@ -182,7 +184,8 @@ class ReadHandle(paramiko.SFTPHandle):
         complete = explicit and self.covered >= self.size
         self.context.record("SFTP", "download", self.requested,
                             "success" if complete else "error", stored_filename=self.target.name,
-                            bytes=self.total, message="" if complete else "Download closed without a confirmed complete sequential read.")
+                            bytes=self.total, started_at=self.started_at,
+                            message="" if complete else "Download closed without a confirmed complete sequential read.")
         return paramiko.SFTP_OK
 
     def close(self):
@@ -263,8 +266,13 @@ class ContainedSFTP(paramiko.SFTPServerInterface):
         writing = bool(flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC))
         if writing:
             if not self.context.settings["allow_write"]: return paramiko.SFTP_PERMISSION_DENIED
+            if flags & (os.O_APPEND | os.O_RDWR):
+                return paramiko.SFTP_OP_UNSUPPORTED
             try:
-                handle = AtomicWriteHandle(self.context, path)
+                handle = AtomicWriteHandle(
+                    self.context, path,
+                    overwrite=self.context.settings["allow_overwrite"] and bool(flags & os.O_TRUNC) and not bool(flags & os.O_EXCL),
+                )
                 self._uploads.add(handle)
                 return handle
             except (OSError, DatastoreError) as exc:
