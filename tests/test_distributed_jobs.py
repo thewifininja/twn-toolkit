@@ -14,25 +14,38 @@ def test_job_delivery_is_leased_and_completion_is_idempotent(tmp_path):
     assert queued["state"] == "queued"
 
     claimed = store.claim("agent_a")
-    assert claimed == [
-        {
-            "id": queued["id"],
-            "capability_id": "system.identity",
-            "capability_version": "1",
-            "inputs": {},
-        }
-    ]
+    assert len(claimed) == 1
+    delivery = claimed[0]
+    assert {
+        "id": delivery["id"],
+        "capability_id": delivery["capability_id"],
+        "capability_version": delivery["capability_version"],
+        "inputs": delivery["inputs"],
+    } == {
+        "id": queued["id"],
+        "capability_id": "system.identity",
+        "capability_version": "1",
+        "inputs": {},
+    }
+    assert delivery["attempt_token"]
     assert store.claim("agent_a") == []
+    store.control(
+        queued["id"], agent_id="agent_a", attempt_token=delivery["attempt_token"],
+        activation_id="", action="start",
+    )
 
     completed = store.complete(
         queued["id"],
         agent_id="agent_a",
+        attempt_token=delivery["attempt_token"],
+        activation_id="",
         state="succeeded",
         output={"toolkit": {"hostname": "agent-a"}},
     )
     assert completed["state"] == "succeeded"
     repeated = store.complete(
-        queued["id"], agent_id="agent_a", state="failed", error="late duplicate"
+        queued["id"], agent_id="agent_a", attempt_token=delivery["attempt_token"],
+        activation_id="", state="failed", error="late duplicate"
     )
     assert repeated["state"] == "succeeded"
     assert store.recent(requester_id="user_a")[0]["output"]["toolkit"]["hostname"] == "agent-a"

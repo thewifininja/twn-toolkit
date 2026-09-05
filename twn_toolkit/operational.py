@@ -21,6 +21,13 @@ DEFAULT_OPERATIONAL_SETTINGS = {
     "minimum_free_gib": 2,
     "max_upload_mib": 1024,
     "max_multipart_files": 64,
+    # Mainframe and Agent each apply their own local operation limits. The
+    # Mainframe returns the lease with each claim, so an agent renews against
+    # the exact duration that protected its delivery.
+    "distributed_job_lease_seconds": 30,
+    "distributed_tunnel_wait_seconds": 30,
+    "distributed_receipt_limit": 2048,
+    "distributed_receipt_retention_hours": 24,
 }
 
 
@@ -56,9 +63,26 @@ class OperationalSettingsStore:
             raw_upload = values.get("max_upload_mib", 1024)
             upload = int(raw_upload)
             raw_multipart = values.get("max_multipart_files", 64)
-            if isinstance(raw_multipart, bool) or not isinstance(raw_multipart, (str, int)):
+            distributed_raw = {
+                key: values.get(key, DEFAULT_OPERATIONAL_SETTINGS[key])
+                for key in (
+                    "distributed_job_lease_seconds",
+                    "distributed_tunnel_wait_seconds",
+                    "distributed_receipt_limit",
+                    "distributed_receipt_retention_hours",
+                )
+            }
+            if (
+                isinstance(raw_multipart, bool)
+                or not isinstance(raw_multipart, (str, int))
+                or any(isinstance(value, bool) for value in distributed_raw.values())
+            ):
                 raise ValueError
             multipart = int(raw_multipart)
+            lease_seconds = int(distributed_raw["distributed_job_lease_seconds"])
+            tunnel_wait_seconds = int(distributed_raw["distributed_tunnel_wait_seconds"])
+            receipt_limit = int(distributed_raw["distributed_receipt_limit"])
+            receipt_retention_hours = int(distributed_raw["distributed_receipt_retention_hours"])
             if isinstance(raw_upload, bool) or str(raw_upload).strip() != str(upload):
                 raise ValueError
         except (KeyError, TypeError, ValueError) as exc:
@@ -69,6 +93,10 @@ class OperationalSettingsStore:
         if not 0 <= minimum_free <= 100: raise ValueError("Minimum free space must be 0–100 GiB.")
         if not 1 <= upload <= 65536: raise ValueError("Upload size must be 1–65536 MiB.")
         if not 1 <= multipart <= 256: raise ValueError("Files per upload request must be 1–256.")
+        if not 5 <= lease_seconds <= 600: raise ValueError("Distributed operation leases must be 5–600 seconds.")
+        if not 1 <= tunnel_wait_seconds <= 120: raise ValueError("Remote tunnel wait time must be 1–120 seconds.")
+        if not 1 <= receipt_limit <= 20000: raise ValueError("Distributed receipt capacity must be 1–20,000.")
+        if not 1 <= receipt_retention_hours <= 720: raise ValueError("Distributed receipt retention must be 1–720 hours.")
         return {
             **validate_transfer_limits(values),
             "max_multipart_files": multipart,
@@ -79,6 +107,10 @@ class OperationalSettingsStore:
             "datastore_quota_gib": datastore,
             "automation_artifact_quota_gib": artifacts,
             "minimum_free_gib": minimum_free,
+            "distributed_job_lease_seconds": lease_seconds,
+            "distributed_tunnel_wait_seconds": tunnel_wait_seconds,
+            "distributed_receipt_limit": receipt_limit,
+            "distributed_receipt_retention_hours": receipt_retention_hours,
         }
 
     def storage_summary(self) -> dict[str, Any]:

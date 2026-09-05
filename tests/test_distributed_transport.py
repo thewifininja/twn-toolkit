@@ -7,6 +7,8 @@ from unittest.mock import patch
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 
 from twn_toolkit.app import create_app
 from twn_toolkit.auth import AuthStore
@@ -49,6 +51,26 @@ def test_loopback_enrollment_requires_approval_and_delivers_credentials(tmp_path
         assert client.ca_path.exists()
         assert stat.S_IMODE(client.certificate_path.stat().st_mode) == 0o600
         assert not client.pending_path.exists()
+
+        queued_for_legacy_peer = server.job_store.enqueue(
+            agent_id=enrollment["id"], requester_id="test-user",
+            capability_id="system.identity", capability_version="1",
+        )
+        certificate_der = x509.load_pem_x509_certificate(
+            client.certificate_path.read_bytes()
+        ).public_bytes(serialization.Encoding.DER)
+        upgrade_required = server.heartbeat(
+            certificate_der,
+            {"protocol": 1, "capabilities": [], "job_protocol": 1, "results": []},
+            "127.0.0.1",
+        )
+        assert upgrade_required["state"] == "upgrade_required"
+        assert upgrade_required["jobs"] == []
+        assert server.job_store.get(queued_for_legacy_peer["id"])["state"] == "queued"
+        server.job_store.cancel(
+            queued_for_legacy_peer["id"], requester_id="test-user"
+        )
+
         heartbeat = client.heartbeat(
             [{"id": "system.identity", "version": "1"}],
             toolkit_version="1.2.3",
@@ -88,8 +110,10 @@ def test_loopback_enrollment_requires_approval_and_delivers_credentials(tmp_path
         )
         interactive = client.interactive(wait_seconds=0)
         assert [item["id"] for item in interactive["requests"]] == [tunnel["id"]]
+        client.job_control(interactive["requests"][0], "start")
         client.interactive(
-            [{"id": tunnel["id"], "state": "succeeded", "output": {"status": 200}, "error": ""}],
+            [{"id": tunnel["id"], "attempt_token": interactive["requests"][0]["attempt_token"],
+              "state": "succeeded", "output": {"status": 200}, "error": ""}],
             wait_seconds=0,
         )
         assert server.job_store.get(tunnel["id"])["state"] == "succeeded"

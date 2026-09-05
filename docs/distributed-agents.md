@@ -134,21 +134,40 @@ The target job contract includes:
 - ordered progress events and one terminal status;
 - structured output, bounded logs, and content-addressed artifact descriptors.
 
-The current queue uses one SQLite transaction boundary for enqueue, activation
-changes, claims, and completion. Enqueue binds an activation before publishing
-the job. Claims reserve the writer before selecting eligible rows, so concurrent
-lanes cannot receive the same unexpired claim. Lease time begins after that
-reservation. Competing completions retain the first committed terminal result;
-late results cannot undo a committed cancellation. Schema initialization uses
-the same reservation and preserves existing queue records.
+The queue uses one SQLite transaction boundary for enqueue, activation changes,
+claims, start/renew control, cancellation, and completion. Enqueue binds an
+activation before publishing the job. A claim reserves the writer before
+selecting one eligible operation, then assigns an unguessable attempt token. A
+claim is only delivery: the agent must durably record its receipt and obtain an
+owned `start` transition before calling a capability. Start, renew, and result
+publication all require the same agent, activation, and attempt token.
 
-Delivery remains at-least-once: a running job becomes eligible again when its
-30-second lease expires. Atomic claims do not establish exactly-once execution.
-Renewable leases, attempt ownership, durable operation deduplication, and
-reconciliation of uncertain side effects remain execution-contract work. Until
-those are implemented, arbitrary tunneled mutations must not be assumed safe to
-retry solely because a request timed out. Terminal results remain queryable
-after reconnect.
+Job protocol 2 intentionally does not offer blind redelivery of unexpired work.
+An expired claim is cancelled because it never started. An expired running or
+cancel-requested operation is `unknown`, remains visible for reconciliation,
+and is never placed back in the queue. The same durable agent receipt may later
+resolve its own `unknown` outcome. A changed agent activation cancels work that
+never started and marks previously started work unknown, fencing stale results.
+Migration classifies legacy running work without an ownership token as unknown.
+
+Agents keep a private, bounded receipt before execution and retain it until the
+Mainframe acknowledges its result. A restart with a receipt that lacks a result
+reports unknown rather than replaying the capability. This establishes a safe
+no-repeat contract for arbitrary side effects; it does not create exactly-once
+execution across a target that lacks its own idempotency key. A handler cannot
+always be forcibly interrupted, so cancellation of running work is an honest
+`cancel_requested` state until an outcome is known. An Agent stops renewing a
+cancel-requested lease; if its handler cannot finish, the Mainframe changes the
+operation to unknown rather than showing an indefinitely renewable cancellation.
+
+Mainframe browser tunnel waits are configurable. On timeout, unstarted work is
+cancelled and running work remains tracked. The response redirects to a
+requester-scoped operation status page or returns `202` with its URL; it never
+replays the original request. The page deliberately excludes stored request and
+response bodies. Administrators can set the Mainframe lease and tunnel wait and
+each Agent can set its receipt capacity and acknowledged-receipt retention in
+**Settings → Operations**. New claims use updated policy; the existing
+ownership and token checks are invariants rather than policy choices.
 
 ## Execution classes
 
@@ -166,8 +185,9 @@ System identity and DNS are implemented as initial finite job capabilities.
 
 ## Current tunnel limits
 
-Interactive request and response bodies are bounded to 192 KiB before base64
-encoding. Shared CSS is served locally by the mainframe. Ordinary pages, forms,
+Interactive request and response bodies are bounded to 160 KiB before base64
+encoding so the body and metadata fit inside the 256 KiB durable-control
+envelope. Shared CSS is served locally by the mainframe. Ordinary pages, forms,
 redirects, and small downloads are supported. Large uploads, streaming bodies,
 Server-Sent Events, and WebSockets require a later multiplexed streaming
 transport and must not silently fall back to local execution.
@@ -182,7 +202,9 @@ enrollment state, permissions, connection metadata, and revocation state.
 owner-only permissions; a missing, invalid, or expired file means closed.
 `distributed_jobs.sqlite3` stores queued work, activation bindings, leases, and
 results separately from trust records. Both historical queue import paths use
-the same implementation and existing schema; no new wire fields are required.
+the same implementation and schema migration. Owned operation delivery requires
+job protocol 2; older peers receive `upgrade_required` and receive no risky
+work until both sides are upgraded.
 
 Enrollment request, approval, denial, certificate renewal, permission change,
 job dispatch, cancellation, completion, failure, and revocation are audited.

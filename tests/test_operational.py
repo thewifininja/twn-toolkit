@@ -307,11 +307,21 @@ class OperationalHardeningTests(unittest.TestCase):
     def test_operational_settings_validate_and_persist(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             store = OperationalSettingsStore(instance)
-            settings = store.save({"max_concurrent_automations": 8, "datastore_quota_gib": 20})
+            settings = store.save({
+                "max_concurrent_automations": 8, "datastore_quota_gib": 20,
+                "distributed_job_lease_seconds": 45,
+                "distributed_tunnel_wait_seconds": 12,
+                "distributed_receipt_limit": 64,
+                "distributed_receipt_retention_hours": 48,
+            })
             self.assertEqual(settings["max_concurrent_automations"], 8)
             self.assertEqual(store.get()["datastore_quota_gib"], 20)
+            self.assertEqual(store.get()["distributed_job_lease_seconds"], 45)
+            self.assertEqual(store.get()["distributed_receipt_limit"], 64)
             with self.assertRaisesRegex(ValueError, "Concurrent"):
                 store.save({"max_concurrent_automations": 0})
+            with self.assertRaisesRegex(ValueError, "Distributed operation leases"):
+                store.save({"distributed_job_lease_seconds": 4})
 
     def test_datastore_rejects_write_past_configured_quota(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -689,9 +699,16 @@ class OperationalHardeningTests(unittest.TestCase):
                 "max_concurrent_automations": "3", "max_queued_automations": "7",
                 "skip_overlapping_automations": "on", "datastore_quota_gib": "12",
                 "automation_artifact_quota_gib": "14", "minimum_free_gib": "1",
+                "distributed_job_lease_seconds": "45",
+                "distributed_tunnel_wait_seconds": "12",
+                "distributed_receipt_limit": "64",
+                "distributed_receipt_retention_hours": "48",
             })
             self.assertEqual(response.status_code, 302)
             self.assertEqual(OperationalSettingsStore(instance).get()["max_queued_automations"], 7)
+            self.assertEqual(OperationalSettingsStore(instance).get()["distributed_receipt_limit"], 64)
+            operations_page = client.get("/settings?section=operations")
+            self.assertNotIn(b"Distributed operation limits", operations_page.data)
             diagnostics = client.get("/settings/diagnostics")
             self.assertIn(b"Updated operational limits", diagnostics.data)
             self.assertIn(b"Changed settings", diagnostics.data)
