@@ -249,6 +249,8 @@ AUDIT_CONDITIONAL_ENDPOINTS = frozenset(
 
 AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
     {
+        # Frequent interaction metadata; authentication lifecycle is audited separately.
+        "session_activity",
         # The relay itself does not perform the operation. The agent's native
         # endpoint records the delegated administrator and its local mutation.
         "agent_ui",

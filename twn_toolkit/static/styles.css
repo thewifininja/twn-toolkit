@@ -22224,3 +22224,23 @@ body.remote-terminal-resizing * {
     justify-self: start;
   }
 }
+
+
+.session-expiry-notice:not([hidden]) {
+  position: fixed;
+  z-index: 10000;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 1rem;
+  border: 2px solid var(--red);
+  border-radius: var(--radius-sm);
+  background: var(--panel, #202330);
+  color: var(--text, #fff);
+  box-shadow: 0 4px 24px #0006;
+}
+.session-expiry-notice a { color: inherit; text-decoration: underline; font-weight: 700; }

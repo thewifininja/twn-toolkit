@@ -31,6 +31,7 @@
         <label>Idle minutes (0 = never expire)
           <input type="number" name="idle_timeout_minutes" min="0" max="1440"
                  value="{{ idle_timeout_minutes }}" required>
+          <small class="field-note">Counts inactivity across browser tabs. Background polling does not extend your session. Keyboard, pointer and touch interaction keep it active; an expired session requires signing in again.</small>
         </label>
         <label>Minimum password length
           <input type="number" name="min_password_length" min="8" max="128"

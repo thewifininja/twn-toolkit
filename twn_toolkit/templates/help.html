@@ -109,7 +109,7 @@
     <p>The built-in System administrator profile is protected. Assign it only to people who should manage users, profiles, backups, server access, and high-impact tools. Operators can use every tool granted by their assigned profiles without receiving unrestricted system administration.</p>
   </div></details>
   <details class="help-topic"><summary>Sessions, password policy, and recovery</summary><div class="help-topic-body">
-    <p>Settings controls minimum password length, optional complexity, and idle timeout. <strong>Never</strong> disables idle expiration. If all administrators are locked out:</p>
+    <p>Settings controls minimum password length, optional complexity, and idle timeout. <strong>Never</strong> disables idle expiration. Keyboard, pointer and touch interaction keep a visible page active; background polling does not. If the session expires, sign in through the notice in a new tab, then return to your original page before submitting changes. If all administrators are locked out:</p>
     <pre><code>./twn stop
 ./twn adminreset
 ./twn start</code></pre>
@@ -237,7 +237,7 @@
     <p>The audit ledger records the user, source address, endpoint, HTTP method, path, result code, and time. Expand a row to see the affected resource, selected event metadata, and before/after values. Profile events show whether sensitive configuration is present or was replaced without revealing its value. Tool runs retain bounded modes, counts, and outcomes rather than submitted targets, commands, payloads, packet bytes, captured messages, or returned data.</p>
     <p>Referenced resources use human-readable names while retaining stable IDs for correlation. Datastore events identify affected paths, item types, file sizes, selections, and move destinations without retaining file contents. Fortinet and backup exports retain the selected profile or data groups and row counts, never the exported records.</p>
     <p>Audit context is explicitly selected by each workflow and sanitized again before storage. Raw request bodies are never copied into the ledger; passwords, tokens, API keys, authorization headers, communities, private keys, and other secret-bearing fields are redacted recursively. Each authenticated event also identifies the actor role and assigned access profiles.</p>
-    <p>The supervisor restarts a failed scheduler or enabled transfer worker. Numbered toolkit migrations take a consistent SQLite snapshot before applying a new version.</p>
+    <p>The supervisor restarts a failed scheduler or enabled transfer worker. It logs failed checks and restart attempts, waits before retrying that service, and continues supervising the others. Numbered toolkit migrations take a consistent SQLite snapshot before applying a new version.</p>
   </div></details>
   <details class="help-topic"><summary>Backups and future services</summary><div class="help-topic-body">
     <p>Datastore contents are operational files and are intentionally excluded from configuration backups. Use a complete recovery point or another deliberate datastore backup when those files matter.</p>

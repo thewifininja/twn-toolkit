@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import signal
 import subprocess
-import sys
 import time
 from pathlib import Path
 
@@ -21,78 +21,110 @@ from .pidfiles import (
 )
 
 
+# Central recovery policy; independent of authentication or transfer limits.
+RESTART_TIMEOUT_SECONDS = 30
+RESTART_COOLDOWN_SECONDS = 30
+SWEEP_INTERVAL_SECONDS = 5
+AUTOMATION_HEARTBEAT_MAX_AGE_SECONDS = 20
+
+SERVICES = (
+    ("automation", "", "twn-automation.pid", "", "automation-restart", "automation-heartbeat.json"),
+    ("TFTP", "tftp_settings.json", "twn-tftp.pid", "twn-tftp.ready", "tftp-restart", ""),
+    ("SFTP/SCP", "ssh_transfer_settings.json", "twn-ssh-transfer.pid", "twn-ssh-transfer.ready", "ssh-transfer-restart", ""),
+    ("FTP", "ftp_settings.json", "twn-ftp.pid", "twn-ftp.ready", "ftp-restart", ""),
+)
+
+
+def supervise_once(root: Path, instance: Path, retry_after: dict[str, float], *, stopping=lambda: False) -> None:
+    for label, settings, pid_name, ready_name, command, heartbeat_name in SERVICES:
+        if stopping():
+            return
+        try:
+            if time.monotonic() < retry_after.get(pid_name, 0):
+                continue
+            if settings and not _enabled(instance / settings):
+                continue
+            if _operation_active(instance / f"{pid_name}.lock"):
+                continue
+            healthy = (process_marker_ready(instance / pid_name, instance / ready_name)
+                       if ready_name else _pid_running(instance / pid_name))
+            if healthy and heartbeat_name:
+                healthy = _heartbeat_fresh(instance / heartbeat_name, AUTOMATION_HEARTBEAT_MAX_AGE_SECONDS)
+            if healthy:
+                retry_after.pop(pid_name, None)
+                continue
+            print(f"Supervisor restarting {label}.", flush=True)
+            result = subprocess.run([str(root / "twn"), command], cwd=root,
+                                    timeout=RESTART_TIMEOUT_SECONDS, check=False)
+            retry_after[pid_name] = time.monotonic() + RESTART_COOLDOWN_SECONDS
+            if result.returncode:
+                print(f"Could not restart {label}: command exited with status {result.returncode}.", flush=True)
+        except Exception as exc:
+            # A broken health probe or restart must not abandon the other services.
+            retry_after[pid_name] = time.monotonic() + RESTART_COOLDOWN_SECONDS
+            print(f"Could not supervise {label}: {type(exc).__name__}: {exc}", flush=True)
+    if stopping() or time.monotonic() < retry_after.get("iperf", 0):
+        return
+    try:
+        if (instance / "iperf_servers.sqlite3").exists():
+            restored = _restore_iperf_listeners(instance)
+            if restored:
+                print(f"Supervisor restored {restored} managed iPerf3 listener{'s' if restored != 1 else ''}.", flush=True)
+            retry_after.pop("iperf", None)
+    except Exception as exc:
+        retry_after["iperf"] = time.monotonic() + RESTART_COOLDOWN_SECONDS
+        print(f"Could not supervise managed iPerf3 listeners: {type(exc).__name__}: {exc}", flush=True)
+
+
+def _write_heartbeat(path: Path) -> None:
+    try:
+        path.write_text(json.dumps({"updated_at": time.time(), "pid": os.getpid()}), encoding="utf-8")
+        os.chmod(path, 0o600)
+    except OSError as exc:
+        # Report publication failures without stopping recovery.
+        print(f"Could not write supervisor heartbeat: {type(exc).__name__}: {exc}", flush=True)
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(); parser.add_argument("--instance", required=True); parser.add_argument("--root", required=True); parser.add_argument("--pid-file", required=True); parser.add_argument("--log-file", required=True); parser.add_argument("--daemon", action="store_true")
+    parser = argparse.ArgumentParser()
+    for name in ("instance", "root", "pid-file", "log-file"):
+        parser.add_argument(f"--{name}", required=True)
+    parser.add_argument("--daemon", action="store_true")
     args = parser.parse_args()
     root = Path(args.root).resolve()
     instance = Path(args.instance).resolve()
     singleton = acquire_singleton_lock(instance, "supervisor")
     if singleton is None:
         return
-    if args.daemon: _daemonize(args.pid_file, args.log_file)
-    else: write_pid_file(args.pid_file)
-    record_lock_owner(singleton)
-    running = True
-    retry_after: dict[str, float] = {}
-    signal.signal(signal.SIGTERM, lambda *_: _stop()); signal.signal(signal.SIGINT, lambda *_: _stop())
-    def supervise() -> None:
-        services = [
-            ("automation", True, "twn-automation.pid", "", "automation-restart", "automation-heartbeat.json"),
-            ("TFTP", _enabled(instance / "tftp_settings.json"), "twn-tftp.pid", "twn-tftp.ready", "tftp-restart", ""),
-            ("SFTP/SCP", _enabled(instance / "ssh_transfer_settings.json"), "twn-ssh-transfer.pid", "twn-ssh-transfer.ready", "ssh-transfer-restart", ""),
-            ("FTP", _enabled(instance / "ftp_settings.json"), "twn-ftp.pid", "twn-ftp.ready", "ftp-restart", ""),
-        ]
-        for label, enabled, pid_name, ready_name, command, heartbeat_name in services:
-            if not enabled: continue
-            if _operation_active(instance / f"{pid_name}.lock"):
-                continue
-            healthy = (
-                process_marker_ready(instance / pid_name, instance / ready_name)
-                if ready_name
-                else _pid_running(instance / pid_name)
-            )
-            if healthy and heartbeat_name:
-                healthy = _heartbeat_fresh(instance / heartbeat_name, 20)
-            if healthy:
-                retry_after.pop(pid_name, None)
-                continue
-            if time.time() < retry_after.get(pid_name, 0):
-                continue
-            print(f"Supervisor restarting {label}.", flush=True)
-            subprocess.run([str(root / "twn"), command], cwd=root, timeout=30, check=False)
-            retry_after[pid_name] = time.time() + 30
-        iperf_database = instance / "iperf_servers.sqlite3"
-        if iperf_database.exists():
-            try:
-                restored = _restore_iperf_listeners(instance)
-                if restored:
-                    print(
-                        f"Supervisor restored {restored} managed iPerf3 "
-                        f"listener{'s' if restored != 1 else ''}.",
-                        flush=True,
-                    )
-            except Exception as exc:
-                print(
-                    f"Could not supervise managed iPerf3 listeners: "
-                    f"{type(exc).__name__}: {exc}",
-                    flush=True,
-                )
-    def _stop() -> None:
-        nonlocal running; running = False
     heartbeat = instance / "supervisor-heartbeat.json"
     try:
+        if args.daemon:
+            _daemonize(args.pid_file, args.log_file)
+        else:
+            write_pid_file(args.pid_file)
+        record_lock_owner(singleton)
+        running = True
+        def stop(*_args):
+            nonlocal running
+            running = False
+        signal.signal(signal.SIGTERM, stop)
+        signal.signal(signal.SIGINT, stop)
+        retry_after: dict[str, float] = {}
         while running:
             if args.daemon and not _owns_pid_file(Path(args.pid_file)):
                 break
-            supervise()
-            heartbeat.write_text(json.dumps({"updated_at": time.time(), "pid": os.getpid()}), encoding="utf-8")
-            os.chmod(heartbeat, 0o600)
-            for _ in range(50):
-                if not running: break
+            supervise_once(root, instance, retry_after, stopping=lambda: not running)
+            _write_heartbeat(heartbeat)
+            for _ in range(int(SWEEP_INTERVAL_SECONDS / 0.1)):
+                if not running:
+                    break
                 time.sleep(0.1)
     finally:
-        remove_own_pid_file(args.pid_file)
-        _remove_own_heartbeat(heartbeat)
+        try:
+            remove_own_pid_file(args.pid_file)
+            _remove_own_heartbeat(heartbeat)
+        finally:
+            singleton.close()
 
 
 def _owns_pid_file(path: Path) -> bool:
@@ -116,7 +148,7 @@ def _remove_own_heartbeat(path: Path) -> None:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if int(payload.get("pid", 0)) == os.getpid():
             path.unlink(missing_ok=True)
-    except (OSError, TypeError, ValueError):
+    except (OSError, TypeError, ValueError, AttributeError):
         pass
 
 
@@ -146,8 +178,13 @@ def stop_matching_supervisors(
 
 
 def _enabled(path: Path) -> bool:
-    try: return bool(json.loads(path.read_text(encoding="utf-8")).get("enabled"))
-    except (OSError, ValueError): return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return False
+    if not isinstance(data, dict) or not isinstance(data.get("enabled", False), bool):
+        raise ValueError("Service settings must contain a boolean enabled value.")
+    return data.get("enabled", False)
 
 
 def _restore_iperf_listeners(instance: Path) -> int:
@@ -162,8 +199,12 @@ def _pid_running(path: Path) -> bool:
 
 
 def _heartbeat_fresh(path: Path, maximum_age: int) -> bool:
-    try: return time.time() - float(json.loads(path.read_text(encoding="utf-8"))["updated_at"]) <= maximum_age
-    except (OSError, ValueError, KeyError): return False
+    try:
+        updated = float(json.loads(path.read_text(encoding="utf-8"))["updated_at"])
+        age = time.time() - updated
+        return math.isfinite(age) and 0 <= age <= maximum_age
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def _daemonize(pid_file: str, log_file: str) -> None:
