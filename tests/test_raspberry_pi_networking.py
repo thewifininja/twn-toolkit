@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
+import socket
 import tempfile
+import threading
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -961,6 +965,81 @@ class RaspberryPiNetworkProfileTests(unittest.TestCase):
         self.assertEqual(groups[0]["clients"][0]["neighbor_state"], "STALE")
         self.assertEqual(groups[0]["clients"][1]["hostname"], "field-laptop")
         self.assertEqual(groups[0]["clients"][1]["neighbor_state"], "REACHABLE")
+
+
+class RaspberryPiNetworkBrokerServerTests(unittest.TestCase):
+    @unittest.skipUnless(
+        hasattr(socket, "SO_PEERCRED"), "requires Linux Unix-socket peer credentials"
+    )
+    def test_stalled_client_does_not_block_a_later_request(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            socket_path = root / "broker.sock"
+            broker = PiNetworkBroker(
+                socket_path=socket_path,
+                allowed_uid=os.getuid(),
+                toolkit_root=root,
+                connection_directory=root / "connections",
+                state_directory=root / "state",
+            )
+            broker.dispatch = mock.Mock(return_value={"accepted": True})
+            read_started = threading.Event()
+            read_client_request = broker._read_client_request
+
+            def notify_when_reading(connection: socket.socket) -> dict[str, object]:
+                read_started.set()
+                return read_client_request(connection)
+
+            broker._read_client_request = notify_when_reading
+            server = threading.Thread(target=broker.serve_forever)
+            slow_client: socket.socket | None = None
+            with (
+                mock.patch("twn_toolkit.pi_network_broker._require_raspberry_pi"),
+                mock.patch(
+                    "twn_toolkit.pi_network_broker.CLIENT_READ_TIMEOUT_SECONDS",
+                    0.2,
+                ),
+                mock.patch(
+                    "twn_toolkit.pi_network_broker.CLIENT_WRITE_TIMEOUT_SECONDS",
+                    0.2,
+                ),
+            ):
+                try:
+                    server.start()
+                    deadline = time.monotonic() + 2
+                    while not socket_path.exists() and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertTrue(socket_path.exists())
+
+                    slow_client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    slow_client.settimeout(1)
+                    slow_client.connect(str(socket_path))
+                    self.assertTrue(read_started.wait(1))
+
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                        client.settimeout(1)
+                        client.connect(str(socket_path))
+                        client.sendall(
+                            json.dumps(
+                                {
+                                    "protocol_version": BROKER_PROTOCOL_VERSION,
+                                    "operation": "status",
+                                }
+                            ).encode("utf-8")
+                            + b"\n"
+                        )
+                        response = json.loads(client.recv(65536).decode("utf-8"))
+
+                    self.assertEqual(response, {"ok": True, "accepted": True})
+                    slow_response = json.loads(slow_client.recv(65536).decode("utf-8"))
+                    self.assertFalse(slow_response["ok"])
+                    self.assertIn("timed out", slow_response["error"])
+                finally:
+                    if slow_client is not None:
+                        slow_client.close()
+                    broker._stopping.set()
+                    server.join(2)
+            self.assertFalse(server.is_alive())
 
 
 class RaspberryPiNetworkBrokerTests(unittest.TestCase):

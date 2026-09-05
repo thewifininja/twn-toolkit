@@ -37,6 +37,10 @@ CHECKPOINT_PATTERN = re.compile(r"^/org/freedesktop/NetworkManager/Checkpoint/\d
 PROFILE_PREFIX = "twn-pi-"
 CHECKPOINT_FLAGS = 0x01 | 0x02 | 0x04
 CHECKPOINT_OPERATION_GRACE_SECONDS = 90
+CLIENT_READ_TIMEOUT_SECONDS = 5.0
+CLIENT_WRITE_TIMEOUT_SECONDS = 5.0
+# Bound socket readers without allowing concurrent network-state mutations.
+MAX_CONCURRENT_CLIENTS = 4
 
 
 class BrokerError(RuntimeError):
@@ -1505,6 +1509,7 @@ class PiNetworkBroker:
         self.certificate_directory = state_directory / "certificates"
         self._lock = threading.RLock()
         self._stopping = threading.Event()
+        self._client_slots = threading.BoundedSemaphore(MAX_CONCURRENT_CLIENTS)
         self._interface_signature: tuple[tuple[str, str, str], ...] | None = None
         self._next_reconcile_at = 0.0
 
@@ -2503,6 +2508,59 @@ class PiNetworkBroker:
                     flush=True,
                 )
 
+    def _read_client_request(self, connection: socket.socket) -> dict[str, Any]:
+        connection.settimeout(CLIENT_READ_TIMEOUT_SECONDS)
+        data = bytearray()
+        while b"\n" not in data:
+            block = connection.recv(65536)
+            if not block:
+                break
+            data.extend(block)
+            if len(data) > MAX_MESSAGE_BYTES:
+                raise BrokerError("The request is too large.")
+        request = json.loads(bytes(data).split(b"\n", 1)[0])
+        if not isinstance(request, dict):
+            raise BrokerError("The request is invalid.")
+        return request
+
+    @staticmethod
+    def _send_client_response(
+        connection: socket.socket, response: dict[str, Any]
+    ) -> None:
+        try:
+            connection.settimeout(CLIENT_WRITE_TIMEOUT_SECONDS)
+            connection.sendall(
+                json.dumps(response, separators=(",", ":")).encode("utf-8")
+                + b"\n"
+            )
+        except OSError:
+            pass
+
+    def _serve_client(self, connection: socket.socket) -> None:
+        try:
+            with connection:
+                try:
+                    request = self._read_client_request(connection)
+                    with self._lock:
+                        response = {"ok": True, **self.dispatch(request)}
+                except Exception as exc:
+                    response = {
+                        "ok": False,
+                        "error": " ".join(str(exc).split())[:500],
+                    }
+                self._send_client_response(connection, response)
+        finally:
+            self._client_slots.release()
+
+    def _reject_client(self, connection: socket.socket, message: str) -> None:
+        try:
+            self._send_client_response(
+                connection,
+                {"ok": False, "error": message},
+            )
+        finally:
+            connection.close()
+
     def serve_forever(self) -> None:
         _require_raspberry_pi()
         self.state_directory.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -2524,25 +2582,30 @@ class PiNetworkBroker:
                     connection, _ = listener.accept()
                 except socket.timeout:
                     continue
-                with connection:
-                    try:
-                        if self._peer_uid(connection) != self.allowed_uid:
-                            raise BrokerError("The calling process is not authorized.")
-                        data = bytearray()
-                        while b"\n" not in data:
-                            block = connection.recv(65536)
-                            if not block:
-                                break
-                            data.extend(block)
-                            if len(data) > MAX_MESSAGE_BYTES:
-                                raise BrokerError("The request is too large.")
-                        request = json.loads(bytes(data).split(b"\n", 1)[0])
-                        if not isinstance(request, dict):
-                            raise BrokerError("The request is invalid.")
-                        response = {"ok": True, **self.dispatch(request)}
-                    except Exception as exc:
-                        response = {"ok": False, "error": " ".join(str(exc).split())[:500]}
-                    connection.sendall(json.dumps(response, separators=(",", ":")).encode("utf-8") + b"\n")
+                try:
+                    if self._peer_uid(connection) != self.allowed_uid:
+                        raise BrokerError("The calling process is not authorized.")
+                except Exception as exc:
+                    self._reject_client(connection, " ".join(str(exc).split())[:500])
+                    continue
+                if not self._client_slots.acquire(blocking=False):
+                    self._reject_client(
+                        connection,
+                        "The Raspberry Pi network broker is busy. Try again shortly.",
+                    )
+                    continue
+                try:
+                    threading.Thread(
+                        target=self._serve_client,
+                        args=(connection,),
+                        daemon=True,
+                    ).start()
+                except RuntimeError:
+                    self._client_slots.release()
+                    self._reject_client(
+                        connection,
+                        "The Raspberry Pi network broker could not handle the request.",
+                    )
         finally:
             self._stopping.set()
             listener.close()
