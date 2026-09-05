@@ -598,6 +598,8 @@ The toolkit is intentionally local-first:
 
 - application passwords use scrypt hashes;
 - session signing uses a private installation secret;
+- browser idle expiry follows user interaction rather than background polling; see
+  [session activity and supervisor recovery](docs/session-and-supervisor-reliability.md);
 - automation action secrets are encrypted at rest;
 - profile files and databases use owner-only permissions;
 - login access is restricted to loopback and RFC 1918 clients by default; and

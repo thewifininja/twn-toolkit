@@ -65,7 +65,7 @@ from .tool_catalog import (
 )
 from .tools import tools_bp
 from .version import APP_VERSION, RELEASE_NOTES
-from .audit import AuditStore, annotate_audit_event
+from .audit import AuditStore, annotate_audit_event, suppress_audit_event
 from .migrations import run_toolkit_migrations
 from .operational import OperationalSettingsStore
 from .remote_sessions import RemoteSessionManager, RemoteSessionStore
@@ -278,20 +278,29 @@ def create_app(instance_path: str | None = None) -> Flask:
             expired = bool(
                 idle_timeout_minutes > 0
                 and user_id
-                and last_seen
-                and now - int(last_seen) > idle_seconds
+                and isinstance(last_seen, int)
+                and now - last_seen > idle_seconds
             )
             session.clear()
+            if endpoint == "session_activity":
+                response = jsonify({"expired": True})
+                response.status_code = 401
+                response.headers["Cache-Control"] = "no-store"
+                return response
             if expired:
                 flash("Your session expired due to inactivity.", "error")
             return redirect(url_for("login", next=_safe_next_url()))
 
-        session["last_seen"] = now
         g.current_user = user
         g.allowed_tool_ids = auth_store.effective_tool_ids(user)
         denied_tool_id = tool_id_for_endpoint(endpoint, request.view_args)
         if denied_tool_id and not _tool_access_allowed(denied_tool_id):
             return Response("This user does not have access to that tool.", status=403)
+        # Polls, AJAX traffic and automatic reloads are not evidence of activity.
+        if (endpoint and endpoint != "session_activity"
+                and request.headers.get("Sec-Fetch-Mode") == "navigate"
+                and request.headers.get("Sec-Fetch-User") == "?1"):
+            session["last_seen"] = now
         return None
 
     @app.before_request
@@ -309,6 +318,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             "health",
             "logout",
             "update_appearance",
+            "session_activity",
             "update_execution_context",
             "agent_workspace",
             "agent_dns_response",
@@ -381,6 +391,8 @@ def create_app(instance_path: str | None = None) -> Flask:
                     "context_id": agent_id,
                     "context_url": url_for("update_execution_context"),
                     "logout_url": url_for("logout"),
+                    "session_activity_url": url_for("session_activity"),
+                    "session_login_url": url_for("login"),
                     "appearance_url": url_for("update_appearance"),
                     "appearance": auth_store.user_appearance(
                         g.current_user["id"], agent_id
@@ -773,6 +785,14 @@ def create_app(instance_path: str | None = None) -> Flask:
         color_mode = APPEARANCE_PALETTES[appearance["palette"]]
         return {
             "current_user": current_user,
+            "session_activity_url": (
+                str(delegated_fabric.get("session_activity_url", "/session/activity"))
+                if isinstance(delegated_fabric, dict) else url_for("session_activity")
+            ),
+            "session_login_url": (
+                str(delegated_fabric.get("session_login_url", "/login"))
+                if isinstance(delegated_fabric, dict) else url_for("login")
+            ),
             "user_theme": color_mode,
             "user_appearance": appearance,
             "user_palette": appearance["palette"],
@@ -992,6 +1012,24 @@ def create_app(instance_path: str | None = None) -> Flask:
         session.clear()
         flash("You have been signed out.", "success")
         return redirect(url_for("login"))
+
+    @app.route("/session/activity", methods=["GET", "POST"])
+    def session_activity():
+        # Interaction refreshes are high-frequency metadata; login/logout and
+        # account-policy changes retain their explicit security audit events.
+        suppress_audit_event()
+        # A custom header cannot be sent by a cross-origin HTML form. The global
+        # origin check also rejects cross-origin fetches before authentication.
+        if request.method == "POST":
+            if request.headers.get("X-TWN-User-Activity") != "1":
+                return Response("An explicit user activity signal is required.", status=403)
+            session["last_seen"] = int(time.time())
+        idle_seconds = auth_store.idle_timeout_minutes() * 60
+        remaining = (max(0, int(session.get("last_seen", 0)) + idle_seconds - int(time.time()))
+                     if idle_seconds else None)
+        response = jsonify({"remaining_seconds": remaining})
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/health")
     def health():

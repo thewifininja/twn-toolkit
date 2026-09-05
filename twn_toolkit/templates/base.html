@@ -19,6 +19,14 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='appearance.css', v=asset_version) }}">
   </head>
   <body>
+    {% if current_user %}
+      <aside id="session-expiry-notice" class="session-expiry-notice" role="status" aria-live="polite" hidden
+             data-activity-url="{{ session_activity_url }}">
+        <span>Your session has expired. Your work remains on this page.</span>
+        <a href="{{ session_login_url }}" target="_blank" rel="noopener">Sign in again in a new tab</a>
+        <span>Then return here before submitting changes.</span>
+      </aside>
+    {% endif %}
     <header class="topbar{{ ' with-sidebar' if current_user else '' }}{{ ' remote-execution-context' if selected_execution_agent else '' }}">
       {% if current_user %}
         <button
@@ -519,6 +527,7 @@
       <script src="{{ url_for('static', filename='case-note.js', v=asset_version) }}"></script>
     {% endif %}
     {% if current_user %}
+      <script src="{{ url_for('static', filename='session-activity.js', v=asset_version) }}"></script>
       <script src="{{ url_for('static', filename='favorites-order.js', v=asset_version) }}"></script>
       <script src="{{ url_for('static', filename='pcap-viewer.js', v=asset_version) }}"></script>
     {% endif %}

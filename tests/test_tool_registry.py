@@ -125,6 +125,7 @@ class ToolRegistryTests(unittest.TestCase):
             "task_preview",
         }
         public_or_self_service = {
+            "session_activity",
             "agent_ui",
             "favicon",
             "health",
