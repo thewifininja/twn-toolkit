@@ -39,6 +39,22 @@ precedent.
   release notes, accessibility, responsive behavior, and tests as parts of the
   feature—not follow-up polish.
 
+## Distributed queue transaction boundary
+
+`distributed_jobs.DistributedJobStore` owns queue schema initialization,
+activation binding, enqueue, claims, and terminal transitions. The historical
+`distributed_job_epochs` module is a compatibility import, not a second queue
+implementation. Every state transition that reads before writing must reserve
+SQLite with `BEGIN IMMEDIATE` before its read. Enqueue binds the activation in
+the insertion transaction; result recording preserves already committed
+terminal states. Compute claim lease timestamps after acquiring the reservation.
+Keep the existing database and wire formats compatible.
+
+This establishes exclusive unexpired claims, not exactly-once execution.
+Expired leases may redeliver work. Lease renewal, attempt fencing, durable
+operation deduplication, cancellation, and unknown-outcome recovery need one
+coherent execution contract before non-idempotent actions can be retried safely.
+
 ## Product direction
 
 - The home page is an operator workspace, not a launch grid or a gamification
