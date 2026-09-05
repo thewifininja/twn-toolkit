@@ -397,8 +397,9 @@ registrations.
 scheduler log from `instance/twn-automation.log`.
 
 The current scheduler uses one process with atomic due-check and execution-job
-claiming in SQLite. Its heartbeat separates active condition checks from active
-action jobs. Web workers only configure and display automations; they do not
+claiming in SQLite. Its heartbeat separates process liveness from scheduler
+progress and active condition checks from active action jobs. Web workers only
+configure and display automations; they do not
 run monitoring loops. Manual and startup-test runs are first written to the
 same durable queue, then claimed and executed synchronously so the browser
 still receives the completed run.
@@ -410,3 +411,19 @@ still receives the completed run.
 - Explicit production and out-of-band source-interface binding.
 - Optional repeated collection during a long-lived incident.
 - Granular permissions for viewing, arming, editing, and downloading output.
+
+
+## Scheduler liveness and shutdown
+
+The scheduler publishes a process-liveness heartbeat every two seconds even if
+the scheduler loop is waiting on SQLite or a completed-work handoff. It also
+reports the time of its most recent scheduler pass and completed work so an
+administrator can distinguish a busy scheduler from one that has stopped making
+progress. On `SIGTERM` or `SIGINT`, it immediately stops claiming new jobs and
+live-tool rounds and cancels queued executor work; work already inside a network
+call retains its action-specific deadline where one is available. The launcher
+then forces termination after `TWN_TOOLKIT_STOP_TIMEOUT` seconds (10 by
+default), so a
+restart or stop has a documented upper bound. Because automation delivery is
+at least once, a force-stopped in-flight job can be reclaimed after its lease
+expires and must remain idempotent at the external system where possible.

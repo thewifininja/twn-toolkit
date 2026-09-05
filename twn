@@ -878,11 +878,13 @@ stop_automation() {
   automation_pid=$(cat "$AUTOMATION_PIDFILE")
   kill "$automation_pid" 2>/dev/null || true
   attempts=0
-  while pid_is_running "$automation_pid" && [ "$attempts" -lt 50 ]; do
+  max_attempts=$((STOP_TIMEOUT * 10))
+  while pid_is_running "$automation_pid" && [ "$attempts" -lt "$max_attempts" ]; do
     attempts=$((attempts + 1))
     sleep 0.1
   done
   if pid_is_running "$automation_pid"; then
+    echo "Automation scheduler did not stop after ${STOP_TIMEOUT}s; forcing shutdown (PID $automation_pid)." >&2
     kill -KILL "$automation_pid" 2>/dev/null || true
   fi
   rm -f "$AUTOMATION_PIDFILE"

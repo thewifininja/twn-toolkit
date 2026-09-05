@@ -9,6 +9,10 @@ import subprocess
 import time
 from pathlib import Path
 
+from .automation_heartbeat import (
+    AUTOMATION_HEARTBEAT_MAX_AGE_SECONDS,
+    automation_heartbeat_fresh,
+)
 from .pidfiles import (
     acquire_singleton_lock,
     matching_daemon_pids,
@@ -25,8 +29,6 @@ from .pidfiles import (
 RESTART_TIMEOUT_SECONDS = 30
 RESTART_COOLDOWN_SECONDS = 30
 SWEEP_INTERVAL_SECONDS = 5
-AUTOMATION_HEARTBEAT_MAX_AGE_SECONDS = 20
-
 SERVICES = (
     ("automation", "", "twn-automation.pid", "", "automation-restart", "automation-heartbeat.json"),
     ("TFTP", "tftp_settings.json", "twn-tftp.pid", "twn-tftp.ready", "tftp-restart", ""),
@@ -199,12 +201,7 @@ def _pid_running(path: Path) -> bool:
 
 
 def _heartbeat_fresh(path: Path, maximum_age: int) -> bool:
-    try:
-        updated = float(json.loads(path.read_text(encoding="utf-8"))["updated_at"])
-        age = time.time() - updated
-        return math.isfinite(age) and 0 <= age <= maximum_age
-    except (OSError, ValueError, KeyError, TypeError):
-        return False
+    return automation_heartbeat_fresh(path, maximum_age)
 
 
 def _daemonize(pid_file: str, log_file: str) -> None:
