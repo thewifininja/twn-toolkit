@@ -266,7 +266,7 @@ def test_concurrent_initialization_migrates_a_legacy_database_without_losing_job
             INSERT INTO distributed_jobs
                 (id, agent_id, requester_id, capability_id, capability_version,
                  input_json, state, created_at)
-            VALUES ('legacy_job', 'agent_a', 'user_a', 'system.identity', '1', '{}', 'queued', 1)
+            VALUES ('legacy_job', 'agent_a', 'user_a', 'system.identity', '1', '{}', 'queued', strftime('%s','now'))
         """)
     context = multiprocessing.get_context("spawn")
     start, results = context.Event(), context.Queue()

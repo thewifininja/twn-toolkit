@@ -115,7 +115,7 @@
               <small class="field-note">Paste pipe-, tab-, or comma-separated data here. Return to the table editor for row and cell editing.</small>
             </div>
             <div class="multi-ssh-save-row">
-              <p class="field-note">Saving validates every existing CLI action against the updated columns and values. Credentials are never stored.</p>
+              <p class="field-note">Saving validates every existing CLI action against the updated columns and values. Credentials are not saved with this configuration.</p>
               <div class="button-row">
                 <button name="action" type="submit" value="save_host_matrix">{{ 'Save matrix changes' if form.host_matrix_original_name else 'Save host matrix' }}</button>
                 {% if form.host_matrix_original_name %}
@@ -285,7 +285,7 @@
 
             {% if preview_token %}
               <section class="multi-ssh-workspace-card multi-ssh-run-confirmation" data-ssh-run-confirmation>
-                <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Credentials and safeguards</h2><p>The preview is signed. Credentials are used only for this request and are never stored.</p></div><span class="pill success">{{ preview.action_count }} actions · {{ preview.action_execution_count }} executions</span></div>
+                <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Credentials and safeguards</h2><p>The preview is signed. Credentials are used for this run. Mainframe requests use temporary encrypted storage.</p></div><span class="pill success">{{ preview.action_count }} actions · {{ preview.action_execution_count }} executions</span></div>
                 <div class="form-grid"><label>Username<input name="username" value="{{ form.username }}" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required></label></div>
                 {% include "tools/_multi_ssh_run_options.html" %}
                 <label class="check execution-confirm"><input name="confirm_execution" type="checkbox" required>I reviewed the selected actions and intend to execute this signed run plan</label>
@@ -319,7 +319,7 @@
             </section>
             {% if preview_token %}
               <section class="multi-ssh-workspace-card multi-ssh-run-confirmation" data-ssh-run-confirmation>
-                <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Credentials and safeguards</h2><p>The preview is signed. Credentials are used only for this request and are never stored.</p></div><span class="pill success">{{ preview.command_count }} commands · {{ preview.plans|length }} hosts</span></div>
+                <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Credentials and safeguards</h2><p>The preview is signed. Credentials are used for this run. Mainframe requests use temporary encrypted storage.</p></div><span class="pill success">{{ preview.command_count }} commands · {{ preview.plans|length }} hosts</span></div>
                 <div class="form-grid"><label>Username<input name="username" value="{{ form.username }}" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required></label></div>
                 {% include "tools/_multi_ssh_run_options.html" %}
                 <label class="check execution-confirm"><input name="confirm_execution" type="checkbox" required>I reviewed the rendered commands and intend to execute this signed run plan</label>

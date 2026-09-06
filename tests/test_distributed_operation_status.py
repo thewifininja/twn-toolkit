@@ -146,3 +146,53 @@ def test_tunnel_request_body_limit_reserves_room_for_base64_and_metadata(tmp_pat
     assert app.extensions["distributed_job_store"].recent(
         requester_id=administrator["id"]
     ) == []
+
+
+def test_tunnel_response_is_returned_but_not_retained_in_queue(tmp_path):
+    import base64
+
+    _mainframe(tmp_path)
+    app = create_app(str(tmp_path))
+    app.testing = False
+    auth = AuthStore(str(tmp_path))
+    owner = auth.create_user("owner", "correct horse battery staple", is_admin=True)
+    agent_id = "agent_status"
+    auth.set_execution_context(owner["id"], agent_id)
+    agent = {
+        "id": agent_id, "name": "Status agent", "state": "approved", "online": True,
+        "capabilities": [{"id": "system.http.tunnel", "version": "1"}],
+    }
+    agent_store = app.extensions["distributed_agent_store"]
+    store = app.extensions["distributed_job_store"]
+    client = app.test_client()
+    _login(client, "owner")
+    original_get = store.get
+    completed = []
+
+    def finish_during_poll(job_id):
+        current = original_get(job_id)
+        if current["state"] == "queued":
+            job = store.claim(agent_id)[0]
+            store.control(job_id, agent_id=agent_id, attempt_token=job["attempt_token"], action="start")
+            store.complete(
+                job_id, agent_id=agent_id, attempt_token=job["attempt_token"], state="succeeded",
+                output={"body": base64.b64encode(b"private remote response").decode(), "status": 200, "headers": []},
+            )
+            completed.append(job_id)
+        return original_get(job_id)
+
+    with (
+        patch.object(agent_store, "get", return_value=agent),
+        patch.object(agent_store, "list", return_value=[agent]),
+        patch.object(store, "get", side_effect=finish_during_poll),
+    ):
+        response = client.get(f"/agents/{agent_id}/ui/", headers={"Accept": "application/json"})
+
+    assert response.status_code == 200
+    assert response.data == b"private remote response"
+    assert len(completed) == 1
+    retained = original_get(completed[0])
+    assert retained["state"] == "succeeded"
+    assert retained["inputs"] == {}
+    assert retained["output"] is None
+    assert client.get(f"/operations/{completed[0]}").status_code == 200

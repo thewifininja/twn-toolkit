@@ -175,7 +175,9 @@ The sidebar and Network Tools page use the same functional organization.
   seven-day completed-scrollback retention. Telnet credentials are optional and
   are never submitted by prompt guessing; an operator explicitly sends an
   available username or password after the device prompts. Credentials and
-  submitted input are not persisted. Console Quick Connect discovers attached
+  submitted input are not saved as session input history. Through a Mainframe,
+  requests use [temporary encrypted queue storage](docs/distributed-payload-retention.md);
+  text echoed by a target can appear in retained scrollback. Console Quick Connect discovers attached
   USB, UART, and operating-system-paired Bluetooth serial devices and provides
   baud, data-bit, parity, stop-bit, and flow-control settings. Saved console
   connections follow the adapter's stable identity across device-path changes;

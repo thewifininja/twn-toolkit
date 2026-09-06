@@ -165,9 +165,11 @@ cancelled and running work remains tracked. The response redirects to a
 requester-scoped operation status page or returns `202` with its URL; it never
 replays the original request. The page deliberately excludes stored request and
 response bodies. Administrators can set the Mainframe lease and tunnel wait and
-each Agent can set its receipt capacity and acknowledged-receipt retention in
+each Agent can set its receipt capacity in
 **Settings → Operations**. New claims use updated policy; the existing
-ownership and token checks are invariants rather than policy choices.
+ownership and token checks are invariants rather than policy choices. Both roles
+can adjust encrypted payload retention; see [payload storage and retention](distributed-payload-retention.md)
+for cleanup behavior, upgrade requirements and key recovery.
 
 ## Execution classes
 
