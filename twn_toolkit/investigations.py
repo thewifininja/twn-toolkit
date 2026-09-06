@@ -23,7 +23,8 @@ EVENT_OUTCOMES = frozenset(
     {"succeeded", "failed", "cancelled", "incomplete", "info"}
 )
 MAX_EVENT_JSON_BYTES = 4 * 1024 * 1024
-SCHEMA_VERSION = 4
+JOURNAL_EVENT_PAGE_SIZE = 50
+SCHEMA_VERSION = 6
 
 
 class InvestigationError(ValueError):
@@ -1139,6 +1140,77 @@ class InvestigationStore:
             ).fetchall()
         return [self._event(row) for row in rows]
 
+    def journal_events_page_for_user(
+        self,
+        investigation_id: str,
+        user_id: str,
+        *,
+        before_event_id: str = "",
+        after_event_id: str = "",
+    ) -> dict[str, Any]:
+        """Return one chronological cursor page for the interactive journal."""
+        before_event_id = str(before_event_id).strip()
+        after_event_id = str(after_event_id).strip()
+        if before_event_id and after_event_id:
+            raise InvestigationError("Choose one journal page cursor.")
+        self.get_for_user(investigation_id, user_id)
+        cursor_id = before_event_id or after_event_id
+        with self._connect() as connection:
+            cursor = None
+            if cursor_id:
+                cursor = connection.execute(
+                    """
+                    SELECT id, started_at, created_at
+                    FROM investigation_events
+                    WHERE id = ? AND investigation_id = ?
+                    """,
+                    (cursor_id, investigation_id),
+                ).fetchone()
+                if not cursor:
+                    raise InvestigationError("Journal page is unavailable.")
+            where = "WHERE e.investigation_id = ?"
+            parameters: list[Any] = [investigation_id]
+            order = "ORDER BY e.started_at DESC, e.created_at DESC, e.id DESC"
+            if before_event_id:
+                where += " AND (e.started_at, e.created_at, e.id) < (?, ?, ?)"
+                parameters.extend(
+                    [cursor["started_at"], cursor["created_at"], cursor["id"]]
+                )
+            elif after_event_id:
+                where += " AND (e.started_at, e.created_at, e.id) > (?, ?, ?)"
+                parameters.extend(
+                    [cursor["started_at"], cursor["created_at"], cursor["id"]]
+                )
+                order = "ORDER BY e.started_at ASC, e.created_at ASC, e.id ASC"
+            rows = connection.execute(
+                f"""
+                SELECT e.*, origins.source_case_id AS origin_case_id,
+                    origins.source_event_id AS origin_event_id
+                FROM investigation_events e
+                LEFT JOIN investigation_event_origins origins
+                    ON origins.event_id = e.id
+                {where}
+                {order}
+                LIMIT ?
+                """,
+                [*parameters, JOURNAL_EVENT_PAGE_SIZE + 1],
+            ).fetchall()
+        has_more_in_direction = len(rows) > JOURNAL_EVENT_PAGE_SIZE
+        page_rows = rows[:JOURNAL_EVENT_PAGE_SIZE]
+        if cursor_id and not page_rows:
+            raise InvestigationError("Journal page is unavailable.")
+        chronological_rows = page_rows if after_event_id else reversed(page_rows)
+        events = [self._event(row) for row in chronological_rows]
+        has_older = has_more_in_direction if not after_event_id else bool(events)
+        has_newer = has_more_in_direction if after_event_id else bool(events and before_event_id)
+        return {
+            "events": events,
+            "has_older": has_older,
+            "has_newer": has_newer,
+            "older_before_event_id": str(events[0]["id"]) if events else "",
+            "newer_after_event_id": str(events[-1]["id"]) if events else "",
+        }
+
     def artifacts_for_user(
         self, investigation_id: str, user_id: str
     ) -> list[dict[str, Any]]:
@@ -2150,8 +2222,9 @@ class InvestigationStore:
                 created_at REAL NOT NULL,
                 UNIQUE(investigation_id, operation_id)
             );
-            CREATE INDEX IF NOT EXISTS investigation_events_timeline_idx
-                ON investigation_events(investigation_id, started_at, created_at);
+            CREATE INDEX IF NOT EXISTS investigation_events_timeline_cursor_idx
+                ON investigation_events(investigation_id, started_at, created_at, id);
+            DROP INDEX IF EXISTS investigation_events_timeline_idx;
             CREATE TABLE IF NOT EXISTS investigation_artifacts (
                 id TEXT PRIMARY KEY,
                 investigation_id TEXT NOT NULL
@@ -2224,8 +2297,8 @@ class InvestigationStore:
             CREATE INDEX IF NOT EXISTS investigation_merges_source_idx
                 ON investigation_merges(source_investigation_id, merged_at DESC);
             INSERT OR IGNORE INTO investigation_meta(key, value)
-                VALUES ('schema_version', '4');
-            UPDATE investigation_meta SET value = '4' WHERE key = 'schema_version';
+                VALUES ('schema_version', '6');
+            UPDATE investigation_meta SET value = '6' WHERE key = 'schema_version';
             """
         )
         connection.commit()

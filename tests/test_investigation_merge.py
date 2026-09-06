@@ -7,7 +7,11 @@ import unittest
 from contextlib import closing
 
 from twn_toolkit import create_app
-from twn_toolkit.investigations import InvestigationError, InvestigationStore
+from twn_toolkit.investigations import (
+    SCHEMA_VERSION,
+    InvestigationError,
+    InvestigationStore,
+)
 
 
 class InvestigationMergeStoreTests(unittest.TestCase):
@@ -285,7 +289,7 @@ class InvestigationMergeStoreTests(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type = 'table' "
                 "AND name = 'investigation_merges'"
             ).fetchone()
-        self.assertEqual(version, "4")
+        self.assertEqual(version, str(SCHEMA_VERSION))
         self.assertIsNotNone(table)
 
 

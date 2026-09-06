@@ -165,6 +165,17 @@
             </li>
           {% endfor %}
         </ol>
+        {% if journal_pagination and (journal_pagination.has_newer or journal_pagination.has_older) %}
+          <p class="field-note">Showing {{ investigation_events|length }} of {{ investigation.event_count }} journal entries. Entries remain chronological on each page.</p>
+          <nav class="button-row" aria-label="Journal pages">
+            {% if journal_pagination.has_newer %}
+              <a class="button-link secondary" href="{{ url_for('investigation_detail', investigation_id=investigation.id, after_event=journal_pagination.newer_after_event_id) }}">Newer journal entries</a>
+            {% endif %}
+            {% if journal_pagination.has_older %}
+              <a class="button-link secondary" href="{{ url_for('investigation_detail', investigation_id=investigation.id, before_event=journal_pagination.older_before_event_id) }}">Older journal entries</a>
+            {% endif %}
+          </nav>
+        {% endif %}
       {% else %}
         {% call empty_state("The journal is ready", "Run a supported diagnostic or add the first operator note.") %}{% endcall %}
       {% endif %}

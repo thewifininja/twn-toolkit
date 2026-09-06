@@ -16,9 +16,45 @@ from twn_toolkit import create_app
 from twn_toolkit.automation import AutomationStore
 from twn_toolkit.automation_registry import ActionResult, ConditionResult
 from twn_toolkit.auth import AuthStore
-from twn_toolkit.investigations import InvestigationError, InvestigationStore
+from twn_toolkit.investigations import (
+    JOURNAL_EVENT_PAGE_SIZE,
+    SCHEMA_VERSION,
+    InvestigationError,
+    InvestigationStore,
+)
 from twn_toolkit.live_tools import LiveToolStore
 from twn_toolkit.packet_capture import PacketCaptureStore
+
+
+def _record_journal_events(
+    store: InvestigationStore,
+    investigation: dict[str, object],
+    *,
+    user_id: str,
+    username: str,
+    count: int,
+) -> None:
+    started_at = float(investigation["created_at"])
+    for number in range(1, count + 1):
+        timestamp = started_at + number
+        recorded = store.record_for_active(
+            user_id=user_id,
+            username=username,
+            operation_id=f"journal-page-{number}",
+            event_type="diagnostic.completed",
+            tool_id="tools.test",
+            action="Sample diagnostic",
+            outcome="info",
+            summary=f"Event {number:03d}",
+            targets={},
+            parameters={},
+            metrics={},
+            details={},
+            started_at=timestamp,
+            completed_at=timestamp,
+        )
+        if recorded is None:
+            raise AssertionError("The active investigation did not record an event.")
 
 
 class InvestigationStoreTests(unittest.TestCase):
@@ -362,8 +398,169 @@ class InvestigationStoreTests(unittest.TestCase):
         self.assertEqual(migrated["access_role"], "owner")
         self.assertEqual(migrated["participant_count"], 1)
 
+    def test_schema_upgrade_replaces_legacy_timeline_index(self) -> None:
+        investigation = self.store.create(
+            owner_user_id="operator-1",
+            owner_username="nelson",
+            title="Legacy index",
+        )
+        with sqlite3.connect(self.store.path) as connection:
+            connection.execute("DROP INDEX investigation_events_timeline_cursor_idx")
+            connection.execute(
+                "CREATE INDEX investigation_events_timeline_idx "
+                "ON investigation_events(investigation_id, started_at, created_at)"
+            )
+            connection.execute(
+                "UPDATE investigation_meta SET value = '4' WHERE key = 'schema_version'"
+            )
+        InvestigationStore(self.temporary.name).get_for_user(
+            investigation["id"], "operator-1"
+        )
+        with sqlite3.connect(self.store.path) as connection:
+            indexes = {
+                row[1] for row in connection.execute(
+                    "PRAGMA index_list('investigation_events')"
+                )
+            }
+            version = connection.execute(
+                "SELECT value FROM investigation_meta WHERE key = 'schema_version'"
+            ).fetchone()[0]
+        self.assertEqual(version, str(SCHEMA_VERSION))
+        self.assertIn("investigation_events_timeline_cursor_idx", indexes)
+        self.assertNotIn("investigation_events_timeline_idx", indexes)
+
+    def test_journal_event_pages_are_chronological_and_cursor_based(self) -> None:
+        investigation = self.store.create(
+            owner_user_id="operator-1",
+            owner_username="nelson",
+            title="Large journal",
+        )
+        journal_event_count = JOURNAL_EVENT_PAGE_SIZE * 2 + 20
+        _record_journal_events(
+            self.store,
+            investigation,
+            user_id="operator-1",
+            username="nelson",
+            count=journal_event_count,
+        )
+
+        latest = self.store.journal_events_page_for_user(
+            investigation["id"], "operator-1"
+        )
+        self.assertEqual(
+            [event["summary"] for event in latest["events"]],
+            [
+                f"Event {number:03d}"
+                for number in range(
+                    journal_event_count - JOURNAL_EVENT_PAGE_SIZE + 1,
+                    journal_event_count + 1,
+                )
+            ],
+        )
+        self.assertTrue(latest["has_older"])
+        self.assertFalse(latest["has_newer"])
+        with sqlite3.connect(self.store.path) as connection:
+            indexes = {
+                row[1] for row in connection.execute(
+                    "PRAGMA index_list('investigation_events')"
+                )
+            }
+        self.assertIn("investigation_events_timeline_cursor_idx", indexes)
+        self.assertNotIn("investigation_events_timeline_idx", indexes)
+
+        older = self.store.journal_events_page_for_user(
+            investigation["id"],
+            "operator-1",
+            before_event_id=latest["older_before_event_id"],
+        )
+        self.assertEqual(
+            [event["summary"] for event in older["events"]],
+            [
+                f"Event {number:03d}"
+                for number in range(
+                    journal_event_count - (2 * JOURNAL_EVENT_PAGE_SIZE) + 1,
+                    journal_event_count - JOURNAL_EVENT_PAGE_SIZE + 1,
+                )
+            ],
+        )
+        self.assertTrue(older["has_older"])
+        self.assertTrue(older["has_newer"])
+
+        newer = self.store.journal_events_page_for_user(
+            investigation["id"],
+            "operator-1",
+            after_event_id=older["newer_after_event_id"],
+        )
+        self.assertEqual(newer["events"], latest["events"])
+        with self.assertRaisesRegex(InvestigationError, "one journal page cursor"):
+            self.store.journal_events_page_for_user(
+                investigation["id"],
+                "operator-1",
+                before_event_id=latest["older_before_event_id"],
+                after_event_id=older["newer_after_event_id"],
+            )
+
 
 class InvestigationRouteTests(unittest.TestCase):
+    def test_journal_page_uses_cursors_while_report_keeps_all_events(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Large journal"})
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            journal_event_count = JOURNAL_EVENT_PAGE_SIZE * 2 + 20
+            _record_journal_events(
+                store,
+                investigation,
+                user_id="test-user",
+                username="operator",
+                count=journal_event_count,
+            )
+            latest_page = store.journal_events_page_for_user(
+                investigation["id"], "test-user"
+            )
+            older_page = store.journal_events_page_for_user(
+                investigation["id"],
+                "test-user",
+                before_event_id=latest_page["older_before_event_id"],
+            )
+
+            latest = client.get(f"/investigations/{investigation['id']}")
+            self.assertEqual(latest.status_code, 200)
+            latest_first = journal_event_count - JOURNAL_EVENT_PAGE_SIZE + 1
+            self.assertIn(f"Event {latest_first:03d}".encode(), latest.data)
+            self.assertIn(f"Event {journal_event_count:03d}".encode(), latest.data)
+            self.assertNotIn(f"Event {latest_first - 1:03d}".encode(), latest.data)
+            self.assertIn(
+                (
+                    f"Showing {JOURNAL_EVENT_PAGE_SIZE} of "
+                    f"{journal_event_count + 1} journal entries"
+                ).encode(),
+                latest.data,
+            )
+            self.assertIn(b"Older journal entries", latest.data)
+
+            older = client.get(
+                f"/investigations/{investigation['id']}?before_event="
+                f"{latest_page['older_before_event_id']}"
+            )
+            self.assertEqual(older.status_code, 200)
+            self.assertIn(b"Event 021", older.data)
+            self.assertIn(b"Event 070", older.data)
+            self.assertNotIn(b"Event 071", older.data)
+            self.assertIn(b"Newer journal entries", older.data)
+            self.assertIn(
+                f"after_event={older_page['newer_after_event_id']}".encode(),
+                older.data,
+            )
+
+            report = client.get(f"/investigations/{investigation['id']}/report")
+            self.assertEqual(report.status_code, 200)
+            self.assertIn(b"Event 001", report.data)
+            self.assertIn(b"Event 120", report.data)
+
     def test_active_case_banner_adds_notes_without_leaving_the_tool_page(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)
