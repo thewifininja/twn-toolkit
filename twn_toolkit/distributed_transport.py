@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 
 from .distributed_agents import (
+    GUI_PROTOCOL_VERSION,
     DistributedAgentStore,
     DistributedEnrollmentWindow,
     DistributedIdentityStore,
@@ -210,6 +211,8 @@ class EnrollmentServer:
             capabilities=payload.get("capabilities", []),
             address=address,
             protocol_version=int(payload.get("protocol", 0)),
+            job_protocol_version=payload.get("job_protocol", 0),
+            gui_protocol_version=payload.get("gui_protocol", 0),
             toolkit_version=str(payload.get("toolkit_version", "")),
             platform=str(payload.get("platform", "")),
             hostname=str(payload.get("hostname", "")),
@@ -456,6 +459,7 @@ class EnrollmentClient:
             {
                 "protocol": PROTOCOL_VERSION,
                 "capabilities": capabilities,
+                "gui_protocol": GUI_PROTOCOL_VERSION,
                 "toolkit_version": toolkit_version,
                 "platform": platform,
                 "hostname": hostname,

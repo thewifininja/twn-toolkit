@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from .file_transactions import file_transaction
+from .distributed_jobs import JOB_PROTOCOL_VERSION
 
 
 COORDINATION_ROLES = {"standalone", "mainframe", "agent"}
@@ -25,6 +26,8 @@ DEFAULT_AGENT_PORT = 5051
 PAIRING_CODE_DIGITS = 6
 AGENT_ONLINE_SECONDS = 30
 MAX_ENROLLMENT_WINDOW_MINUTES = 24 * 60
+# Contract: owned operations delivered through the dedicated interactive lane.
+GUI_PROTOCOL_VERSION = 1
 GUI_TUNNEL_CAPABILITY = ("system.http.tunnel", "1")
 
 
@@ -352,6 +355,8 @@ class DistributedAgentStore:
             }
             for name, declaration in {
                 "protocol_version": "INTEGER NOT NULL DEFAULT 0",
+                "job_protocol_version": "INTEGER NOT NULL DEFAULT 0",
+                "gui_protocol_version": "INTEGER NOT NULL DEFAULT 0",
                 "toolkit_version": "TEXT NOT NULL DEFAULT ''",
                 "platform": "TEXT NOT NULL DEFAULT ''",
                 "hostname": "TEXT NOT NULL DEFAULT ''",
@@ -477,6 +482,8 @@ class DistributedAgentStore:
         capabilities: list[dict[str, Any]],
         address: str,
         protocol_version: int = 0,
+        job_protocol_version: int = 0,
+        gui_protocol_version: int = 0,
         toolkit_version: str = "",
         platform: str = "",
         hostname: str = "",
@@ -493,7 +500,8 @@ class DistributedAgentStore:
                 """
                 UPDATE distributed_agents
                 SET capabilities_json = ?, last_seen_at = ?, last_address = ?,
-                    protocol_version = ?, toolkit_version = ?, platform = ?, hostname = ?
+                    protocol_version = ?, toolkit_version = ?, platform = ?, hostname = ?,
+                    job_protocol_version = ?, gui_protocol_version = ?
                 WHERE id = ?
                 """,
                 (
@@ -504,6 +512,8 @@ class DistributedAgentStore:
                     " ".join(str(toolkit_version).split())[:64],
                     " ".join(str(platform).split())[:128],
                     " ".join(str(hostname).split())[:253],
+                    _protocol_number(job_protocol_version),
+                    _protocol_number(gui_protocol_version),
                     agent_id,
                 ),
             )
@@ -541,7 +551,22 @@ def _agent_record(row: sqlite3.Row) -> dict[str, Any]:
         and last_seen
         and time.time() - last_seen <= AGENT_ONLINE_SECONDS
     )
+    item["gui_compatibility_error"] = agent_gui_compatibility_error(item)
+    item["gui_compatible"] = not item["gui_compatibility_error"]
     return item
+
+
+def _protocol_number(value):
+    return value if type(value) is int and 0 <= value <= 65535 else 0
+
+
+def agent_gui_compatibility_error(agent):
+    if (_protocol_number(agent.get("job_protocol_version")) != JOB_PROTOCOL_VERSION
+            or _protocol_number(agent.get("gui_protocol_version")) != GUI_PROTOCOL_VERSION):
+        return ("GUI compatibility is unconfirmed or unsupported. Upgrade the Mainframe and Agent "
+                "to compatible versions, restart their web and automation/distributed workers, "
+                "and wait for a new Agent heartbeat. Re-enrollment is not required.")
+    return ""
 
 
 def agent_supports_capability(
@@ -564,6 +589,7 @@ def selectable_gui_agents(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if agent.get("state") == "approved"
         and agent.get("online") is True
         and agent_supports_capability(agent, capability_id, capability_version)
+        and not agent_gui_compatibility_error(agent)
     ]
 
 
