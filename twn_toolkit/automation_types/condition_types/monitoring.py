@@ -167,6 +167,7 @@ def _evaluate_snmp(config: dict[str, Any]) -> ConditionResult:
         [host for host in hosts if host],
         {name: profile for name, profile in credentials.items() if profile},
         prepared_profiles,
+        condition_workers=True,
     )
     rule_by_id = {rule["id"]: rule for rule in normalized["rules"]}
     host_results: dict[str, dict[str, Any]] = {
