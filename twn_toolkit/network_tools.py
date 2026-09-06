@@ -14,7 +14,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_c
 from functools import lru_cache
 from typing import Any, Callable
 
-from .automation_execution import condition_worker_map
+from .automation_execution import condition_worker_map, execute_condition_ping
 from .ssh_security import (
     close_ssh_client,
     format_ssh_connection_error,
@@ -912,7 +912,9 @@ def validate_ping_timeout(
 def ping_hosts(hosts: list[str], timeout: float = 1) -> list[dict[str, Any]]:
     capability = ping_engine_capability()
     if capability["accelerated"]:
-        return _fping_hosts(hosts, timeout, str(capability["path"]))
+        return execute_condition_ping(
+            lambda: _fping_hosts(hosts, timeout, str(capability["path"]))
+        )
     return _ping_hosts_compatibility(hosts, timeout)
 
 

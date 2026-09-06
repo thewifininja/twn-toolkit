@@ -36,8 +36,33 @@ Standalone evaluations without an instance context retain independent pools.
 Normal SNMP tools and live interface polling retain their existing async execution.
 Normal TCP/DNS/ping tools outside condition evaluation keep their existing
 per-call worker counts, now with bounded submission windows instead of eagerly
-creating a future for every target. Accelerated ping behavior is unchanged.
+creating a future for every target.
 
 Upgrade and restart the executing automation/web workers to load this change.
 Subsequent settings edits apply after active batches drain. Probe-specific
 connection deadlines and remaining protocol-wide admission work are separate.
+
+## Accelerated ping condition rounds
+
+Operations → Concurrent accelerated-ping condition rounds sets a separate
+per-instance, per-process pool limit: default 4, range 1–32. Four matches the
+default automation concurrency; it is adjustable policy, not a measured safe
+packet rate. Each slot runs one complete fping round in one subprocess. It does
+not divide the target list or launch a process per host. Conditions retain their
+100-target and 10-round validation limits, target order, 2 ms packet pacing,
+per-probe timeout and subprocess safety timeout. The capability check remains
+separate from round admission.
+
+Overlapping conditions and interactive condition tests in the same process and
+instance share the limit. Rounds release their slots before the next round.
+Host-check and action pools remain available independently. Manual ping tools,
+live ping sessions and standalone calls without condition scope keep their
+existing execution. This does not impose a fleet-wide or per-target packet rate.
+
+Waiting happens before a round starts, so its subprocess timeout and reported
+probe latency exclude admission wait. Waiting can lengthen total condition time
+and the gap between successive samples, affecting which network conditions are
+observed. There is no queue-wait deadline or fairness guarantee. Failed or timed
+out rounds propagate the existing error and release the slot; subsequent rounds
+can run. Pool settings reload after overlapping borrowers (including waiting
+rounds) drain. Upgrade/restart executing workers to load the implementation.
