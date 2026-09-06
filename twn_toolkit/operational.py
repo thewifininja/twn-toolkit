@@ -28,6 +28,8 @@ DEFAULT_OPERATIONAL_SETTINGS = {
     "distributed_tunnel_wait_seconds": 30,
     "distributed_receipt_limit": 2048,
     "distributed_receipt_retention_hours": 24,
+    "distributed_http_client_limit": 32,
+    "distributed_http_client_idle_seconds": 900,
 }
 
 
@@ -70,6 +72,8 @@ class OperationalSettingsStore:
                     "distributed_tunnel_wait_seconds",
                     "distributed_receipt_limit",
                     "distributed_receipt_retention_hours",
+                    "distributed_http_client_limit",
+                    "distributed_http_client_idle_seconds",
                 )
             }
             if (
@@ -83,6 +87,12 @@ class OperationalSettingsStore:
             tunnel_wait_seconds = int(distributed_raw["distributed_tunnel_wait_seconds"])
             receipt_limit = int(distributed_raw["distributed_receipt_limit"])
             receipt_retention_hours = int(distributed_raw["distributed_receipt_retention_hours"])
+            client_limit = int(distributed_raw["distributed_http_client_limit"])
+            client_idle = int(distributed_raw["distributed_http_client_idle_seconds"])
+            if any(not isinstance(distributed_raw[key], (str, int)) for key in (
+                "distributed_http_client_limit", "distributed_http_client_idle_seconds"
+            )):
+                raise ValueError
             if isinstance(raw_upload, bool) or str(raw_upload).strip() != str(upload):
                 raise ValueError
         except (KeyError, TypeError, ValueError) as exc:
@@ -97,6 +107,8 @@ class OperationalSettingsStore:
         if not 1 <= tunnel_wait_seconds <= 120: raise ValueError("Remote tunnel wait time must be 1–120 seconds.")
         if not 1 <= receipt_limit <= 20000: raise ValueError("Distributed receipt capacity must be 1–20,000.")
         if not 1 <= receipt_retention_hours <= 720: raise ValueError("Distributed receipt retention must be 1–720 hours.")
+        if not 1 <= client_limit <= 256: raise ValueError("Agent HTTP client capacity must be 1–256.")
+        if not 1 <= client_idle <= 86400: raise ValueError("Agent HTTP client idle time must be 1–86,400 seconds.")
         return {
             **validate_transfer_limits(values),
             "max_multipart_files": multipart,
@@ -111,6 +123,8 @@ class OperationalSettingsStore:
             "distributed_tunnel_wait_seconds": tunnel_wait_seconds,
             "distributed_receipt_limit": receipt_limit,
             "distributed_receipt_retention_hours": receipt_retention_hours,
+            "distributed_http_client_limit": client_limit,
+            "distributed_http_client_idle_seconds": client_idle,
         }
 
     def storage_summary(self) -> dict[str, Any]:

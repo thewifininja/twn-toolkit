@@ -1850,6 +1850,8 @@ def register_admin_routes(
                 "distributed_tunnel_wait_seconds": request.form.get("distributed_tunnel_wait_seconds", before["distributed_tunnel_wait_seconds"]),
                 "distributed_receipt_limit": request.form.get("distributed_receipt_limit", before["distributed_receipt_limit"]),
                 "distributed_receipt_retention_hours": request.form.get("distributed_receipt_retention_hours", before["distributed_receipt_retention_hours"]),
+                "distributed_http_client_limit": request.form.get("distributed_http_client_limit", before["distributed_http_client_limit"]),
+                "distributed_http_client_idle_seconds": request.form.get("distributed_http_client_idle_seconds", before["distributed_http_client_idle_seconds"]),
             })
         except ValueError as exc: flash(str(exc), "error")
         else:
