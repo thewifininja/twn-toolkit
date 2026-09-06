@@ -94,6 +94,7 @@ def register_investigation_routes(
         investigation_id: str, *, active_tab: str
     ) -> str:
         journal_pagination = None
+        evidence_pagination = None
         report: dict[str, object] = {}
         if active_tab == "report":
             investigation, events, artifacts, report = load_report(investigation_id)
@@ -116,7 +117,16 @@ def register_investigation_routes(
                     abort(404)
                 events = journal_pagination["events"]
             elif active_tab == "evidence":
-                artifacts = store.artifacts_for_user(investigation_id, user_id())
+                try:
+                    evidence_pagination = store.evidence_artifacts_page_for_user(
+                        investigation_id,
+                        user_id(),
+                        before_artifact_id=request.args.get("before_artifact", ""),
+                        after_artifact_id=request.args.get("after_artifact", ""),
+                    )
+                except InvestigationError:
+                    abort(404)
+                artifacts = evidence_pagination["artifacts"]
         participant_user_ids = [str(item["user_id"]) for item in participants]
         auth_store = AuthStore(app.instance_path)
         participant_ids = {str(item["user_id"]) for item in participants}
@@ -165,6 +175,7 @@ def register_investigation_routes(
             investigation_events=events,
             investigation_artifacts=artifacts,
             journal_pagination=journal_pagination,
+            evidence_pagination=evidence_pagination,
             **report,
             investigation_tabs=tabs(investigation_id, active_tab),
             active_investigation_tab=active_tab,

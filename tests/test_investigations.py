@@ -17,6 +17,7 @@ from twn_toolkit.automation import AutomationStore
 from twn_toolkit.automation_registry import ActionResult, ConditionResult
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.investigations import (
+    EVIDENCE_ARTIFACT_PAGE_SIZE,
     JOURNAL_EVENT_PAGE_SIZE,
     SCHEMA_VERSION,
     InvestigationError,
@@ -55,6 +56,29 @@ def _record_journal_events(
         )
         if recorded is None:
             raise AssertionError("The active investigation did not record an event.")
+
+
+def _add_evidence_artifacts(
+    store: InvestigationStore,
+    investigation: dict[str, object],
+    *,
+    user_id: str,
+    username: str,
+    count: int,
+) -> None:
+    created_at = float(investigation["created_at"])
+    for number in range(1, count + 1):
+        with patch(
+            "twn_toolkit.investigations.time.time", return_value=created_at + number
+        ):
+            store.add_evidence(
+                investigation_id=str(investigation["id"]),
+                user_id=user_id,
+                username=username,
+                filename=f"Artifact {number:03d}.txt",
+                content_type="text/plain",
+                stream=io.BytesIO(str(number).encode()),
+            )
 
 
 class InvestigationStoreTests(unittest.TestCase):
@@ -398,7 +422,7 @@ class InvestigationStoreTests(unittest.TestCase):
         self.assertEqual(migrated["access_role"], "owner")
         self.assertEqual(migrated["participant_count"], 1)
 
-    def test_schema_upgrade_replaces_legacy_timeline_index(self) -> None:
+    def test_schema_upgrade_replaces_legacy_pagination_indexes(self) -> None:
         investigation = self.store.create(
             owner_user_id="operator-1",
             owner_username="nelson",
@@ -410,24 +434,36 @@ class InvestigationStoreTests(unittest.TestCase):
                 "CREATE INDEX investigation_events_timeline_idx "
                 "ON investigation_events(investigation_id, started_at, created_at)"
             )
+            connection.execute("DROP INDEX investigation_artifacts_cursor_idx")
             connection.execute(
-                "UPDATE investigation_meta SET value = '4' WHERE key = 'schema_version'"
+                "CREATE INDEX investigation_artifacts_investigation_idx "
+                "ON investigation_artifacts(investigation_id, created_at DESC)"
+            )
+            connection.execute(
+                "UPDATE investigation_meta SET value = '6' WHERE key = 'schema_version'"
             )
         InvestigationStore(self.temporary.name).get_for_user(
             investigation["id"], "operator-1"
         )
         with sqlite3.connect(self.store.path) as connection:
-            indexes = {
+            event_indexes = {
                 row[1] for row in connection.execute(
                     "PRAGMA index_list('investigation_events')"
+                )
+            }
+            artifact_indexes = {
+                row[1] for row in connection.execute(
+                    "PRAGMA index_list('investigation_artifacts')"
                 )
             }
             version = connection.execute(
                 "SELECT value FROM investigation_meta WHERE key = 'schema_version'"
             ).fetchone()[0]
         self.assertEqual(version, str(SCHEMA_VERSION))
-        self.assertIn("investigation_events_timeline_cursor_idx", indexes)
-        self.assertNotIn("investigation_events_timeline_idx", indexes)
+        self.assertIn("investigation_events_timeline_cursor_idx", event_indexes)
+        self.assertNotIn("investigation_events_timeline_idx", event_indexes)
+        self.assertIn("investigation_artifacts_cursor_idx", artifact_indexes)
+        self.assertNotIn("investigation_artifacts_investigation_idx", artifact_indexes)
 
     def test_journal_event_pages_are_chronological_and_cursor_based(self) -> None:
         investigation = self.store.create(
@@ -500,6 +536,79 @@ class InvestigationStoreTests(unittest.TestCase):
                 after_event_id=older["newer_after_event_id"],
             )
 
+    def test_evidence_pages_are_newest_first_and_cursor_based(self) -> None:
+        investigation = self.store.create(
+            owner_user_id="operator-1",
+            owner_username="nelson",
+            title="Large evidence library",
+        )
+        artifact_count = EVIDENCE_ARTIFACT_PAGE_SIZE * 2 + 20
+        _add_evidence_artifacts(
+            self.store,
+            investigation,
+            user_id="operator-1",
+            username="nelson",
+            count=artifact_count,
+        )
+
+        latest = self.store.evidence_artifacts_page_for_user(
+            investigation["id"], "operator-1"
+        )
+        self.assertEqual(
+            [artifact["display_name"] for artifact in latest["artifacts"]],
+            [
+                f"Artifact {number:03d}.txt"
+                for number in range(
+                    artifact_count,
+                    artifact_count - EVIDENCE_ARTIFACT_PAGE_SIZE,
+                    -1,
+                )
+            ],
+        )
+        self.assertTrue(latest["has_older"])
+        self.assertFalse(latest["has_newer"])
+        with sqlite3.connect(self.store.path) as connection:
+            indexes = {
+                row[1] for row in connection.execute(
+                    "PRAGMA index_list('investigation_artifacts')"
+                )
+            }
+        self.assertIn("investigation_artifacts_cursor_idx", indexes)
+        self.assertNotIn("investigation_artifacts_investigation_idx", indexes)
+
+        older = self.store.evidence_artifacts_page_for_user(
+            investigation["id"],
+            "operator-1",
+            before_artifact_id=latest["older_before_artifact_id"],
+        )
+        self.assertEqual(
+            [artifact["display_name"] for artifact in older["artifacts"]],
+            [
+                f"Artifact {number:03d}.txt"
+                for number in range(
+                    artifact_count - EVIDENCE_ARTIFACT_PAGE_SIZE,
+                    artifact_count - (2 * EVIDENCE_ARTIFACT_PAGE_SIZE),
+                    -1,
+                )
+            ],
+        )
+        self.assertTrue(older["has_older"])
+        self.assertTrue(older["has_newer"])
+
+        newer = self.store.evidence_artifacts_page_for_user(
+            investigation["id"],
+            "operator-1",
+            after_artifact_id=older["newer_after_artifact_id"],
+        )
+        self.assertEqual(newer["artifacts"], latest["artifacts"])
+        with self.assertRaisesRegex(InvestigationError, "one evidence page cursor"):
+            self.store.evidence_artifacts_page_for_user(
+                investigation["id"],
+                "operator-1",
+                before_artifact_id=latest["older_before_artifact_id"],
+                after_artifact_id=older["newer_after_artifact_id"],
+            )
+
 
 class InvestigationRouteTests(unittest.TestCase):
     def test_journal_page_uses_cursors_while_report_keeps_all_events(self) -> None:
@@ -547,9 +656,11 @@ class InvestigationRouteTests(unittest.TestCase):
                 f"{latest_page['older_before_event_id']}"
             )
             self.assertEqual(older.status_code, 200)
-            self.assertIn(b"Event 021", older.data)
-            self.assertIn(b"Event 070", older.data)
-            self.assertNotIn(b"Event 071", older.data)
+            older_first = journal_event_count - (2 * JOURNAL_EVENT_PAGE_SIZE) + 1
+            older_last = journal_event_count - JOURNAL_EVENT_PAGE_SIZE
+            self.assertIn(f"Event {older_first:03d}".encode(), older.data)
+            self.assertIn(f"Event {older_last:03d}".encode(), older.data)
+            self.assertNotIn(f"Event {older_last + 1:03d}".encode(), older.data)
             self.assertIn(b"Newer journal entries", older.data)
             self.assertIn(
                 f"after_event={older_page['newer_after_event_id']}".encode(),
@@ -559,7 +670,68 @@ class InvestigationRouteTests(unittest.TestCase):
             report = client.get(f"/investigations/{investigation['id']}/report")
             self.assertEqual(report.status_code, 200)
             self.assertIn(b"Event 001", report.data)
-            self.assertIn(b"Event 120", report.data)
+            self.assertIn(f"Event {journal_event_count:03d}".encode(), report.data)
+
+    def test_evidence_page_uses_cursors_while_report_keeps_all_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as instance:
+            app = create_app(instance)
+            app.testing = True
+            client = app.test_client()
+            client.post("/investigations", data={"title": "Large evidence library"})
+            store = InvestigationStore(instance)
+            investigation = store.active_for_user("test-user")
+            artifact_count = EVIDENCE_ARTIFACT_PAGE_SIZE * 2 + 20
+            _add_evidence_artifacts(
+                store,
+                investigation,
+                user_id="test-user",
+                username="operator",
+                count=artifact_count,
+            )
+            latest_page = store.evidence_artifacts_page_for_user(
+                investigation["id"], "test-user"
+            )
+            older_page = store.evidence_artifacts_page_for_user(
+                investigation["id"],
+                "test-user",
+                before_artifact_id=latest_page["older_before_artifact_id"],
+            )
+
+            latest = client.get(f"/investigations/{investigation['id']}/evidence")
+            self.assertEqual(latest.status_code, 200)
+            latest_first = artifact_count - EVIDENCE_ARTIFACT_PAGE_SIZE + 1
+            self.assertIn(f"Artifact {artifact_count:03d}.txt".encode(), latest.data)
+            self.assertIn(f"Artifact {latest_first:03d}.txt".encode(), latest.data)
+            self.assertNotIn(f"Artifact {latest_first - 1:03d}.txt".encode(), latest.data)
+            self.assertIn(
+                (
+                    f"Showing {EVIDENCE_ARTIFACT_PAGE_SIZE} of "
+                    f"{artifact_count} evidence files"
+                ).encode(),
+                latest.data,
+            )
+            self.assertIn(b"Older evidence files", latest.data)
+
+            older = client.get(
+                f"/investigations/{investigation['id']}/evidence?before_artifact="
+                f"{latest_page['older_before_artifact_id']}"
+            )
+            self.assertEqual(older.status_code, 200)
+            older_first = artifact_count - EVIDENCE_ARTIFACT_PAGE_SIZE
+            older_last = artifact_count - (2 * EVIDENCE_ARTIFACT_PAGE_SIZE) + 1
+            self.assertIn(f"Artifact {older_first:03d}.txt".encode(), older.data)
+            self.assertIn(f"Artifact {older_last:03d}.txt".encode(), older.data)
+            self.assertNotIn(f"Artifact {older_first + 1:03d}.txt".encode(), older.data)
+            self.assertIn(b"Newer evidence files", older.data)
+            self.assertIn(
+                f"after_artifact={older_page['newer_after_artifact_id']}".encode(),
+                older.data,
+            )
+
+            report = client.get(f"/investigations/{investigation['id']}/report")
+            self.assertEqual(report.status_code, 200)
+            self.assertIn(b"Artifact 001.txt", report.data)
+            self.assertIn(f"Artifact {artifact_count:03d}.txt".encode(), report.data)
 
     def test_active_case_banner_adds_notes_without_leaving_the_tool_page(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
