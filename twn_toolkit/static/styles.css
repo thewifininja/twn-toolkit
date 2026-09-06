@@ -11503,6 +11503,10 @@ button.compact,
 }
 
 /* Mainframe coordination */
+#distributed-identity code {
+  overflow-wrap: anywhere;
+}
+
 .mainframe-config-form {
   max-width: 860px;
 }

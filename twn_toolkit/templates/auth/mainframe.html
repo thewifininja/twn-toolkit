@@ -114,6 +114,9 @@
     <section class="panel server-access-panel" id="distributed-enrollments">
       {{ section_header("Connected agents", "Approve an agent only after its displayed pairing code matches the code shown here once the secure transport is available.") }}
       {% if distributed_agents %}
+        {% for agent in distributed_agents if agent.state == 'approved' and not agent.gui_compatible %}
+        <p class="message warning" data-agent-compatibility><strong>{{ agent.name }}: GUI update required</strong><br>{{ agent.gui_compatibility_error }}</p>
+        {% endfor %}
         <div class="table-wrap mainframe-agent-table-wrap">
           <table class="mainframe-agent-table">
             <thead><tr><th>Agent</th><th>Connection</th><th>State</th><th>Capabilities</th><th>Pairing code</th><th>Last address</th><th>Fingerprint</th><th>Action</th></tr></thead>
@@ -121,7 +124,7 @@
               {% for agent in distributed_agents %}
                 <tr>
                   <td><strong>{{ agent.name }}</strong><br><small>{{ agent.hostname or agent.id }}</small>{% if agent.toolkit_version %}<br><small>Toolkit {{ agent.toolkit_version }} · protocol {{ agent.protocol_version }}</small>{% endif %}{% if agent.platform %}<br><small>{{ agent.platform }}</small>{% endif %}</td>
-                  <td><span class="status-chip {{ 'success' if agent.online else 'muted' }}">{{ 'Online' if agent.online else 'Offline' }}</span>{% if agent.state == 'approved' and not agent.gui_compatible %}<p class="message warning"><strong>GUI update required</strong><br>{{ agent.gui_compatibility_error }}</p>{% endif %}</td>
+                  <td><span class="status-chip {{ 'success' if agent.online else 'muted' }}">{{ 'Online' if agent.online else 'Offline' }}</span>{% if agent.state == 'approved' and not agent.gui_compatible %}<br><span class="status-chip warning">GUI update required</span>{% endif %}</td>
                   <td><span class="status-chip {{ 'success' if agent.state == 'approved' else ('warning' if agent.state == 'pending' else 'muted') }}">{{ agent.state | capitalize }}</span></td>
                   <td>{% if agent.capabilities %}<div class="mainframe-capability-list">{% for capability in agent.capabilities %}{% if capability.id == 'system.http.tunnel' %}<code>Full interface</code>{% else %}<code>{{ capability.id }}@{{ capability.version }}</code>{% endif %}{% endfor %}</div>{% else %}<span class="field-note">None reported</span>{% endif %}</td>
                   <td>{% if distributed_pairings.get(agent.id) %}<code class="mainframe-pairing-code">{{ distributed_pairings[agent.id].pairing_code }}</code>{% else %}<span class="field-note">Not pairing</span>{% endif %}</td>
