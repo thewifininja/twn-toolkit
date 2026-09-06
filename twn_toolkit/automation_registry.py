@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from .automation_execution import condition_worker_scope
 from .automation_types.actions import registered_actions
 from .automation_types.conditions import registered_conditions
 from .automation_types.condition_types.triggers import registered_triggers
@@ -66,12 +67,13 @@ class AutomationRegistry:
         *,
         observed_at: float | None = None,
     ) -> ConditionResult:
-        return evaluation_result(
-            self.conditions[type_id].evaluate(config),
-            kind="condition",
-            type_id=type_id,
-            observed_at=observed_at,
-        )
+        with condition_worker_scope():
+            return evaluation_result(
+                self.conditions[type_id].evaluate(config),
+                kind="condition",
+                type_id=type_id,
+                observed_at=observed_at,
+            )
 
     def evaluate_trigger(
         self, type_id: str, config: dict[str, Any]

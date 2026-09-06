@@ -14,6 +14,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_c
 from functools import lru_cache
 from typing import Any, Callable
 
+from .automation_execution import condition_worker_map
 from .ssh_security import (
     close_ssh_client,
     format_ssh_connection_error,
@@ -188,14 +189,9 @@ def scan_tcp_checks(
                 future.set_exception(exc)
         return future.result()
 
-    workers = min(max_workers, len(checks))
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {
-            executor.submit(_scan_tcp_port, target, port, timeout, resolve): index
-            for index, (target, port) in enumerate(checks)
-        }
-        indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
-    return [result for _index, result in sorted(indexed_results)]
+    return condition_worker_map(
+        lambda check: _scan_tcp_port(check[0], check[1], timeout, resolve), checks, max_workers,
+    )
 
 
 def _connect_tcp_addresses(addresses: list, port: int, timeout: float) -> None:
@@ -416,14 +412,9 @@ def dns_lookup_matrix(
     record_type = _validated_dns_query_settings(record_type, timeout)
 
     jobs = [(host, server) for host in hosts for server in servers]
-    workers = min(20, len(jobs))
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {
-            executor.submit(_dns_lookup, host, server, record_type, timeout): index
-            for index, (host, server) in enumerate(jobs)
-        }
-        indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
-    return [result for _index, result in sorted(indexed_results)]
+    return condition_worker_map(
+        lambda job: _dns_lookup(job[0], job[1], record_type, timeout), jobs, 20,
+    )
 
 
 def dns_load_test(
@@ -928,11 +919,7 @@ def ping_hosts(hosts: list[str], timeout: float = 1) -> list[dict[str, Any]]:
 def _ping_hosts_compatibility(
     hosts: list[str], timeout: float = 1
 ) -> list[dict[str, Any]]:
-    workers = min(20, len(hosts))
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(_ping_host, host, timeout): index for index, host in enumerate(hosts)}
-        indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
-    return [result for _index, result in sorted(indexed_results)]
+    return condition_worker_map(lambda host: _ping_host(host, timeout), hosts, 20)
 
 
 def _fping_hosts(

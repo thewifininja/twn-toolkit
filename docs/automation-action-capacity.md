@@ -28,7 +28,8 @@ and a new pool is created. Existing work is not interrupted to resize the pool.
 These are action callbacks, not individual sockets. An action can still create
 its own host workers or HTTP child. Outgoing file transfers additionally obey
 [shared transfer connection limits](outgoing-transfer-admission.md). Other
-protocol connection budgets and condition fan-out remain separate work. Distinct
+protocol connection budgets remain separate work. TCP, DNS, certificate and
+fallback-ping condition batches use a [separate shared pool](automation-condition-capacity.md). Distinct
 processes or instances have separate action pools; this does not impose a
 cross-process or fleet-wide action limit on standalone Python callers.
 
