@@ -3,21 +3,23 @@ from __future__ import annotations
 import secrets
 import time
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, abort, current_app, g, jsonify, redirect, render_template, request, url_for
 
-from .activity_context import record_current_activity
 from .audit import (
     annotate_profile_deleted,
     annotate_profile_duplicated,
     annotate_profile_saved,
     annotate_tool_run,
 )
+from .investigations import InvestigationStore
+from .diagnostic_jobs import DiagnosticJobStore
+from .diagnostic_worker import record_unsuccessful_scan
 from .investigation_context import record_current_investigation_event
+from .automation_heartbeat import read_automation_heartbeat
 from .network_tools import (
     ToolInputError,
     parse_ping_targets,
     parse_tcp_ports,
-    scan_tcp_ports,
 )
 from .profiles import PortScanProfileStore
 
@@ -25,113 +27,93 @@ from .profiles import PortScanProfileStore
 def register_port_scanner_routes(tools_bp: Blueprint) -> None:
     @tools_bp.route("/port-scanner", methods=["GET", "POST"])
     def port_scanner():
-        form = {
-            "hosts": "",
-            "ports": "22, 53, 80, 443",
-            "timeout": "1",
-            "concurrency": "100",
-            "open_only": True,
-        }
-        results = None
-        stats = None
-        journal_event = None
+        store = _diagnostic_store()
+        user = g.current_user
+        form = {"hosts": "", "ports": "22, 53, 80, 443", "timeout": "1",
+                "concurrency": "100", "open_only": True}
         error = ""
+        job = None
+        results = stats = journal_event = None
+        page, total = 1, 0
         if request.method == "POST":
-            operation_id = f"port-scan:{secrets.token_hex(12)}"
-            journal_started_at = time.time()
-            targets: list[dict[str, str]] = []
-            ports: list[int] = []
-            all_results: list[dict[str, object]] = []
-            form = {
-                "hosts": request.form.get("hosts", "").strip(),
-                "ports": request.form.get("ports", "").strip(),
-                "timeout": request.form.get("timeout", "1").strip(),
-                "concurrency": request.form.get("concurrency", "100").strip(),
-                "open_only": request.form.get("open_only") == "on",
-            }
+            form = {key: request.form.get(key, str(value)).strip() for key, value in form.items() if key != "open_only"}
+            form["open_only"] = request.form.get("open_only") == "on"
             try:
                 targets = parse_ping_targets(form["hosts"], limit=50)
                 ports = parse_tcp_ports(form["ports"], limit=200)
-                all_results = scan_tcp_ports(
-                    targets,
-                    ports,
-                    timeout=float(form["timeout"]),
-                    max_workers=int(form["concurrency"]),
-                )
-                stats = {
-                    "combinations": len(all_results),
-                    "open": sum(result["status"] == "open" for result in all_results),
-                    "closed": sum(result["status"] == "closed" for result in all_results),
-                    "timeout": sum(result["status"] == "timeout" for result in all_results),
-                    "error": sum(result["status"] == "error" for result in all_results),
-                }
-                results = (
-                    [result for result in all_results if result["status"] == "open"]
-                    if form["open_only"]
-                    else all_results
-                )
+                timeout, concurrency = float(form["timeout"]), int(form["concurrency"])
+                if len(targets) * len(ports) > 5000:
+                    raise ToolInputError("A scan is limited to 5,000 host/port combinations.")
+                if not 0.1 <= timeout <= 10:
+                    raise ToolInputError("Connection timeout must be between 0.1 and 10 seconds.")
+                if not 1 <= concurrency <= 200:
+                    raise ToolInputError("Concurrency must be between 1 and 200.")
+                investigation = InvestigationStore(current_app.instance_path).active_for_user(user["id"])
+                job_id = store.enqueue(user_id=user["id"], config={
+                    "form": form, "targets": targets, "ports": ports,
+                    "username": user["username"],
+                    "investigation_id": investigation["id"] if investigation and investigation.get("is_recording") else "",
+                })
+                annotate_tool_run(category="Network tools", action_namespace="tcp_scanner",
+                                  tool_name="TCP port scan", outcome="queued",
+                                  details={"operation id": job_id, "host count": len(targets), "port count": len(ports)})
+                return redirect(url_for("tools.port_scanner", job=job_id), code=303)
             except (ToolInputError, TypeError, ValueError) as exc:
                 error = str(exc) or "Enter valid scanner settings."
-                record_current_activity("Ports", "Ran TCP port scan", "Request failed")
-            else:
-                record_current_activity(
-                    "Ports",
-                    "Ran TCP port scan",
-                    f"{len(targets)} host(s), {len(ports)} port(s), {stats['open']} open",
-                    counters={"tcp": {"ports_scanned": len(all_results)}},
+                record_current_investigation_event(
+                    operation_id="port-scan-rejected:" + secrets.token_hex(12),
+                    event_type="diagnostic.failed", tool_id="tools.port_scanner",
+                    action="TCP port scan", outcome="failed", summary="TCP port scan rejected: " + error,
+                    targets={"hosts": form["hosts"]}, parameters=form, metrics={},
+                    details={"error": error}, started_at=time.time(), completed_at=time.time(),
                 )
-            annotate_tool_run(
-                category="Network tools",
-                action_namespace="tcp_scanner",
-                tool_name="TCP port scan",
-                outcome="failed" if error else "succeeded",
-                details={
-                    "host count": len(targets) if not error else 0,
-                    "port count": len(ports) if not error else 0,
-                    "combination count": len(all_results) if not error else 0,
-                    "open port count": int(stats["open"]) if stats else 0,
-                },
-            )
-            if error:
-                journal_summary = f"TCP port scan failed: {error}"
-                journal_metrics = {}
-            else:
-                journal_metrics = dict(stats or {})
-                journal_summary = (
-                    f"Scanned {len(targets)} host(s) across {len(ports)} TCP "
-                    f"port(s): {journal_metrics.get('open', 0)} open, "
-                    f"{journal_metrics.get('closed', 0)} closed, and "
-                    f"{journal_metrics.get('timeout', 0)} timed out."
-                )
-            journal_event = record_current_investigation_event(
-                operation_id=operation_id,
-                event_type="diagnostic.failed" if error else "diagnostic.completed",
-                tool_id="tools.port_scanner",
-                action="TCP port scan",
-                outcome="failed" if error else "succeeded",
-                summary=journal_summary,
-                targets={"hosts": targets},
-                parameters={
-                    "ports": ports,
-                    "timeout_seconds": form["timeout"],
-                    "concurrency": form["concurrency"],
-                    "display_open_only": form["open_only"],
-                },
-                metrics=journal_metrics,
-                details={"error": error, "results": all_results},
-                started_at=journal_started_at,
-                completed_at=time.time(),
-            )
+                annotate_tool_run(category="Network tools", action_namespace="tcp_scanner",
+                                  tool_name="TCP port scan", outcome="failed")
+        elif request.args.get("job"):
+            job = store.get(request.args["job"], user["id"])
+            if job is None:
+                abort(404)
+            form = job["config"]["form"]
+            if request.args.get("open_only") in {"0", "1"}:
+                form["open_only"] = request.args["open_only"] == "1"
+            try:
+                page = max(1, min(50, int(request.args.get("page", 1))))
+            except ValueError:
+                page = 1
+            if job["state"] == "succeeded":
+                stats = job["summary"]["stats"]
+                journal_event = job["summary"].get("journal_event")
+                results, total = store.page(job["id"], user["id"], page, open_only=form["open_only"])
         return render_template(
-            "tools/port_scanner.html",
-            error=error,
-            form=form,
+            "tools/port_scanner.html", error=error, form=form,
             host_profiles=_port_scan_profile_store("hosts").all(),
             port_profiles=_port_scan_profile_store("ports").all(),
-            results=results,
-            stats=stats,
-            journal_event=journal_event,
+            results=results, stats=stats, journal_event=journal_event,
+            diagnostic_job=job, diagnostic_recent=store.recent(user["id"]),
+            result_page=page, result_total=total,
+            diagnostic_scheduler=read_automation_heartbeat(store.instance / "automation-heartbeat.json"),
         )
+
+    @tools_bp.get("/port-scanner/jobs/<job_id>/status")
+    def port_scanner_job_status(job_id):
+        job = _diagnostic_store().get(job_id, g.current_user["id"])
+        if job is None:
+            abort(404)
+        response = jsonify({"state": job["state"], "error": job["error"]})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @tools_bp.post("/port-scanner/jobs/<job_id>/cancel")
+    def cancel_port_scanner_job(job_id):
+        store = _diagnostic_store()
+        if store.get(job_id, g.current_user["id"]) is None:
+            abort(404)
+        cancelled = store.cancel(job_id, g.current_user["id"])
+        if cancelled:
+            record_unsuccessful_scan(store, cancelled, "cancelled", "Cancelled before execution started.")
+        annotate_tool_run(category="Network tools", action_namespace="tcp_scanner.cancel",
+                          tool_name="TCP port scan", outcome="requested", details={"operation id": job_id})
+        return redirect(url_for("tools.port_scanner", job=job_id), code=303)
 
     @tools_bp.post("/port-scanner/profiles/<kind>")
     def save_port_scan_profile(kind: str):
@@ -199,3 +181,11 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
 
 def _port_scan_profile_store(kind: str) -> PortScanProfileStore:
     return PortScanProfileStore(current_app.instance_path, kind)
+
+
+def _diagnostic_store():
+    store = current_app.extensions.get("diagnostic_job_store")
+    if store is None:
+        store = DiagnosticJobStore(current_app.instance_path)
+        current_app.extensions["diagnostic_job_store"] = store
+    return store

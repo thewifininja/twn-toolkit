@@ -9,6 +9,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 from .automation import AutomationEngine, AutomationStore
+from .diagnostic_worker import DiagnosticScheduler
 from .automation_heartbeat import AutomationHeartbeat
 from .auth import load_or_create_secret_key
 from .live_tools import LiveToolRunner, LiveToolStore
@@ -77,8 +78,11 @@ def main() -> None:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     heartbeat.start()
+    diagnostics = None
     try:
+        diagnostics = DiagnosticScheduler(instance_path)
         while running:
+            diagnostics.tick(lambda: running)
             heartbeat.record_scheduler_cycle(futures, live_futures)
             now = time.time()
             if now >= next_live_finalization:
@@ -226,6 +230,8 @@ def main() -> None:
             else:
                 time.sleep(wait_seconds)
     finally:
+        if diagnostics is not None:
+            diagnostics.close()
         heartbeat.request_shutdown()
         executor.shutdown(wait=False, cancel_futures=True)
         live_executor.shutdown(wait=False, cancel_futures=True)

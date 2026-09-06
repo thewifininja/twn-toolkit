@@ -1831,7 +1831,7 @@ class InvestigationRouteTests(unittest.TestCase):
                 },
             ]
             with patch(
-                "twn_toolkit.port_scanner_routes.scan_tcp_ports",
+                "twn_toolkit.diagnostic_worker.scan_tcp_ports",
                 return_value=port_results,
             ):
                 port_page = client.post(
@@ -1843,6 +1843,12 @@ class InvestigationRouteTests(unittest.TestCase):
                         "concurrency": "20",
                     },
                 )
+                from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+                from twn_toolkit.diagnostic_worker import execute_scan
+                diagnostic_store = DiagnosticJobStore(instance)
+                job = diagnostic_store.claim()
+                execute_scan(diagnostic_store, job["id"], job["token"])
+                port_page = client.get(port_page.headers["Location"])
             self.assertIn(b"Recorded in the active case", port_page.data)
 
             trace_result = {
