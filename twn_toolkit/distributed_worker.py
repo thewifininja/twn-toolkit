@@ -10,6 +10,7 @@ import socket
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from .distributed_agents import DistributedSettingsStore
@@ -80,9 +81,9 @@ def main() -> None:
                     f"Mainframe enrollment listener ready on {interface}:{server.port}",
                     flush=True,
                 )
-        interactive_threads: list[threading.Thread] = []
+        execution_threads: list[threading.Thread] = []
         poll_gate = InteractivePollGate()
-        regular_backoff = RetryBackoff()
+        control_backoff = RetryBackoff()
         if settings["role"] == "agent":
             agent_activation(instance)  # Establish one epoch before starting concurrent lanes.
             for lane in range(3):
@@ -93,7 +94,13 @@ def main() -> None:
                     daemon=True,
                 )
                 thread.start()
-                interactive_threads.append(thread)
+                execution_threads.append(thread)
+            thread = threading.Thread(
+                target=_regular_lane, args=(instance, settings, lambda: running),
+                name="twn-regular", daemon=True,
+            )
+            thread.start()
+            execution_threads.append(thread)
         job_store = DistributedJobStore(instance) if settings["role"] == "mainframe" else None
         next_payload_cleanup = 0.0
         next_cache_cleanup = 0.0
@@ -111,19 +118,41 @@ def main() -> None:
                 except (OSError, ValueError) as exc:
                     print(f"Agent dispatch cache cleanup failed: {type(exc).__name__}", file=sys.stderr, flush=True)
             if settings["role"] == "agent":
-                status = _agent_tick(instance, {**settings, "agent_wait_seconds": 20})
-                pause(regular_poll_delay(status, regular_backoff), lambda: running)
+                if any(not thread.is_alive() for thread in execution_threads):
+                    raise RuntimeError("An Agent execution thread stopped unexpectedly.")
+                status = _agent_tick(instance, settings, control_only=True)
+                pause(regular_poll_delay(status, control_backoff), lambda: running)
             else:
                 time.sleep(0.25)
     except Exception as exc:
         print(f"Mainframe enrollment listener failed: {exc}", file=sys.stderr)
         raise
     finally:
-        for thread in locals().get("interactive_threads", []):
-            thread.join(timeout=30)
+        running = False
+        deadline = time.monotonic() + 30
+        for thread in locals().get("execution_threads", []):
+            thread.join(timeout=max(0, deadline - time.monotonic()))
         for server in reversed(servers):
             server.stop()
         remove_own_pid_file(args.pid_file)
+
+
+def _regular_lane(instance: Path, settings: dict[str, object], running: Callable[[], bool]) -> None:
+    """One executor, no local work queue; status reporting runs independently."""
+    backoff = RetryBackoff()
+    client = EnrollmentClient(
+        instance, str(settings["agent_mainframe_url"]),
+        str(settings.get("agent_mainframe_fallback_url", "")),
+    )
+    while running():
+        # The control loop alone handles pending enrollment/certificate writes.
+        if not client.enrolled():
+            pause(5, running)
+            continue
+        status = _agent_tick(
+            instance, {**settings, "agent_wait_seconds": 20}, write_status=False, running=running,
+        )
+        pause(regular_poll_delay(status, backoff), running)
 
 
 def _interactive_lane(
@@ -161,6 +190,10 @@ def _interactive_lane(
             except (EnrollmentTransportError, OSError, ValueError, sqlite3.Error):
                 pause(gate.backoff.delay(), running)
                 continue
+        # Do not start a newly delivered claim after shutdown was requested.
+        # Its unstarted claim can expire safely on the Mainframe.
+        if not running():
+            return
         # Other lanes may now fetch work while this one executes. Lease
         # renewal also bypasses the poll gate.
         try:
@@ -169,7 +202,11 @@ def _interactive_lane(
             pause(RETRY_INITIAL_SECONDS, running)
 
 
-def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object]:
+def _agent_tick(
+    instance: Path, settings: dict[str, object], *,
+    control_only: bool = False, write_status: bool = True,
+    running: Callable[[], bool] = lambda: True,
+) -> dict[str, object]:
     client = EnrollmentClient(
         instance,
         str(settings["agent_mainframe_url"]),
@@ -181,7 +218,7 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
     now = time.time()
     wait_seconds = float(settings.get("agent_wait_seconds", 0) or 0)
     try:
-        if client.pending():
+        if write_status and client.pending():
             enrollment = client.poll()
             if enrollment["state"] != "approved":
                 status = {
@@ -191,7 +228,8 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
                     "last_connected_at": 0,
                     "error": "",
                 }
-                _write_status(status_path, status)
+                if write_status:
+                    _write_status(status_path, status)
                 return status
         if not client.enrolled():
             status = {
@@ -201,7 +239,8 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
                 "last_connected_at": 0,
                 "error": "",
             }
-            _write_status(status_path, status)
+            if write_status:
+                _write_status(status_path, status)
             return status
         receipts = OperationReceipts(instance)
         receipts.discard_other_activations(activation_id)
@@ -216,19 +255,22 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
             hostname=socket.gethostname(),
             activation_id=activation_id,
             results=pending_results,
-            wait_seconds=wait_seconds,
+            wait_seconds=0 if control_only else wait_seconds,
+            control_only=control_only,
         )
         if result.get("job_protocol") != JOB_PROTOCOL_VERSION:
             raise ValueError("Upgrade the Mainframe for owned operation delivery.")
         receipts.acknowledge(result.get("acknowledgements", []))
-        _execute_jobs(instance, result.get("jobs", []), client=client, lane="regular")
+        if not control_only and running():
+            _execute_jobs(instance, result.get("jobs", []), client=client, lane="regular")
         completed = receipts.pending("regular", activation_id)
-        if completed:
+        if completed and not control_only:
             followup = client.heartbeat(advertised_capabilities(), toolkit_version=APP_VERSION,
                 platform=f"{platform.system()} {platform.release()}".strip(), hostname=socket.gethostname(),
-                activation_id=activation_id, results=completed, wait_seconds=0)
+                activation_id=activation_id, results=completed, wait_seconds=0, control_only=True)
+            if followup.get("job_protocol") != JOB_PROTOCOL_VERSION:
+                raise ValueError("Upgrade the Mainframe for owned operation delivery.")
             receipts.acknowledge(followup.get("acknowledgements", []))
-            _execute_jobs(instance, followup.get("jobs", []), client=client, lane="regular")
         status = {
             "role": "agent",
             "state": str(result.get("state", "connected")),
@@ -246,7 +288,8 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
             "last_connected_at": float(previous.get("last_connected_at", 0) or 0),
             "error": " ".join(str(exc).split())[:240],
         }
-    _write_status(status_path, status)
+    if write_status:
+        _write_status(status_path, status)
     return status
 
 

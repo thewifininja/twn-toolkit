@@ -1,7 +1,7 @@
 # Fleet listener capacity and polling
 
 Each updated Agent normally holds at most two idle long-poll connections:
-one heartbeat and one interactive poll. Three interactive execution workers
+one regular work poll and one interactive poll. Three interactive execution workers
 share the interactive poll gate; once a request is delivered, its execution runs
 outside that gate so another worker can fetch work. Lease renewal and result
 control do not wait for the interactive poll gate.
@@ -58,7 +58,7 @@ Transport failures use exponential backoff with equal jitter: a 1-second initial
 ceiling doubles to 30 seconds, and each delay is randomly selected from half the
 ceiling to the ceiling. A successful exchange resets it. The interactive gate
 holds the delay so another local worker cannot bypass the retry pacing.
-Disconnected heartbeat retries have their own backoff. Pending enrollment and
+Disconnected regular work and control heartbeat retries have independent backoffs. Pending enrollment and
 unenrolled status checks wait five seconds. Server capacity hints receive
 additional bounded jitter; their base is one second. These are centralized code
 policies in `distributed_polling.py`, not extra UI settings.
@@ -76,6 +76,36 @@ refused. Results accepted before that response remain committed and can be ackno
 idempotently on retry. Upgrade Agents too for two idle polls and the new retry
 behavior. Job ownership protocol remains version 2.
 
+### Independent status reporting
+
+The Agent's main loop sends a short authenticated `/v1/agent-status` request
+independently of the regular executor. It updates presence/capabilities and
+acknowledges regular results, but never claims work or waits on a long-poll slot.
+Healthy status requests are paced at 5–7.5 seconds, including jitter; failures use
+the bounded reconnect backoff. The five-second base is the centralized
+`CONTROL_STATUS_SECONDS` code policy. These short requests add control traffic
+beyond the two-idle-connection sizing model.
+
+One regular execution thread claims and executes at most one job at a time,
+without a local backlog. Three existing interactive execution threads remain.
+Result-only followups also use the status endpoint so they cannot accidentally
+claim tunnel requests or a second regular job. Only the control loop writes
+the local connectivity status file; a delayed job completion cannot overwrite
+a newer disconnect report.
+
+**Upgrade and restart the Mainframe worker before upgrading Agents.** The
+status endpoint is new; older Mainframes return 404. Updated Agents report a
+control connection failure and retry with backoff, without falling back to a
+heartbeat that could claim work. Existing regular/interactive delivery may
+continue, but independent status is unavailable until the Mainframe is updated.
+Older Agents continue to use the existing heartbeat endpoint on new Mainframes.
+
+Shutdown shares a 30-second grace period across execution threads. Polls that
+return after stop is requested do not start new handlers. Already-started
+handlers retain their ownership/receipt semantics: this is not forced
+cancellation, and an interrupted side effect may still have an unknown outcome.
+Lease renewal remains independent of the control heartbeat.
+
 ## Queue work and remaining limits
 
 Idle polls now perform an indexed, read-only queued-work probe. A positive probe
@@ -88,5 +118,8 @@ leases/payloads.
 
 This removes empty claim transactions, not all polling or all database writes:
 heartbeat, activation and receipt processing still persist state. Cross-process
-wakeups, broader history indexes/retention, independent long-running execution
-classes and shared target connection budgets remain separate work.
+wakeups, broader history indexes/retention, asynchronous execution classes for
+long HTTP handlers and shared target connection budgets remain separate work.
+All three interactive threads can still be occupied by long HTTP requests; the
+independent status heartbeat does not guarantee remote page/terminal availability
+in that condition.

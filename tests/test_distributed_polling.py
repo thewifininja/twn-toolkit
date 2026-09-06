@@ -272,3 +272,206 @@ def test_interactive_failure_pacing_is_shared_and_shutdown_releases_waiters(tmp_
     assert len(delays) == 1
     assert 0.5 <= delays[0] <= 1
     assert not gate.lock.locked()
+
+
+def test_status_endpoint_never_claims_or_waits_and_acknowledges_results(tmp_path, monkeypatch):
+    server = EnrollmentServer(tmp_path / "mainframe", "127.0.0.1", 0)
+    server.enrollment_window.open(5)
+    server.start()
+    try:
+        client, agent_id = enroll(server, tmp_path / "agent", "Agent")
+        first = server.job_store.enqueue(
+            agent_id=agent_id, requester_id="owner",
+            capability_id="system.identity", capability_version="1",
+        )
+        owned = client.heartbeat([])["jobs"][0]
+        assert owned["id"] == first["id"]
+        assert client.job_control(owned, "start")["state"] == "running"
+        queued = [
+            server.job_store.enqueue(
+                agent_id=agent_id, requester_id="owner",
+                capability_id=capability, capability_version="1",
+            )
+            for capability in ("system.identity", "system.http.tunnel")
+        ]
+        def forbidden(*args, **kwargs):
+            pytest.fail("status reporting entered the claiming/long-poll path")
+        monkeypatch.setattr(server, "_poll_jobs", forbidden)
+        result = client.heartbeat(
+            [], control_only=True, wait_seconds=20,
+            results=[{
+                "id": owned["id"], "attempt_token": owned["attempt_token"],
+                "state": "succeeded", "output": {"ok": True},
+            }],
+        )
+        assert result["state"] == "approved"
+        assert result["jobs"] == []
+        assert result["retry_after_seconds"] == 5
+        assert result["acknowledgements"][0]["status"] == "accepted"
+        assert server.job_store.get(first["id"])["state"] == "succeeded"
+        assert all(server.job_store.get(job["id"])["state"] == "queued" for job in queued)
+        with pytest.raises(EnrollmentTransportError):
+            client._request(
+                "POST", "/v1/agent-status",
+                {"protocol": 1, "job_protocol": 2}, authenticated=False,
+            )
+        server.agent_store.set_state(agent_id, "revoked")
+        with pytest.raises(EnrollmentTransportError):
+            client.heartbeat([], control_only=True)
+    finally:
+        server.stop()
+
+
+def test_blocked_regular_execution_preserves_status_renewal_and_interactive_delivery(tmp_path, monkeypatch):
+    from twn_toolkit.distributed_runtime import agent_activation
+
+    root = tmp_path / "agent"
+    server = EnrollmentServer(tmp_path / "mainframe", "127.0.0.1", 0)
+    server.enrollment_window.open(5)
+    server.start()
+    started, release, renewed, stopped = (threading.Event() for _ in range(4))
+    thread = None
+    try:
+        client, agent_id = enroll(server, root, "Agent")
+        activation = agent_activation(root)["activation_id"]
+        first = server.job_store.enqueue(
+            agent_id=agent_id, requester_id="owner",
+            capability_id="system.identity", capability_version="1",
+        )
+        second = server.job_store.enqueue(
+            agent_id=agent_id, requester_id="owner",
+            capability_id="system.identity", capability_version="1",
+        )
+        tunnel = server.job_store.enqueue(
+            agent_id=agent_id, requester_id="owner",
+            capability_id="system.http.tunnel", capability_version="1",
+        )
+        executions = []
+        def execute(instance, capability, version, inputs):
+            executions.append(capability)
+            if capability == "system.identity":
+                started.set()
+                assert release.wait(15), "test did not release the blocked handler"
+            return {"ok": True}
+        monkeypatch.setattr(worker, "execute_capability", execute)
+        original_control = server.job_control
+        def control(*args, **kwargs):
+            result = original_control(*args, **kwargs)
+            payload = args[1]
+            if payload["action"] == "renew":
+                renewed.set()
+            if result.get("state") == "running":
+                result["lease_seconds"] = 0.15
+            return result
+        monkeypatch.setattr(server, "job_control", control)
+        settings = {"agent_mainframe_url": f"https://127.0.0.1:{server.port}"}
+        thread = threading.Thread(
+            target=worker._regular_lane, args=(root, settings, lambda: not stopped.is_set()),
+        )
+        thread.start()
+        assert started.wait(10)
+        assert renewed.wait(10), "lease renewal stopped while the handler was blocked"
+        for _ in range(3):
+            status = worker._agent_tick(root, settings, control_only=True)
+            assert status["state"] == "approved"
+            assert server.job_store.get(second["id"])["state"] == "queued"
+        interactive = client.interactive(wait_seconds=0, activation_id=activation)
+        assert interactive["requests"][0]["id"] == tunnel["id"]
+        worker._execute_jobs(root, interactive["requests"], client=client, lane="interactive")
+        assert executions == ["system.identity", "system.http.tunnel"]
+        # A background completion must not overwrite the control loop's newer status.
+        marker = {"state": "disconnected", "last_connected_at": status["last_connected_at"]}
+        worker._write_status(root / "distributed-status.json", marker)
+        stopped.set()
+        release.set()
+        thread.join(10)
+        assert not thread.is_alive()
+        assert worker._read_status(root / "distributed-status.json") == marker
+        assert server.job_store.get(first["id"])["state"] == "succeeded"
+        assert server.job_store.get(second["id"])["state"] == "queued"
+        assert executions.count("system.identity") == 1
+        assert worker._agent_tick(root, settings, control_only=True)["state"] == "approved"
+    finally:
+        stopped.set()
+        release.set()
+        if thread is not None:
+            thread.join(15)
+        server.stop()
+
+
+def test_regular_lane_leaves_enrollment_to_control_loop(tmp_path, monkeypatch):
+    stopped = threading.Event()
+    class Client:
+        def __init__(self, *args):
+            pass
+        def enrolled(self):
+            return False
+    monkeypatch.setattr(worker, "EnrollmentClient", Client)
+    monkeypatch.setattr(worker, "_agent_tick", lambda *args, **kwargs: pytest.fail("execution lane polled enrollment"))
+    delays = []
+    def pause(delay, running):
+        delays.append(delay)
+        stopped.set()
+    monkeypatch.setattr(worker, "pause", pause)
+    worker._regular_lane(tmp_path, {"agent_mainframe_url": "https://mainframe"}, lambda: not stopped.is_set())
+    assert delays == [5]
+
+
+def test_regular_claim_returned_during_shutdown_is_not_executed(tmp_path, monkeypatch):
+    root = tmp_path / "agent"
+    server = EnrollmentServer(tmp_path / "mainframe", "127.0.0.1", 0)
+    server.enrollment_window.open(5)
+    server.start()
+    stopped = threading.Event()
+    try:
+        client, agent_id = enroll(server, root, "Agent")
+        queued = server.job_store.enqueue(
+            agent_id=agent_id, requester_id="owner",
+            capability_id="system.identity", capability_version="1",
+        )
+        original = EnrollmentClient.heartbeat
+        def heartbeat(self, *args, **kwargs):
+            result = original(self, *args, **kwargs)
+            stopped.set()
+            return result
+        monkeypatch.setattr(EnrollmentClient, "heartbeat", heartbeat)
+        monkeypatch.setattr(worker, "execute_capability", lambda *args: pytest.fail("started during shutdown"))
+        status = worker._agent_tick(
+            root, {"agent_mainframe_url": f"https://127.0.0.1:{server.port}"},
+            write_status=False, running=lambda: not stopped.is_set(),
+        )
+        assert status["state"] == "approved"
+        assert server.job_store.get(queued["id"])["state"] == "claimed"
+        assert not (root / "distributed-status.json").exists()
+    finally:
+        server.stop()
+
+
+def test_old_mainframe_status_failure_does_not_fall_back_to_claiming(tmp_path, monkeypatch):
+    import io
+    import urllib.error
+    import urllib.request
+
+    root = tmp_path / "agent"
+    server = EnrollmentServer(tmp_path / "mainframe", "127.0.0.1", 0)
+    server.enrollment_window.open(5)
+    server.start()
+    try:
+        enroll(server, root, "Agent")
+        paths = []
+        body = io.BytesIO(b'{"error":"Not found."}')
+        def old_mainframe(request, **kwargs):
+            paths.append(request.full_url)
+            raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, body)
+        monkeypatch.setattr(urllib.request, "urlopen", old_mainframe)
+        status = worker._agent_tick(
+            root, {"agent_mainframe_url": f"https://127.0.0.1:{server.port}"},
+            control_only=True,
+        )
+        assert status["state"] == "disconnected"
+        assert "Upgrade and restart the Mainframe" in status["error"]
+        assert len(paths) == 1
+        assert paths[0].endswith("/v1/agent-status")
+        assert body.closed
+    finally:
+        server.stop()
