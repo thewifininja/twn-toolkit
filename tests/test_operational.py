@@ -313,6 +313,9 @@ class OperationalHardeningTests(unittest.TestCase):
                 "distributed_tunnel_wait_seconds": 12,
                 "distributed_receipt_limit": 64,
                 "distributed_receipt_retention_hours": 48,
+                "distributed_listener_connections": 64,
+                "distributed_control_reserve": 16,
+                "distributed_agent_long_polls": 3,
                 "distributed_http_client_limit": 8,
                 "distributed_http_client_idle_seconds": 60,
             })
@@ -320,6 +323,9 @@ class OperationalHardeningTests(unittest.TestCase):
             self.assertEqual(store.get()["datastore_quota_gib"], 20)
             self.assertEqual(store.get()["distributed_job_lease_seconds"], 45)
             self.assertEqual(store.get()["distributed_receipt_limit"], 64)
+            self.assertEqual(store.get()["distributed_listener_connections"], 64)
+            self.assertEqual(store.get()["distributed_control_reserve"], 16)
+            self.assertEqual(store.get()["distributed_agent_long_polls"], 3)
             self.assertEqual(store.get()["distributed_http_client_limit"], 8)
             self.assertEqual(store.get()["distributed_http_client_idle_seconds"], 60)
             with self.assertRaisesRegex(ValueError, "Concurrent"):
@@ -707,12 +713,18 @@ class OperationalHardeningTests(unittest.TestCase):
                 "distributed_tunnel_wait_seconds": "12",
                 "distributed_receipt_limit": "64",
                 "distributed_receipt_retention_hours": "48",
+                "distributed_listener_connections": "64",
+                "distributed_control_reserve": "16",
+                "distributed_agent_long_polls": "3",
                 "distributed_http_client_limit": "8",
                 "distributed_http_client_idle_seconds": "60",
             })
             self.assertEqual(response.status_code, 302)
             self.assertEqual(OperationalSettingsStore(instance).get()["max_queued_automations"], 7)
             self.assertEqual(OperationalSettingsStore(instance).get()["distributed_receipt_limit"], 64)
+            self.assertEqual(OperationalSettingsStore(instance).get()["distributed_listener_connections"], 64)
+            self.assertEqual(OperationalSettingsStore(instance).get()["distributed_control_reserve"], 16)
+            self.assertEqual(OperationalSettingsStore(instance).get()["distributed_agent_long_polls"], 3)
             self.assertEqual(OperationalSettingsStore(instance).get()["distributed_http_client_limit"], 8)
             self.assertEqual(OperationalSettingsStore(instance).get()["distributed_http_client_idle_seconds"], 60)
             operations_page = client.get("/settings?section=operations")

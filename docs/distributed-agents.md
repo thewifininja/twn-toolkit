@@ -171,7 +171,9 @@ ownership and token checks are invariants rather than policy choices. Both roles
 can adjust encrypted payload retention; see [payload storage and retention](distributed-payload-retention.md)
 for cleanup behavior, upgrade requirements and key recovery.
 Agents can also tune [HTTP dispatch caching](agent-dispatch-cache.md), which
-shares app initialization while bounding idle per-user clients.
+shares app initialization while bounding idle per-user clients. See
+[fleet capacity and polling](fleet-polling.md) for listener sizing, control
+headroom, retry behavior and Mainframe limits.
 
 ## Execution classes
 

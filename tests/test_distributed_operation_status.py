@@ -45,6 +45,9 @@ def test_operation_status_is_requester_scoped_and_hides_tunnel_payload(tmp_path)
     _login(owner_client, "owner")
     operations_settings = owner_client.get("/settings?section=operations")
     assert b"Operation lease" in operations_settings.data
+    assert b'name="distributed_listener_connections"' in operations_settings.data
+    assert b'name="distributed_control_reserve"' in operations_settings.data
+    assert b'name="distributed_agent_long_polls"' in operations_settings.data
     assert b"Receipt capacity" not in operations_settings.data
     page = owner_client.get(f"/operations/{job['id']}")
     assert page.status_code == 200
