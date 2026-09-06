@@ -9,9 +9,10 @@ import socket
 import shutil
 import subprocess
 import time
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
+import threading
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from functools import lru_cache
-from typing import Any
+from typing import Any, Callable
 
 from .ssh_security import (
     close_ssh_client,
@@ -169,23 +170,59 @@ def scan_tcp_checks(
         raise ToolInputError("Connection timeout must be between 0.1 and 10 seconds.")
     if not 1 <= max_workers <= 200:
         raise ToolInputError("Concurrency must be between 1 and 200.")
+    # Share in-flight DNS work, including failures, only within this scan.
+    # Resolve in the requesting worker so healthy hosts can connect immediately.
+    resolutions: dict[str, Future] = {}
+    resolution_lock = threading.Lock()
+
+    def resolve(host: str) -> list:
+        with resolution_lock:
+            owner = host not in resolutions
+            if owner:
+                resolutions[host] = Future()
+            future = resolutions[host]
+        if owner:
+            try:
+                future.set_result(socket.getaddrinfo(host, 0, 0, socket.SOCK_STREAM))
+            except Exception as exc:
+                future.set_exception(exc)
+        return future.result()
+
     workers = min(max_workers, len(checks))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(_scan_tcp_port, target, port, timeout): index
+            executor.submit(_scan_tcp_port, target, port, timeout, resolve): index
             for index, (target, port) in enumerate(checks)
         }
         indexed_results = [(futures[future], future.result()) for future in as_completed(futures)]
     return [result for _index, result in sorted(indexed_results)]
 
 
-def _scan_tcp_port(target: dict[str, str], port: int, timeout: float) -> dict[str, Any]:
+def _connect_tcp_addresses(addresses: list, port: int, timeout: float) -> None:
+    last_error = None
+    for family, socktype, proto, _canonname, sockaddr in addresses:
+        try:
+            with socket.socket(family, socktype, proto) as connection:
+                connection.settimeout(timeout)
+                # Keep IPv6 flow information and scope IDs supplied by the resolver.
+                connection.connect((sockaddr[0], port, *sockaddr[2:]))
+            return
+        except OSError as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    raise OSError("getaddrinfo returns an empty list")
+
+
+def _scan_tcp_port(
+    target: dict[str, str], port: int, timeout: float, resolve: Callable[[str], list],
+) -> dict[str, Any]:
     started = time.monotonic()
     status = "error"
     detail = ""
     try:
-        with socket.create_connection((target["host"], port), timeout=timeout):
-            status = "open"
+        _connect_tcp_addresses(resolve(target["host"]), port, timeout)
+        status = "open"
     except ConnectionRefusedError:
         status = "closed"
         detail = "Connection refused"
