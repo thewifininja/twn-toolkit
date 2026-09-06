@@ -10,11 +10,12 @@ from twn_toolkit.fortigate import FortiGateClient, FortiGateError
 
 
 class FortiGateClientTests(unittest.TestCase):
-    @patch("twn_toolkit.fortigate.requests.request")
+    @patch("twn_toolkit.fortigate.requests.Session.request")
     def test_moves_managed_switch_after_reference(self, request: Mock) -> None:
         response = Mock()
         response.status_code = 200
         response.content = b'{"status":"success"}'
+        response.iter_content.side_effect = lambda chunk_size: [response.content]
         response.json.return_value = {"status": "success"}
         request.return_value = response
 
@@ -39,9 +40,11 @@ class FortiGateClientTests(unittest.TestCase):
             json=None,
             verify=True,
             timeout=(3.0, 20.0),
+            stream=True,
+            allow_redirects=False,
         )
 
-    @patch("twn_toolkit.fortigate.requests.request")
+    @patch("twn_toolkit.fortigate.requests.Session.request")
     def test_unreachable_host_fails_with_clear_connection_message(self, request: Mock) -> None:
         request.side_effect = requests.ConnectTimeout("timed out")
 
@@ -52,11 +55,12 @@ class FortiGateClientTests(unittest.TestCase):
                 timeout=20,
             ).test_connection()
 
-    @patch("twn_toolkit.fortigate.requests.request")
+    @patch("twn_toolkit.fortigate.requests.Session.request")
     def test_short_timeout_caps_connect_timeout(self, request: Mock) -> None:
         response = Mock()
         response.status_code = 200
         response.content = b'{"version":"v7.6"}'
+        response.iter_content.side_effect = lambda chunk_size: [response.content]
         response.json.return_value = {"version": "v7.6"}
         request.return_value = response
 
@@ -68,11 +72,12 @@ class FortiGateClientTests(unittest.TestCase):
 
         self.assertEqual(request.call_args.kwargs["timeout"], (1.0, 1.0))
 
-    @patch("twn_toolkit.fortigate.requests.request")
+    @patch("twn_toolkit.fortigate.requests.Session.request")
     def test_wireless_log_lookup_uses_station_mac_filter_and_history_events(self, request: Mock) -> None:
         first = Mock()
         first.status_code = 200
         first.content = b'{"results":[{"stamac":"aa:bb:cc:dd:ee:ff","logdesc":"Wireless client authenticated","ap":"Hallway-AP"}]}'
+        first.iter_content.side_effect = lambda chunk_size: [first.content]
         first.json.return_value = {
             "results": [
                 {
@@ -85,6 +90,7 @@ class FortiGateClientTests(unittest.TestCase):
         second = Mock()
         second.status_code = 200
         second.content = b'{"results":[{"stamac":"aa:bb:cc:dd:ee:ff","logdesc":"Wireless client IP assigned","ap":"Kitchen-AP"}]}'
+        second.iter_content.side_effect = lambda chunk_size: [second.content]
         second.json.return_value = {
             "results": [
                 {
@@ -97,6 +103,7 @@ class FortiGateClientTests(unittest.TestCase):
         empty = Mock()
         empty.status_code = 200
         empty.content = b'{"results":[]}'
+        empty.iter_content.side_effect = lambda chunk_size: [empty.content]
         empty.json.return_value = {"results": []}
         responses = [first, second]
 

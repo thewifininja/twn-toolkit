@@ -98,6 +98,9 @@ counters are intentionally excluded.
 - Find a normalized client MAC in local wireless association logs, combine log
   and live state, and collapse repeated visits into a clean AP history.
 
+See [FortiGate API connection and result policy](docs/fortigate-http.md) for
+connection reuse, response limits, and history-search budgets.
+
 #### FortiAuthenticator
 
 - Save and test multiple FortiAuthenticator profiles.

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json as json_module
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import quote, urlparse
@@ -10,12 +11,30 @@ import requests
 
 from .http_client import DEFAULT_HTTP_TIMEOUT_SECONDS, format_seconds, split_request_timeout
 
+# Central code policy values, not profile UI settings.
+MAX_RESPONSE_BYTES = 16 * 1024 * 1024
+MAX_LOG_BYTES = 64 * 1024 * 1024
+MAX_LOG_ROWS = 60_000
+MAX_LOG_REQUESTS = 120
+MAX_LOG_PAGES_PER_FILTER = 6
+RESPONSE_CHUNK_BYTES = 64 * 1024
+
 
 class FortiGateError(RuntimeError):
     def __init__(self, message: str, status_code: int | None = None, response_body: str = "") -> None:
         super().__init__(message)
         self.status_code = status_code
         self.response_body = response_body
+
+
+class FortiGateLimitError(FortiGateError):
+    """A lookup stopped at a policy budget; do not retry with another filter."""
+
+
+@dataclass
+class _LogBudget:
+    received_bytes: int = 0
+    requests: int = 0
 
 
 def normalize_host(host: str) -> str:
@@ -43,6 +62,16 @@ class FortiGateClient:
     api_key: str
     verify_tls: bool = True
     timeout: int = DEFAULT_HTTP_TIMEOUT_SECONDS
+    _session: requests.Session | None = field(default=None, repr=False, compare=False)
+
+    @contextmanager
+    def pooled(self):
+        """Yield an operation-local client; never share sessions across workers."""
+        if self._session is not None:
+            yield self
+        else:
+            with requests.Session() as session:
+                yield replace(self, _session=session)
 
     @classmethod
     def from_profile(cls, profile: dict[str, Any]) -> "FortiGateClient":
@@ -85,6 +114,10 @@ class FortiGateClient:
         return [item for item in results if isinstance(item, dict)]
 
     def get_wireless_clients(self, vdom: str) -> list[dict[str, Any]]:
+        with self.pooled() as client:
+            return client._get_wireless_clients(vdom)
+
+    def _get_wireless_clients(self, vdom: str) -> list[dict[str, Any]]:
         endpoints = (
             "/api/v2/monitor/wifi/client",
             "/api/v2/monitor/wireless-controller/client",
@@ -96,6 +129,8 @@ class FortiGateClient:
             try:
                 response = self.request("GET", endpoint, params={"vdom": vdom})
             except FortiGateError as exc:
+                if exc.status_code not in {400, 404}:
+                    raise
                 last_error = exc
                 continue
             return _response_rows(response)
@@ -110,6 +145,15 @@ class FortiGateClient:
         hours: int,
         limit: int = 10_000,
     ) -> list[dict[str, Any]]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_LOG_ROWS:
+            raise FortiGateError(f"Log page size must be between 1 and {MAX_LOG_ROWS:,}.")
+        with self.pooled() as client:
+            return client._get_wireless_client_logs(mac, vdom, hours, limit)
+
+    def _get_wireless_client_logs(
+        self, mac: str, vdom: str, hours: int, limit: int,
+    ) -> list[dict[str, Any]]:
+        budget = _LogBudget()
         primary_endpoints = ("/api/v2/log/memory/event/wireless",)
         fallback_endpoints = ("/api/v2/log/disk/event/wireless",)
         mac_digits = "".join(character for character in mac.lower() if character in "0123456789abcdef")
@@ -132,25 +176,25 @@ class FortiGateClient:
         cutoff_time = datetime.now() - timedelta(hours=hours)
 
         for endpoints in (primary_endpoints, fallback_endpoints):
-            had_endpoint_success = False
+            had_completed_search = False
             for endpoint in endpoints:
                 endpoint_missing = False
                 for filter_value in station_mac_filters:
-                    for start in range(0, limit * 6, limit):
+                    for start in range(0, limit * MAX_LOG_PAGES_PER_FILTER, limit):
                         params = _wireless_log_params(vdom, hours, limit, start, filter_value)
                         try:
-                            response = self.request("GET", endpoint, params=params)
+                            response = self.request("GET", endpoint, params=params, _budget=budget)
                         except FortiGateError as exc:
+                            if exc.status_code not in {400, 404} or matching_rows:
+                                raise
                             last_error = exc
                             if exc.status_code == 404:
                                 endpoint_missing = True
                                 break
-                            continue
-                        had_endpoint_success = True
-                        rows = _response_rows(response)
-                        if not rows:
                             break
-                        if _rows_are_older_than(rows, cutoff_time):
+                        rows = _response_rows(response)
+                        if not rows or _rows_are_older_than(rows, cutoff_time):
+                            had_completed_search = True
                             break
                         for row in rows:
                             if not _rows_contain_mac([row], mac):
@@ -163,16 +207,25 @@ class FortiGateClient:
                             signature = _row_signature(row)
                             if signature in seen_matches:
                                 continue
+                            if len(matching_rows) >= MAX_LOG_ROWS:
+                                raise FortiGateLimitError(
+                                    f"FortiGate history exceeded {MAX_LOG_ROWS:,} matching rows."
+                                )
                             seen_matches.add(signature)
                             matching_rows.append(row)
+                    else:
+                        raise FortiGateLimitError(
+                            f"FortiGate history reached {MAX_LOG_PAGES_PER_FILTER} pages for one filter; "
+                            "narrow the time range or adjust the log policy."
+                        )
                     if matching_rows:
                         return matching_rows
                     if endpoint_missing:
                         break
             if matching_rows:
                 return matching_rows
-            if had_endpoint_success:
-                break
+            if had_completed_search:
+                return []
         if last_error and not matching_rows:
             raise last_error
         return []
@@ -203,7 +256,24 @@ class FortiGateClient:
         endpoint: str,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+        *,
+        _budget: _LogBudget | None = None,
     ) -> dict[str, Any]:
+        with self.pooled() as client:
+            return client._request(method, endpoint, params, json, _budget)
+
+    def _request(
+        self, method: str, endpoint: str, params: dict[str, Any] | None,
+        json: dict[str, Any] | None, budget: _LogBudget | None,
+    ) -> dict[str, Any]:
+        limit = MAX_RESPONSE_BYTES
+        if budget is not None:
+            if budget.requests >= MAX_LOG_REQUESTS:
+                raise FortiGateLimitError(f"FortiGate history exceeded {MAX_LOG_REQUESTS} requests.")
+            limit = min(limit, MAX_LOG_BYTES - budget.received_bytes)
+            if limit <= 0:
+                raise FortiGateLimitError("FortiGate history exceeded its response byte budget.")
+            budget.requests += 1
         url = f"{self.host}{endpoint if endpoint.startswith('/') else f'/{endpoint}'}"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -212,7 +282,7 @@ class FortiGateClient:
         request_timeout = split_request_timeout(self.timeout)
 
         try:
-            response = requests.request(
+            response = self._session.request(
                 method,
                 url,
                 headers=headers,
@@ -220,7 +290,26 @@ class FortiGateClient:
                 json=json,
                 verify=self.verify_tls,
                 timeout=request_timeout,
+                stream=True,
+                allow_redirects=False,
             )
+            try:
+                if 300 <= response.status_code < 400:
+                    raise FortiGateError(
+                        "FortiGate returned an API redirect; use the final appliance URL in the profile.",
+                        status_code=response.status_code,
+                    )
+                content = bytearray()
+                for chunk in response.iter_content(chunk_size=RESPONSE_CHUNK_BYTES):
+                    if len(content) + len(chunk) > limit:
+                        raise FortiGateLimitError(
+                            f"FortiGate response exceeded the remaining byte budget ({limit:,} bytes)."
+                        )
+                    content.extend(chunk)
+                if budget is not None:
+                    budget.received_bytes += len(content)
+            finally:
+                response.close()
         except requests.ConnectTimeout as exc:
             raise FortiGateError(
                 f"Could not connect to FortiGate at {self.host} within "
@@ -231,7 +320,7 @@ class FortiGateClient:
                 f"FortiGate at {self.host} accepted the connection but did not respond within "
                 f"{format_seconds(request_timeout[1])}."
             ) from exc
-        except requests.SSLError as exc:
+        except requests.exceptions.SSLError as exc:
             raise FortiGateError(
                 f"TLS verification failed for FortiGate at {self.host}. "
                 "Confirm the certificate is trusted, or disable TLS verification for this profile if appropriate."
@@ -245,27 +334,32 @@ class FortiGateClient:
             raise FortiGateError(f"FortiGate request failed: {exc}") from exc
 
         if response.status_code >= 400:
-            body = _response_message(response)
+            body = _response_message(response, content)
             raise FortiGateError(
                 _http_error_message(response, method, endpoint, body),
                 status_code=response.status_code,
                 response_body=body,
             )
 
-        if not response.content:
+        if not content:
             return {}
 
         try:
-            return response.json()
-        except ValueError as exc:
-            raise FortiGateError(f"Expected JSON response, got: {response.text[:200]}") from exc
+            data = json_module.loads(content)
+        except (ValueError, RecursionError) as exc:
+            raise FortiGateError(
+                f"Expected JSON response, got: {content[:200].decode(errors='replace')}"
+            ) from exc
+        if not isinstance(data, dict):
+            raise FortiGateError("Expected a JSON object from FortiGate.")
+        return data
 
 
-def _response_message(response: requests.Response) -> str:
+def _response_message(response: requests.Response, content: bytes | bytearray) -> str:
     try:
-        data = response.json()
-    except ValueError:
-        body = response.text.strip()
+        data = json_module.loads(content)
+    except (ValueError, RecursionError):
+        body = content.decode(errors="replace").strip()
         return body[:500] if body else response.reason
 
     if isinstance(data, dict):
@@ -284,13 +378,13 @@ def _response_message(response: requests.Response) -> str:
 
 
 def _response_rows(response: dict[str, Any]) -> list[dict[str, Any]]:
-    for key in ("results", "data", "logs", "items"):
+    for key in ("results", "data", "logs", "items", "result"):
         value = response.get(key)
         if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)]
-    if isinstance(response.get("result"), list):
-        return [item for item in response["result"] if isinstance(item, dict)]
-    return []
+            if not all(isinstance(item, dict) for item in value):
+                raise FortiGateError("FortiGate returned an invalid result row.")
+            return value
+    raise FortiGateError("FortiGate returned no valid result list.")
 
 
 def _wireless_log_params(
