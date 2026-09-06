@@ -6,6 +6,7 @@ import re
 import secrets
 import tempfile
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,12 @@ DEFAULT_APPEARANCE = {
 }
 
 
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    # One process-local dummy verifier avoids the fast unknown/disabled-user path.
+    return generate_password_hash(secrets.token_hex(32), method="scrypt")
+
+
 class AuthStore:
     """Owner-readable local authentication settings and password hashes."""
 
@@ -67,10 +74,13 @@ class AuthStore:
         )
 
     def authenticate(self, username: str, password: str) -> dict[str, Any] | None:
-        user = self.get_user(username)
-        if not user or not user.get("enabled", True):
+        if len(username) > 64 or len(password) > 1024:
             return None
-        return user if check_password_hash(user["password_hash"], password) else None
+        user = self.get_user(username)
+        enabled = bool(user and user.get("enabled", True))
+        password_hash = user["password_hash"] if enabled else _dummy_password_hash()
+        verified = check_password_hash(password_hash, password)
+        return user if enabled and verified else None
 
     def create_initial_admin(self, username: str, password: str) -> dict[str, Any]:
         """Consume first-run setup once, including simultaneous setup requests."""

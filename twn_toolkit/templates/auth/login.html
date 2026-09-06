@@ -6,10 +6,10 @@
   <form method="post" class="stack">
     <input type="hidden" name="next" value="{{ next_url }}">
     <label>Username
-      <input name="username" autocomplete="username" required>
+      <input name="username" maxlength="64" autocomplete="username" required>
     </label>
     <label>Password
-      <input type="password" name="password" autocomplete="current-password" required>
+      <input type="password" name="password" maxlength="1024" autocomplete="current-password" required>
     </label>
     <button type="submit">Sign in</button>
   </form>
