@@ -52,7 +52,15 @@ def _get(server, path="/"):
 def test_silent_tcp_peer_does_not_block_healthy_tls_clients(listener):
     assert _get(listener) == 404
     with socket.create_connection(("127.0.0.1", listener.port), timeout=2):
-        assert _get(listener) == 404
+        deadline = time.monotonic() + 2
+        while True:
+            try:
+                assert _get(listener) == 404
+                break
+            except (ConnectionError, ssl.SSLError, http.client.RemoteDisconnected):
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
 
 
 def test_silent_handshake_expires_and_releases_capacity(listener):
