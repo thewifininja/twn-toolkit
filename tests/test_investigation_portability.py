@@ -16,7 +16,11 @@ from twn_toolkit.investigation_portability import (
     PortableCaseError,
     load_portable_case_archive,
 )
-from twn_toolkit.investigations import InvestigationError, InvestigationStore
+from twn_toolkit.investigations import (
+    SCHEMA_VERSION,
+    InvestigationError,
+    InvestigationStore,
+)
 
 
 class InvestigationPortabilityTests(unittest.TestCase):
@@ -301,7 +305,7 @@ class InvestigationPortabilityTests(unittest.TestCase):
                         "SELECT name FROM sqlite_master WHERE type = 'table'"
                     )
                 }
-            self.assertEqual(version, "4")
+            self.assertEqual(version, str(SCHEMA_VERSION))
             self.assertTrue(
                 {
                     "investigation_imports",

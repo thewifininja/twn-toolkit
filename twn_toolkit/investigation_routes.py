@@ -93,8 +93,30 @@ def register_investigation_routes(
     def render_workspace(
         investigation_id: str, *, active_tab: str
     ) -> str:
-        investigation, events, artifacts, report = load_report(investigation_id)
-        participants = list(investigation.get("participants", []))
+        journal_pagination = None
+        report: dict[str, object] = {}
+        if active_tab == "report":
+            investigation, events, artifacts, report = load_report(investigation_id)
+            participants = list(investigation.get("participants", []))
+        else:
+            investigation = investigation_or_404(investigation_id)
+            participants = store.participants_for_user(investigation_id, user_id())
+            investigation["participants"] = participants
+            events = []
+            artifacts = []
+            if active_tab == "journal":
+                try:
+                    journal_pagination = store.journal_events_page_for_user(
+                        investigation_id,
+                        user_id(),
+                        before_event_id=request.args.get("before_event", ""),
+                        after_event_id=request.args.get("after_event", ""),
+                    )
+                except InvestigationError:
+                    abort(404)
+                events = journal_pagination["events"]
+            elif active_tab == "evidence":
+                artifacts = store.artifacts_for_user(investigation_id, user_id())
         participant_user_ids = [str(item["user_id"]) for item in participants]
         auth_store = AuthStore(app.instance_path)
         participant_ids = {str(item["user_id"]) for item in participants}
@@ -142,6 +164,7 @@ def register_investigation_routes(
             investigation=investigation,
             investigation_events=events,
             investigation_artifacts=artifacts,
+            journal_pagination=journal_pagination,
             **report,
             investigation_tabs=tabs(investigation_id, active_tab),
             active_investigation_tab=active_tab,
