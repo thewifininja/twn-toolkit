@@ -180,6 +180,7 @@ def _execute_sftp(config: dict[str, Any], trigger: ConditionResult) -> ActionRes
             ),
             output_dir=staging, filename_pattern=normalized["filename_pattern"],
             protocol=normalized["protocol"],
+            instance_path=instance_path,
             policy=TransferPolicy.from_settings(OperationalSettingsStore(instance_path).get()) if instance_path else TransferPolicy(),
         )
         successes = [item for item in results if item["status"] == "success"]

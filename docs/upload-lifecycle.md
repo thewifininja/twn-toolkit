@@ -154,3 +154,7 @@ reservations. Independent simultaneous runs each have their own allowance.
 
 Existing request-shape caps remain 50 hosts, 50 paths, and 200 host/path pairs;
 these have not become administrator settings. Network reads use bounded chunks.
+
+Outgoing SFTP/SCP/FTP runs also share configurable instance-wide and per-host
+connection limits. See [shared outgoing transfer admission](outgoing-transfer-admission.md)
+for capacity waiting, live policy changes, process recovery, and rollout scope.
