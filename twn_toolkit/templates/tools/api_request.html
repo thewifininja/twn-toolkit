@@ -16,7 +16,7 @@
       <label>Method
         <select name="method">{% for method in ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'] %}<option {{ 'selected' if form.method == method else '' }}>{{ method }}</option>{% endfor %}</select>
       </label>
-      <label>Timeout (seconds)
+      <label>Total timeout (seconds)
         <input name="timeout" type="number" min="0.2" max="30" step="0.1" value="{{ form.timeout }}" required>
       </label>
     </div>
@@ -32,7 +32,7 @@
     </label>
     <label class="check"><input name="verify_tls" type="checkbox" {{ 'checked' if form.verify_tls else '' }}>Verify TLS certificate</label>
     <div class="button-row"><button type="submit">Send request</button></div>
-    <span class="field-note">Redirects are reported but not followed. Response bodies are limited to 1 MiB and are never saved.</span>
+    <span class="field-note">The timeout includes startup, DNS, connection, and response transfer. A timed-out remote operation may still have executed. Redirects are reported but not followed. Response bodies are limited to 1 MiB and are never saved.</span>
   </form>
 </section>
 {{ tool_settings_backdrop('API request') }}

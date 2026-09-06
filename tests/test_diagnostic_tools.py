@@ -15,7 +15,7 @@ from twn_toolkit.diagnostic_tools import (
     parse_http_headers,
     receive_syslog,
     send_syslog,
-    send_api_request,
+    _send_api_request as send_api_request,
     test_path_mtu as run_path_mtu,
 )
 from twn_toolkit.network_tools import ToolInputError
