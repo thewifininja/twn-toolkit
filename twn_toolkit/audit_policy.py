@@ -79,6 +79,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "prune_automation_history",
         "poll_mainframe_enrollment",
         "refresh_agent_workspace_identity",
+        "reset_mainframe_enrollment",
         "rename_datastore_entry",
         "reset_activity_metric",
         "reset_activity_scoreboard",
