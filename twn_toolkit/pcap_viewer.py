@@ -14,6 +14,7 @@ from scapy.packet import Raw
 from scapy.utils import PcapReader
 
 from .network_tools import ToolInputError
+from .pcapng_index import PCAPNG_MAGIC, read_page as read_pcapng_page
 
 
 DEFAULT_PACKET_LIMIT = 100
@@ -73,6 +74,23 @@ def inspect_packet_capture(
         )
     if cursor not in {None, 0}:
         raise ToolInputError("Refresh the packet viewer to restart this capture.")
+    if magic == PCAPNG_MAGIC:
+        try:
+            packets, has_more = read_pcapng_page(
+                capture_path, start=start, limit=limit,
+                allow_incomplete=allow_incomplete,
+                max_packet_bytes=MAX_CAPTURED_PACKET_BYTES,
+                summarize=lambda record, number: _safe_packet_summary(
+                    _decode_link_packet(record.frame, linktype=record.linktype,
+                                        timestamp=record.timestamp,
+                                        wire_length=record.wire_length),
+                    number=number,
+                ),
+            )
+        except (OSError, Scapy_Exception) as exc:
+            raise ToolInputError("Could not read this packet capture; refresh the viewer.") from exc
+        return _result(packets, start=start, has_more=has_more,
+                       waiting=allow_incomplete and not packets and start == 0)
 
     packets: list[dict[str, Any]] = []
     has_more = False
@@ -209,7 +227,11 @@ def _decode_link_packet(
     wire_length: int,
 ) -> Any:
     layer_class = conf.l2types.get(linktype)
-    packet = layer_class(frame) if layer_class else Raw(frame)
+    try:
+        packet = layer_class(frame) if layer_class else Raw(frame)
+    except (Scapy_Exception, struct.error, ValueError, IndexError):
+        # A malformed frame should not prevent viewing the following packets.
+        packet = Raw(frame)
     packet.time = timestamp
     packet.wirelen = wire_length
     return packet
@@ -299,16 +321,18 @@ def _packet_summary(packet: Any, *, number: int) -> dict[str, Any]:
 
     captured_length = len(bytes(packet))
     wire_length = int(getattr(packet, "wirelen", captured_length) or captured_length)
+    try:
+        time_display = (
+            datetime.fromtimestamp(timestamp).astimezone().strftime("%H:%M:%S.%f")[:-3]
+            if timestamp else "—"
+        )
+    except (OverflowError, OSError, ValueError):
+        # A valid capture timestamp can exceed the host calendar's range.
+        time_display = "—"
     return {
         "number": number,
         "timestamp": timestamp,
-        "time_display": (
-            datetime.fromtimestamp(timestamp)
-            .astimezone()
-            .strftime("%H:%M:%S.%f")[:-3]
-            if timestamp
-            else "—"
-        ),
+        "time_display": time_display,
         "source_mac": source_mac,
         "destination_mac": destination_mac,
         "source_ip": source_ip,
