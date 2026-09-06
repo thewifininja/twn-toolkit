@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import base64
 import secrets
+import sqlite3
 import time
 from datetime import datetime
 from hashlib import blake2s
@@ -25,6 +26,7 @@ from flask import (
     url_for,
 )
 
+from .login_throttle import LoginThrottle, LoginThrottled, LOGIN_BODY_BYTES
 from .activity import ActivityStore
 from .automation import AutomationStore
 from .automation_routes import register_automation_routes
@@ -150,6 +152,7 @@ def create_app(instance_path: str | None = None) -> Flask:
     run_toolkit_migrations(app.instance_path)
 
     auth_store = AuthStore(app.instance_path)
+    login_throttle = LoginThrottle(app.instance_path, app.config["SECRET_KEY"])
     automation_store = AutomationStore(app.instance_path, app.config["SECRET_KEY"])
     certificate_automation_store = CertificateAutomationStore(
         app.instance_path, app.config["SECRET_KEY"]
@@ -220,6 +223,8 @@ def create_app(instance_path: str | None = None) -> Flask:
 
     @app.before_request
     def apply_datastore_request_limit():
+        if request.endpoint == "login":
+            request.max_content_length = LOGIN_BODY_BYTES
         if request.endpoint in {
             "upload_datastore_files", "upload_tftp_temporary_file",
             "upload_ssh_transfer_temporary_file", "upload_ftp_temporary_file",
@@ -1033,10 +1038,34 @@ def create_app(instance_path: str | None = None) -> Flask:
             return redirect(url_for("setup"))
         if request.method == "POST":
             username = request.form.get("username", "").strip()
-            user = auth_store.authenticate(
-                username,
-                request.form.get("password", ""),
-            )
+            try:
+                with login_throttle.attempt(request.remote_addr or "", username[:64]):
+                    user = auth_store.authenticate(
+                        username,
+                        request.form.get("password", ""),
+                    )
+            except LoginThrottled as exc:
+                if exc.audit:
+                    _record_authentication_event(
+                        action="authentication.login_throttled",
+                        summary="Sign-in attempts were rate limited.",
+                        outcome="throttled",
+                        username="",
+                        status_code=429,
+                    )
+                flash(f"Too many sign-in attempts. Try again in {exc.retry_after} seconds.", "error")
+                return (
+                    render_template("auth/login.html", next_url=_safe_next_url()),
+                    429,
+                    {"Retry-After": str(exc.retry_after), "Cache-Control": "no-store"},
+                )
+            except (OSError, sqlite3.Error):
+                flash("Sign-in is temporarily unavailable. Try again shortly.", "error")
+                return (
+                    render_template("auth/login.html", next_url=_safe_next_url()),
+                    503,
+                    {"Retry-After": "1", "Cache-Control": "no-store"},
+                )
             if user:
                 _record_authentication_event(
                     action="authentication.login_succeeded",
@@ -1133,6 +1162,18 @@ def create_app(instance_path: str | None = None) -> Flask:
         audit_store=audit_store,
         operational_store=operational_store,
     )
+
+    @app.cli.command("login-throttle")
+    @click.option("--reset", is_flag=True, help="Clear temporary counters without changing accounts.")
+    def login_throttle_command(reset: bool) -> None:
+        """Inspect or clear instance-wide sign-in rate counters."""
+        if reset:
+            login_throttle.reset()
+            click.echo("Sign-in rate counters cleared. User accounts and active sessions are unchanged.")
+        else:
+            status = login_throttle.status()
+            click.echo(f"Active rate buckets: {status['active_buckets']}")
+            click.echo(f"Rate-limited requests since reset: {status['rate_rejections']}")
 
     @app.cli.command("reset-auth")
     @click.option("--yes", is_flag=True, help="Reset without an interactive confirmation.")

@@ -603,7 +603,8 @@ See [Packet Replay setup](docs/packet-replay.md) for platform-specific details.
 
 The toolkit is intentionally local-first:
 
-- application passwords use scrypt hashes;
+- application passwords use scrypt hashes, with [shared sign-in throttling](docs/login-throttling.md)
+  and a local counter-reset command;
 - session signing uses a private installation secret;
 - browser idle expiry follows user interaction rather than background polling; see
   [session activity and supervisor recovery](docs/session-and-supervisor-reliability.md);
