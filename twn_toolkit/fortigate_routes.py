@@ -469,10 +469,11 @@ def register_fortigate_routes(
         moves = switch_order_moves(current_ids, desired_ids)
         completed: list[dict[str, str]] = []
         try:
-            for move in moves:
-                client.move_managed_switch_after(move["switch_id"], move["after"], vdom)
-                completed.append(move)
-            verified = managed_switch_order(client.get_managed_switches(vdom))
+            with client.pooled() as pooled_client:
+                for move in moves:
+                    pooled_client.move_managed_switch_after(move["switch_id"], move["after"], vdom)
+                    completed.append(move)
+                verified = managed_switch_order(pooled_client.get_managed_switches(vdom))
         except FortiGateError as exc:
             _record_fortinet_api_activity(
                 "Applied FortiSwitch order",
@@ -705,12 +706,13 @@ def register_fortigate_routes(
             fields = request.form.get("fields", "").strip()
             download_format = normalize_csv_download_format(request.form.get("csv_format"))
             try:
-                raw_csv_data = task.run(
-                    client=client,
-                    endpoint_template=endpoint_template or task.endpoint_template,
-                    default_vdom=profile.get("default_vdom", "root"),
-                    fields=fields,
-                )
+                with client.pooled() as pooled_client:
+                    raw_csv_data = task.run(
+                        client=pooled_client,
+                        endpoint_template=endpoint_template or task.endpoint_template,
+                        default_vdom=profile.get("default_vdom", "root"),
+                        fields=fields,
+                    )
             except FortiGateError as exc:
                 _record_fortinet_api_activity(
                     "Ran FortiGate export",
@@ -775,13 +777,14 @@ def register_fortigate_routes(
             flash("Choose a CSV file to import.", "error")
             return redirect(url_for("task_form", task_id=task_id))
 
-        results, entries = task.run_with_entries(
-            client=client,
-            csv_stream=upload.stream,
-            dry_run=dry_run,
-            endpoint_template=endpoint_template or task.endpoint_template,
-            default_vdom=profile.get("default_vdom", "root"),
-        )
+        with client.pooled() as pooled_client:
+            results, entries = task.run_with_entries(
+                client=pooled_client,
+                csv_stream=upload.stream,
+                dry_run=dry_run,
+                endpoint_template=endpoint_template or task.endpoint_template,
+                default_vdom=profile.get("default_vdom", "root"),
+            )
         _record_fortinet_api_activity(
             "Ran FortiGate rename task",
             f"{profile['name']}: {task.label} ({len(entries)} row{'s' if len(entries) != 1 else ''})",
@@ -820,11 +823,12 @@ def register_fortigate_routes(
 
         client = FortiGateClient.from_profile(profile)
         try:
-            objects = task.discover_objects(
-                client=client,
-                endpoint_template=endpoint_template or task.endpoint_template,
-                default_vdom=profile.get("default_vdom", "root"),
-            )
+            with client.pooled() as pooled_client:
+                objects = task.discover_objects(
+                    client=pooled_client,
+                    endpoint_template=endpoint_template or task.endpoint_template,
+                    default_vdom=profile.get("default_vdom", "root"),
+                )
         except FortiGateError as exc:
             _record_fortinet_api_activity(
                 "Discovered FortiGate objects",
@@ -896,13 +900,14 @@ def register_fortigate_routes(
             )
         ]
         client = FortiGateClient.from_profile(profile)
-        results = task.run_entries(
-            client=client,
-            entries=entries,
-            dry_run=dry_run,
-            endpoint_template=endpoint_template or task.endpoint_template,
-            default_vdom=profile.get("default_vdom", "root"),
-        )
+        with client.pooled() as pooled_client:
+            results = task.run_entries(
+                client=pooled_client,
+                entries=entries,
+                dry_run=dry_run,
+                endpoint_template=endpoint_template or task.endpoint_template,
+                default_vdom=profile.get("default_vdom", "root"),
+            )
         _record_fortinet_api_activity(
             "Ran FortiGate rename task",
             f"{profile['name']}: {task.label} ({len(entries)} row{'s' if len(entries) != 1 else ''})",
@@ -940,11 +945,12 @@ def register_fortigate_routes(
 
         client = FortiGateClient.from_profile(profile)
         try:
-            rows, endpoint_used = task.preview_rows_with_endpoint(
-                client=client,
-                endpoint_template=endpoint_template or task.endpoint_template,
-                default_vdom=profile.get("default_vdom", "root"),
-            )
+            with client.pooled() as pooled_client:
+                rows, endpoint_used = task.preview_rows_with_endpoint(
+                    client=pooled_client,
+                    endpoint_template=endpoint_template or task.endpoint_template,
+                    default_vdom=profile.get("default_vdom", "root"),
+                )
         except FortiGateError as exc:
             _record_fortinet_api_activity(
                 "Loaded FortiGate export fields",
@@ -977,11 +983,12 @@ def register_fortigate_routes(
 
         client = FortiGateClient.from_profile(profile)
         try:
-            rows, endpoint_used = task.preview_rows_with_endpoint(
-                client=client,
-                endpoint_template=endpoint_template or task.endpoint_template,
-                default_vdom=profile.get("default_vdom", "root"),
-            )
+            with client.pooled() as pooled_client:
+                rows, endpoint_used = task.preview_rows_with_endpoint(
+                    client=pooled_client,
+                    endpoint_template=endpoint_template or task.endpoint_template,
+                    default_vdom=profile.get("default_vdom", "root"),
+                )
         except FortiGateError as exc:
             _record_fortinet_api_activity(
                 "Previewed FortiGate export",
