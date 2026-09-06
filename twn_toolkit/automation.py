@@ -16,7 +16,7 @@ from typing import Any, Iterator
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from .automation_execution import execute_stage_actions
+from .automation_execution import condition_worker_scope, execute_stage_actions
 from .automation_registry import (
     AUTOMATION_REGISTRY,
     ActionResult,
@@ -2868,6 +2868,10 @@ class AutomationEngine:
         *,
         observed_at: float | None = None,
     ) -> ConditionResult:
+        with condition_worker_scope(self.store.instance_path):
+            return self._test_condition(automation, observed_at=observed_at)
+
+    def _test_condition(self, automation, *, observed_at=None):
         conditions = automation.get("conditions") or [automation["condition"]]
         if conditions[0]["type"] == "network.interface_change":
             return evaluation_result(

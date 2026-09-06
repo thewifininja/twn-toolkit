@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor
+from ...automation_execution import condition_worker_map
 from typing import Any, Mapping
 #
 from flask import current_app, has_app_context
@@ -285,11 +285,9 @@ def _evaluate_certificate(config: dict[str, Any]) -> ConditionResult:
         else:
             label, host = "", target_text
         targets.append({"label": label, "host": host, "port": int(port_text)})
-    with ThreadPoolExecutor(max_workers=min(10, len(targets))) as executor:
-        inspected = list(executor.map(
-            lambda target: _inspect_certificate_target(target, normalized["timeout"]),
-            targets,
-        ))
+    inspected = condition_worker_map(
+        lambda target: _inspect_certificate_target(target, normalized["timeout"]), targets, 10,
+    )
     checks: list[dict[str, Any]] = []
     for inspection in inspected:
         target = inspection["target"]
