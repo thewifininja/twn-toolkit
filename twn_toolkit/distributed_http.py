@@ -1,17 +1,38 @@
 from __future__ import annotations
 
 import base64
-import threading
+import os
 from pathlib import Path
 from typing import Any
+
+from .distributed_dispatch_cache import DispatchCache, DispatchCacheBusy
 
 
 # The base64 representation plus job metadata must remain below the 256 KiB
 # durable-control envelope. Leave room for the delegated user, route, and headers.
 MAX_TUNNEL_BODY_BYTES = 160 * 1024
-_clients: dict[tuple[str, str], Any] = {}
-_client_locks: dict[tuple[str, str], threading.Lock] = {}
-_clients_lock = threading.Lock()
+_cache = DispatchCache()
+
+
+def _reset_cache_after_fork():
+    global _cache
+    _cache = DispatchCache()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_cache_after_fork)
+
+
+def prune_dispatch_cache(instance: Path):
+    _cache.prune(instance)
+
+
+def _create_dispatch_app(instance):
+    from .app import create_app
+
+    app = create_app(instance)
+    app.config["DISTRIBUTED_AGENT_DISPATCH"] = True
+    return app
 
 
 def dispatch_http_request(instance: Path, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -35,17 +56,6 @@ def dispatch_http_request(instance: Path, inputs: dict[str, Any]) -> dict[str, A
     if len(body) > MAX_TUNNEL_BODY_BYTES:
         raise ValueError("The tunneled HTTP body is too large.")
 
-    from .app import create_app
-
-    key = (str(instance.resolve()), str(user["id"]))
-    with _clients_lock:
-        client = _clients.get(key)
-        if client is None:
-            app = create_app(str(instance))
-            app.config["DISTRIBUTED_AGENT_DISPATCH"] = True
-            client = app.test_client()
-            _clients[key] = client
-            _client_locks[key] = threading.Lock()
     headers = {
         str(name): str(value)
         for name, value in (inputs.get("headers") or {}).items()
@@ -71,23 +81,39 @@ def dispatch_http_request(instance: Path, inputs: dict[str, Any]) -> dict[str, A
         path.startswith("/tools/remote-terminal/sessions/")
         and any(path.split("?", 1)[0].endswith(f"/{suffix}") for suffix in ("output", "input", "resize"))
     )
-    if interactive_terminal:
-        response = client.application.test_client().open(path, **request_options)
-    else:
-        with _client_locks[key]:
-            response = client.open(path, **request_options)
-    response_body = response.get_data()
-    if len(response_body) > MAX_TUNNEL_BODY_BYTES:
-        raise ValueError("The tunneled HTTP response is too large.")
-    returned_headers = []
-    for name, value in response.headers.items():
-        if name.lower() in {
-            "content-type", "content-disposition", "location", "cache-control",
-            "etag", "last-modified",
-        }:
-            returned_headers.append([name, value])
-    return {
-        "status": response.status_code,
-        "headers": returned_headers,
-        "body": base64.b64encode(response_body).decode("ascii"),
-    }
+    try:
+        with _cache.borrow(instance, str(user["id"]), _create_dispatch_app) as (app, entry):
+            if interactive_terminal:
+                return _dispatch(app.test_client(), path, request_options)
+            with entry.lock:
+                if entry.value is None:
+                    entry.value = app.test_client()
+                return _dispatch(entry.value, path, request_options)
+    except DispatchCacheBusy as exc:
+        return {
+            "status": 503,
+            "headers": [["Content-Type", "text/plain; charset=utf-8"], ["Retry-After", "1"]],
+            "body": base64.b64encode(str(exc).encode()).decode("ascii"),
+        }
+
+
+def _dispatch(client, path, request_options):
+    response = client.open(path, **request_options)
+    try:
+        response_body = response.get_data()
+        if len(response_body) > MAX_TUNNEL_BODY_BYTES:
+            raise ValueError("The tunneled HTTP response is too large.")
+        returned_headers = []
+        for name, value in response.headers.items():
+            if name.lower() in {
+                "content-type", "content-disposition", "location", "cache-control",
+                "etag", "last-modified", "retry-after",
+            }:
+                returned_headers.append([name, value])
+        return {
+            "status": response.status_code,
+            "headers": returned_headers,
+            "body": base64.b64encode(response_body).decode("ascii"),
+        }
+    finally:
+        response.close()
