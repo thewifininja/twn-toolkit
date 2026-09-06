@@ -24,7 +24,8 @@ EVENT_OUTCOMES = frozenset(
 )
 MAX_EVENT_JSON_BYTES = 4 * 1024 * 1024
 JOURNAL_EVENT_PAGE_SIZE = 50
-SCHEMA_VERSION = 6
+EVIDENCE_ARTIFACT_PAGE_SIZE = 50
+SCHEMA_VERSION = 7
 
 
 class InvestigationError(ValueError):
@@ -1211,6 +1212,83 @@ class InvestigationStore:
             "newer_after_event_id": str(events[-1]["id"]) if events else "",
         }
 
+    def evidence_artifacts_page_for_user(
+        self,
+        investigation_id: str,
+        user_id: str,
+        *,
+        before_artifact_id: str = "",
+        after_artifact_id: str = "",
+    ) -> dict[str, Any]:
+        """Return one newest-first cursor page for the evidence library."""
+        before_artifact_id = str(before_artifact_id).strip()
+        after_artifact_id = str(after_artifact_id).strip()
+        if before_artifact_id and after_artifact_id:
+            raise InvestigationError("Choose one evidence page cursor.")
+        self.get_for_user(investigation_id, user_id)
+        cursor_id = before_artifact_id or after_artifact_id
+        with self._connect() as connection:
+            cursor = None
+            if cursor_id:
+                cursor = connection.execute(
+                    """
+                    SELECT id, created_at
+                    FROM investigation_artifacts
+                    WHERE id = ? AND investigation_id = ?
+                    """,
+                    (cursor_id, investigation_id),
+                ).fetchone()
+                if not cursor:
+                    raise InvestigationError("Evidence page is unavailable.")
+            where = "WHERE a.investigation_id = ?"
+            parameters: list[Any] = [investigation_id]
+            order = "ORDER BY a.created_at DESC, a.id DESC"
+            if before_artifact_id:
+                where += " AND (a.created_at, a.id) < (?, ?)"
+                parameters.extend([cursor["created_at"], cursor["id"]])
+            elif after_artifact_id:
+                where += " AND (a.created_at, a.id) > (?, ?)"
+                parameters.extend([cursor["created_at"], cursor["id"]])
+                order = "ORDER BY a.created_at ASC, a.id ASC"
+            rows = connection.execute(
+                f"""
+                SELECT a.*, origins.source_case_id AS origin_case_id,
+                    origins.source_artifact_id AS origin_artifact_id,
+                    event_origins.source_case_id AS event_origin_case_id,
+                    event_origins.source_event_id AS event_origin_id
+                FROM investigation_artifacts a
+                LEFT JOIN investigation_artifact_origins origins
+                    ON origins.artifact_id = a.id
+                LEFT JOIN investigation_event_origins event_origins
+                    ON event_origins.event_id = a.event_id
+                {where}
+                {order}
+                LIMIT ?
+                """,
+                [*parameters, EVIDENCE_ARTIFACT_PAGE_SIZE + 1],
+            ).fetchall()
+        has_more_in_direction = len(rows) > EVIDENCE_ARTIFACT_PAGE_SIZE
+        page_rows = rows[:EVIDENCE_ARTIFACT_PAGE_SIZE]
+        if cursor_id and not page_rows:
+            raise InvestigationError("Evidence page is unavailable.")
+        display_rows = reversed(page_rows) if after_artifact_id else page_rows
+        artifacts = [self._artifact(row) for row in display_rows]
+        has_older = (
+            has_more_in_direction if not after_artifact_id else bool(artifacts)
+        )
+        has_newer = (
+            has_more_in_direction
+            if after_artifact_id
+            else bool(artifacts and before_artifact_id)
+        )
+        return {
+            "artifacts": artifacts,
+            "has_older": has_older,
+            "has_newer": has_newer,
+            "older_before_artifact_id": str(artifacts[-1]["id"]) if artifacts else "",
+            "newer_after_artifact_id": str(artifacts[0]["id"]) if artifacts else "",
+        }
+
     def artifacts_for_user(
         self, investigation_id: str, user_id: str
     ) -> list[dict[str, Any]]:
@@ -2243,8 +2321,9 @@ class InvestigationStore:
                 created_by_username TEXT NOT NULL,
                 created_at REAL NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS investigation_artifacts_investigation_idx
-                ON investigation_artifacts(investigation_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS investigation_artifacts_cursor_idx
+                ON investigation_artifacts(investigation_id, created_at DESC, id DESC);
+            DROP INDEX IF EXISTS investigation_artifacts_investigation_idx;
             CREATE TABLE IF NOT EXISTS investigation_imports (
                 investigation_id TEXT PRIMARY KEY
                     REFERENCES investigations(id) ON DELETE CASCADE,
@@ -2297,8 +2376,8 @@ class InvestigationStore:
             CREATE INDEX IF NOT EXISTS investigation_merges_source_idx
                 ON investigation_merges(source_investigation_id, merged_at DESC);
             INSERT OR IGNORE INTO investigation_meta(key, value)
-                VALUES ('schema_version', '6');
-            UPDATE investigation_meta SET value = '6' WHERE key = 'schema_version';
+                VALUES ('schema_version', '7');
+            UPDATE investigation_meta SET value = '7' WHERE key = 'schema_version';
             """
         )
         connection.commit()

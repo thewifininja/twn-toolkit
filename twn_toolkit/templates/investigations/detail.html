@@ -211,6 +211,17 @@
             </article>
           {% endfor %}
         </div>
+        {% if evidence_pagination and (evidence_pagination.has_newer or evidence_pagination.has_older) %}
+          <p class="field-note">Showing {{ investigation_artifacts|length }} of {{ investigation.artifact_count }} evidence files. Evidence is sorted newest first.</p>
+          <nav class="button-row" aria-label="Evidence pages">
+            {% if evidence_pagination.has_newer %}
+              <a class="button-link secondary" href="{{ url_for('investigation_evidence', investigation_id=investigation.id, after_artifact=evidence_pagination.newer_after_artifact_id) }}">Newer evidence files</a>
+            {% endif %}
+            {% if evidence_pagination.has_older %}
+              <a class="button-link secondary" href="{{ url_for('investigation_evidence', investigation_id=investigation.id, before_artifact=evidence_pagination.older_before_artifact_id) }}">Older evidence files</a>
+            {% endif %}
+          </nav>
+        {% endif %}
       {% else %}
         {% call empty_state("No evidence files yet", "Diagnostic result snapshots can still appear in the journal without creating a separate file.") %}{% endcall %}
       {% endif %}
