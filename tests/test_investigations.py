@@ -8,6 +8,7 @@ import sqlite3
 import tempfile
 import unittest
 import zipfile
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -535,6 +536,55 @@ class InvestigationStoreTests(unittest.TestCase):
                 before_event_id=latest["older_before_event_id"],
                 after_event_id=older["newer_after_event_id"],
             )
+
+    def test_journal_summary_does_not_read_retained_payload_columns(self) -> None:
+        investigation = self.store.create(
+            owner_user_id="operator-1", owner_username="nelson", title="Large payload"
+        )
+        retained = {"output": "diagnostic data " * 20000}
+        event = self.store.record_for_active(
+            user_id="operator-1", username="nelson", operation_id="large-payload",
+            event_type="diagnostic.completed", tool_id="tools.test",
+            action="Diagnostic", outcome="succeeded", summary="Readable summary",
+            targets=["example.com"], parameters={"mode": "test"},
+            metrics={"count": 1}, details=retained, started_at=1, completed_at=3,
+        )
+        payload_columns = {"targets_json", "parameters_json", "metrics_json", "details_json"}
+        connect = self.store._connect
+
+        def authorize(action, table, column, database, trigger):
+            if (action == sqlite3.SQLITE_READ
+                    and table == "investigation_events" and column in payload_columns):
+                return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+
+        @contextmanager
+        def summary_connection():
+            with connect() as connection:
+                connection.set_authorizer(authorize)
+                try:
+                    yield connection
+                finally:
+                    connection.set_authorizer(None)
+
+        with patch.object(self.store, "_connect", summary_connection):
+            page = self.store.journal_events_page_for_user(investigation["id"], "operator-1")
+        summary = next(item for item in page["events"] if item["id"] == event["id"])
+        self.assertEqual(summary["summary"], "Readable summary")
+        self.assertEqual(summary["duration_seconds"], 2)
+        for key in ("targets", "parameters", "metrics", "details"):
+            self.assertNotIn(key, summary)
+            self.assertNotIn(f"{key}_json", summary)
+        complete = next(
+            item for item in self.store.events_for_user(investigation["id"], "operator-1")
+            if item["id"] == event["id"]
+        )
+        self.assertEqual(complete["details"], retained)
+        self.assertEqual(complete["targets"], ["example.com"])
+        self.assertEqual(complete["parameters"], {"mode": "test"})
+        self.assertEqual(complete["metrics"], {"count": 1})
+        self.assertEqual(summary, {key: value for key, value in complete.items()
+                                   if key not in {"targets", "parameters", "metrics", "details"}})
 
     def test_evidence_pages_are_newest_first_and_cursor_based(self) -> None:
         investigation = self.store.create(
