@@ -15,10 +15,18 @@ from twn_toolkit.audit import AuditStore
 from twn_toolkit.fortiauthenticator import FortiAuthenticatorClient, FortiAuthenticatorError
 
 
+def _response(**kwargs):
+    response = Mock(**kwargs)
+    response.iter_content.side_effect = lambda chunk_size: [
+        json.dumps(response.json()).encode() if response.content else b""
+    ]
+    return response
+
+
 class FortiAuthenticatorClientTests(unittest.TestCase):
-    @patch("twn_toolkit.fortiauthenticator.requests.request")
+    @patch("twn_toolkit.fortiauthenticator.requests.Session.request")
     def test_connection_uses_basic_auth_and_limited_mac_query(self, request: Mock) -> None:
-        response = Mock(status_code=200, content=b'{"meta": {"total_count": 12}, "objects": []}')
+        response = _response(status_code=200, content=b'{"meta": {"total_count": 12}, "objects": []}')
         response.json.return_value = {"meta": {"total_count": 12}, "objects": []}
         request.return_value = response
 
@@ -39,7 +47,7 @@ class FortiAuthenticatorClientTests(unittest.TestCase):
         self.assertFalse(request.call_args.kwargs["verify"])
         self.assertEqual(request.call_args.kwargs["timeout"], (3.0, 30.0))
 
-    @patch("twn_toolkit.fortiauthenticator.requests.request")
+    @patch("twn_toolkit.fortiauthenticator.requests.Session.request")
     def test_unreachable_host_fails_with_clear_connection_message(self, request: Mock) -> None:
         request.side_effect = requests.ConnectTimeout("timed out")
 
@@ -51,9 +59,9 @@ class FortiAuthenticatorClientTests(unittest.TestCase):
                 timeout=30,
             ).test_connection()
 
-    @patch("twn_toolkit.fortiauthenticator.requests.request")
+    @patch("twn_toolkit.fortiauthenticator.requests.Session.request")
     def test_short_profile_timeout_caps_connect_timeout(self, request: Mock) -> None:
-        request.return_value = Mock(status_code=204, content=b"")
+        request.return_value = _response(status_code=204, content=b"")
 
         FortiAuthenticatorClient(
             host="https://fac.example.com",
@@ -64,9 +72,9 @@ class FortiAuthenticatorClientTests(unittest.TestCase):
 
         self.assertEqual(request.call_args.kwargs["timeout"], (1.0, 1.0))
 
-    @patch("twn_toolkit.fortiauthenticator.requests.request")
+    @patch("twn_toolkit.fortiauthenticator.requests.Session.request")
     def test_connection_explains_authentication_failure(self, request: Mock) -> None:
-        response = Mock(
+        response = _response(
             status_code=401,
             content=b'{"detail": "Unauthorized"}',
             reason="Unauthorized",
@@ -78,14 +86,14 @@ class FortiAuthenticatorClientTests(unittest.TestCase):
         with self.assertRaisesRegex(FortiAuthenticatorError, "Confirm the username, password"):
             FortiAuthenticatorClient("https://fac.example.com", "user", "bad").test_connection()
 
-    @patch("twn_toolkit.fortiauthenticator.requests.request")
+    @patch("twn_toolkit.fortiauthenticator.requests.Session.request")
     def test_mac_devices_follow_pagination(self, request: Mock) -> None:
-        first = Mock(status_code=200, content=b"page-one")
+        first = _response(status_code=200, content=b"page-one")
         first.json.return_value = {
             "meta": {"next": "/api/v1/macdevices/?limit=2&offset=2"},
             "objects": [{"id": 1}, {"id": 2}],
         }
-        second = Mock(status_code=200, content=b"page-two")
+        second = _response(status_code=200, content=b"page-two")
         second.json.return_value = {
             "meta": {"next": None},
             "objects": [{"id": 3}],
@@ -107,11 +115,11 @@ class FortiAuthenticatorClientTests(unittest.TestCase):
             "https://fac.example.com/api/v1/macdevices/?limit=2&offset=2",
         )
 
-    @patch("twn_toolkit.fortiauthenticator.requests.request")
+    @patch("twn_toolkit.fortiauthenticator.requests.Session.request")
     def test_pagination_cannot_send_credentials_to_another_origin(
         self, request: Mock
     ) -> None:
-        first = Mock(status_code=200, content=b"page-one")
+        first = _response(status_code=200, content=b"page-one")
         first.json.return_value = {
             "meta": {"next": "https://attacker.example/collect"},
             "objects": [{"id": 1}],
@@ -133,9 +141,9 @@ class FortiAuthenticatorClientTests(unittest.TestCase):
         self.assertEqual(client.get_all_mac_group_memberships(page_size=250), [{"id": 7}])
         get_all.assert_called_once_with("/api/v1/macgroup-memberships/", page_size=250)
 
-    @patch("twn_toolkit.fortiauthenticator.requests.request")
+    @patch("twn_toolkit.fortiauthenticator.requests.Session.request")
     def test_cleanup_delete_methods_use_collection_resource_urls(self, request: Mock) -> None:
-        request.return_value = Mock(status_code=204, content=b"")
+        request.return_value = _response(status_code=204, content=b"")
         client = FortiAuthenticatorClient("https://fac.example.com", "user", "key")
 
         client.delete_mac_group_membership("91")
@@ -419,6 +427,28 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         self.assertIn(b'name="selected_id"', response.data)
         self.assertIn(b'value="42"', response.data)
         self.assertIn(b'value="43"', response.data)
+
+    def test_cleanup_budget_failure_prevents_deletion(self) -> None:
+        self.create_profile()
+        with patch(
+            "twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_group_memberships",
+            return_value=_cleanup_memberships(),
+        ), patch(
+            "twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices",
+            side_effect=FortiAuthenticatorError("FortiAuthenticator collection exceeded 100,000 objects."),
+        ), patch(
+            "twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.delete_mac_device"
+        ) as delete_device:
+            response = self.client.post(
+                "/fortiauthenticator/mac-cleanup/execute",
+                data={"profile": "Lab", "group_uri": "/api/v1/macgroups/8/",
+                      "action": "delete_devices", "selected_id": ["42", "43"],
+                      "confirmation": "DELETE 2 DEVICES"},
+                follow_redirects=True,
+            )
+        self.assertIn(b"Cleanup validation failed", response.data)
+        self.assertIn(b"exceeded 100,000 objects", response.data)
+        delete_device.assert_not_called()
 
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.delete_mac_device")
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
