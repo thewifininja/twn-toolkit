@@ -1840,6 +1840,7 @@ def register_admin_routes(
                 **{key: request.form.get(key, before[key]) for key in OUTGOING_TRANSFER_LIMITS},
                 "max_concurrent_automations": request.form.get("max_concurrent_automations", ""),
                 "max_queued_automations": request.form.get("max_queued_automations", ""),
+                **{key: request.form.get(key, value) for key, value in before.items() if key.startswith("diagnostic_")},
                 "skip_overlapping_automations": request.form.get("skip_overlapping_automations") == "on",
                 "datastore_quota_gib": request.form.get("datastore_quota_gib", ""),
                 "automation_artifact_quota_gib": request.form.get("automation_artifact_quota_gib", ""),

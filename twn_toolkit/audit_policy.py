@@ -172,6 +172,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.save_packet_capture",
         "tools.delete_packet_capture",
         "tools.port_scanner",
+        "tools.cancel_port_scanner_job",
         "tools.radius_test",
         "tools.record_ip_snapshot",
         "tools.enroll_managed_certificate",

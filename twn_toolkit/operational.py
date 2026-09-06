@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from .file_transactions import file_transaction
+from .diagnostic_policy import DIAGNOSTIC_LIMITS, validate_diagnostic_limits
 from .transfer_deadlines import OUTGOING_TRANSFER_LIMITS, validate_transfer_limits
 
 
 DEFAULT_OPERATIONAL_SETTINGS = {
+    **{key: spec[0] for key, spec in DIAGNOSTIC_LIMITS.items()},
     **{key: spec[0] for key, spec in OUTGOING_TRANSFER_LIMITS.items()},
     "max_concurrent_automations": 4,
     "max_queued_automations": 20,
@@ -119,6 +121,7 @@ class OperationalSettingsStore:
         if not 1 <= client_idle <= 86400: raise ValueError("Agent HTTP client idle time must be 1–86,400 seconds.")
         return {
             **validate_transfer_limits(values),
+            **validate_diagnostic_limits(values),
             "max_multipart_files": multipart,
             "max_upload_mib": upload,
             "max_concurrent_automations": concurrent,

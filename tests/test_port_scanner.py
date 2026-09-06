@@ -102,7 +102,7 @@ class PortScannerTests(unittest.TestCase):
                     "elapsed_ms": 1.1,
                 },
             ]
-            with patch("twn_toolkit.port_scanner_routes.scan_tcp_ports", return_value=fake_results):
+            with patch("twn_toolkit.diagnostic_worker.scan_tcp_ports", return_value=fake_results):
                 response = client.post(
                     "/tools/port-scanner",
                     data={
@@ -113,6 +113,12 @@ class PortScannerTests(unittest.TestCase):
                         "open_only": "on",
                     },
                 )
+                from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+                from twn_toolkit.diagnostic_worker import execute_scan
+                store = DiagnosticJobStore(instance)
+                job = store.claim()
+                execute_scan(store, job["id"], job["token"])
+                response = client.get(response.headers["Location"])
             self.assertIn(b"https", response.data)
             self.assertIn(b"4.2 ms", response.data)
             self.assertNotIn(b"Connection refused", response.data)

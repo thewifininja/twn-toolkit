@@ -452,6 +452,8 @@ def register_tools(registry: Any) -> None:
             "tools.duplicate_wol_profile": "tools.wake_on_lan",
             "tools.delete_wol_profile": "tools.wake_on_lan",
             "tools.port_scanner": "tools.port_scanner",
+            "tools.port_scanner_job_status": "tools.port_scanner",
+            "tools.cancel_port_scanner_job": "tools.port_scanner",
             "tools.save_port_scan_profile": "tools.port_scanner",
             "tools.duplicate_port_scan_profile": "tools.port_scanner",
             "tools.delete_port_scan_profile": "tools.port_scanner",

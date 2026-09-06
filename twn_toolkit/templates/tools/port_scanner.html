@@ -2,6 +2,24 @@
 {% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
+{% if diagnostic_job %}
+<section class="panel" {% if diagnostic_job.state in ['queued', 'running', 'cancel_requested'] %}data-diagnostic-status-url="{{ url_for('tools.port_scanner_job_status', job_id=diagnostic_job.id) }}"{% endif %}>
+  {% if diagnostic_job.state == "queued" and not diagnostic_scheduler.get("fresh") %}<p class="message error">The diagnostic scheduler is not reporting a recent heartbeat. Start or restart the automation worker on this instance to process queued scans.</p>{% endif %}
+  <h2>TCP scan · {{ diagnostic_job.state|replace('_', ' ')|title }}</h2>
+  <p role="status" aria-live="polite" data-diagnostic-status>{% if diagnostic_job.state == 'queued' %}Queued — waiting for the diagnostic scheduler. You can leave this page and return to this result link.{% elif diagnostic_job.state == 'running' %}Scan running. Navigation and other tools remain available.{% elif diagnostic_job.state == 'cancel_requested' %}Cancellation requested — waiting for the scan to stop.{% elif diagnostic_job.error %}{{ diagnostic_job.error }}{% else %}Scan complete.{% endif %}</p>
+  <p class="field-note">Run <code>{{ diagnostic_job.id }}</code> · {{ diagnostic_job.timeout|int }} second deadline</p>
+  {% if diagnostic_job.state in ['queued', 'running'] %}
+  <form method="post" action="{{ url_for('tools.cancel_port_scanner_job', job_id=diagnostic_job.id) }}"><button type="submit" class="secondary">Cancel scan</button></form>
+  {% endif %}
+  {% if diagnostic_job.state in ['queued', 'running', 'cancel_requested'] %}<noscript><p><a href="{{ url_for('tools.port_scanner', job=diagnostic_job.id) }}">Refresh scan status</a></p></noscript>{% endif %}
+</section>
+{% endif %}
+{% if diagnostic_recent %}
+<details class="panel"><summary>Your recent TCP scans</summary><ul>
+{% for item in diagnostic_recent %}<li><a href="{{ url_for('tools.port_scanner', job=item.id) }}">{{ item.id[:12] }} · {{ item.state|replace('_', ' ') }}</a></li>{% endfor %}
+</ul></details>
+{% endif %}
+
 {% set has_results = stats is not none %}
 <div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
 {{ tool_result_runbar('Scan complete', 'TCP port scan', (stats.combinations ~ ' tested · ' ~ stats.open ~ ' open') if has_results else '', 'port-scan-form', 'port-scan-settings', has_results, 'Scan again') }}
@@ -13,7 +31,7 @@
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {{ case_recorded_notice(journal_event) }}
 
-  <form class="compact-tool-form" method="post" id="port-scan-form" data-loading-message="Scanning TCP ports…">
+  <form class="compact-tool-form" method="post" id="port-scan-form" data-loading-message="Queueing TCP scan…">
     <div class="compact-tool-config-grid port-scan-config-grid">
       <article class="compact-tool-config-card compact-tool-source-card port-inline-profile" data-kind="hosts" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='hosts') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='hosts') }}">
         <header>
@@ -113,6 +131,14 @@
     <div><span>Errors</span><strong>{{ stats.error }}</strong></div>
   </div>
 
+  {% if diagnostic_job %}
+  <nav aria-label="TCP scan result pages">
+    <p>{{ result_total }} matching results · Page {{ result_page }} · Up to 100 rows per page.
+    <a href="{{ url_for('tools.port_scanner', job=diagnostic_job.id, open_only='0' if form.open_only else '1') }}">{{ 'Show all ports' if form.open_only else 'Show only open ports' }}</a></p>
+    {% if result_page > 1 %}<a href="{{ url_for('tools.port_scanner', job=diagnostic_job.id, page=result_page-1, open_only='1' if form.open_only else '0') }}">Previous page</a>{% endif %}
+    {% if result_page * 100 < result_total %}<a href="{{ url_for('tools.port_scanner', job=diagnostic_job.id, page=result_page+1, open_only='1' if form.open_only else '0') }}">Next page</a>{% endif %}
+  </nav>
+  {% endif %}
   {% if results %}
     <div class="preview-table-wrap port-results-wrap">
       <table>
@@ -142,5 +168,6 @@
 </div>
 
 <script src="{{ url_for('static', filename='port-scanner.js') }}"></script>
+<script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
 </div>
 {% endblock %}
