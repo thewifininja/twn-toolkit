@@ -16,6 +16,7 @@ DEFAULT_OPERATIONAL_SETTINGS = {
     **{key: spec[0] for key, spec in DIAGNOSTIC_LIMITS.items()},
     **{key: spec[0] for key, spec in OUTGOING_TRANSFER_LIMITS.items()},
     "max_concurrent_automations": 4,
+    "automation_action_workers": 20,
     "max_queued_automations": 20,
     "skip_overlapping_automations": True,
     "datastore_quota_gib": 10,
@@ -62,6 +63,10 @@ class OperationalSettingsStore:
     @staticmethod
     def validate(values: dict[str, Any]) -> dict[str, Any]:
         try:
+            raw_actions = values.get("automation_action_workers", 20)
+            if isinstance(raw_actions, bool) or not isinstance(raw_actions, (str, int)):
+                raise ValueError
+            action_workers = int(raw_actions)
             concurrent = int(values["max_concurrent_automations"])
             queued = int(values["max_queued_automations"])
             datastore = int(values["datastore_quota_gib"])
@@ -104,6 +109,7 @@ class OperationalSettingsStore:
                 raise ValueError
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("Operational limits must be whole numbers.") from exc
+        if not 1 <= action_workers <= 64: raise ValueError("Automation action workers must be 1–64.")
         if not 1 <= concurrent <= 32: raise ValueError("Concurrent automations must be 1–32.")
         if not 0 <= queued <= 200: raise ValueError("Queued automations must be 0–200.")
         if not 1 <= datastore <= 1024 or not 1 <= artifacts <= 1024: raise ValueError("Storage quotas must be 1–1024 GiB.")
@@ -125,6 +131,7 @@ class OperationalSettingsStore:
             "max_multipart_files": multipart,
             "max_upload_mib": upload,
             "max_concurrent_automations": concurrent,
+            "automation_action_workers": action_workers,
             "max_queued_automations": queued,
             "skip_overlapping_automations": bool(values.get("skip_overlapping_automations", True)),
             "datastore_quota_gib": datastore,
