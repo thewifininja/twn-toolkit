@@ -84,6 +84,8 @@ class DistributedJobStore:
             connection.execute("CREATE INDEX IF NOT EXISTS distributed_jobs_payload_expiry ON distributed_jobs(payload_expires_at) WHERE payload_expires_at IS NOT NULL")
             connection.execute("CREATE INDEX IF NOT EXISTS distributed_jobs_state_lease ON distributed_jobs(state, lease_expires_at)")
             connection.execute("CREATE INDEX IF NOT EXISTS distributed_jobs_agent_queue ON distributed_jobs(agent_id, state, created_at)")
+            connection.execute("CREATE INDEX IF NOT EXISTS distributed_jobs_requester_history ON distributed_jobs(requester_id, created_at DESC)")
+            connection.execute("CREATE INDEX IF NOT EXISTS distributed_jobs_latest ON distributed_jobs(agent_id, requester_id, capability_id, capability_version, created_at DESC)")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS distributed_agent_activations (
@@ -336,21 +338,17 @@ class DistributedJobStore:
         return self._job(row)
 
     def get(self, job_id: str) -> dict[str, Any] | None:
-        with self._connect(write=True) as connection:
-            self._expire(connection, job_id)
-            row = connection.execute(
-                "SELECT * FROM distributed_jobs WHERE id = ?", (job_id,)
-            ).fetchone()
-        return self._job(row) if row else None
+        rows = self._read_current(
+            "SELECT * FROM distributed_jobs WHERE id = ?", (job_id,),
+        )
+        return self._job(rows[0]) if rows else None
 
     def get_for_requester(self, job_id: str, requester_id: str) -> dict[str, Any] | None:
-        with self._connect(write=True) as connection:
-            self._expire(connection, job_id)
-            row = connection.execute(
-                "SELECT * FROM distributed_jobs WHERE id = ? AND requester_id = ?",
-                (job_id, requester_id),
-            ).fetchone()
-        return self._job(row) if row else None
+        rows = self._read_current(
+            "SELECT * FROM distributed_jobs WHERE id = ? AND requester_id = ?",
+            (job_id, requester_id),
+        )
+        return self._job(rows[0]) if rows else None
 
     def delete(self, job_id: str, *, requester_id: str) -> bool:
         with self._connect(write=True) as connection:
@@ -362,15 +360,13 @@ class DistributedJobStore:
         return cursor.rowcount == 1
 
     def recent(self, *, requester_id: str, limit: int = 25) -> list[dict[str, Any]]:
-        with self._connect(write=True) as connection:
-            self._expire(connection)
-            rows = connection.execute(
-                """
-                SELECT * FROM distributed_jobs WHERE requester_id = ?
-                ORDER BY created_at DESC LIMIT ?
-                """,
-                (requester_id, max(1, min(int(limit), 100))),
-            ).fetchall()
+        rows = self._read_current(
+            """
+            SELECT * FROM distributed_jobs WHERE requester_id = ?
+            ORDER BY created_at DESC LIMIT ?
+            """,
+            (requester_id, max(1, min(int(limit), 100))),
+        )
         return [self._job(row) for row in rows]
 
     def latest(
@@ -381,18 +377,34 @@ class DistributedJobStore:
         capability_id: str,
         capability_version: str,
     ) -> dict[str, Any] | None:
+        rows = self._read_current(
+            """
+            SELECT * FROM distributed_jobs
+            WHERE agent_id = ? AND requester_id = ?
+              AND capability_id = ? AND capability_version = ?
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (agent_id, requester_id, capability_id, capability_version),
+        )
+        return self._job(rows[0]) if rows else None
+
+    def _read_current(self, query: str, parameters: tuple) -> list[sqlite3.Row]:
+        """Read a bounded snapshot; expire only returned records when necessary."""
+        with self._connect() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+        now = time.time()
+        if not any(_needs_expiry(row, now) for row in rows):
+            return rows
+
+        # Do not upgrade a deferred read transaction. Ownership may have been
+        # renewed, completed or replaced since the first snapshot.
         with self._connect(write=True) as connection:
-            self._expire(connection)
-            row = connection.execute(
-                """
-                SELECT * FROM distributed_jobs
-                WHERE agent_id = ? AND requester_id = ?
-                  AND capability_id = ? AND capability_version = ?
-                ORDER BY created_at DESC LIMIT 1
-                """,
-                (agent_id, requester_id, capability_id, capability_version),
-            ).fetchone()
-        return self._job(row) if row else None
+            rows = connection.execute(query, parameters).fetchall()
+            now = time.time()
+            for row in rows:
+                if _needs_expiry(row, now):
+                    self._expire(connection, row["id"])
+            return connection.execute(query, parameters).fetchall()
 
     @contextmanager
     def _connect(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
@@ -419,6 +431,17 @@ class DistributedJobStore:
             item["error"] = self._cipher.open(item["error"], item["id"] + ":error")
         item.pop("payload_expires_at", None)
         return item
+
+
+def _needs_expiry(row: sqlite3.Row, now: float) -> bool:
+    payload_deadline = row["payload_expires_at"]
+    lease_deadline = row["lease_expires_at"]
+    return (
+        payload_deadline is not None and payload_deadline <= now
+    ) or (
+        row["state"] in {"claimed", "running", "cancel_requested"}
+        and lease_deadline is not None and lease_deadline <= now
+    )
 
 
 def _json_payload(value: Any, label: str) -> str:

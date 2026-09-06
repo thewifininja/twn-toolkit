@@ -114,11 +114,12 @@ The index starts with Agent and state, so retained history for other Agents and
 terminal states does not require a whole-history scan. Probes keep the existing
 50 ms interactive and 100 ms heartbeat intervals, avoiding extra typing latency.
 Periodic Mainframe housekeeping and normal status reads continue to expire
-leases/payloads.
+leases/payloads. See [distributed history reads](distributed-history.md) for
+scoped expiry and the requester/latest-result indexes.
 
 This removes empty claim transactions, not all polling or all database writes:
 heartbeat, activation and receipt processing still persist state. Cross-process
-wakeups, broader history indexes/retention, asynchronous execution classes for
+wakeups, terminal history retention, asynchronous execution classes for
 long HTTP handlers and shared target connection budgets remain separate work.
 All three interactive threads can still be occupied by long HTTP requests; the
 independent status heartbeat does not guarantee remote page/terminal availability
