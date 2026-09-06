@@ -1,4 +1,4 @@
-"""Share separate action and condition worker pools; discard each when idle."""
+"""Share action, host-check and accelerated-ping pools; discard each when idle."""
 from __future__ import annotations
 
 import os
@@ -59,6 +59,15 @@ def execute_stage_actions(instance, execute, actions):
         return []
     with _borrow(instance) as (executor, workers):
         return _map_window(executor, workers, execute, actions)
+
+
+def execute_condition_ping(execute):
+    """Admit one intact accelerated-ping round, independently of host workers."""
+    instance = _condition_instance.get()
+    if not instance:
+        return execute()
+    with _borrow(instance, "ping") as (executor, _):
+        return _map_window(executor, 1, lambda unused: execute(), [None])[0]
 
 
 def condition_worker_map(execute, items, limit):

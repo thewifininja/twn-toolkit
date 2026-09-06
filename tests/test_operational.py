@@ -709,6 +709,7 @@ class OperationalHardeningTests(unittest.TestCase):
                 "max_concurrent_automations": "3", "max_queued_automations": "7",
                 "automation_action_workers": "5",
                 "automation_condition_workers": "6",
+                "automation_ping_workers": "2",
                 "skip_overlapping_automations": "on", "datastore_quota_gib": "12",
                 "automation_artifact_quota_gib": "14", "minimum_free_gib": "1",
                 "distributed_job_lease_seconds": "45",
@@ -725,6 +726,7 @@ class OperationalHardeningTests(unittest.TestCase):
             self.assertEqual(OperationalSettingsStore(instance).get()["max_queued_automations"], 7)
             self.assertEqual(OperationalSettingsStore(instance).get()["automation_action_workers"], 5)
             self.assertEqual(OperationalSettingsStore(instance).get()["automation_condition_workers"], 6)
+            self.assertEqual(OperationalSettingsStore(instance).get()["automation_ping_workers"], 2)
             self.assertEqual(OperationalSettingsStore(instance).get()["distributed_receipt_limit"], 64)
             self.assertEqual(OperationalSettingsStore(instance).get()["distributed_listener_connections"], 64)
             self.assertEqual(OperationalSettingsStore(instance).get()["distributed_control_reserve"], 16)
@@ -733,6 +735,8 @@ class OperationalHardeningTests(unittest.TestCase):
             self.assertEqual(OperationalSettingsStore(instance).get()["distributed_http_client_idle_seconds"], 60)
             operations_page = client.get("/settings?section=operations")
             self.assertNotIn(b"Distributed operation limits", operations_page.data)
+            self.assertIn(b'name="automation_ping_workers"', operations_page.data)
+            self.assertIn(b"certificate, SNMP and fallback-ping", operations_page.data)
             diagnostics = client.get("/settings/diagnostics")
             self.assertIn(b"Updated operational limits", diagnostics.data)
             self.assertIn(b"Changed settings", diagnostics.data)

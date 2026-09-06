@@ -18,6 +18,7 @@ DEFAULT_OPERATIONAL_SETTINGS = {
     "max_concurrent_automations": 4,
     "automation_action_workers": 20,
     "automation_condition_workers": 20,
+    "automation_ping_workers": 4,
     "max_queued_automations": 20,
     "skip_overlapping_automations": True,
     "datastore_quota_gib": 10,
@@ -64,6 +65,10 @@ class OperationalSettingsStore:
     @staticmethod
     def validate(values: dict[str, Any]) -> dict[str, Any]:
         try:
+            raw_ping = values.get("automation_ping_workers", 4)
+            if isinstance(raw_ping, bool) or not isinstance(raw_ping, (str, int)):
+                raise ValueError
+            ping_workers = int(raw_ping)
             raw_conditions = values.get("automation_condition_workers", 20)
             if isinstance(raw_conditions, bool) or not isinstance(raw_conditions, (str, int)):
                 raise ValueError
@@ -114,6 +119,7 @@ class OperationalSettingsStore:
                 raise ValueError
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("Operational limits must be whole numbers.") from exc
+        if not 1 <= ping_workers <= 32: raise ValueError("Accelerated ping condition rounds must be 1–32.")
         if not 1 <= condition_workers <= 200: raise ValueError("Automation condition workers must be 1–200.")
         if not 1 <= action_workers <= 64: raise ValueError("Automation action workers must be 1–64.")
         if not 1 <= concurrent <= 32: raise ValueError("Concurrent automations must be 1–32.")
@@ -139,6 +145,7 @@ class OperationalSettingsStore:
             "max_concurrent_automations": concurrent,
             "automation_action_workers": action_workers,
             "automation_condition_workers": condition_workers,
+            "automation_ping_workers": ping_workers,
             "max_queued_automations": queued,
             "skip_overlapping_automations": bool(values.get("skip_overlapping_automations", True)),
             "datastore_quota_gib": datastore,

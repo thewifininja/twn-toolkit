@@ -280,3 +280,116 @@ def test_snmp_condition_real_udp_timeout_in_worker(tmp_path):
     assert [result['profile_name'] for result in results] == ['rule0', 'rule1']
     assert all(result['status'] == 'error' and 'timeout' in result['error'].lower() for result in results)
     assert not execution._pools
+
+
+def test_accelerated_ping_rounds_share_capacity_preserve_batches_and_evidence(tmp_path, monkeypatch):
+    import subprocess
+    from twn_toolkit import network_tools
+
+    OperationalSettingsStore(str(tmp_path)).save({'automation_ping_workers': 1})
+    capability = lambda: {'accelerated': True, 'engine': 'fping', 'path': '/fixture/fping'}
+    monkeypatch.setattr(network_tools, 'ping_engine_capability', capability)
+    monkeypatch.setattr('twn_toolkit.automation_types.condition_types.network_triggers.ping_engine_capability', capability)
+    release = threading.Event()
+    lock = threading.Lock()
+    active = peak = 0
+    commands = []
+
+    def run(command, **kwargs):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+            commands.append((command, kwargs))
+        try:
+            assert release.wait(5)
+            time.sleep(.005)
+            hosts = command[command.index('-t') + 2:]
+            return subprocess.CompletedProcess(command, 1, '',
+                '\n'.join(f'{host} : {"-" if i == 1 else "1.25"}' for i, host in enumerate(hosts)))
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(network_tools.subprocess, 'run', run)
+    def evaluate():
+        engine = AutomationEngine(SimpleNamespace(instance_path=tmp_path))
+        return engine.test_condition({'condition': {'type': 'ping.multi', 'config': {
+            'targets': 'up.test\ndown.test\nother.test', 'timeout': .1, 'probe_count': 2,
+            'failure_mode': 'at_least', 'failure_count': 1}}})
+
+    with ThreadPoolExecutor(max_workers=3) as callers:
+        futures = [callers.submit(evaluate) for _ in range(3)]
+        try:
+            until(lambda: active == 1)
+            until(lambda: sum(e['users'] for e in execution._pools.values()) == 3)
+            with execution.condition_worker_scope(tmp_path):
+                assert execution.condition_worker_map(lambda x: x, [1], 1) == [1]
+            assert execution.execute_stage_actions(tmp_path, lambda x: x, [1]) == [1]
+        finally:
+            release.set()
+        results = [f.result(timeout=5) for f in futures]
+    assert peak == 1 and active == 0
+    assert len(commands) == 6
+    for command, kwargs in commands:
+        assert command == ['/fixture/fping', '-C', '1', '-q', '-r', '0', '-i', '2', '-t', '100',
+                           'up.test', 'down.test', 'other.test']
+        assert kwargs['timeout'] == pytest.approx(1.106)
+    for result in results:
+        assert result.met
+        rows = result.evidence['targets']
+        assert [row['host'] for row in rows] == ['up.test', 'down.test', 'other.test']
+        assert [row['received'] for row in rows] == [2, 0, 2]
+        assert rows[0]['average_latency_ms'] == 1.2
+        assert rows[1]['packet_loss_pct'] == 100
+    assert not execution._pools
+
+
+def test_ping_settings_reload_and_unscoped_call_stays_inline(tmp_path):
+    store = OperationalSettingsStore(str(tmp_path))
+    assert store.get()['automation_ping_workers'] == 4
+    store.save({'automation_ping_workers': 2})
+    with execution._borrow(tmp_path, 'ping') as (pool, count):
+        assert count == 2
+        store.save({'automation_ping_workers': 1})
+        with execution._borrow(tmp_path, 'ping') as (same, old_count):
+            assert same is pool and old_count == 2
+    with execution._borrow(tmp_path, 'ping') as (_, count):
+        assert count == 1
+    for invalid in [0, 33, True, '1.5', 1.5]:
+        with pytest.raises(ValueError):
+            store.save({'automation_ping_workers': invalid})
+    thread = threading.get_ident()
+    assert execution.execute_condition_ping(threading.get_ident) == thread
+    assert not execution._pools
+
+
+def test_accelerated_ping_timeout_reaps_process_and_releases_slot(tmp_path, monkeypatch):
+    import os
+    import sys
+    from twn_toolkit import network_tools
+
+    script = tmp_path / 'fping-fixture'
+    pidfile = tmp_path / 'ping.pid'
+    script.write_text(f'''#!{sys.executable}
+import os, sys, time
+from pathlib import Path
+if sys.argv[-1] == "stall.test":
+    Path({str(pidfile)!r}).write_text(str(os.getpid()))
+    time.sleep(10)
+else:
+    print(sys.argv[-1] + " : 1.0", file=sys.stderr)
+''')
+    script.chmod(0o700)
+    monkeypatch.setattr(network_tools, 'ping_engine_capability',
+                        lambda: {'accelerated': True, 'path': str(script)})
+    OperationalSettingsStore(str(tmp_path)).save({'automation_ping_workers': 1})
+    with execution.condition_worker_scope(tmp_path):
+        with pytest.raises(network_tools.ToolInputError, match='bounded round timeout'):
+            network_tools.ping_hosts(['stall.test'], timeout=.1)
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(pidfile.read_text()), 0)
+        assert not execution._pools
+        result = network_tools.ping_hosts(['ok.test'], timeout=.1)
+    assert result[0]['reachable'] and result[0]['latency_ms'] == 1
+    assert not execution._pools
