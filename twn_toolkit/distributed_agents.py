@@ -326,7 +326,8 @@ class DistributedAgentStore:
         instance = Path(instance_path)
         instance.mkdir(parents=True, exist_ok=True)
         self.path = instance / "distributed_agents.sqlite3"
-        with self._connect() as connection:
+        # Web and distributed workers may migrate the same legacy DB together.
+        with file_transaction(self.path), self._connect() as connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS distributed_agents (

@@ -80,3 +80,20 @@ def test_selection_and_stale_context_block_before_queue_and_recover_after_heartb
     heartbeat(store, agent_id, job_protocol_version=2, gui_protocol_version=1)
     response = client.post('/execution-context', data={'context_id':agent_id, 'next':'/'})
     assert response.status_code == 302 and auth.execution_context(user_id) == agent_id
+
+
+
+def test_concurrent_legacy_migration_preserves_approved_identity(tmp_path):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    store = DistributedAgentStore(tmp_path); agent_id = enroll(store)
+    with sqlite3.connect(store.path) as db:
+        db.execute('ALTER TABLE distributed_agents DROP COLUMN job_protocol_version')
+        db.execute('ALTER TABLE distributed_agents DROP COLUMN gui_protocol_version')
+    barrier = threading.Barrier(8)
+    def open_store(_):
+        barrier.wait(timeout=5)
+        return DistributedAgentStore(tmp_path).get(agent_id)
+    with ThreadPoolExecutor(max_workers=8) as workers:
+        records = list(workers.map(open_store, range(8)))
+    assert all(r['state'] == 'approved' and not r['gui_compatible'] for r in records)
