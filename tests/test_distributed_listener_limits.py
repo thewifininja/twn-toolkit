@@ -12,7 +12,8 @@ from twn_toolkit import distributed_transport as transport
 
 @pytest.fixture
 def listener(tmp_path, monkeypatch):
-    monkeypatch.setattr(transport, "MAX_LISTENER_CONNECTIONS", 2)
+    from twn_toolkit.operational import OperationalSettingsStore
+    OperationalSettingsStore(str(tmp_path)).save({"distributed_listener_connections": 2, "distributed_control_reserve": 1})
     monkeypatch.setattr(transport, "LISTENER_HANDSHAKE_TIMEOUT_SECONDS", 0.5, raising=False)
     monkeypatch.setattr(transport, "LISTENER_READ_TIMEOUT_SECONDS", 0.5, raising=False)
     monkeypatch.setattr(transport, "LISTENER_WRITE_TIMEOUT_SECONDS", 0.5, raising=False)

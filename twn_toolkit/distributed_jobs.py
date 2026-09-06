@@ -83,6 +83,7 @@ class DistributedJobStore:
                     )
             connection.execute("CREATE INDEX IF NOT EXISTS distributed_jobs_payload_expiry ON distributed_jobs(payload_expires_at) WHERE payload_expires_at IS NOT NULL")
             connection.execute("CREATE INDEX IF NOT EXISTS distributed_jobs_state_lease ON distributed_jobs(state, lease_expires_at)")
+            connection.execute("CREATE INDEX IF NOT EXISTS distributed_jobs_agent_queue ON distributed_jobs(agent_id, state, created_at)")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS distributed_agent_activations (
@@ -227,6 +228,26 @@ class DistributedJobStore:
                 (job_id, requester_id),
             )
         return cursor.rowcount == 1
+
+    def has_queued(self, agent_id: str, *, capability_id: str = "",
+                   exclude_capability_id: str = "", activation_id: str = "") -> bool:
+        """Cheap advisory probe; claim remains the sole atomic delivery authority."""
+        clauses = ["agent_id = ?", "state = 'queued'"]
+        values = [agent_id]
+        activation_id = _activation_id(activation_id)
+        if activation_id:
+            clauses.append("activation_id = ?")
+            values.append(activation_id)
+        if capability_id:
+            clauses.append("capability_id = ?")
+            values.append(capability_id)
+        elif exclude_capability_id:
+            clauses.append("capability_id != ?")
+            values.append(exclude_capability_id)
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT 1 FROM distributed_jobs WHERE " + " AND ".join(clauses) + " LIMIT 1", values
+            ).fetchone() is not None
 
     def claim(self, agent_id: str, *, limit: int = 1, capability_id: str = "",
               exclude_capability_id: str = "", activation_id: str = "") -> list[dict[str, Any]]:

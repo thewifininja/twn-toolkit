@@ -31,6 +31,8 @@ from .distributed_pki import (
 from .distributed_agents import pairing_code
 from .distributed_job_epochs import DistributedJobStore
 from .distributed_jobs import JOB_PROTOCOL_VERSION
+from .operational import OperationalSettingsStore
+from .distributed_polling import LongPollBudget, PollCapacityError, POLL_RETRY_SECONDS
 
 
 PROTOCOL_VERSION = 1
@@ -40,7 +42,6 @@ REQUEST_TIMEOUT_SECONDS = 10
 MAX_LONG_POLL_SECONDS = 25
 ENROLLMENT_ATTEMPT_WINDOW_SECONDS = 60
 MAX_ENROLLMENT_ATTEMPTS_PER_WINDOW = 5
-MAX_LISTENER_CONNECTIONS = 32
 LISTENER_HANDSHAKE_TIMEOUT_SECONDS = 5
 LISTENER_READ_TIMEOUT_SECONDS = 10
 LISTENER_WRITE_TIMEOUT_SECONDS = 10
@@ -73,6 +74,12 @@ class EnrollmentServer:
         self.pairing_store = PairingSessionStore(self.instance_path)
         self.pki_store = DistributedPkiStore(self.instance_path)
         self.job_store = DistributedJobStore(self.instance_path)
+        policy = OperationalSettingsStore(str(self.instance_path)).get()
+        self.poll_budget = LongPollBudget(
+            policy["distributed_listener_connections"] - policy["distributed_control_reserve"],
+            policy["distributed_agent_long_polls"],
+        )
+        self._stopping = threading.Event()
         self._attempt_lock = threading.Lock()
         self._attempts_path = self.instance_path / "distributed_enrollment_attempts.sqlite3"
         with sqlite3.connect(self._attempts_path) as connection:
@@ -100,7 +107,7 @@ class EnrollmentServer:
         context.verify_mode = ssl.CERT_OPTIONAL
         # Accept plain TCP first so a silent TLS peer cannot stall the accept
         # loop before the bounded worker admission check.
-        self.httpd = server_class((host, self.port), handler, tls_context=context)
+        self.httpd = server_class((host, self.port), handler, tls_context=context, connection_limit=policy["distributed_listener_connections"])
         self.httpd.daemon_threads = True
         self.httpd.timeout = 1
         self.port = int(self.httpd.server_address[1])
@@ -117,6 +124,7 @@ class EnrollmentServer:
         self._thread.start()
 
     def stop(self) -> None:
+        self._stopping.set()
         self.httpd.shutdown()
         self.httpd.server_close()
         if self._thread:
@@ -216,20 +224,11 @@ class EnrollmentServer:
         except (TypeError, ValueError) as exc:
             raise ValueError("Agent wait time must be a number.") from exc
         wait_seconds = max(0.0, min(wait_seconds, MAX_LONG_POLL_SECONDS))
-        deadline = time.monotonic() + wait_seconds
-        excluded_capability = "system.http.tunnel" if wait_seconds > 0 else ""
-        jobs = self.job_store.claim(
-            agent_id, limit=1,
-            exclude_capability_id=excluded_capability,
-            activation_id=activation_id,
+        jobs, retry = self._poll_jobs(
+            agent_id, activation_id, wait_seconds, payload,
+            exclude_capability_id="system.http.tunnel" if wait_seconds > 0 else "",
+            interval=0.1,
         )
-        while not jobs and time.monotonic() < deadline:
-            time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
-            jobs = self.job_store.claim(
-                agent_id, limit=1,
-            exclude_capability_id=excluded_capability,
-            activation_id=activation_id,
-            )
         return {
             "protocol": PROTOCOL_VERSION,
             "job_protocol": JOB_PROTOCOL_VERSION,
@@ -237,6 +236,7 @@ class EnrollmentServer:
             "state": "approved",
             "agent_id": agent["id"],
             "server_time": time.time(),
+            "retry_after_seconds": retry,
             "jobs": jobs,
         }
 
@@ -253,18 +253,38 @@ class EnrollmentServer:
             return {"protocol": PROTOCOL_VERSION, "job_protocol": JOB_PROTOCOL_VERSION,
                     "state": "upgrade_required", "jobs": [], "requests": [], "acknowledgements": acknowledgements}
         wait_seconds = max(0.0, min(float(payload.get("wait_seconds", 0) or 0), MAX_LONG_POLL_SECONDS))
-        deadline = time.monotonic() + wait_seconds
-        jobs = self.job_store.claim(
-            agent_id, limit=1, capability_id="system.http.tunnel",
-            activation_id=activation_id,
+        jobs, retry = self._poll_jobs(
+            agent_id, activation_id, wait_seconds, payload,
+            capability_id="system.http.tunnel", interval=0.05,
         )
-        while not jobs and time.monotonic() < deadline:
-            time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
-            jobs = self.job_store.claim(
-            agent_id, limit=1, capability_id="system.http.tunnel",
-            activation_id=activation_id,
-        )
-        return {"protocol": PROTOCOL_VERSION, "job_protocol": JOB_PROTOCOL_VERSION, "acknowledgements": acknowledgements, "state": "approved", "requests": jobs}
+        return {"protocol": PROTOCOL_VERSION, "job_protocol": JOB_PROTOCOL_VERSION, "acknowledgements": acknowledgements,
+                "state": "approved", "requests": jobs, "retry_after_seconds": retry}
+
+    def _poll_jobs(self, agent_id, activation_id, wait_seconds, payload, *, interval,
+                   capability_id="", exclude_capability_id=""):
+        filters = dict(activation_id=activation_id, capability_id=capability_id,
+                       exclude_capability_id=exclude_capability_id)
+        def claim_if_ready():
+            if not self.job_store.has_queued(agent_id, **filters):
+                return []
+            return self.job_store.claim(agent_id, limit=1, **filters)
+        jobs = claim_if_ready()
+        if jobs or wait_seconds <= 0:
+            return jobs, 0
+        with self.poll_budget.slot(agent_id) as admitted:
+            if not admitted:
+                # Results have already been acknowledged/committed. An old
+                # worker needs an HTTP error to avoid spinning on empty success.
+                if payload.get("supports_poll_retry") is not True:
+                    raise PollCapacityError("Long-poll capacity is busy; retry later.")
+                return [], POLL_RETRY_SECONDS
+            deadline = time.monotonic() + wait_seconds
+            while not jobs:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or self._stopping.wait(min(interval, remaining)):
+                    break
+                jobs = claim_if_ready()
+        return jobs, 0
 
     def _accept_results(self, agent_id, activation_id, results):
         if not isinstance(results, list) or len(results) > 16:
@@ -427,6 +447,7 @@ class EnrollmentClient:
                 "hostname": hostname,
                 "activation_id": activation_id,
                 "job_protocol": JOB_PROTOCOL_VERSION,
+                "supports_poll_retry": True,
                 "results": results or [],
                 "wait_seconds": max(0.0, min(float(wait_seconds), MAX_LONG_POLL_SECONDS)),
             },
@@ -450,6 +471,7 @@ class EnrollmentClient:
                 "protocol": PROTOCOL_VERSION,
                 "activation_id": activation_id,
                 "job_protocol": JOB_PROTOCOL_VERSION,
+                "supports_poll_retry": True,
                 "results": results or [],
                 "wait_seconds": wait_seconds,
             },
@@ -532,10 +554,11 @@ class EnrollmentClient:
 
 class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
     def __init__(
-        self, *args: Any, tls_context: ssl.SSLContext, **kwargs: Any
+        self, *args: Any, tls_context: ssl.SSLContext, connection_limit: int, **kwargs: Any
     ) -> None:
         self._tls_context = tls_context
-        self._connection_slots = threading.BoundedSemaphore(MAX_LISTENER_CONNECTIONS)
+        self._connection_slots = threading.BoundedSemaphore(connection_limit)
+        self.request_queue_size = connection_limit
         super().__init__(*args, **kwargs)
 
     def process_request(self, request: Any, client_address: Any) -> None:
@@ -643,6 +666,9 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
                     result = enrollment_server.interactive(
                         self.connection.getpeercert(binary_form=True), payload
                     )
+            except PollCapacityError as exc:
+                self._json(503, {"error": str(exc), "retry_after_seconds": POLL_RETRY_SECONDS})
+                return
             except EnrollmentClosedError as exc:
                 self._json(403, {"error": str(exc)})
                 return
@@ -679,6 +705,8 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(content)))
             self.send_header("Cache-Control", "no-store")
+            if status == 503:
+                self.send_header("Retry-After", str(int(POLL_RETRY_SECONDS)))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(content)

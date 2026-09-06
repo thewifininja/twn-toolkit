@@ -24,6 +24,9 @@ DEFAULT_OPERATIONAL_SETTINGS = {
     # Mainframe and Agent each apply their own local operation limits. The
     # Mainframe returns the lease with each claim, so an agent renews against
     # the exact duration that protected its delivery.
+    "distributed_listener_connections": 32,
+    "distributed_control_reserve": 8,
+    "distributed_agent_long_polls": 2,
     "distributed_job_lease_seconds": 30,
     "distributed_tunnel_wait_seconds": 30,
     "distributed_receipt_limit": 2048,
@@ -68,6 +71,9 @@ class OperationalSettingsStore:
             distributed_raw = {
                 key: values.get(key, DEFAULT_OPERATIONAL_SETTINGS[key])
                 for key in (
+                    "distributed_listener_connections",
+                    "distributed_control_reserve",
+                    "distributed_agent_long_polls",
                     "distributed_job_lease_seconds",
                     "distributed_tunnel_wait_seconds",
                     "distributed_receipt_limit",
@@ -79,20 +85,19 @@ class OperationalSettingsStore:
             if (
                 isinstance(raw_multipart, bool)
                 or not isinstance(raw_multipart, (str, int))
-                or any(isinstance(value, bool) for value in distributed_raw.values())
+                or any(isinstance(value, bool) or not isinstance(value, (str, int)) for value in distributed_raw.values())
             ):
                 raise ValueError
             multipart = int(raw_multipart)
+            listener_connections = int(distributed_raw["distributed_listener_connections"])
+            control_reserve = int(distributed_raw["distributed_control_reserve"])
+            agent_long_polls = int(distributed_raw["distributed_agent_long_polls"])
             lease_seconds = int(distributed_raw["distributed_job_lease_seconds"])
             tunnel_wait_seconds = int(distributed_raw["distributed_tunnel_wait_seconds"])
             receipt_limit = int(distributed_raw["distributed_receipt_limit"])
             receipt_retention_hours = int(distributed_raw["distributed_receipt_retention_hours"])
             client_limit = int(distributed_raw["distributed_http_client_limit"])
             client_idle = int(distributed_raw["distributed_http_client_idle_seconds"])
-            if any(not isinstance(distributed_raw[key], (str, int)) for key in (
-                "distributed_http_client_limit", "distributed_http_client_idle_seconds"
-            )):
-                raise ValueError
             if isinstance(raw_upload, bool) or str(raw_upload).strip() != str(upload):
                 raise ValueError
         except (KeyError, TypeError, ValueError) as exc:
@@ -103,6 +108,9 @@ class OperationalSettingsStore:
         if not 0 <= minimum_free <= 100: raise ValueError("Minimum free space must be 0–100 GiB.")
         if not 1 <= upload <= 65536: raise ValueError("Upload size must be 1–65536 MiB.")
         if not 1 <= multipart <= 256: raise ValueError("Files per upload request must be 1–256.")
+        if not 2 <= listener_connections <= 512: raise ValueError("Listener connections must be 2–512.")
+        if not 1 <= control_reserve < listener_connections: raise ValueError("Control reserve must be positive and smaller than listener capacity.")
+        if not 1 <= agent_long_polls <= 8: raise ValueError("Long polls per Agent must be 1–8.")
         if not 5 <= lease_seconds <= 600: raise ValueError("Distributed operation leases must be 5–600 seconds.")
         if not 1 <= tunnel_wait_seconds <= 120: raise ValueError("Remote tunnel wait time must be 1–120 seconds.")
         if not 1 <= receipt_limit <= 20000: raise ValueError("Distributed receipt capacity must be 1–20,000.")
@@ -119,6 +127,9 @@ class OperationalSettingsStore:
             "datastore_quota_gib": datastore,
             "automation_artifact_quota_gib": artifacts,
             "minimum_free_gib": minimum_free,
+            "distributed_listener_connections": listener_connections,
+            "distributed_control_reserve": control_reserve,
+            "distributed_agent_long_polls": agent_long_polls,
             "distributed_job_lease_seconds": lease_seconds,
             "distributed_tunnel_wait_seconds": tunnel_wait_seconds,
             "distributed_receipt_limit": receipt_limit,

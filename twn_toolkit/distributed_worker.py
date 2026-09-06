@@ -29,6 +29,7 @@ from .distributed_jobs import JOB_PROTOCOL_VERSION, DistributedJobStore
 from .distributed_http import prune_dispatch_cache
 from .distributed_dispatch_cache import DISPATCH_CACHE_SWEEP_SECONDS
 from .distributed_payloads import PAYLOAD_CLEANUP_INTERVAL_SECONDS
+from .distributed_polling import InteractivePollGate, RetryBackoff, pause, poll_retry_delay, regular_poll_delay, RETRY_INITIAL_SECONDS
 
 
 def main() -> None:
@@ -80,11 +81,14 @@ def main() -> None:
                     flush=True,
                 )
         interactive_threads: list[threading.Thread] = []
+        poll_gate = InteractivePollGate()
+        regular_backoff = RetryBackoff()
         if settings["role"] == "agent":
+            agent_activation(instance)  # Establish one epoch before starting concurrent lanes.
             for lane in range(3):
                 thread = threading.Thread(
                     target=_interactive_lane,
-                    args=(instance, settings, lambda: running),
+                    args=(instance, settings, lambda: running, poll_gate),
                     name=f"twn-interactive-{lane + 1}",
                     daemon=True,
                 )
@@ -107,8 +111,8 @@ def main() -> None:
                 except (OSError, ValueError) as exc:
                     print(f"Agent dispatch cache cleanup failed: {type(exc).__name__}", file=sys.stderr, flush=True)
             if settings["role"] == "agent":
-                _agent_tick(instance, {**settings, "agent_wait_seconds": 20})
-                time.sleep(0.05)
+                status = _agent_tick(instance, {**settings, "agent_wait_seconds": 20})
+                pause(regular_poll_delay(status, regular_backoff), lambda: running)
             else:
                 time.sleep(0.25)
     except Exception as exc:
@@ -126,6 +130,7 @@ def _interactive_lane(
     instance: Path,
     settings: dict[str, object],
     running: object,
+    gate: InteractivePollGate | None = None,
 ) -> None:
     client = EnrollmentClient(
         instance,
@@ -135,17 +140,33 @@ def _interactive_lane(
     activation_id = agent_activation(instance)["activation_id"]
     receipts = OperationReceipts(instance)
     receipts.discard_other_activations(activation_id)
+    gate = gate or InteractivePollGate()
     while callable(running) and running():
+        with gate.enter(running) as admitted:
+            if not admitted or not running():
+                return
+            try:
+                response = client.interactive(
+                    receipts.pending("interactive", activation_id), wait_seconds=20, activation_id=activation_id
+                )
+                if response.get("job_protocol") != JOB_PROTOCOL_VERSION:
+                    raise ValueError("Upgrade the Mainframe for owned operation delivery.")
+                receipts.acknowledge(response.get("acknowledgements", []))
+                retry = poll_retry_delay(response)
+                gate.backoff.reset()
+                if not response.get("requests"):
+                    # Keep the gate while pacing: another local lane must not
+                    # immediately replace a throttled or failed poll.
+                    pause(retry, running)
+            except (EnrollmentTransportError, OSError, ValueError, sqlite3.Error):
+                pause(gate.backoff.delay(), running)
+                continue
+        # Other lanes may now fetch work while this one executes. Lease
+        # renewal also bypasses the poll gate.
         try:
-            response = client.interactive(
-                receipts.pending("interactive", activation_id), wait_seconds=20, activation_id=activation_id
-            )
-            if response.get("job_protocol") != JOB_PROTOCOL_VERSION:
-                raise ValueError("Upgrade the Mainframe for owned operation delivery.")
-            receipts.acknowledge(response.get("acknowledgements", []))
             _execute_jobs(instance, response.get("requests", []), client=client, lane="interactive")
-        except (EnrollmentTransportError, OSError, ValueError):
-            time.sleep(0.5)
+        except (EnrollmentTransportError, OSError, ValueError, sqlite3.Error):
+            pause(RETRY_INITIAL_SECONDS, running)
 
 
 def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object]:
@@ -211,11 +232,12 @@ def _agent_tick(instance: Path, settings: dict[str, object]) -> dict[str, object
         status = {
             "role": "agent",
             "state": str(result.get("state", "connected")),
+            "retry_after_seconds": poll_retry_delay(result),
             "checked_at": now,
             "last_connected_at": now,
             "error": "",
         }
-    except (EnrollmentTransportError, OSError, ValueError) as exc:
+    except (EnrollmentTransportError, OSError, ValueError, sqlite3.Error) as exc:
         previous = _read_status(status_path)
         status = {
             "role": "agent",

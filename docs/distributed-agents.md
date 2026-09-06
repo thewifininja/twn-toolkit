@@ -42,7 +42,7 @@ Wildcard addresses (`0.0.0.0` and `::`) are supported but must be deliberate.
 The listener is separate from the browser listener so its protocol, client
 authentication, limits, and exposure can evolve independently.
 
-The listener admits at most 32 TCP connections before starting TLS work. Each
+The listener admits a configurable number of TCP connections (32 by default) before TLS work. Each
 admitted connection gets five seconds to finish its handshake and then one
 absolute ten-second budget to read HTTP headers and body. Sending bytes slowly
 does not restart that budget. Response writes have an independent ten-second
@@ -171,7 +171,9 @@ ownership and token checks are invariants rather than policy choices. Both roles
 can adjust encrypted payload retention; see [payload storage and retention](distributed-payload-retention.md)
 for cleanup behavior, upgrade requirements and key recovery.
 Agents can also tune [HTTP dispatch caching](agent-dispatch-cache.md), which
-shares app initialization while bounding idle per-user clients.
+shares app initialization while bounding idle per-user clients. See
+[fleet capacity and polling](fleet-polling.md) for listener sizing, control
+headroom, retry behavior and Mainframe limits.
 
 ## Execution classes
 
