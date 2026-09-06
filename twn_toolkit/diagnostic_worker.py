@@ -103,6 +103,10 @@ def execute_scan(store, job_id, token):
     if not job or job["state"] != "running":
         return
     config = json.loads(store.cipher.open(job["config"], job_id + ":diagnostic-config"))
+    if job["tool"] == "dns":
+        from .dns_diagnostic import execute_dns
+        execute_dns(store, job, config)
+        return
     if job["tool"] != "tcp_scan":
         raise ValueError("Unsupported diagnostic.")
     form = config["form"]
@@ -168,6 +172,10 @@ def _abort(store, job_id, token, state, error):
 
 def record_unsuccessful_scan(store, job, state, error):
     """Best-effort attribution; recording errors never replay network work."""
+    if job["tool"] == "dns":
+        from .dns_diagnostic import record_dns_outcome
+        record_dns_outcome(store, job, state, error)
+        return
     from .audit import AuditStore
     from .investigations import InvestigationStore
     try:

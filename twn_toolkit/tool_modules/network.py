@@ -517,6 +517,8 @@ def register_tools(registry: Any) -> None:
             "tools.duplicate_ping_profile": "tools.ping",
             "tools.delete_ping_profile": "tools.ping",
             "tools.dns_response": "tools.dns_response",
+            "tools.dns_job_status": "tools.dns_response",
+            "tools.cancel_dns_job": "tools.dns_response",
             "tools.save_dns_profile": "tools.dns_response",
             "tools.duplicate_dns_profile": "tools.dns_response",
             "tools.delete_dns_profile": "tools.dns_response",

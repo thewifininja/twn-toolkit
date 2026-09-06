@@ -2,6 +2,11 @@
 {% from "components/ui.html" import case_recorded_notice %}
 
 {% block content %}
+{% set diagnostic_label = 'DNS load test' if form.mode == 'load' else 'DNS comparison' %}
+{% set diagnostic_status_endpoint = 'tools.dns_job_status' %}
+{% set diagnostic_cancel_endpoint = 'tools.cancel_dns_job' %}
+{% set diagnostic_result_endpoint = 'tools.dns_response' %}
+{% include 'components/diagnostic_job.html' %}
 {% set dns_has_results = results is not none or load_result is not none %}
 <div class="tool-workspace dns-tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if dns_has_results else 'setup' }}">
 <section class="tool-runbar" data-tool-runbar {% if not dns_has_results %}hidden{% endif %} aria-label="DNS result controls">
@@ -26,7 +31,7 @@
       type="submit"
       form="dns-form"
       data-dns-rerun
-      data-loading-message="{{ 'Running controlled DNS load test…' if form.mode == 'load' else 'Comparing DNS responses…' }}"
+      data-loading-message="{{ 'Queueing controlled DNS load test…' if form.mode == 'load' else 'Queueing DNS comparison…' }}"
     >Run again</button>
     <button class="secondary" type="button" data-tool-settings-open aria-controls="dns-settings" aria-expanded="false">Edit settings</button>
   </div>
@@ -54,7 +59,7 @@
     id="dns-form"
     data-dns-max-load-queries="{{ load_limits.queries }}"
     data-dns-max-load-servers="{{ load_limits.servers }}"
-    data-loading-message="{{ 'Running controlled DNS load test…' if form.mode == 'load' else 'Comparing DNS responses…' }}"
+    data-loading-message="{{ 'Queueing controlled DNS load test…' if form.mode == 'load' else 'Queueing DNS comparison…' }}"
   >
     <fieldset class="dns-mode-picker">
       <legend class="sr-only">DNS test mode</legend>
@@ -209,8 +214,12 @@
   <header class="panel-head dns-results-head">
     <div>
       <span class="eyebrow">Comparison complete</span>
-      <h2>{{ results|length }} lookup result{{ '' if results|length == 1 else 's' }}</h2>
-      <p>Review resolver paths, returned answers, and response time.</p>
+      <h2>{{ result_total }} lookup result{{ '' if result_total == 1 else 's' }}</h2>
+      <p>Review resolver paths, returned answers, and response time. Showing {{ results|length }} of {{ result_total }} results.</p>
+      <nav aria-label="DNS result pages">
+      {% if result_page > 1 %}<a href="{{ url_for('tools.dns_response', job=diagnostic_job.id, page=result_page-1) }}">Previous page</a>{% endif %}
+      {% if result_page * 100 < result_total %}<a href="{{ url_for('tools.dns_response', job=diagnostic_job.id, page=result_page+1) }}">Next page</a>{% endif %}
+      </nav>
     </div>
   </header>
   <div class="dns-result-summary">
@@ -286,6 +295,7 @@
 {% endif %}
 </div>
 
+<script src="{{ url_for('static', filename='diagnostic-job.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='tool-results-workspace.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='dns-response.js', v=app_version) }}"></script>
 {% endblock %}

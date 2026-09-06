@@ -2,23 +2,11 @@
 {% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
-{% if diagnostic_job %}
-<section class="panel" {% if diagnostic_job.state in ['queued', 'running', 'cancel_requested'] %}data-diagnostic-status-url="{{ url_for('tools.port_scanner_job_status', job_id=diagnostic_job.id) }}"{% endif %}>
-  {% if diagnostic_job.state == "queued" and not diagnostic_scheduler.get("fresh") %}<p class="message error">The diagnostic scheduler is not reporting a recent heartbeat. Start or restart the automation worker on this instance to process queued scans.</p>{% endif %}
-  <h2>TCP scan · {{ diagnostic_job.state|replace('_', ' ')|title }}</h2>
-  <p role="status" aria-live="polite" data-diagnostic-status>{% if diagnostic_job.state == 'queued' %}Queued — waiting for the diagnostic scheduler. You can leave this page and return to this result link.{% elif diagnostic_job.state == 'running' %}Scan running. Navigation and other tools remain available.{% elif diagnostic_job.state == 'cancel_requested' %}Cancellation requested — waiting for the scan to stop.{% elif diagnostic_job.error %}{{ diagnostic_job.error }}{% else %}Scan complete.{% endif %}</p>
-  <p class="field-note">Run <code>{{ diagnostic_job.id }}</code> · {{ diagnostic_job.timeout|int }} second deadline</p>
-  {% if diagnostic_job.state in ['queued', 'running'] %}
-  <form method="post" action="{{ url_for('tools.cancel_port_scanner_job', job_id=diagnostic_job.id) }}"><button type="submit" class="secondary">Cancel scan</button></form>
-  {% endif %}
-  {% if diagnostic_job.state in ['queued', 'running', 'cancel_requested'] %}<noscript><p><a href="{{ url_for('tools.port_scanner', job=diagnostic_job.id) }}">Refresh scan status</a></p></noscript>{% endif %}
-</section>
-{% endif %}
-{% if diagnostic_recent %}
-<details class="panel"><summary>Your recent TCP scans</summary><ul>
-{% for item in diagnostic_recent %}<li><a href="{{ url_for('tools.port_scanner', job=item.id) }}">{{ item.id[:12] }} · {{ item.state|replace('_', ' ') }}</a></li>{% endfor %}
-</ul></details>
-{% endif %}
+{% set diagnostic_label = 'TCP scan' %}
+{% set diagnostic_status_endpoint = 'tools.port_scanner_job_status' %}
+{% set diagnostic_cancel_endpoint = 'tools.cancel_port_scanner_job' %}
+{% set diagnostic_result_endpoint = 'tools.port_scanner' %}
+{% include 'components/diagnostic_job.html' %}
 
 {% set has_results = stats is not none %}
 <div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">

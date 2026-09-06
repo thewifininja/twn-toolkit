@@ -1198,7 +1198,7 @@ class NetworkToolTests(unittest.TestCase):
                 "answers": ["192.0.2.10"],
                 "response_ms": 12.3,
             }
-            with patch("twn_toolkit.dns_routes.dns_lookup_matrix", return_value=[dns_result]):
+            with patch("twn_toolkit.dns_diagnostic.dns_lookup_matrix", return_value=[dns_result]):
                 response = client.post(
                     "/tools/dns-response",
                     data={
@@ -1208,6 +1208,11 @@ class NetworkToolTests(unittest.TestCase):
                         "timeout": "3",
                     },
                 )
+                from twn_toolkit.diagnostic_worker import execute_scan
+                jobs = app.extensions["diagnostic_job_store"]
+                job = jobs.claim()
+                execute_scan(jobs, job["id"], job["token"])
+                response = client.get(response.headers["Location"])
             self.assertIn(b"192.0.2.10", response.data)
             self.assertIn(b"12.3 ms", response.data)
             self.assertIn(b'data-dns-rerun', response.data)
@@ -1257,7 +1262,7 @@ class NetworkToolTests(unittest.TestCase):
                 "concurrency": "20",
             }
             with patch(
-                "twn_toolkit.dns_routes.dns_load_test",
+                "twn_toolkit.dns_diagnostic.dns_load_test",
                 return_value=load_result,
             ) as load_test:
                 unauthorized = client.post(
@@ -1268,6 +1273,11 @@ class NetworkToolTests(unittest.TestCase):
                     "/tools/dns-response",
                     data={**load_form, "authorized": "on"},
                 )
+                from twn_toolkit.diagnostic_worker import execute_scan
+                jobs = app.extensions["diagnostic_job_store"]
+                job = jobs.claim()
+                execute_scan(jobs, job["id"], job["token"])
+                response = client.get(response.headers["Location"])
             self.assertIn(b"Confirm that you are authorized", unauthorized.data)
             self.assertIn(b"Load test complete", response.data)
             self.assertIn(b"48.8 QPS", response.data)

@@ -1,0 +1,18 @@
+{% if diagnostic_job %}
+<section class="panel" {% if diagnostic_job.state in ['queued', 'running', 'cancel_requested'] %}data-diagnostic-status-url="{{ url_for(diagnostic_status_endpoint, job_id=diagnostic_job.id) }}"{% endif %}>
+  {% if diagnostic_job.state == "queued" and not diagnostic_scheduler.get("fresh") %}<p class="message error">The diagnostic scheduler is not reporting a recent heartbeat. Start or restart the automation worker on this instance to process queued runs.</p>{% endif %}
+  <h2>{{ diagnostic_label }} · {{ diagnostic_job.state|replace('_', ' ')|title }}</h2>
+  <p role="status" aria-live="polite" data-diagnostic-status>{% if diagnostic_job.state == 'queued' %}Queued — waiting for the diagnostic scheduler. You can leave this page and return to this result link.{% elif diagnostic_job.state == 'running' %}Run in progress. Navigation and other tools remain available.{% elif diagnostic_job.state == 'cancel_requested' %}Cancellation requested — waiting for the run to stop.{% elif diagnostic_job.state == 'cancelled' %}Run cancelled. No complete result was retained.{% elif diagnostic_job.error %}{{ diagnostic_job.error }}{% else %}Run complete.{% endif %}</p>
+  <p class="field-note">Run <code>{{ diagnostic_job.id }}</code> · {{ diagnostic_job.timeout|int }} second deadline</p>
+  {% if diagnostic_job.state in ['queued', 'running'] %}
+  <form method="post" action="{{ url_for(diagnostic_cancel_endpoint, job_id=diagnostic_job.id) }}"><button type="submit" class="secondary">Cancel run</button></form>
+  {% endif %}
+  {% if diagnostic_job.state in ['queued', 'running', 'cancel_requested'] %}<noscript><p><a href="{{ url_for(diagnostic_result_endpoint, job=diagnostic_job.id) }}">Refresh run status</a></p></noscript>{% endif %}
+</section>
+{% endif %}
+{% if diagnostic_recent %}
+<details class="panel"><summary>Your recent runs</summary><ul>
+{% for item in diagnostic_recent %}<li><a href="{{ url_for(diagnostic_result_endpoint, job=item.id) }}">{{ item.id[:12] }} · {{ item.state|replace('_', ' ') }}</a></li>{% endfor %}
+</ul></details>
+{% endif %}
+

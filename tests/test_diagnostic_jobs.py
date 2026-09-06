@@ -73,7 +73,7 @@ def test_web_submission_is_nonblocking_and_results_are_owner_scoped_and_paginate
     job = store.claim()
     assert client.get("/health").status_code == 200
     page = client.get(url)
-    assert b"Scan running" in page.data and b"Cancel scan" in page.data
+    assert b"Run in progress" in page.data and b"Cancel run" in page.data
     assert client.get(f"/tools/port-scanner/jobs/{job['id']}/status").json["state"] == "running"
     assert store.finish(job["id"], job["token"], [result(i) for i in range(150)], {"stats": {"combinations": 150, "open": 150, "closed": 0, "timeout": 0, "error": 0}})
     page = client.get(url)

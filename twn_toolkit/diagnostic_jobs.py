@@ -65,7 +65,7 @@ class DiagnosticJobStore:
             self._prune(db, policy)
 
     def enqueue(self, *, user_id, config, tool="tcp_scan"):
-        if tool != "tcp_scan" or not user_id:
+        if tool not in {"tcp_scan", "dns"} or not user_id:
             raise ValueError("Invalid diagnostic request.")
         raw = json.dumps(config, separators=(",", ":"), allow_nan=False)
         if len(raw.encode()) > 64 * 1024:
@@ -118,9 +118,9 @@ class DiagnosticJobStore:
         job["summary"] = json.loads(self.cipher.open(job["summary"], job_id + ":diagnostic-summary"))
         return job
 
-    def recent(self, user_id):
+    def recent(self, user_id, tool="tcp_scan"):
         with self.connect() as db:
-            return [dict(row) for row in db.execute("SELECT id,state,created FROM diagnostic_jobs WHERE user_id=? AND tool='tcp_scan' ORDER BY created DESC LIMIT 10", (user_id,))]
+            return [dict(row) for row in db.execute("SELECT id,state,created FROM diagnostic_jobs WHERE user_id=? AND tool=? ORDER BY created DESC LIMIT 10", (user_id, tool))]
 
     def cancel(self, job_id, user_id):
         with self.connect(write=True) as db:
