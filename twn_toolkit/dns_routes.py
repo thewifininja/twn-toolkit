@@ -3,9 +3,14 @@ from __future__ import annotations
 import secrets
 import time
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, g, jsonify, redirect, render_template, request, url_for
 
 from .activity_context import record_current_activity
+from .diagnostic_routes import diagnostic_store, owned_diagnostic
+from .diagnostic_worker import record_unsuccessful_scan
+from .dns_diagnostic import prepare_dns_config
+from .investigations import InvestigationStore
+from .automation_heartbeat import read_automation_heartbeat
 from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
 from .investigation_context import record_current_investigation_event
 from .network_tools import (
@@ -15,8 +20,6 @@ from .network_tools import (
     DNS_LOAD_MAX_QUERIES,
     DNS_LOAD_MAX_SERVERS,
     ToolInputError,
-    dns_load_test,
-    dns_lookup_matrix,
     parse_dns_hosts,
     parse_dns_servers,
 )
@@ -44,208 +47,44 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
         lookup_summary = None
         journal_event = None
         error = ""
+        store = diagnostic_store()
+        user = g.current_user
+        job = None
+        page, total = 1, 0
         if request.method == "POST":
-            operation_id = f"dns:{secrets.token_hex(12)}"
-            journal_started_at = time.time()
-            hosts: list[dict[str, str]] = []
-            servers: list[dict[str, str]] = []
-            form = {
-                key: request.form.get(key, default).strip()
-                for key, default in form.items()
-            }
+            form = {key: request.form.get(key, default).strip() for key, default in form.items()}
             try:
-                if form["mode"] not in {"compare", "load"}:
-                    raise ToolInputError("Select a valid DNS test mode.")
-                hosts = parse_dns_hosts(form["hosts"], limit=100)
-                server_limit = (
-                    DNS_LOAD_MAX_SERVERS if form["mode"] == "load" else 20
-                )
-                servers = parse_dns_servers(
-                    form["servers"],
-                    limit=server_limit,
-                )
-                timeout = float(form["timeout"])
-                if form["mode"] == "load":
-                    if form["authorized"] != "on":
-                        raise ToolInputError(
-                            "Confirm that you are authorized to load test these "
-                            "DNS servers."
-                        )
-                    load_result = dns_load_test(
-                        hosts,
-                        servers,
-                        form["record_type"],
-                        timeout,
-                        duration_seconds=int(form["duration"]),
-                        qps_per_server=int(form["qps"]),
-                        concurrency=int(form["concurrency"]),
-                    )
-                else:
-                    results = dns_lookup_matrix(
-                        hosts,
-                        servers,
-                        form["record_type"],
-                        timeout,
-                    )
-                    successful = [
-                        result
-                        for result in results
-                        if result.get("status") == "success"
-                    ]
-                    lookup_summary = {
-                        "queries": len(results),
-                        "successful": len(successful),
-                        "failed": len(results) - len(successful),
-                        "average_ms": (
-                            round(
-                                sum(
-                                    float(result["response_ms"])
-                                    for result in successful
-                                )
-                                / len(successful),
-                                1,
-                            )
-                            if successful
-                            else None
-                        ),
-                        "slowest_ms": (
-                            max(
-                                float(result["response_ms"])
-                                for result in successful
-                            )
-                            if successful
-                            else None
-                        ),
-                    }
+                config = prepare_dns_config(form)
+                investigation = InvestigationStore(current_app.instance_path).active_for_user(user['id'])
+                config.update(username=user['username'], investigation_id=(
+                    investigation['id'] if investigation and investigation.get('is_recording') else ''))
+                job_id = store.enqueue(user_id=user['id'], tool='dns', config=config)
+                annotate_tool_run(category='Network tools', action_namespace='dns.' + form['mode'],
+                                  tool_name='DNS test', outcome='queued', details={'operation id': job_id})
+                return redirect(url_for('tools.dns_response', job=job_id), code=303)
             except (ToolInputError, TypeError, ValueError) as exc:
-                error = str(exc) or "Enter valid DNS test settings."
-                activity_title = (
-                    "Ran DNS load test"
-                    if form["mode"] == "load"
-                    else "Ran DNS lookup"
-                )
-                record_current_activity(
-                    "Resolution",
-                    activity_title,
-                    "Request failed",
-                )
-            else:
-                query_count = (
-                    load_result["completed_queries"]
-                    if load_result is not None
-                    else len(results or [])
-                )
-                activity_title = (
-                    "Ran DNS load test"
-                    if form["mode"] == "load"
-                    else "Ran DNS lookup"
-                )
-                activity_summary = (
-                    f"{query_count} queries across {len(servers)} resolver(s)"
-                    if form["mode"] == "load"
-                    else f"{len(hosts)} host(s) across {len(servers)} resolver(s)"
-                )
-                record_current_activity(
-                    "Resolution",
-                    activity_title,
-                    activity_summary,
-                    counters={"dns": {"queries": query_count}},
-                )
-            annotate_tool_run(
-                category="Network tools",
-                action_namespace=(
-                    "dns.load_test"
-                    if form["mode"] == "load"
-                    else "dns.lookup"
-                ),
-                tool_name=(
-                    "DNS load test"
-                    if form["mode"] == "load"
-                    else "DNS lookup"
-                ),
-                outcome="failed" if error else "succeeded",
-                details={
-                    "host count": len(hosts) if not error else 0,
-                    "resolver count": len(servers) if not error else 0,
-                    "query count": (
-                        load_result["completed_queries"]
-                        if load_result is not None
-                        else len(results or [])
-                    ),
-                    "record type": form["record_type"],
-                    "mode": form["mode"],
-                    "duration seconds": (
-                        form["duration"] if form["mode"] == "load" else None
-                    ),
-                    "queries per second per resolver": (
-                        form["qps"] if form["mode"] == "load" else None
-                    ),
-                    "concurrency": (
-                        form["concurrency"]
-                        if form["mode"] == "load"
-                        else None
-                    ),
-                },
-            )
-            journal_completed_at = time.time()
-            action = "DNS load test" if form["mode"] == "load" else "DNS lookup"
-            if error:
-                journal_summary = f"{action} failed: {error}"
-                journal_metrics = {}
-            elif load_result is not None:
-                journal_summary = (
-                    f"Completed {load_result['completed_queries']} DNS queries "
-                    f"across {len(servers)} resolver(s) with a "
-                    f"{load_result['success_rate']}% success rate."
-                )
-                journal_metrics = {
-                    "completed_queries": load_result["completed_queries"],
-                    "failed_queries": load_result["failed_queries"],
-                    "success_rate": load_result["success_rate"],
-                    "achieved_qps": load_result["achieved_qps"],
-                }
-            else:
-                summary = lookup_summary or {}
-                journal_summary = (
-                    f"Completed DNS lookup for {len(hosts)} host(s) across "
-                    f"{len(servers)} resolver(s): {summary.get('successful', 0)} "
-                    f"successful and {summary.get('failed', 0)} failed queries."
-                )
-                journal_metrics = dict(summary)
-            journal_event = record_current_investigation_event(
-                operation_id=operation_id,
-                event_type=(
-                    "diagnostic.failed" if error else "diagnostic.completed"
-                ),
-                tool_id="tools.dns_response",
-                action=action,
-                outcome="failed" if error else "succeeded",
-                summary=journal_summary,
-                targets={"hosts": hosts, "resolvers": servers},
-                parameters={
-                    "mode": form["mode"],
-                    "record_type": form["record_type"],
-                    "timeout_seconds": form["timeout"],
-                    "duration_seconds": (
-                        form["duration"] if form["mode"] == "load" else None
-                    ),
-                    "queries_per_second_per_resolver": (
-                        form["qps"] if form["mode"] == "load" else None
-                    ),
-                    "concurrency": (
-                        form["concurrency"] if form["mode"] == "load" else None
-                    ),
-                },
-                metrics=journal_metrics,
-                details={
-                    "error": error,
-                    "results": results or [],
-                    "lookup_summary": lookup_summary,
-                    "load_result": load_result,
-                },
-                started_at=journal_started_at,
-                completed_at=journal_completed_at,
-            )
+                error = str(exc) or 'Enter valid DNS test settings.'
+                record_current_activity('Resolution', 'Ran DNS load test' if form['mode'] == 'load' else 'Ran DNS lookup', 'Request failed')
+                record_current_investigation_event(
+                    operation_id='dns-rejected:' + secrets.token_hex(12), event_type='diagnostic.failed',
+                    tool_id='tools.dns_response', action='DNS test', outcome='failed',
+                    summary='DNS test rejected: ' + error, targets={'hosts': form['hosts'], 'resolvers': form['servers']},
+                    parameters=form, metrics={}, details={'error': error}, started_at=time.time(), completed_at=time.time())
+                annotate_tool_run(category='Network tools', action_namespace='dns.' + ('load_test' if form['mode'] == 'load' else 'lookup'),
+                                  tool_name='DNS test', outcome='failed')
+        elif request.args.get('job'):
+            job = owned_diagnostic(request.args['job'], 'dns')
+            form = job['config']['form']
+            try:
+                page = max(1, min(50, int(request.args.get('page', 1))))
+            except ValueError:
+                page = 1
+            if job['state'] == 'succeeded':
+                load_result = job['summary'].get('load_result')
+                lookup_summary = job['summary'].get('lookup_summary')
+                journal_event = job['summary'].get('journal_event')
+                if form['mode'] == 'compare':
+                    results, total = store.page(job['id'], user['id'], page)
         return render_template(
             "tools/dns_response.html",
             error=error,
@@ -263,7 +102,28 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
             lookup_summary=lookup_summary,
             results=results,
             journal_event=journal_event,
+            diagnostic_job=job, diagnostic_recent=store.recent(user['id'], 'dns'),
+            diagnostic_scheduler=read_automation_heartbeat(store.instance / 'automation-heartbeat.json'),
+            result_page=page, result_total=total,
         )
+
+    @tools_bp.get('/dns-response/jobs/<job_id>/status')
+    def dns_job_status(job_id):
+        job = owned_diagnostic(job_id, 'dns')
+        response = jsonify({'state': job['state'], 'error': job['error']})
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @tools_bp.post('/dns-response/jobs/<job_id>/cancel')
+    def cancel_dns_job(job_id):
+        owned_diagnostic(job_id, 'dns')
+        store = diagnostic_store()
+        cancelled = store.cancel(job_id, g.current_user['id'])
+        if cancelled:
+            record_unsuccessful_scan(store, cancelled, 'cancelled', 'Cancelled before execution started.')
+        annotate_tool_run(category='Network tools', action_namespace='dns.cancel', tool_name='DNS test',
+                          outcome='requested', details={'operation id': job_id})
+        return redirect(url_for('tools.dns_response', job=job_id), code=303)
 
     @tools_bp.post("/dns-response/profiles/<kind>")
     def save_dns_profile(kind: str):

@@ -18,11 +18,11 @@
           window.location.reload();
           return;
         }
-        status.textContent = job.state === "cancel_requested" ? "Cancellation requested — waiting for the scan to stop." :
-          job.state === "running" ? "Scan running. You can leave this page and return to the result link." :
+        status.textContent = job.state === "cancel_requested" ? "Cancellation requested — waiting for the run to stop." :
+          job.state === "running" ? "Run in progress. You can leave this page and return to the result link." :
           "Queued — waiting for the diagnostic scheduler. You can leave this page.";
       } catch (_) {
-        status.textContent = "Unable to refresh status. Retrying; refreshing this page will not submit another scan.";
+        status.textContent = "Unable to refresh status. Retrying; refreshing this page will not submit another run.";
       }
     }
     if (!stopped) window.setTimeout(poll, 2000);

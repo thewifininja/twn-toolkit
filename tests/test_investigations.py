@@ -1552,7 +1552,7 @@ class InvestigationRouteTests(unittest.TestCase):
                 "response_ms": 12.5,
             }
             with patch(
-                "twn_toolkit.dns_routes.dns_lookup_matrix",
+                "twn_toolkit.dns_diagnostic.dns_lookup_matrix",
                 return_value=[dns_result],
             ):
                 response = client.post(
@@ -1568,6 +1568,11 @@ class InvestigationRouteTests(unittest.TestCase):
                         "concurrency": "40",
                     },
                 )
+                from twn_toolkit.diagnostic_worker import execute_scan
+                jobs = app.extensions["diagnostic_job_store"]
+                job = jobs.claim()
+                execute_scan(jobs, job["id"], job["token"])
+                response = client.get(response.headers["Location"])
             self.assertEqual(response.status_code, 200)
             self.assertIn(b"Recorded in the active case", response.data)
             self.assertIn(b"Branch office outage", response.data)
@@ -1772,7 +1777,7 @@ class InvestigationRouteTests(unittest.TestCase):
             )
             before = len(store.events_for_user(investigation_id, "test-user"))
             with patch(
-                "twn_toolkit.dns_routes.dns_lookup_matrix",
+                "twn_toolkit.dns_diagnostic.dns_lookup_matrix",
                 return_value=[{
                     "host_label": "", "host": "example.com", "server_label": "",
                     "server": "1.1.1.1", "record_type": "A", "status": "success",
@@ -1787,6 +1792,11 @@ class InvestigationRouteTests(unittest.TestCase):
                         "duration": "10", "qps": "50", "concurrency": "40",
                     },
                 )
+                from twn_toolkit.diagnostic_worker import execute_scan
+                jobs = app.extensions["diagnostic_job_store"]
+                job = jobs.claim()
+                execute_scan(jobs, job["id"], job["token"])
+                response = client.get(response.headers["Location"])
             self.assertNotIn(b"Recorded in the active case", response.data)
             self.assertIn(b"Recording paused for", response.data)
             self.assertEqual(

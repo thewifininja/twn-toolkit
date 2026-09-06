@@ -1,7 +1,7 @@
-# Background TCP scans
+# Background network diagnostics
 
-TCP scan submissions validate input, persist a run and redirect (HTTP 303) to a
-stable result URL. The HTTP request does not perform the scan. The result page
+TCP scan, DNS comparison, and DNS load-test submissions validate input, persist a run and redirect (HTTP 303) to a
+stable result URL. The HTTP request does not perform the network test. The result page
 shows queued/running/cancellation-requested and terminal states, refreshes status
 with short requests, and works without JavaScript through manual refresh.
 Navigation away does not stop a scan or submit another copy. Recent runs and
@@ -11,9 +11,9 @@ Navigation away does not stop a scan or submit another copy. Recent runs and
 
 The existing automation scheduler supervises finite diagnostic subprocesses.
 It maintains a separate bounded diagnostic pool; automation and live-tool
-execution pools retain their existing limits. TCP scanning is the only migrated
-tool in this change. DNS, transfers and other synchronous routes remain separate
-migration work.
+execution pools retain their existing limits. TCP scanning, DNS comparisons and
+DNS load tests use this queue. Transfers and other synchronous routes remain
+separate migration work.
 
 Restart the automation scheduler and web workers on each instance that runs
 scans after updating. On an Agent, its local scheduler performs the scan; the
@@ -34,8 +34,8 @@ The scheduler also enforces deadlines, requests termination for cancellation,
 and kills a process that does not exit within two seconds. A queued cancellation
 prevents execution. A running cancellation remains requested until exit is
 confirmed. Deadlines include subprocess startup and result publication;
-incomplete scan results are discarded. These guarantees apply to TCP scanning,
-whose process owns its DNS resolution and scan threads; they are not a general
+incomplete scan results are discarded. These guarantees apply to TCP scanning and DNS comparisons/load tests,
+whose processes own their resolution and probe threads; they are not a general
 promise of safe cancellation for arbitrary side-effecting tools.
 
 On scheduler shutdown, children are terminated and reaped with one shared
@@ -47,7 +47,7 @@ the scheduler cannot interrupt case recording merely because results are ready.
 ## Policy
 
 Settings → Operations → Background diagnostic limits applies on the instance
-where the scan executes.
+where the diagnostic executes. TCP and DNS share this queue and its policy.
 
 | Setting | Default | Range |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ writer. SQLite file size may retain freed pages after history cleanup.
 
 ## Attribution and limits
 
-Status, results and cancellation require the TCP scanner permission and the
+Status, results and cancellation require the corresponding tool permission and the
 submitting user's identity. Configuration captures the user and actively
 recording case at submission. Completion records against that case, even if the
 user selects another case or pauses recording. Membership/closed-case rules are
@@ -94,3 +94,31 @@ The diagnostic database is private runtime state and uses the instance secret
 key to encrypt inputs and results. Back up the key with retained data.
 This change does not complete all asynchronous tool migrations, cross-tool
 connection/storage budgets, or large artifact transport.
+
+## DNS workflow and rollout
+
+Both DNS modes use the existing automation worker's diagnostic scheduler. Upgrade
+and restart executing web and automation workers together before submitting DNS
+jobs. Older workers do not support the new DNS job type. Keep Mainframe/Agent
+versions aligned; this is not a version-negotiation fix.
+
+Comparison results page in groups of 100, with statistics over the complete
+matrix (up to 100 hosts × 20 resolvers). Load tests retain their existing consent,
+duration/rate/concurrency/query limits and aggregate resolver metrics. Validation
+runs before enqueue and again in the child, without sending preflight queries.
+Saved host/resolver profiles remain available; each run captures the submitted
+values so later profile edits cannot change queued work. Reloading a result URL
+does not submit work; Run again is an explicit new submission.
+
+Queue wait is separate from the captured process deadline. Diagnostic concurrency
+limits simultaneous processes, not the combined DNS query rate across runs or
+per-target socket admission. A cancelled/timed-out load test may already have
+sent queries; it stops further process work and discards incomplete output. It
+is never automatically replayed. Completed DNS results, like TCP results, are
+subject to configured history retention and input/result envelope limits.
+
+DNS and TCP use the same status panel and polling script. Recent history is
+filtered by tool, and job pages/status/cancellation enforce both submitting user
+and tool identity. Agent links retain the selected Agent prefix. Larger case
+records and artifact transport remain separate audit work; paged HTML does not
+claim to fix every large response.

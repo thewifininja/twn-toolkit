@@ -417,19 +417,9 @@ def dns_lookup_matrix(
     )
 
 
-def dns_load_test(
-    hosts: list[dict[str, str]],
-    servers: list[dict[str, str]],
-    record_type: str = "A",
-    timeout: float = 1.0,
-    *,
-    duration_seconds: int = 10,
-    qps_per_server: int = 50,
-    concurrency: int = 40,
-    clock: Any | None = None,
-    sleeper: Any | None = None,
-) -> dict[str, Any]:
-    """Run a deliberately bounded, evenly paced DNS load test."""
+def validate_dns_load_settings(hosts, servers, record_type, timeout,
+                               duration_seconds, qps_per_server, concurrency):
+    """Validate a planned load test without sending any queries."""
     record_type = _validated_dns_query_settings(record_type, timeout)
     if not hosts:
         raise ToolInputError("Enter at least one DNS query name.")
@@ -463,6 +453,26 @@ def dns_load_test(
             f"duration, rate, or resolver count to stay at or below "
             f"{DNS_LOAD_MAX_QUERIES:,}."
         )
+
+    return record_type, queries_per_server, planned_queries
+
+
+def dns_load_test(
+    hosts: list[dict[str, str]],
+    servers: list[dict[str, str]],
+    record_type: str = "A",
+    timeout: float = 1.0,
+    *,
+    duration_seconds: int = 10,
+    qps_per_server: int = 50,
+    concurrency: int = 40,
+    clock: Any | None = None,
+    sleeper: Any | None = None,
+) -> dict[str, Any]:
+    """Run a deliberately bounded, evenly paced DNS load test."""
+    record_type, queries_per_server, planned_queries = validate_dns_load_settings(
+        hosts, servers, record_type, timeout, duration_seconds, qps_per_server, concurrency,
+    )
 
     read_clock = clock or time.monotonic
     sleep = sleeper or time.sleep

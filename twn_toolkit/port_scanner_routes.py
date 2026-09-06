@@ -12,7 +12,7 @@ from .audit import (
     annotate_tool_run,
 )
 from .investigations import InvestigationStore
-from .diagnostic_jobs import DiagnosticJobStore
+from .diagnostic_routes import diagnostic_store as _diagnostic_store, owned_diagnostic
 from .diagnostic_worker import record_unsuccessful_scan
 from .investigation_context import record_current_investigation_event
 from .automation_heartbeat import read_automation_heartbeat
@@ -70,9 +70,7 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
                 annotate_tool_run(category="Network tools", action_namespace="tcp_scanner",
                                   tool_name="TCP port scan", outcome="failed")
         elif request.args.get("job"):
-            job = store.get(request.args["job"], user["id"])
-            if job is None:
-                abort(404)
+            job = owned_diagnostic(request.args["job"], "tcp_scan")
             form = job["config"]["form"]
             if request.args.get("open_only") in {"0", "1"}:
                 form["open_only"] = request.args["open_only"] == "1"
@@ -96,9 +94,7 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.get("/port-scanner/jobs/<job_id>/status")
     def port_scanner_job_status(job_id):
-        job = _diagnostic_store().get(job_id, g.current_user["id"])
-        if job is None:
-            abort(404)
+        job = owned_diagnostic(job_id, "tcp_scan")
         response = jsonify({"state": job["state"], "error": job["error"]})
         response.headers["Cache-Control"] = "no-store"
         return response
@@ -106,8 +102,7 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
     @tools_bp.post("/port-scanner/jobs/<job_id>/cancel")
     def cancel_port_scanner_job(job_id):
         store = _diagnostic_store()
-        if store.get(job_id, g.current_user["id"]) is None:
-            abort(404)
+        owned_diagnostic(job_id, "tcp_scan")
         cancelled = store.cancel(job_id, g.current_user["id"])
         if cancelled:
             record_unsuccessful_scan(store, cancelled, "cancelled", "Cancelled before execution started.")
@@ -181,11 +176,3 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
 
 def _port_scan_profile_store(kind: str) -> PortScanProfileStore:
     return PortScanProfileStore(current_app.instance_path, kind)
-
-
-def _diagnostic_store():
-    store = current_app.extensions.get("diagnostic_job_store")
-    if store is None:
-        store = DiagnosticJobStore(current_app.instance_path)
-        current_app.extensions["diagnostic_job_store"] = store
-    return store
