@@ -707,6 +707,7 @@ class OperationalHardeningTests(unittest.TestCase):
             self.assertIn(b"Showing 1", filtered.data)
             response = client.post("/settings/operations", data={
                 "max_concurrent_automations": "3", "max_queued_automations": "7",
+                "automation_action_workers": "5",
                 "skip_overlapping_automations": "on", "datastore_quota_gib": "12",
                 "automation_artifact_quota_gib": "14", "minimum_free_gib": "1",
                 "distributed_job_lease_seconds": "45",
@@ -721,6 +722,7 @@ class OperationalHardeningTests(unittest.TestCase):
             })
             self.assertEqual(response.status_code, 302)
             self.assertEqual(OperationalSettingsStore(instance).get()["max_queued_automations"], 7)
+            self.assertEqual(OperationalSettingsStore(instance).get()["automation_action_workers"], 5)
             self.assertEqual(OperationalSettingsStore(instance).get()["distributed_receipt_limit"], 64)
             self.assertEqual(OperationalSettingsStore(instance).get()["distributed_listener_connections"], 64)
             self.assertEqual(OperationalSettingsStore(instance).get()["distributed_control_reserve"], 16)

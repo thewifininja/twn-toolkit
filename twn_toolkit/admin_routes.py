@@ -1850,6 +1850,7 @@ def register_admin_routes(
         try:
             after = operational_store.save({
                 **{key: request.form.get(key, before[key]) for key in OUTGOING_TRANSFER_LIMITS},
+                "automation_action_workers": request.form.get("automation_action_workers", before["automation_action_workers"]),
                 "max_concurrent_automations": request.form.get("max_concurrent_automations", ""),
                 "max_queued_automations": request.form.get("max_queued_automations", ""),
                 **{key: request.form.get(key, value) for key, value in before.items() if key.startswith("diagnostic_")},

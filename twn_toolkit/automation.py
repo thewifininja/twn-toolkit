@@ -9,7 +9,6 @@ import shutil
 import sqlite3
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
@@ -17,6 +16,7 @@ from typing import Any, Iterator
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from .automation_execution import execute_stage_actions
 from .automation_registry import (
     AUTOMATION_REGISTRY,
     ActionResult,
@@ -3215,16 +3215,7 @@ class AutomationEngine:
                     },
                 )
 
-        actions = stage["actions"]
-        results: list[ActionResult | None] = [None] * len(actions)
-        with ThreadPoolExecutor(max_workers=min(len(actions), 20)) as executor:
-            futures = {
-                executor.submit(execute, action): index
-                for index, action in enumerate(actions)
-            }
-            for future in as_completed(futures):
-                results[futures[future]] = future.result()
-        return [result for result in results if result is not None]
+        return execute_stage_actions(self.store.instance_path, execute, stage["actions"])
 
     @staticmethod
     def _bounded_action_context(output: dict[str, Any]) -> dict[str, Any]:
