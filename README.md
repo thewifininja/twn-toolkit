@@ -101,7 +101,8 @@ counters are intentionally excluded.
 #### FortiAuthenticator
 
 - Save and test multiple FortiAuthenticator profiles.
-- Export paginated MAC-device and group-membership data.
+- Export paginated MAC-device and group-membership data with scoped connection
+  reuse and [documented collection limits](docs/fortiauthenticator.md).
 - Preview and remove group memberships or delete MAC devices with overlap and
   impact warnings.
 

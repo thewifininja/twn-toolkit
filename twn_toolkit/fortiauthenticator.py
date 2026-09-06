@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json as json_module
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any
@@ -10,7 +11,12 @@ from requests.auth import HTTPBasicAuth
 
 from .http_client import DEFAULT_HTTP_TIMEOUT_SECONDS, format_seconds, split_request_timeout
 
+# Central policy values; code tuning points, not per-profile UI settings.
 MAX_PAGINATION_PAGES = 1_000
+MAX_COLLECTION_OBJECTS = 100_000
+MAX_COLLECTION_BYTES = 64 * 1024 * 1024
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+RESPONSE_CHUNK_BYTES = 64 * 1024
 
 
 class FortiAuthenticatorError(RuntimeError):
@@ -68,10 +74,19 @@ class FortiAuthenticatorClient:
         self.request("DELETE", f"/api/v1/macgroup-memberships/{_numeric_id(membership_id)}/")
 
     def get_all(self, endpoint: str, page_size: int = 500) -> list[dict[str, Any]]:
+        if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
+            raise FortiAuthenticatorError("Page size must be a positive integer.")
+        with requests.Session() as session:
+            return self._get_all(session, endpoint, page_size)
+
+    def _get_all(
+        self, session: requests.Session, endpoint: str, page_size: int,
+    ) -> list[dict[str, Any]]:
         objects: list[dict[str, Any]] = []
         next_endpoint: str | None = endpoint
         params: dict[str, Any] | None = {"limit": page_size}
         visited: set[str] = set()
+        received_bytes = 0
 
         while next_endpoint:
             if len(visited) >= MAX_PAGINATION_PAGES:
@@ -82,18 +97,31 @@ class FortiAuthenticatorClient:
                 raise FortiAuthenticatorError("FortiAuthenticator returned a repeating pagination link.")
             visited.add(next_endpoint)
 
-            page = self.request("GET", next_endpoint, params=params)
+            remaining = MAX_COLLECTION_BYTES - received_bytes
+            if remaining <= 0:
+                raise FortiAuthenticatorError("FortiAuthenticator collection exceeded its response byte budget.")
+            page, page_bytes = self._request(
+                session, "GET", next_endpoint, params=params,
+                max_bytes=min(MAX_RESPONSE_BYTES, remaining),
+            )
+            received_bytes += page_bytes
             params = None
-            page_objects = page.get("objects", [])
+            page_objects = page.get("objects")
             if not isinstance(page_objects, list) or not all(isinstance(item, dict) for item in page_objects):
                 raise FortiAuthenticatorError("FortiAuthenticator returned an invalid objects list.")
+            if len(objects) + len(page_objects) > MAX_COLLECTION_OBJECTS:
+                raise FortiAuthenticatorError(
+                    f"FortiAuthenticator collection exceeded {MAX_COLLECTION_OBJECTS:,} objects."
+                )
             objects.extend(page_objects)
 
             meta = page.get("meta", {})
             if not isinstance(meta, dict):
                 raise FortiAuthenticatorError("FortiAuthenticator returned invalid pagination metadata.")
             next_value = meta.get("next")
-            next_endpoint = str(next_value) if next_value else None
+            if next_value is not None and not isinstance(next_value, str):
+                raise FortiAuthenticatorError("FortiAuthenticator returned an invalid pagination link.")
+            next_endpoint = next_value or None
 
         return objects
 
@@ -104,6 +132,18 @@ class FortiAuthenticatorClient:
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        with requests.Session() as session:
+            return self._request(session, method, endpoint, params=params, json=json)[0]
+
+    def _request(
+        self,
+        session: requests.Session,
+        method: str,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+        max_bytes: int | None = None,
+    ) -> tuple[dict[str, Any], int]:
         url = urljoin(f"{self.host}/", endpoint.lstrip("/"))
         configured = urlparse(self.host)
         destination = urlparse(url)
@@ -131,7 +171,7 @@ class FortiAuthenticatorClient:
             )
         request_timeout = split_request_timeout(self.timeout)
         try:
-            response = requests.request(
+            response = session.request(
                 method,
                 url,
                 auth=HTTPBasicAuth(self.username, self.password),
@@ -140,7 +180,25 @@ class FortiAuthenticatorClient:
                 json=json,
                 verify=self.verify_tls,
                 timeout=request_timeout,
+                stream=True,
+                allow_redirects=False,
             )
+            try:
+                if 300 <= response.status_code < 400:
+                    raise FortiAuthenticatorError(
+                        "FortiAuthenticator returned an API redirect; use the final appliance URL in the profile.",
+                        status_code=response.status_code,
+                    )
+                content = bytearray()
+                limit = MAX_RESPONSE_BYTES if max_bytes is None else max_bytes
+                for chunk in response.iter_content(chunk_size=RESPONSE_CHUNK_BYTES):
+                    if len(content) + len(chunk) > limit:
+                        raise FortiAuthenticatorError(
+                            f"FortiAuthenticator response exceeded the remaining byte budget ({limit:,} bytes)."
+                        )
+                    content.extend(chunk)
+            finally:
+                response.close()
         except requests.ConnectTimeout as exc:
             raise FortiAuthenticatorError(
                 f"Could not connect to FortiAuthenticator at {self.host} within "
@@ -151,7 +209,7 @@ class FortiAuthenticatorClient:
                 f"FortiAuthenticator at {self.host} accepted the connection but did not respond within "
                 f"{format_seconds(request_timeout[1])}. Try again or increase the profile request timeout."
             ) from exc
-        except requests.SSLError as exc:
+        except requests.exceptions.SSLError as exc:
             raise FortiAuthenticatorError(
                 f"TLS verification failed for FortiAuthenticator at {self.host}. "
                 "Confirm the certificate is trusted, or disable TLS verification for this profile if appropriate."
@@ -165,31 +223,31 @@ class FortiAuthenticatorClient:
             raise FortiAuthenticatorError(f"FortiAuthenticator request failed: {exc}") from exc
 
         if response.status_code >= 400:
-            body = _response_message(response)
+            body = _response_message(response, content)
             raise FortiAuthenticatorError(
                 _http_error_message(response, method, endpoint, body),
                 status_code=response.status_code,
                 response_body=body,
             )
 
-        if not response.content:
-            return {}
+        if not content:
+            return {}, 0
         try:
-            data = response.json()
-        except ValueError as exc:
+            data = json_module.loads(content)
+        except (ValueError, RecursionError) as exc:
             raise FortiAuthenticatorError(
-                f"Expected a JSON response from FortiAuthenticator, got: {response.text[:200]}"
+                f"Expected a JSON response from FortiAuthenticator, got: {content[:200].decode(errors='replace')}"
             ) from exc
         if not isinstance(data, dict):
             raise FortiAuthenticatorError("Expected a JSON object from FortiAuthenticator.")
-        return data
+        return data, len(content)
 
 
-def _response_message(response: requests.Response) -> str:
+def _response_message(response: requests.Response, content: bytes | bytearray) -> str:
     try:
-        data = response.json()
-    except ValueError:
-        body = response.text.strip()
+        data = json_module.loads(content)
+    except (ValueError, RecursionError):
+        body = content.decode(errors="replace").strip()
         if "text/html" in response.headers.get("Content-Type", "").lower() or body.lower().startswith(
             ("<!doctype html", "<html")
         ):
