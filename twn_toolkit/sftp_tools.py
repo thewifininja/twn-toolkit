@@ -13,6 +13,7 @@ from string import Formatter
 from typing import Any
 
 from .network_tools import ToolInputError
+from .transfer_admission import transfer_slot
 from .transfer_deadlines import TransferDeadline, TransferPolicy, close_socket
 from .ssh_security import (
     close_ssh_client,
@@ -136,6 +137,7 @@ def fetch_ssh_files(
     protocol: str = "sftp",
     allow_legacy_algorithms: bool = False,
     policy: TransferPolicy | None = None,
+    instance_path: str | None = None,
 ) -> list[dict[str, Any]]:
     policy = policy or TransferPolicy()
     protocol = str(protocol).lower()
@@ -178,8 +180,13 @@ def fetch_ssh_files(
         )
         if protocol != "ftp":
             arguments["allow_legacy_algorithms"] = allow_legacy_algorithms
-        with TransferDeadline(policy.deadline_seconds) as deadline:
-            return fetcher(**arguments, policy=policy, deadline=deadline)
+        try:
+            with TransferDeadline(policy.deadline_seconds) as deadline:
+                with transfer_slot(instance_path, host["host"], deadline):
+                    return fetcher(**arguments, policy=policy, deadline=deadline)
+        except (TimeoutError, OSError) as exc:
+            return [_result(host["host"], host.get("label", ""), path, "error",
+                            error=f"Transfer admission/connection failed: {exc}") for path in remote_paths]
 
     results: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=min(policy.workers, len(hosts))) as executor:

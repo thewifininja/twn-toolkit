@@ -2692,6 +2692,7 @@ class AutomationRegistryTests(unittest.TestCase):
             )
             self.assertEqual(retained.status, "success")
             self.assertTrue(fetch_calls[-1]["allow_legacy_algorithms"])
+            self.assertEqual(fetch_calls[-1]["instance_path"], instance)
             self.assertEqual(fetch_calls[-1]["policy"].workers, 2)
             self.assertEqual(fetch_calls[-1]["policy"].file_bytes, 17 * 1024**2)
             source = Path(retained.output["_artifact_sources"][0]["source_path"])

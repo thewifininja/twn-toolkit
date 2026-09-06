@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass
 
 OUTGOING_TRANSFER_LIMITS = {
+    "transfer_connections": (32, 1, 256, "Outgoing connections across runs", "Shared by Bulk Transfer and automation on this instance. New admissions use the current limit."),
+    "transfer_host_connections": (4, 1, 64, "Outgoing connections per host", "Shared across transfer protocols and ports for the same host spelling. DNS aliases are separate."),
     "transfer_workers": (8, 1, 32, "Outgoing transfer workers", "Concurrent remote hosts per run."),
     "transfer_idle_seconds": (15, 1, 300, "Outgoing idle timeout (seconds)", "Bounds socket reads and writes."),
     "transfer_deadline_seconds": (300, 1, 86400, "Outgoing host deadline (seconds)", "Shared by connection setup and all requested files for one host."),

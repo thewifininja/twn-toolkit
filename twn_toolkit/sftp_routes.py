@@ -107,6 +107,7 @@ def register_sftp_routes(tools_bp: Blueprint) -> None:
                         output_dir=output_dir,
                         filename_pattern=filename_pattern,
                         protocol=str(form["protocol"]),
+                        instance_path=current_app.instance_path,
                         policy=TransferPolicy.from_settings(OperationalSettingsStore(current_app.instance_path).get()),
                     )
                     successes = [result for result in results if result["status"] == "success"]
