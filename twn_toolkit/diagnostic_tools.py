@@ -7,6 +7,9 @@ import re
 import selectors
 import socket
 import subprocess
+import os
+import sys
+from pathlib import Path
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -124,7 +127,72 @@ def parse_http_headers(value: str) -> dict[str, str]:
     return headers
 
 
+API_DEADLINE_ERROR = (
+    "API request deadline exceeded; no complete response was confirmed. "
+    "The remote operation may have executed; reconcile its state before retrying."
+)
+
+
 def send_api_request(
+    method: str, url: str, *, headers: dict[str, str] | None = None,
+    body: str = "", timeout: float = 10, verify_tls: bool = True,
+) -> dict[str, Any]:
+    """Run one request in a killable child; the budget includes process startup."""
+    _validate_api_request(method, url, timeout)
+    started = time.monotonic()
+    payload = json.dumps({
+        "parent": os.getpid(), "deadline": started + timeout,
+        "request": {"method": method, "url": url, "headers": headers,
+                    "body": body, "timeout": timeout, "verify_tls": verify_tls},
+    }).encode()
+    process = None
+    try:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "twn_toolkit.api_request_worker"],
+            cwd=str(Path(__file__).resolve().parent.parent),
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+        output, _ = process.communicate(payload, timeout=max(0, started + timeout - time.monotonic()))
+        if process.returncode == 124 or time.monotonic() >= started + timeout:
+            raise ToolInputError(API_DEADLINE_ERROR)
+        if process.returncode != 0:
+            raise ToolInputError("API request process exited without a confirmed response; reconcile any remote operation before retrying.")
+        message = json.loads(output)
+        if "error" in message:
+            raise ToolInputError(message["error"])
+        result = message["result"]
+        result["elapsed_ms"] = round((time.monotonic() - started) * 1000, 2)
+        return result
+    except subprocess.TimeoutExpired as exc:
+        raise ToolInputError(API_DEADLINE_ERROR) from exc
+    except ToolInputError:
+        raise
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ToolInputError("API request failed without a confirmed response; reconcile any remote operation before retrying.") from exc
+    finally:
+        if process is not None:
+            if process.poll() is None:
+                process.kill()
+            process.communicate()
+
+
+def _validate_api_request(method, url, timeout):
+    if method.upper() not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
+        raise ToolInputError("Select a supported HTTP method.")
+    try:
+        parsed = urlsplit(url.strip())
+        _ = parsed.port
+    except ValueError as exc:
+        raise ToolInputError("Enter a valid HTTP or HTTPS URL and port.") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username:
+        raise ToolInputError("Enter an HTTP or HTTPS URL without embedded credentials.")
+    if not 0.2 <= timeout <= 30:
+        raise ToolInputError("Timeout must be between 0.2 and 30 seconds.")
+    return parsed
+
+
+def _send_api_request(
     method: str,
     url: str,
     *,
@@ -133,14 +201,8 @@ def send_api_request(
     timeout: float = 10,
     verify_tls: bool = True,
 ) -> dict[str, Any]:
+    parsed = _validate_api_request(method, url, timeout)
     method = method.upper()
-    if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
-        raise ToolInputError("Select a supported HTTP method.")
-    parsed = urlsplit(url.strip())
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username:
-        raise ToolInputError("Enter an HTTP or HTTPS URL without embedded credentials.")
-    if not 0.2 <= timeout <= 30:
-        raise ToolInputError("Timeout must be between 0.2 and 30 seconds.")
     try:
         addresses = {
             item[4][0] for item in socket.getaddrinfo(parsed.hostname, parsed.port, type=socket.SOCK_STREAM)
