@@ -425,6 +425,14 @@ class EnrollmentClient:
             if key in payload
         }
 
+    def reset_credentials(self) -> None:
+        """Clear issued enrollment material while preserving device identity."""
+        for path in (self.pending_path, self.certificate_path, self.ca_path):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+
     def enrolled(self) -> bool:
         return self.certificate_path.exists() and self.ca_path.exists()
 

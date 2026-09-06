@@ -928,6 +928,18 @@ def register_admin_routes(
             flash("Enrollment requested. Compare the pairing code on both instances.", "success")
         return redirect(url_for("mainframe"))
 
+    @app.post("/mainframe/enroll/reset")
+    def reset_mainframe_enrollment():
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        settings = distributed_settings_store.get()
+        if settings["role"] != "agent":
+            return Response("This instance is not configured as an agent.", status=409)
+        EnrollmentClient(app.instance_path, settings["agent_mainframe_url"], settings["agent_mainframe_fallback_url"]).reset_credentials()
+        annotate_audit_event(category="Administration", action="distributed.enrollment_reset", summary="Cleared local Mainframe enrollment credentials.", resource_type="distributed enrollment", resource_id="local-agent", resource_name="Local Agent enrollment")
+        flash("Local enrollment credentials cleared. Revoke and remove the old agent on the Mainframe, then request enrollment again.", "success")
+        return redirect(url_for("mainframe", _anchor="agent-enrollment"))
+
     @app.post("/mainframe/enroll/poll")
     def poll_mainframe_enrollment():
         if not g.current_user.get("is_admin"):

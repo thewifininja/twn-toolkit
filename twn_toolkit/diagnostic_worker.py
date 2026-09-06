@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 from .diagnostic_jobs import DiagnosticJobStore
 from .network_tools import scan_tcp_ports
@@ -61,6 +62,9 @@ class DiagnosticScheduler:
                     [sys.executable, "-m", "twn_toolkit.diagnostic_worker",
                      "--instance", str(self.store.instance), "--job", job["id"]],
                     stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                    # POSIX daemonization changes cwd to "/". Resolve the
+                    # package root explicitly for source checkouts and bundles.
+                    cwd=str(Path(__file__).resolve().parent.parent),
                     # Use the scheduler log; inputs and tokens are never logged.
                     close_fds=True,
                 )
