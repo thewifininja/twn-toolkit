@@ -47,6 +47,21 @@ requires access to both tools. Large files are read in bounded pages; use
 Wireshark or another dedicated analyzer for filtering, streams, payloads, and
 deep decoding.
 
+Uncompressed PCAPNG pages reuse a bounded in-memory index within each web worker.
+The index stores block positions and interface decoding metadata, never packet
+payloads or open files. Adjacent pages resume at a known packet boundary; a cold
+worker or an evicted index scans block headers first. Changes to file identity,
+size, or modification metadata invalidate the index, including a growing file.
+Multi-interface and multi-section captures preserve each section's byte order,
+link types, and timestamp resolution/offset. Unsupported calendar timestamps
+show `—` while packet headers remain available.
+
+The viewer rejects malformed PCAPNG blocks, packets larger than 16 MiB, and
+sections with more than 4,096 interfaces. An incomplete trailing block is retried
+for a running capture and reported as incomplete for a completed file. Index
+budgets are centralized implementation settings in `pcapng_index.py` (16 files,
+128 checkpoints per file, and 4,096 cached interface references per file).
+
 ## Permissions
 
 `tcpdump` must be installed and available on the toolkit service `PATH`. The
