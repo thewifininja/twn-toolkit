@@ -234,9 +234,14 @@ class FakeClient:
         self.renew_state = renew_state
         self.lease_seconds = lease_seconds
         self.calls = []
+        self.renewed = threading.Event()
+        self.renewer = None
 
     def job_control(self, _job, action):
         self.calls.append(action)
+        if action == "renew":
+            self.renewer = threading.current_thread()
+            self.renewed.set()
         state = self.start_state if action == "start" else self.renew_state
         return {"state": state, "lease_seconds": self.lease_seconds}
 
@@ -258,7 +263,7 @@ def test_agent_receipt_is_durable_before_execution_and_renews_lease(tmp_path):
     ran = []
     def execute(*_args):
         ran.append(True)
-        time.sleep(0.12)
+        assert client.renewed.wait(5), "lease renewal did not run"
         return {"complete": True}
 
     execute_owned(tmp_path, [owned_job()], client, "regular", execute)
@@ -307,7 +312,11 @@ def test_agent_stops_renewing_after_cancellation_is_requested(tmp_path):
     client = FakeClient(renew_state="cancel_requested", lease_seconds=0.05)
 
     def execute(*_args):
-        time.sleep(0.12)
+        assert client.renewed.wait(5), "lease renewal did not run"
+        # Cancellation must end renewal while execution is still active, before
+        # execute_owned sets its own stop event during final cleanup.
+        client.renewer.join(timeout=5)
+        assert not client.renewer.is_alive(), "renewal continued after cancellation"
         return {"completed_after_cancellation": True}
 
     execute_owned(tmp_path, [owned_job()], client, "regular", execute)
