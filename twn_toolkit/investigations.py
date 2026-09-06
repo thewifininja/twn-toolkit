@@ -1149,7 +1149,7 @@ class InvestigationStore:
         before_event_id: str = "",
         after_event_id: str = "",
     ) -> dict[str, Any]:
-        """Return one chronological cursor page for the interactive journal."""
+        """Return a chronological summary page without retained diagnostic payloads."""
         before_event_id = str(before_event_id).strip()
         after_event_id = str(after_event_id).strip()
         if before_event_id and after_event_id:
@@ -1185,7 +1185,11 @@ class InvestigationStore:
                 order = "ORDER BY e.started_at ASC, e.created_at ASC, e.id ASC"
             rows = connection.execute(
                 f"""
-                SELECT e.*, origins.source_case_id AS origin_case_id,
+                SELECT e.id, e.investigation_id, e.operation_id, e.event_type,
+                    e.tool_id, e.action, e.outcome, e.summary, e.report_placement,
+                    e.important, e.started_at, e.completed_at,
+                    e.created_by_user_id, e.created_by_username, e.created_at,
+                    origins.source_case_id AS origin_case_id,
                     origins.source_event_id AS origin_event_id
                 FROM investigation_events e
                 LEFT JOIN investigation_event_origins origins
@@ -1201,7 +1205,7 @@ class InvestigationStore:
         if cursor_id and not page_rows:
             raise InvestigationError("Journal page is unavailable.")
         chronological_rows = page_rows if after_event_id else reversed(page_rows)
-        events = [self._event(row) for row in chronological_rows]
+        events = [self._event_summary(row) for row in chronological_rows]
         has_older = has_more_in_direction if not after_event_id else bool(events)
         has_newer = has_more_in_direction if after_event_id else bool(events and before_event_id)
         return {
@@ -2428,9 +2432,13 @@ class InvestigationStore:
         return result
 
     def _event(self, row: sqlite3.Row) -> dict[str, Any]:
-        result = dict(row)
+        result = self._event_summary(row)
         for key in ("targets", "parameters", "metrics", "details"):
             result[key] = json.loads(result.pop(f"{key}_json"))
+        return result
+
+    def _event_summary(self, row: sqlite3.Row) -> dict[str, Any]:
+        result = dict(row)
         result["important"] = bool(result["important"])
         result["started_display"] = self._display_time(float(result["started_at"]))
         result["completed_display"] = self._display_time(float(result["completed_at"]))
