@@ -32,7 +32,7 @@ from .distributed_agents import pairing_code
 from .distributed_job_epochs import DistributedJobStore
 from .distributed_jobs import JOB_PROTOCOL_VERSION
 from .operational import OperationalSettingsStore
-from .distributed_polling import LongPollBudget, PollCapacityError, POLL_RETRY_SECONDS
+from .distributed_polling import LongPollBudget, PollCapacityError, POLL_RETRY_SECONDS, CONTROL_STATUS_SECONDS
 
 
 PROTOCOL_VERSION = 1
@@ -199,7 +199,8 @@ class EnrollmentServer:
         return response
 
     def heartbeat(
-        self, certificate_der: bytes | None, payload: dict[str, Any], address: str
+        self, certificate_der: bytes | None, payload: dict[str, Any], address: str,
+        *, control_only: bool = False,
     ) -> dict[str, Any]:
         agent_id = self._approved_certificate_agent(certificate_der)
         if int(payload.get("protocol", 0)) != PROTOCOL_VERSION:
@@ -224,11 +225,15 @@ class EnrollmentServer:
         except (TypeError, ValueError) as exc:
             raise ValueError("Agent wait time must be a number.") from exc
         wait_seconds = max(0.0, min(wait_seconds, MAX_LONG_POLL_SECONDS))
-        jobs, retry = self._poll_jobs(
-            agent_id, activation_id, wait_seconds, payload,
-            exclude_capability_id="system.http.tunnel" if wait_seconds > 0 else "",
-            interval=0.1,
-        )
+        if control_only:
+            # Never acquire ownership or wait for work on the status endpoint.
+            jobs, retry = [], CONTROL_STATUS_SECONDS
+        else:
+            jobs, retry = self._poll_jobs(
+                agent_id, activation_id, wait_seconds, payload,
+                exclude_capability_id="system.http.tunnel" if wait_seconds > 0 else "",
+                interval=0.1,
+            )
         return {
             "protocol": PROTOCOL_VERSION,
             "job_protocol": JOB_PROTOCOL_VERSION,
@@ -433,12 +438,13 @@ class EnrollmentClient:
         activation_id: str = "",
         results: list[dict[str, Any]] | None = None,
         wait_seconds: float = 0,
+        control_only: bool = False,
     ) -> dict[str, Any]:
         if not self.enrolled():
             raise EnrollmentTransportError("This agent has not completed enrollment.")
         return self._request(
             "POST",
-            "/v1/heartbeat",
+            "/v1/agent-status" if control_only else "/v1/heartbeat",
             {
                 "protocol": PROTOCOL_VERSION,
                 "capabilities": capabilities,
@@ -529,6 +535,11 @@ class EnrollmentClient:
                     self.mainframe_urls.insert(0, mainframe_url)
                 break
             except urllib.error.HTTPError as exc:
+                exc.close()
+                if path == "/v1/agent-status" and exc.code == 404:
+                    raise EnrollmentTransportError(
+                        "Upgrade and restart the Mainframe worker for independent Agent status reporting."
+                    ) from exc
                 raise EnrollmentTransportError(
                     f"Mainframe enrollment request failed: {exc}"
                 ) from exc
@@ -630,7 +641,7 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
             )
 
         def do_POST(self) -> None:
-            if self.path not in {"/v1/enrollment", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control"}:
+            if self.path not in {"/v1/enrollment", "/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control"}:
                 self._json(404, {"error": "Not found."})
                 return
             try:
@@ -640,7 +651,7 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
                 return
             maximum = (
                 MAX_AGENT_RPC_BYTES
-                if self.path in {"/v1/heartbeat", "/v1/interactive", "/v1/jobs/control"}
+                if self.path in {"/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control"}
                 else MAX_ENROLLMENT_REQUEST_BYTES
             )
             if not 0 < length <= maximum:
@@ -654,11 +665,12 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
                     result = enrollment_server.begin_enrollment(
                         payload, str(self.client_address[0])
                     )
-                elif self.path == "/v1/heartbeat":
+                elif self.path in {"/v1/heartbeat", "/v1/agent-status"}:
                     result = enrollment_server.heartbeat(
                         self.connection.getpeercert(binary_form=True),
                         payload,
                         str(self.client_address[0]),
+                        control_only=self.path == "/v1/agent-status",
                     )
                 elif self.path == "/v1/jobs/control":
                     result = enrollment_server.job_control(self.connection.getpeercert(binary_form=True), payload)
