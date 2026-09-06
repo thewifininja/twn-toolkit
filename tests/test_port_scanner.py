@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -19,19 +20,24 @@ class PortScannerTests(unittest.TestCase):
             parse_tcp_ports("0, 443")
 
     def test_scans_and_preserves_target_port_order(self) -> None:
-        class OpenSocket:
+        class ScanSocket:
             def __enter__(self):
                 return self
 
             def __exit__(self, *_args):
                 return None
 
-        def connect(address, timeout):
-            if address[1] == 22:
-                return OpenSocket()
-            raise ConnectionRefusedError
+            def settimeout(self, timeout):
+                pass
 
-        with patch("twn_toolkit.network_tools.socket.create_connection", side_effect=connect):
+            def connect(self, address):
+                if address[1] != 22:
+                    raise ConnectionRefusedError
+
+        with patch("twn_toolkit.network_tools.socket.socket", return_value=ScanSocket()), patch(
+            "twn_toolkit.network_tools.socket.getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.10", 0))],
+        ):
             results = scan_tcp_ports(
                 [{"label": "Switch", "host": "192.0.2.10"}],
                 [22, 443],

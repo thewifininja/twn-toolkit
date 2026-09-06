@@ -157,7 +157,10 @@ The sidebar and Network Tools page use the same functional organization.
   Datastore or a one-shot ZIP, using collision-safe filename templates and the
   same explicit legacy SSH exception for SFTP/SCP.
 - **TCP Port Scanner** — check individual ports or ranges across authorized
-  hosts.
+  hosts. Each scan resolves a hostname once and reuses its ordered addresses
+  across ports, trying the next address if a connection fails. A new scan
+  refreshes DNS; this also applies to automation TCP service checks. The
+  connection timeout applies to each address attempt, not DNS or the whole scan.
 
 - **Remote Terminal** — keep up to twelve owner-scoped SSH, Telnet, or local serial-console sessions running under
   the toolkit service, including multiple sessions to the same saved host, and
