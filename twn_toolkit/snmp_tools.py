@@ -29,6 +29,7 @@ from pysnmp.hlapi.v3arch.asyncio import (
     walk_cmd,
 )
 
+from .automation_execution import condition_worker_map
 from .network_tools import ToolInputError
 
 
@@ -278,7 +279,20 @@ def run_snmp_tests(
     hosts: list[dict[str, Any]],
     credentials_by_name: dict[str, dict[str, Any]],
     oid_profiles: list[dict[str, Any]],
+    *,
+    condition_workers: bool = False,
 ) -> list[dict[str, Any]]:
+    if condition_workers:
+        jobs = [(host, profile) for host in hosts for profile in oid_profiles]
+
+        def poll(job):
+            host, profile = job
+            # Each poll owns its event loop and engine through dispatcher cleanup.
+            return asyncio.run(_poll_host_profile(
+                host, credentials_by_name[host["credential_name"]], profile,
+            ))
+
+        return condition_worker_map(poll, jobs, max(1, len(jobs)))
     return asyncio.run(_run_snmp_tests(hosts, credentials_by_name, oid_profiles))
 
 
