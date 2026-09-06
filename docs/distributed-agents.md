@@ -124,7 +124,13 @@ Fleet jobs remain a separate versioned capability system for orchestration.
 Messages use a versioned envelope with a stable job identifier, message type,
 protocol version, and bounded payload. Peers advertise toolkit version,
 protocol range, platform, and capability versions. The mainframe may dispatch a
-job only when the selected agent advertises a compatible capability.
+job only when the selected agent advertises a compatible capability. Toolkit
+version is also an operational compatibility boundary: upgrade and restart the
+Mainframe first, then upgrade and restart every Agent before relying on GUI
+tunneling or durable jobs. A released Agent may continue to heartbeat against a
+newer development Mainframe while its interactive lanes fail to claim tunnel
+work; the selector currently exposes capability and liveness but does not yet
+block this mixed-version state.
 
 The target job contract includes:
 

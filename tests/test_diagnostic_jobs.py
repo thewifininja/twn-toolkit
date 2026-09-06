@@ -258,3 +258,63 @@ def test_completed_result_keeps_process_ownership_until_recording_has_finished(t
         assert scheduler.store.owned(job_id, work["token"]) is None
     finally:
         scheduler.close()
+
+
+def test_real_daemon_scheduler_launches_diagnostics_without_repository_cwd(tmp_path):
+    import os
+    import signal
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    instance = tmp_path / "instance"
+    instance.mkdir()
+    pidfile = instance / "scheduler.pid"
+    logfile = instance / "scheduler.log"
+    store = DiagnosticJobStore(instance)
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    pid = None
+    try:
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            settings = config()
+            settings["ports"] = [listener.getsockname()[1]]
+            job_id = store.enqueue(user_id="owner", config=settings)
+            subprocess.run(
+                [sys.executable, "-m", "twn_toolkit.automation_worker",
+                 "--instance", str(instance), "--daemon",
+                 "--pid-file", str(pidfile), "--log-file", str(logfile)],
+                cwd=root, env=environment, check=True, timeout=10,
+            )
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                if pidfile.exists():
+                    pid = int(pidfile.read_text())
+                job = store.get(job_id, "owner")
+                if job["state"] not in {"queued", "running", "cancel_requested"}:
+                    break
+                time.sleep(0.05)
+            log = logfile.read_text() if logfile.exists() else ""
+            assert job["state"] == "succeeded", (job["error"], log)
+            assert job["summary"]["stats"]["open"] == 1
+            assert "No module named" not in log
+            # Linux confirms that this really exercised the daemon's cwd.
+            if Path("/proc").is_dir() and pid is not None:
+                assert os.readlink(f"/proc/{pid}/cwd") == "/"
+    finally:
+        if pid is None and pidfile.exists():
+            pid = int(pidfile.read_text())
+        if pid is not None:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            deadline = time.monotonic() + 10
+            while pidfile.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            if pidfile.exists():
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass

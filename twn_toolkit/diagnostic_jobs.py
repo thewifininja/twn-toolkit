@@ -20,7 +20,7 @@ TERMINAL = ("succeeded", "failed", "cancelled", "unknown")
 
 class DiagnosticJobStore:
     def __init__(self, instance):
-        self.instance = Path(instance)
+        self.instance = Path(instance).resolve()
         self.path = self.instance / "diagnostic_jobs.sqlite3"
         self.policy = OperationalSettingsStore(str(instance))
         self.cipher = DistributedPayloadCipher(self.instance)

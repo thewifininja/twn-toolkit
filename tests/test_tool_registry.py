@@ -134,6 +134,7 @@ class ToolRegistryTests(unittest.TestCase):
             "index",
             "save_dashboard_layout",
             "reset_dashboard_layout",
+            "reset_mainframe_enrollment",
             "login",
             "logout",
             "reset_activity_metric",

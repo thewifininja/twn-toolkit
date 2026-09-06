@@ -49,6 +49,7 @@ class DiagnosticToolTests(unittest.TestCase):
 
     def test_api_request_is_bounded_no_redirect_and_redacts_secrets(self) -> None:
         response = Mock()
+        response.close = Mock()
         response.status_code = 302
         response.reason = "Found"
         response.headers = {"Location": "https://example.test/next", "Set-Cookie": "secret"}
@@ -72,6 +73,34 @@ class DiagnosticToolTests(unittest.TestCase):
         self.assertEqual(result["response_headers"]["Set-Cookie"], "[redacted]")
         self.assertFalse(request_mock.call_args.kwargs["allow_redirects"])
         self.assertTrue(request_mock.call_args.kwargs["stream"])
+        self.assertEqual(request_mock.call_args.kwargs["timeout"], (10, 10))
+        response.close.assert_called_once_with()
+
+    def test_api_response_total_deadline_closes_slow_stream(self) -> None:
+        import time
+        response = Mock()
+        response.status_code = 200
+        response.reason = "OK"
+        response.headers = {"Content-Type": "text/plain"}
+        response.encoding = "utf-8"
+        response.close = Mock()
+
+        def trickle(_size):
+            for _ in range(20):
+                time.sleep(0.03)
+                yield b"x"
+
+        response.iter_content.side_effect = trickle
+        with (
+            patch(
+                "twn_toolkit.diagnostic_tools.socket.getaddrinfo",
+                return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.3", 443))],
+            ),
+            patch("twn_toolkit.diagnostic_tools.requests.request", return_value=response),
+        ):
+            with self.assertRaises(ToolInputError):
+                send_api_request("GET", "https://example.test/slow", timeout=0.2)
+        response.close.assert_called_once_with()
 
     def test_receives_udp_syslog_and_decodes_priority(self) -> None:
         listener = Mock()

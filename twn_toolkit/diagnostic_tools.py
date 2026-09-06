@@ -151,13 +151,15 @@ def send_api_request(
         raise ToolInputError("The API destination resolved to an unusable address.")
 
     started = time.monotonic()
+    deadline = started + timeout
+    response = None
     try:
         response = requests.request(
             method,
             url,
             headers=headers or {},
             data=body.encode("utf-8") if body else None,
-            timeout=timeout,
+            timeout=(timeout, timeout),
             verify=verify_tls,
             allow_redirects=False,
             stream=True,
@@ -166,6 +168,8 @@ def send_api_request(
         received = 0
         truncated = False
         for chunk in response.iter_content(65536):
+            if time.monotonic() >= deadline:
+                raise ToolInputError("API response exceeded the configured deadline.")
             if not chunk:
                 continue
             remaining = MAX_API_RESPONSE - received
@@ -175,9 +179,14 @@ def send_api_request(
                 break
             chunks.append(chunk)
             received += len(chunk)
+        if time.monotonic() >= deadline:
+            raise ToolInputError("API response exceeded the configured deadline.")
         raw = b"".join(chunks)
     except requests.RequestException as exc:
         raise ToolInputError(f"API request failed: {exc}") from exc
+    finally:
+        if response is not None:
+            response.close()
     elapsed_ms = round((time.monotonic() - started) * 1000, 2)
     content_type = response.headers.get("Content-Type", "")
     text = raw.decode(response.encoding or "utf-8", errors="replace")
