@@ -11,19 +11,34 @@ from pathlib import Path
 
 from .distributed_jobs import JOB_PROTOCOL_VERSION, MAX_JOB_PAYLOAD_BYTES
 from .operational import OperationalSettingsStore
+from .distributed_payloads import DistributedPayloadCipher
 _BOOT_ID = secrets.token_hex(16)
 
 
 class OperationReceipts:
     def __init__(self, instance):
         root = Path(instance)
+        root.mkdir(parents=True, exist_ok=True)
+        self._cipher = DistributedPayloadCipher(root)
         self.path = root / "distributed-operation-receipts.sqlite3"
         self.operational_store = OperationalSettingsStore(str(root))
         with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             db.execute("CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY, token TEXT NOT NULL, activation TEXT NOT NULL, lane TEXT NOT NULL, boot TEXT NOT NULL, result TEXT, acknowledged INTEGER NOT NULL DEFAULT 0, updated REAL NOT NULL)")
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(receipts)")}
+            if "payload_expires_at" not in columns:
+                db.execute("ALTER TABLE receipts ADD COLUMN payload_expires_at REAL")
+                for row in db.execute("SELECT id, result, updated, acknowledged FROM receipts WHERE result IS NOT NULL"):
+                    db.execute(
+                        "UPDATE receipts SET result = ?, payload_expires_at = ? WHERE id = ?",
+                        (self._cipher.seal(row["result"], row["id"] + ":receipt") if not row["acknowledged"] else "{}",
+                         row["updated"] + self._retention_seconds() if not row["acknowledged"] else None, row["id"]),
+                    )
+            db.execute("CREATE INDEX IF NOT EXISTS receipts_payload_expiry ON receipts(payload_expires_at) WHERE payload_expires_at IS NOT NULL")
             for row in db.execute("SELECT * FROM receipts WHERE result IS NULL AND boot != ?", (_BOOT_ID,)).fetchall():
                 result = {"id": row["id"], "attempt_token": row["token"], "state": "unknown", "output": {}, "error": "Agent restarted after accepting execution. Reconcile before retrying."}
-                db.execute("UPDATE receipts SET result = ?, updated = ? WHERE id = ?", (json.dumps(result), time.time(), row["id"]))
+                db.execute("UPDATE receipts SET result = ?, updated = ? WHERE id = ?", (self._cipher.seal(json.dumps(result), row["id"] + ":receipt"), time.time(), row["id"]))
+            self._expire(db)
             db.execute("DELETE FROM receipts WHERE acknowledged = 1 AND updated < ?", (time.time() - self._retention_seconds(),))
         try:
             os.chmod(self.path, 0o600)
@@ -39,6 +54,7 @@ class OperationReceipts:
     def connect(self):
         db = sqlite3.connect(self.path, timeout=10, isolation_level="IMMEDIATE")
         db.row_factory = sqlite3.Row
+        db.execute("PRAGMA secure_delete = ON")
         return _Connection(db)
 
     def begin(self, job, lane):
@@ -85,21 +101,38 @@ class OperationReceipts:
             payload = json.dumps(result, separators=(",", ":"), sort_keys=True)
         with self.connect() as db:
             db.execute(
-                "UPDATE receipts SET result = ?, updated = ?, acknowledged = 0 "
+                "UPDATE receipts SET result = ?, updated = ?, payload_expires_at = ?, acknowledged = 0 "
                 "WHERE id = ? AND token = ?",
-                (payload, time.time(), job["id"], job["attempt_token"]),
+                (self._cipher.seal(payload, job["id"] + ":receipt"), time.time(), time.time() + self._retention_seconds(), job["id"], job["attempt_token"]),
+            )
+
+    def _expire(self, db):
+        for row in db.execute(
+            "SELECT id, result FROM receipts WHERE payload_expires_at <= ?",
+            (time.time(),),
+        ):
+            result = json.loads(self._cipher.open(row["result"], row["id"] + ":receipt"))
+            # Preserve the actual outcome and ownership; expiration cannot make
+            # an executed operation safe to repeat.
+            summary = {key: result[key] for key in ("id", "attempt_token", "state")}
+            summary.update(output={}, error="Agent result payload expired before acknowledgement. Execution state is retained.")
+            db.execute(
+                "UPDATE receipts SET result = ?, payload_expires_at = NULL WHERE id = ?",
+                (self._cipher.seal(json.dumps(summary), row["id"] + ":receipt"), row["id"]),
             )
 
     def pending(self, lane, activation):
         with self.connect() as db:
-            rows = db.execute("SELECT result FROM receipts WHERE lane = ? AND activation = ? AND result IS NOT NULL AND acknowledged = 0 ORDER BY updated LIMIT 1", (lane, activation)).fetchall()
-        return [json.loads(row[0]) for row in rows]
+            db.execute("BEGIN IMMEDIATE")
+            self._expire(db)
+            rows = db.execute("SELECT id, result FROM receipts WHERE lane = ? AND activation = ? AND result IS NOT NULL AND acknowledged = 0 ORDER BY updated LIMIT 1", (lane, activation)).fetchall()
+        return [json.loads(self._cipher.open(row["result"], row["id"] + ":receipt")) for row in rows]
 
     def discard_other_activations(self, activation):
         """Release receipts that cannot be reconciled after activation changes."""
         with self.connect() as db:
             db.execute(
-                "UPDATE receipts SET acknowledged = 1, result = '{}', updated = ? "
+                "UPDATE receipts SET acknowledged = 1, result = '{}', payload_expires_at = NULL, updated = ? "
                 "WHERE activation != ? AND acknowledged = 0",
                 (time.time(), activation),
             )
@@ -109,7 +142,7 @@ class OperationReceipts:
             for item in items:
                 if isinstance(item, dict) and item.get("status") in {"accepted", "rejected"}:
                     # Keep a small tombstone; never retain bulk output after acknowledgement.
-                    db.execute("UPDATE receipts SET acknowledged = 1, result = '{}', updated = ? WHERE id = ? AND token = ? AND result IS NOT NULL",
+                    db.execute("UPDATE receipts SET acknowledged = 1, result = '{}', payload_expires_at = NULL, updated = ? WHERE id = ? AND token = ? AND result IS NOT NULL",
                                (time.time(), item.get("id"), item.get("attempt_token")))
 
 

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .operational import OperationalSettingsStore
+from .distributed_payloads import DistributedPayloadCipher, SEALED_PREFIX
 
 
 MAX_JOB_PAYLOAD_BYTES = 256 * 1024
@@ -26,6 +27,7 @@ class DistributedJobStore:
         instance.mkdir(parents=True, exist_ok=True)
         self.path = instance / "distributed_jobs.sqlite3"
         self.operational_store = OperationalSettingsStore(str(instance))
+        self._cipher = DistributedPayloadCipher(instance)
         with self._connect(write=True) as connection:
             connection.execute(
                 """
@@ -60,6 +62,26 @@ class DistributedJobStore:
                 connection.execute("ALTER TABLE distributed_jobs ADD COLUMN attempt_token TEXT NOT NULL DEFAULT ''")
                 # Old in-flight deliveries have no ownership proof. Never redeliver them.
                 connection.execute("UPDATE distributed_jobs SET state = 'unknown', error = 'Legacy execution outcome is unknown; reconcile before retrying.' WHERE state = 'running'")
+            if "payload_expires_at" not in columns:
+                connection.execute("ALTER TABLE distributed_jobs ADD COLUMN payload_expires_at REAL")
+                connection.execute(
+                    "UPDATE distributed_jobs SET payload_expires_at = COALESCE(completed_at, created_at) + ?",
+                    (self._retention_seconds(),),
+                )
+                connection.execute(
+                    "UPDATE distributed_jobs SET input_json = '{}' "
+                    "WHERE capability_id = 'system.http.tunnel' AND state != 'queued'"
+                )
+                self._expire(connection)
+                # One transaction, one row at a time: no plaintext is written back.
+                for row in connection.execute("SELECT id, input_json, output_json, error FROM distributed_jobs"):
+                    connection.execute(
+                        "UPDATE distributed_jobs SET input_json = ?, output_json = ?, error = ? WHERE id = ?",
+                        (self._cipher.seal(row["input_json"], row["id"] + ":input"),
+                         self._cipher.seal(row["output_json"], row["id"] + ":output") if row["output_json"] else None,
+                         self._cipher.seal(row["error"], row["id"] + ":error"), row["id"]),
+                    )
+            connection.execute("CREATE INDEX IF NOT EXISTS distributed_jobs_payload_expiry ON distributed_jobs(payload_expires_at) WHERE payload_expires_at IS NOT NULL")
             connection.execute("CREATE INDEX IF NOT EXISTS distributed_jobs_state_lease ON distributed_jobs(state, lease_expires_at)")
             connection.execute(
                 """
@@ -77,6 +99,9 @@ class DistributedJobStore:
     def _lease_seconds(self) -> int:
         return int(self.operational_store.get()["distributed_job_lease_seconds"])
 
+    def _retention_seconds(self) -> int:
+        return int(self.operational_store.get()["distributed_receipt_retention_hours"]) * 3600
+
     def enqueue(
         self,
         *,
@@ -92,6 +117,8 @@ class DistributedJobStore:
         capability_version = _bounded_text(capability_version, 32, "Capability version")
         payload = _json_payload(inputs or {}, "Job input")
         job_id = f"job_{secrets.token_hex(16)}"
+        payload = self._cipher.seal(payload, job_id + ":input")
+        now = time.time()
         with self._connect(write=True) as connection:
             # Bind the activation in the insert, before a claimant or activation
             # change can observe the job. Legacy agents retain an empty epoch.
@@ -99,19 +126,19 @@ class DistributedJobStore:
                 """
                 INSERT INTO distributed_jobs
                     (id, agent_id, requester_id, capability_id,
-                     capability_version, input_json, state, created_at, activation_id)
-                VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, COALESCE(
+                     capability_version, input_json, state, created_at, payload_expires_at, activation_id)
+                VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, COALESCE(
                     (SELECT activation_id FROM distributed_agent_activations
                      WHERE agent_id = ?), ''
                 ))
                 """,
                 (job_id, agent_id, requester_id, capability_id, capability_version,
-                 payload, time.time(), agent_id),
+                 payload, now, now + self._retention_seconds(), agent_id),
             )
             row = connection.execute(
                 "SELECT * FROM distributed_jobs WHERE id = ?", (job_id,)
             ).fetchone()
-        return _job(row)
+        return self._job(row)
 
     def activate_agent(self, agent_id: str, activation_id: str) -> int:
         activation_id = _activation_id(activation_id)
@@ -138,6 +165,7 @@ class DistributedJobStore:
                     UPDATE distributed_jobs
                     SET state = CASE WHEN state IN ('queued', 'claimed') THEN 'cancelled' ELSE 'unknown' END, completed_at = ?, attempt_token = '',
                         lease_expires_at = NULL,
+                        input_json = CASE WHEN capability_id = 'system.http.tunnel' THEN '{}' ELSE input_json END,
                         error = 'Agent activation changed. Unstarted work was cancelled; reconcile any started operation.'
                     WHERE agent_id = ? AND activation_id != ?
                       AND state IN ('queued', 'claimed', 'running', 'cancel_requested')
@@ -167,6 +195,7 @@ class DistributedJobStore:
             "UPDATE distributed_jobs SET "
             "state = CASE WHEN state = 'claimed' THEN 'cancelled' ELSE 'unknown' END, "
             "completed_at = COALESCE(completed_at, ?), lease_expires_at = NULL, "
+            "input_json = CASE WHEN capability_id = 'system.http.tunnel' THEN '{}' ELSE input_json END, "
             "error = CASE WHEN state = 'claimed' "
             "THEN 'Claim expired before execution started.' "
             "ELSE 'Execution lease expired. Outcome unknown; reconcile before retrying.' END "
@@ -174,6 +203,30 @@ class DistributedJobStore:
             "AND lease_expires_at <= ?" + clause,
             values,
         )
+
+        connection.execute(
+            "UPDATE distributed_jobs SET input_json = '{}', output_json = NULL, "
+            "error = 'Payload retention expired. Execution state is retained; do not resubmit an unresolved operation.', "
+            "state = CASE WHEN state = 'queued' THEN 'cancelled' ELSE state END, "
+            "completed_at = CASE WHEN state = 'queued' THEN ? ELSE completed_at END, "
+            "payload_expires_at = NULL WHERE payload_expires_at <= ?" + clause,
+            [now, now] + ([job_id] if job_id else []),
+        )
+
+    def prune_payloads(self) -> None:
+        with self._connect(write=True) as connection:
+            self._expire(connection)
+
+    def discard_tunnel_output(self, job_id: str, *, requester_id: str) -> bool:
+        """Drop a response copy without deleting its durable outcome record."""
+        with self._connect(write=True) as connection:
+            cursor = connection.execute(
+                "UPDATE distributed_jobs SET output_json = NULL "
+                "WHERE id = ? AND requester_id = ? AND capability_id = 'system.http.tunnel' "
+                "AND state IN ('succeeded', 'failed')",
+                (job_id, requester_id),
+            )
+        return cursor.rowcount == 1
 
     def claim(self, agent_id: str, *, limit: int = 1, capability_id: str = "",
               exclude_capability_id: str = "", activation_id: str = "") -> list[dict[str, Any]]:
@@ -195,9 +248,9 @@ class DistributedJobStore:
             jobs = []
             for row in rows:
                 token = secrets.token_hex(32)
-                connection.execute("UPDATE distributed_jobs SET state = 'claimed', attempt_token = ?, lease_expires_at = ? WHERE id = ?", (token, now + lease_seconds, row["id"]))
+                connection.execute("UPDATE distributed_jobs SET state = 'claimed', attempt_token = ?, lease_expires_at = ?, input_json = CASE WHEN capability_id = 'system.http.tunnel' THEN '{}' ELSE input_json END WHERE id = ?", (token, now + lease_seconds, row["id"]))
                 jobs.append({"id": row["id"], "capability_id": row["capability_id"], "capability_version": row["capability_version"],
-                             "inputs": json.loads(row["input_json"]), "attempt_token": token, "activation_id": row["activation_id"],
+                             "inputs": json.loads(self._cipher.open(row["input_json"], row["id"] + ":input")), "attempt_token": token, "activation_id": row["activation_id"],
                              "lease_seconds": lease_seconds, "job_protocol": JOB_PROTOCOL_VERSION})
         return jobs
 
@@ -233,18 +286,20 @@ class DistributedJobStore:
                  error: str = "", attempt_token: str = "", activation_id: str = "") -> dict[str, Any]:
         if state not in {"succeeded", "failed", "unknown"}:
             raise ValueError("Agent result must be succeeded, failed, or unknown.")
-        payload = _json_payload(output or {}, "Job output")
+        payload = self._cipher.seal(_json_payload(output or {}, "Job output"), job_id + ":output")
+        sealed_error = self._cipher.seal(" ".join(str(error).split())[:1000], job_id + ":error")
         with self._connect(write=True) as connection:
+            self._expire(connection, job_id)
             row = self._owned(connection, job_id, agent_id, attempt_token, activation_id)
             if row["state"] in {"succeeded", "failed", "cancelled"}:
-                return _job(row)
+                return self._job(row)
             if row["state"] not in {"running", "cancel_requested", "unknown"}:
                 raise ValueError("An unstarted operation cannot complete.")
             # A receipt from the same attempt may resolve a previously unknown outcome.
-            connection.execute("UPDATE distributed_jobs SET state = ?, output_json = ?, error = ?, completed_at = ?, lease_expires_at = NULL WHERE id = ?",
-                               (state, payload, " ".join(str(error).split())[:1000], time.time(), job_id))
+            connection.execute("UPDATE distributed_jobs SET state = ?, output_json = ?, error = ?, completed_at = ?, payload_expires_at = ?, lease_expires_at = NULL WHERE id = ?",
+                               (state, payload, sealed_error, time.time(), time.time() + self._retention_seconds(), job_id))
             row = connection.execute("SELECT * FROM distributed_jobs WHERE id = ?", (job_id,)).fetchone()
-        return _job(row)
+        return self._job(row)
 
     def cancel(self, job_id: str, *, requester_id: str) -> dict[str, Any]:
         with self._connect(write=True) as connection:
@@ -253,11 +308,11 @@ class DistributedJobStore:
             if not row:
                 raise ValueError("Operation not found.")
             if row["state"] in {"queued", "claimed"}:
-                connection.execute("UPDATE distributed_jobs SET state = 'cancelled', completed_at = ?, error = 'Cancelled before execution started.' WHERE id = ?", (time.time(), job_id))
+                connection.execute("UPDATE distributed_jobs SET state = 'cancelled', input_json = CASE WHEN capability_id = 'system.http.tunnel' THEN '{}' ELSE input_json END, completed_at = ?, error = 'Cancelled before execution started.' WHERE id = ?", (time.time(), job_id))
             elif row["state"] == "running":
                 connection.execute("UPDATE distributed_jobs SET state = 'cancel_requested', error = 'Cancellation requested. Execution may still finish; do not resubmit.' WHERE id = ?", (job_id,))
             row = connection.execute("SELECT * FROM distributed_jobs WHERE id = ?", (job_id,)).fetchone()
-        return _job(row)
+        return self._job(row)
 
     def get(self, job_id: str) -> dict[str, Any] | None:
         with self._connect(write=True) as connection:
@@ -265,7 +320,7 @@ class DistributedJobStore:
             row = connection.execute(
                 "SELECT * FROM distributed_jobs WHERE id = ?", (job_id,)
             ).fetchone()
-        return _job(row) if row else None
+        return self._job(row) if row else None
 
     def get_for_requester(self, job_id: str, requester_id: str) -> dict[str, Any] | None:
         with self._connect(write=True) as connection:
@@ -274,7 +329,7 @@ class DistributedJobStore:
                 "SELECT * FROM distributed_jobs WHERE id = ? AND requester_id = ?",
                 (job_id, requester_id),
             ).fetchone()
-        return _job(row) if row else None
+        return self._job(row) if row else None
 
     def delete(self, job_id: str, *, requester_id: str) -> bool:
         with self._connect(write=True) as connection:
@@ -295,7 +350,7 @@ class DistributedJobStore:
                 """,
                 (requester_id, max(1, min(int(limit), 100))),
             ).fetchall()
-        return [_job(row) for row in rows]
+        return [self._job(row) for row in rows]
 
     def latest(
         self,
@@ -316,13 +371,14 @@ class DistributedJobStore:
                 """,
                 (agent_id, requester_id, capability_id, capability_version),
             ).fetchone()
-        return _job(row) if row else None
+        return self._job(row) if row else None
 
     @contextmanager
     def _connect(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         try:
+            connection.execute("PRAGMA secure_delete = ON")
             if write:
                 # Reserve before any read that governs a state transition.
                 # A deferred transaction begins too late to make claims exclusive.
@@ -332,13 +388,16 @@ class DistributedJobStore:
         finally:
             connection.close()
 
-
-def _job(row: sqlite3.Row) -> dict[str, Any]:
-    item = dict(row)
-    item["inputs"] = json.loads(item.pop("input_json"))
-    raw_output = item.pop("output_json")
-    item["output"] = json.loads(raw_output) if raw_output else None
-    return item
+    def _job(self, row: sqlite3.Row) -> dict[str, Any]:
+        item = dict(row)
+        item["inputs"] = json.loads(self._cipher.open(item.pop("input_json"), item["id"] + ":input"))
+        raw_output = item.pop("output_json")
+        item["output"] = json.loads(self._cipher.open(raw_output, item["id"] + ":output")) if raw_output else None
+        # Coordinator-generated status messages contain no caller-controlled data.
+        if item["error"].startswith(SEALED_PREFIX):
+            item["error"] = self._cipher.open(item["error"], item["id"] + ":error")
+        item.pop("payload_expires_at", None)
+        return item
 
 
 def _json_payload(value: Any, label: str) -> str:

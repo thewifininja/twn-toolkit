@@ -459,6 +459,12 @@ def create_app(instance_path: str | None = None) -> Flask:
                 return operation_status_response(current)
         if current["state"] == "unknown":
             return operation_status_response(current)
+        if current["state"] in {"succeeded", "failed"}:
+            # The in-memory response is enough to finish this request. Keep
+            # ownership/outcome metadata, not a second durable response body.
+            distributed_job_store.discard_tunnel_output(
+                job["id"], requester_id=g.current_user["id"]
+            )
         # Terminal operations remain visible to the requester. Never make a
         # timeout or a browser disconnect silently erase the only outcome record.
         if current["state"] != "succeeded" or not current.get("output"):

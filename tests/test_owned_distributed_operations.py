@@ -217,7 +217,7 @@ def test_migration_quarantines_unowned_legacy_running_work(tmp_path):
         db.execute(
             "INSERT INTO distributed_jobs VALUES "
             "('legacy', 'agent-a', 'operator-a', 'system.identity', '1', '{}', "
-            "'running', NULL, '', 1, 1, NULL, 9999999999)"
+            "'running', NULL, '', strftime('%s','now'), 1, NULL, 9999999999)"
         )
     store = DistributedJobStore(tmp_path)
     migrated = store.get("legacy")

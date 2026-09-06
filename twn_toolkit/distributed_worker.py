@@ -5,6 +5,7 @@ import json
 import os
 import platform
 import signal
+import sqlite3
 import socket
 import sys
 import threading
@@ -24,7 +25,8 @@ from .pidfiles import (
 from .version import APP_VERSION
 from .distributed_capabilities import advertised_capabilities, execute_capability
 from .distributed_operations import OperationReceipts, execute_owned
-from .distributed_jobs import JOB_PROTOCOL_VERSION
+from .distributed_jobs import JOB_PROTOCOL_VERSION, DistributedJobStore
+from .distributed_payloads import PAYLOAD_CLEANUP_INTERVAL_SECONDS
 
 
 def main() -> None:
@@ -86,7 +88,15 @@ def main() -> None:
                 )
                 thread.start()
                 interactive_threads.append(thread)
+        job_store = DistributedJobStore(instance) if settings["role"] == "mainframe" else None
+        next_payload_cleanup = 0.0
         while running:
+            if job_store is not None and time.monotonic() >= next_payload_cleanup:
+                next_payload_cleanup = time.monotonic() + PAYLOAD_CLEANUP_INTERVAL_SECONDS
+                try:
+                    job_store.prune_payloads()
+                except (OSError, sqlite3.Error, ValueError) as exc:
+                    print(f"Distributed payload cleanup failed: {type(exc).__name__}", file=sys.stderr, flush=True)
             if settings["role"] == "agent":
                 _agent_tick(instance, {**settings, "agent_wait_seconds": 20})
                 time.sleep(0.05)
