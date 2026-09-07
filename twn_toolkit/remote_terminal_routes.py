@@ -1362,10 +1362,15 @@ def _serial_devices() -> list[dict[str, object]]:
     return devices
 
 
-def _connection_library(user_id: str) -> dict[str, list[dict[str, object]]]:
+def _connection_library(user_id: str) -> dict[str, object]:
+    try:
+        page = max(1, int(request.args.get("host_page", "1")))
+    except ValueError:
+        page = 1
     library = _connection_store().library_for_user(
         user_id,
         is_admin=bool(getattr(g, "current_user", {}).get("is_admin")),
+        host_page=page, host_query=request.args.get("host_query", ""),
     )
     devices = {str(item["id"]): item for item in _serial_devices()}
     for host in library["hosts"]:

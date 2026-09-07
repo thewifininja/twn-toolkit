@@ -227,11 +227,24 @@
       {% endif %}
     </section>
   {% elif active_investigation_tab == 'report' %}
+    {% if report_pagination %}
+    <section class="panel">
+      <p>Report page {{ report_pagination.page }} of {{ report_pagination.pages }} · up to 50 timeline entries and 50 evidence files per page. Saving changes only the choices shown here. Downloads include the complete saved selection.</p>
+      <nav class="button-row" aria-label="Report pages">
+        {% if report_pagination.page > 1 %}<a class="button-link secondary" href="{{ url_for('investigation_report', investigation_id=investigation.id, report_page=report_pagination.page-1) }}">Previous report page</a>{% endif %}
+        {% if report_pagination.page < report_pagination.pages %}<a class="button-link secondary" href="{{ url_for('investigation_report', investigation_id=investigation.id, report_page=report_pagination.page+1) }}">Next report page</a>{% endif %}
+      </nav>
+      {% if investigation_events|selectattr('preview_shortened')|list %}<p class="field-note">Large diagnostic details are shortened in this preview. Retained evidence and downloaded reports keep the complete results.</p>{% endif %}
+    </section>
+    {% endif %}
     <section class="panel investigation-report-builder">
       {% call section_header("Report contents", "Choose what appears in the case report without deleting or changing anything in the journal or evidence library.", "Presentation only") %}
-        <span class="investigation-report-selection-count">{{ report_events|length }} timeline · {{ report_artifacts|length }} evidence</span>
+        <span class="investigation-report-selection-count">{{ report_pagination.included_events if report_pagination else report_events|length }} timeline · {{ report_pagination.included_artifacts if report_pagination else report_artifacts|length }} evidence</span>
       {% endcall %}
-      <form method="post" action="{{ url_for('update_investigation_report_contents', investigation_id=investigation.id) }}" class="investigation-report-builder-form">
+      <form method="post" action="{{ url_for('update_investigation_report_contents', investigation_id=investigation.id) }}" class="investigation-report-builder-form" data-unsaved-form>
+        {% if report_pagination %}<input type="hidden" name="page_selection" value="1"><input type="hidden" name="report_page" value="{{ report_pagination.page }}">
+        {% for event in investigation_events %}<input type="hidden" name="event_scope" value="{{ event.id }}">{% endfor %}
+        {% for artifact in investigation_artifacts %}<input type="hidden" name="artifact_scope" value="{{ artifact.id }}">{% endfor %}{% endif %}
         <div class="investigation-report-selection-grid">
           <fieldset{% if not investigation.can_manage_case %} disabled{% endif %}>
             <legend>Timeline entries</legend>
@@ -275,7 +288,7 @@
         <a class="button-link" href="{{ url_for('download_investigation_package', investigation_id=investigation.id) }}">Download case package</a>
         <a class="button-link secondary" href="{{ url_for('download_portable_investigation_case', investigation_id=investigation.id) }}">Export portable case</a>
         <a class="button-link secondary" href="{{ url_for('download_investigation_report_pdf', investigation_id=investigation.id) }}">Download PDF</a>
-        <button class="secondary" type="button" onclick="window.print()">Print preview</button>
+        <button class="secondary" type="button" onclick="window.print()">Print this page</button>
       </div>
     </section>
     <article class="investigation-report" aria-label="Case report">
@@ -292,6 +305,7 @@
             <article class="investigation-report-event">
               <header><div><time>{{ event.started_display }}</time><h3>{{ event.action }}</h3></div><span class="pill {{ 'success' if event.outcome == 'succeeded' else 'error' if event.outcome == 'failed' else '' }}">{{ event.outcome }}</span></header>
               <p>{{ event.summary }}</p>
+              {% if event.preview_shortened %}<p class="field-note">Preview shortened; complete results remain in downloaded reports.</p>{% endif %}
               {% set presentation = event_presentations[event.id] %}
               {% if presentation.facts %}
                 <dl class="investigation-report-event-facts">
@@ -329,4 +343,5 @@
     </article>
   {% endif %}
 </div>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=app_version) }}"></script>
 {% endblock %}

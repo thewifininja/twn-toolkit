@@ -24,6 +24,36 @@
   const quickProtocol = document.getElementById("remote-terminal-protocol");
   const hostProtocol = document.getElementById("remote-host-protocol");
   let library = JSON.parse(initial.textContent || "{}");
+  let libraryRequest = 0;
+  let searchTimer;
+  const pageStatus = document.querySelector("[data-library-status]");
+  search.value = library.pagination?.query || "";
+  document.querySelector("[data-library-previous]").addEventListener("click", () => loadLibrary((library.pagination?.page || 1) - 1));
+  document.querySelector("[data-library-next]").addEventListener("click", () => loadLibrary((library.pagination?.page || 1) + 1));
+
+  function libraryUrl(url, page = library.pagination?.page || 1) {
+    const target = new URL(url, window.location.href);
+    target.searchParams.set("host_page", page);
+    target.searchParams.set("host_query", search.value.trim());
+    return target;
+  }
+
+  async function loadLibrary(page = 1) {
+    clearTimeout(searchTimer);
+    const requestId = ++libraryRequest;
+    pageStatus.textContent = "Loading connections…";
+    try {
+      const response = await fetch(libraryUrl(manager.dataset.libraryUrl, page), {headers: {"Accept": "application/json"}});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Connections could not be loaded.");
+      if (requestId !== libraryRequest) return;
+      library = data.library;
+      selectedHosts.clear(); selectedFolders.clear();
+      render();
+    } catch (error) {
+      if (requestId === libraryRequest) pageStatus.textContent = error.message;
+    }
+  }
   // A large connection library should open as an index, not as an already
   // expanded wall of hosts. Searching still opens every matching path.
   let openedFolders = new Set();
@@ -108,7 +138,11 @@
     closeFolderMenus();
     trigger?.focus();
   });
-  search.addEventListener("input", renderTree);
+  search.addEventListener("input", () => {
+    ++libraryRequest;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadLibrary(1), 250);
+  });
   quickForm.querySelectorAll('input[name="quick_credential_mode"]').forEach((input) => {
     input.addEventListener("change", syncQuickCredentialMode);
   });
@@ -167,7 +201,12 @@
     library.folders ||= [];
     library.hosts ||= [];
     library.credentials ||= [];
-    count.textContent = `${library.hosts.length} host${library.hosts.length === 1 ? "" : "s"}`;
+    const paging = library.pagination || {total: library.hosts.length, matched: library.hosts.length, page: 1, pages: 1};
+    count.textContent = `${paging.total} host${paging.total === 1 ? "" : "s"}`;
+    document.querySelector("[data-library-page]").textContent = `${paging.page} / ${paging.pages}`;
+    document.querySelector("[data-library-previous]").disabled = paging.page <= 1;
+    document.querySelector("[data-library-next]").disabled = paging.page >= paging.pages;
+    pageStatus.textContent = `${paging.matched} matching hosts · ${library.hosts.length} on this page. Search covers all saved hosts.`;
     empty.hidden = library.hosts.length > 0 || library.folders.length > 0;
     tree.hidden = !empty.hidden;
     renderTree();
@@ -183,7 +222,7 @@
   }
 
   function renderTree() {
-    const query = search.value.trim().toLocaleLowerCase();
+    const query = (library.pagination?.query || "").toLocaleLowerCase();
     const root = document.createDocumentFragment();
     const rootHosts = matchingHosts("");
     rootHosts.forEach((host) => root.append(hostRow(host)));
@@ -205,7 +244,7 @@
     function matchingHosts(folderId) {
       return library.hosts
         .filter((host) => host.folder_id === folderId)
-        .filter((host) => !query || hostSearchText(host).includes(query))
+        .filter((host) => Boolean(library.pagination) || !query || hostSearchText(host).includes(query))
         .sort(byName);
     }
   }
@@ -214,7 +253,7 @@
     const childFolders = library.folders.filter((item) => item.parent_id === folder.id).sort(byName);
     const directHosts = library.hosts.filter((host) => host.folder_id === folder.id).sort(byName);
     const folderMatches = !query || folder.name.toLocaleLowerCase().includes(query);
-    const visibleHosts = directHosts.filter((host) => folderMatches || hostSearchText(host).includes(query));
+    const visibleHosts = directHosts.filter((host) => library.pagination || folderMatches || hostSearchText(host).includes(query));
     const childNodes = childFolders.map((child) => folderNode(child, query)).filter(Boolean);
     if (query && !folderMatches && !visibleHosts.length && !childNodes.length) return null;
 
@@ -234,7 +273,8 @@
     const name = document.createElement("strong");
     name.textContent = folder.name;
     const itemCount = document.createElement("small");
-    itemCount.textContent = String(directHosts.length + childFolders.length);
+    itemCount.textContent = library.pagination ? `${directHosts.length} shown` : String(directHosts.length + childFolders.length);
+    itemCount.title = "Hosts on this page; search covers the complete library.";
     toggle.append(folderIcon, name, itemCount);
     toggle.title = `${folderCredentialSummary(folder)} Availability: ${visibilityLabel(folder)}.${folder.owned ? "" : ` Owner ID: ${folder.user_id}.`}`;
 
@@ -563,7 +603,7 @@
         return;
       }
 
-      const response = await fetch(manager.dataset.importUrl, {
+      const response = await fetch(libraryUrl(manager.dataset.importUrl, 1), {
         method: "POST",
         headers: {"Accept": "application/json", "Content-Type": "application/json"},
         body: JSON.stringify(hostImportPayload()),
@@ -1255,7 +1295,9 @@
   }
 
   async function mutate(url, options) {
-    const response = await fetch(url, {
+    const requestId = ++libraryRequest;
+    clearTimeout(searchTimer);
+    const response = await fetch(libraryUrl(url), {
       method: options.method,
       headers: {"Accept": "application/json", "Content-Type": "application/json"},
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -1263,8 +1305,12 @@
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "The connection library could not be updated.");
     if (data.library) {
-      library = data.library;
-      render();
+      if (requestId === libraryRequest) {
+        library = data.library;
+        render();
+      } else {
+        await loadLibrary(library.pagination?.page || 1);
+      }
     }
     return data;
   }

@@ -45,6 +45,14 @@
       <span class="sr-only">Find a saved connection</span>
       <input id="remote-connection-search" type="search" placeholder="Find a connection…" autocomplete="off">
     </label>
+    <nav class="remote-library-pagination" aria-label="Connection pages">
+      <div class="button-row">
+        <button type="button" class="secondary compact" data-library-previous>Previous</button>
+        <span data-library-page></span>
+        <button type="button" class="secondary compact" data-library-next>Next</button>
+      </div>
+      <p class="field-note" data-library-status role="status" aria-live="polite"></p>
+    </nav>
     <div class="remote-connection-selection-bar" data-library-selection-bar hidden>
       <strong id="remote-connection-selection-count">0 selected</strong>
       <span class="button-row">

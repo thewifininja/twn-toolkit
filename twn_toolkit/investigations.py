@@ -1340,6 +1340,46 @@ class InvestigationStore:
             raise InvestigationError("Evidence file not found.")
         return self._artifact(row)
 
+    def report_page_for_user(self, investigation_id: str, user_id: str, *, page: int = 1) -> dict[str, Any]:
+        """Bound the interactive report without truncating retained evidence or exports."""
+        self.get_for_user(investigation_id, user_id)
+        with self._connect() as connection:
+            event_count = connection.execute("SELECT COUNT(*) FROM investigation_events WHERE investigation_id=?", (investigation_id,)).fetchone()[0]
+            artifact_count = connection.execute("SELECT COUNT(*) FROM investigation_artifacts WHERE investigation_id=?", (investigation_id,)).fetchone()[0]
+            pages = max(1, (max(event_count, artifact_count) + 49) // 50)
+            page = min(max(1, int(page)), pages)
+            payload_size = "+".join("length(CAST(" + key + "_json AS BLOB))" for key in ("targets", "parameters", "metrics", "details"))
+            payload_fields = ",".join("CASE WHEN " + payload_size + "<=32768 THEN " + key + "_json ELSE '{}' END AS " + key + "_json" for key in ("targets", "parameters", "metrics", "details"))
+            rows = connection.execute(
+                "SELECT id,investigation_id,operation_id,event_type,tool_id,action,outcome,summary,report_placement,important,started_at,completed_at,created_by_user_id,created_by_username,created_at,"
+                + payload_fields + ",(" + payload_size + ">32768) AS preview_shortened FROM investigation_events WHERE investigation_id=? ORDER BY started_at,created_at,id LIMIT 50 OFFSET ?",
+                (investigation_id, (page - 1) * 50)).fetchall()
+            artifacts = connection.execute("SELECT * FROM investigation_artifacts WHERE investigation_id=? ORDER BY created_at,id LIMIT 50 OFFSET ?", (investigation_id, (page - 1) * 50)).fetchall()
+            operators = [row[0] for row in connection.execute("SELECT DISTINCT created_by_username FROM investigation_events WHERE investigation_id=? ORDER BY created_by_username", (investigation_id,))]
+            included_events = connection.execute("SELECT COUNT(*) FROM investigation_events WHERE investigation_id=? AND report_placement='main'", (investigation_id,)).fetchone()[0]
+            included_artifacts = connection.execute("SELECT COUNT(*) FROM investigation_artifacts WHERE investigation_id=? AND report_placement='appendix'", (investigation_id,)).fetchone()[0]
+        events = [self._event(row) for row in rows]
+        for event in events:
+            def bounded(value, depth=0):
+                if depth > 8:
+                    event["preview_shortened"] = True
+                    return None
+                if isinstance(value, str) and len(value) > 512:
+                    event["preview_shortened"] = True
+                    return value[:512] + "…"
+                if isinstance(value, list):
+                    if len(value) > 100:
+                        event["preview_shortened"] = True
+                    return [bounded(item, depth + 1) for item in value[:100]]
+                if isinstance(value, dict):
+                    return {key: bounded(item, depth + 1) for key, item in value.items()}
+                return value
+            for key in ("targets", "parameters", "metrics", "details"):
+                event[key] = bounded(event[key])
+        return {"events": events, "artifacts": [self._artifact(row) for row in artifacts],
+                "page": page, "pages": pages, "event_count": event_count, "artifact_count": artifact_count,
+                "included_events": included_events, "included_artifacts": included_artifacts, "operators": operators}
+
     def set_report_contents(
         self,
         investigation_id: str,
@@ -1347,6 +1387,8 @@ class InvestigationStore:
         *,
         event_ids: list[str],
         artifact_ids: list[str],
+        event_scope: list[str] | None = None,
+        artifact_scope: list[str] | None = None,
     ) -> dict[str, int]:
         """Update report presentation without changing retained source evidence."""
         user_id = self._clean_identity(user_id, "user")
@@ -1361,61 +1403,49 @@ class InvestigationStore:
 
         with self._connect() as connection, connection:
             self._require_owner(connection, investigation_id, user_id)
-            available_events = {
-                str(row["id"])
-                for row in connection.execute(
-                    "SELECT id FROM investigation_events WHERE investigation_id = ?",
-                    (investigation_id,),
-                ).fetchall()
-            }
-            available_artifacts = {
-                str(row["id"])
-                for row in connection.execute(
-                    "SELECT id FROM investigation_artifacts WHERE investigation_id = ?",
-                    (investigation_id,),
-                ).fetchall()
-            }
+            def available_ids(table, scope):
+                if scope is None:
+                    return {str(row[0]) for row in connection.execute(
+                        "SELECT id FROM " + table + " WHERE investigation_id=?", (investigation_id,))}
+                identifiers = set(scope)
+                if len(identifiers) > 50:
+                    raise InvestigationError("A report page may contain at most 50 items of each kind.")
+                if not identifiers:
+                    return set()
+                placeholders = ",".join("?" for _ in identifiers)
+                return {str(row[0]) for row in connection.execute(
+                    "SELECT id FROM " + table + " WHERE investigation_id=? AND id IN (" + placeholders + ")",
+                    (investigation_id, *identifiers))}
+            available_events = available_ids("investigation_events", event_scope)
+            available_artifacts = available_ids("investigation_artifacts", artifact_scope)
             if not selected_events.issubset(available_events):
                 raise InvestigationError("The report contains an unknown journal event.")
             if not selected_artifacts.issubset(available_artifacts):
                 raise InvestigationError("The report contains an unknown evidence file.")
 
-            connection.execute(
-                """
-                UPDATE investigation_events
-                SET report_placement = 'excluded'
-                WHERE investigation_id = ?
-                """,
-                (investigation_id,),
-            )
-            connection.executemany(
-                """
-                UPDATE investigation_events
-                SET report_placement = 'main'
-                WHERE investigation_id = ? AND id = ?
-                """,
-                [(investigation_id, event_id) for event_id in selected_events],
-            )
-            connection.execute(
-                """
-                UPDATE investigation_artifacts
-                SET report_placement = 'excluded'
-                WHERE investigation_id = ?
-                """,
-                (investigation_id,),
-            )
-            connection.executemany(
-                """
-                UPDATE investigation_artifacts
-                SET report_placement = 'appendix'
-                WHERE investigation_id = ? AND id = ?
-                """,
-                [(investigation_id, artifact_id) for artifact_id in selected_artifacts],
-            )
-        return {
-            "included_events": len(selected_events),
-            "included_artifacts": len(selected_artifacts),
-        }
+            # A paginated form changes only the IDs it displayed. Validate both
+            # scopes before either table changes; off-page choices remain intact.
+            scopes = []
+            for table, scope, selected, available, placement in (
+                ("investigation_events", event_scope, selected_events, available_events, "main"),
+                ("investigation_artifacts", artifact_scope, selected_artifacts, available_artifacts, "appendix"),
+            ):
+                scoped = set(scope) if scope is not None else available
+                if scope is not None and len(scoped) > 50:
+                    raise InvestigationError("A report page may contain at most 50 items of each kind.")
+                if not scoped.issubset(available) or not selected.issubset(scoped):
+                    raise InvestigationError("The report page contains an unknown or undisplayed item.")
+                scopes.append((table, scoped, selected, placement))
+            for table, scoped, selected, placement in scopes:
+                connection.executemany(
+                    "UPDATE " + table + " SET report_placement=? WHERE investigation_id=? AND id=?",
+                    [(placement if identifier in selected else "excluded", investigation_id, identifier) for identifier in scoped])
+            counts = {
+                "included_events": connection.execute("SELECT COUNT(*) FROM investigation_events WHERE investigation_id=? AND report_placement='main'", (investigation_id,)).fetchone()[0],
+                "included_artifacts": connection.execute("SELECT COUNT(*) FROM investigation_artifacts WHERE investigation_id=? AND report_placement='appendix'", (investigation_id,)).fetchone()[0],
+            }
+        return counts
+
 
     def set_state(
         self,
