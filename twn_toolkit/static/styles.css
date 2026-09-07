@@ -11616,6 +11616,24 @@ button.compact,
   border-radius: 0;
 }
 
+.agent-enrollment-reset {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.agent-enrollment-reset > button {
+  justify-self: start;
+  max-width: 100%;
+  min-height: 44px;
+}
+
+.agent-enrollment-reset > .field-note {
+  margin: 0;
+}
+
 .mainframe-enrollment-status {
   align-items: center;
   display: flex;

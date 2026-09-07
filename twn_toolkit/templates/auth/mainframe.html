@@ -71,10 +71,10 @@
             {% if agent_runtime_status.state and agent_runtime_status.state != 'approved' %} Current state: {{ agent_runtime_status.state | replace('_', ' ') }}.{% endif %}
           </div>
           {% if agent_runtime_status.error %}<p class="field-note">{{ agent_runtime_status.error }}</p>{% endif %}
-          <form method="post" action="{{ url_for('reset_mainframe_enrollment') }}" onsubmit="return confirm('Clear this instance’s issued Mainframe credentials so it can request enrollment again?')">
-            <button type="submit" class="secondary compact">Reset local enrollment</button>
+          <form method="post" action="{{ url_for('reset_mainframe_enrollment') }}" class="agent-enrollment-reset" onsubmit="return confirm('Clear this instance’s issued Mainframe credentials so it can request enrollment again?')">
+            <button type="submit" class="secondary" aria-describedby="agent-enrollment-reset-note">Reset local enrollment</button>
+            <p class="field-note" id="agent-enrollment-reset-note">This preserves the device identity. Revoke and remove the old agent record on the Mainframe before requesting approval again.</p>
           </form>
-          <p class="field-note">This preserves the device identity. Revoke and remove the old agent record on the Mainframe before requesting approval again.</p>
         {% elif agent_enrollment_pending %}
           <div class="message warning"><strong>Pairing code:</strong> <code>{{ agent_enrollment_pending.pairing_code }}</code></div>
           <p>Compare this code with the pending agent shown on <code>{{ agent_enrollment_pending.mainframe_url }}</code>. It expires automatically.</p>
