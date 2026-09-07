@@ -1091,6 +1091,50 @@ class RemoteSessionRouteTests(unittest.TestCase):
         ssh_response = self.start_session(username="", password="")
         self.assertEqual(ssh_response.status_code, 400)
 
+    def test_shared_host_session_start_preserves_authenticated_role(self) -> None:
+        store = self.app.extensions["remote_connection_store"]
+        credential = store.save_credential(
+            user_id="library-owner", name="Shared credential",
+            remote_username="netadmin", password="fixture-password",
+        )
+        host = store.save_host(
+            user_id="library-owner", name="Shared switch", host="switch.example.test",
+            port=22, folder_id="", credential_mode="credential", credential_id=credential["id"],
+            allow_unknown_hosts=True, allow_legacy_algorithms=False,
+        )
+        for delegated, admin in [(False, True), (True, True), (True, False)]:
+            self.app.config["DISTRIBUTED_AGENT_DISPATCH"] = delegated
+            environ = {"twn.delegated_user": {
+                "id": "test-user", "username": "test-user", "is_admin": admin,
+            }} if delegated else {}
+            for visibility, credential_visibility in [
+                ("admins_only", "admins_only"), ("global", "global"),
+                ("private", "private"), ("global", "private"),
+            ]:
+                with self.subTest(delegated=delegated, admin=admin, visibility=visibility,
+                                  credential_visibility=credential_visibility):
+                    store.set_visibility("host", host["id"], user_id="library-owner", visibility=visibility)
+                    store.set_visibility("credential", credential["id"], user_id="library-owner", visibility=credential_visibility)
+                    library = self.client.get("/tools/remote-terminal/library", environ_overrides=environ).get_json()["library"]
+                    visible = visibility == "global" or (visibility == "admins_only" and admin)
+                    self.assertEqual(bool(library["hosts"]), visible)
+                    before = len(self.opener.calls)
+                    response = self.client.post("/tools/remote-terminal/sessions",
+                                                json={"host_id": host["id"]}, environ_overrides=environ)
+                    allowed = visible and credential_visibility != "private"
+                    self.assertEqual(response.status_code, 201 if allowed else 400, response.get_json())
+                    if allowed:
+                        session = response.get_json()["session"]
+                        wait_for_state(self.manager.store, session["id"], "running")
+                        self.assertEqual(self.opener.calls[-1]["username"], "netadmin")
+                        self.assertEqual(self.opener.calls[-1]["password"], "fixture-password")
+                        self.manager.stop_session(session["id"], user_id="test-user")
+                    else:
+                        self.assertEqual(len(self.opener.calls), before)
+                    # Shared use does not grant owner-only mutations.
+                    deleted = self.client.delete(f"/tools/remote-terminal/hosts/{host['id']}", environ_overrides=environ)
+                    self.assertEqual(deleted.status_code, 404)
+
     def test_saved_host_supports_multiple_independently_named_sessions(self) -> None:
         credential = self.client.post(
             "/tools/remote-terminal/credentials",

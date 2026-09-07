@@ -1465,11 +1465,12 @@ def _manager() -> RemoteSessionManager:
     return manager
 
 
-def _current_user() -> dict[str, str]:
+def _current_user() -> dict[str, str | bool]:
     user = getattr(g, "current_user", {}) or {}
     return {
         "id": str(user.get("id", "")),
         "username": str(user.get("username", "")),
+        "is_admin": bool(user.get("is_admin", False)),
     }
 
 
