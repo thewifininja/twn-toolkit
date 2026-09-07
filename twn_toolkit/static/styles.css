@@ -2492,6 +2492,12 @@ button.danger:hover {
 .fortiap-history-summary {
   display: grid;
   gap: 16px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fortiap-history-summary > * {
+  min-width: 0;
 }
 
 .summary-grid {

@@ -68,7 +68,7 @@ class DiagnosticJobStore:
         cleanup_transfer_artifacts(self)
 
     def enqueue(self, *, user_id, config, tool="tcp_scan"):
-        if tool not in {"tcp_scan", "dns", "transfer"} or not user_id:
+        if tool not in {"tcp_scan", "dns", "transfer", "wireless_history"} or not user_id:
             raise ValueError("Invalid diagnostic request.")
         policy = self.policy.get()
         if tool == "transfer":

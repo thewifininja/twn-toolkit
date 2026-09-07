@@ -12,7 +12,7 @@ Navigation away does not stop a scan or submit another copy. Recent runs and
 The existing automation scheduler supervises finite diagnostic subprocesses.
 It maintains a separate bounded diagnostic pool; automation and live-tool
 execution pools retain their existing limits. TCP scanning, DNS comparisons and
-DNS load tests and [Bulk Transfer](background-transfers.md) use this queue. Other synchronous routes remain separate migration work.
+DNS load tests, [Bulk Transfer](background-transfers.md), and [FortiGate wireless history](wireless-history-jobs.md) use this queue. Other synchronous routes remain separate migration work.
 
 Restart the automation scheduler and web workers on each instance that runs
 scans after updating. On an Agent, its local scheduler performs the scan; the
@@ -50,7 +50,7 @@ are not automatically retried.
 ## Policy
 
 Settings → Operations → Background diagnostic limits applies on the instance
-where the diagnostic executes. TCP, DNS, and Bulk Transfer share this queue and its policy. Transfer artifact admission adds headroom for downloaded files and their ZIP/datastore copy.
+where the diagnostic executes. TCP, DNS, Bulk Transfer, and FortiGate wireless history share this queue and its policy. Transfer artifact admission adds headroom for downloaded files and their ZIP/datastore copy.
 
 | Setting | Default | Range |
 | --- | --- | --- |

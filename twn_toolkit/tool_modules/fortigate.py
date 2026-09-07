@@ -127,6 +127,8 @@ def register_tools(registry: Any) -> None:
             "delete_profile": "fortigate.home",
             "test_profile": "fortigate.home",
             "fortiap_client_history": "fortigate.wireless_client_history",
+            "wireless_history_job_status": "fortigate.wireless_client_history",
+            "cancel_wireless_history_job": "fortigate.wireless_client_history",
             "switch_order": "fortigate.switch_order",
             "switch_order_objects": "fortigate.switch_order",
             "preview_switch_order": "fortigate.switch_order",
