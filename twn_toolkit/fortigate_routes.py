@@ -19,6 +19,7 @@ from flask import (
 )
 
 from .activity_context import record_current_activity
+from .preview_binding import issue_bound_preview, valid_bound_preview
 from .rename_preview import (
     RENAME_PREVIEW_MAX_AGE_SECONDS, issue_rename_preview, valid_rename_preview, rename_target,
 )
@@ -405,12 +406,33 @@ def register_fortigate_routes(
             f"{profile['name']}: {len(switches)} switches",
             count_action=False,
         )
-        return jsonify({"switches": switches, "row_count": len(switches), "vdom": vdom})
+        return jsonify({"switches": switches, "row_count": len(switches), "vdom": vdom,
+                        "target_origin": rename_target(profile),
+                        "load_token": issue_bound_preview("switch-order-load-v1", {
+                            "profile": profile, "vdom": vdom,
+                            "original_ids": [item["id"] for item in switches],
+                        })})
+
+    @app.post("/fortigate/switch-order/preview")
+    def preview_switch_order():
+        suppress_audit_event()
+        profile = profile_store.get(request.form.get("profile", ""))
+        vdom = request.form.get("vdom", "").strip() or (profile or {}).get("default_vdom", "root")
+        original = request.form.getlist("original_switch_id")
+        desired = request.form.getlist("switch_id")
+        context = {"profile": profile, "vdom": vdom, "original_ids": original}
+        if not profile or not _valid_switch_order(original, desired) or not valid_bound_preview(
+            request.form.get("load_token", ""), "switch-order-load-v1", context,
+        ):
+            return jsonify({"error": "The loaded order is missing, expired, or belongs to a changed target. Reload the switches."}), 409
+        return jsonify({"preview_token": issue_bound_preview(
+            "switch-order-apply-v1", {**context, "desired_ids": desired}),
+            "moves": switch_order_moves(original, desired)})
 
     @app.post("/fortigate/switch-order/apply")
     def apply_switch_order():
         profile = profile_store.get(request.form.get("profile", ""))
-        desired_ids = list(dict.fromkeys(request.form.getlist("switch_id")))
+        desired_ids = request.form.getlist("switch_id")
         if not profile:
             return jsonify({"error": "Select a valid FortiGate profile."}), 400
         if len(desired_ids) < 2:
@@ -433,6 +455,14 @@ def register_fortigate_routes(
                 }
             ), 400
 
+        original_ids = request.form.getlist("original_switch_id")
+        if not _valid_switch_order(original_ids, desired_ids) or not valid_bound_preview(
+            request.form.get("preview_token", ""), "switch-order-apply-v1",
+            {"profile": profile, "vdom": vdom, "original_ids": original_ids, "desired_ids": desired_ids},
+        ):
+            _annotate_switch_order(profile, vdom, outcome="aborted_stale_preview", desired_ids=desired_ids)
+            return jsonify({"error": "The confirmed preview is missing, expired, or no longer matches. Reload and review the switches."}), 409
+
         client = FortiGateClient.from_profile(profile)
         try:
             current = managed_switch_order(client.get_managed_switches(vdom))
@@ -452,7 +482,7 @@ def register_fortigate_routes(
             return jsonify({"error": str(exc)}), 502
 
         current_ids = [item["id"] for item in current]
-        if len(desired_ids) != len(current_ids) or set(desired_ids) != set(current_ids):
+        if current_ids != original_ids or set(desired_ids) != set(current_ids):
             _annotate_switch_order(
                 profile,
                 vdom,
@@ -463,7 +493,7 @@ def register_fortigate_routes(
             return jsonify(
                 {
                     "error": (
-                        "The managed-switch list changed after it was loaded. "
+                        "The managed-switch list or order changed after it was loaded. "
                         "Reload the switches before applying an order."
                     )
                 }
@@ -495,7 +525,7 @@ def register_fortigate_routes(
                 status_code=exc.status_code,
             )
             progress = (
-                "No switch moves were applied."
+                "No switch moves were confirmed; reload to reconcile the current order."
                 if not completed
                 else f"{len(completed)} switch move(s) completed before the error; reload to inspect the current order."
             )
@@ -558,6 +588,9 @@ def register_fortigate_routes(
                 ),
                 "moves": completed,
                 "switches": verified,
+                "load_token": issue_bound_preview("switch-order-load-v1", {
+                    "profile": profile, "vdom": vdom, "original_ids": verified_ids,
+                }),
             }
         )
 
@@ -1131,3 +1164,9 @@ def _reject_rename_preview(task, profile):
     )
     flash("Build a new dry-run preview and review it before applying. The previous preview is missing, expired, or no longer matches the target or changes.", "error")
     return redirect(url_for("task_form", task_id=task.id))
+
+
+def _valid_switch_order(original, desired):
+    return (len(original) >= 2 and len(original) == len(set(original))
+            and len(desired) == len(original) and len(desired) == len(set(desired))
+            and set(desired) == set(original))

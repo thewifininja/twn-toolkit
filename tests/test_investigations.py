@@ -2098,18 +2098,25 @@ class InvestigationRouteTests(unittest.TestCase):
             with (
                 patch(
                     "twn_toolkit.fortigate_routes.FortiGateClient.get_managed_switches",
-                    side_effect=[switches, list(reversed(switches))],
+                    side_effect=[switches, switches, list(reversed(switches))],
                 ),
                 patch(
                     "twn_toolkit.fortigate_routes.FortiGateClient.move_managed_switch_after"
                 ),
             ):
+                loaded = client.post("/fortigate/switch-order/objects", data={"profile": "Lab", "vdom": "root"}).get_json()
+                confirmed = client.post("/fortigate/switch-order/preview", data={
+                    "profile": "Lab", "vdom": "root", "original_switch_id": ["switch-a", "switch-b"],
+                    "switch_id": ["switch-b", "switch-a"], "load_token": loaded["load_token"],
+                }).get_json()
                 apply = client.post(
                     "/fortigate/switch-order/apply",
                     data={
                         "profile": "Lab",
                         "vdom": "root",
                         "switch_id": ["switch-b", "switch-a"],
+                        "original_switch_id": ["switch-a", "switch-b"],
+                        "preview_token": confirmed["preview_token"],
                         "confirmed": "on",
                     },
                 )

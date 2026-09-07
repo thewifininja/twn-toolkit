@@ -4,6 +4,7 @@
 <section class="panel tool-panel switch-order-tool"
          id="switch-order-tool"
          data-load-url="{{ url_for('switch_order_objects') }}"
+         data-preview-url="{{ url_for('preview_switch_order') }}"
          data-apply-url="{{ url_for('apply_switch_order') }}">
   <div class="panel-head">
     <h1>Re-order Managed FortiSwitches</h1>
@@ -42,6 +43,7 @@
         </div>
         <button type="button" class="secondary" id="alphabetize-switches">Alphabetize</button>
       </div>
+      <p id="switch-order-target" class="switch-order-target"></p>
       <div id="switch-order-detail" class="message error switch-order-detail" hidden></div>
 
       <ol id="switch-order-list" class="switch-order-list"></ol>

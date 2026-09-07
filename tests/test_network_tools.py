@@ -444,11 +444,18 @@ class NetworkToolTests(unittest.TestCase):
                     side_effect=FortiGateError("raw permission detail", status_code=403),
                 ),
             ):
+                loaded = client.post("/fortigate/switch-order/objects", data={"profile": "ReadOnly", "vdom": "root"}).get_json()
+                confirmed = client.post("/fortigate/switch-order/preview", data={
+                    "profile": "ReadOnly", "vdom": "root", "original_switch_id": ["switch-a", "switch-b"],
+                    "switch_id": ["switch-b", "switch-a"], "load_token": loaded["load_token"],
+                }).get_json()
                 response = client.post(
                     "/fortigate/switch-order/apply",
                     data={
                         "profile": "ReadOnly",
                         "vdom": "root",
+                        "original_switch_id": ["switch-a", "switch-b"],
+                        "preview_token": confirmed["preview_token"],
                         "switch_id": ["switch-b", "switch-a"],
                         "confirmed": "on",
                     },
@@ -463,7 +470,7 @@ class NetworkToolTests(unittest.TestCase):
         self.assertIn("read-write access", payload["user_message"])
         self.assertEqual(payload["detail"], "raw permission detail")
         self.assertEqual(payload["completed_moves"], [])
-        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 2)
+        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 3)
         self.assertEqual(summary["counters"]["fortinet"]["failures"], 1)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
         self.assertEqual(summary["recent"][0]["title"], "Applied FortiSwitch order")

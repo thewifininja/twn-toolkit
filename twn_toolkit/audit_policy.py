@@ -268,6 +268,7 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
         "fortiauthenticator_mac_devices",
         "fortiauthenticator_mac_group_memberships",
         "switch_order_objects",
+        "preview_switch_order",
         "task_fields",
         "task_objects",
         "task_preview",
