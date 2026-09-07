@@ -20,6 +20,7 @@ ROOT_DIRECTORIES = (".github", "docs", "native", "scripts", "tests", "twn_toolki
 ROOT_FILES = (
     ".gitignore", "CONTRIBUTING.md", "LICENSE", "QUICKSTART.md", "README.md",
     "install.sh", "requirements-dev.txt", "requirements.txt", "twn",
+    "requirements.in", "requirements-dev.in", "requirements-lock.json",
 )
 RELEASE_MANIFEST = ".twn-release-manifest.json"
 

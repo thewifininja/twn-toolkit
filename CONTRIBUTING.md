@@ -12,12 +12,12 @@ merged through a pull request.
 3. Run the complete local test suite:
 
    ```bash
-   .venv/bin/python -m pip install -r requirements-dev.txt
+   .venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
    .venv/bin/python -m pytest -q
    ```
 
 4. Push the branch and open a pull request against `main`.
-5. Merge only after the Ubuntu and macOS CI jobs pass and the change has been
+5. Merge only after the Ubuntu, macOS, and Arch CI jobs pass and the change has been
    reviewed.
 
 Direct pushes to `main` should be reserved for repository recovery. GitHub
@@ -54,3 +54,7 @@ artifacts, or local packet/log files.
 The tag CI job rejects a release tag whose version does not match the
 application version. Main CI also builds and validates the bundle format before
 merge; the published-release workflow rebuilds it from the tag itself.
+
+## Dependency changes
+
+Edit the `.in` files and regenerate both locks and provenance using the [dependency lock workflow](docs/dependency-locks.md). Do not hand-edit generated `.txt` locks. CI and installation reject stale provenance and require package hashes.

@@ -51,13 +51,17 @@ if [ ! -x "$VENV/bin/python" ]; then
   python3 -m venv "$VENV"
 fi
 
+INSTALL_STAGE=dependency-lock
+"$VENV/bin/python" "$ROOT/scripts/lock_dependencies.py" --check
+
 INSTALL_STAGE=packaging-tools
 echo "Updating packaging tools..."
 "$VENV/bin/python" -m pip install --upgrade pip
 
 INSTALL_STAGE=requirements
 echo "Installing toolkit requirements..."
-"$VENV/bin/python" -m pip install -r "$ROOT/requirements.txt"
+"$VENV/bin/python" -m pip install --require-hashes -r "$ROOT/requirements.txt"
+"$VENV/bin/python" -m pip check
 
 chmod +x "$ROOT/twn"
 mkdir -p "$INSTANCE"
