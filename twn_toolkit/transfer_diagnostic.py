@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import sys
 import time
 import zipfile
 
-from .diagnostic_artifacts import artifact_directory, cleanup_artifacts
+from .diagnostic_artifacts import artifact_directory, cleanup_artifacts, PrivateArtifactStore
 from .datastore import LocalDatastore, DatastoreError
 from .network_tools import ToolInputError, parse_ssh_targets
 from .transfer_tools import fetch_transfer_files, parse_remote_paths, validate_transfer_filename_pattern
@@ -40,8 +39,9 @@ def execute_transfer(store, job, config):
     prepared = prepare_transfer_config(config['form'], config['password'])
     form = prepared['form']
     directory = artifact_directory(store, job['id'])
-    directory.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(directory.parent, 0o700)
+    policy = TransferPolicy(**config['transfer_policy'])
+    archive_limit = 2 * policy.run_bytes + 32 * 1024**2
+    output_store = PrivateArtifactStore(store.instance, 'transfer', archive_limit)
     directory.mkdir(mode=0o700)
     files = directory / 'files'
     files.mkdir(mode=0o700)
@@ -60,7 +60,7 @@ def execute_transfer(store, job, config):
             password=config['password'], port=int(form['port']),
             allow_unknown_hosts=form['allow_unknown_hosts'], allow_legacy_algorithms=form['allow_legacy_algorithms'],
             output_dir=files, filename_pattern=form['filename_pattern'], protocol=form['protocol'],
-            instance_path=str(store.instance), policy=TransferPolicy(**config['transfer_policy']))
+            instance_path=str(store.instance), policy=policy, output_store=output_store)
         # Remote errors belong in the encrypted result, never in logs/audit metadata.
         for row in rows:
             row['error'] = str(row.get('error', '')).replace(config['password'], '[redacted]')
@@ -79,17 +79,14 @@ def execute_transfer(store, job, config):
                 checkpoint('Publishing files to datastore')
         elif successes:
             checkpoint('Preparing ZIP download')
-            partial = directory / 'download.partial'
-            with zipfile.ZipFile(partial, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-                for row in successes:
-                    archive.write(files / row['filename'], row['filename'])
-                archive.writestr('multi-transfer-report.txt', '\n'.join(
-                    f"{row['status'].upper()} | {row.get('host_label') or row['host']} | {row['remote_path']} | {row.get('error') or row.get('filename', '')}"
-                    for row in rows) + '\n')
-            os.chmod(partial, 0o600)
-            with partial.open("rb") as completed:
-                os.fsync(completed.fileno())
-            os.replace(partial, directory / 'download.zip')
+            with output_store.begin_upload(job['id'], 'download.zip', max_bytes=archive_limit) as output:
+                with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                    for row in successes:
+                        archive.write(files / row['filename'], row['filename'])
+                    archive.writestr('multi-transfer-report.txt', '\n'.join(
+                        f"{row['status'].upper()} | {row.get('host_label') or row['host']} | {row['remote_path']} | {row.get('error') or row.get('filename', '')}"
+                        for row in rows) + '\n')
+                output.commit()
             summary['archive'] = True
         successes = [row for row in rows if row['status'] == 'success']
         summary.update(stage='Complete', successful=len(successes), total=len(rows),

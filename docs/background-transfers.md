@@ -47,6 +47,18 @@ or datastore copy. Retained archives already consume measured disk space. This i
 conservative admission coordination within the finite-job queue; it is not a
 reservation shared by every filesystem writer or a hard filesystem quota.
 
+During GUI Bulk Transfer execution, SFTP/SCP/FTP private staging and ZIP writes
+use the same physical reservations as incoming uploads and case/appliance exports.
+Known file sizes reserve their remaining bytes; unknown-length FTP grows its
+reservation with received content. The existing protocol confirmation checks and final private filename rename
+remain in place; failures remove the partial file. Atomic ZIP publication occurs only after the archive
+closes successfully. The ZIP file ceiling is derived from the captured run limit
+(twice run bytes plus 32 MiB for archive/report overhead). Private roots and files
+use modes700/600. Diagnostic cleanup reclaims staging left by exited processes.
+Direct transfer API callers can supply an output store; callers without one retain
+their existing local-file behavior. Other writers and external processes remain
+outside this reservation guarantee.
+
 Local downloads can stream the retained archive and support byte ranges. The
 Agent GUI still has its configured finite response-size limit. Larger archives
 must be downloaded directly from the Agent (or through a client making supported
