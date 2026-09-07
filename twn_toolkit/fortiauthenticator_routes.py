@@ -44,6 +44,7 @@ from .fortiauthenticator import (
     normalize_host as normalize_fortiauthenticator_host,
 )
 from .profiles import FortiAuthenticatorProfileStore
+from .preview_binding import issue_bound_preview, valid_bound_preview, PREVIEW_MAX_AGE_SECONDS
 from .investigation_context import add_current_investigation_generated_evidence_event
 from .tool_catalog import grouped_visible_tools_for_category
 
@@ -587,6 +588,12 @@ def register_fortiauthenticator_routes(
                             selected_group_uri,
                             selected_action,
                         )
+                        context = _cleanup_preview_context(profile, selected_group_uri, selected_action)
+                        preview["context_token"] = issue_bound_preview("mac-cleanup-context-v1", context)
+                        preview["candidate_token"] = issue_bound_preview(
+                            "mac-cleanup-candidates-v1", {**context, "targets": preview["targets"],
+                                                         "group_name": preview["group_name"]},
+                        )
                 except FortiAuthenticatorError as exc:
                     _record_fortinet_api_activity(
                         "Previewed FortiAuthenticator MAC cleanup",
@@ -612,6 +619,7 @@ def register_fortiauthenticator_routes(
             selected_action=selected_action,
             preview=preview,
             preview_limit=500,
+            preview_minutes=PREVIEW_MAX_AGE_SECONDS // 60,
         )
 
     @app.post("/fortiauthenticator/mac-cleanup/execute")
@@ -629,6 +637,13 @@ def register_fortiauthenticator_routes(
         )
         if not profile or action not in {"remove_memberships", "delete_devices"}:
             flash("Cleanup request is invalid. Build a new preview.", "error")
+            return redirect(url_for("fortiauthenticator_mac_cleanup"))
+
+        context = _cleanup_preview_context(profile, group_uri, action)
+        if not valid_bound_preview(request.form.get("context_token", ""), "mac-cleanup-context-v1", context):
+            _annotate_mac_cleanup(profile, group_uri, action, outcome="aborted_stale_preview",
+                                  requested_count=len(requested_ids))
+            flash("Cleanup preview expired or its target changed. Nothing was changed; build a new preview.", "error")
             return redirect(url_for("fortiauthenticator_mac_cleanup"))
 
         client = FortiAuthenticatorClient.from_profile(profile)
@@ -654,6 +669,15 @@ def register_fortiauthenticator_routes(
                 status_code=exc.status_code,
             )
             flash(f"Cleanup validation failed: {exc}", "error")
+            return redirect(url_for("fortiauthenticator_mac_cleanup"))
+
+        if not valid_bound_preview(
+            request.form.get("candidate_token", ""), "mac-cleanup-candidates-v1",
+            {**context, "targets": preview["targets"], "group_name": preview["group_name"]},
+        ):
+            _annotate_mac_cleanup(profile, group_uri, action, outcome="aborted_stale_preview",
+                                  requested_count=len(requested_ids), group_name=preview["group_name"])
+            flash("Cleanup candidates changed or the preview expired. Nothing was changed; build a new preview.", "error")
             return redirect(url_for("fortiauthenticator_mac_cleanup"))
 
         if not preview["targets"]:
@@ -820,6 +844,10 @@ def _mac_groups(memberships: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(groups.values(), key=lambda group: (group["name"].lower(), group["uri"]))
 
 
+def _cleanup_preview_context(profile, group_uri, action):
+    return {"profile": profile, "group_uri": group_uri, "action": action}
+
+
 def _build_mac_cleanup_preview(
     memberships: list[dict[str, Any]],
     devices: list[dict[str, Any]],
@@ -865,6 +893,12 @@ def _build_mac_cleanup_preview(
                     device.get("name") or membership.get("device_name") or ""
                 ),
                 "other_groups": other_groups,
+                # Bind membership identities as well as display labels: two groups
+                # may have the same name, and global deletion affects both.
+                "membership_bindings": sorted(
+                    [str(item.get(key) or "") for key in ("id", "resource_uri", "group", "group_name")]
+                    for item in memberships_by_device.get(device_id, [])
+                ),
             },
         )
 
