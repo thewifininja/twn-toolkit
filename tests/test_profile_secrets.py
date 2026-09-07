@@ -4,13 +4,24 @@ import stat
 import subprocess
 import sys
 from unittest.mock import patch
+from functools import partial
 
 import pytest
 
-from twn_toolkit.profiles import ProfileStore, FortiAuthenticatorProfileStore
+from twn_toolkit.profiles import (
+    ProfileStore, FortiAuthenticatorProfileStore, RadiusProfileStore, SNMPCredentialProfileStore,
+)
+
+SECRET_STORES = [
+    (ProfileStore, 'api_key'), (FortiAuthenticatorProfileStore, 'password'),
+    (partial(RadiusProfileStore, kind='servers'), 'secret'),
+    (partial(RadiusProfileStore, kind='credentials'), 'password'),
+    (SNMPCredentialProfileStore, 'community'), (SNMPCredentialProfileStore, 'auth_key'),
+    (SNMPCredentialProfileStore, 'priv_key'),
+]
 
 
-@pytest.mark.parametrize('store_type,field', [(ProfileStore, 'api_key'), (FortiAuthenticatorProfileStore, 'password')])
+@pytest.mark.parametrize('store_type,field', SECRET_STORES)
 def test_saved_secret_is_protected_without_changing_store_contract(tmp_path, store_type, field):
     store = store_type(str(tmp_path))
     profile = {'name': 'Lab', field: 'private-fixture-secret', 'host': 'https://example.com'}
@@ -79,14 +90,14 @@ def test_failed_migration_preserves_legacy_file_and_cleans_temporary_output(tmp_
 
 
 def test_cli_migration_preserves_values_and_is_repeatable(tmp_path):
-    for cls, field in ((ProfileStore, 'api_key'), (FortiAuthenticatorProfileStore, 'password')):
+    for cls, field in SECRET_STORES[:5]:
         store = cls(str(tmp_path))
         store.path.write_text(json.dumps([{'name': 'Lab', field: 'legacy-secret'}]))
     for _ in range(2):
         result = subprocess.run([sys.executable, '-m', 'twn_toolkit.profile_secrets', '--instance', str(tmp_path)],
                                 capture_output=True, text=True, timeout=20, check=True)
         assert 'legacy-secret' not in result.stdout + result.stderr
-    for cls, field in ((ProfileStore, 'api_key'), (FortiAuthenticatorProfileStore, 'password')):
+    for cls, field in SECRET_STORES[:5]:
         store = cls(str(tmp_path))
         assert 'legacy-secret' not in store.path.read_text()
         assert store.get('Lab')[field] == 'legacy-secret'
@@ -118,10 +129,11 @@ def test_configuration_backup_round_trip_uses_portable_secrets(tmp_path):
         build_backup_catalog, selected_backup_items, build_profile_backup,
         encrypt_backup, decrypt_backup, import_backup_items,
     )
-    groups = {'fortigate_profiles', 'fortiauthenticator_profiles'}
+    groups = {'fortigate_profiles', 'fortiauthenticator_profiles', 'radius_server_profiles', 'radius_credential_profiles', 'snmp_credential_profiles'}
+    fields = {'fortigate_profiles': 'api_key', 'fortiauthenticator_profiles': 'password', 'radius_server_profiles': 'secret', 'radius_credential_profiles': 'password', 'snmp_credential_profiles': 'community'}
     source = selected_backup_items(build_backup_catalog(str(tmp_path / 'source')), groups)
     for item in source:
-        field = 'api_key' if item['id'] == 'fortigate_profiles' else 'password'
+        field = fields[item['id']]
         item['store'].upsert({'name': 'Lab', field: 'portable-secret'})
     backup = build_profile_backup(source)
     protected_export = encrypt_backup(json.dumps(backup).encode(), 'export-password')
@@ -130,6 +142,35 @@ def test_configuration_backup_round_trip_uses_portable_secrets(tmp_path):
     destination = selected_backup_items(build_backup_catalog(str(tmp_path / 'destination')), groups)
     import_backup_items(restored['items'], destination, 'replace')
     for item in destination:
-        field = 'api_key' if item['id'] == 'fortigate_profiles' else 'password'
+        field = fields[item['id']]
         assert item['store'].get('Lab')[field] == 'portable-secret'
         assert 'portable-secret' not in item['store'].path.read_text()
+
+
+def test_snmp_ciphertext_cannot_be_swapped_between_auth_and_privacy(tmp_path):
+    store = SNMPCredentialProfileStore(str(tmp_path))
+    store.upsert({'name': 'Lab', 'auth_key': 'authentication-secret', 'priv_key': 'privacy-secret'})
+    raw = json.loads(store.path.read_text())
+    raw[0]['auth_key'], raw[0]['priv_key'] = raw[0]['priv_key'], raw[0]['auth_key']
+    store.path.write_text(json.dumps(raw))
+    with pytest.raises(ValueError, match='could not be decrypted'):
+        store.get('Lab')
+
+
+@pytest.mark.parametrize('kind,field', [('servers', 'secret'), ('credentials', 'password')])
+def test_radius_rename_and_legacy_migration_preserve_secret(tmp_path, kind, field):
+    store = RadiusProfileStore(str(tmp_path), kind)
+    store.path.write_text(json.dumps([{'name': 'Old', field: 'legacy-secret'}]))
+    old = store.get('Old')
+    store.upsert({**old, 'name': 'New'}, original_name='Old')
+    assert store.get('Old') is None
+    assert store.get('New')[field] == 'legacy-secret'
+    assert 'legacy-secret' not in store.path.read_text()
+
+
+def test_radius_attributes_remain_plain_and_do_not_create_key(tmp_path):
+    store = RadiusProfileStore(str(tmp_path), 'attributes')
+    profile = {'name': 'NAS', 'source': 'NAS-Identifier = lab'}
+    store.upsert(profile)
+    assert json.loads(store.path.read_text()) == [profile]
+    assert not (tmp_path / 'session_secret').exists()

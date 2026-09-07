@@ -113,8 +113,9 @@ class JsonListStore:
                 os.unlink(temporary_name)
 
 
-class ProfileStore(JsonListStore):
-    secret_fields = ("api_key",)
+class ProtectedProfileSecrets:
+    """Shared field protection; concrete stores retain their existing operations."""
+    secret_fields: tuple[str, ...] = ()
 
     def _read(self):
         from .profile_secrets import transform_profiles
@@ -133,6 +134,9 @@ class ProfileStore(JsonListStore):
                 return False
             self._write(self._read())
             return True
+
+class ProfileStore(ProtectedProfileSecrets, JsonListStore):
+    secret_fields = ("api_key",)
 
     def __init__(self, instance_path: str, filename: str = "profiles.json") -> None:
         super().__init__(instance_path, filename)
@@ -171,16 +175,19 @@ class DNSProfileStore(PingProfileStore):
         super().__init__(instance_path, f"dns_{kind}_profiles.json")
 
 
-class RadiusProfileStore(PingProfileStore):
+class RadiusProfileStore(ProtectedProfileSecrets, PingProfileStore):
     """Store RADIUS servers and test credentials in separate files."""
 
     def __init__(self, instance_path: str, kind: str) -> None:
         if kind not in {"servers", "credentials", "attributes"}:
             raise ValueError("Unknown RADIUS profile kind.")
+        self.secret_fields = {"servers": ("secret",), "credentials": ("password",), "attributes": ()}[kind]
         super().__init__(instance_path, f"radius_{kind}_profiles.json")
 
 
-class SNMPCredentialProfileStore(PingProfileStore):
+class SNMPCredentialProfileStore(ProtectedProfileSecrets, PingProfileStore):
+    secret_fields = ("community", "auth_key", "priv_key")
+
     def __init__(self, instance_path: str) -> None:
         super().__init__(instance_path, "snmp_credentials_profiles.json")
 
