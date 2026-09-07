@@ -31,11 +31,20 @@ worker restarts. Both names or addresses must identify the same Mainframe and
 must be covered by its listener certificate. TLS verification is never relaxed
 for fallback traffic.
 
-Interactive GUI traffic is claimed by three concurrent outbound lanes and is
-removed after the waiting browser response consumes it. Durable fleet jobs use
-the separate heartbeat lane and remain queryable. Terminal output, input, and
-resize requests may therefore progress independently; these lanes are also the
-upgrade boundary for future ordered stream frames.
+Interactive GUI traffic uses three execution lanes sharing one outstanding
+long poll. Execution, lease renewal, and completion delivery happen outside
+that poll's lock. A finished response is sent immediately through the existing
+non-claiming control endpoint; it never waits for the idle poll or the periodic
+status heartbeat. Failed delivery retries the durable receipt with backoff,
+without rerunning the operation. Heartbeat and long-poll intervals are unchanged.
+
+Response bodies are removed after browser consumption; operation outcomes remain
+queryable. Durable fleet jobs use a separate execution lane. Terminal output,
+input, and resize requests can progress independently of another GUI handler.
+Other requests from the same delegated user still serialize around their shared
+session client, so slow handlers can delay navigation. The tunnel adds transport
+and durable-operation overhead; it is finite request/response delivery, not a
+persistent terminal stream.
 
 The mainframe listener has an explicit list of local IP addresses and a port.
 Wildcard addresses (`0.0.0.0` and `::`) are supported but must be deliberate.
