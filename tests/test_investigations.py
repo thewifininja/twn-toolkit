@@ -2193,7 +2193,7 @@ class InvestigationRouteTests(unittest.TestCase):
                 "ap_path": ["Lobby-AP"],
             }
             with patch(
-                "twn_toolkit.fortigate_routes.wireless_client_history",
+                "twn_toolkit.wireless_history_diagnostic.wireless_client_history",
                 return_value=result,
             ):
                 response = client.post(
@@ -2204,6 +2204,13 @@ class InvestigationRouteTests(unittest.TestCase):
                         "hours": "24",
                     },
                 )
+                from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+                from twn_toolkit.diagnostic_worker import execute_scan
+                self.assertEqual(response.status_code, 303)
+                jobs = DiagnosticJobStore(instance)
+                job = jobs.claim()
+                execute_scan(jobs, job['id'], job['token'])
+                response = client.get(response.location)
             self.assertIn(b"Recorded in the active case", response.data)
 
             store = InvestigationStore(instance)

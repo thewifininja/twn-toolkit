@@ -40,11 +40,11 @@ from .csv_exports import (
     normalize_csv_download_format,
 )
 from .fortigate import FortiGateClient, FortiGateError, normalize_api_key, normalize_host
-from .fortiap_history import (
-    LocalFortiGateWirelessHistorySource,
-    normalize_client_mac,
-    wireless_client_history,
-)
+from .automation_heartbeat import read_automation_heartbeat
+from .diagnostic_routes import diagnostic_store, owned_diagnostic
+from .diagnostic_worker import record_unsuccessful_scan
+from .investigations import InvestigationStore
+from .wireless_history_diagnostic import TOOL as HISTORY_TOOL, prepare_history_config
 from .investigation_context import (
     add_current_investigation_generated_evidence_event,
     record_current_investigation_event,
@@ -78,51 +78,6 @@ def _switch_audit_references(
         audit_reference("FortiSwitch", switch["id"], switch["name"])
         for switch in switches[:100]
     ]
-
-
-def _journal_wireless_history_result(result: dict[str, Any]) -> dict[str, Any]:
-    """Keep the useful collapsed path without retaining raw vendor log payloads."""
-    fields = (
-        "first_time",
-        "last_time",
-        "ap",
-        "event_count",
-        "event",
-        "ssid",
-        "radio",
-        "channel",
-        "ip",
-        "details",
-    )
-    timeline = [
-        {
-            key: (str(item.get(key, ""))[:2_000] if key == "details" else item.get(key))
-            for key in fields
-            if item.get(key) not in (None, "")
-        }
-        for item in result.get("timeline", [])[:500]
-        if isinstance(item, dict)
-    ]
-    live_fields = ("host", "ap", "ssid", "radio", "channel", "ip", "signal")
-    live_clients = [
-        {key: item.get(key) for key in live_fields if item.get(key) not in (None, "")}
-        for item in result.get("live_clients", [])[:100]
-        if isinstance(item, dict)
-    ]
-    return {
-        "mac": result.get("mac", ""),
-        "vdom": result.get("vdom", ""),
-        "hours": result.get("hours", 0),
-        "source": result.get("source", ""),
-        "log_row_count": result.get("log_row_count", 0),
-        "raw_event_count": result.get("raw_event_count", 0),
-        "omitted_unknown_ap_count": result.get("omitted_unknown_ap_count", 0),
-        "ap_path": result.get("ap_path", [])[:500],
-        "timeline": timeline,
-        "live_clients": live_clients,
-        "log_error": str(result.get("log_error", ""))[:2_000],
-        "live_error": str(result.get("live_error", ""))[:2_000],
-    }
 
 
 def _annotate_switch_order(
@@ -299,88 +254,60 @@ def register_fortigate_routes(
 
     @app.route("/fortigate/fortiap/client-history", methods=["GET", "POST"])
     def fortiap_client_history():
-        profiles = profile_store.all()
-        selected_name = request.form.get("profile", "") if request.method == "POST" else ""
-        mac = request.form.get("mac", "").strip() if request.method == "POST" else ""
-        hours_value = request.form.get("hours", "24") if request.method == "POST" else "24"
-        vdom = request.form.get("vdom", "").strip() if request.method == "POST" else ""
-        result: dict[str, Any] | None = None
-        journal_event = None
-
+        store = diagnostic_store()
+        user = g.current_user
+        form = {"profile": "", "mac": "", "hours": "24", "vdom": ""}
+        job = result = None
+        page, total = 1, 0
         if request.method == "POST":
-            operation_id = f"fortigate-wireless-history:{secrets.token_hex(12)}"
-            journal_started_at = time.time()
+            form = {key: request.form.get(key, default).strip() for key, default in form.items()}
             suppress_audit_event()
-            profile = profile_store.get(selected_name)
-            if not profile:
-                flash("Select a valid FortiGate profile.", "error")
-            else:
-                try:
-                    normalized_mac = normalize_client_mac(mac)
-                    hours = int(hours_value)
-                    if not 1 <= hours <= 168:
-                        raise ValueError("Choose a time window from 1 hour to 7 days.")
-                    vdom = vdom or profile.get("default_vdom", "root")
-                    result = wireless_client_history(
-                        LocalFortiGateWirelessHistorySource(FortiGateClient.from_profile(profile)),
-                        normalized_mac,
-                        vdom,
-                        hours,
-                    )
-                    _record_fortinet_api_activity(
-                        "Loaded wireless client history",
-                        f"{normalized_mac} via {selected_name} ({hours}h)",
-                    )
-                except ValueError as exc:
-                    flash(str(exc), "error")
-                    journal_event = record_current_investigation_event(
-                        operation_id=operation_id,
-                        event_type="diagnostic.failed",
-                        tool_id="fortigate.wireless_client_history",
-                        action="Wireless client history",
-                        outcome="failed",
-                        summary=f"Wireless client history search failed: {exc}",
-                        targets={"client_mac": mac},
-                        parameters={"profile": selected_name, "VDOM": vdom, "hours": hours_value},
-                        metrics={},
-                        details={"error": str(exc)},
-                        started_at=journal_started_at,
-                        completed_at=time.time(),
-                    )
-                else:
-                    journal_event = record_current_investigation_event(
-                        operation_id=operation_id,
-                        event_type="diagnostic.completed",
-                        tool_id="fortigate.wireless_client_history",
-                        action="Wireless client history",
-                        outcome="succeeded",
-                        summary=(
-                            f"Searched {hours} hour(s) of wireless history for {normalized_mac}: "
-                            f"{result.get('raw_event_count', 0)} matching event(s) across "
-                            f"{len(result.get('ap_path', []))} AP transition(s)."
-                        ),
-                        targets={"client_mac": normalized_mac},
-                        parameters={"profile": selected_name, "VDOM": vdom, "hours": hours},
-                        metrics={
-                            "matching_events": result.get("raw_event_count", 0),
-                            "AP_transitions": len(result.get("ap_path", [])),
-                            "live_clients": len(result.get("live_clients", [])),
-                        },
-                        details={"result": _journal_wireless_history_result(result)},
-                        started_at=journal_started_at,
-                        completed_at=time.time(),
-                    )
+            try:
+                config = prepare_history_config(profile_store.get(form["profile"]), form)
+                case = InvestigationStore(app.instance_path).active_for_user(user["id"])
+                config.update(username=user["username"], investigation_id=case["id"] if case and case.get("is_recording") else "")
+                job_id = store.enqueue(user_id=user["id"], tool=HISTORY_TOOL, config=config)
+                return redirect(url_for("fortiap_client_history", job=job_id), code=303)
+            except (ValueError, TypeError) as exc:
+                error = str(exc) or "Enter valid wireless history settings."
+                flash(error, "error")
+                record_current_investigation_event(operation_id="fortigate-wireless-history-rejected:" + secrets.token_hex(12),
+                    event_type="diagnostic.failed", tool_id="fortigate.wireless_client_history",
+                    action="Wireless client history", outcome="failed", summary="Wireless client history rejected: " + error,
+                    targets={"client_mac": form["mac"]}, parameters={"profile": form["profile"], "VDOM": form["vdom"], "hours": form["hours"]},
+                    metrics={}, details={"error": error}, started_at=time.time(), completed_at=time.time())
+        elif request.args.get("job"):
+            job = owned_diagnostic(request.args["job"], HISTORY_TOOL)
+            form = job["config"]["form"]
+            try:
+                page = max(1, min(50, int(request.args.get("page", 1))))
+            except ValueError:
+                pass
+            if job["state"] == "succeeded":
+                page = min(page, max(1, (job["summary"]["result"]["transition_count"] + 99) // 100))
+                rows, total = store.page(job["id"], user["id"], page)
+                result = {**job["summary"]["result"], "timeline": rows, "ap_path": [row["ap"] for row in rows]}
+        return render_template("fortiap_client_history.html", profiles=profile_store.all(),
+            selected_name=form["profile"], mac=form["mac"], hours=form["hours"], vdom=form["vdom"], result=result,
+            journal_event=job["summary"].get("journal_event") if job else None,
+            diagnostic_job=job, diagnostic_recent=store.recent(user["id"], HISTORY_TOOL),
+            diagnostic_scheduler=read_automation_heartbeat(store.instance / "automation-heartbeat.json"),
+            result_page=page, result_total=total)
 
-        return render_template(
-            "fortiap_client_history.html",
-            profiles=profiles,
-            selected_name=selected_name,
-            mac=mac,
-            hours=hours_value,
-            vdom=vdom,
-            result=result,
-            journal_event=journal_event,
-        )
+    @app.get("/fortigate/fortiap/client-history/jobs/<job_id>/status")
+    def wireless_history_job_status(job_id):
+        job = owned_diagnostic(job_id, HISTORY_TOOL)
+        response = jsonify(state=job["state"], error=job["error"])
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.post("/fortigate/fortiap/client-history/jobs/<job_id>/cancel")
+    def cancel_wireless_history_job(job_id):
+        owned_diagnostic(job_id, HISTORY_TOOL)
+        cancelled = diagnostic_store().cancel(job_id, g.current_user["id"])
+        if cancelled:
+            record_unsuccessful_scan(diagnostic_store(), cancelled, "cancelled", "Cancelled before execution started.")
+        return redirect(url_for("fortiap_client_history", job=job_id), code=303)
 
     @app.post("/fortigate/switch-order/objects")
     def switch_order_objects():

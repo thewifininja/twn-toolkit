@@ -6,6 +6,8 @@ from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.activity import ActivityStore
+from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+from twn_toolkit.diagnostic_worker import execute_scan
 from twn_toolkit.fortiap_history import normalize_client_mac, wireless_client_history
 
 
@@ -216,7 +218,7 @@ def test_client_history_route_renders_results(tmp_path):
     )
 
     with patch(
-        "twn_toolkit.fortigate_routes.wireless_client_history",
+        "twn_toolkit.wireless_history_diagnostic.wireless_client_history",
         return_value={
             "mac": "aa:bb:cc:dd:ee:ff",
             "vdom": "root",
@@ -253,6 +255,13 @@ def test_client_history_route_renders_results(tmp_path):
                 "vdom": "",
             },
         )
+
+        assert response.status_code == 303
+        history.assert_not_called()
+        store = DiagnosticJobStore(tmp_path)
+        job = store.claim()
+        execute_scan(store, job['id'], job['token'])
+        response = client.get(response.location)
 
     assert response.status_code == 200
     assert b"Find Wireless Client History" in response.data
