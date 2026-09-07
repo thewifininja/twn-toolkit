@@ -229,7 +229,10 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         with open(profile_path, encoding="utf-8") as handle:
             profile = json.load(handle)[0]
         self.assertEqual(profile["name"], "Renamed")
-        self.assertEqual(profile["password"], "secret-one")
+        self.assertEqual(profile["password"]["format"], "twn-profile-secret-v1")
+        self.assertNotIn("secret-one", Path(profile_path).read_text())
+        from twn_toolkit.profiles import FortiAuthenticatorProfileStore
+        self.assertEqual(FortiAuthenticatorProfileStore(self.temporary_directory.name).get("Renamed")["password"], "secret-one")
 
         response = self.client.post(
             "/fortiauthenticator/profiles/Renamed/delete",
