@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "resolver": "uv 0.8.15",
+  "index": "https://pypi.org/simple",
+  "minimum_python": "3.10",
+  "universal": true,
+  "generate_hashes": true,
+  "sha256": {
+    "requirements.in": "56dabbf1fc69d43cde3069db4a98c08acd59e767476933ddda6ed153d3e16dc7",
+    "requirements-dev.in": "62e44d2cf4ddf9771d4430065fcd744446d5691aee6ba983526687514668af1a",
+    "requirements.txt": "662ef8c34156bd9abb6f18979b44b0b4c2320e16010ef509db5d18577c7080ce",
+    "requirements-dev.txt": "30ee3ec5e820b3a559e6b657c8cde71d6bfa16b1b37166a7f4bad4149c029733"
+  }
+}

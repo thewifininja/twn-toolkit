@@ -53,7 +53,7 @@ entries, and enforces file-count and size limits.
 The **Manual release bundle** form accepts the same official ZIP when the host
 cannot access the release API. If a release changes Python dependencies, the
 host must still have package-index access or the required packages in its pip
-cache.
+cache. New releases include [hash-pinned runtime dependencies](dependency-locks.md); recovery restores their lock files with the code. Older releases without locks retain their previous dependency resolution behavior.
 
 ## Upgrade and recovery commands
 

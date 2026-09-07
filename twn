@@ -1103,6 +1103,7 @@ ensure_requirements() {
     exit 1
   fi
   mkdir -p "$INSTANCE"
+  "$PYTHON" "$ROOT/scripts/lock_dependencies.py" --check
   current_hash=$(requirements_hash)
   previous_hash=""
   if [ -f "$REQUIREMENTS_STAMP" ]; then
@@ -1110,7 +1111,8 @@ ensure_requirements() {
   fi
   if [ "$current_hash" != "$previous_hash" ]; then
     echo "Installing updated toolkit requirements..."
-    "$PYTHON" -m pip install -r "$REQUIREMENTS"
+    "$PYTHON" -m pip install --require-hashes -r "$REQUIREMENTS"
+    "$PYTHON" -m pip check
     printf "%s\n" "$current_hash" > "$REQUIREMENTS_STAMP"
   fi
 }
