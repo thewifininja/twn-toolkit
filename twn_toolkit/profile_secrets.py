@@ -67,13 +67,17 @@ def transform_profiles(profiles, instance, filename, fields, *, encrypt):
 
 def main():
     import argparse
-    from .profiles import ProfileStore, FortiAuthenticatorProfileStore
+    from .profiles import ProfileStore, FortiAuthenticatorProfileStore, RadiusProfileStore, SNMPCredentialProfileStore
 
-    parser = argparse.ArgumentParser(description="Protect existing appliance profile secrets. Stop toolkit writers first; preserve the instance key.")
+    parser = argparse.ArgumentParser(description="Protect existing appliance, RADIUS and SNMP profile secrets. Stop toolkit writers first; preserve the instance key.")
     parser.add_argument("--instance", required=True)
     args = parser.parse_args()
-    for store_type in (ProfileStore, FortiAuthenticatorProfileStore):
-        store = store_type(args.instance)
+    stores = (
+        ProfileStore(args.instance), FortiAuthenticatorProfileStore(args.instance),
+        RadiusProfileStore(args.instance, "servers"), RadiusProfileStore(args.instance, "credentials"),
+        SNMPCredentialProfileStore(args.instance),
+    )
+    for store in stores:
         if store.protect_existing():
             print(f"Protected {store.path.name}.")
         else:
