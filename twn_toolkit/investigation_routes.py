@@ -97,7 +97,7 @@ def register_investigation_routes(
         evidence_pagination = None
         report: dict[str, object] = {}
         if active_tab == "report":
-            investigation, events, artifacts, report = load_report(investigation_id)
+            investigation, events, artifacts, report = load_report(investigation_id, interactive=True)
             participants = list(investigation.get("participants", []))
         else:
             investigation = investigation_or_404(investigation_id)
@@ -219,7 +219,7 @@ def register_investigation_routes(
         )
 
     def load_report(
-        investigation_id: str,
+        investigation_id: str, *, interactive: bool = False,
     ) -> tuple[
         dict[str, object],
         list[dict[str, object]],
@@ -229,7 +229,16 @@ def register_investigation_routes(
         investigation = investigation_or_404(investigation_id)
         participants = store.participants_for_user(investigation_id, user_id())
         investigation["participants"] = participants
-        events = store.events_for_user(investigation_id, user_id())
+        pagination = None
+        if interactive:
+            try:
+                page = max(1, int(request.args.get("report_page", "1")))
+            except ValueError:
+                page = 1
+            pagination = store.report_page_for_user(investigation_id, user_id(), page=page)
+            events = pagination["events"]
+        else:
+            events = store.events_for_user(investigation_id, user_id())
         operator_names: list[str] = []
         for item in (
             investigation.get("source_operators")
@@ -239,17 +248,17 @@ def register_investigation_routes(
             name = str(item.get("username", "")).strip()
             if name and name not in operator_names:
                 operator_names.append(name)
-        for event in events:
+        for event in ([{"created_by_username": name} for name in pagination["operators"]] if pagination else events):
             name = str(event.get("created_by_username", "")).strip()
             if name and name not in operator_names:
                 operator_names.append(name)
         investigation["operator_names"] = ", ".join(operator_names)
-        artifacts = store.artifacts_for_user(investigation_id, user_id())
+        artifacts = pagination["artifacts"] if pagination else store.artifacts_for_user(investigation_id, user_id())
         return (
             investigation,
             events,
             artifacts,
-            case_report_contents(events, artifacts),
+            {**case_report_contents(events, artifacts), "report_pagination": pagination},
         )
 
     @app.get("/investigations")
@@ -948,6 +957,8 @@ def register_investigation_routes(
                 user_id(),
                 event_ids=request.form.getlist("event_id"),
                 artifact_ids=request.form.getlist("artifact_id"),
+                event_scope=request.form.getlist("event_scope") if request.form.get("page_selection") == "1" else None,
+                artifact_scope=request.form.getlist("artifact_scope") if request.form.get("page_selection") == "1" else None,
             )
         except InvestigationError as exc:
             flash(str(exc), "error")
@@ -966,7 +977,7 @@ def register_investigation_routes(
             )
             flash("Saved the case report contents.", "success")
         return redirect(
-            url_for("investigation_report", investigation_id=investigation_id)
+            url_for("investigation_report", investigation_id=investigation_id, report_page=request.form.get("report_page", "1"))
         )
 
 

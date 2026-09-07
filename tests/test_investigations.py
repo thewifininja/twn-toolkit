@@ -661,7 +661,7 @@ class InvestigationStoreTests(unittest.TestCase):
 
 
 class InvestigationRouteTests(unittest.TestCase):
-    def test_journal_page_uses_cursors_while_report_keeps_all_events(self) -> None:
+    def test_journal_and_report_pages_keep_events_accessible(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)
             app.testing = True
@@ -720,9 +720,11 @@ class InvestigationRouteTests(unittest.TestCase):
             report = client.get(f"/investigations/{investigation['id']}/report")
             self.assertEqual(report.status_code, 200)
             self.assertIn(b"Event 001", report.data)
-            self.assertIn(f"Event {journal_event_count:03d}".encode(), report.data)
+            self.assertNotIn(f"Event {journal_event_count:03d}".encode(), report.data)
+            last_report = client.get(f"/investigations/{investigation['id']}/report?report_page=999")
+            self.assertIn(f"Event {journal_event_count:03d}".encode(), last_report.data)
 
-    def test_evidence_page_uses_cursors_while_report_keeps_all_artifacts(self) -> None:
+    def test_evidence_and_report_pages_keep_artifacts_accessible(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)
             app.testing = True
@@ -781,7 +783,9 @@ class InvestigationRouteTests(unittest.TestCase):
             report = client.get(f"/investigations/{investigation['id']}/report")
             self.assertEqual(report.status_code, 200)
             self.assertIn(b"Artifact 001.txt", report.data)
-            self.assertIn(f"Artifact {artifact_count:03d}.txt".encode(), report.data)
+            self.assertNotIn(f"Artifact {artifact_count:03d}.txt".encode(), report.data)
+            last_report = client.get(f"/investigations/{investigation['id']}/report?report_page=999")
+            self.assertIn(f"Artifact {artifact_count:03d}.txt".encode(), last_report.data)
 
     def test_active_case_banner_adds_notes_without_leaving_the_tool_page(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

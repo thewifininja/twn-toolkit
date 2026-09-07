@@ -50,39 +50,99 @@ class RemoteConnectionStore:
             pass
 
     def library_for_user(
-        self, user_id: str, *, is_admin: bool = False
-    ) -> dict[str, list[dict[str, Any]]]:
+        self, user_id: str, *, is_admin: bool = False,
+        host_page: int | None = None, host_query: str = "",
+    ) -> dict[str, Any]:
         with self._connect() as connection:
             folders = connection.execute(
                 "SELECT * FROM remote_connection_folders ORDER BY name COLLATE NOCASE"
             ).fetchall()
             credentials = connection.execute(
                 """
-                SELECT c.*,
-                       (SELECT COUNT(*) FROM remote_connection_hosts h
-                        WHERE h.credential_id = c.id AND h.user_id = c.user_id)
-                         AS usage_count,
-                       (SELECT COUNT(*) FROM remote_connection_folders f
-                        WHERE f.credential_id = c.id AND f.user_id = c.user_id)
-                         AS folder_usage_count,
+                SELECT c.*, COALESCE(host_counts.usage_count, 0) AS usage_count,
+                       COALESCE(folder_counts.usage_count, 0) AS folder_usage_count,
                        COALESCE(scoped.name, '') AS scoped_host_name
                 FROM remote_connection_credentials c
+                LEFT JOIN (
+                    SELECT user_id, credential_id, COUNT(*) AS usage_count
+                    FROM remote_connection_hosts WHERE credential_id != ''
+                    GROUP BY user_id, credential_id
+                ) host_counts ON host_counts.user_id=c.user_id AND host_counts.credential_id=c.id
+                LEFT JOIN (
+                    SELECT user_id, credential_id, COUNT(*) AS usage_count
+                    FROM remote_connection_folders WHERE credential_id != ''
+                    GROUP BY user_id, credential_id
+                ) folder_counts ON folder_counts.user_id=c.user_id AND folder_counts.credential_id=c.id
                 LEFT JOIN remote_connection_hosts scoped
                   ON scoped.id = c.scope_host_id AND scoped.user_id = c.user_id
+                WHERE c.user_id=? OR c.visibility='global' OR (c.visibility='admins_only' AND ?)
                 ORDER BY c.name COLLATE NOCASE
-                """
+                """, (user_id, int(is_admin))
             ).fetchall()
-            hosts = connection.execute(
-                """
+            folder_items = [self._folder(row) for row in folders]
+            credential_items = [self._public_credential(row) for row in credentials]
+            self._annotate_effective_visibility(folder_items, [])
+            visible_credentials = [item for item in credential_items if self._visibility_allows(
+                item, user_id=user_id, is_admin=is_admin)]
+            self._annotate_effective_credentials(folder_items, [], visible_credentials)
+            folder_map = {item["id"]: item for item in folder_items}
+            credential_map = {item["id"]: item for item in visible_credentials}
+
+            def visible(owner, visibility, folder_id):
+                parent = folder_map.get(folder_id, {})
+                effective = (parent.get("effective_visibility", "admins_only")
+                             if parent.get("user_id") == owner else "admins_only")
+                return self._visibility_allows(
+                    {"user_id": owner, "visibility": effective if visibility == "inherit" else visibility},
+                    user_id=user_id, is_admin=is_admin)
+
+            query = str(host_query).strip()[:200].casefold()
+
+            def matches(name, protocol, address, label, path, notes, mode, credential_id, folder_id):
+                folder = folder_map.get(folder_id, {})
+                credential = credential_map.get(credential_id, {}) if mode == "credential" else {}
+                inherited = folder if mode == "inherit" else {}
+                folder_visible = self._visibility_allows(folder, user_id=user_id, is_admin=is_admin)
+                source = folder_map.get(inherited.get("credential_source_folder_id"), {})
+                source_name = inherited.get("credential_source_folder_name") if self._visibility_allows(source, user_id=user_id, is_admin=is_admin) else "Shared policy"
+                text = " ".join(str(value or "") for value in (
+                    name, protocol, address, label, path, notes,
+                    credential.get("username"), credential.get("name"),
+                    inherited.get("effective_remote_username"), inherited.get("effective_credential_name"),
+                    source_name if mode == "inherit" else "", folder.get("name") if folder_visible else ""))
+                return query in text.casefold()
+
+            sql = """
                 SELECT h.*, c.name AS credential_name,
                        c.remote_username AS remote_username,
                        c.scope_host_id AS credential_scope_host_id
                 FROM remote_connection_hosts h
                 LEFT JOIN remote_connection_credentials c
                   ON c.id = h.credential_id AND c.user_id = h.user_id
-                ORDER BY h.name COLLATE NOCASE
-                """
-            ).fetchall()
+            """
+            pagination = None
+            parameters = ()
+            if host_page is not None:
+                # Evaluate inheritance against one resolved folder/credential index.
+                # SQLite filters and counts before materializing host dictionaries.
+                connection.create_function("remote_host_visible", 3, visible)
+                connection.create_function("remote_host_matches", 9, matches)
+                where = "remote_host_visible(h.user_id, h.visibility, h.folder_id)"
+                total = connection.execute(
+                    "SELECT COUNT(*) FROM remote_connection_hosts h WHERE " + where).fetchone()[0]
+                if query:
+                    where += " AND remote_host_matches(h.name,h.protocol,h.host,h.console_device_label,h.console_device_path,h.notes,h.credential_mode,h.credential_id,h.folder_id)"
+                matched = connection.execute(
+                    "SELECT COUNT(*) FROM remote_connection_hosts h WHERE " + where).fetchone()[0] if query else total
+                pages = max(1, (matched + 99) // 100)
+                page = min(max(1, int(host_page)), pages)
+                sql += " WHERE " + where + " ORDER BY h.name COLLATE NOCASE, h.id LIMIT ? OFFSET ?"
+                parameters = (100, (page - 1) * 100)
+                pagination = {"page": page, "pages": pages, "page_size": 100,
+                              "total": total, "matched": matched, "query": str(host_query).strip()[:200]}
+            else:
+                sql += " ORDER BY h.name COLLATE NOCASE, h.id"
+            hosts = connection.execute(sql, parameters).fetchall()
         folder_items = [self._folder(row) for row in folders]
         credential_items = [self._public_credential(row) for row in credentials]
         host_items = [self._host(row) for row in hosts]
@@ -123,11 +183,11 @@ class RemoteConnectionStore:
             for item in collection:
                 item["owned"] = str(item["user_id"]) == user_id
                 item["can_manage"] = item["owned"] or (is_admin and self._visibility_allows(item, user_id=user_id, is_admin=True))
-        return {
-            "folders": folder_items,
-            "credentials": credential_items,
-            "hosts": host_items,
-        }
+        result = {"folders": folder_items, "credentials": credential_items, "hosts": host_items}
+        if pagination is not None:
+            result["pagination"] = pagination
+        return result
+
 
     def get_host(
         self, host_id: str, *, user_id: str, is_admin: bool = False
@@ -1318,30 +1378,31 @@ class RemoteConnectionStore:
         hosts: list[dict[str, Any]],
     ) -> None:
         folder_map = {str(item["id"]): item for item in folders}
-        resolving: set[str] = set()
-
-        def resolve(folder: dict[str, Any]) -> str:
-            folder_id = str(folder["id"])
-            current = str(folder.get("visibility", "private"))
-            if current != "inherit":
-                folder["effective_visibility"] = current
-                return current
-            if folder_id in resolving:
-                folder["effective_visibility"] = "private"
-                return "private"
-            resolving.add(folder_id)
-            parent = folder_map.get(str(folder.get("parent_id", "")))
-            effective = (
-                resolve(parent)
-                if parent and parent.get("user_id") == folder.get("user_id")
-                else "admins_only"
-            )
-            resolving.discard(folder_id)
-            folder["effective_visibility"] = effective
-            return effective
-
+        resolved: dict[str, str] = {}
         for folder in folders:
-            resolve(folder)
+            current = folder
+            path = []
+            visited = set()
+            effective = "admins_only"
+            while current:
+                identifier = str(current["id"])
+                if identifier in resolved:
+                    effective = resolved[identifier]
+                    break
+                if identifier in visited:
+                    effective = "private"
+                    break
+                visited.add(identifier)
+                path.append(current)
+                visibility = str(current.get("visibility", "private"))
+                if visibility != "inherit":
+                    effective = visibility
+                    break
+                parent = folder_map.get(str(current.get("parent_id", "")))
+                current = parent if parent and parent.get("user_id") == current.get("user_id") else None
+            for item in path:
+                resolved[str(item["id"])] = effective
+                item["effective_visibility"] = effective
         for host in hosts:
             current = str(host.get("visibility", "inherit"))
             parent = folder_map.get(str(host.get("folder_id", "")))
