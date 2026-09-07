@@ -170,7 +170,36 @@ def _interactive_lane(
     receipts = OperationReceipts(instance)
     receipts.discard_other_activations(activation_id)
     gate = gate or InteractivePollGate()
+    receipt_backoff = RetryBackoff()
     while callable(running) and running():
+        # A sibling can hold the idle poll for 20 seconds. Publish completed
+        # output through the non-claiming control endpoint before joining it.
+        try:
+            while running():
+                completed = receipts.pending("interactive", activation_id)
+                if not completed:
+                    break
+                result = client.heartbeat(
+                    advertised_capabilities(), toolkit_version=APP_VERSION,
+                    platform=f"{platform.system()} {platform.release()}".strip(),
+                    hostname=socket.gethostname(), activation_id=activation_id,
+                    results=completed, wait_seconds=0, control_only=True,
+                )
+                if result.get("job_protocol") != JOB_PROTOCOL_VERSION:
+                    raise ValueError("Upgrade the Mainframe for owned operation delivery.")
+                acknowledgements = result.get("acknowledgements", [])
+                if not any(
+                    ack.get("id") == completed[0]["id"]
+                    and ack.get("attempt_token") == completed[0]["attempt_token"]
+                    and ack.get("status") in {"accepted", "rejected"}
+                    for ack in acknowledgements if isinstance(ack, dict)
+                ):
+                    raise ValueError("Mainframe did not acknowledge the completed operation.")
+                receipts.acknowledge(acknowledgements)
+            receipt_backoff.reset()
+        except (EnrollmentTransportError, OSError, ValueError, sqlite3.Error):
+            pause(receipt_backoff.delay(), running)
+            continue
         with gate.enter(running) as admitted:
             if not admitted or not running():
                 return

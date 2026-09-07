@@ -475,3 +475,79 @@ def test_old_mainframe_status_failure_does_not_fall_back_to_claiming(tmp_path, m
         assert body.closed
     finally:
         server.stop()
+
+
+@pytest.mark.parametrize("delivery_failure", [None, "before_commit", "lost_acknowledgement"])
+def test_completed_gui_receipt_is_published_while_another_lane_is_long_polling(tmp_path, monkeypatch, delivery_failure):
+    import time
+    from twn_toolkit.distributed_operations import execute_owned
+
+    server = EnrollmentServer(tmp_path / 'mainframe', '127.0.0.1', 0)
+    server.enrollment_window.open(5)
+    server.start()
+    running = threading.Event()
+    running.set()
+    gate = polling.InteractivePollGate()
+    executed = threading.Event()
+    calls = []
+    pool = ThreadPoolExecutor(max_workers=2)
+    futures = []
+    publications = []
+    original_heartbeat = EnrollmentClient.heartbeat
+    def publish(client, *args, **kwargs):
+        publications.append(kwargs)
+        first = len(publications) == 1
+        if first and delivery_failure == "before_commit":
+            raise EnrollmentTransportError("fixture: unavailable before delivery")
+        result = original_heartbeat(client, *args, **kwargs)
+        if first and delivery_failure == "lost_acknowledgement":
+            raise EnrollmentTransportError("fixture: committed but acknowledgement lost")
+        return result
+    monkeypatch.setattr(EnrollmentClient, "heartbeat", publish)
+    try:
+        agent_path = tmp_path / 'agent'
+        _, agent_id = enroll(server, agent_path, 'Receipt latency fixture')
+        worker.agent_activation(agent_path)  # Production establishes one epoch before starting lanes.
+        def execute(instance, jobs, *, client, lane):
+            def effect(*args):
+                calls.append(True)
+                # Ensure the other lane has started its idle poll before finishing.
+                end = time.monotonic() + 3
+                while not gate.lock.locked() and time.monotonic() < end:
+                    time.sleep(.01)
+                assert gate.lock.locked()
+                executed.set()
+                return {'status': 200, 'body': 'b2s='}
+            execute_owned(instance, jobs, client, lane, effect)
+        monkeypatch.setattr(worker, '_execute_jobs', execute)
+        settings = {'agent_mainframe_url': f'https://127.0.0.1:{server.port}'}
+        futures = [pool.submit(worker._interactive_lane, agent_path, settings, running.is_set, gate) for _ in range(2)]
+        end = time.monotonic() + 3
+        while server.poll_budget.stats()['active'] == 0 and time.monotonic() < end:
+            time.sleep(.01)
+        assert server.poll_budget.stats()['active'] == 1
+        queued = server.job_store.enqueue(agent_id=agent_id, requester_id='owner', capability_id='system.http.tunnel', capability_version='1')
+        assert executed.wait(3)
+        end = time.monotonic() + 3
+        while time.monotonic() < end:
+            result = server.job_store.get(queued['id'])
+            if result['state'] == 'succeeded':
+                break
+            time.sleep(.01)
+        assert result['state'] == 'succeeded', 'Completed GUI response waited behind the other lane’s 20-second idle poll'
+        receipts = worker.OperationReceipts(agent_path)
+        end = time.monotonic() + 3
+        activation = worker.agent_activation(agent_path)["activation_id"]
+        while receipts.pending("interactive", activation) and time.monotonic() < end:
+            time.sleep(.01)
+        assert not receipts.pending("interactive", activation)
+        assert calls == [True]
+        assert len(publications) >= (2 if delivery_failure else 1)
+        assert all(item["control_only"] and item["wait_seconds"] == 0 for item in publications)
+        assert server.poll_budget.stats()['active'] == 1
+    finally:
+        running.clear()
+        server.stop()
+        for future in futures:
+            future.result(timeout=10)
+        pool.shutdown()
