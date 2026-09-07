@@ -77,3 +77,7 @@ def register_tools(registry: Any) -> None:
             "execute_fortiauthenticator_mac_cleanup": "fortiauthenticator.mac_cleanup",
         }
     )
+
+    from twn_toolkit.fac_inventory import KINDS
+    for spec in KINDS.values():
+        registry.map_endpoints({spec['endpoint']+'_'+suffix:spec['tool_id'] for suffix in ('status','cancel','download')})

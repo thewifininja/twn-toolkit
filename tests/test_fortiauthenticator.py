@@ -277,6 +277,19 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         self.assertEqual(event["details"]["outcome"], "succeeded")
         self.assertNotIn(b"secret", audit_database)
 
+    def complete_inventory(self, response, *, download=False):
+        from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+        from twn_toolkit.diagnostic_worker import execute_scan
+        self.assertEqual(response.status_code, 303)
+        store = DiagnosticJobStore(self.temporary_directory.name)
+        job = store.claim()
+        execute_scan(store, job['id'], job['token'])
+        self.assertEqual(store.get(job['id'], 'test-user')['state'], 'succeeded')
+        if download:
+            kind_path = 'mac-devices' if job['tool'].endswith('devices') else 'mac-group-memberships'
+            return self.client.get('/fortiauthenticator/'+kind_path+'/jobs/'+job['id']+'/download')
+        return self.client.get(response.location)
+
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices")
     def test_mac_device_preview_and_csv_export(self, get_all_mac_devices: Mock) -> None:
         self.client.post(
@@ -309,6 +322,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             "/fortiauthenticator/mac-devices",
             data={"profile": "Lab"},
         )
+        response = self.complete_inventory(response)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"2 devices fetched", response.data)
         self.assertIn(b"11:22:33:44:55:66", response.data)
@@ -319,6 +333,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             "/fortiauthenticator/mac-devices.csv",
             data={"profile": "Lab"},
         )
+        response = self.complete_inventory(response, download=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, "text/csv")
         self.assertIn("attachment; filename=", response.headers["Content-Disposition"])
@@ -372,6 +387,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             "/fortiauthenticator/mac-group-memberships",
             data={"profile": "Lab"},
         )
+        response = self.complete_inventory(response)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"1 membership fetched", response.data)
         self.assertIn(b"Office Devices", response.data)
@@ -382,6 +398,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             "/fortiauthenticator/mac-group-memberships.csv",
             data={"profile": "Lab"},
         )
+        response = self.complete_inventory(response, download=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, "text/csv")
         self.assertIn("attachment; filename=", response.headers["Content-Disposition"])
@@ -630,6 +647,8 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             data={"profile": "Lab", "csv_format": "raw"},
         )
 
+        spreadsheet_download = self.complete_inventory(spreadsheet_download, download=True)
+        raw_download = self.complete_inventory(raw_download, download=True)
         self.assertEqual(spreadsheet_download.status_code, 200)
         self.assertIn("'=command", spreadsheet_download.get_data(as_text=True))
         self.assertIn("'\t@command", spreadsheet_download.get_data(as_text=True))

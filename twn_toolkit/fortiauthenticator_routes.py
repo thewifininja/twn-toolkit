@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import csv
-import io
 import re
 import secrets
 import time
-from datetime import datetime
 from typing import Any, Callable
 
 from flask import (
@@ -30,13 +27,6 @@ from .audit import (
     annotate_profile_tested,
     audit_reference,
     suppress_audit_event,
-    suppress_case_bridge_event,
-)
-from .csv_exports import (
-    CSV_DOWNLOAD_FORMAT_RAW,
-    csv_download_filename,
-    csv_for_download,
-    normalize_csv_download_format,
 )
 from .fortiauthenticator import (
     FortiAuthenticatorClient,
@@ -45,7 +35,6 @@ from .fortiauthenticator import (
 )
 from .profiles import FortiAuthenticatorProfileStore
 from .preview_binding import issue_bound_preview, valid_bound_preview, PREVIEW_MAX_AGE_SECONDS
-from .investigation_context import add_current_investigation_generated_evidence_event
 from .tool_catalog import grouped_visible_tools_for_category
 
 
@@ -257,303 +246,8 @@ def register_fortiauthenticator_routes(
             flash(f"Connection to '{name}' succeeded{suffix}", "success")
         return redirect(url_for("fortiauthenticator_home"))
 
-    @app.route("/fortiauthenticator/mac-devices", methods=["GET", "POST"])
-    def fortiauthenticator_mac_devices():
-        profiles = profile_store.all()
-        selected_name = request.form.get("profile", "") if request.method == "POST" else ""
-        rows: list[dict[str, Any]] | None = None
-        total_count = 0
-        preview_limit = 500
-
-        if request.method == "POST":
-            suppress_audit_event()
-            profile = profile_store.get(selected_name)
-            if not profile:
-                flash("Select a valid FortiAuthenticator profile.", "error")
-            else:
-                try:
-                    objects = FortiAuthenticatorClient.from_profile(profile).get_all_mac_devices()
-                except FortiAuthenticatorError as exc:
-                    _record_fortinet_api_activity(
-                        "Loaded FortiAuthenticator MAC devices",
-                        f"{selected_name}: failed",
-                        failures=1,
-                        count_action=False,
-                    )
-                    flash(f"MAC device fetch failed: {exc}", "error")
-                else:
-                    total_count = len(objects)
-                    rows = [_format_mac_device(item) for item in objects[:preview_limit]]
-                    _record_fortinet_api_activity(
-                        "Loaded FortiAuthenticator MAC devices",
-                        f"{selected_name}: {total_count} devices",
-                        count_action=False,
-                    )
-
-        return render_template(
-            "fortiauthenticator/mac_devices.html",
-            profiles=profiles,
-            rows=rows,
-            selected_name=selected_name,
-            total_count=total_count,
-            preview_limit=preview_limit,
-        )
-
-    @app.post("/fortiauthenticator/mac-devices.csv")
-    def export_fortiauthenticator_mac_devices():
-        profile = profile_store.get(request.form.get("profile", ""))
-        download_format = normalize_csv_download_format(request.form.get("csv_format"))
-        if not profile:
-            annotate_audit_event(
-                category="FortiAuthenticator",
-                action="fortiauthenticator.mac_devices_export_failed",
-                summary="FortiAuthenticator MAC-device export failed.",
-                resource_type="fortiauthenticator_export",
-                resource_id="mac-devices",
-                resource_name="MAC devices",
-                details={"outcome": "failed", "record count": 0},
-            )
-            flash("Select a valid FortiAuthenticator profile.", "error")
-            return redirect(url_for("fortiauthenticator_mac_devices"))
-
-        try:
-            objects = FortiAuthenticatorClient.from_profile(profile).get_all_mac_devices()
-        except FortiAuthenticatorError as exc:
-            _record_fortinet_api_activity(
-                "Exported FortiAuthenticator MAC devices",
-                f"{profile['name']}: failed",
-                failures=1,
-            )
-            annotate_audit_event(
-                category="FortiAuthenticator",
-                action="fortiauthenticator.mac_devices_export_failed",
-                summary="FortiAuthenticator MAC-device export failed.",
-                resource_type="fortiauthenticator_export",
-                resource_id="mac-devices",
-                resource_name="MAC devices",
-                details={
-                    "outcome": "failed",
-                    "profile": audit_reference(
-                        "fortiauthenticator_profile", profile["name"], profile["name"]
-                    ),
-                    "record count": 0,
-                },
-            )
-            flash(f"MAC device export failed: {exc}", "error")
-            return redirect(url_for("fortiauthenticator_mac_devices"))
-
-        _record_fortinet_api_activity(
-            "Exported FortiAuthenticator MAC devices",
-            f"{profile['name']}: {len(objects)} devices",
-        )
-        output = io.StringIO()
-        fieldnames = ["ID", "MAC Address", "Name", "Description", "Resource URI"]
-        writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
-        writer.writeheader()
-        writer.writerows(_format_mac_device(item) for item in objects)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        safe_profile_name = _safe_filename_profile_name(profile["name"])
-        base_filename = f"mac-devices-{safe_profile_name}-{stamp}.csv"
-        filename = csv_download_filename(base_filename, download_format)
-        evidence_filename = csv_download_filename(base_filename, CSV_DOWNLOAD_FORMAT_RAW)
-        raw_csv_data = output.getvalue()
-        suppress_case_bridge_event()
-        annotate_audit_event(
-            category="FortiAuthenticator",
-            action="fortiauthenticator.mac_devices_export_succeeded",
-            summary="Exported FortiAuthenticator MAC devices.",
-            resource_type="fortiauthenticator_export",
-            resource_id="mac-devices",
-            resource_name="MAC devices",
-            details={
-                "outcome": "succeeded",
-                "profile": audit_reference(
-                    "fortiauthenticator_profile", profile["name"], profile["name"]
-                ),
-                "record count": len(objects),
-                "format": "CSV",
-                "download format": download_format,
-            },
-        )
-        now = time.time()
-        add_current_investigation_generated_evidence_event(
-            operation_id=f"fortiauthenticator-export:{secrets.token_hex(12)}",
-            event_type="external.export.completed",
-            tool_id="fortiauthenticator.mac_devices",
-            action="Export MAC devices",
-            outcome="succeeded",
-            summary=f"Exported {len(objects)} FortiAuthenticator MAC device(s).",
-            targets={"profile": profile["name"]},
-            parameters={"format": "CSV", "download_format": download_format},
-            metrics={"record_count": len(objects)},
-            details={},
-            started_at=now,
-            completed_at=now,
-            filename=evidence_filename,
-            content_type="text/csv",
-            content=raw_csv_data.encode("utf-8"),
-        )
-        return Response(
-            csv_for_download(raw_csv_data, download_format),
-            mimetype="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
-    @app.route("/fortiauthenticator/mac-group-memberships", methods=["GET", "POST"])
-    def fortiauthenticator_mac_group_memberships():
-        profiles = profile_store.all()
-        selected_name = request.form.get("profile", "") if request.method == "POST" else ""
-        rows: list[dict[str, Any]] | None = None
-        total_count = 0
-        preview_limit = 500
-
-        if request.method == "POST":
-            suppress_audit_event()
-            profile = profile_store.get(selected_name)
-            if not profile:
-                flash("Select a valid FortiAuthenticator profile.", "error")
-            else:
-                try:
-                    objects = (
-                        FortiAuthenticatorClient.from_profile(profile).get_all_mac_group_memberships()
-                    )
-                except FortiAuthenticatorError as exc:
-                    _record_fortinet_api_activity(
-                        "Loaded FortiAuthenticator MAC memberships",
-                        f"{selected_name}: failed",
-                        failures=1,
-                        count_action=False,
-                    )
-                    flash(f"MAC group-membership fetch failed: {exc}", "error")
-                else:
-                    total_count = len(objects)
-                    rows = [_format_mac_group_membership(item) for item in objects[:preview_limit]]
-                    _record_fortinet_api_activity(
-                        "Loaded FortiAuthenticator MAC memberships",
-                        f"{selected_name}: {total_count} memberships",
-                        count_action=False,
-                    )
-
-        return render_template(
-            "fortiauthenticator/mac_group_memberships.html",
-            profiles=profiles,
-            rows=rows,
-            selected_name=selected_name,
-            total_count=total_count,
-            preview_limit=preview_limit,
-        )
-
-    @app.post("/fortiauthenticator/mac-group-memberships.csv")
-    def export_fortiauthenticator_mac_group_memberships():
-        profile = profile_store.get(request.form.get("profile", ""))
-        download_format = normalize_csv_download_format(request.form.get("csv_format"))
-        if not profile:
-            annotate_audit_event(
-                category="FortiAuthenticator",
-                action="fortiauthenticator.mac_memberships_export_failed",
-                summary="FortiAuthenticator MAC-membership export failed.",
-                resource_type="fortiauthenticator_export",
-                resource_id="mac-memberships",
-                resource_name="MAC group memberships",
-                details={"outcome": "failed", "record count": 0},
-            )
-            flash("Select a valid FortiAuthenticator profile.", "error")
-            return redirect(url_for("fortiauthenticator_mac_group_memberships"))
-
-        try:
-            objects = FortiAuthenticatorClient.from_profile(
-                profile
-            ).get_all_mac_group_memberships()
-        except FortiAuthenticatorError as exc:
-            _record_fortinet_api_activity(
-                "Exported FortiAuthenticator MAC memberships",
-                f"{profile['name']}: failed",
-                failures=1,
-            )
-            annotate_audit_event(
-                category="FortiAuthenticator",
-                action="fortiauthenticator.mac_memberships_export_failed",
-                summary="FortiAuthenticator MAC-membership export failed.",
-                resource_type="fortiauthenticator_export",
-                resource_id="mac-memberships",
-                resource_name="MAC group memberships",
-                details={
-                    "outcome": "failed",
-                    "profile": audit_reference(
-                        "fortiauthenticator_profile", profile["name"], profile["name"]
-                    ),
-                    "record count": 0,
-                },
-            )
-            flash(f"MAC group-membership export failed: {exc}", "error")
-            return redirect(url_for("fortiauthenticator_mac_group_memberships"))
-
-        _record_fortinet_api_activity(
-            "Exported FortiAuthenticator MAC memberships",
-            f"{profile['name']}: {len(objects)} memberships",
-        )
-        output = io.StringIO()
-        fieldnames = [
-            "Membership ID",
-            "Device ID",
-            "Device Name",
-            "Device URI",
-            "Group ID",
-            "Group Name",
-            "Group URI",
-            "Expiry Time",
-            "Resource URI",
-        ]
-        writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
-        writer.writeheader()
-        writer.writerows(_format_mac_group_membership(item) for item in objects)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        safe_profile_name = _safe_filename_profile_name(profile["name"])
-        base_filename = f"mac-group-memberships-{safe_profile_name}-{stamp}.csv"
-        filename = csv_download_filename(base_filename, download_format)
-        evidence_filename = csv_download_filename(base_filename, CSV_DOWNLOAD_FORMAT_RAW)
-        raw_csv_data = output.getvalue()
-        suppress_case_bridge_event()
-        annotate_audit_event(
-            category="FortiAuthenticator",
-            action="fortiauthenticator.mac_memberships_export_succeeded",
-            summary="Exported FortiAuthenticator MAC group memberships.",
-            resource_type="fortiauthenticator_export",
-            resource_id="mac-memberships",
-            resource_name="MAC group memberships",
-            details={
-                "outcome": "succeeded",
-                "profile": audit_reference(
-                    "fortiauthenticator_profile", profile["name"], profile["name"]
-                ),
-                "record count": len(objects),
-                "format": "CSV",
-                "download format": download_format,
-            },
-        )
-        now = time.time()
-        add_current_investigation_generated_evidence_event(
-            operation_id=f"fortiauthenticator-export:{secrets.token_hex(12)}",
-            event_type="external.export.completed",
-            tool_id="fortiauthenticator.group_memberships",
-            action="Export MAC group memberships",
-            outcome="succeeded",
-            summary=f"Exported {len(objects)} FortiAuthenticator MAC group membership(s).",
-            targets={"profile": profile["name"]},
-            parameters={"format": "CSV", "download_format": download_format},
-            metrics={"record_count": len(objects)},
-            details={},
-            started_at=now,
-            completed_at=now,
-            filename=evidence_filename,
-            content_type="text/csv",
-            content=raw_csv_data.encode("utf-8"),
-        )
-        return Response(
-            csv_for_download(raw_csv_data, download_format),
-            mimetype="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
+    from .fac_inventory_routes import register_fac_inventory_routes
+    register_fac_inventory_routes(app, profile_store)
 
     @app.route("/fortiauthenticator/mac-cleanup", methods=["GET", "POST"])
     def fortiauthenticator_mac_cleanup():
@@ -792,34 +486,6 @@ def register_fortiauthenticator_routes(
         )
 
 
-def _format_mac_device(item: dict[str, Any]) -> dict[str, Any]:
-    resource_uri = str(item.get("resource_uri") or "")
-    return {
-        "ID": _resource_id(resource_uri) or item.get("id", ""),
-        "MAC Address": item.get("address", ""),
-        "Name": item.get("name", ""),
-        "Description": item.get("description", ""),
-        "Resource URI": resource_uri,
-    }
-
-
-def _format_mac_group_membership(item: dict[str, Any]) -> dict[str, Any]:
-    device_uri = str(item.get("device") or "")
-    group_uri = str(item.get("group") or "")
-    resource_uri = str(item.get("resource_uri") or "")
-    return {
-        "Membership ID": item.get("id", "") or _resource_id(resource_uri),
-        "Device ID": _resource_id(device_uri),
-        "Device Name": item.get("device_name", ""),
-        "Device URI": device_uri,
-        "Group ID": _resource_id(group_uri),
-        "Group Name": item.get("group_name", ""),
-        "Group URI": group_uri,
-        "Expiry Time": item.get("expiry_time") or "",
-        "Resource URI": resource_uri,
-    }
-
-
 def _resource_id(resource_uri: str) -> str:
     match = re.search(r"/(\d+)/?$", resource_uri)
     return match.group(1) if match else ""
@@ -932,7 +598,3 @@ def _cleanup_confirmation(action: str, count: int) -> str:
     if action == "remove_memberships":
         return f"REMOVE {count} {'MEMBERSHIP' if count == 1 else 'MEMBERSHIPS'}"
     return f"DELETE {count} {'DEVICE' if count == 1 else 'DEVICES'}"
-
-
-def _safe_filename_profile_name(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_") or "profile"

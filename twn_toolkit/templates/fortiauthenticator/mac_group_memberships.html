@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% include 'components/diagnostic_job.html' %}
+{% from 'components/ui.html' import case_recorded_notice %}
+{{ case_recorded_notice(journal_event) }}
 <section class="panel tool-panel">
   <div class="panel-head">
     <h1>MAC Group Memberships</h1>
@@ -11,7 +14,7 @@
       class="form"
       method="post"
       action="{{ url_for('fortiauthenticator_mac_group_memberships') }}"
-      data-loading-message="Fetching FortiAuthenticator group memberships…"
+      data-loading-message="Queueing FortiAuthenticator group memberships…"
     >
       <label>
         FortiAuthenticator profile
@@ -28,8 +31,8 @@
       <label>
         CSV download format
         <select name="csv_format">
-          <option value="spreadsheet" selected>Spreadsheet-safe CSV</option>
-          <option value="raw">Raw CSV for machine processing</option>
+          <option value="spreadsheet" {% if csv_format != "raw" %}selected{% endif %}>Spreadsheet-safe CSV</option>
+          <option value="raw" {% if csv_format == "raw" %}selected{% endif %}>Raw CSV for machine processing</option>
         </select>
       </label>
       <p class="field-note">Spreadsheet-safe downloads preserve formula-looking values as text. Raw CSV is lossless for machine processing; generated case evidence always keeps the raw CSV.</p>
@@ -56,6 +59,13 @@
         {% if total_count > preview_limit %}Showing the first {{ preview_limit }}; CSV includes all records.{% endif %}
       </span>
     </div>
+    {% if diagnostic_job.summary.fields_clipped %}<p class="field-note">Long preview fields are shortened to 512 characters. CSV exports retain their complete values.</p>{% endif %}
+    {% if diagnostic_job.summary.archive %}<div class="button-row"><a class="button-link" href="{{ url_for(inventory_download_endpoint, job_id=diagnostic_job.id) }}">Download CSV</a></div><p class="field-note">This download uses the completed snapshot. Refreshing does not contact the appliance again. Very large files may require direct Agent access under the configured GUI tunnel response limit.</p>{% endif %}
+    <nav class="button-row" aria-label="Inventory preview pages">
+      {% if result_page > 1 %}<a class="button-link secondary" href="{{ url_for(diagnostic_result_endpoint, job=diagnostic_job.id, page=result_page-1) }}">Previous</a>{% endif %}
+      <span>Preview page {{ result_page }} · 100 rows per page</span>
+      {% if result_page * 100 < diagnostic_job.summary.preview_count %}<a class="button-link secondary" href="{{ url_for(diagnostic_result_endpoint, job=diagnostic_job.id, page=result_page+1) }}">Next</a>{% endif %}
+    </nav>
     {% if rows %}
       <div class="preview-table-wrap">
         <table>
@@ -94,4 +104,5 @@
     {% endif %}
   </section>
 {% endif %}
+<script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
 {% endblock %}

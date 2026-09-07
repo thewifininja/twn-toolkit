@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import sys
 import time
 import zipfile
 
+from .diagnostic_artifacts import artifact_directory, cleanup_artifacts
 from .datastore import LocalDatastore, DatastoreError
 from .network_tools import ToolInputError, parse_ssh_targets
 from .transfer_tools import fetch_transfer_files, parse_remote_paths, validate_transfer_filename_pattern
@@ -32,30 +32,8 @@ def prepare_transfer_config(form, password):
     return {'form': form, 'password': password, 'hosts': hosts, 'paths': paths}
 
 
-def artifact_directory(store, job_id):
-    if not re.fullmatch(r'[a-f0-9]{32}', job_id):
-        raise ValueError('Invalid transfer artifact identity.')
-    return store.instance / 'transfer_job_artifacts' / job_id
-
-
 def cleanup_transfer_artifacts(store):
-    root = store.instance / 'transfer_job_artifacts'
-    try:
-        paths = list(root.iterdir())
-    except OSError:
-        return  # Unavailable storage must not stop other finite jobs.
-    with store.connect() as db:
-        retained = {row['id'] for row in db.execute(
-            "SELECT id FROM diagnostic_jobs WHERE tool='transfer' AND (state IN ('queued','running','cancel_requested','succeeded') OR token!='')")}
-    for path in paths:
-        if re.fullmatch(r'[a-f0-9]{32}', path.name) and path.name not in retained:
-            try:
-                if path.is_symlink():
-                    path.unlink()
-                else:
-                    shutil.rmtree(path)
-            except OSError:
-                pass  # Retry next scheduler cleanup; never stop other jobs.
+    cleanup_artifacts(store, 'transfer')
 
 
 def execute_transfer(store, job, config):
