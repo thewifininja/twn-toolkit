@@ -42,6 +42,10 @@ two-second grace period. Unconfirmed work becomes unknown and is not replayed.
 On restart, previously running claims are fenced and surfaced as unknown.
 Completed results retain ownership until the subprocess exits so retention or
 the scheduler cannot interrupt case recording merely because results are ready.
+If process creation or the ownership handoff fails, the scheduler reaps any
+created child, records the failed run, and releases its retention claim. Failed
+starts follow normal history limits without requiring a scheduler restart; they
+are not automatically retried.
 
 ## Policy
 
