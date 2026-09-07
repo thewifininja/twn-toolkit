@@ -29,6 +29,11 @@
   const startButton = document.getElementById("remote-terminal-start");
   const startStatus = document.getElementById("remote-terminal-start-status");
   const stateBadge = document.getElementById("remote-terminal-session-state");
+  const actionMessage = document.getElementById("remote-terminal-action-message");
+  const actionText = document.getElementById("remote-terminal-action-text");
+  const actionDismiss = document.getElementById("remote-terminal-action-dismiss");
+  const pollMessage = document.getElementById("remote-terminal-poll-message");
+  actionDismiss?.addEventListener("click", () => { actionMessage.hidden = true; });
   const sessionMessage = document.getElementById("remote-terminal-session-message");
   const sessionTitle = document.getElementById("remote-terminal-session-title");
   const sessionProtocol = document.getElementById("remote-terminal-session-protocol");
@@ -473,6 +478,7 @@
     checkpointTimer = null;
     pollGeneration += 1;
     selected = session;
+    pollMessage.hidden = true;
     cursor = 0;
     synchronizing = true;
     unreadOutput = false;
@@ -517,6 +523,7 @@
         || !selected
         || selected.id !== pollingSession.id
       ) return;
+      pollMessage.hidden = true;
       selected = data.session;
       upsert(selected);
       if (data.checkpoint) {
@@ -558,7 +565,10 @@
         }
       }
     } catch (error) {
-      showMessage(error.message);
+      if (generation === pollGeneration && selected?.id === pollingSession.id) {
+        pollMessage.textContent = error.message;
+        pollMessage.hidden = false;
+      }
     } finally {
       if (pollingGeneration === generation) pollingGeneration = -1;
       if (generation === pollGeneration) schedulePoll(pollImmediately);
@@ -1029,11 +1039,11 @@
       downloadButton.hidden = !session.download_url;
     }
     if (deleteButton) deleteButton.hidden = isActive;
-    if (session.last_error) showMessage(session.last_error);
+    if (session.last_error) showSessionMessage(session.last_error);
     else if (session.output_truncated) {
-      showMessage("The retained transcript reached 100 MiB. Live output continues, but later output is available only in the interactive session.");
+      showSessionMessage("The retained transcript reached 100 MiB. Live output continues, but later output is available only in the interactive session.");
     } else if (historyGapDetected || terminal.hasTrimmedHistory()) {
-      showMessage("Earlier output is outside this interactive view. The retained transcript remains available from Session actions.");
+      showSessionMessage("Earlier output is outside this interactive view. The retained transcript remains available from Session actions.");
     }
     else sessionMessage.hidden = true;
     updateFocusState();
@@ -1328,6 +1338,12 @@
   }
 
   function showMessage(message, category = "warning") {
+    actionText.textContent = message;
+    actionMessage.className = `message ${category} remote-terminal-action-message`;
+    actionMessage.hidden = false;
+  }
+
+  function showSessionMessage(message, category = "warning") {
     sessionMessage.textContent = message;
     sessionMessage.className = `message ${category}`;
     sessionMessage.hidden = false;
