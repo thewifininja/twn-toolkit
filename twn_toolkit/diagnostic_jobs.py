@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 import os
 import secrets
 import shutil
@@ -63,14 +64,19 @@ class DiagnosticJobStore:
         policy = self.policy.get()
         with self.connect(write=True) as db:
             self._prune(db, policy)
+        from .transfer_diagnostic import cleanup_transfer_artifacts
+        cleanup_transfer_artifacts(self)
 
     def enqueue(self, *, user_id, config, tool="tcp_scan"):
-        if tool not in {"tcp_scan", "dns"} or not user_id:
+        if tool not in {"tcp_scan", "dns", "transfer"} or not user_id:
             raise ValueError("Invalid diagnostic request.")
+        policy = self.policy.get()
+        if tool == "transfer":
+            from .transfer_deadlines import TransferPolicy
+            config = {**config, "transfer_policy": asdict(TransferPolicy.from_settings(policy))}
         raw = json.dumps(config, separators=(",", ":"), allow_nan=False)
         if len(raw.encode()) > 64 * 1024:
             raise ValueError("Diagnostic configuration exceeds the storage envelope.")
-        policy = self.policy.get()
         job_id = secrets.token_hex(16)
         sealed = self.cipher.seal(raw, job_id + ":diagnostic-config")
         with self.connect(write=True) as db:
@@ -84,7 +90,13 @@ class DiagnosticJobStore:
             active = db.execute("SELECT COUNT(*) FROM diagnostic_jobs WHERE state IN ('queued','running','cancel_requested')").fetchone()[0]
             # Reserve headroom for this queue's active result envelopes, including
             # encryption/journal overhead. Other artifact writers remain separate.
-            if shutil.disk_usage(self.instance).free - (active + 1) * 32 * 1024**2 < policy["minimum_free_gib"] * 1024**3:
+            reserved = (active + 1) * 32 * 1024**2
+            if tool == "transfer":
+                reserved += 2 * config["transfer_policy"]["run_bytes"]
+            for queued in db.execute("SELECT id,config FROM diagnostic_jobs WHERE tool='transfer' AND state IN ('queued','running','cancel_requested')"):
+                saved = json.loads(self.cipher.open(queued["config"], queued["id"] + ":diagnostic-config"))
+                reserved += 2 * saved["transfer_policy"]["run_bytes"]
+            if shutil.disk_usage(self.instance).free - reserved < policy["minimum_free_gib"] * 1024**3:
                 raise ValueError("Diagnostic results would cross the configured free-disk reserve.")
             db.execute("INSERT INTO diagnostic_jobs(id,user_id,tool,state,config,created,timeout) VALUES (?,?,?,'queued',?,?,?)",
                        (job_id, user_id, tool, sealed, time.time(), policy["diagnostic_timeout_seconds"]))
@@ -152,6 +164,12 @@ class DiagnosticJobStore:
             db.execute("UPDATE diagnostic_jobs SET state='unknown', error='Scheduler restarted before confirming completion. This run was not replayed.', completed=?, token='' WHERE state IN ('running','cancel_requested')", (time.time(),))
             db.execute("UPDATE diagnostic_jobs SET token='' WHERE completed IS NOT NULL")
             return previous
+
+    def progress(self, job_id, token, summary):
+        sealed = self.cipher.seal(json.dumps(summary), job_id + ":diagnostic-summary")
+        with self.connect(write=True) as db:
+            return db.execute("UPDATE diagnostic_jobs SET summary=? WHERE id=? AND token=? AND state='running'",
+                              (sealed, job_id, token)).rowcount == 1
 
     def finish(self, job_id, token, rows, summary):
         if len(rows) > MAX_RESULT_ROWS:

@@ -191,6 +191,16 @@ class SftpToolTests(unittest.TestCase):
 
 
 class SftpRouteTests(unittest.TestCase):
+    def complete_job(self, instance, client, response):
+        from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+        from twn_toolkit.diagnostic_worker import execute_scan
+        self.assertEqual(response.status_code, 303)
+        store = DiagnosticJobStore(instance)
+        job = store.claim()
+        execute_scan(store, job['id'], job['token'])
+        store.release(job['id'], job['token'])
+        return client.get(response.headers['Location']), job['id']
+
     def test_page_is_available_and_datastore_mode_persists_file(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
             app = create_app(instance)
@@ -215,7 +225,7 @@ class SftpRouteTests(unittest.TestCase):
                     "filename": filename, "size": 6, "error": "",
                 }]
 
-            with patch("twn_toolkit.sftp_routes.fetch_ssh_files", side_effect=fake_fetch):
+            with patch("twn_toolkit.transfer_diagnostic.fetch_transfer_files", side_effect=fake_fetch):
                 response = client.post(
                     "/tools/multi-transfer",
                     data={
@@ -229,6 +239,7 @@ class SftpRouteTests(unittest.TestCase):
                         "allow_legacy_algorithms": "on",
                     },
                 )
+                response, job_id = self.complete_job(instance, client, response)
             self.assertEqual(response.status_code, 200)
             store = LocalDatastore(instance)
             self.assertEqual(store.file("20260712153000-switch-config.cfg").read_bytes(), b"config")
@@ -256,7 +267,7 @@ class SftpRouteTests(unittest.TestCase):
                     "filename": filename, "size": 5, "error": "",
                 }]
 
-            with patch("twn_toolkit.sftp_routes.fetch_ssh_files", side_effect=fake_fetch):
+            with patch("twn_toolkit.transfer_diagnostic.fetch_transfer_files", side_effect=fake_fetch):
                 response = client.post(
                     "/tools/multi-transfer",
                     data={
@@ -266,15 +277,15 @@ class SftpRouteTests(unittest.TestCase):
                         "download_token": "test-download-token",
                     },
                 )
+                response, job_id = self.complete_job(instance, client, response)
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.mimetype, "application/zip")
-            self.assertIn(b"PK", response.data[:4])
-            results_page = client.get(
-                "/tools/multi-transfer?download_result=test-download-token"
-            )
+            download = client.get(f"/tools/multi-transfer/jobs/{job_id}/download")
+            self.assertEqual(download.mimetype, "application/zip")
+            self.assertIn(b"PK", download.data[:4])
+            results_page = response
             self.assertIn(b"SFTP Results", results_page.data)
-            self.assertIn(b"1 of 1 transfer(s) downloaded", results_page.data)
-            self.assertIn(b"included in downloaded ZIP", results_page.data)
+            self.assertIn(b"1 of 1 transfer(s) fetched", results_page.data)
+            self.assertIn(b"included in ZIP", results_page.data)
             self.assertNotIn(b"Open destination", results_page.data)
 
     def test_download_mode_renders_errors_when_every_transfer_fails(self) -> None:
@@ -288,7 +299,7 @@ class SftpRouteTests(unittest.TestCase):
                 "filename": "", "size": 0, "error": "Connection failed: offline",
             }]
             with patch(
-                "twn_toolkit.sftp_routes.fetch_ssh_files", return_value=failures
+                "twn_toolkit.transfer_diagnostic.fetch_transfer_files", return_value=failures
             ):
                 response = client.post(
                     "/tools/multi-transfer",
@@ -298,6 +309,7 @@ class SftpRouteTests(unittest.TestCase):
                         "remote_paths": "/missing.cfg", "output_mode": "download",
                     },
                 )
+                response, job_id = self.complete_job(instance, client, response)
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.mimetype, "text/html")
             self.assertIn(b"No files were fetched", response.data)
