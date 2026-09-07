@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='appearance.css', v=asset_version) }}">
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     {% if current_user %}
       <aside id="session-expiry-notice" class="session-expiry-notice" role="status" aria-live="polite" hidden
              data-activity-url="{{ session_activity_url }}">
@@ -372,7 +373,7 @@
           ></div>
         </aside>
       {% endif %}
-      <main class="shell{% block shell_classes %}{% endblock %}">
+      <main id="main-content" tabindex="-1" class="shell{% block shell_classes %}{% endblock %}">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             <section class="messages">

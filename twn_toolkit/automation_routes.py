@@ -22,7 +22,7 @@ from flask import (
     url_for,
 )
 
-from .automation_heartbeat import read_automation_heartbeat
+from .automation_heartbeat import scheduler_status as _scheduler_status
 from .automation import (
     STAGE_CONTINUATION_LABELS,
     AutomationEngine,
@@ -1294,35 +1294,6 @@ def _format_run(run: dict[str, Any]) -> dict[str, Any]:
 
 def _format_check(check: dict[str, Any]) -> dict[str, Any]:
     return {**check, "checked_display": _format_time(check["checked_at"])}
-
-
-def _scheduler_status(instance_path: Path) -> dict[str, Any]:
-    pid_path = instance_path / "twn-automation.pid"
-    try:
-        pid = int(pid_path.read_text(encoding="utf-8").strip())
-        os.kill(pid, 0)
-    except (OSError, ValueError):
-        return {
-            "running": False,
-            "process_running": False,
-            "pid": None,
-            "heartbeat_age": None,
-            "scheduler_progress_age": None,
-            "last_work_completion_age": None,
-            "stopping": False,
-        }
-    heartbeat = read_automation_heartbeat(
-        instance_path / "automation-heartbeat.json"
-    )
-    return {
-        "running": bool(heartbeat["fresh"]),
-        "process_running": True,
-        "pid": pid,
-        "heartbeat_age": heartbeat["age"],
-        "scheduler_progress_age": heartbeat["scheduler_progress_age"],
-        "last_work_completion_age": heartbeat["last_work_completion_age"],
-        "stopping": heartbeat["state"] == "stopping",
-    }
 
 
 def _safe_filename(value: str) -> str:

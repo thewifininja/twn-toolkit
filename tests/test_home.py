@@ -98,7 +98,7 @@ class HomePageTests(unittest.TestCase):
         self.assertIn(b"Ready when you are, admin", response.data)
         self.assertIn(b"Quick launch", response.data)
         self.assertIn(b'id="dashboard-tool-search-input"', response.data)
-        self.assertIn(b"Everything looks clear", response.data)
+        self.assertIn(b"Scheduler is not running", response.data)
         self.assertIn(b"Activity snapshot", response.data)
         self.assertIn(b"All activity metrics", response.data)
         self.assertIn(b"Recent activity", response.data)
@@ -636,7 +636,7 @@ class HomePageTests(unittest.TestCase):
 
             page = client.get("/")
 
-        self.assertIn(b"1 item needs attention", page.data)
+        self.assertIn(b"2 items need attention", page.data)
         self.assertIn(b"1 active", page.data)
         self.assertIn(b"1 stopped with an error", page.data)
         self.assertIn(b"data-open-live-tools", page.data)

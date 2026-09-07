@@ -30,6 +30,7 @@ from .login_throttle import LoginThrottle, LoginThrottled, LOGIN_BODY_BYTES
 from .activity import ActivityStore
 from .automation import AutomationStore
 from .automation_routes import register_automation_routes
+from .automation_heartbeat import scheduler_status
 from .acme_dns import AcmeDnsManager
 from .certificate_automation import CertificateAutomationStore
 from .datastore import LocalDatastore, MAX_UPLOAD_BYTES
@@ -1329,7 +1330,11 @@ def create_app(instance_path: str | None = None) -> Flask:
             "enabled": 0,
             "attention": 0,
         }
+        scheduler = None
+        scheduler_attention = False
         if is_admin:
+            scheduler = scheduler_status(Path(app.instance_path))
+            scheduler_attention = not scheduler["running"] or scheduler["stopping"]
             automation_stats.update(automation_store.job_stats())
             automations = automation_store.all()
             automation_stats["enabled"] = sum(
@@ -1345,10 +1350,13 @@ def create_app(instance_path: str | None = None) -> Flask:
             "live_count": len(live_sessions),
             "live_errors": live_errors,
             "automation": automation_stats,
+            "scheduler": scheduler,
+            "scheduler_attention": scheduler_attention,
             "attention_count": (
                 live_errors
                 + automation_stats["failed_jobs"]
                 + automation_stats["attention"]
+                + int(scheduler_attention)
             ),
         }
         enabled_user_count = sum(

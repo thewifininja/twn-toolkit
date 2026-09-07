@@ -114,7 +114,7 @@
           {% if workspace_status.attention_count %}
             {{ workspace_status.attention_count }} item{{ '' if workspace_status.attention_count == 1 else 's' }} {{ 'needs' if workspace_status.attention_count == 1 else 'need' }} attention
           {% else %}
-            Everything looks clear
+            No reported errors
           {% endif %}
         </h2>
         <p>
@@ -144,11 +144,17 @@
         {% endif %}
       </article>
       {% if current_user.is_admin %}
-        <article class="{{ 'has-warning' if workspace_status.automation.failed_jobs or workspace_status.automation.attention else '' }}">
+        <article class="{{ 'has-warning' if workspace_status.automation.failed_jobs or workspace_status.automation.attention or workspace_status.scheduler_attention else '' }}">
           <span>Automations</span>
           <strong>{{ workspace_status.automation.enabled }} enabled</strong>
           <small>
-            {% if workspace_status.automation.failed_jobs %}
+            {% if workspace_status.scheduler.stopping %}
+              Scheduler is stopping; new work is not being started
+            {% elif not workspace_status.scheduler.process_running %}
+              Scheduler is not running; scheduled and queued work cannot start
+            {% elif not workspace_status.scheduler.running %}
+              Scheduler is not reporting; review its status before relying on automation
+            {% elif workspace_status.automation.failed_jobs %}
               {{ workspace_status.automation.failed_jobs }} failed job{{ '' if workspace_status.automation.failed_jobs == 1 else 's' }}
             {% elif workspace_status.automation.attention %}
               {{ workspace_status.automation.attention }} workflow{{ '' if workspace_status.automation.attention == 1 else 's' }} needs review
@@ -158,7 +164,7 @@
               No queued or failed jobs
             {% endif %}
           </small>
-          <a class="link-button subtle" href="{{ url_for('automations') }}">Open automations</a>
+          <a class="link-button subtle" href="{{ url_for('automations') }}">{{ 'Review scheduler status' if workspace_status.scheduler_attention else 'Open automations' }}</a>
         </article>
       {% endif %}
       <article>
