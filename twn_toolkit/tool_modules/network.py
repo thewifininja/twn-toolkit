@@ -564,6 +564,9 @@ def register_tools(registry: Any) -> None:
             "tools.stop_remote_terminal_session": "tools.remote_terminal",
             "tools.rename_remote_terminal_session": "tools.remote_terminal",
             "tools.multi_transfer": "tools.multi_sftp",
+            "tools.transfer_job_status": "tools.multi_sftp",
+            "tools.cancel_transfer_job": "tools.multi_sftp",
+            "tools.download_transfer_job": "tools.multi_sftp",
             "tools.multi_sftp": "tools.multi_sftp",
         }
     )

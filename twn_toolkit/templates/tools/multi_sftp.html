@@ -2,19 +2,31 @@
 {% from "components/ui.html" import case_recorded_notice, host_range_guidance, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
+{% set diagnostic_label = 'Bulk Transfer' %}
+{% set diagnostic_status_endpoint = 'tools.transfer_job_status' %}
+{% set diagnostic_cancel_endpoint = 'tools.cancel_transfer_job' %}
+{% set diagnostic_result_endpoint = 'tools.multi_transfer' %}
+{% include 'components/diagnostic_job.html' %}
+{% if diagnostic_job and form.output_mode == 'datastore' %}
+<p class="message">Files publish individually. If a run stops or becomes unconfirmed, inspect the destination before retrying; already published files are not rolled back.</p>
+{% if diagnostic_job.summary.published_paths %}<details class="panel"><summary>Confirmed published files</summary><ul>{% for path in diagnostic_job.summary.published_paths %}<li><code>{{ path }}</code></li>{% endfor %}</ul></details>{% endif %}
+{% endif %}
+{% if diagnostic_job and diagnostic_job.state == 'succeeded' and diagnostic_job.summary.archive %}
+<section class="panel"><a class="button-link" href="{{ url_for('tools.download_transfer_job', job_id=diagnostic_job.id) }}">Download ZIP</a><p class="field-note">Available while this run is retained, up to {{ transfer_limits.diagnostic_retention_hours }} hours. Agent GUI downloads remain subject to the configured response-size limit; use the Agent directly for larger archives.</p></section>
+{% endif %}
 {% set has_results = results is not none %}
-{% set success_count = results|selectattr('status', 'equalto', 'success')|list|length if has_results else 0 %}
+{% set success_count = diagnostic_job.summary.successful if has_results and diagnostic_job else 0 %}
+{% set run_total = diagnostic_job.summary.total if has_results and diagnostic_job else 0 %}
 <div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
-{{ tool_result_runbar('Transfer complete', 'Bulk transfer', (success_count ~ ' of ' ~ results|length ~ ' transfer(s) completed') if has_results else '', 'bulk-transfer-form', 'bulk-transfer-settings', has_results, 'Fetch again') }}
+{{ tool_result_runbar('Transfer complete', 'Bulk transfer', (success_count ~ ' of ' ~ run_total ~ ' transfer(s) completed') if has_results else '', 'bulk-transfer-form', 'bulk-transfer-settings', has_results, 'Fetch again') }}
 {{ case_recorded_notice(journal_event) }}
 <section class="panel tool-panel tool-setup-panel" id="bulk-transfer-settings" data-tool-settings-panel>
   <div class="panel-head tool-setup-heading">
-    <div><p class="eyebrow">Network tools</p><h1>Bulk Transfer</h1><p>Fetch the same file set from multiple hosts using SFTP, SCP, or FTP, then retain it in the datastore or download an ephemeral ZIP.</p></div>
+    <div><p class="eyebrow">Network tools</p><h1>Bulk Transfer</h1><p>Fetch the same file set from multiple hosts using SFTP, SCP, or FTP, then retain it in the datastore or download a retained ZIP.</p></div>
     <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form compact-tool-form bulk-transfer-form" id="bulk-transfer-form" method="post" autocomplete="off" data-loading-message="Fetching files from multiple hosts…" data-sftp-form>
-    <input type="hidden" name="download_token" value="" data-download-token>
+  <form class="form compact-tool-form bulk-transfer-form" id="bulk-transfer-form" method="post" autocomplete="off" data-loading-message="Queueing Bulk Transfer…" data-sftp-form>
     <div class="bulk-transfer-config-grid">
       <section class="compact-tool-config-card bulk-transfer-access-card">
         <header class="compact-tool-config-head">
@@ -67,7 +79,7 @@
           <legend>Where should fetched files go?</legend>
           <label class="check">
             <input type="radio" name="output_mode" value="download" {% if form.output_mode == 'download' %}checked{% endif %} data-sftp-output-mode>
-            <span><strong>Fetch and download a one-shot ZIP</strong><small>Send it to this browser, then discard the temporary server files.</small></span>
+            <span><strong>Fetch and download a ZIP</strong><small>Download after the job completes; the archive expires with the run history.</small></span>
           </label>
           <label class="check">
             <input type="radio" name="output_mode" value="datastore" {% if form.output_mode == 'datastore' %}checked{% endif %} data-sftp-output-mode>
@@ -96,8 +108,8 @@
       </section>
     </div>
     <div class="compact-tool-runbar bulk-transfer-runbar">
-      <div><strong>Ready to fetch</strong><span>256 MiB per file · 1 GiB per run · credentials are used for this run; Mainframe requests use temporary encrypted storage</span></div>
-      <button type="submit">Fetch files</button>
+      <div><strong>Ready to fetch</strong><span>{{ transfer_limits.transfer_file_mib }} MiB per file · {{ transfer_limits.transfer_run_mib }} MiB per run · credentials are encrypted with this retained job</span></div>
+      <button type="submit">Queue transfer</button>
     </div>
   </form>
 </section>
@@ -107,9 +119,10 @@
 {% if results is not none %}
 <section class="panel tool-panel">
   <div class="preview-head">
-    <div><h2>{{ form.protocol|upper }} Results</h2><p>{{ results | selectattr('status', 'equalto', 'success') | list | length }} of {{ results | length }} transfer(s) {{ 'stored' if form.output_mode == 'datastore' else 'downloaded' }}.</p></div>
+    <div><h2>{{ form.protocol|upper }} Results</h2><p>{{ results | selectattr('status', 'equalto', 'success') | list | length }} of {{ results | length }} transfer(s) {{ 'stored' if form.output_mode == 'datastore' else 'fetched' }} on this page.</p></div>
     {% if form.output_mode == 'datastore' %}<a class="button-link secondary" href="{{ url_for('local_datastore', path=form.destination) }}">Open destination</a>{% endif %}
   </div>
+  {% if result_total > 100 %}<nav aria-label="Transfer result pages"><span>{{ result_total }} results · page {{ result_page }}</span>{% if result_page > 1 %} <a href="{{ url_for('tools.multi_transfer', job=diagnostic_job.id, page=result_page-1) }}">Previous page</a>{% endif %}{% if result_page * 100 < result_total %} <a href="{{ url_for('tools.multi_transfer', job=diagnostic_job.id, page=result_page+1) }}">Next page</a>{% endif %}</nav>{% endif %}
   <div class="sftp-results">
     {% for result in results %}
       <article class="sftp-result">
@@ -122,7 +135,7 @@
         <div>
           {% if result.status == 'success' %}
             {% if result.stored_path %}<a href="{{ url_for('download_datastore_file', path=result.stored_path) }}">{{ result.filename }}</a>{% else %}<strong>{{ result.filename }}</strong>{% endif %}
-            <small>{{ result.size_display }}{% if not result.stored_path %} · included in downloaded ZIP{% endif %}</small>
+            <small>{{ result.size_display }}{% if not result.stored_path %} · included in ZIP{% endif %}</small>
           {% else %}
             <span class="muted">{{ result.error }}</span>
           {% endif %}
@@ -133,6 +146,7 @@
 </section>
 {% endif %}
 </div>
-<script src="{{ url_for('static', filename='multi-sftp.js') }}"></script>
+<script src="{{ url_for('static', filename='multi-sftp.js', v=asset_version) }}"></script>
+<script src="{{ url_for('static', filename='diagnostic-job.js', v=asset_version) }}"></script>
 </div>
 {% endblock %}

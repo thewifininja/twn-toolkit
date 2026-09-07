@@ -36,7 +36,7 @@ class DiagnosticScheduler:
                     reason = work.get("reason") or ("deadline" if process.returncode == 124 else "")
                     state = "cancelled" if reason == "cancel" or job["state"] == "cancel_requested" else "failed"
                     error = "Diagnostic cancelled." if state == "cancelled" else (
-                        "Diagnostic deadline exceeded; incomplete results were discarded." if reason == "deadline"
+                        "Run deadline exceeded; no complete result was confirmed." if reason == "deadline"
                         else "Diagnostic process exited without a confirmed result."
                     )
                     _abort(self.store, job_id, work["token"], state, error)
@@ -103,6 +103,10 @@ def execute_scan(store, job_id, token):
     if not job or job["state"] != "running":
         return
     config = json.loads(store.cipher.open(job["config"], job_id + ":diagnostic-config"))
+    if job["tool"] == "transfer":
+        from .transfer_diagnostic import execute_transfer
+        execute_transfer(store, job, config)
+        return
     if job["tool"] == "dns":
         from .dns_diagnostic import execute_dns
         execute_dns(store, job, config)
@@ -172,6 +176,10 @@ def _abort(store, job_id, token, state, error):
 
 def record_unsuccessful_scan(store, job, state, error):
     """Best-effort attribution; recording errors never replay network work."""
+    if job["tool"] == "transfer":
+        from .transfer_diagnostic import record_transfer_outcome
+        record_transfer_outcome(store, job, state, error)
+        return
     if job["tool"] == "dns":
         from .dns_diagnostic import record_dns_outcome
         record_dns_outcome(store, job, state, error)
@@ -229,7 +237,9 @@ def main():
     try:
         execute_scan(store, args.job, token)
     except Exception as exc:
-        _abort(store, args.job, token, "failed", f"Diagnostic failed: {type(exc).__name__}")
+        current = store.owned(args.job, token)
+        state = "cancelled" if current and current["state"] == "cancel_requested" else "failed"
+        _abort(store, args.job, token, state, f"Run {state}: {type(exc).__name__}")
         raise SystemExit(1)
 
 

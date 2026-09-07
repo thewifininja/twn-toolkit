@@ -19,7 +19,7 @@
           return;
         }
         status.textContent = job.state === "cancel_requested" ? "Cancellation requested — waiting for the run to stop." :
-          job.state === "running" ? "Run in progress. You can leave this page and return to the result link." :
+          job.state === "running" ? (job.stage ? `Run in progress: ${job.stage}. You can leave this page.` : "Run in progress. You can leave this page and return to the result link.") :
           "Queued — waiting for the diagnostic scheduler. You can leave this page.";
       } catch (_) {
         status.textContent = "Unable to refresh status. Retrying; refreshing this page will not submit another run.";

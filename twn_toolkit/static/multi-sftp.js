@@ -5,9 +5,7 @@
   const protocol = form.querySelector("[data-transfer-protocol]");
   const port = form.querySelector("[data-transfer-port]");
   const sshOptions = form.querySelectorAll("[data-ssh-host-key-option]");
-  const downloadToken = form.querySelector("[data-download-token]");
   let previousProtocol = protocol?.value;
-  let downloadPoll = 0;
   const update = () => {
     const selected = form.querySelector("[data-sftp-output-mode]:checked");
     if (destination) destination.hidden = selected?.value !== "datastore";
@@ -29,24 +27,4 @@
   protocol?.addEventListener("change", updateProtocol);
   updateProtocol();
 
-  form.addEventListener("submit", () => {
-    const outputMode = form.querySelector("[data-sftp-output-mode]:checked")?.value;
-    if (outputMode !== "download" || !downloadToken) return;
-    const token = window.crypto?.randomUUID?.()
-      || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const cookieName = `twn_download_ready_${token}`;
-    downloadToken.value = token;
-    window.clearInterval(downloadPoll);
-    downloadPoll = window.setInterval(() => {
-      const complete = document.cookie.split("; ").some((item) => item.startsWith(`${cookieName}=`));
-      if (!complete) return;
-      window.clearInterval(downloadPoll);
-      downloadPoll = 0;
-      document.cookie = `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`;
-      window.toolkitLoading?.hide();
-      const resultsUrl = new URL(form.action || window.location.href, window.location.href);
-      resultsUrl.searchParams.set("download_result", token);
-      window.location.assign(resultsUrl);
-    }, 250);
-  });
 })();
