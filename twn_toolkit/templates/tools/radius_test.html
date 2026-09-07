@@ -19,17 +19,15 @@
 {{ tool_result_runbar('Test complete', 'RADIUS authentication', (accepted_count ~ ' of ' ~ (results|length) ~ ' server(s) accepted') if has_results else '', 'radius-test-form', 'radius-test-settings', has_results, 'Test again') }}
 <section class="panel tool-panel tool-setup-panel" id="radius-test-settings" data-tool-settings-panel>
   <div class="panel-head tool-setup-heading">
-    <div><h1>RADIUS Authentication Test</h1><p>Test PAP, CHAP, PEAP with MSCHAPv2, or certificate-based EAP-TLS against one or more saved RADIUS servers.</p></div>
+    <div><h1>RADIUS Authentication Test</h1><p>Test PAP or CHAP against one or more saved RADIUS servers.</p></div>
     <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {{ case_recorded_notice(journal_event) }}
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  {% if not eapol_available %}
-    <div class="message warning radius-eap-warning" role="note">
-      <strong>{{ 'macOS EAP compatibility' if is_macos else 'Optional EAP dependency unavailable' }}</strong>
-      <p>PEAP/MSCHAPv2 and EAP-TLS require a separately installed <code>eapol_test</code> executable on the toolkit service’s <code>PATH</code>. PAP and CHAP remain available.{% if is_macos %} The executable is not currently available as a standard Homebrew formula.{% endif %}</p>
-    </div>
-  {% endif %}
+  <div class="message warning radius-eap-warning" role="note">
+    <strong>EAP testing temporarily disabled</strong>
+    <p>{{ eap_disabled_reason }} Installing <code>eapol_test</code> will not enable this feature.</p>
+  </div>
   <form class="form" id="radius-test-form" method="post" enctype="multipart/form-data" data-loading-message="Running RADIUS authentication test…">
     <fieldset class="choice-group">
       <legend>RADIUS servers</legend>
@@ -62,11 +60,12 @@
         </select>
       </label>
       <label>Protocol
-        <select name="protocol" id="radius-protocol">
+        <select name="protocol" id="radius-protocol" required>
+          <option value="" disabled {% if form.protocol not in ['pap', 'chap'] %}selected{% endif %}>Choose PAP or CHAP</option>
           <option value="pap" {% if form.protocol == "pap" %}selected{% endif %}>PAP</option>
           <option value="chap" {% if form.protocol == "chap" %}selected{% endif %}>CHAP</option>
-          <option value="peap-mschapv2" {% if form.protocol == "peap-mschapv2" %}selected{% endif %}>EAP-PEAP / MSCHAPv2</option>
-          <option value="eap-tls" {% if form.protocol == "eap-tls" %}selected{% endif %}>EAP-TLS</option>
+          <option value="peap-mschapv2" disabled>EAP-PEAP / MSCHAPv2 — temporarily disabled</option>
+          <option value="eap-tls" disabled>EAP-TLS — temporarily disabled</option>
         </select>
       </label>
       <label>Timeout per attempt
@@ -76,30 +75,6 @@
         <input name="retries" type="number" min="1" max="5" value="{{ form.retries }}">
       </label>
     </div>
-    <details class="advanced-options" id="radius-eap-options" {% if form.protocol in ['peap-mschapv2', 'eap-tls'] %}open{% endif %}>
-      <summary>EAP certificate and identity settings</summary>
-      <div class="form">
-        <span class="field-note">Uploads exist only for this request and are removed immediately after the test. The CA certificate is required for both methods.</span>
-        <label>CA certificate
-          <input name="ca_certificate" type="file" accept=".pem,.cer,.crt,.der">
-        </label>
-        <label>Expected server DNS suffix (recommended)
-          <input name="server_domain" value="{{ form.server_domain }}" placeholder="radius.example.com">
-        </label>
-        <label>PEAP anonymous identity
-          <input name="anonymous_identity" value="{{ form.anonymous_identity }}" placeholder="anonymous@example.com">
-        </label>
-        <label>EAP-TLS client certificate
-          <input name="client_certificate" type="file" accept=".pem,.cer,.crt,.der">
-        </label>
-        <label>EAP-TLS private key
-          <input name="private_key" type="file" accept=".pem,.key">
-        </label>
-        <label>Private-key passphrase
-          <input name="private_key_password" type="password" autocomplete="new-password">
-        </label>
-      </div>
-    </details>
     <div class="button-row">
       <button type="submit">Run RADIUS test</button>
     </div>

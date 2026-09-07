@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import platform
 import secrets
 import time
 from typing import Any
@@ -16,7 +15,7 @@ from .network_tools import (
     validate_hosts,
 )
 from .profiles import RadiusProfileStore
-from .radius_eap_tools import eapol_test_available, radius_eap_authenticate
+from .radius_eap_tools import EAP_DISABLED_REASON
 from .investigation_context import record_current_investigation_event
 
 
@@ -49,9 +48,6 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
             "timeout": "3",
             "retries": "1",
             "attribute_profile": "",
-            "anonymous_identity": "anonymous",
-            "server_domain": "",
-            "private_key_password": "",
         }
         results = None
         journal_event = None
@@ -62,53 +58,37 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
             form = {
                 "server_names": request.form.getlist("server_names"),
                 "credential_name": request.form.get("credential_name", "").strip(),
-                "protocol": request.form.get("protocol", "pap").strip(),
+                "protocol": request.form.get("protocol", "pap").strip().lower(),
                 "timeout": request.form.get("timeout", "3").strip(),
                 "retries": request.form.get("retries", "1").strip(),
                 "attribute_profile": request.form.get("attribute_profile", "").strip(),
-                "anonymous_identity": request.form.get("anonymous_identity", "anonymous").strip(),
-                "server_domain": request.form.get("server_domain", "").strip(),
-                "private_key_password": request.form.get("private_key_password", ""),
             }
-            servers = [server_store.get(name) for name in form["server_names"]]
-            credentials = credential_store.get(form["credential_name"])
+            eap_disabled = form["protocol"] in {"peap-mschapv2", "eap-tls"}
+            servers = [] if eap_disabled else [server_store.get(name) for name in form["server_names"]]
+            credentials = None if eap_disabled else credential_store.get(form["credential_name"])
             attribute_profile = (
-                attribute_store.get(form["attribute_profile"]) if form["attribute_profile"] else None
+                attribute_store.get(form["attribute_profile"]) if form["attribute_profile"] and not eap_disabled else None
             )
-            if not form["server_names"] or any(server is None for server in servers):
+            if eap_disabled:
+                error = EAP_DISABLED_REASON
+            elif not form["server_names"] or any(server is None for server in servers):
                 error = "Select at least one valid RADIUS server profile."
             elif not credentials:
                 error = "Select a valid credential profile."
             elif form["attribute_profile"] and not attribute_profile:
                 error = "Select a valid RADIUS attribute profile."
-            elif form["protocol"] in {"peap-mschapv2", "eap-tls"} and attribute_profile:
-                error = "Additional RADIUS attribute profiles currently apply to PAP and CHAP only."
             else:
                 try:
-                    if form["protocol"] in {"peap-mschapv2", "eap-tls"}:
-                        results = radius_eap_authenticate(
-                            [server for server in servers if server],
-                            credentials,
-                            form["protocol"],
-                            timeout=float(form["timeout"]),
-                            ca_certificate=_uploaded_bytes("ca_certificate"),
-                            client_certificate=_uploaded_bytes("client_certificate"),
-                            private_key=_uploaded_bytes("private_key"),
-                            private_key_password=form["private_key_password"],
-                            anonymous_identity=form["anonymous_identity"],
-                            server_domain=form["server_domain"],
-                        )
-                    else:
-                        results = radius_authenticate(
-                            [server for server in servers if server],
-                            credentials,
-                            form["protocol"],
-                            float(form["timeout"]),
-                            int(form["retries"]),
-                            parse_radius_attributes(attribute_profile["source"])
-                            if attribute_profile
-                            else [],
-                        )
+                    results = radius_authenticate(
+                        [server for server in servers if server],
+                        credentials,
+                        form["protocol"],
+                        float(form["timeout"]),
+                        int(form["retries"]),
+                        parse_radius_attributes(attribute_profile["source"])
+                        if attribute_profile
+                        else [],
+                    )
                 except (ToolInputError, TypeError, ValueError) as exc:
                     _record_radius_activity(
                         "Ran RADIUS test",
@@ -174,7 +154,6 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
                     "timeout_seconds": form["timeout"],
                     "retries": form["retries"],
                     "attribute_profile": form["attribute_profile"],
-                    "server_domain": form["server_domain"],
                 },
                 metrics={
                     "attempt_count": len(safe_results),
@@ -195,8 +174,7 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
             credentials=credential_store.all(),
             attribute_profiles=attribute_store.all(),
             results=results,
-            eapol_available=eapol_test_available(),
-            is_macos=platform.system() == "Darwin",
+            eap_disabled_reason=EAP_DISABLED_REASON,
             journal_event=journal_event,
         )
 
@@ -316,11 +294,6 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
 
 def _radius_profile_store(kind: str) -> RadiusProfileStore:
     return RadiusProfileStore(current_app.instance_path, kind)
-
-
-def _uploaded_bytes(name: str) -> bytes:
-    upload = request.files.get(name)
-    return upload.read(2 * 1024 * 1024 + 1) if upload and upload.filename else b""
 
 
 def _journal_radius_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:

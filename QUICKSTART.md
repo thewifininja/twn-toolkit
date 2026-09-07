@@ -17,7 +17,7 @@ Optional workflows need their own system commands or remote permissions:
 - FortiGate workflows use a REST API administrator and token.
 - FortiAuthenticator workflows use an administrator with **Web service
   access** and its Web Service API Access Key.
-- PEAP/MSCHAPv2 and EAP-TLS tests require `eapol_test`.
+- RADIUS PEAP/MSCHAPv2 and EAP-TLS testing is [temporarily disabled](docs/radius-eap-status.md); PAP and CHAP are available.
 - iPerf3 client and server tests require an existing system `iperf3` command;
   the toolkit does not install it.
 - Multicast tests use the host's IPv4 socket support and require at least one

@@ -1332,15 +1332,15 @@ class NetworkToolTests(unittest.TestCase):
             self.assertIn(b"HQ WLAN", radius_page)
             self.assertNotIn(b"shared-secret-not-rendered", radius_page)
             self.assertNotIn(b"password-not-rendered", radius_page)
-            with patch("twn_toolkit.radius_routes.platform.system", return_value="Darwin"):
+            with patch("platform.system", return_value="Darwin"):
                 mac_radius_page = client.get("/tools/radius-test").data
-            self.assertIn(b"macOS EAP compatibility", mac_radius_page)
-            self.assertEqual(mac_radius_page.count(b"macOS EAP compatibility"), 1)
+            self.assertIn(b"EAP testing temporarily disabled", mac_radius_page)
+            self.assertEqual(mac_radius_page.count(b"EAP testing temporarily disabled"), 1)
             self.assertIn(
                 b'class="message warning radius-eap-warning" role="note"',
                 mac_radius_page,
             )
-            self.assertIn(b"standard Homebrew formula", mac_radius_page)
+            self.assertIn(b"will not enable this feature", mac_radius_page)
 
             response = client.post(
                 "/tools/radius-test/profiles/servers",

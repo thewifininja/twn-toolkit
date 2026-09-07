@@ -199,7 +199,7 @@ The sidebar and Network Tools page use the same functional organization.
   Datastore folder as a live snapshot or completed scrollback without
   overwriting an earlier copy.
 - **RADIUS Authentication Test** — compare PAP and CHAP results and returned
-  attributes; optional `eapol_test` support adds PEAP/MSCHAPv2 and EAP-TLS.
+  attributes. PEAP/MSCHAPv2 and EAP-TLS testing is [temporarily disabled](docs/radius-eap-status.md) pending safe shared-secret handling.
 - **Certificate Chain Inspector** — inspect the exact TLS chain presented by a
   server and validate dates, hostname, order, intermediates, and local trust.
 - **Certificate Automation** — use a guided Certbot DNS-01 workflow for
