@@ -6,6 +6,7 @@ import re
 import shlex
 import ftplib
 import threading
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -138,6 +139,7 @@ def fetch_ssh_files(
     allow_legacy_algorithms: bool = False,
     policy: TransferPolicy | None = None,
     instance_path: str | None = None,
+    output_store=None,
 ) -> list[dict[str, Any]]:
     policy = policy or TransferPolicy()
     protocol = str(protocol).lower()
@@ -178,6 +180,8 @@ def fetch_ssh_files(
             used_names=used_names,
             name_lock=name_lock,
         )
+        if output_store is not None:
+            arguments["output_store"] = output_store
         if protocol != "ftp":
             arguments["allow_legacy_algorithms"] = allow_legacy_algorithms
         try:
@@ -220,6 +224,7 @@ def _fetch_sftp_host(
     name_lock: threading.Lock,
     allow_legacy_algorithms: bool = False,
     policy: TransferPolicy, deadline: TransferDeadline,
+    output_store=None,
 ) -> list[dict[str, Any]]:
     address = host["host"]
     label = host.get("label", "")
@@ -275,7 +280,7 @@ def _fetch_sftp_host(
                 destination = output_dir / filename
                 temporary = output_dir / f".{filename}.part"
                 written = 0
-                with sftp.open(remote_path, "rb") as source, temporary.open("wb") as target:
+                with sftp.open(remote_path, "rb") as source, _transfer_output(temporary, output_store, max_bytes=policy.file_bytes, expected_bytes=size) as target:
                     while True:
                         deadline.check()
                         chunk = source.read(64 * 1024)
@@ -321,6 +326,7 @@ def _fetch_scp_host(
     filename_pattern: str, budget: _TransferBudget, used_names: set[str],
     name_lock: threading.Lock, allow_legacy_algorithms: bool = False,
     policy: TransferPolicy, deadline: TransferDeadline,
+    output_store=None,
 ) -> list[dict[str, Any]]:
     address, label = host["host"], host.get("label", "")
     client = None
@@ -389,7 +395,7 @@ def _fetch_scp_host(
                 destination = output_dir / filename
                 temporary = output_dir / f".{filename}.part"
                 channel.sendall(b"\x00")
-                with temporary.open("wb") as target:
+                with _transfer_output(temporary, output_store, max_bytes=policy.file_bytes, expected_bytes=size) as target:
                     remaining = size
                     while remaining:
                         deadline.check()
@@ -430,6 +436,7 @@ def _fetch_ftp_host(
     filename_pattern: str, budget: _TransferBudget, used_names: set[str],
     name_lock: threading.Lock,
     policy: TransferPolicy, deadline: TransferDeadline,
+    output_store=None,
 ) -> list[dict[str, Any]]:
     del allow_unknown_hosts
     address, label = host["host"], host.get("label", "")
@@ -470,7 +477,7 @@ def _fetch_ftp_host(
                 )
                 filename = _unique_output_name(filename_pattern, timestamp, address, label, remote_path, used_names, name_lock)
                 destination = output_dir / filename; temporary = output_dir / f".{filename}.part"; written = 0
-                with temporary.open("wb") as target:
+                with _transfer_output(temporary, output_store, max_bytes=policy.file_bytes, expected_bytes=int(reported_size) if reported_size is not None else None) as target:
                     def consume(chunk: bytes) -> None:
                         nonlocal written, reserved
                         deadline.check()
@@ -573,3 +580,18 @@ def _safe_component(value: str, fallback: str) -> str:
 def _safe_suffix(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9.]", "", str(value))
     return cleaned[:40]
+
+
+@contextmanager
+def _transfer_output(path, store, *, max_bytes, expected_bytes=None):
+    """Reserve private staging writes without changing protocol confirmation."""
+    if store is None:
+        with path.open('wb') as output:
+            yield output
+        return
+    with store.begin_upload(store.relative(path.parent), path.name,
+                            max_bytes=max_bytes, expected_bytes=expected_bytes) as output:
+        yield output
+        # Publish only private .part staging. The caller retains its protocol
+        # checks and final destination rename.
+        output.commit()
