@@ -5,13 +5,15 @@
   <div class="panel-head">
     <h1>{{ task.label }} Results</h1>
     <p>{{ profile.name }} · {{ "Dry run" if dry_run else "Live run" }}</p>
+    <p>Target: <strong>{{ target_origin }}</strong> · Default VDOM: <strong>{{ profile.default_vdom }}</strong></p>
+    <p>Endpoint: <code>{{ endpoint_template }}</code>. Each row shows its VDOM.</p>
   </div>
   {% set success_count = results | selectattr('status', 'equalto', 'success') | list | length %}
   {% set error_count = results | selectattr('status', 'equalto', 'error') | list | length %}
   {% set planned_count = results | selectattr('status', 'equalto', 'planned') | list | length %}
   {% if dry_run %}
     <div class="message warning">
-      Preview complete: {{ planned_count }} change{{ '' if planned_count == 1 else 's' }} planned. Review every row before applying.
+      Preview complete: {{ planned_count }} change{{ '' if planned_count == 1 else 's' }} planned. Review every row before applying. This preview expires after {{ preview_expiry_minutes }} minutes; changing the profile or request requires a new preview.
     </div>
   {% else %}
     <div class="message {{ 'error' if error_count and not success_count else 'warning' if error_count else 'success' }}">
@@ -45,10 +47,11 @@
     </table>
   </div>
   <div class="button-row result-actions">
-    {% if dry_run and entries %}
+    {% if dry_run and entries and preview_token %}
       <form method="post" action="{{ url_for('rename_objects', task_id=task.id) }}">
         <input name="profile" type="hidden" value="{{ profile.name }}">
         <input name="endpoint_template" type="hidden" value="{{ endpoint_template }}">
+        <input name="preview_token" type="hidden" value="{{ preview_token }}">
         <input name="confirmed_live" type="hidden" value="on">
         {% for entry in entries %}
           <input name="identifier" type="hidden" value="{{ entry.identifier }}">

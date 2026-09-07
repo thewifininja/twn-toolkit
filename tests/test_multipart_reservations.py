@@ -150,3 +150,27 @@ def test_unpromoted_spool_cannot_publish_and_sealed_spool_cannot_be_rewritten(tm
     finally: spool.close()
     assert store.list()["entries"]==[]
     assert not pending(tmp_path)
+
+
+def test_request_spool_supports_line_iteration_and_seek_without_losing_cleanup(tmp_path):
+    app = create_app(str(tmp_path))
+    app.testing = True
+
+    @app.post("/inspect-lines")
+    def inspect_lines():
+        stream = request.files["file"].stream
+        assert stream.readline(2) == b"fi"
+        assert next(stream) == b"rst\n"
+        assert list(stream) == [b"second\n", b"last"]
+        assert stream.readline() == b""
+        stream.seek(0)
+        assert b"".join(stream) == b"first\nsecond\nlast"
+        with pytest.raises(ValueError, match="read-only"):
+            stream.write(b"extra")
+        return "ok"
+
+    response = app.test_client().post("/inspect-lines", data={
+        "file": (io.BytesIO(b"first\nsecond\nlast"), "lines.csv"),
+    })
+    assert response.status_code == 200
+    assert not pending(tmp_path)
