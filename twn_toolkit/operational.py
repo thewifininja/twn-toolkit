@@ -8,11 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from .file_transactions import file_transaction
+from .distributed_response_policy import RESPONSE_LIMITS, validate_response_limits
 from .diagnostic_policy import DIAGNOSTIC_LIMITS, validate_diagnostic_limits
 from .transfer_deadlines import OUTGOING_TRANSFER_LIMITS, validate_transfer_limits
 
 
 DEFAULT_OPERATIONAL_SETTINGS = {
+    **{key: spec[0] for key, spec in RESPONSE_LIMITS.items()},
     **{key: spec[0] for key, spec in DIAGNOSTIC_LIMITS.items()},
     **{key: spec[0] for key, spec in OUTGOING_TRANSFER_LIMITS.items()},
     "max_concurrent_automations": 4,
@@ -138,6 +140,7 @@ class OperationalSettingsStore:
         if not 1 <= client_limit <= 256: raise ValueError("Agent HTTP client capacity must be 1–256.")
         if not 1 <= client_idle <= 86400: raise ValueError("Agent HTTP client idle time must be 1–86,400 seconds.")
         return {
+            **validate_response_limits(values),
             **validate_transfer_limits(values),
             **validate_diagnostic_limits(values),
             "max_multipart_files": multipart,

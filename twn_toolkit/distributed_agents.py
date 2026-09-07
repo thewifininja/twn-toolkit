@@ -26,8 +26,8 @@ DEFAULT_AGENT_PORT = 5051
 PAIRING_CODE_DIGITS = 6
 AGENT_ONLINE_SECONDS = 30
 MAX_ENROLLMENT_WINDOW_MINUTES = 24 * 60
-# Contract: owned operations delivered through the dedicated interactive lane.
-GUI_PROTOCOL_VERSION = 1
+# Contract: owned interactive delivery plus bounded response-chunk transfer.
+GUI_PROTOCOL_VERSION = 2
 GUI_TUNNEL_CAPABILITY = ("system.http.tunnel", "1")
 
 

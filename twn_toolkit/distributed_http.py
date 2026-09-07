@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import os
 from pathlib import Path
 from typing import Any
 
 from .distributed_dispatch_cache import DispatchCache, DispatchCacheBusy
+from .distributed_response import current_response_writer
+from .distributed_response_policy import RESPONSE_CHUNK_BYTES
 
 
 # The base64 representation plus job metadata must remain below the 256 KiB
@@ -84,11 +87,11 @@ def dispatch_http_request(instance: Path, inputs: dict[str, Any]) -> dict[str, A
     try:
         with _cache.borrow(instance, str(user["id"]), _create_dispatch_app) as (app, entry):
             if interactive_terminal:
-                return _dispatch(app.test_client(), path, request_options)
+                return _dispatch(app.test_client(), path, request_options, transfer=inputs.get("response_transfer"))
             with entry.lock:
                 if entry.value is None:
                     entry.value = app.test_client()
-                return _dispatch(entry.value, path, request_options)
+                return _dispatch(entry.value, path, request_options, transfer=inputs.get("response_transfer"))
     except DispatchCacheBusy as exc:
         return {
             "status": 503,
@@ -97,23 +100,68 @@ def dispatch_http_request(instance: Path, inputs: dict[str, Any]) -> dict[str, A
         }
 
 
-def _dispatch(client, path, request_options):
+def _dispatch(client, path, request_options, *, transfer=None):
     response = client.open(path, **request_options)
     try:
-        response_body = response.get_data()
-        if len(response_body) > MAX_TUNNEL_BODY_BYTES:
-            raise ValueError("The tunneled HTTP response is too large.")
+        writer = current_response_writer() if isinstance(transfer, dict) and transfer.get('version') == 1 else None
+        limit = MAX_TUNNEL_BODY_BYTES
+        if writer:
+            limit = transfer.get('max_bytes', 0)
+            if type(limit) is not int or not 1 <= limit <= 256 * 1024**2:
+                raise ValueError('Invalid response transfer size limit.')
+        pending = []
+        size = position = 0
+        transferring = False
+        digest = hashlib.sha256()
+        def send(data):
+            nonlocal position
+            writer(position, base64.b64encode(data).decode('ascii'))
+            position += 1
+        for chunk in _response_frames(response, limit):
+            size += len(chunk)
+            digest.update(chunk)
+            if not transferring and size > MAX_TUNNEL_BODY_BYTES:
+                transferring = True
+                for previous in pending:
+                    send(previous)
+                pending.clear()
+            if transferring:
+                send(chunk)
+            else:
+                pending.append(chunk)
+        body_result = ({'body_transfer': 1, 'body_size': size, 'body_sha256': digest.hexdigest()}
+                       if transferring else {'body': base64.b64encode(b''.join(pending)).decode('ascii')})
         returned_headers = []
         for name, value in response.headers.items():
             if name.lower() in {
                 "content-type", "content-disposition", "location", "cache-control",
-                "etag", "last-modified", "retry-after",
+                "etag", "last-modified", "retry-after", "content-range", "accept-ranges",
             }:
                 returned_headers.append([name, value])
         return {
             "status": response.status_code,
+            "request_path": path,
             "headers": returned_headers,
-            "body": base64.b64encode(response_body).decode("ascii"),
+            **body_result,
         }
     finally:
         response.close()
+
+
+def _response_frames(response, limit):
+    pending = bytearray()
+    total = 0
+    for source in response.iter_encoded():
+        total += len(source)
+        if total > limit:
+            raise ValueError('The Agent response is too large for the configured transfer size limit.')
+        offset = 0
+        while offset < len(source):
+            take = min(RESPONSE_CHUNK_BYTES - len(pending), len(source) - offset)
+            pending.extend(source[offset:offset + take])
+            offset += take
+            if len(pending) == RESPONSE_CHUNK_BYTES:
+                yield bytes(pending)
+                pending.clear()
+    if pending:
+        yield bytes(pending)

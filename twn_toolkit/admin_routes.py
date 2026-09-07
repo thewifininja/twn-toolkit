@@ -24,6 +24,7 @@ from flask import (
     url_for,
 )
 
+from .distributed_response_policy import RESPONSE_LIMITS
 from .transfer_deadlines import OUTGOING_TRANSFER_LIMITS
 
 from .auth import APPEARANCE_PALETTES, AuthStore
@@ -1849,6 +1850,7 @@ def register_admin_routes(
         before = operational_store.get()
         try:
             after = operational_store.save({
+                **{key: request.form.get(key, before[key]) for key in RESPONSE_LIMITS},
                 **{key: request.form.get(key, before[key]) for key in OUTGOING_TRANSFER_LIMITS},
                 "automation_ping_workers": request.form.get("automation_ping_workers", before["automation_ping_workers"]),
                 "automation_condition_workers": request.form.get("automation_condition_workers", before["automation_condition_workers"]),

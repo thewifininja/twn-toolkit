@@ -24,7 +24,7 @@ def test_selectable_gui_agents_require_approval_liveness_and_tunnel_capability()
         "id": "agent-capable",
         "name": "Capable",
         "state": "approved",
-        "online": True, "job_protocol_version": 2, "gui_protocol_version": 1,
+        "online": True, "job_protocol_version": 2, "gui_protocol_version": 2,
         "capabilities": [
             {"id": "system.http.tunnel", "version": "1"}
         ],
