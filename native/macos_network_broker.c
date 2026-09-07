@@ -7,6 +7,7 @@
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <grp.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -26,7 +27,10 @@
 #define MIN_TIMEOUT_MS 100U
 #define MAX_CHILDREN 256
 #define SETUP_LIFETIME_SECONDS 35
-#define RELAY_LIFETIME_SECONDS 3700
+/* Root relay resources expire on inactivity, not total connection age. */
+#ifndef RELAY_IDLE_TIMEOUT_MS
+#define RELAY_IDLE_TIMEOUT_MS (8ULL * 60 * 60 * 1000)
+#endif
 #define RELAY_BUFFER_SIZE 65536
 #ifndef RELAY_HALF_CLOSE_IDLE_MS
 #define RELAY_HALF_CLOSE_IDLE_MS 5000
@@ -232,17 +236,16 @@ static int relay_streams(int local_fd, int remote_fd) {
         if (waiters[1].events == 0) waiters[1].fd = -1;
 
         int ready;
-        int poll_timeout = -1;
-        if (to_remote.source_eof || to_local.source_eof) {
-            uint64_t now_ms = monotonic_milliseconds();
-            uint64_t idle_ms = now_ms >= last_progress_ms ? now_ms - last_progress_ms : 0;
-            if (idle_ms >= RELAY_HALF_CLOSE_IDLE_MS) return 0;
-            poll_timeout = (int)(RELAY_HALF_CLOSE_IDLE_MS - idle_ms);
-        }
-        do {
-            ready = poll(waiters, 2, poll_timeout);
-        } while (ready < 0 && errno == EINTR);
-        if (ready == 0) return 0;
+        uint64_t idle_limit_ms = (to_remote.source_eof || to_local.source_eof)
+            ? RELAY_HALF_CLOSE_IDLE_MS : RELAY_IDLE_TIMEOUT_MS;
+        uint64_t now_ms = monotonic_milliseconds();
+        uint64_t idle_ms = now_ms >= last_progress_ms ? now_ms - last_progress_ms : 0;
+        if (idle_ms >= idle_limit_ms) return 0;
+        uint64_t remaining_ms = idle_limit_ms - idle_ms;
+        int poll_timeout = remaining_ms > INT_MAX ? INT_MAX : (int)remaining_ms;
+        ready = poll(waiters, 2, poll_timeout);
+        /* Recompute elapsed time after interruptions or timer wakeups. */
+        if (ready == 0 || (ready < 0 && errno == EINTR)) continue;
         if (ready < 0) return errno;
         if ((waiters[0].revents | waiters[1].revents) & POLLNVAL) return EBADF;
         if ((waiters[0].revents | waiters[1].revents) & POLLERR) return EIO;
@@ -443,7 +446,7 @@ static void handle_client(int descriptor) {
     error_code = send_result(descriptor, 0, relay_pair[0]);
     close(relay_pair[0]);
     if (error_code == 0) {
-        alarm(RELAY_LIFETIME_SECONDS);
+        alarm(0); /* Connection setup is complete; relay_streams owns idle expiry. */
         (void)relay_streams(relay_pair[1], connected_fd);
     }
     close(relay_pair[1]);
