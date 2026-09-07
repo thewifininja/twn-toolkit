@@ -180,3 +180,32 @@ def _timestamp_age(value: object, now: float) -> int | None:
     except (TypeError, ValueError):
         return None
     return max(0, int(age)) if math.isfinite(age) else None
+
+
+def scheduler_status(instance_path: Path) -> dict[str, Any]:
+    pid_path = instance_path / "twn-automation.pid"
+    try:
+        pid = int(pid_path.read_text(encoding="utf-8").strip())
+        os.kill(pid, 0)
+    except (OSError, ValueError):
+        return {
+            "running": False,
+            "process_running": False,
+            "pid": None,
+            "heartbeat_age": None,
+            "scheduler_progress_age": None,
+            "last_work_completion_age": None,
+            "stopping": False,
+        }
+    heartbeat = read_automation_heartbeat(
+        instance_path / "automation-heartbeat.json"
+    )
+    return {
+        "running": bool(heartbeat["fresh"]),
+        "process_running": True,
+        "pid": pid,
+        "heartbeat_age": heartbeat["age"],
+        "scheduler_progress_age": heartbeat["scheduler_progress_age"],
+        "last_work_completion_age": heartbeat["last_work_completion_age"],
+        "stopping": heartbeat["state"] == "stopping",
+    }

@@ -22282,3 +22282,20 @@ body.remote-terminal-resizing * {
 .distributed-operation-id {
   overflow-wrap: anywhere;
 }
+
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10000;
+  padding: 12px 16px;
+  background: var(--panel, #fff);
+  color: var(--ink);
+  border: 2px solid currentColor;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
