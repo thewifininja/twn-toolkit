@@ -34,8 +34,8 @@ Server-managed `original_name` fields opt out of dirty comparison with `data-uns
 
 The shared `TwnUnsavedForms` API provides capture/acknowledge, a dirty-state query, and reference-baseline updates for these integrations. It stores values only in page memory. It does not retry requests or resolve conflicting saves from other tabs. Native automation submit behavior remains unchanged.
 
-## DNS list saves and deletion
+## DNS saved-list changes
 
-DNS query/resolver list saves and deletion update the saved-list controls in place. They preserve both current lists and diagnostic settings. Text entered while a save is pending remains in the editor, while the saved option contains only the server-confirmed submitted values. A later save updates that option without creating duplicate entries. Deleting a saved list leaves the current inputs available as an unsaved list.
+DNS query/resolver list saves, duplication, and deletion update the saved-list controls in place. They preserve both current lists and diagnostic settings. Text entered while a save is pending remains in the editor, while the saved option contains only the server-confirmed submitted values. A later save updates that option without creating duplicate entries. Deleting a saved list leaves the current inputs available as an unsaved list.
 
-Each list locks its naming, selection, and action controls during its save/delete request; its text and the other list remain editable. HTTP/network failures retain current inputs and restore controls. This does not add autosave, departure protection, or cross-tab conflict resolution to DNS. Explicitly loading a different list replaces that list's text, and the existing Duplicate action still navigates. Only the existing selected-profile name is stored in sessionStorage, not list drafts.
+Each list locks its naming, selection, and action controls during its save/duplicate/delete request; its text and the other list remain editable. HTTP/network failures retain current inputs and restore controls. This does not add autosave, departure protection, or cross-tab conflict resolution to DNS. Explicitly loading a different list replaces that list's text, while Duplicate copies the saved record and preserves current draft text for an explicit later save. Only the existing selected-profile name is stored in sessionStorage, not list drafts.

@@ -130,11 +130,26 @@
     };
   };
 
+  const selectSavedProfile = (kind, profile) => {
+    const select = form.querySelector(`.dns-profile-select[data-kind="${kind}"]`);
+    let option = Array.from(select.options).find((item) => item.value === profile.name);
+    if (!option) {
+      option = new Option(profile.name, profile.name);
+      select.add(option);
+    }
+    option.dataset.values = JSON.stringify(profile.values);
+    select.value = profile.name;
+    form.querySelector(`.profile-name-input[data-kind="${kind}"]`).value = profile.name;
+    // Do not dispatch change: loading saved values would erase current edits.
+    sessionStorage.setItem(`twn:dns:${kind}`, profile.name);
+  };
+
   form.querySelectorAll(".dns-save-profile").forEach((button) => {
     button.addEventListener("click", async () => {
       const kind = button.dataset.kind;
       const finish = beginProfileMutation(kind, button);
       if (!finish) return;
+      status.textContent = `Saving ${kind === "hosts" ? "query" : "resolver"} list…`;
       let saved = false;
       const submittedValues = fields[kind].value;
       const body = new FormData();
@@ -153,18 +168,7 @@
           status.textContent = payload.error;
           return;
         }
-        const select = form.querySelector(`.dns-profile-select[data-kind="${kind}"]`);
-        let option = Array.from(select.options).find((item) => item.value === payload.profile.name);
-        if (!option) {
-          option = new Option(payload.profile.name, payload.profile.name);
-          select.add(option);
-        }
-        option.dataset.values = JSON.stringify(payload.profile.values);
-        select.value = payload.profile.name;
-        form.querySelector(`.profile-name-input[data-kind="${kind}"]`).value = payload.profile.name;
-        // Do not dispatch change: loading the saved values would erase edits
-        // made while this request was pending.
-        sessionStorage.setItem(`twn:dns:${kind}`, payload.profile.name);
+        selectSavedProfile(kind, payload.profile);
         saved = true;
         status.textContent = `Saved ${kind === "hosts" ? "query" : "resolver"} profile “${payload.profile.name}”.`;
         if (fields[kind].value !== submittedValues) {
@@ -187,6 +191,7 @@
       const deletedName = select.value;
       const finish = beginProfileMutation(kind, button);
       if (!finish) return;
+      status.textContent = `Deleting saved profile “${deletedName}”…`;
       let deleted = false;
       const body = new FormData();
       body.set("name", deletedName);
@@ -210,6 +215,34 @@
         status.textContent = "Could not confirm the deletion. Your current inputs are still here; check the saved list before retrying.";
       } finally {
         finish(deleted);
+      }
+    });
+  });
+
+  form.querySelectorAll("[data-dns-profile-duplicate]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const kind = button.closest("[data-saved-profile-manager]")
+        .querySelector(".dns-profile-select").dataset.kind;
+      const select = form.querySelector(`.dns-profile-select[data-kind="${kind}"]`);
+      if (!select.value) return;
+      const name = select.value;
+      const finish = beginProfileMutation(kind, button);
+      if (!finish) return;
+      status.textContent = `Duplicating saved profile “${name}”…`;
+      let duplicated = false;
+      try {
+        const response = await fetch(button.dataset.dnsProfileDuplicate, {
+          method: "POST", body: new URLSearchParams({name}),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "The profile could not be duplicated.");
+        selectSavedProfile(kind, payload.profile);
+        duplicated = true;
+        status.textContent = `Duplicated saved profile as “${payload.profile.name}”. Current inputs are unchanged; edits are not part of the saved copy until you save them.`;
+      } catch (error) {
+        status.textContent = error.message || "Could not confirm the duplicate. Check the saved list before retrying.";
+      } finally {
+        finish(duplicated);
       }
     });
   });
