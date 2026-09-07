@@ -182,8 +182,12 @@
           <span class="eyebrow">Pick up where you left off</span>
           <h2 id="recent-activity-title">Recent activity</h2>
           <p>
-            Latest {{ [dashboard.recent|length, 8]|min }} of {{ dashboard.recent|length }}
-            event{{ '' if dashboard.recent|length == 1 else 's' }} from {{ dashboard.window.range_label|lower }}.
+            {% if dashboard.recent %}
+              Latest {{ [dashboard.recent|length, 8]|min }} of {{ dashboard.recent|length }}
+              event{{ '' if dashboard.recent|length == 1 else 's' }} from {{ dashboard.window.range_label|lower }}.
+            {% else %}
+              Tool activity for {{ dashboard.window.range_label|lower }}.
+            {% endif %}
           </p>
         </div>
       </div>
@@ -202,7 +206,12 @@
           {% endfor %}
         </ol>
       {% else %}
-        {{ empty_state("Nothing here yet.", "Completed tool runs will collect here so the next step is easy to find.") }}
+        {% call empty_state("No activity in this range.", "Choose a different activity range to find earlier runs, or launch a tool to begin.") %}
+          <div class="button-row">
+            <a class="button-link secondary" href="#activity-window">Change activity range</a>
+            {% if quick_tools %}<a class="button-link secondary" href="#quick-launch-title">Choose a tool</a>{% endif %}
+          </div>
+        {% endcall %}
       {% endif %}
     </section>
 
@@ -230,13 +239,15 @@
           {% endfor %}
         </dl>
       {% else %}
-        {{ empty_state("No snapshot metrics are visible.", "An administrator can restore activity metrics below.") }}
+        {% call empty_state("No snapshot metrics are visible.", "Open All activity metrics below and choose Customize activity to show metrics." if current_user.is_admin else "Ask an administrator to choose which activity metrics appear here.") %}
+          {% if current_user.is_admin %}<a class="button-link secondary" href="#all-activity-metrics">View metric controls</a>{% endif %}
+        {% endcall %}
       {% endif %}
     </section>
   </div>
 
   <details class="workspace-secondary-panel workspace-activity-details">
-    <summary>
+    <summary id="all-activity-metrics">
       <span>
         <strong>All activity metrics</strong>
         <small>Review every operational counter or customize the four-metric snapshot.</small>

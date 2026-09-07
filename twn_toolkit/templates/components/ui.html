@@ -155,3 +155,13 @@ One hostname, IP address, or inclusive IP range per line. Optional names use <co
 {% macro tool_settings_backdrop(label) -%}
 <button class="tool-settings-backdrop" type="button" data-tool-settings-close hidden aria-label="Close {{ label }} settings"></button>
 {%- endmacro %}
+
+{% macro appliance_outcome(results) -%}
+{% set succeeded = results | selectattr('status', 'equalto', 'success') | list | length %}
+{% set errors = results | selectattr('status', 'equalto', 'error') | list | length %}
+<div class="operation-status" data-operation-state="{{ 'partial' if errors and succeeded else 'uncertain' if errors else 'complete' }}" role="status">
+  <strong>{{ 'Completed with reported errors' if errors else 'Results received' }}</strong>
+  <p>{{ succeeded }} succeeded · {{ errors }} reported errors · {{ results | length }} total.</p>
+  {% if errors %}<p>Some changes may have reached the appliance even when their response failed. Review each row and check the current appliance state before creating a new preview. Successful changes should not be repeated.</p>{% endif %}
+</div>
+{%- endmacro %}

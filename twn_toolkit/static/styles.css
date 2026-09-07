@@ -10481,7 +10481,13 @@ button.compact,
 }
 
 .field-note {
-  margin: -6px 0 0;
+  margin: 0;
+  line-height: 1.55;
+}
+
+/* Notes following actions need their own space, including compact forms. */
+:is(.button-row, button, .button-link, .profile-form-actions) + .field-note {
+  margin-block-start: 8px;
 }
 
 .inline-label-note {
