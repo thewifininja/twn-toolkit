@@ -226,7 +226,7 @@ def register_tools(registry: Any) -> None:
             ToolLink(
                 "tools.radius_test",
                 "RADIUS Authentication Test",
-                "Compare PAP, CHAP, PEAP/MSCHAPv2, or EAP-TLS authentication across RADIUS servers.",
+                "Compare PAP or CHAP authentication across RADIUS servers.",
                 "tools.radius_test",
                 "network",
                 "Network Tools",

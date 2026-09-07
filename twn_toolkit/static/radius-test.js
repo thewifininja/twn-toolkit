@@ -1,13 +1,5 @@
 (() => {
   const status = document.querySelector("#radius-profile-status");
-  const protocol = document.querySelector("#radius-protocol");
-  const eapOptions = document.querySelector("#radius-eap-options");
-  protocol?.addEventListener("change", () => {
-    if (eapOptions && ["peap-mschapv2", "eap-tls"].includes(protocol.value)) {
-      eapOptions.open = true;
-    }
-  });
-
   document.querySelectorAll(".radius-profile-form").forEach((form) => {
     let saving = false;
     form.addEventListener("submit", async (event) => {
