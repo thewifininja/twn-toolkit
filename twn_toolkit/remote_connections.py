@@ -7,17 +7,22 @@ import secrets
 import sqlite3
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Iterator
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from .remote_connection_management import managed_mutation
 from .duplication import duplicate_name
 from .serial_console import serial_settings
 
 
 class RemoteConnectionError(ValueError):
     pass
+
+
+_transactions: ContextVar[dict[str, sqlite3.Connection]] = ContextVar("remote_library_transactions", default={})
 
 
 VISIBILITY_VALUES = {"global", "admins_only", "private"}
@@ -117,6 +122,7 @@ class RemoteConnectionStore:
         for collection in (folder_items, credential_items, host_items):
             for item in collection:
                 item["owned"] = str(item["user_id"]) == user_id
+                item["can_manage"] = item["owned"] or (is_admin and self._visibility_allows(item, user_id=user_id, is_admin=True))
         return {
             "folders": folder_items,
             "credentials": credential_items,
@@ -203,6 +209,7 @@ class RemoteConnectionStore:
             if host.get("credential_source_folder_name"):
                 host["credential_source_folder_name"] = "Shared policy"
         host["owned"] = str(host["user_id"]) == user_id
+        host["can_manage"] = host["owned"] or is_admin
         return host
 
     def resolve_credential(
@@ -261,6 +268,7 @@ class RemoteConnectionStore:
             "password": password,
         }
 
+    @managed_mutation("dynamic", "resource_id")
     def set_visibility(
         self,
         resource_type: str,
@@ -339,14 +347,22 @@ class RemoteConnectionStore:
             )
         return self.get_folder(folder_id, user_id=user_id)  # type: ignore[return-value]
 
-    def get_folder(self, folder_id: str, *, user_id: str) -> dict[str, Any] | None:
+    def get_folder(self, folder_id: str, *, user_id: str, is_admin: bool = False) -> dict[str, Any] | None:
         with self._connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM remote_connection_folders WHERE id = ? AND user_id = ?",
-                (folder_id, user_id),
-            ).fetchone()
-        return self._folder(row) if row else None
+            row = connection.execute("SELECT * FROM remote_connection_folders WHERE id = ?", (folder_id,)).fetchone()
+            if not row:
+                return None
+            folder = self._folder(row)
+            lineage = self._folder_lineage(connection, folder_id=folder_id, owner_id=folder["user_id"])
+            self._annotate_effective_visibility(lineage, [])
+            folder = next(item for item in lineage if item["id"] == folder_id)
+        if not self._visibility_allows(folder, user_id=user_id, is_admin=is_admin):
+            return None
+        folder["owned"] = folder["user_id"] == user_id
+        folder["can_manage"] = folder["owned"] or is_admin
+        return folder
 
+    @managed_mutation("folder", "folder_id")
     def update_folder(
         self,
         folder_id: str,
@@ -423,6 +439,7 @@ class RemoteConnectionStore:
         )
         return copied
 
+    @managed_mutation("folder", "folder_id")
     def delete_folder(self, folder_id: str, *, user_id: str) -> None:
         with self._connect() as connection:
             self._require_folder(connection, folder_id, user_id)
@@ -443,6 +460,7 @@ class RemoteConnectionStore:
                 (folder_id, user_id),
             )
 
+    @managed_mutation("credential", "credential_id")
     def save_credential(
         self,
         *,
@@ -545,6 +563,7 @@ class RemoteConnectionStore:
             )
         return self._credential_by_id(copied_id, user_id=user_id)
 
+    @managed_mutation("credential", "credential_id")
     def delete_credential(self, credential_id: str, *, user_id: str) -> None:
         with self._connect() as connection:
             self._require_credential_row(connection, credential_id, user_id)
@@ -575,6 +594,7 @@ class RemoteConnectionStore:
                 (credential_id, user_id),
             )
 
+    @managed_mutation("host", "host_id")
     def save_host(
         self,
         *,
@@ -948,6 +968,7 @@ class RemoteConnectionStore:
                 )
         return len(prepared)
 
+    @managed_mutation("host", "host_id")
     def delete_host(self, host_id: str, *, user_id: str) -> None:
         with self._connect() as connection:
             host = self._require_host_row(connection, host_id, user_id)
@@ -967,6 +988,7 @@ class RemoteConnectionStore:
                     (credential["id"], user_id),
                 )
 
+    @managed_mutation("bulk", "")
     def bulk_update(
         self,
         *,
@@ -1671,7 +1693,35 @@ class RemoteConnectionStore:
         return False
 
     @contextmanager
+    def transaction(self):
+        """Keep permission checks and a complete library mutation atomic."""
+        key = str(self.path.resolve())
+        if key in _transactions.get():
+            connection = _transactions.get()[key]
+            savepoint = "library_" + secrets.token_hex(8)
+            connection.execute(f"SAVEPOINT {savepoint}")
+            try:
+                yield
+            except Exception:
+                connection.execute(f"ROLLBACK TO {savepoint}")
+                raise
+            finally:
+                connection.execute(f"RELEASE {savepoint}")
+            return
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            token = _transactions.set({**_transactions.get(), key: connection})
+            try:
+                yield
+            finally:
+                _transactions.reset(token)
+
+    @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
+        existing = _transactions.get().get(str(self.path.resolve()))
+        if existing is not None:
+            yield existing
+            return
         connection = sqlite3.connect(self.path, timeout=10)
         connection.row_factory = sqlite3.Row
         try:

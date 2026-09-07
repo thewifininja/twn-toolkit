@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+from functools import wraps
 
 from flask import (
     Blueprint,
@@ -281,6 +282,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         return jsonify({"session": _public_session(session)}), 201
 
     @tools_bp.post("/remote-terminal/folders")
+    @_library_mutation
     def create_remote_terminal_folder():
         payload = request.get_json(silent=True) or {}
         user = _current_user()
@@ -304,9 +306,11 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 str(folder["id"]),
                 user_id=user["id"],
                 visibility=visibility,
+                is_admin=bool(user.get("is_admin")),
             )
             folder = _connection_store().get_folder(
-                str(folder["id"]), user_id=user["id"]
+                str(folder["id"]), user_id=user["id"],
+                is_admin=bool(user.get("is_admin")),
             )
         except RemoteConnectionError as exc:
             suppress_audit_event()
@@ -315,6 +319,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         return _library_response(user["id"], 201)
 
     @tools_bp.patch("/remote-terminal/folders/<folder_id>")
+    @_library_mutation
     def update_remote_terminal_folder(folder_id: str):
         payload = request.get_json(silent=True) or {}
         user = _current_user()
@@ -330,6 +335,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                     else None
                 ),
                 credential_id=str(payload.get("credential_id", "")),
+                is_admin=bool(user.get("is_admin")),
             )
             if "visibility" in payload:
                 _connection_store().set_visibility(
@@ -337,9 +343,11 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                     folder_id,
                     user_id=user["id"],
                     visibility=str(payload["visibility"]),
+                    is_admin=bool(user.get("is_admin")),
                 )
                 folder = _connection_store().get_folder(
-                    folder_id, user_id=user["id"]
+                    folder_id, user_id=user["id"],
+                    is_admin=bool(user.get("is_admin")),
                 )
         except RemoteConnectionError as exc:
             suppress_audit_event()
@@ -363,14 +371,15 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         return _library_response(user["id"], 201)
 
     @tools_bp.delete("/remote-terminal/folders/<folder_id>")
+    @_library_mutation
     def delete_remote_terminal_folder(folder_id: str):
         user = _current_user()
-        existing = _connection_store().get_folder(folder_id, user_id=user["id"])
+        existing = _connection_store().get_folder(folder_id, user_id=user["id"], is_admin=bool(user.get("is_admin")))
         if not existing:
             suppress_audit_event()
             return jsonify({"error": "Saved folder not found."}), 404
         try:
-            _connection_store().delete_folder(folder_id, user_id=user["id"])
+            _connection_store().delete_folder(folder_id, user_id=user["id"], is_admin=bool(user.get("is_admin")))
         except RemoteConnectionError as exc:
             suppress_audit_event()
             return jsonify({"error": str(exc)}), 409
@@ -380,10 +389,12 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         return _library_response(user["id"])
 
     @tools_bp.post("/remote-terminal/credentials")
+    @_library_mutation
     def create_remote_terminal_credential():
         return _save_remote_terminal_credential()
 
     @tools_bp.patch("/remote-terminal/credentials/<credential_id>")
+    @_library_mutation
     def update_remote_terminal_credential(credential_id: str):
         return _save_remote_terminal_credential(credential_id)
 
@@ -406,12 +417,13 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         return _library_response(user["id"], 201)
 
     @tools_bp.delete("/remote-terminal/credentials/<credential_id>")
+    @_library_mutation
     def delete_remote_terminal_credential(credential_id: str):
         user = _current_user()
         existing = next(
             (
                 item
-                for item in _connection_store().library_for_user(user["id"])[
+                for item in _connection_store().library_for_user(user["id"], is_admin=bool(user.get("is_admin")))[
                     "credentials"
                 ]
                 if item["id"] == credential_id
@@ -423,7 +435,8 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": "Saved credential not found."}), 404
         try:
             _connection_store().delete_credential(
-                credential_id, user_id=user["id"]
+                credential_id, user_id=user["id"],
+                is_admin=bool(user.get("is_admin")),
             )
         except RemoteConnectionError as exc:
             suppress_audit_event()
@@ -437,6 +450,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         return _library_response(user["id"])
 
     @tools_bp.post("/remote-terminal/hosts")
+    @_library_mutation
     def create_remote_terminal_host():
         return _save_remote_terminal_host()
 
@@ -487,6 +501,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         return _library_response(user["id"], 201)
 
     @tools_bp.post("/remote-terminal/library/bulk")
+    @_library_mutation
     def bulk_update_remote_terminal_library():
         payload = request.get_json(silent=True) or {}
         user = _current_user()
@@ -508,6 +523,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 destination_id=destination_id,
                 credential_mode=credential_mode,
                 credential_id=str(payload.get("credential_id", "")),
+                is_admin=bool(user.get("is_admin")),
             )
         except (RemoteConnectionError, TypeError, ValueError) as exc:
             suppress_audit_event()
@@ -526,13 +542,14 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         return _library_response(user["id"])
 
     @tools_bp.patch("/remote-terminal/hosts/<host_id>")
+    @_library_mutation
     def update_remote_terminal_host(host_id: str):
         return _save_remote_terminal_host(host_id)
 
     @tools_bp.post("/remote-terminal/hosts/<host_id>/duplicate")
     def duplicate_remote_terminal_host(host_id: str):
         user = _current_user()
-        existing = _connection_store().get_host(host_id, user_id=user["id"])
+        existing = _connection_store().get_host(host_id, user_id=user["id"], is_admin=bool(user.get("is_admin")))
         if not existing or not existing.get("owned"):
             suppress_audit_event()
             return jsonify({"error": "Saved host not found."}), 404
@@ -548,13 +565,14 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         return _library_response(user["id"], 201)
 
     @tools_bp.delete("/remote-terminal/hosts/<host_id>")
+    @_library_mutation
     def delete_remote_terminal_host(host_id: str):
         user = _current_user()
-        existing = _connection_store().get_host(host_id, user_id=user["id"])
-        if not existing or not existing.get("owned"):
+        existing = _connection_store().get_host(host_id, user_id=user["id"], is_admin=bool(user.get("is_admin")))
+        if not existing or not existing.get("can_manage"):
             suppress_audit_event()
             return jsonify({"error": "Saved host not found."}), 404
-        _connection_store().delete_host(host_id, user_id=user["id"])
+        _connection_store().delete_host(host_id, user_id=user["id"], is_admin=bool(user.get("is_admin")))
         _annotate_library_change(
             "host_deleted", "Deleted saved remote host.", existing,
             resource_type="remote_host",
@@ -929,7 +947,7 @@ def _save_remote_terminal_credential(credential_id: str = ""):
             (
                 item
                 for item in _connection_library(user["id"])["credentials"]
-                if item["id"] == credential_id and item.get("owned")
+                if item["id"] == credential_id and item.get("can_manage")
             ),
             None,
         )
@@ -952,18 +970,16 @@ def _save_remote_terminal_credential(credential_id: str = ""):
             remote_username=str(payload.get("username", "")),
             password=str(payload.get("password", "")),
             scope_host_id=scope_host_id,
+            is_admin=bool(user.get("is_admin")),
         )
         _connection_store().set_visibility(
             "credential",
             str(credential["id"]),
             user_id=user["id"],
             visibility=visibility,
+            is_admin=bool(user.get("is_admin")),
         )
-        credential = next(
-            item
-            for item in _connection_library(user["id"])["credentials"]
-            if item["id"] == credential["id"]
-        )
+        credential["visibility"] = visibility
     except RemoteConnectionError as exc:
         suppress_audit_event()
         return jsonify({"error": str(exc)}), 400
@@ -989,11 +1005,11 @@ def _save_remote_terminal_host(host_id: str = ""):
     payload = request.get_json(silent=True) or {}
     user = _current_user()
     existing_host = (
-        _connection_store().get_host(host_id, user_id=user["id"])
+        _connection_store().get_host(host_id, user_id=user["id"], is_admin=bool(user.get("is_admin")))
         if host_id
         else None
     )
-    if host_id and (not existing_host or not existing_host.get("owned")):
+    if host_id and (not existing_host or not existing_host.get("can_manage")):
         suppress_audit_event()
         return jsonify({"error": "Saved host not found."}), 404
     visibility = str(
@@ -1038,7 +1054,7 @@ def _save_remote_terminal_host(host_id: str = ""):
                 device = resolve_serial_device(requested_device_id)
             except SerialConsoleError:
                 existing = (
-                    _connection_store().get_host(host_id, user_id=user["id"])
+                    _connection_store().get_host(host_id, user_id=user["id"], is_admin=bool(user.get("is_admin")))
                     if host_id
                     else None
                 )
@@ -1108,15 +1124,18 @@ def _save_remote_terminal_host(host_id: str = ""):
             console_parity=str(console["parity"]),
             console_stop_bits=str(console["stop_bits"]),
             console_flow_control=str(console["flow_control"]),
+            is_admin=bool(user.get("is_admin")),
         )
         _connection_store().set_visibility(
             "host",
             str(host["id"]),
             user_id=user["id"],
             visibility=visibility,
+            is_admin=bool(user.get("is_admin")),
         )
         host = _connection_store().get_host(
-            str(host["id"]), user_id=user["id"]
+            str(host["id"]), user_id=host["user_id"],
+            is_admin=bool(user.get("is_admin")),
         )
         if host and host.get("credential_scope_host_id") == host.get("id"):
             _connection_store().set_visibility(
@@ -1124,9 +1143,11 @@ def _save_remote_terminal_host(host_id: str = ""):
                 str(host["credential_id"]),
                 user_id=user["id"],
                 visibility=str(host["effective_visibility"]),
+                is_admin=bool(user.get("is_admin")),
             )
             host = _connection_store().get_host(
-                str(host["id"]), user_id=user["id"]
+                str(host["id"]), user_id=host["user_id"],
+                is_admin=bool(user.get("is_admin")),
             )
 
     except (RemoteConnectionError, SerialConsoleError, TypeError, ValueError) as exc:
@@ -1532,3 +1553,23 @@ def _integer(value: object, label: str, minimum: int, maximum: int) -> int:
 
 
 __all__ = ["register_remote_terminal_routes", "REMOTE_SESSION_INPUT_LIMIT_BYTES"]
+
+
+class _LibraryMutationRejected(Exception):
+    pass
+
+
+def _library_mutation(handler):
+    @wraps(handler)
+    def mutate(*args, **kwargs):
+        response = None
+        try:
+            with _connection_store().transaction():
+                response = handler(*args, **kwargs)
+                status = response[1] if isinstance(response, tuple) else response.status_code
+                if status >= 400:
+                    raise _LibraryMutationRejected()
+        except _LibraryMutationRejected:
+            pass
+        return response
+    return mutate

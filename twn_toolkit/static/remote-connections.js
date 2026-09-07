@@ -36,6 +36,26 @@
   const maximumLibraryWidth = 620;
   const libraryWidthKey = "twn.remote-terminal.library-width.v1";
   const libraryCollapsedKey = "twn.remote-terminal.library-collapsed.v1";
+  function canManage(item) {
+    return Boolean(item && (item.can_manage ?? item.owned));
+  }
+
+  function sameLibrary(item, subject) {
+    return canManage(item) && (subject ? item.user_id === subject.user_id : item.owned);
+  }
+
+  function managementFields(type, subject) {
+    const privacy = document.getElementById(`remote-${type}-visibility`);
+    document.querySelector(`#remote-${type}-dialog [data-shared-item-note]`).hidden = !subject || subject.owned;
+    privacy.querySelector('option[value="private"]').disabled = Boolean(subject && !subject.owned);
+    if (type === "credential") return;
+    const folders = flattenFolders().filter((option) => sameLibrary(library.folders.find((item) => item.id === option.id), subject));
+    setOptions(document.getElementById(type === "host" ? "remote-host-folder" : "remote-folder-parent"),
+      [{id: "", label: "Connections (root)"}, ...folders], subject?.folder_id || subject?.parent_id || "");
+    const credentials = library.credentials.filter((item) => !item.scope_host_id && sameLibrary(item, subject));
+    setOptions(document.getElementById(`remote-${type}-credential`), credentials.map((item) => ({id: item.id, label: `${item.name} · ${item.username}`})), subject?.credential_id || "", "No credentials in this owner's library");
+  }
+
   function visibilityLabel(item) {
     const value = String(item.effective_visibility || item.visibility || "private");
     const label = value === "admins_only" ? "Admins Only" : value.charAt(0).toUpperCase() + value.slice(1);
@@ -234,12 +254,12 @@
     menu.setAttribute("role", "menu");
     menu.hidden = true;
     menuTrigger.setAttribute("aria-controls", menu.id);
-    menuTrigger.hidden = !folder.owned;
-    menu.append(
-      folderMenuAction("Add host", () => editHost(folder.id)),
-      folderMenuAction("Add subfolder", () => editFolder(null, folder.id)),
-      folderMenuAction("Edit folder", () => editFolder(folder))
-    );
+    menuTrigger.hidden = !canManage(folder);
+    if (folder.owned) {
+      menu.append(folderMenuAction("Add host", () => editHost(folder.id)),
+        folderMenuAction("Add subfolder", () => editFolder(null, folder.id)));
+    }
+    menu.append(folderMenuAction("Edit folder", () => editFolder(folder)));
     menuTrigger.addEventListener("click", (event) => {
       event.stopPropagation();
       const willOpen = menu.hidden;
@@ -249,7 +269,7 @@
       if (willOpen && event.detail === 0) menu.querySelector("button")?.focus();
     });
     menuWrap.append(menuTrigger);
-    if (selectionMode && folder.owned) {
+    if (selectionMode && canManage(folder)) {
       head.append(selectionControl("folder", folder.id, folder.name));
     }
     head.append(toggle, menuWrap);
@@ -321,8 +341,8 @@
     manage.title = `Manage ${host.name}`;
     manage.setAttribute("aria-label", `Manage ${host.name}`);
     manage.addEventListener("click", () => editHost(host));
-    manage.hidden = !host.owned;
-    if (selectionMode && host.owned) {
+    manage.hidden = !canManage(host);
+    if (selectionMode && canManage(host)) {
       row.append(selectionControl("host", host.id, host.name));
     }
     row.append(connect, manage);
@@ -617,7 +637,7 @@
     const options = [{id: "", label: "Connections (root)"}, ...flattenFolders()];
     setOptions(document.getElementById("remote-host-folder"), options, selectedHostFolder);
     setOptions(document.getElementById("remote-folder-parent"), options, selectedParent);
-    setOptions(document.getElementById("remote-host-import-folder"), options, selectedImportFolder);
+    setOptions(document.getElementById("remote-host-import-folder"), options.filter((option) => !option.id || library.folders.find((item) => item.id === option.id)?.owned), selectedImportFolder);
   }
 
   function flattenFolders(parentId = "", depth = 0, output = []) {
@@ -752,7 +772,7 @@
     const savedRadio = hostForm.querySelector('input[name="host_credential_mode"][value="saved"]');
     const hostRadio = hostForm.querySelector('input[name="host_credential_mode"][value="host"]');
     const noneRadio = hostForm.querySelector('input[name="host_credential_mode"][value="none"]');
-    const hasSaved = library.credentials.some((credential) => !credential.scope_host_id);
+    const hasSaved = Array.from(document.getElementById("remote-host-credential").options).some((option) => option.value);
     const isTelnet = hostProtocol.value === "telnet";
     const isConsole = hostProtocol.value === "console";
     if (!isTelnet && noneRadio.checked) inheritRadio.checked = true;
@@ -795,7 +815,7 @@
     if (!selected) return;
     const mode = selected.value;
     const saved = folderForm.querySelector("[data-folder-saved]");
-    const hasSaved = library.credentials.some((credential) => !credential.scope_host_id);
+    const hasSaved = Array.from(document.getElementById("remote-folder-credential").options).some((option) => option.value);
     if (mode === "credential" && !hasSaved) {
       folderForm.querySelector('input[name="folder_credential_mode"][value="inherit"]').checked = true;
       return syncFolderCredentialMode();
@@ -820,11 +840,12 @@
   function editFolder(folder = null, parentId = "") {
     const existing = typeof folder === "object" && folder;
     const selectedParent = existing?.parent_id || parentId;
+    managementFields("folder", existing);
     const blockedFolders = existing ? folderDescendants(existing.id) : new Set();
     if (existing) blockedFolders.add(existing.id);
     const parentOptions = [
       {id: "", label: "Connections (root)"},
-      ...flattenFolders().filter((option) => !blockedFolders.has(option.id)),
+      ...flattenFolders().filter((option) => !blockedFolders.has(option.id) && sameLibrary(library.folders.find((item) => item.id === option.id), existing)),
     ];
     document.getElementById("remote-folder-id").value = existing?.id || "";
     document.getElementById("remote-folder-name").value = existing?.name || "";
@@ -839,6 +860,7 @@
     document.getElementById("remote-folder-credential").value = existing?.credential_id || "";
     document.getElementById("remote-folder-title").textContent = existing ? "Manage folder" : "New folder";
     document.querySelector("[data-folder-existing-actions]").hidden = !existing;
+    document.querySelector("[data-duplicate-folder]").hidden = !existing?.owned;
     setStatus("remote-folder-status", "");
     syncFolderCredentialMode();
     openDialog(folderDialog, "remote-folder-name");
@@ -891,6 +913,7 @@
   function editHost(host = null, session = null) {
     const existing = typeof host === "object" && host;
     const presetFolderId = typeof host === "string" ? host : "";
+    managementFields("host", existing);
     document.getElementById("remote-host-id").value = existing?.id || "";
     document.getElementById("remote-host-name").value = existing?.name || session?.title || "";
     document.getElementById("remote-host-visibility").value = existing?.visibility || "inherit";
@@ -912,8 +935,9 @@
     document.getElementById("remote-host-password").value = "";
     document.getElementById("remote-host-title").textContent = existing ? "Manage saved host" : "New saved host";
     document.querySelector("[data-host-existing-actions]").hidden = !existing;
+    document.querySelector("[data-duplicate-host]").hidden = !existing?.owned;
     const isScoped = existing && existing.credential_scope_host_id === existing.id;
-    const sharedCredentials = library.credentials.filter((credential) => !credential.scope_host_id);
+    const sharedCredentials = library.credentials.filter((credential) => !credential.scope_host_id && sameLibrary(credential, existing));
     const hasShared = sharedCredentials.length > 0;
     const desiredMode = existing?.credential_mode === "inherit"
       ? "inherit"
@@ -1043,11 +1067,22 @@
 
   function openBulkEditor() {
     if (!selectedHosts.size && !selectedFolders.size) return;
+    const selected = [...library.hosts.filter((item) => selectedHosts.has(item.id)), ...library.folders.filter((item) => selectedFolders.has(item.id))];
+    const existing = selected[0];
+    bulkForm.querySelector('button[type="submit"]').disabled = false;
+    if (new Set(selected.map((item) => item.user_id)).size !== 1) {
+      bulkForm.querySelector('button[type="submit"]').disabled = true;
+      document.getElementById("remote-library-bulk-summary").textContent = "These items belong to different owners. Clear the selection and choose items from one library.";
+      setStatus("remote-library-bulk-status", "Select items from one owner's library at a time.");
+      openDialog(bulkDialog);
+      return;
+    }
+    setOptions(document.getElementById("remote-library-credential"), library.credentials.filter((item) => !item.scope_host_id && sameLibrary(item, existing)).map((item) => ({id: item.id, label: item.name})), "");
     const blockedFolders = new Set(selectedFolders);
     selectedFolders.forEach((folderId) => folderDescendants(folderId, blockedFolders));
     const destinations = [
       {id: "", label: "Connections (root)"},
-      ...flattenFolders().filter((option) => !blockedFolders.has(option.id)),
+      ...flattenFolders().filter((option) => !blockedFolders.has(option.id) && sameLibrary(library.folders.find((item) => item.id === option.id), existing)),
     ];
     setOptions(document.getElementById("remote-library-destination"), destinations, "");
     document.getElementById("remote-library-bulk-summary").textContent =
@@ -1113,7 +1148,7 @@
 
   function openCredentials(credential = null) {
     renderCredentials();
-    editCredential(credential || library.credentials.find((item) => item.owned && !item.scope_host_id) || null);
+    editCredential(credential || library.credentials.find((item) => canManage(item) && !item.scope_host_id) || null);
     openDialog(credentialDialog);
   }
 
@@ -1133,11 +1168,11 @@
         ? `${credential.username} · ${credential.scoped_host_name || "host-specific"}`
         : `${credential.username} · ${credential.usage_count} host${credential.usage_count === 1 ? "" : "s"} · ${credential.folder_usage_count || 0} folder${credential.folder_usage_count === 1 ? "" : "s"}`;
       button.append(name, metadata);
-      if (credential.owned) {
+      if (canManage(credential)) {
         button.addEventListener("click", () => editCredential(credential));
       } else {
         button.disabled = true;
-        button.title = "Available for connections; only its owner can edit it.";
+        button.title = "Available for connections; editing requires ownership or shared administrator access.";
       }
       return button;
     }));
@@ -1150,6 +1185,7 @@
   }
 
   function editCredential(credential = null) {
+    managementFields("credential", credential);
     document.getElementById("remote-credential-id").value = credential?.id || "";
     document.getElementById("remote-credential-name").value = credential?.name || "";
     document.getElementById("remote-credential-username").value = credential?.username || "";
@@ -1163,6 +1199,7 @@
       ? `Restricted to ${credential.scoped_host_name || "its saved host"}. Editing here updates that host's encrypted credential.`
       : "Shared credentials can be assigned to multiple saved hosts or used by Quick Connect.";
     document.querySelector("[data-credential-existing-actions]").hidden = !credential;
+    document.querySelector("[data-duplicate-credential]").hidden = !credential?.owned;
     setStatus("remote-credential-status", "");
     renderCredentials();
     document.getElementById("remote-credential-name").focus({preventScroll: true});
