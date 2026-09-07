@@ -7,7 +7,7 @@ from pathlib import Path
 from .datastore import LocalDatastore, DatastoreError
 import shutil
 
-FAMILIES = {'case_export': 'case_export_job_artifacts', 'transfer': 'transfer_job_artifacts', 'fac_inventory_devices': 'inventory_device_job_artifacts', 'fac_inventory_memberships': 'inventory_membership_job_artifacts'}
+FAMILIES = {'appliance_read': 'appliance_read_job_artifacts', 'case_export': 'case_export_job_artifacts', 'transfer': 'transfer_job_artifacts', 'fac_inventory_devices': 'inventory_device_job_artifacts', 'fac_inventory_memberships': 'inventory_membership_job_artifacts'}
 
 
 def artifact_directory(store, job_id, family='transfer'):

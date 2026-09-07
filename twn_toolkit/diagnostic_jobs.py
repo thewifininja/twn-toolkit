@@ -76,10 +76,10 @@ class DiagnosticJobStore:
             logging.getLogger(__name__).warning("Upload staging cleanup failed: %s", type(exc).__name__)
 
     def enqueue(self, *, user_id, config, tool="tcp_scan"):
-        if tool not in {"tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export"} or not user_id:
+        if tool not in {"tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export", "appliance_read"} or not user_id:
             raise ValueError("Invalid diagnostic request.")
         policy = self.policy.get()
-        if tool in {"fac_inventory_devices", "fac_inventory_memberships"}:
+        if tool in {"fac_inventory_devices", "fac_inventory_memberships", "appliance_read"}:
             config = {**config, "artifact_bytes": policy["diagnostic_artifact_max_mib"] * 1024**2}
         if tool == "case_export":
             config = {**config, "artifact_bytes": policy["diagnostic_case_export_max_mib"] * 1024**2,
@@ -110,9 +110,9 @@ class DiagnosticJobStore:
             for queued in db.execute("SELECT id,config FROM diagnostic_jobs WHERE tool='transfer' AND state IN ('queued','running','cancel_requested')"):
                 saved = json.loads(self.cipher.open(queued["config"], queued["id"] + ":diagnostic-config"))
                 reserved += 2 * saved["transfer_policy"]["run_bytes"]
-            if tool in {"fac_inventory_devices", "fac_inventory_memberships"} and config["mode"] == "export":
+            if tool in {"fac_inventory_devices", "fac_inventory_memberships", "appliance_read"} and config["mode"] == "export":
                 reserved += 3 * config["artifact_bytes"]
-            for queued in db.execute("SELECT id,config FROM diagnostic_jobs WHERE tool IN ('fac_inventory_devices','fac_inventory_memberships') AND (state IN ('queued','running','cancel_requested') OR token!='')"):
+            for queued in db.execute("SELECT id,config FROM diagnostic_jobs WHERE tool IN ('fac_inventory_devices','fac_inventory_memberships','appliance_read') AND (state IN ('queued','running','cancel_requested') OR token!='')"):
                 saved = json.loads(self.cipher.open(queued["config"], queued["id"] + ":diagnostic-config"))
                 if saved["mode"] == "export":
                     reserved += 3 * saved["artifact_bytes"]

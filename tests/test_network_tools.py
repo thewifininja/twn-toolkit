@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.appliance_read_helpers import complete_appliance_read, export_fixture
+
 import re
 import tempfile
 import subprocess
@@ -565,12 +567,12 @@ class NetworkToolTests(unittest.TestCase):
 
             with patch(
                 "twn_toolkit.fortigate_routes.ExportTask.run",
-                return_value="serial,name\nraw-export-value,Private Switch\n",
+                side_effect=export_fixture("serial,name\nraw-export-value,Private Switch\n"),
             ):
-                export = client.post(
+                export = complete_appliance_read(client, client.post(
                     "/tasks/export-switches/run",
                     data={"profile": "Lab"},
-                )
+                ))
             with patch(
                 "twn_toolkit.fortigate_routes.RenameTask.run_entries",
                 return_value=[
@@ -958,7 +960,7 @@ class NetworkToolTests(unittest.TestCase):
             )
             test_connection.return_value = {"version": "v7.6"}
 
-            response = client.post("/profiles/Lab/test", follow_redirects=True)
+            response = complete_appliance_read(client, client.post("/profiles/Lab/test", follow_redirects=True))
             summary = ActivityStore(instance).summary()
             audit_event = AuditStore(instance).recent(1)[0]
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
@@ -1473,16 +1475,16 @@ class NetworkToolTests(unittest.TestCase):
             raw_csv = "serial,name\nS124,=command\n"
             with patch(
                 "twn_toolkit.fortigate_routes.ExportTask.run",
-                return_value=raw_csv,
+                side_effect=export_fixture(raw_csv),
             ):
-                spreadsheet_download = client.post(
+                spreadsheet_download = complete_appliance_read(client, client.post(
                     "/tasks/export-switches/run",
                     data={"profile": "Lab"},
-                )
-                raw_download = client.post(
+                ))
+                raw_download = complete_appliance_read(client, client.post(
                     "/tasks/export-switches/run",
                     data={"profile": "Lab", "csv_format": "raw"},
-                )
+                ))
             form = client.get("/tasks/export-switches")
 
         self.assertEqual(spreadsheet_download.status_code, 200)

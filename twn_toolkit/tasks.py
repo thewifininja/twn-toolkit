@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import io
 from dataclasses import dataclass
-from typing import Any, BinaryIO, Protocol
+from typing import Any, BinaryIO, Protocol, TextIO
 
 from .fortigate import FortiGateClient, FortiGateError
 
@@ -236,15 +236,18 @@ class ExportTask:
         endpoint_template: str,
         default_vdom: str,
         fields: str,
-    ) -> str:
+        output: TextIO | None = None,
+    ) -> str | None:
         flattened = self.preview_rows(client, endpoint_template, default_vdom)
         headers, export_rows = self.format_rows(flattened, fields)
 
-        output = io.StringIO()
+        owned_output = output is None
+        if output is None:
+            output = io.StringIO()
         writer = csv.DictWriter(output, fieldnames=headers, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(export_rows)
-        return output.getvalue()
+        return output.getvalue() if owned_output else None
 
     def format_rows(
         self,

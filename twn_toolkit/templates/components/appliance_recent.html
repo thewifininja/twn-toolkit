@@ -1,0 +1,5 @@
+{% if appliance_recent %}
+<details class="panel"><summary>Your recent appliance reads</summary>
+<ul>{% for run in appliance_recent %}<li><a href="{{ run.url }}">{{ run.mode|title }} · {{ run.state|replace('_', ' ')|title }} · {{ run.id[:12] }}</a></li>{% endfor %}</ul>
+</details>
+{% endif %}

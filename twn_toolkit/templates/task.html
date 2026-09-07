@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% include 'components/appliance_recent.html' %}
 <section class="panel tool-panel">
   <div class="panel-head">
     <h1>{{ task.label }}</h1>
@@ -42,7 +43,7 @@
         <div class="field-builder-head">
           <button class="secondary" id="load-fields" type="button">Load available fields</button>
           <button id="apply-fields" type="button" disabled>Apply selected fields</button>
-          <span id="field-status">Load fields to build a selection. The CSV fields above will not change until applied.</span>
+          <span id="field-status" role="status" aria-live="polite">Load fields to build a selection. The CSV fields above will not change until applied.</span>
         </div>
         <div class="field-list" id="field-list" aria-live="polite"></div>
       </details>
@@ -96,7 +97,7 @@
   <section class="panel preview-panel" id="data-preview" hidden>
     <div class="preview-head">
       <h2>Data Preview</h2>
-      <span id="preview-status"></span>
+      <span id="preview-status" role="status" aria-live="polite"></span>
     </div>
     <div class="preview-table-wrap">
       <table id="preview-table">
@@ -109,11 +110,12 @@
   <section class="panel rename-editor" id="rename-editor" hidden>
     <div class="preview-head">
       <h2>Edit Device Names</h2>
-      <span id="rename-editor-status"></span>
+      <span id="rename-editor-status" role="status" aria-live="polite"></span>
     </div>
     <form
       class="form"
       id="rename-editor-form"
+      data-unsaved-form
       method="post"
       action="{{ url_for('rename_objects', task_id=task.id) }}"
       data-loading-message="Applying selected changes…"
@@ -142,6 +144,8 @@
     </form>
   </section>
 {% endif %}
+<script src="{{ url_for('static', filename='unsaved-forms.js') }}"></script>
+<script src="{{ url_for('static', filename='appliance-read.js') }}"></script>
 {% if task.kind == "export" %}
   <script src="{{ url_for('static', filename='task-fields.js') }}"></script>
 {% else %}

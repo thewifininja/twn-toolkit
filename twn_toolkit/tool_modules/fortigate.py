@@ -135,3 +135,5 @@ def register_tools(registry: Any) -> None:
             "apply_switch_order": "fortigate.switch_order",
         }
     )
+
+    registry.map_endpoints({"fortigate_connection_"+suffix:"fortigate.home" for suffix in ("job","status","cancel","download")})

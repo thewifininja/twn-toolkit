@@ -25,16 +25,11 @@
     applyButton.disabled = true;
     status.textContent = "Loading fields...";
     fieldList.innerHTML = "";
-    window.toolkitLoading?.show("Loading available FortiGate fields…");
 
     try {
-      const response = await fetch(builder.dataset.fieldsUrl, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to load fields.");
+      const data = await window.TwnApplianceRead(builder.dataset.fieldsUrl, formData, status);
+      if (["profile", "endpoint_template", "fields"].some(name => String(formData.get(name) || "") !== String(new FormData(form).get(name) || ""))) {
+        throw new Error("Inputs changed while this read was running. Load again for the current selection.");
       }
       renderFields(data.fields || []);
       applyButton.disabled = data.fields.length === 0;
@@ -48,7 +43,6 @@
       applyButton.disabled = true;
     } finally {
       loadButton.disabled = false;
-      window.toolkitLoading?.hide();
     }
   });
 
@@ -64,27 +58,21 @@
     preview.hidden = false;
     previewStatus.textContent = "Fetching data...";
     clearPreview();
-    window.toolkitLoading?.show("Fetching FortiGate data preview…");
 
     try {
-      const response = await fetch(builder.dataset.previewUrl, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to fetch data.");
+      const data = await window.TwnApplianceRead(builder.dataset.previewUrl, formData, previewStatus);
+      if (["profile", "endpoint_template", "fields"].some(name => String(formData.get(name) || "") !== String(new FormData(form).get(name) || ""))) {
+        throw new Error("Inputs changed while this read was running. Load again for the current selection.");
       }
       renderPreview(data.columns || [], data.rows || []);
       if (data.endpoint_used) {
         endpointInput.value = data.endpoint_used;
       }
-      previewStatus.textContent = `${data.row_count} row(s) using ${data.endpoint_used}.`;
+      previewStatus.textContent = `${data.preview_count} of ${data.row_count} row(s) shown using ${data.endpoint_used}.${data.fields_clipped ? " Long values shortened for preview." : ""} CSV exports retain full values.`;
     } catch (error) {
       previewStatus.textContent = error.message;
     } finally {
       fetchButton.disabled = false;
-      window.toolkitLoading?.hide();
     }
   });
 

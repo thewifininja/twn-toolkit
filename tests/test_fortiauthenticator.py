@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.appliance_read_helpers import complete_appliance_read, export_fixture
+
 import json
 import os
 import re
@@ -255,10 +257,10 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             },
         )
         test_connection.return_value = {"meta": {"total_count": 42}, "objects": []}
-        response = self.client.post(
+        response = complete_appliance_read(self.client, self.client.post(
             "/fortiauthenticator/profiles/Lab/test",
             follow_redirects=True,
-        )
+        ))
         self.assertIn(b"42 MAC devices available", response.data)
         summary = ActivityStore(self.temporary_directory.name).summary()
         self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 1)
