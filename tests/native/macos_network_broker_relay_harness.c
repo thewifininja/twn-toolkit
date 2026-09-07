@@ -1,3 +1,14 @@
+#ifndef __APPLE__
+#include <sys/types.h>
+#include <errno.h>
+/* Relay-only portability shim. Peer authorization is never exercised here. */
+static int getpeereid(int fd, uid_t *uid, gid_t *gid) {
+    (void)fd; (void)uid; (void)gid;
+    errno = ENOTSUP;
+    return -1;
+}
+#endif
+#define RELAY_IDLE_TIMEOUT_MS 1200
 #define RELAY_HALF_CLOSE_IDLE_MS 100
 #define main twn_network_broker_program_main
 #include "../../native/macos_network_broker.c"
@@ -106,5 +117,34 @@ int main(void) {
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return 21;
     if (recv(waiting_application[0], &byte, 1, 0) != 0) return 22;
     close(waiting_application[0]);
+
+    int active_application[2], active_remote[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, active_application) != 0 ||
+        socketpair(AF_UNIX, SOCK_STREAM, 0, active_remote) != 0) return 23;
+    relay = fork();
+    if (relay < 0) return 24;
+    if (relay == 0) {
+        close(active_application[0]); close(active_remote[0]);
+        alarm(6); /* A broken idle implementation must fail, not hang the harness. */
+        int result = relay_streams(active_application[1], active_remote[1]);
+        close(active_application[1]); close(active_remote[1]);
+        _exit(result == 0 ? 0 : 25);
+    }
+    close(active_application[1]); close(active_remote[1]);
+    uint64_t active_start = monotonic_milliseconds();
+    for (int i = 0; i < 10; ++i) {
+        usleep(200000);
+        if (send(active_application[0], "a", 1, 0) != 1 ||
+            expect_bytes(active_remote[0], "a", 1) != 0 ||
+            send(active_remote[0], "b", 1, 0) != 1 ||
+            expect_bytes(active_application[0], "b", 1) != 0) return 26;
+    }
+    if (monotonic_milliseconds() - active_start <= RELAY_IDLE_TIMEOUT_MS) return 27;
+    /* Both directions stay open, but no further bytes arrive: idle expiry. */
+    if (waitpid(relay, &status, 0) != relay) return 28;
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return 29;
+    if (recv(active_application[0], &byte, 1, 0) != 0 ||
+        recv(active_remote[0], &byte, 1, 0) != 0) return 30;
+    close(active_application[0]); close(active_remote[0]);
     return 0;
 }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import plistlib
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -336,20 +337,25 @@ class ServiceCliTests(unittest.TestCase):
             handler.index("relay_streams(relay_pair[1], connected_fd)"),
         )
         self.assertIn("RELAY_HALF_CLOSE_IDLE_MS", source)
+        self.assertIn("RELAY_IDLE_TIMEOUT_MS", source)
+        self.assertNotIn("RELAY_LIFETIME_SECONDS", source)
+        self.assertIn("alarm(SETUP_LIFETIME_SECONDS)", source)
+        self.assertLess(handler.index("alarm(0)"), handler.index("relay_streams(relay_pair[1], connected_fd)"))
         self.assertIn("#include <netinet/tcp.h>", source)
         self.assertIn("setsockopt(\n        descriptor,\n        IPPROTO_TCP,\n        TCP_NODELAY", source)
         self.assertIn("signal(SIGTERM, SIG_DFL)", source)
 
-    @unittest.skipUnless(os.uname().sysname == "Darwin", "requires macOS sockets")
     def test_native_connector_relay_is_bidirectional_and_half_closes(self) -> None:
         root = Path(__file__).resolve().parents[1]
         harness = root / "tests" / "native" / "macos_network_broker_relay_harness.c"
+        compiler = ["xcrun", "clang"] if os.uname().sysname == "Darwin" else [shutil.which("cc") or "cc"]
+        if not shutil.which(compiler[0]):
+            self.skipTest("requires a C compiler")
         with tempfile.TemporaryDirectory() as temporary:
             executable = Path(temporary) / "network-broker-relay-harness"
             subprocess.run(
                 [
-                    "xcrun",
-                    "clang",
+                    *compiler,
                     "-Wall",
                     "-Wextra",
                     "-Werror",
