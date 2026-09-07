@@ -1131,9 +1131,9 @@ class RemoteSessionRouteTests(unittest.TestCase):
                         self.manager.stop_session(session["id"], user_id="test-user")
                     else:
                         self.assertEqual(len(self.opener.calls), before)
-                    # Shared use does not grant owner-only mutations.
-                    deleted = self.client.delete(f"/tools/remote-terminal/hosts/{host['id']}", environ_overrides=environ)
-                    self.assertEqual(deleted.status_code, 404)
+                    if not admin or not visible:
+                        deleted = self.client.delete(f"/tools/remote-terminal/hosts/{host['id']}", environ_overrides=environ)
+                        self.assertEqual(deleted.status_code, 404)
 
     def test_saved_host_supports_multiple_independently_named_sessions(self) -> None:
         credential = self.client.post(

@@ -190,6 +190,7 @@
 <dialog class="remote-terminal-dialog" id="remote-folder-dialog" aria-labelledby="remote-folder-title">
   <form class="form remote-terminal-dialog-form" id="remote-folder-form">
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-folder-title">New folder</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
+    <p class="remote-terminal-dialog-intro" data-shared-item-note hidden>You are editing a shared item. Changes apply to everyone who uses it. Only its owner can make it private.</p>
     <input id="remote-folder-id" type="hidden">
     <label>Folder name<input id="remote-folder-name" maxlength="100" required></label>
     <label>Parent folder<select id="remote-folder-parent"></select></label>
@@ -215,6 +216,7 @@
 <dialog class="remote-terminal-dialog remote-host-dialog" id="remote-host-dialog" aria-labelledby="remote-host-title">
   <form class="form remote-terminal-dialog-form" id="remote-host-form">
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-host-title">New saved host</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
+    <p class="remote-terminal-dialog-intro" data-shared-item-note hidden>You are editing a shared item. Changes apply to everyone who uses it. Only its owner can make it private.</p>
     <input id="remote-host-id" type="hidden">
     <div class="form-grid remote-terminal-dialog-grid">
       <label>Display name<input id="remote-host-name" maxlength="100" required placeholder="Core Switch 01"></label>
@@ -271,6 +273,7 @@
 <dialog class="remote-terminal-dialog remote-credential-dialog" id="remote-credential-dialog" aria-labelledby="remote-credential-title">
   <div class="remote-credential-manager">
     <header><div><span class="eyebrow">Encrypted credential storage</span><h2 id="remote-credential-title">Credential vault</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
+    <p class="remote-terminal-dialog-intro" data-shared-item-note hidden>You are editing a shared item. Changes apply to everyone who uses it. Only its owner can make it private.</p>
     <p class="remote-terminal-dialog-intro">Save a credential once, then assign it to multiple hosts or select it during Quick Connect. Passwords remain write-only after saving.</p>
     <div class="remote-credential-manager-body">
       <aside>
