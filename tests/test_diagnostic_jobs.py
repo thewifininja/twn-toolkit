@@ -170,6 +170,71 @@ def test_history_capacity_prunes_old_terminal_runs_but_not_active_work(tmp_path)
         assert db.execute("SELECT COUNT(*) FROM diagnostic_rows").fetchone()[0] == 0
 
 
+@pytest.mark.parametrize("stage", ["spawn", "write", "close"])
+def test_startup_failure_releases_history_only_after_child_exit(tmp_path, monkeypatch, stage):
+    OperationalSettingsStore(str(tmp_path)).save({"diagnostic_history_limit": 1})
+    scheduler = DiagnosticScheduler(tmp_path)
+    original = subprocess.Popen
+    children = []
+    pipes = []
+    outcomes = []
+
+    class FailingInput:
+        def __init__(self, pipe):
+            self.pipe = pipe
+
+        def write(self, value):
+            if stage == "write":
+                raise BrokenPipeError("Injected ownership handoff failure")
+            return self.pipe.write(value)
+
+        def close(self):
+            self.pipe.close()
+            if stage == "close":
+                raise OSError("Injected ownership flush failure")
+
+    def launch(*args, **kwargs):
+        if stage == "spawn":
+            raise OSError("Injected process creation failure")
+        child = original([sys.executable, "-c", "import time; time.sleep(60)"], **kwargs)
+        pipes.append(child.stdin)
+        child.stdin = FailingInput(child.stdin)
+        children.append(child)
+        return child
+
+    def record(store, job, state, error):
+        assert all(child.poll() is not None for child in children)
+        # Retention must stay fenced until cleanup and attribution finish.
+        with pytest.raises(ValueError, match="storage capacity"):
+            store.enqueue(user_id="other", config=config())
+        outcomes.append((job["id"], state))
+
+    monkeypatch.setattr("twn_toolkit.diagnostic_worker.subprocess.Popen", launch)
+    monkeypatch.setattr("twn_toolkit.diagnostic_worker.record_unsuccessful_scan", record)
+    try:
+        job_id = scheduler.store.enqueue(user_id="owner", config=config())
+        scheduler.tick()
+        assert scheduler.store.get(job_id, "owner")["state"] == "failed"
+        assert not scheduler.active
+        assert outcomes == [(job_id, "failed")]
+        # A failed launch must not pin the only history slot until restart.
+        replacement = scheduler.store.enqueue(user_id="owner", config=config())
+        assert scheduler.store.get(job_id, "owner") is None
+        assert scheduler.store.get(replacement, "owner")["state"] == "queued"
+        assert all(pipe.closed for pipe in pipes)
+        scheduler.store.cancel(replacement, "owner")
+        scheduler.tick()
+        assert outcomes == [(job_id, "failed")]
+    finally:
+        scheduler.close()
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+            child.wait()
+        for pipe in pipes:
+            pipe.close()
+
+
 @pytest.mark.parametrize("value", [0, 9, True, 1.5, float("inf"), "bad"])
 def test_diagnostic_worker_policy_rejects_invalid_values(tmp_path, value):
     with pytest.raises(ValueError):

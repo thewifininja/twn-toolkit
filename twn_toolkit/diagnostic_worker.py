@@ -78,7 +78,14 @@ class DiagnosticScheduler:
                 if process is not None:
                     process.kill()
                     process.wait()
+                    try:
+                        process.stdin.close()
+                    except (OSError, ValueError):
+                        pass
                 _abort(self.store, job["id"], job["token"], "failed", "Unable to start the diagnostic process.")
+                # No active entry will revisit this claim. Release only after
+                # the child is reaped and outcome recording has completed.
+                self.store.release(job["id"], job["token"])
 
     def close(self):
         # Confirm process termination before reporting an interrupted outcome.
