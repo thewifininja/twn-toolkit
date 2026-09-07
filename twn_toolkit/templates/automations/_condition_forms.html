@@ -1,7 +1,7 @@
 {% from "components/ui.html" import host_range_guidance %}
 {% macro condition_form(values, definition=none) %}
   {% set config = definition.config if definition else values %}
-  <form class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
+  <form data-unsaved-form data-unsaved-initial="{{ 'true' if form_error and form_section == 'condition' and not definition else 'false' }}" class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
     {% set definition_id = definition.id if definition else values.get('condition_definition_id', '') %}
     {% if definition_id %}<input type="hidden" name="condition_definition_id" value="{{ definition_id }}">{% endif %}
     <label>Condition name

@@ -2,7 +2,7 @@
   {% set config = definition.config if definition else values %}
   {% set definition_id = definition.id if definition else values.get('schedule_definition_id', '') %}
   {% set timezone_list_id = 'schedule-timezones-' ~ (definition_id or 'new') %}
-  <form class="form automation-form" method="post" action="{{ url_for('save_automation_schedule') }}">
+  <form data-unsaved-form data-unsaved-initial="{{ 'true' if form_error and form_section == 'schedule' and not definition else 'false' }}" class="form automation-form" method="post" action="{{ url_for('save_automation_schedule') }}">
     {% if definition_id %}<input type="hidden" name="schedule_definition_id" value="{{ definition_id }}">{% endif %}
     <label>Schedule name
       <input name="schedule_name" maxlength="100" value="{{ definition.name if definition else values.get('schedule_name', '') }}" placeholder="Weekday maintenance window" required>
