@@ -15,7 +15,7 @@
   {% set startup_network_wait_seconds = automation.condition.config.network_wait_seconds if automation and automation.run_mode == 'startup' else values.get('startup_network_wait_seconds', '120') %}
   {% set network_config = automation.condition.config if automation and automation.run_mode == 'network_change' else values %}
   {% set selected_stages = automation.stage_form if automation else values.get('action_stages', []) %}
-  <form class="form automation-form" method="post" action="{{ url_for('save_automation') }}">
+  <form data-unsaved-form data-unsaved-initial="{{ 'true' if form_error and form_section == 'automation' and not automation else 'false' }}" class="form automation-form" method="post" action="{{ url_for('save_automation') }}">
     {% if automation %}<input type="hidden" name="automation_id" value="{{ automation.id }}">{% endif %}
     <label>Automation name
       <input name="name" maxlength="100" value="{{ automation.name if automation else values.get('name', '') }}" placeholder="Branch outage collection" required>
@@ -362,4 +362,5 @@
 {% endif %}
 <script src="{{ url_for('static', filename='automation.js') }}"></script>
 {% if page_section == 'conditions' %}<script src="{{ url_for('static', filename='automation-snmp.js') }}"></script>{% endif %}
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 {% endblock %}
