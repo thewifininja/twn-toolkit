@@ -7779,6 +7779,11 @@ button.compact,
   white-space: nowrap;
 }
 
+.switch-order-target {
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+
 .switch-order-editor {
   border-top: 1px solid var(--line);
   margin-top: 24px;

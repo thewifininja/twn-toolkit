@@ -15,15 +15,58 @@
   if (!root || !source || !loadButton || !editor || !list || !status || !detail || !preview ||
       !alphabetizeButton || !applyButton || !confirmation || !profile || !vdom) return;
 
+  const targetLabel = document.querySelector("#switch-order-target");
+  let revision = 0;
+  let loadToken = "";
+  let previewToken = "";
+  let loadedTarget = null;
+  let loading = false;
+  let applying = false;
   let originalIds = [];
   let draggedItem = null;
 
   profile.addEventListener("change", () => {
     vdom.value = profile.selectedOptions[0]?.dataset.vdom || "root";
     window.TwnSelectControls?.sync(vdom);
+    invalidateTarget();
   });
+  vdom.addEventListener("input", invalidateTarget);
+  vdom.addEventListener("change", invalidateTarget);
+
+  function invalidateTarget() {
+    revision += 1;
+    loadToken = previewToken = "";
+    loadedTarget = null;
+    originalIds = [];
+    list.replaceChildren();
+    preview.replaceChildren();
+    confirmation.checked = false;
+    if (targetLabel) targetLabel.textContent = "";
+    editor.hidden = false;
+    setStatus("Target changed. Load its current order before reviewing moves.");
+    updateApplyState();
+  }
+
+  function targetMatches() {
+    return loadedTarget && loadedTarget.profile === profile.value && loadedTarget.vdom === vdom.value;
+  }
+
+  function orderBody() {
+    const body = new FormData();
+    body.set("profile", loadedTarget.profile);
+    body.set("vdom", loadedTarget.vdom);
+    originalIds.forEach((id) => body.append("original_switch_id", id));
+    currentIds().forEach((id) => body.append("switch_id", id));
+    return body;
+  }
 
   loadButton.addEventListener("click", async () => {
+    if (loading || applying) return;
+    loading = true;
+    const generation = ++revision;
+    const requestedProfile = profile.value;
+    loadToken = previewToken = "";
+    loadedTarget = null;
     loadButton.disabled = true;
     editor.hidden = false;
     setStatus("Loading managed switches…");
@@ -38,7 +81,12 @@
         body: new FormData(source),
       });
       const data = await response.json();
+      if (generation !== revision) return;
       if (!response.ok) throw new Error(data.error || "Unable to load managed switches.");
+      if (!data.load_token) throw new Error("This response cannot authorize a reorder. Update the executing instance and reload.");
+      loadToken = data.load_token;
+      loadedTarget = {profile: requestedProfile, vdom: data.vdom};
+      if (targetLabel) targetLabel.textContent = `${requestedProfile} · ${data.target_origin} · VDOM ${data.vdom}`;
       vdom.value = data.vdom;
       window.TwnSelectControls?.sync(vdom);
       renderSwitches(data.switches || []);
@@ -47,14 +95,17 @@
       setStatus(`${data.row_count} ${switchLabel} loaded in FortiGate table order.`, "success");
       updatePreview();
     } catch (error) {
-      setStatus(error.message, "error");
+      if (generation === revision) setStatus(error.message, "error");
     } finally {
+      loading = false;
       loadButton.disabled = false;
+      updateApplyState();
       window.toolkitLoading?.hide();
     }
   });
 
   alphabetizeButton.addEventListener("click", () => {
+    if (applying || !loadToken) return;
     const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: "base"});
     const rows = Array.from(list.children);
     rows.sort((left, right) => collator.compare(left.dataset.name, right.dataset.name));
@@ -63,9 +114,37 @@
     updatePreview();
   });
 
-  confirmation.addEventListener("change", updateApplyState);
+  confirmation.addEventListener("change", async () => {
+    const generation = ++revision;
+    previewToken = "";
+    updateApplyState();
+    if (!confirmation.checked || applying || !loadToken || !targetMatches()) return;
+    const expected = calculateMoves(originalIds, currentIds()).map((move) => [move.switchId, move.after]);
+    const body = orderBody();
+    body.set("load_token", loadToken);
+    setStatus("Checking the reviewed order…");
+    try {
+      const response = await fetch(root.dataset.previewUrl, {method: "POST", body});
+      const data = await response.json();
+      if (generation !== revision) return;
+      if (!response.ok) throw new Error(data.error || "Reload and review the current order.");
+      if (!data.preview_token || JSON.stringify(data.moves.map((move) => [move.switch_id, move.after])) !== JSON.stringify(expected)) {
+        throw new Error("The move preview no longer matches. Reload and review it again.");
+      }
+      previewToken = data.preview_token;
+      setStatus("Reviewed order confirmed for this target. Ready to apply.", "success");
+    } catch (error) {
+      if (generation !== revision) return;
+      confirmation.checked = false;
+      loadToken = "";
+      setStatus(error.message, "error");
+    } finally {
+      if (generation === revision) updateApplyState();
+    }
+  });
 
   list.addEventListener("click", (event) => {
+    if (applying || !loadToken) return;
     const button = event.target.closest("button[data-direction]");
     if (!button) return;
     const row = button.closest(".switch-order-item");
@@ -78,6 +157,7 @@
   });
 
   list.addEventListener("dragstart", (event) => {
+    if (applying || !loadToken) { event.preventDefault(); return; }
     draggedItem = event.target.closest(".switch-order-item");
     if (!draggedItem) return;
     draggedItem.classList.add("dragging");
@@ -87,7 +167,7 @@
   list.addEventListener("dragover", (event) => {
     event.preventDefault();
     const target = event.target.closest(".switch-order-item");
-    if (!draggedItem || !target || target === draggedItem) return;
+    if (applying || !loadToken || !draggedItem || !target || target === draggedItem) return;
     const after = event.clientY > target.getBoundingClientRect().top + target.offsetHeight / 2;
     list.insertBefore(draggedItem, after ? target.nextSibling : target);
   });
@@ -100,37 +180,45 @@
   });
 
   applyButton.addEventListener("click", async () => {
-    const moves = calculateMoves(originalIds, currentIds());
-    if (!moves.length) return;
-    const body = new FormData();
-    body.set("profile", profile.value);
-    body.set("vdom", vdom.value);
+    if (applying || !previewToken || !confirmation.checked || !targetMatches()) return;
+    const generation = revision;
+    const body = orderBody();
     body.set("confirmed", "on");
-    currentIds().forEach((id) => body.append("switch_id", id));
-    applyButton.disabled = true;
-    alphabetizeButton.disabled = true;
+    body.set("preview_token", previewToken);
+    previewToken = "";
+    applying = true;
+    profile.disabled = vdom.disabled = loadButton.disabled = true;
+    updateApplyState();
     setStatus("Applying moves and verifying the resulting order…");
     window.toolkitLoading?.show("Applying switch moves and verifying order…");
     try {
       const response = await fetch(root.dataset.applyUrl, {method: "POST", body});
       const data = await response.json();
+      if (generation !== revision) {
+        setStatus("The previous target's apply request finished. Reload that target to reconcile its order.");
+        return;
+      }
       if (!response.ok) {
+        loadToken = "";
+        confirmation.checked = false;
         const summary = data.user_message || data.message || data.error || "Unable to apply switch order.";
         const technicalDetail = data.detail || (data.user_message ? data.error : "");
-        setStatus(summary, "error", technicalDetail);
-        applyButton.disabled = false;
+        setStatus(`${summary} Reload the current order before another apply.`, "error", technicalDetail);
         return;
       }
       renderSwitches(data.switches || []);
       originalIds = currentIds();
-      confirmation.checked = false;
+      loadToken = data.load_token || "";
       updatePreview();
       setStatus(data.message, "success");
     } catch (error) {
-      setStatus(error.message, "error");
-      applyButton.disabled = false;
+      loadToken = "";
+      confirmation.checked = false;
+      setStatus(`${error.message} The apply outcome may be incomplete. Reload and reconcile the target before retrying.`, "error");
     } finally {
-      alphabetizeButton.disabled = false;
+      applying = false;
+      profile.disabled = vdom.disabled = loadButton.disabled = false;
+      updateApplyState();
       window.toolkitLoading?.hide();
     }
   });
@@ -198,6 +286,8 @@
   }
 
   function updatePreview() {
+    revision += 1;
+    previewToken = "";
     confirmation.checked = false;
     preview.innerHTML = "";
     const moves = calculateMoves(originalIds, currentIds());
@@ -215,8 +305,13 @@
   }
 
   function updateApplyState() {
-    applyButton.disabled = calculateMoves(originalIds, currentIds()).length === 0 ||
-      !confirmation.checked;
+    const available = Boolean(loadToken && targetMatches() && !applying && !loading);
+    alphabetizeButton.disabled = !available;
+    confirmation.disabled = !available;
+    list.querySelectorAll("button").forEach((button) => { button.disabled = !available; });
+    list.querySelectorAll(".switch-order-item").forEach((row) => { row.draggable = available; });
+    applyButton.disabled = !available || !previewToken ||
+      calculateMoves(originalIds, currentIds()).length === 0 || !confirmation.checked;
   }
 
   function calculateMoves(current, desired) {

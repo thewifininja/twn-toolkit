@@ -129,6 +129,7 @@ def register_tools(registry: Any) -> None:
             "fortiap_client_history": "fortigate.wireless_client_history",
             "switch_order": "fortigate.switch_order",
             "switch_order_objects": "fortigate.switch_order",
+            "preview_switch_order": "fortigate.switch_order",
             "apply_switch_order": "fortigate.switch_order",
         }
     )
