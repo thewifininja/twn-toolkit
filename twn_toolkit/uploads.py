@@ -378,5 +378,18 @@ class MultipartSpool:
         self.upload.flush()
         return self.upload._file.read(size)
 
+    def readline(self, size=-1):
+        self.upload.flush()
+        return self.upload._file.readline(size)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        line = self.readline()
+        if not line:
+            raise StopIteration
+        return line
+
     def close(self):
         self.upload.abort()

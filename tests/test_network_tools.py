@@ -570,6 +570,13 @@ class NetworkToolTests(unittest.TestCase):
                     TaskResult(1, "Lobby AP", "Lobby AP New", "root", "success", "Updated.")
                 ],
             ):
+                preview = client.post(
+                    "/tasks/rename-aps/rename",
+                    data={"profile": "Lab", "identifier": ["AP-1"],
+                          "current_name": ["Lobby AP"], "new_name": ["Lobby AP New"],
+                          "vdom": ["root"], "dry_run": "on"},
+                )
+                token = re.search(rb'name="preview_token"[^>]*value="([^"]+)"', preview.data)[1].decode()
                 rename = client.post(
                     "/tasks/rename-aps/rename",
                     data={
@@ -579,6 +586,7 @@ class NetworkToolTests(unittest.TestCase):
                         "new_name": ["Lobby AP New"],
                         "vdom": ["root"],
                         "confirmed_live": "on",
+                        "preview_token": token,
                     },
                 )
             events = AuditStore(instance).recent(2)

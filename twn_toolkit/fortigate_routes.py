@@ -19,6 +19,9 @@ from flask import (
 )
 
 from .activity_context import record_current_activity
+from .rename_preview import (
+    RENAME_PREVIEW_MAX_AGE_SECONDS, issue_rename_preview, valid_rename_preview, rename_target,
+)
 from .audit import (
     annotate_audit_event,
     annotate_profile_deleted,
@@ -701,6 +704,9 @@ def register_fortigate_routes(
             flash("Select a valid task and profile.", "error")
             return redirect(url_for("fortigate_home"))
 
+        if isinstance(task, RenameTask) and not dry_run:
+            return _reject_rename_preview(task, profile)
+
         client = FortiGateClient.from_profile(profile)
         if isinstance(task, ExportTask):
             fields = request.form.get("fields", "").strip()
@@ -802,6 +808,11 @@ def register_fortigate_routes(
         return render_template(
             "results.html",
             entries=entries if dry_run else None,
+            preview_token=issue_rename_preview(
+                task, profile, endpoint_template or task.endpoint_template, entries,
+            ) if dry_run and entries else "",
+            target_origin=rename_target(profile),
+            preview_expiry_minutes=RENAME_PREVIEW_MAX_AGE_SECONDS // 60,
             endpoint_template=endpoint_template or task.endpoint_template,
             profile=profile,
             task=task,
@@ -899,6 +910,12 @@ def register_fortigate_routes(
                 identifiers, current_names, new_names, vdoms
             )
         ]
+        if not dry_run and not valid_rename_preview(
+            request.form.get("preview_token", ""), task, profile,
+            endpoint_template or task.endpoint_template, entries,
+        ):
+            return _reject_rename_preview(task, profile)
+
         client = FortiGateClient.from_profile(profile)
         with client.pooled() as pooled_client:
             results = task.run_entries(
@@ -924,6 +941,11 @@ def register_fortigate_routes(
         return render_template(
             "results.html",
             entries=entries if dry_run else None,
+            preview_token=issue_rename_preview(
+                task, profile, endpoint_template or task.endpoint_template, entries,
+            ) if dry_run and entries else "",
+            target_origin=rename_target(profile),
+            preview_expiry_minutes=RENAME_PREVIEW_MAX_AGE_SECONDS // 60,
             endpoint_template=endpoint_template or task.endpoint_template,
             profile=profile,
             task=task,
@@ -1097,3 +1119,15 @@ def connection_error_message(exc: FortiGateError) -> str:
         )
 
     return str(exc)
+
+
+def _reject_rename_preview(task, profile):
+    annotate_audit_event(
+        category="FortiGate", action="fortigate.rename_aborted_preview",
+        summary=f"Blocked a live {task.label} request without a matching preview.",
+        resource_type="fortigate_task", resource_id=task.id, resource_name=task.label,
+        details={"profile": audit_reference("FortiGate profile", profile["name"], profile["name"]),
+                 "outcome": "aborted invalid or stale preview"},
+    )
+    flash("Build a new dry-run preview and review it before applying. The previous preview is missing, expired, or no longer matches the target or changes.", "error")
+    return redirect(url_for("task_form", task_id=task.id))
