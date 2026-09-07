@@ -129,3 +129,40 @@ stop_distributed_unlocked() {
     result=subprocess.run(['sh','-c',code],env={**environment(tmp_path),'OP':'start_distributed','FAIL_START':'7'},capture_output=True,text=True,timeout=5)
     assert result.returncode==7
     assert not (tmp_path/'twn-distributed.pid.lock').exists()
+
+
+@pytest.mark.parametrize("running", [False, True])
+@pytest.mark.parametrize("role_status", [0, 1, 2])
+def test_launcher_runtime_cleanup_follows_process_cleanup_only_for_standalone(
+    tmp_path, running, role_status
+):
+    python_stub = tmp_path / "python-stub"
+    python_stub.write_text('#!/bin/sh\necho runtime >> "$INSTANCE/events"\n')
+    python_stub.chmod(0o700)
+    (tmp_path / "twn-distributed.pid").write_text("12345")
+    code = shell_functions(
+        "stop_distributed_unlocked", "clear_standalone_distributed_runtime"
+    ) + '''
+distributed_is_running() { return "$RUNNING_STATUS"; }
+distributed_enabled() { return "$ROLE_STATUS"; }
+pid_is_running() { return 1; }
+kill() { echo stopped >> "$INSTANCE/events"; }
+cleanup_worker_processes() { echo processes >> "$INSTANCE/events"; }
+stop_distributed_unlocked
+'''
+    result = subprocess.run(
+        ["sh", "-eu", "-c", code],
+        env={
+            **environment(tmp_path),
+            "PYTHON": str(python_stub),
+            "RUNNING_STATUS": "0" if running else "1",
+            "ROLE_STATUS": str(role_status),
+        },
+        capture_output=True, text=True, timeout=5,
+    )
+    assert result.returncode == 0, result.stderr
+    expected = (["stopped"] if running else []) + ["processes"]
+    if role_status == 1:
+        expected.append("runtime")
+    assert (tmp_path / "events").read_text().splitlines() == expected
+    assert not (tmp_path / "twn-distributed.pid").exists()

@@ -74,15 +74,3 @@ def test_direct_standalone_worker_clears_stale_runtime(tmp_path, monkeypatch):
     assert not (tmp_path / "distributed-status.json").exists()
     assert (tmp_path / ACTIVATION_FILE).exists()
 
-
-def test_launcher_cleans_runtime_only_after_distributed_process_cleanup():
-    source = Path("twn").read_text(encoding="utf-8")
-    function = source.split("stop_distributed() {", 1)[1].split(
-        "\n}\n\nstop_packet_captures", 1
-    )[0]
-
-    assert function.count("distributed_runtime clear-inactive") == 2
-    assert function.index("cleanup_worker_processes") < function.index(
-        "distributed_runtime clear-inactive"
-    )
-    assert function.count('if ! distributed_enabled && [ -x "$PYTHON" ]; then') == 2
