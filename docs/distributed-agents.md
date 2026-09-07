@@ -121,16 +121,27 @@ Fleet jobs remain a separate versioned capability system for orchestration.
 
 ## Protocol and compatibility
 
-Messages use a versioned envelope with a stable job identifier, message type,
-protocol version, and bounded payload. Peers advertise toolkit version,
-protocol range, platform, and capability versions. The mainframe may dispatch a
-job only when the selected agent advertises a compatible capability. Toolkit
-version is also an operational compatibility boundary: upgrade and restart the
-Mainframe first, then upgrade and restart every Agent before relying on GUI
-tunneling or durable jobs. A released Agent may continue to heartbeat against a
-newer development Mainframe while its interactive lanes fail to claim tunnel
-work; the selector currently exposes capability and liveness but does not yet
-block this mixed-version state.
+Messages use a versioned envelope with stable job identifiers and bounded
+payloads. Toolkit release labels are informational: the same label can describe
+a released Agent and a development checkout with different worker behavior.
+
+The Mainframe persists the authenticated heartbeat's operation protocol and GUI
+protocol. GUI protocol 1 declares owned operations on the dedicated interactive
+polling lane; the required operation protocol is 2. Missing, malformed, or
+unsupported values block GUI selection and direct GUI requests before enqueue.
+Approved Agents remain visible on the Mainframe page with their independent
+online/offline status and a GUI update-required explanation. Existing records
+migrate to unconfirmed compatibility until a supporting worker heartbeats.
+A later legacy heartbeat clears previously reported support.
+
+Upgrade compatible Mainframe and Agent code and restart web and automation/
+distributed workers, then wait for a fresh heartbeat. Re-enrollment is not a
+compatibility remedy. Matching release labels alone do not enable selection.
+This protocol gate verifies the declared GUI delivery contract, not every tool
+feature or asset/API combination; continue to keep deployed versions aligned.
+It does not negotiate arbitrary future versions or alter certificate trust.
+GET browser requests with a stale selection return locally with an explanation;
+mutating or non-HTML requests return409 without replaying the operation locally.
 
 The target job contract includes:
 

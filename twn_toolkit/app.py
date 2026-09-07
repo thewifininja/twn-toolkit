@@ -79,6 +79,7 @@ from .distributed_agents import (
     DistributedIdentityStore,
     DistributedSettingsStore,
     agent_supports_capability,
+    agent_gui_compatibility_error,
     selectable_gui_agents,
 )
 from .distributed_pki import DistributedPkiStore, PairingSessionStore
@@ -389,6 +390,10 @@ def create_app(instance_path: str | None = None) -> Flask:
         if not agent_supports_capability(agent, *GUI_TUNNEL_CAPABILITY):
             recovery = return_to_local_instance("The selected agent does not support GUI access.")
             return recovery if recovery is not None else Response("The selected agent does not support GUI access.", status=503)
+        compatibility_error = agent_gui_compatibility_error(agent)
+        if compatibility_error:
+            recovery = return_to_local_instance(compatibility_error)
+            return recovery if recovery is not None else Response(compatibility_error, status=409)
         if remote_path.startswith("static/"):
             return app.send_static_file(remote_path[len("static/"):])
         body = request.get_data(cache=False)
@@ -1444,6 +1449,10 @@ def create_app(instance_path: str | None = None) -> Flask:
                 selected_agent, *GUI_TUNNEL_CAPABILITY
             ):
                 flash("That agent does not support GUI access.", "error")
+                return redirect(_validated_next_url(request.form.get("next", "")))
+            compatibility_error = agent_gui_compatibility_error(selected_agent)
+            if compatibility_error:
+                flash(compatibility_error, "error")
                 return redirect(_validated_next_url(request.form.get("next", "")))
         before = auth_store.execution_context(g.current_user["id"])
         auth_store.set_execution_context(g.current_user["id"], context_id)

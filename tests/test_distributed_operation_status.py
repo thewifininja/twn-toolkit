@@ -90,7 +90,7 @@ def test_tunnel_timeout_cancels_unstarted_work_and_returns_a_status_location(tmp
         "id": agent_id,
         "name": "Status agent",
         "state": "approved",
-        "online": True,
+        "online": True, "job_protocol_version": 2, "gui_protocol_version": 1,
         "capabilities": [{"id": "system.http.tunnel", "version": "1"}],
     }
     agent_store = app.extensions["distributed_agent_store"]
@@ -128,7 +128,7 @@ def test_tunnel_request_body_limit_reserves_room_for_base64_and_metadata(tmp_pat
         "id": agent_id,
         "name": "Status agent",
         "state": "approved",
-        "online": True,
+        "online": True, "job_protocol_version": 2, "gui_protocol_version": 1,
         "capabilities": [{"id": "system.http.tunnel", "version": "1"}],
     }
     agent_store = app.extensions["distributed_agent_store"]
@@ -162,7 +162,7 @@ def test_tunnel_response_is_returned_but_not_retained_in_queue(tmp_path):
     agent_id = "agent_status"
     auth.set_execution_context(owner["id"], agent_id)
     agent = {
-        "id": agent_id, "name": "Status agent", "state": "approved", "online": True,
+        "id": agent_id, "name": "Status agent", "state": "approved", "online": True, "job_protocol_version": 2, "gui_protocol_version": 1,
         "capabilities": [{"id": "system.http.tunnel", "version": "1"}],
     }
     agent_store = app.extensions["distributed_agent_store"]

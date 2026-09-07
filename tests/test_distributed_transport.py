@@ -66,6 +66,7 @@ def test_loopback_enrollment_requires_approval_and_delivers_credentials(tmp_path
         )
         assert upgrade_required["state"] == "upgrade_required"
         assert upgrade_required["jobs"] == []
+        assert server.agent_store.get(enrollment["id"])["gui_compatible"] is False
         assert server.job_store.get(queued_for_legacy_peer["id"])["state"] == "queued"
         server.job_store.cancel(
             queued_for_legacy_peer["id"], requester_id="test-user"
@@ -80,6 +81,9 @@ def test_loopback_enrollment_requires_approval_and_delivers_credentials(tmp_path
         assert heartbeat["agent_id"] == enrollment["id"]
         connected = server.agent_store.get(enrollment["id"])
         assert connected["online"] is True
+        assert connected["job_protocol_version"] == 2
+        assert connected["gui_protocol_version"] == 1
+        assert connected["gui_compatible"] is True
         assert connected["capabilities"] == [
             {"id": "system.identity", "version": "1"}
         ]
