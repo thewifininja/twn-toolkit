@@ -120,6 +120,7 @@
     updateApplyState();
     if (!confirmation.checked || applying || !loadToken || !targetMatches()) return;
     const expected = calculateMoves(originalIds, currentIds()).map((move) => [move.switchId, move.after]);
+    if (!expected.length) { confirmation.checked = false; return; }
     const body = orderBody();
     body.set("load_token", loadToken);
     setStatus("Checking the reviewed order…");
@@ -306,12 +307,12 @@
 
   function updateApplyState() {
     const available = Boolean(loadToken && targetMatches() && !applying && !loading);
+    const hasMoves = calculateMoves(originalIds, currentIds()).length > 0;
     alphabetizeButton.disabled = !available;
-    confirmation.disabled = !available;
+    confirmation.disabled = !available || !hasMoves;
     list.querySelectorAll("button").forEach((button) => { button.disabled = !available; });
     list.querySelectorAll(".switch-order-item").forEach((row) => { row.draggable = available; });
-    applyButton.disabled = !available || !previewToken ||
-      calculateMoves(originalIds, currentIds()).length === 0 || !confirmation.checked;
+    applyButton.disabled = !available || !previewToken || !hasMoves || !confirmation.checked;
   }
 
   function calculateMoves(current, desired) {
