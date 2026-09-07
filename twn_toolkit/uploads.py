@@ -91,40 +91,7 @@ class Upload:
         os.replace(temporary, self.directory / "record.json")
 
     def _records(self):
-        records = {}
-        for directory in self.registry.iterdir():
-            if directory.name.startswith("."):
-                continue
-            if len(directory.name) != 32 or any(c not in "0123456789abcdef" for c in directory.name) or not directory.is_dir() or directory.is_symlink():
-                raise DatastoreError("The upload reservation registry is invalid.")
-            descriptor = os.open(directory / "owner", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
-            try:
-                try:
-                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError:
-                    try:
-                        record = json.loads((directory / "record.json").read_text())
-                        if not isinstance(record["capacity"], int) or record["capacity"] < 0:
-                            raise ValueError("Invalid capacity")
-                        destination, root = Path(record["destination"]), Path(record["root"])
-                        roots = {(self.store.instance / name).resolve() for name in
-                                 ("datastore", "tftp_runtime", "ssh_transfer_runtime", "ftp_runtime")}
-                        if root not in roots or destination == root or not destination.is_relative_to(root):
-                            raise ValueError("Invalid destination")
-                        original = record["original"]
-                        if original is not None and (not isinstance(original, list) or len(original) != 5 or
-                                                     any(type(value) is not int for value in original)):
-                            raise ValueError("Invalid destination identity")
-                    except (OSError, ValueError, KeyError, TypeError) as exc:
-                        raise DatastoreError("The upload reservation registry is unreadable.") from exc
-                    records[directory.name] = record
-                else:
-                    # An exited process cannot publish. Its private files and its
-                    # reservation can be reclaimed together while holding the registry.
-                    self._remove_directory(directory)
-            finally:
-                os.close(descriptor)
-        return records
+        return _live_records(self.store.instance, self.registry)
 
     @staticmethod
     def _remove_directory(directory):
@@ -393,3 +360,51 @@ class MultipartSpool:
 
     def close(self):
         self.upload.abort()
+
+
+def _live_records(instance, registry):
+    from .diagnostic_artifacts import FAMILIES
+    records = {}
+    for directory in registry.iterdir():
+        if directory.name.startswith("."):
+            continue
+        if len(directory.name) != 32 or any(c not in "0123456789abcdef" for c in directory.name) or not directory.is_dir() or directory.is_symlink():
+            raise DatastoreError("The upload reservation registry is invalid.")
+        descriptor = os.open(directory / "owner", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        try:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                try:
+                    record = json.loads((directory / "record.json").read_text())
+                    if not isinstance(record["capacity"], int) or record["capacity"] < 0:
+                        raise ValueError("Invalid capacity")
+                    destination, root = Path(record["destination"]), Path(record["root"])
+                    roots = {(instance / name).resolve() for name in
+                             ("datastore", "tftp_runtime", "ssh_transfer_runtime", "ftp_runtime", *FAMILIES.values())}
+                    if root not in roots or destination == root or not destination.is_relative_to(root):
+                        raise ValueError("Invalid destination")
+                    original = record["original"]
+                    if original is not None and (not isinstance(original, list) or len(original) != 5 or
+                                                 any(type(value) is not int for value in original)):
+                        raise ValueError("Invalid destination identity")
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    raise DatastoreError("The upload reservation registry is unreadable.") from exc
+                records[directory.name] = record
+            else:
+                # An exited process cannot publish. Its private files and its
+                # reservation can be reclaimed together while holding the registry.
+                Upload._remove_directory(directory)
+        finally:
+            os.close(descriptor)
+    return records
+
+
+
+def reap_abandoned_uploads(instance):
+    """Reclaim only unlocked staging while holding the shared registry lock."""
+    instance = Path(instance).resolve()
+    registry = instance / ".upload-reservations"
+    if registry.exists():
+        with file_transaction(registry / "registry"):
+            _live_records(instance, registry)

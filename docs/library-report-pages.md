@@ -30,6 +30,6 @@ Interactive previews omit diagnostic payloads above 32 KiB and shorten large
 fields/collections with a visible notice. This bounds browser rendering without
 changing retained evidence. Print prints the displayed page. PDF and case-package
 downloads retain their existing complete-selection behavior; portable cases
-retain the complete journal/evidence. Their large-export execution remains a
-separate capacity concern. Page size and preview envelopes are internal rendering
+retain the complete journal/evidence. Exports run in supervised background jobs with adjustable input/output limits;
+see [Case export jobs](case-export-jobs.md). Page size and preview envelopes are internal rendering
 bounds, not retention quotas, and never discard stored records.

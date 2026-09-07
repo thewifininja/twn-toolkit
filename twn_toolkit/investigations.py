@@ -1123,7 +1123,7 @@ class InvestigationStore:
         return self.participants_for_user(investigation_id, owner_user_id)
 
     def events_for_user(
-        self, investigation_id: str, user_id: str
+        self, investigation_id: str, user_id: str, *, report_only: bool = False
     ) -> list[dict[str, Any]]:
         self.get_for_user(investigation_id, user_id)
         with self._connect() as connection:
@@ -1134,10 +1134,10 @@ class InvestigationStore:
                 FROM investigation_events e
                 LEFT JOIN investigation_event_origins origins
                     ON origins.event_id = e.id
-                WHERE e.investigation_id = ?
+                WHERE e.investigation_id = ? AND (? = 0 OR e.report_placement = 'main')
                 ORDER BY e.started_at ASC, e.created_at ASC, e.id ASC
                 """,
-                (investigation_id,),
+                (investigation_id, int(report_only)),
             ).fetchall()
         return [self._event(row) for row in rows]
 
@@ -1294,7 +1294,7 @@ class InvestigationStore:
         }
 
     def artifacts_for_user(
-        self, investigation_id: str, user_id: str
+        self, investigation_id: str, user_id: str, *, report_only: bool = False
     ) -> list[dict[str, Any]]:
         self.get_for_user(investigation_id, user_id)
         with self._connect() as connection:
@@ -1309,10 +1309,10 @@ class InvestigationStore:
                     ON origins.artifact_id = a.id
                 LEFT JOIN investigation_event_origins event_origins
                     ON event_origins.event_id = a.event_id
-                WHERE a.investigation_id = ?
+                WHERE a.investigation_id = ? AND (? = 0 OR a.report_placement = 'appendix')
                 ORDER BY a.created_at DESC, a.id DESC
                 """,
-                (investigation_id,),
+                (investigation_id, int(report_only)),
             ).fetchall()
         return [self._artifact(row) for row in rows]
 

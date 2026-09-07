@@ -91,10 +91,13 @@ def build_case_package(
     investigation: dict[str, Any],
     report: dict[str, Any],
     generated_at: datetime | None = None,
+    archive: BinaryIO | None = None,
 ) -> tuple[BinaryIO, dict[str, Any]]:
     """Build a temporary ZIP containing the selected report and evidence."""
     pdf = build_case_report_pdf(investigation, report)
-    archive = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024, mode="w+b")
+    owned_archive = archive is None
+    if archive is None:
+        archive = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024, mode="w+b")
     timestamp = (generated_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
     evidence_manifest: list[dict[str, Any]] = []
     used_names: set[str] = set()
@@ -120,6 +123,8 @@ def build_case_package(
                     for chunk in iter(lambda: input_stream.read(1024 * 1024), b""):
                         digest.update(chunk)
                         byte_count += len(chunk)
+                        if byte_count > int(artifact["byte_count"]):
+                            raise InvestigationExportError("Evidence file grew after it was recorded.")
                         output_stream.write(chunk)
                 actual_digest = digest.hexdigest()
                 if (
@@ -152,7 +157,8 @@ def build_case_package(
                 json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False)
                 + "\n",
             )
-        archive.seek(0)
+        if owned_archive:
+            archive.seek(0)
         return archive, manifest
     except (DatastoreError, OSError, KeyError, TypeError, ValueError):
         archive.close()

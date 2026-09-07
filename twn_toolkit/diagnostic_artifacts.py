@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import re
+import os
+from pathlib import Path
+from .datastore import LocalDatastore, DatastoreError
 import shutil
 
-FAMILIES = {'transfer': 'transfer_job_artifacts', 'fac_inventory_devices': 'inventory_device_job_artifacts', 'fac_inventory_memberships': 'inventory_membership_job_artifacts'}
+FAMILIES = {'case_export': 'case_export_job_artifacts', 'transfer': 'transfer_job_artifacts', 'fac_inventory_devices': 'inventory_device_job_artifacts', 'fac_inventory_memberships': 'inventory_membership_job_artifacts'}
 
 
 def artifact_directory(store, job_id, family='transfer'):
@@ -31,3 +34,21 @@ def cleanup_artifacts(store, family):
                     shutil.rmtree(path)
             except OSError:
                 pass
+
+
+class PrivateArtifactStore(LocalDatastore):
+    """Internal-only roots; these are never accepted by public datastore routes."""
+    def __init__(self, instance, family, limit):
+        if family not in FAMILIES:
+            raise ValueError("Unknown private artifact family.")
+        self.instance = Path(instance).resolve()
+        self.root_name = FAMILIES[family]
+        self.root = self.instance / self.root_name
+        if self.root.is_symlink():
+            raise DatastoreError("Private artifact roots cannot be symbolic links.")
+        self.root.mkdir(parents=True, mode=0o700, exist_ok=True)
+        os.chmod(self.root, 0o700)
+        self.limit = limit
+
+    def upload_limit(self):
+        return self.limit

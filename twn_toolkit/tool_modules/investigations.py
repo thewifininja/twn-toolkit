@@ -18,6 +18,10 @@ def register_tools(registry: ToolRegistry) -> None:
     registry.map_endpoints(
         {
             "investigations": "investigations.workspace",
+            "case_export_job": "investigations.workspace",
+            "case_export_status": "investigations.workspace",
+            "case_export_cancel": "investigations.workspace",
+            "case_export_download": "investigations.workspace",
             "create_investigation": "investigations.workspace",
             "import_investigation_case": "investigations.workspace",
             "investigation_detail": "investigations.workspace",

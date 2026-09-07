@@ -60,10 +60,13 @@ def build_portable_case_archive(
     artifacts: list[dict[str, Any]],
     origin: dict[str, Any],
     generated_at: float | None = None,
+    archive: BinaryIO | None = None,
 ) -> tuple[BinaryIO, dict[str, Any]]:
     """Build a complete, re-importable case archive independent of report curation."""
     timestamp = float(generated_at if generated_at is not None else time.time())
-    archive = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024, mode="w+b")
+    owned_archive = archive is None
+    if archive is None:
+        archive = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024, mode="w+b")
     evidence_records: list[dict[str, Any]] = []
     used_members: set[str] = set()
     try:
@@ -84,6 +87,8 @@ def build_portable_case_archive(
                     for chunk in iter(lambda: input_stream.read(1024 * 1024), b""):
                         digest.update(chunk)
                         byte_count += len(chunk)
+                        if byte_count > int(artifact["byte_count"]):
+                            raise PortableCaseError("Evidence file grew after it was recorded.")
                         output_stream.write(chunk)
                 actual_digest = digest.hexdigest()
                 if (
@@ -166,7 +171,8 @@ def build_portable_case_archive(
             if len(encoded) > MAX_PORTABLE_JSON_BYTES:
                 raise PortableCaseError("The portable case record is too large.")
             bundle.writestr(PORTABLE_CASE_FILENAME, encoded)
-        archive.seek(0)
+        if owned_archive:
+            archive.seek(0)
         return archive, payload
     except BaseException:
         archive.close()

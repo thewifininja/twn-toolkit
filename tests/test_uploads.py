@@ -264,3 +264,37 @@ def test_cleanup_error_after_publication_does_not_report_failed_commit(store):
             assert upload.commit() == (upload.destination, 8)
         assert upload.destination.read_bytes() == b"complete"
         assert not upload.directory.exists()
+
+
+@pytest.mark.parametrize('family', ['case_export', 'fac_inventory_devices', 'fac_inventory_memberships'])
+def test_private_exports_share_physical_reservations_without_public_visibility(store, family):
+    from twn_toolkit.diagnostic_artifacts import PrivateArtifactStore
+    private = PrivateArtifactStore(store.instance, family, 2 * 1024**2)
+    private.create_folder('', 'a' * 32)
+    with pytest.raises(ValueError):
+        LocalDatastore(str(store.instance), private.root_name)
+    with patch('twn_toolkit.uploads.shutil.disk_usage', return_value=SimpleNamespace(free=1024**2)):
+        with store.begin_upload('', 'incoming', expected_bytes=1024**2):
+            with private.begin_upload('a' * 32, 'export.bin') as output:
+                with pytest.raises(DatastoreError, match='free-disk'):
+                    output.write(b'x')
+        with private.begin_upload('a' * 32, 'export.bin') as output:
+            output.write(b'x')
+            with pytest.raises(DatastoreError, match='free-disk'):
+                store.begin_upload('', 'incoming', expected_bytes=1)
+            output.commit()
+        with store.begin_upload('', 'incoming', expected_bytes=1) as upload:
+            upload.write(b'y')
+            upload.commit()
+    assert (private.root / ('a' * 32) / 'export.bin').read_bytes() == b'x'
+    assert [entry['name'] for entry in store.list()['entries']] == ['incoming']
+
+
+def test_private_export_rejects_symlink_root(store, tmp_path):
+    from twn_toolkit.diagnostic_artifacts import PrivateArtifactStore
+    target = tmp_path / 'external'
+    target.mkdir(mode=0o755)
+    (store.instance / 'case_export_job_artifacts').symlink_to(target, target_is_directory=True)
+    with pytest.raises(DatastoreError, match='symbolic links'):
+        PrivateArtifactStore(store.instance, 'case_export', 1024)
+    assert target.stat().st_mode & 0o777 == 0o755

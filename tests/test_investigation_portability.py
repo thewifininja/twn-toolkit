@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from case_export_helpers import complete_case_export
+
 import io
 import json
 import sqlite3
@@ -68,9 +70,9 @@ class InvestigationPortabilityTests(unittest.TestCase):
         )
         store.set_state(investigation["id"], "test-user", "test-user", "completed")
 
-        response = client.get(
+        response = complete_case_export(client, client.get(
             f"/investigations/{investigation['id']}/portable.twncase"
-        )
+        ))
         self.assertEqual(response.status_code, 200)
         data = bytes(response.data)
         response.close()
@@ -154,9 +156,9 @@ class InvestigationPortabilityTests(unittest.TestCase):
             self.assertIn(b"remote-operator", detail.data)
             self.assertIn(b"original operators remain attributed", detail.data)
 
-            exported = client.get(
+            exported = complete_case_export(client, client.get(
                 f"/investigations/{imported['id']}/portable.twncase"
-            )
+            ))
             with zipfile.ZipFile(io.BytesIO(exported.data)) as archive:
                 payload = json.loads(archive.read(PORTABLE_CASE_FILENAME))
                 reexported_data = bytes(exported.data)
