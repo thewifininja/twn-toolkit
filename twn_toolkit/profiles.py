@@ -114,6 +114,26 @@ class JsonListStore:
 
 
 class ProfileStore(JsonListStore):
+    secret_fields = ("api_key",)
+
+    def _read(self):
+        from .profile_secrets import transform_profiles
+        return transform_profiles(super()._read(), self.instance_path, self.path.name,
+                                  self.secret_fields, encrypt=False)
+
+    def _write(self, profiles):
+        from .profile_secrets import transform_profiles
+        protected = transform_profiles(profiles, self.instance_path, self.path.name,
+                                       self.secret_fields, encrypt=True)
+        super()._write(protected)
+
+    def protect_existing(self) -> bool:
+        with file_transaction(self.path):
+            if not self.path.exists():
+                return False
+            self._write(self._read())
+            return True
+
     def __init__(self, instance_path: str, filename: str = "profiles.json") -> None:
         super().__init__(instance_path, filename)
 
@@ -128,6 +148,8 @@ class ProfileStore(JsonListStore):
 
 
 class FortiAuthenticatorProfileStore(ProfileStore):
+    secret_fields = ("password",)
+
     def __init__(self, instance_path: str) -> None:
         super().__init__(instance_path, "fortiauthenticator_profiles.json")
 
