@@ -73,4 +73,3 @@ def test_direct_standalone_worker_clears_stale_runtime(tmp_path, monkeypatch):
     assert not pid_path.exists()
     assert not (tmp_path / "distributed-status.json").exists()
     assert (tmp_path / ACTIVATION_FILE).exists()
-
