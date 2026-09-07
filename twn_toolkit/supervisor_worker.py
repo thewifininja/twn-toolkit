@@ -13,6 +13,7 @@ from .automation_heartbeat import (
     AUTOMATION_HEARTBEAT_MAX_AGE_SECONDS,
     automation_heartbeat_fresh,
 )
+from .log_retention import LogRetention
 from .pidfiles import (
     acquire_singleton_lock,
     matching_daemon_pids,
@@ -117,11 +118,14 @@ def main() -> None:
         signal.signal(signal.SIGTERM, stop)
         signal.signal(signal.SIGINT, stop)
         retry_after: dict[str, float] = {}
+        log_retention = LogRetention(instance, root=root)
         while running:
             if args.daemon and not _owns_pid_file(Path(args.pid_file)):
                 break
             supervise_once(root, instance, retry_after, stopping=lambda: not running)
             _write_heartbeat(heartbeat)
+            if running:
+                log_retention.maintain_next()
             for _ in range(int(SWEEP_INTERVAL_SECONDS / 0.1)):
                 if not running:
                     break
