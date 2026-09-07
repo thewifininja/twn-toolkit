@@ -373,7 +373,7 @@
           ></div>
         </aside>
       {% endif %}
-      <main id="main-content" tabindex="-1" class="shell{% block shell_classes %}{% endblock %}">
+      <main class="shell{% block shell_classes %}{% endblock %}" id="main-content" tabindex="-1">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             <section class="messages">
