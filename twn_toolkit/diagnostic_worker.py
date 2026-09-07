@@ -114,6 +114,10 @@ def execute_scan(store, job_id, token):
         from .fac_inventory import execute_inventory
         execute_inventory(store, job, config)
         return
+    if job["tool"] == "case_export":
+        from .case_export import execute_case_export
+        execute_case_export(store, job, config)
+        return
     if job["tool"] == "wireless_history":
         from .wireless_history_diagnostic import execute_history
         execute_history(store, job, config)
@@ -194,6 +198,10 @@ def record_unsuccessful_scan(store, job, state, error):
     if job["tool"] in {"fac_inventory_devices", "fac_inventory_memberships"}:
         from .fac_inventory import record_inventory_outcome
         record_inventory_outcome(store, job, state, error)
+        return
+    if job["tool"] == "case_export":
+        from .case_export import record_case_export_outcome
+        record_case_export_outcome(store, job, state)
         return
     if job["tool"] == "wireless_history":
         from .wireless_history_diagnostic import record_history_outcome

@@ -179,6 +179,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "fortiauthenticator_mac_devices_cancel",
         "fortiauthenticator_mac_group_memberships_cancel",
         "cancel_wireless_history_job",
+        "case_export_cancel",
         "tools.radius_test",
         "tools.record_ip_snapshot",
         "tools.enroll_managed_certificate",

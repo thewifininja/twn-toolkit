@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -19,20 +18,11 @@ from flask import (
 from .audit import annotate_audit_event
 from .auth import AuthStore
 from .datastore import DatastoreError, format_bytes
-from .investigation_exports import (
-    InvestigationExportError,
-    build_case_package,
-    build_case_report_pdf,
-    case_package_filename,
-    case_report_filename,
-)
 from .investigations import InvestigationError, InvestigationStore
 from .investigation_reporting import case_report_contents
 from .investigation_portability import (
     PortableCaseError,
-    build_portable_case_archive,
     load_portable_case_archive,
-    portable_case_filename,
 )
 from .live_tools import LiveToolStore
 from .packet_capture import PacketCaptureStore
@@ -856,95 +846,20 @@ def register_investigation_routes(
     def investigation_report(investigation_id: str):
         return render_workspace(investigation_id, active_tab="report")
 
+    from .case_export_routes import queue_case_export, register_case_export_routes
+    register_case_export_routes(app)
+
     @app.get("/investigations/<investigation_id>/report.pdf")
     def download_investigation_report_pdf(investigation_id: str):
-        investigation, _, _, report = load_report(investigation_id)
-        pdf = build_case_report_pdf(investigation, report)
-        annotate_audit_event(
-            category="Investigations",
-            action="investigation.report_pdf_downloaded",
-            summary=f"Downloaded the PDF report for case {investigation['title']}.",
-            resource_type="investigation",
-            resource_id=investigation_id,
-            resource_name=str(investigation["title"]),
-            details={
-                "included event count": len(report["report_events"]),
-                "included evidence count": len(report["report_artifacts"]),
-                "PDF byte count": len(pdf),
-            },
-        )
-        return send_file(
-            io.BytesIO(pdf),
-            mimetype="application/pdf",
-            as_attachment=True,
-            download_name=case_report_filename(investigation),
-        )
+        return queue_case_export(investigation_id, 'pdf')
 
     @app.get("/investigations/<investigation_id>/package.zip")
     def download_investigation_package(investigation_id: str):
-        investigation, _, _, report = load_report(investigation_id)
-        try:
-            archive, manifest = build_case_package(
-                store=store,
-                investigation=investigation,
-                report=report,
-            )
-        except (DatastoreError, InvestigationExportError, OSError) as exc:
-            abort(409, str(exc) or "The case package could not be built.")
-        annotate_audit_event(
-            category="Investigations",
-            action="investigation.package_downloaded",
-            summary=f"Downloaded the selected package for case {investigation['title']}.",
-            resource_type="investigation",
-            resource_id=investigation_id,
-            resource_name=str(investigation["title"]),
-            details={
-                "included event count": len(report["report_events"]),
-                "included evidence count": len(report["report_artifacts"]),
-                "PDF SHA-256": manifest["report"]["sha256"],
-            },
-        )
-        return send_file(
-            archive,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=case_package_filename(investigation),
-        )
+        return queue_case_export(investigation_id, 'package')
 
     @app.get("/investigations/<investigation_id>/portable.twncase")
     def download_portable_investigation_case(investigation_id: str):
-        portable = store.portable_case_for_user(investigation_id, user_id())
-        investigation = portable["investigation"]
-        try:
-            archive, payload = build_portable_case_archive(
-                store=store,
-                investigation=investigation,
-                operators=portable["operators"],
-                events=portable["events"],
-                artifacts=portable["artifacts"],
-                origin=portable["origin"],
-            )
-        except (DatastoreError, PortableCaseError, OSError) as exc:
-            abort(409, str(exc) or "The portable case could not be built.")
-        annotate_audit_event(
-            category="Investigations",
-            action="investigation.portable_case_downloaded",
-            summary=f"Exported a portable copy of case {investigation['title']}.",
-            resource_type="investigation",
-            resource_id=investigation_id,
-            resource_name=str(investigation["title"]),
-            details={
-                "portable schema": payload["schema"],
-                "event count": len(payload["events"]),
-                "evidence count": len(payload["artifacts"]),
-            },
-        )
-        return send_file(
-            archive,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=portable_case_filename(investigation),
-        )
+        return queue_case_export(investigation_id, 'portable')
 
     @app.post("/investigations/<investigation_id>/report/contents")
     def update_investigation_report_contents(investigation_id: str):

@@ -4,14 +4,14 @@ from __future__ import annotations
 import csv
 import io
 import json
-import os
 import re
 import sys
 import time
 from typing import Any
 
 from .csv_exports import csv_download_filename, normalize_csv_download_format, _spreadsheet_safe_cell
-from .diagnostic_artifacts import artifact_directory
+from .diagnostic_artifacts import artifact_directory, PrivateArtifactStore
+from .datastore import DatastoreError
 from .fortiauthenticator import FortiAuthenticatorClient, FortiAuthenticatorError
 
 TOOLS = ('fac_inventory_devices', 'fac_inventory_memberships')
@@ -70,9 +70,8 @@ def prepare_inventory_config(profile, kind, mode, csv_format):
 
 
 class CsvFile:
-    def __init__(self, path, limit):
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        self.handle = os.fdopen(descriptor, 'wb')
+    def __init__(self, artifacts, job_id, filename, limit):
+        self.handle = artifacts.begin_upload(job_id, filename)
         self.limit, self.size = limit, 0
         self.buffer = io.StringIO(newline='')
         self.writer = csv.writer(self.buffer, lineterminator='\n')
@@ -86,12 +85,11 @@ class CsvFile:
         self.handle.write(encoded)
         self.size += len(encoded)
 
+    def commit(self):
+        self.handle.commit()
+
     def close(self):
-        if not self.handle.closed:
-            try:
-                self.handle.flush(); os.fsync(self.handle.fileno())
-            finally:
-                self.handle.close()
+        self.handle.close()
 
 
 def execute_inventory(store, job, config):
@@ -106,10 +104,10 @@ def execute_inventory(store, job, config):
         clipped = False
         formatter = format_device if prepared['kind']=='devices' else format_membership
         if config['mode']=='export':
-            directory.parent.mkdir(mode=0o700, parents=True, exist_ok=True); os.chmod(directory.parent,0o700)
+            artifacts = PrivateArtifactStore(store.instance, job['tool'], config['artifact_bytes'])
             directory.mkdir(mode=0o700)
-            for name in ('raw.partial','download.partial'):
-                writers.append(CsvFile(directory/name, config['artifact_bytes']))
+            for name in ('raw.csv','download.csv'):
+                writers.append(CsvFile(artifacts, job['id'], name, config['artifact_bytes']))
             for writer in writers:
                 writer.row(spec['fields'])
         for index, item in enumerate(objects):
@@ -122,14 +120,11 @@ def execute_inventory(store, job, config):
                 writers[0].row(values)
                 writers[1].row(values if config['csv_format']=='raw' else [_spreadsheet_safe_cell(value) for value in values])
         for writer in writers:
-            writer.close()
-        if writers:
-            os.replace(directory/'raw.partial', directory/'raw.csv')
-            os.replace(directory/'download.partial', directory/'download.csv')
+            writer.commit()
         summary = {'total_count':len(objects), 'preview_count':len(rows), 'fields_clipped':clipped, 'archive':bool(writers)}
         if store.finish(job['id'], job['token'], rows, summary):
             record_inventory_outcome(store, job, 'succeeded', '', config=config, summary=summary)
-    except (FortiAuthenticatorError, OSError, ValueError) as exc:
+    except (FortiAuthenticatorError, DatastoreError, OSError, ValueError) as exc:
         error = str(exc).replace(str(profile.get('password') or '\0'), '[redacted]')[:500]
         current = store.owned(job['id'], job['token'])
         state = 'cancelled' if current and current['state']=='cancel_requested' else 'failed'

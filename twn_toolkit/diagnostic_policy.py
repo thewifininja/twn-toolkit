@@ -1,5 +1,8 @@
 """Operator policy and internal envelope bounds for finite diagnostics."""
 DIAGNOSTIC_LIMITS = {
+    "diagnostic_case_export_input_mib": (16, 1, 64, "Case export input limit (MiB)"),
+    "diagnostic_case_export_max_mib": (128, 1, 1024, "Case export file limit (MiB)"),
+    "diagnostic_case_export_pdf_cells": (50000, 1000, 200000, "Case PDF detail-cell limit"),
     "diagnostic_artifact_max_mib": (128, 1, 1024, "Inventory export file limit (MiB)"),
     "diagnostic_workers": (2, 1, 8, "Concurrent diagnostic runs"),
     "diagnostic_queue_limit": (32, 1, 200, "Queued diagnostic runs"),

@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+{% include 'components/diagnostic_job.html' %}
+<section class="panel form">
+  <p>The worker captures the case and saved selection when execution starts. You can leave this page and return to this result link.</p>
+  {% if diagnostic_job.state == 'succeeded' %}
+  <p>{{ diagnostic_job.summary.event_count }} events · {{ diagnostic_job.summary.artifact_count }} evidence files · {{ format_bytes(diagnostic_job.summary.byte_count) }}</p>
+  <div class="button-row"><a class="button-link" href="{{ url_for('case_export_download', job_id=diagnostic_job.id) }}">Download {{ diagnostic_label }}</a></div>
+  <p class="field-note">This download uses the completed snapshot. Larger files may require direct Agent access under the GUI tunnel response limit.</p>
+  {% endif %}
+  <div class="button-row"><a class="button-link secondary" href="{{ url_for('investigation_report', investigation_id=diagnostic_job.config.investigation_id) }}">Back to case report</a></div>
+</section>
+<script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
+{% endblock %}

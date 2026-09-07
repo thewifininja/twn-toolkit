@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict
 import os
 import secrets
@@ -67,13 +68,23 @@ class DiagnosticJobStore:
         from .diagnostic_artifacts import FAMILIES, cleanup_artifacts
         for family in FAMILIES:
             cleanup_artifacts(self, family)
+        from .uploads import reap_abandoned_uploads
+        from .datastore import DatastoreError
+        try:
+            reap_abandoned_uploads(self.instance)
+        except (DatastoreError, OSError) as exc:
+            logging.getLogger(__name__).warning("Upload staging cleanup failed: %s", type(exc).__name__)
 
     def enqueue(self, *, user_id, config, tool="tcp_scan"):
-        if tool not in {"tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships"} or not user_id:
+        if tool not in {"tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export"} or not user_id:
             raise ValueError("Invalid diagnostic request.")
         policy = self.policy.get()
         if tool in {"fac_inventory_devices", "fac_inventory_memberships"}:
             config = {**config, "artifact_bytes": policy["diagnostic_artifact_max_mib"] * 1024**2}
+        if tool == "case_export":
+            config = {**config, "artifact_bytes": policy["diagnostic_case_export_max_mib"] * 1024**2,
+                      "input_bytes": policy["diagnostic_case_export_input_mib"] * 1024**2,
+                      "pdf_cells": policy["diagnostic_case_export_pdf_cells"]}
         if tool == "transfer":
             from .transfer_deadlines import TransferPolicy
             config = {**config, "transfer_policy": asdict(TransferPolicy.from_settings(policy))}
@@ -105,6 +116,11 @@ class DiagnosticJobStore:
                 saved = json.loads(self.cipher.open(queued["config"], queued["id"] + ":diagnostic-config"))
                 if saved["mode"] == "export":
                     reserved += 3 * saved["artifact_bytes"]
+            if tool == "case_export":
+                reserved += 2 * config["artifact_bytes"]
+            for queued in db.execute("SELECT id,config FROM diagnostic_jobs WHERE tool='case_export' AND (state IN ('queued','running','cancel_requested') OR token!='')"):
+                saved = json.loads(self.cipher.open(queued["config"], queued["id"] + ":diagnostic-config"))
+                reserved += 2 * saved["artifact_bytes"]
             if shutil.disk_usage(self.instance).free - reserved < policy["minimum_free_gib"] * 1024**3:
                 raise ValueError("Diagnostic results would cross the configured free-disk reserve.")
             db.execute("INSERT INTO diagnostic_jobs(id,user_id,tool,state,config,created,timeout) VALUES (?,?,?,'queued',?,?,?)",

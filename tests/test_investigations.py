@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from case_export_helpers import complete_case_export
+
 import hashlib
 import io
 import json
@@ -1333,7 +1335,7 @@ class InvestigationRouteTests(unittest.TestCase):
             self.assertIn(b"Latency min / avg / max", report.data)
             self.assertIn(artifacts[0]["display_name"].encode(), report.data)
 
-            package = client.get(f"/investigations/{investigation_id}/package.zip")
+            package = complete_case_export(client, client.get(f"/investigations/{investigation_id}/package.zip"))
             self.assertEqual(package.status_code, 200)
             with zipfile.ZipFile(io.BytesIO(package.data)) as archive:
                 self.assertIn(
@@ -1625,9 +1627,9 @@ class InvestigationRouteTests(unittest.TestCase):
             self.assertIn(b"192.0.2.10", report.data)
             self.assertIn(b"status.txt", report.data)
 
-            pdf = client.get(
+            pdf = complete_case_export(client, client.get(
                 f"/investigations/{investigation_id}/report.pdf"
-            )
+            ))
             self.assertEqual(pdf.status_code, 200)
             self.assertEqual(pdf.mimetype, "application/pdf")
             self.assertTrue(pdf.data.startswith(b"%PDF-"))
@@ -1636,9 +1638,9 @@ class InvestigationRouteTests(unittest.TestCase):
                 pdf.headers["Content-Disposition"],
             )
 
-            package = client.get(
+            package = complete_case_export(client, client.get(
                 f"/investigations/{investigation_id}/package.zip"
-            )
+            ))
             self.assertEqual(package.status_code, 200)
             self.assertEqual(package.mimetype, "application/zip")
             with zipfile.ZipFile(io.BytesIO(package.data)) as archive:
@@ -1696,9 +1698,9 @@ class InvestigationRouteTests(unittest.TestCase):
             self.assertNotIn(b"The firewall policy changed at 09:45.", report_preview)
             self.assertNotIn(b"Evidence appendix", report_preview)
 
-            curated_package = client.get(
+            curated_package = complete_case_export(client, client.get(
                 f"/investigations/{investigation_id}/package.zip"
-            )
+            ))
             with zipfile.ZipFile(io.BytesIO(curated_package.data)) as archive:
                 curated_manifest = json.loads(archive.read("manifest.json"))
                 self.assertEqual(
@@ -1758,12 +1760,13 @@ class InvestigationRouteTests(unittest.TestCase):
             )
             store.datastore.file(artifact["relative_path"]).write_bytes(b"changed")
 
-            response = client.get(
+            response = complete_case_export(client, client.get(
                 f"/investigations/{investigation['id']}/package.zip"
-            )
+            ))
 
-            self.assertEqual(response.status_code, 409)
-            self.assertIn(b"has changed since upload", response.data)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b"evidence integrity", response.data)
+            self.assertEqual(client.get('/investigations/exports/'+response.request.args['job']+'/download').status_code, 404)
 
     def test_pause_stops_automatic_tool_recording_but_keeps_manual_context(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
