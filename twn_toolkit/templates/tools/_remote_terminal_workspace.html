@@ -1,3 +1,7 @@
+<div class="message warning remote-terminal-action-message" id="remote-terminal-action-message" hidden>
+  <p id="remote-terminal-action-text" role="status" aria-live="polite"></p>
+  <button class="secondary compact" id="remote-terminal-action-dismiss" type="button">Dismiss message</button>
+</div>
 <section
   class="remote-terminal-workspace"
   id="remote-terminal-workspace"
@@ -46,6 +50,7 @@
     <p class="remote-terminal-shared-view-note">This window controls the same persistent shell as the main workspace. Closing it does not stop the remote session.</p>
   {% endif %}
   <div class="message warning" id="remote-terminal-session-message" role="status" hidden></div>
+  <div class="message warning" id="remote-terminal-poll-message" role="status" hidden></div>
   <div class="remote-terminal-surface" id="remote-terminal-surface">
     <div class="remote-terminal-screen" id="remote-terminal-screen" role="log" aria-label="Remote terminal output"></div>
     <textarea

@@ -80,13 +80,13 @@
         <div class="remote-terminal-tabs" id="remote-terminal-tabs" role="tablist" aria-label="Active remote sessions"></div>
         <button class="secondary compact" id="remote-terminal-new-session" type="button" data-open-quick-connect hidden>Quick connect</button>
       </div>
+      {% include "tools/_remote_terminal_workspace.html" %}
       <div class="remote-terminal-stage-empty" id="remote-terminal-stage-empty">
         <span class="remote-terminal-stage-mark" aria-hidden="true">&gt;_</span>
         <h2>Choose a connection</h2>
         <p>Open a saved host from the explorer or connect temporarily without adding it to your library.</p>
         <button type="button" data-open-quick-connect>Quick connect</button>
       </div>
-      {% include "tools/_remote_terminal_workspace.html" %}
     </section>
 
     <section class="panel tool-panel remote-terminal-history">

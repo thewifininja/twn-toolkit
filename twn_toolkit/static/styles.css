@@ -17524,6 +17524,19 @@ th {
   width: 58px;
 }
 
+.remote-terminal-action-message {
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+
+.remote-terminal-action-message p {
+  margin: 0 0 10px;
+}
+
+.remote-terminal-action-message button {
+  min-height: 44px;
+}
+
 .remote-terminal-session-stage .remote-terminal-workspace {
   padding: 20px;
 }
