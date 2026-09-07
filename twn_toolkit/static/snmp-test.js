@@ -6,8 +6,12 @@
     const deleteButton = form.querySelector(".snmp-delete-profile");
     const status = form.querySelector(".snmp-form-status");
 
+    let saving = false;
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (saving) return;
+      saving = true;
+      const snapshot = window.TwnUnsavedForms?.capture(form);
       status.textContent = "Saving...";
       const submitButton = form.querySelector('button[type="submit"]');
       submitButton.disabled = true;
@@ -18,9 +22,42 @@
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Profile could not be saved.");
-        window.location.reload();
+        const previousName = form.elements.original_name.value;
+        form.elements.original_name.value = data.profile.name;
+        const card = form.closest("details");
+        const summary = card?.querySelector(":scope > summary");
+        if (summary) {
+          const title = document.createElement("strong");
+          title.textContent = `Editing ${data.profile.name}`;
+          summary.replaceChildren(title);
+        }
+        if (!previousName && card) {
+          card.classList.remove("profile-create-details", "card-action-details", "saved-profile-create");
+          card.classList.add("access-profile-card", "nested-profile-card", "saved-profile-record");
+          submitButton.textContent = "Update saved profile";
+        }
+        if (deleteButton) deleteButton.dataset.name = data.profile.name;
+        form.querySelectorAll("[data-profile-name]").forEach((button) => { button.dataset.profileName = data.profile.name; });
+        if (form.dataset.kind === "credentials" && previousName && previousName !== data.profile.name) {
+          document.querySelectorAll('select[name="credential_name"]').forEach((select) => {
+            Array.from(select.options).filter((option) => option.value === previousName).forEach((option) => {
+              option.value = data.profile.name;
+              option.textContent = option.textContent.replace(previousName, data.profile.name);
+            });
+            window.TwnUnsavedForms?.rebaseReference(select.form, select.name, previousName, data.profile.name);
+          });
+        }
+        window.TwnUnsavedForms?.acknowledge(form, snapshot);
+        if (window.TwnUnsavedForms?.hasChanges()) {
+          status.textContent = `Saved ${data.profile.name}. Unsaved edits remain; finish them before reloading.`;
+        } else {
+          window.location.reload();
+        }
       } catch (error) {
+        window.TwnUnsavedForms?.failed(form);
         status.textContent = error.message;
+      } finally {
+        saving = false;
         submitButton.disabled = false;
       }
     });

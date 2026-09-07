@@ -159,8 +159,8 @@
   <div class="access-profile-list radius-profile-groups saved-profile-library">
   {% call profile_section("RADIUS servers", servers|length ~ " saved · Shared secrets are write-only", not servers, "radius-profile-section") %}
     {% call profile_create("New server", not servers) %}
-      <form class="form radius-profile-form" data-kind="servers">
-        <input name="original_name" type="hidden">
+      <form class="form radius-profile-form" data-unsaved-form data-kind="servers">
+        <input data-unsaved-ignore name="original_name" type="hidden">
         <label>Profile name<input name="name" maxlength="100" required placeholder="Primary NPS"></label>
         <label>Server address<input name="host" required placeholder="192.0.2.40"></label>
         <label>Authentication port<input name="port" type="number" min="1" max="65535" value="1812"></label>
@@ -172,8 +172,8 @@
     <div class="access-profile-list nested-profile-list">
       {% for server in servers %}
         {% call profile_card(server.name, server.host ~ ":" ~ server.port) %}
-          <form class="form radius-profile-form" data-kind="servers">
-            <input name="original_name" type="hidden" value="{{ server.name }}">
+          <form class="form radius-profile-form" data-unsaved-form data-kind="servers">
+            <input data-unsaved-ignore name="original_name" type="hidden" value="{{ server.name }}">
             <label>Profile name<input name="name" maxlength="100" required value="{{ server.name }}"></label>
             <label>Server address<input name="host" required value="{{ server.host }}"></label>
             <label>Authentication port<input name="port" type="number" min="1" max="65535" value="{{ server.port }}"></label>
@@ -192,8 +192,8 @@
 
   {% call profile_section("Test credentials", credentials|length ~ " saved · Passwords are write-only", not credentials, "radius-profile-section") %}
     {% call profile_create("New credential", not credentials) %}
-      <form class="form radius-profile-form" data-kind="credentials">
-        <input name="original_name" type="hidden">
+      <form class="form radius-profile-form" data-unsaved-form data-kind="credentials">
+        <input data-unsaved-ignore name="original_name" type="hidden">
         <label>Profile name<input name="name" maxlength="100" required placeholder="Test user"></label>
         <label>Username<input name="username" required autocomplete="off"></label>
         <label>Password<input name="password" type="password" autocomplete="new-password"></label>
@@ -204,8 +204,8 @@
     <div class="access-profile-list nested-profile-list">
       {% for profile in credentials %}
         {% call profile_card(profile.name, profile.username) %}
-          <form class="form radius-profile-form" data-kind="credentials">
-            <input name="original_name" type="hidden" value="{{ profile.name }}">
+          <form class="form radius-profile-form" data-unsaved-form data-kind="credentials">
+            <input data-unsaved-ignore name="original_name" type="hidden" value="{{ profile.name }}">
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
             <label>Username<input name="username" required autocomplete="off" value="{{ profile.username }}"></label>
             <label>Password<input name="password" type="password" autocomplete="new-password"></label>
@@ -223,8 +223,8 @@
 
   {% call profile_section("Request attributes", attribute_profiles|length ~ " saved · Optional PAP/CHAP Access-Request additions", false, "radius-profile-section") %}
     {% call profile_create("New attributes", not attribute_profiles) %}
-      <form class="form radius-profile-form" data-kind="attributes">
-        <input name="original_name" type="hidden">
+      <form class="form radius-profile-form" data-unsaved-form data-kind="attributes">
+        <input data-unsaved-ignore name="original_name" type="hidden">
         <label>Profile name<input name="name" maxlength="100" required placeholder="Wireless controller NAS"></label>
         <label>Access-Request attributes
           <textarea name="attributes" rows="7" required placeholder="NAS-Identifier = HQ-WLC-01&#10;NAS-IP-Address = 192.0.2.10&#10;Called-Station-Id = AA-BB-CC-DD-EE-FF:Corp-WiFi"></textarea>
@@ -236,8 +236,8 @@
     <div class="access-profile-list nested-profile-list">
       {% for profile in attribute_profiles %}
         {% call profile_card(profile.name, profile.count ~ " attribute" ~ ("" if profile.count == 1 else "s")) %}
-          <form class="form radius-profile-form" data-kind="attributes">
-            <input name="original_name" type="hidden" value="{{ profile.name }}">
+          <form class="form radius-profile-form" data-unsaved-form data-kind="attributes">
+            <input data-unsaved-ignore name="original_name" type="hidden" value="{{ profile.name }}">
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
             <label>Access-Request attributes
               <textarea name="attributes" rows="7" required>{{ profile.source }}</textarea>
@@ -258,5 +258,6 @@
 </section>
 </div>
 <script src="{{ url_for('static', filename='radius-test.js') }}"></script>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 </div>
 {% endblock %}
