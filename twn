@@ -369,7 +369,7 @@ deferred_service_reload() {
   if [ -n "$deferred_from_version" ] \
     && [ "$deferred_installed_version" = "$deferred_from_version" ] \
     && pid_is_running "$deferred_launcher_pid" \
-    && is_running && automation_is_running && supervisor_is_running; then
+    && is_running && automation_is_running && supervisor_is_running && distributed_required_ready; then
     echo "Upgrade operation $deferred_request_id restored v$deferred_from_version; the original service launcher is adopting the validated rollback."
     restore_deferred_service_launcher "$deferred_launcher_pid"
     return
@@ -441,7 +441,7 @@ request_service_start() {
   : > "$SERVICE_RESUME_FILE"
   attempts=0
   while [ "$attempts" -lt 1800 ]; do
-    if is_running && automation_is_running && supervisor_is_running \
+    if is_running && automation_is_running && supervisor_is_running && distributed_required_ready \
       && [ -f "$SCHEME_FILE" ] && [ -f "$HOST_FILE" ] && [ -f "$PORT_FILE" ]; then
       rm -f "$SERVICE_RESUME_FILE"
       load_running_endpoint
@@ -481,7 +481,7 @@ request_service_reload() {
       current_launcher_pid=$(cat "$SERVICE_LAUNCHER_PIDFILE" 2>/dev/null || true)
       if [ -n "$current_launcher_pid" ] \
         && [ "$current_launcher_pid" != "$previous_launcher_pid" ] \
-        && is_running && automation_is_running && supervisor_is_running \
+        && is_running && automation_is_running && supervisor_is_running && distributed_required_ready \
         && [ -f "$SCHEME_FILE" ] && [ -f "$HOST_FILE" ] && [ -f "$PORT_FILE" ]; then
         load_running_endpoint
         if [ -f "$SCHEME_FILE" ]; then SCHEME=$(cat "$SCHEME_FILE"); fi
@@ -896,16 +896,41 @@ distributed_enabled() {
 import json, sys
 try:
     with open(sys.argv[1], encoding="utf-8") as handle:
-        enabled = json.load(handle).get("role") in {"mainframe", "agent"}
-except (OSError, ValueError):
-    enabled = False
+        settings = json.load(handle)
+        if not isinstance(settings, dict) or not isinstance(settings.get("role", "standalone"), str) or settings.get("role", "standalone") not in {"standalone", "mainframe", "agent"}:
+            raise ValueError("invalid toolkit role")
+        enabled = settings.get("role", "standalone") in {"mainframe", "agent"}
+except (OSError, ValueError) as exc:
+    print("Could not read distributed role: " + str(exc), file=sys.stderr)
+    raise SystemExit(2)
 raise SystemExit(0 if enabled else 1)
 ' "$DISTRIBUTED_SETTINGS"
 }
 
+distributed_required_ready() {
+  if distributed_enabled; then
+    distributed_is_running
+  else
+    role_status=$?
+    [ "$role_status" -eq 1 ]
+  fi
+}
+
 start_distributed() {
-  if ! distributed_enabled; then
-    stop_distributed
+  acquire_managed_worker_lock "$DISTRIBUTED_PIDFILE" || return 1
+  distributed_status=0
+  start_distributed_unlocked || distributed_status=$?
+  release_managed_worker_lock "$DISTRIBUTED_PIDFILE"
+  return "$distributed_status"
+}
+
+start_distributed_unlocked() {
+  if distributed_enabled; then
+    :
+  else
+    role_status=$?
+    [ "$role_status" -eq 1 ] || return "$role_status"
+    stop_distributed_unlocked
     return 0
   fi
   if distributed_is_running; then
@@ -939,26 +964,41 @@ start_distributed() {
 }
 
 stop_distributed() {
+  acquire_managed_worker_lock "$DISTRIBUTED_PIDFILE" || return 1
+  distributed_status=0
+  stop_distributed_unlocked || distributed_status=$?
+  release_managed_worker_lock "$DISTRIBUTED_PIDFILE"
+  return "$distributed_status"
+}
+
+stop_distributed_unlocked() {
   if ! distributed_is_running; then
     rm -f "$DISTRIBUTED_PIDFILE"
     cleanup_worker_processes "twn_toolkit.distributed_worker" 0
-    if ! distributed_enabled && [ -x "$PYTHON" ]; then
-      "$PYTHON" -m twn_toolkit.distributed_runtime clear-inactive --instance "$INSTANCE"
-    fi
+    clear_standalone_distributed_runtime
     return 0
   fi
   distributed_pid=$(cat "$DISTRIBUTED_PIDFILE")
   kill "$distributed_pid" 2>/dev/null || true
   attempts=0
-  while pid_is_running "$distributed_pid" && [ "$attempts" -lt 50 ]; do
+  while pid_is_running "$distributed_pid" && [ "$attempts" -lt 350 ]; do
     attempts=$((attempts + 1))
     sleep 0.1
   done
   if pid_is_running "$distributed_pid"; then kill -KILL "$distributed_pid" 2>/dev/null || true; fi
   rm -f "$DISTRIBUTED_PIDFILE"
   cleanup_worker_processes "twn_toolkit.distributed_worker" 0
-  if ! distributed_enabled && [ -x "$PYTHON" ]; then
-    "$PYTHON" -m twn_toolkit.distributed_runtime clear-inactive --instance "$INSTANCE"
+  clear_standalone_distributed_runtime
+}
+
+clear_standalone_distributed_runtime() {
+  if distributed_enabled; then
+    return 0
+  else
+    role_status=$?
+    if [ "$role_status" -eq 1 ] && [ -x "$PYTHON" ]; then
+      "$PYTHON" -m twn_toolkit.distributed_runtime clear-inactive --instance "$INSTANCE"
+    fi
   fi
 }
 
@@ -1568,6 +1608,17 @@ ftp_restart() {
   restart_managed_worker "$FTP_SETTINGS" "$FTP_PIDFILE" "$FTP_READYFILE" "$FTP_LOG" "twn_toolkit.ftp_worker" "FTP" "twn_toolkit.ftp_server:clear_ftp_runtime"
 }
 
+distributed_restart() {
+  acquire_managed_worker_lock "$DISTRIBUTED_PIDFILE" || return 1
+  distributed_status=0
+  stop_distributed_unlocked || distributed_status=$?
+  if [ "$distributed_status" -eq 0 ]; then
+    start_distributed_unlocked || distributed_status=$?
+  fi
+  release_managed_worker_lock "$DISTRIBUTED_PIDFILE"
+  return "$distributed_status"
+}
+
 automation_restart() {
   stop_automation
   start_automation
@@ -1835,7 +1886,7 @@ launchd_run() {
 }
 
 direct_process_set_ready() {
-  is_running && automation_is_running && supervisor_is_running \
+  is_running && automation_is_running && supervisor_is_running && distributed_required_ready \
     && [ -f "$SCHEME_FILE" ] && [ -f "$HOST_FILE" ] && [ -f "$PORT_FILE" ]
 }
 
@@ -2091,6 +2142,9 @@ case "${1:-}" in
   ftp-restart)
     ftp_restart
     ;;
+  distributed-restart)
+    distributed_restart
+    ;;
   automation-restart)
     automation_restart
     ;;
@@ -2113,7 +2167,7 @@ case "${1:-}" in
     disable_https
     ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|recover|status|logs|service|upgrade|backup|rollback|upgrade-status|multicast-pf|enable-https|disable-https|fix-permissions|adminreset|reset-data|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
+    echo "Usage: ./twn {start|stop|restart|recover|status|logs|service|upgrade|backup|rollback|upgrade-status|multicast-pf|enable-https|disable-https|fix-permissions|adminreset|reset-data|distributed-restart|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
     exit 2
     ;;
 esac

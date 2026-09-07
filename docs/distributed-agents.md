@@ -263,3 +263,23 @@ secrets.
 4. Durable job transport using system identity, then ping.
 5. Shared progress, cancellation, result, artifact, and audit plumbing.
 6. Tool adapters by execution class, with local-only exceptions documented.
+
+## Worker recovery
+
+The supervisor restarts a missing distributed worker when the configured role is
+Mainframe or Agent. Standalone instances do not require that worker. Invalid role
+settings are reported rather than treated as Standalone. Service start/reload
+readiness also requires the enabled distributed process to be running.
+
+Use `./twn distributed-restart` to restart just this worker. Start, stop, and
+restart share a lifecycle lock so supervisor recovery cannot race a normal
+restart. Shutdown allows 35 seconds for the worker's bounded lane cleanup before
+forced termination; the supervisor allows 60 seconds for this restart command.
+The existing five-second supervisor sweep and 30-second retry cooldown remain
+unchanged. Heartbeat and network polling intervals are unchanged.
+
+Recovery checks process liveness, not end-to-end connectivity or a wedged worker.
+Peer outages, incompatible protocols, and interrupted operations still require
+their existing diagnosis/reconciliation paths. Restarting does not reset
+enrollment. After installing this change, restart the toolkit to load the new
+supervisor code; existing supervisor processes retain their loaded code.

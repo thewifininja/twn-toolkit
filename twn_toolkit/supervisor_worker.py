@@ -27,9 +27,11 @@ from .pidfiles import (
 
 # Central recovery policy; independent of authentication or transfer limits.
 RESTART_TIMEOUT_SECONDS = 30
+DISTRIBUTED_RESTART_TIMEOUT_SECONDS = 60
 RESTART_COOLDOWN_SECONDS = 30
 SWEEP_INTERVAL_SECONDS = 5
 SERVICES = (
+    ("distributed worker", "distributed_settings.json", "twn-distributed.pid", "", "distributed-restart", ""),
     ("automation", "", "twn-automation.pid", "", "automation-restart", "automation-heartbeat.json"),
     ("TFTP", "tftp_settings.json", "twn-tftp.pid", "twn-tftp.ready", "tftp-restart", ""),
     ("SFTP/SCP", "ssh_transfer_settings.json", "twn-ssh-transfer.pid", "twn-ssh-transfer.ready", "ssh-transfer-restart", ""),
@@ -44,8 +46,11 @@ def supervise_once(root: Path, instance: Path, retry_after: dict[str, float], *,
         try:
             if time.monotonic() < retry_after.get(pid_name, 0):
                 continue
-            if settings and not _enabled(instance / settings):
-                continue
+            if settings:
+                enabled = (_distributed_enabled(instance / settings)
+                           if command == "distributed-restart" else _enabled(instance / settings))
+                if not enabled:
+                    continue
             if _operation_active(instance / f"{pid_name}.lock"):
                 continue
             healthy = (process_marker_ready(instance / pid_name, instance / ready_name)
@@ -57,7 +62,7 @@ def supervise_once(root: Path, instance: Path, retry_after: dict[str, float], *,
                 continue
             print(f"Supervisor restarting {label}.", flush=True)
             result = subprocess.run([str(root / "twn"), command], cwd=root,
-                                    timeout=RESTART_TIMEOUT_SECONDS, check=False)
+                                    timeout=(DISTRIBUTED_RESTART_TIMEOUT_SECONDS if command == "distributed-restart" else RESTART_TIMEOUT_SECONDS), check=False)
             retry_after[pid_name] = time.monotonic() + RESTART_COOLDOWN_SECONDS
             if result.returncode:
                 print(f"Could not restart {label}: command exited with status {result.returncode}.", flush=True)
@@ -177,6 +182,16 @@ def stop_matching_supervisors(
         required_text=f"--root {root.resolve()} --daemon",
         timeout=timeout,
     )
+
+
+def _distributed_enabled(path: Path) -> bool:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return False
+    if not isinstance(data, dict) or not isinstance(data.get("role", "standalone"), str) or data.get("role", "standalone") not in {"standalone", "mainframe", "agent"}:
+        raise ValueError("Distributed settings must contain a valid toolkit role.")
+    return data.get("role", "standalone") in {"mainframe", "agent"}
 
 
 def _enabled(path: Path) -> bool:
