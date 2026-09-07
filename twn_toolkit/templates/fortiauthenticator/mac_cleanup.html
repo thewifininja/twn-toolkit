@@ -79,7 +79,7 @@
       <h1>Cleanup Preview</h1>
       <p>
         {{ preview.targets | length }} device{{ "" if preview.targets | length == 1 else "s" }}
-        in {{ preview.group_name }}.
+        in {{ preview.group_name }} on profile {{ selected_name }}.
       </p>
     </div>
 
@@ -109,6 +109,9 @@
         <input name="profile" type="hidden" value="{{ selected_name }}">
         <input name="group_uri" type="hidden" value="{{ preview.group_uri }}">
         <input name="action" type="hidden" value="{{ preview.action }}">
+        <input name="context_token" type="hidden" value="{{ preview.context_token }}">
+        <input name="candidate_token" type="hidden" value="{{ preview.candidate_token }}">
+        <p class="muted">This preview expires after {{ preview_minutes }} minutes. Changes to the profile or reviewed candidates require a new preview.</p>
         <div class="preview-table-wrap selectable-table-wrap">
           <table>
             <thead>

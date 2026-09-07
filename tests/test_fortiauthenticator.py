@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -180,6 +181,15 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
                 "is_default": "on",
             },
         )
+
+    def cleanup_tokens(self, action="delete_devices"):
+        with patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_group_memberships", return_value=_cleanup_memberships()), patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.get_all_mac_devices", return_value=_cleanup_devices()):
+            response = self.client.post("/fortiauthenticator/mac-cleanup", data={
+                "profile": "Lab", "group_uri": "/api/v1/macgroups/8/",
+                "action": action, "intent": "preview",
+            })
+        return {name: re.search(fr'name="{name}" type="hidden" value="([^"]+)"', response.text).group(1)
+                for name in ("context_token", "candidate_token")}
 
     def test_profile_create_edit_default_and_delete(self) -> None:
         response = self.client.post(
@@ -441,7 +451,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         ) as delete_device:
             response = self.client.post(
                 "/fortiauthenticator/mac-cleanup/execute",
-                data={"profile": "Lab", "group_uri": "/api/v1/macgroups/8/",
+                data={**self.cleanup_tokens(), "profile": "Lab", "group_uri": "/api/v1/macgroups/8/",
                       "action": "delete_devices", "selected_id": ["42", "43"],
                       "confirmation": "DELETE 2 DEVICES"},
                 follow_redirects=True,
@@ -466,6 +476,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         response = self.client.post(
             "/fortiauthenticator/mac-cleanup/execute",
             data={
+                **self.cleanup_tokens(),
                 "profile": "Lab",
                 "group_uri": "/api/v1/macgroups/8/",
                 "action": "delete_devices",
@@ -500,6 +511,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         response = self.client.post(
             "/fortiauthenticator/mac-cleanup/execute",
             data={
+                **self.cleanup_tokens("remove_memberships"),
                 "profile": "Lab",
                 "group_uri": "/api/v1/macgroups/8/",
                 "action": "remove_memberships",
@@ -515,7 +527,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             ["91"],
         )
         summary = ActivityStore(self.temporary_directory.name).summary()
-        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 3)
+        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 5)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
         self.assertEqual(summary["recent"][0]["title"], "Ran FortiAuthenticator MAC cleanup")
         event = AuditStore(self.temporary_directory.name).recent(1)[0]
@@ -547,6 +559,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         response = self.client.post(
             "/fortiauthenticator/mac-cleanup/execute",
             data={
+                **self.cleanup_tokens(),
                 "profile": "Lab",
                 "group_uri": "/api/v1/macgroups/8/",
                 "action": "delete_devices",
@@ -578,6 +591,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         response = self.client.post(
             "/fortiauthenticator/mac-cleanup/execute",
             data={
+                **self.cleanup_tokens(),
                 "profile": "Lab",
                 "group_uri": "/api/v1/macgroups/8/",
                 "action": "delete_devices",
