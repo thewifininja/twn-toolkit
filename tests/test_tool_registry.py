@@ -123,6 +123,7 @@ class ToolRegistryTests(unittest.TestCase):
             "rename_objects",
             "task_fields",
             "task_preview",
+            "appliance_task_job", "appliance_task_status", "appliance_task_cancel", "appliance_task_download",
         }
         public_or_self_service = {
             "session_activity",

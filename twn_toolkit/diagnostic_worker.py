@@ -114,6 +114,10 @@ def execute_scan(store, job_id, token):
         from .fac_inventory import execute_inventory
         execute_inventory(store, job, config)
         return
+    if job["tool"] == "appliance_read":
+        from .appliance_read import execute_read
+        execute_read(store, job, config)
+        return
     if job["tool"] == "case_export":
         from .case_export import execute_case_export
         execute_case_export(store, job, config)
@@ -198,6 +202,10 @@ def record_unsuccessful_scan(store, job, state, error):
     if job["tool"] in {"fac_inventory_devices", "fac_inventory_memberships"}:
         from .fac_inventory import record_inventory_outcome
         record_inventory_outcome(store, job, state, error)
+        return
+    if job["tool"] == "appliance_read":
+        from .appliance_read import record_read_outcome
+        record_read_outcome(store, job, state)
         return
     if job["tool"] == "case_export":
         from .case_export import record_case_export_outcome

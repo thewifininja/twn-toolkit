@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Callable
 import secrets
 import time
@@ -28,16 +27,9 @@ from .audit import (
     annotate_profile_deleted,
     annotate_profile_duplicated,
     annotate_profile_saved,
-    annotate_profile_tested,
     audit_reference,
     suppress_audit_event,
     suppress_case_bridge_event,
-)
-from .csv_exports import (
-    CSV_DOWNLOAD_FORMAT_RAW,
-    csv_download_filename,
-    csv_for_download,
-    normalize_csv_download_format,
 )
 from .fortigate import FortiGateClient, FortiGateError, normalize_api_key, normalize_host
 from .automation_heartbeat import read_automation_heartbeat
@@ -46,11 +38,10 @@ from .diagnostic_worker import record_unsuccessful_scan
 from .investigations import InvestigationStore
 from .wireless_history_diagnostic import TOOL as HISTORY_TOOL, prepare_history_config
 from .investigation_context import (
-    add_current_investigation_generated_evidence_event,
     record_current_investigation_event,
 )
 from .profiles import ProfileStore
-from .tasks import ExportTask, RenameTask, discover_export_fields, get_task
+from .tasks import ExportTask, RenameTask, get_task
 from .tool_catalog import grouped_visible_tools_for_category, tool_id_for_endpoint
 
 
@@ -197,32 +188,6 @@ def _annotate_rename_task(
     )
 
 
-def _annotate_fortigate_export(
-    profile: dict[str, Any],
-    task: ExportTask,
-    *,
-    outcome: str,
-    export_size_bytes: int = 0,
-    status_code: int | None = None,
-) -> None:
-    details: dict[str, Any] = {
-        "profile": audit_reference("FortiGate profile", profile["name"], profile["name"]),
-        "outcome": outcome,
-        "export size bytes": export_size_bytes,
-    }
-    if status_code is not None:
-        details["remote status code"] = status_code
-    annotate_audit_event(
-        category="FortiGate",
-        action=f"fortigate.export_{outcome}",
-        summary=f"FortiGate export {task.label} {outcome}.",
-        resource_type="fortigate_task",
-        resource_id=task.id,
-        resource_name=task.label,
-        details=details,
-    )
-
-
 def register_fortigate_routes(
     app: Flask,
     *,
@@ -230,6 +195,10 @@ def register_fortigate_routes(
     category_allowed: Callable[[str], bool],
     tool_access_allowed: Callable[[str], bool],
 ) -> None:
+    from .appliance_read_routes import queue_read, register_read_routes, recent_read_links
+    register_read_routes(app, 'fortigate')
+    register_read_routes(app, 'fortigate', task_routes=True)
+
     @app.get("/fortigate")
     def fortigate_home():
         if not category_allowed("fortigate"):
@@ -238,6 +207,7 @@ def register_fortigate_routes(
         edit_profile = profile_store.get(request.args.get("edit", ""))
         return render_template(
             "index.html",
+            appliance_recent=recent_read_links('fortigate'),
             edit_profile=edit_profile,
             profiles=profiles,
             can_manage_profiles=tool_access_allowed("fortigate.home"),
@@ -593,45 +563,7 @@ def register_fortigate_routes(
 
     @app.post("/profiles/<name>/test")
     def test_profile(name: str):
-        profile = profile_store.get(name)
-        if not profile:
-            flash("Profile not found.", "error")
-            return redirect(url_for("fortigate_home"))
-
-        client = FortiGateClient.from_profile(profile)
-        try:
-            result = client.test_connection()
-        except FortiGateError as exc:
-            _record_fortinet_api_activity(
-                "Tested FortiGate profile",
-                f"{name}: connection failed",
-                failures=1,
-            )
-            annotate_profile_tested(
-                category="FortiGate",
-                action_namespace="fortigate",
-                profile_type="FortiGate profile",
-                profile=profile,
-                outcome="failed",
-                status_code=exc.status_code,
-            )
-            flash(f"Connection failed: {connection_error_message(exc)}", "error")
-        else:
-            version = result.get("version") or result.get("build") or "reachable"
-            _record_fortinet_api_activity(
-                "Tested FortiGate profile",
-                f"{name}: {version}",
-            )
-            annotate_profile_tested(
-                category="FortiGate",
-                action_namespace="fortigate",
-                profile_type="FortiGate profile",
-                profile=profile,
-                outcome="succeeded",
-            )
-            flash(f"Connection OK: {version}", "success")
-
-        return redirect(url_for("fortigate_home"))
+        return queue_read(app, profile_store.get(name), provider='fortigate', mode='connection')
 
     @app.get("/tasks/<task_id>")
     def task_form(task_id: str):
@@ -639,7 +571,7 @@ def register_fortigate_routes(
         if not task:
             flash("Task not found.", "error")
             return redirect(url_for("fortigate_home"))
-        return render_template("task.html", profiles=profile_store.all(), task=task)
+        return render_template("task.html", profiles=profile_store.all(), task=task, appliance_recent=recent_read_links('fortigate', task_id))
 
     @app.get("/tasks/<task_id>/template.csv")
     def task_csv_template(task_id: str):
@@ -669,71 +601,7 @@ def register_fortigate_routes(
 
         client = FortiGateClient.from_profile(profile)
         if isinstance(task, ExportTask):
-            fields = request.form.get("fields", "").strip()
-            download_format = normalize_csv_download_format(request.form.get("csv_format"))
-            try:
-                with client.pooled() as pooled_client:
-                    raw_csv_data = task.run(
-                        client=pooled_client,
-                        endpoint_template=endpoint_template or task.endpoint_template,
-                        default_vdom=profile.get("default_vdom", "root"),
-                        fields=fields,
-                    )
-            except FortiGateError as exc:
-                _record_fortinet_api_activity(
-                    "Ran FortiGate export",
-                    f"{profile['name']}: {task.label} failed",
-                    failures=1,
-                )
-                _annotate_fortigate_export(
-                    profile,
-                    task,
-                    outcome="failed",
-                    status_code=exc.status_code,
-                )
-                flash(f"Export failed: {exc}", "error")
-                return redirect(url_for("task_form", task_id=task_id))
-
-            _record_fortinet_api_activity(
-                "Ran FortiGate export",
-                f"{profile['name']}: {task.label}",
-            )
-            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            base_filename = f"{task.id}-{profile['name']}-{stamp}.csv".replace(" ", "_")
-            filename = csv_download_filename(base_filename, download_format)
-            evidence_filename = csv_download_filename(base_filename, CSV_DOWNLOAD_FORMAT_RAW)
-            download_csv_data = csv_for_download(raw_csv_data, download_format)
-            suppress_case_bridge_event()
-            _annotate_fortigate_export(
-                profile,
-                task,
-                outcome="succeeded",
-                export_size_bytes=len(raw_csv_data.encode("utf-8")),
-            )
-            now = time.time()
-            add_current_investigation_generated_evidence_event(
-                operation_id=f"fortigate-export:{secrets.token_hex(12)}",
-                event_type="external.export.completed",
-                tool_id=tool_id_for_endpoint("run_task", {"task_id": task.id})
-                or "fortigate.home",
-                action=task.label,
-                outcome="succeeded",
-                summary=f"Exported {task.label} from FortiGate profile {profile['name']}.",
-                targets={"profile": profile["name"]},
-                parameters={"format": "CSV", "download_format": download_format},
-                metrics={"export_size_bytes": len(raw_csv_data.encode("utf-8"))},
-                details={},
-                started_at=now,
-                completed_at=now,
-                filename=evidence_filename,
-                content_type="text/csv",
-                content=raw_csv_data.encode("utf-8"),
-            )
-            return Response(
-                download_csv_data,
-                mimetype="text/csv",
-                headers={"Content-Disposition": f"attachment; filename={filename}"},
-            )
+            return queue_read(app, profile, provider='fortigate', mode='export', task=task)
 
         if not isinstance(task, RenameTask):
             flash("Task type is not supported yet.", "error")
@@ -782,39 +650,11 @@ def register_fortigate_routes(
 
     @app.post("/tasks/<task_id>/objects")
     def task_objects(task_id: str):
-        suppress_audit_event()
         task = get_task(task_id)
-        profile = profile_store.get(request.form.get("profile", ""))
-        endpoint_template = request.form.get("endpoint_template", "").strip()
-
         if not isinstance(task, RenameTask):
-            return jsonify({"error": "Object discovery is only available for rename tasks."}), 400
-        if not profile:
-            return jsonify({"error": "Select a FortiGate profile first."}), 400
-
-        client = FortiGateClient.from_profile(profile)
-        try:
-            with client.pooled() as pooled_client:
-                objects = task.discover_objects(
-                    client=pooled_client,
-                    endpoint_template=endpoint_template or task.endpoint_template,
-                    default_vdom=profile.get("default_vdom", "root"),
-                )
-        except FortiGateError as exc:
-            _record_fortinet_api_activity(
-                "Discovered FortiGate objects",
-                f"{profile['name']}: {task.label} failed",
-                failures=1,
-                count_action=False,
-            )
-            return jsonify({"error": str(exc)}), 502
-
-        _record_fortinet_api_activity(
-            "Discovered FortiGate objects",
-            f"{profile['name']}: {task.label} ({len(objects)} objects)",
-            count_action=False,
-        )
-        return jsonify({"objects": objects, "row_count": len(objects)})
+            return jsonify(error='Invalid task for this read operation.'), 400
+        return queue_read(app, profile_store.get(request.form.get('profile', '')),
+                          provider='fortigate', mode='objects', task=task, as_json=True)
 
     @app.post("/tasks/<task_id>/rename")
     def rename_objects(task_id: str):
@@ -915,85 +755,19 @@ def register_fortigate_routes(
 
     @app.post("/tasks/<task_id>/fields")
     def task_fields(task_id: str):
-        suppress_audit_event()
         task = get_task(task_id)
-        profile = profile_store.get(request.form.get("profile", ""))
-        endpoint_template = request.form.get("endpoint_template", "").strip()
-
         if not isinstance(task, ExportTask):
-            return jsonify({"error": "Field discovery is only available for export tasks."}), 400
-        if not profile:
-            return jsonify({"error": "Select a FortiGate profile first."}), 400
-
-        client = FortiGateClient.from_profile(profile)
-        try:
-            with client.pooled() as pooled_client:
-                rows, endpoint_used = task.preview_rows_with_endpoint(
-                    client=pooled_client,
-                    endpoint_template=endpoint_template or task.endpoint_template,
-                    default_vdom=profile.get("default_vdom", "root"),
-                )
-        except FortiGateError as exc:
-            _record_fortinet_api_activity(
-                "Loaded FortiGate export fields",
-                f"{profile['name']}: {task.label} failed",
-                failures=1,
-                count_action=False,
-            )
-            return jsonify({"error": str(exc)}), 502
-
-        _record_fortinet_api_activity(
-            "Loaded FortiGate export fields",
-            f"{profile['name']}: {task.label} ({len(rows)} rows)",
-            count_action=False,
-        )
-        fields = discover_export_fields(task, rows)
-        return jsonify({"endpoint_used": endpoint_used, "fields": fields, "row_count": len(rows)})
+            return jsonify(error='Invalid task for this read operation.'), 400
+        return queue_read(app, profile_store.get(request.form.get('profile', '')),
+                          provider='fortigate', mode='fields', task=task, as_json=True)
 
     @app.post("/tasks/<task_id>/preview")
     def task_preview(task_id: str):
-        suppress_audit_event()
         task = get_task(task_id)
-        profile = profile_store.get(request.form.get("profile", ""))
-        endpoint_template = request.form.get("endpoint_template", "").strip()
-        selected_fields = request.form.get("fields", "").strip()
-
         if not isinstance(task, ExportTask):
-            return jsonify({"error": "Data preview is only available for export tasks."}), 400
-        if not profile:
-            return jsonify({"error": "Select a FortiGate profile first."}), 400
-
-        client = FortiGateClient.from_profile(profile)
-        try:
-            with client.pooled() as pooled_client:
-                rows, endpoint_used = task.preview_rows_with_endpoint(
-                    client=pooled_client,
-                    endpoint_template=endpoint_template or task.endpoint_template,
-                    default_vdom=profile.get("default_vdom", "root"),
-                )
-        except FortiGateError as exc:
-            _record_fortinet_api_activity(
-                "Previewed FortiGate export",
-                f"{profile['name']}: {task.label} failed",
-                failures=1,
-                count_action=False,
-            )
-            return jsonify({"error": str(exc)}), 502
-
-        _record_fortinet_api_activity(
-            "Previewed FortiGate export",
-            f"{profile['name']}: {task.label} ({len(rows)} rows)",
-            count_action=False,
-        )
-        columns, formatted_rows = task.format_rows(rows, selected_fields)
-        return jsonify(
-            {
-                "columns": columns,
-                "endpoint_used": endpoint_used,
-                "row_count": len(formatted_rows),
-                "rows": formatted_rows,
-            }
-        )
+            return jsonify(error='Invalid task for this read operation.'), 400
+        return queue_read(app, profile_store.get(request.form.get('profile', '')),
+                          provider='fortigate', mode='preview', task=task, as_json=True)
 
 
 def managed_switch_order(items: list[dict[str, Any]]) -> list[dict[str, str]]:

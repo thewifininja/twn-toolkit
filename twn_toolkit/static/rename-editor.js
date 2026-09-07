@@ -14,33 +14,34 @@
     return;
   }
 
+  let edited = false;
+  editorForm.addEventListener("input", () => { edited = true; });
+  editorForm.addEventListener("change", () => { edited = true; });
   loadButton.addEventListener("click", async () => {
+    if (edited && !window.confirm("Discard the current rename edits and load devices again?")) return;
     const formData = new FormData(sourceForm);
     loadButton.disabled = true;
     editor.hidden = false;
     status.textContent = "Loading devices...";
     tableBody.innerHTML = "";
-    window.toolkitLoading?.show("Loading current FortiGate devices…");
 
     try {
-      const response = await fetch(loadButton.dataset.objectsUrl, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to load devices.");
+      const data = await window.TwnApplianceRead(loadButton.dataset.objectsUrl, formData, status);
+      if (["profile", "endpoint_template"].some(name => String(formData.get(name) || "") !== String(new FormData(sourceForm).get(name) || ""))) {
+        throw new Error("The profile or endpoint changed. Load again for the current selection.");
       }
+
 
       profileInput.value = String(formData.get("profile") || "");
       endpointInput.value = String(formData.get("endpoint_template") || "");
       renderObjects(data.objects || []);
+      edited = false;
+      window.TwnUnsavedForms?.acknowledge(editorForm, window.TwnUnsavedForms.capture(editorForm));
       status.textContent = `${data.row_count} device(s) loaded.`;
     } catch (error) {
       status.textContent = error.message;
     } finally {
       loadButton.disabled = false;
-      window.toolkitLoading?.hide();
     }
   });
 

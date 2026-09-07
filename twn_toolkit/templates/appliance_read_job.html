@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+{% include 'components/diagnostic_job.html' %}
+<section class="panel form">
+  {% if diagnostic_job.state == 'succeeded' %}
+  <p>{{ diagnostic_job.summary.message or 'The appliance read completed. Return to the task to load another result.' }}</p>
+  {% if diagnostic_job.summary.archive %}<div class="button-row"><a class="button-link" href="{{ download_url }}">Download CSV</a></div>{% endif %}
+  {% endif %}
+  {% if diagnostic_job.state == 'succeeded' %}
+  {% set data = diagnostic_job.summary %}
+  {% if data.recording_warning %}<p class="message error" role="alert">{{ data.recording_warning }}</p>{% endif %}
+  {% if data.rows is defined %}<p>{{ data.preview_count }} of {{ data.row_count }} rows shown. {% if data.fields_clipped %}Long values shortened for preview.{% endif %} CSV exports retain full values.</p>
+  <div class="preview-table-wrap"><table><thead><tr>{% for column in data.columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for row in data.rows %}<tr>{% for column in data.columns %}<td>{{ row[column] }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+  {% elif data.fields is defined %}<div class="preview-table-wrap"><table><thead><tr><th scope="col">Field</th><th scope="col">Sample (up to 512 characters)</th></tr></thead><tbody>{% for field in data.fields %}<tr><td>{{ field.name }}</td><td>{{ field.sample }}</td></tr>{% endfor %}</tbody></table></div>
+  {% elif data.objects is defined %}<div class="preview-table-wrap"><table><thead><tr><th scope="col">Identifier</th><th scope="col">Current name</th><th scope="col">VDOM</th></tr></thead><tbody>{% for object in data.objects %}<tr><td>{{ object.identifier }}</td><td>{{ object.current_name }}</td><td>{{ object.vdom }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+  {% endif %}
+  <p class="field-note">This run uses the profile and options saved when it was submitted. Leaving this page does not cancel it.</p>
+  <div class="button-row"><a class="button-link secondary" href="{{ back_url }}">Back to appliance</a></div>
+</section>
+<script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
+{% endblock %}

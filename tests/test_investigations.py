@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.appliance_read_helpers import complete_appliance_read, export_fixture
+
 from case_export_helpers import complete_case_export
 
 import hashlib
@@ -2086,12 +2088,12 @@ class InvestigationRouteTests(unittest.TestCase):
 
             with patch(
                 "twn_toolkit.fortigate_routes.ExportTask.run",
-                return_value="serial,name\nS124,=Private Switch\n",
+                side_effect=export_fixture("serial,name\nS124,=Private Switch\n"),
             ):
-                export = client.post(
+                export = complete_appliance_read(client, client.post(
                     "/tasks/export-switches/run",
                     data={"profile": "Lab"},
-                )
+                ))
             self.assertEqual(export.status_code, 200)
             self.assertEqual(
                 export.get_data(as_text=True),

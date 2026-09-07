@@ -24,7 +24,6 @@ from .audit import (
     annotate_profile_deleted,
     annotate_profile_duplicated,
     annotate_profile_saved,
-    annotate_profile_tested,
     audit_reference,
     suppress_audit_event,
 )
@@ -108,6 +107,9 @@ def register_fortiauthenticator_routes(
     category_allowed: Callable[[str], bool],
     tool_access_allowed: Callable[[str], bool],
 ) -> None:
+    from .appliance_read_routes import queue_read, register_read_routes, recent_read_links
+    register_read_routes(app, 'fortiauthenticator')
+
     @app.get("/fortiauthenticator")
     def fortiauthenticator_home():
         if not category_allowed("fortiauthenticator"):
@@ -116,6 +118,7 @@ def register_fortiauthenticator_routes(
         edit_profile = profile_store.get(request.args.get("edit", ""))
         return render_template(
             "fortiauthenticator/index.html",
+            appliance_recent=recent_read_links('fortiauthenticator'),
             edit_profile=edit_profile,
             profiles=profiles,
             can_manage_profiles=tool_access_allowed("fortiauthenticator.home"),
@@ -207,44 +210,7 @@ def register_fortiauthenticator_routes(
 
     @app.post("/fortiauthenticator/profiles/<name>/test")
     def test_fortiauthenticator_profile(name: str):
-        profile = profile_store.get(name)
-        if not profile:
-            flash("FortiAuthenticator profile not found.", "error")
-            return redirect(url_for("fortiauthenticator_home"))
-
-        try:
-            result = FortiAuthenticatorClient.from_profile(profile).test_connection()
-        except FortiAuthenticatorError as exc:
-            _record_fortinet_api_activity(
-                "Tested FortiAuthenticator profile",
-                f"{name}: connection failed",
-                failures=1,
-            )
-            annotate_profile_tested(
-                category="FortiAuthenticator",
-                action_namespace="fortiauthenticator",
-                profile_type="FortiAuthenticator profile",
-                profile=profile,
-                outcome="failed",
-                status_code=exc.status_code,
-            )
-            flash(f"Connection failed: {exc}", "error")
-        else:
-            total = result.get("meta", {}).get("total_count")
-            suffix = f" ({total} MAC devices available)." if total is not None else "."
-            detail = f"{name}: reachable"
-            if total is not None:
-                detail = f"{name}: {total} MAC devices available"
-            _record_fortinet_api_activity("Tested FortiAuthenticator profile", detail)
-            annotate_profile_tested(
-                category="FortiAuthenticator",
-                action_namespace="fortiauthenticator",
-                profile_type="FortiAuthenticator profile",
-                profile=profile,
-                outcome="succeeded",
-            )
-            flash(f"Connection to '{name}' succeeded{suffix}", "success")
-        return redirect(url_for("fortiauthenticator_home"))
+        return queue_read(app, profile_store.get(name), provider='fortiauthenticator', mode='connection')
 
     from .fac_inventory_routes import register_fac_inventory_routes
     register_fac_inventory_routes(app, profile_store)
