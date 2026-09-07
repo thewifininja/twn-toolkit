@@ -127,6 +127,7 @@ class ToolRegistryTests(unittest.TestCase):
         public_or_self_service = {
             "session_activity",
             "distributed_operation",
+            "distributed_operation_response",
             "agent_ui",
             "favicon",
             "health",

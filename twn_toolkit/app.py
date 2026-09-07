@@ -84,6 +84,8 @@ from .distributed_agents import (
 )
 from .distributed_pki import DistributedPkiStore, PairingSessionStore
 from .distributed_http import MAX_TUNNEL_BODY_BYTES
+from .distributed_response import ResponseUnavailable
+from .distributed_response_http import build_agent_response, completed_response_location
 from .distributed_job_epochs import DistributedJobStore
 
 
@@ -339,6 +341,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             "update_appearance",
             "session_activity",
             "distributed_operation",
+            "distributed_operation_response",
             "update_execution_context",
             "agent_workspace",
             "agent_dns_response",
@@ -380,6 +383,12 @@ def create_app(instance_path: str | None = None) -> Flask:
             return Response("Administrator access is required.", status=403)
         if auth_store.execution_context(g.current_user["id"]) != agent_id:
             return Response("Select this agent before accessing it.", status=409)
+        response_id = request.args.get('_twn_response')
+        if response_id and request.method in {'GET', 'HEAD'}:
+            operation = distributed_job_store.get_for_requester(response_id, g.current_user['id'])
+            if not operation or operation['agent_id'] != agent_id or operation['capability_id'] != 'system.http.tunnel':
+                abort(404)
+            return retained_agent_response(operation)
         agent = distributed_agent_store.get(agent_id)
         if not agent or agent["state"] != "approved":
             recovery = return_to_local_instance("The selected agent is no longer approved.")
@@ -400,13 +409,20 @@ def create_app(instance_path: str | None = None) -> Flask:
         if len(body) > MAX_TUNNEL_BODY_BYTES:
             return Response("This request is too large for the agent tunnel.", status=413)
         path = "/" + remote_path
-        if request.query_string:
-            path += "?" + request.query_string.decode("latin-1")
+        if '_twn_response' in request.args:
+            from urllib.parse import urlencode
+            query = request.args.copy()
+            query.poplist('_twn_response')
+            if query:
+                path += '?' + urlencode(list(query.items(multi=True)))
+        elif request.query_string:
+            path += '?' + request.query_string.decode('latin-1')
         job = distributed_job_store.enqueue(
             agent_id=agent_id, requester_id=g.current_user["id"],
             capability_id="system.http.tunnel", capability_version="1",
             inputs={
                 "method": request.method, "path": path,
+                "response_transfer": {"version": 1, "max_bytes": operational_store.get()["distributed_response_mib"] * 1024**2},
                 "prefix": f"/agents/{agent_id}/ui",
                 "headers": {name: value for name, value in request.headers.items() if name.lower() in {"accept", "content-type", "range"}},
                 "body": base64.b64encode(body).decode("ascii"),
@@ -464,7 +480,7 @@ def create_app(instance_path: str | None = None) -> Flask:
                 return operation_status_response(current)
         if current["state"] == "unknown":
             return operation_status_response(current)
-        if current["state"] in {"succeeded", "failed"}:
+        if current["state"] == "failed":
             # The in-memory response is enough to finish this request. Keep
             # ownership/outcome metadata, not a second durable response body.
             distributed_job_store.discard_tunnel_output(
@@ -476,27 +492,49 @@ def create_app(instance_path: str | None = None) -> Flask:
             message = current.get("error") or "The agent request failed."
             recovery = return_to_local_instance(message)
             return recovery if recovery is not None else Response(message, status=502)
-        output = current["output"]
         try:
-            content = base64.b64decode(str(output.get("body", "")), validate=True)
-            status = int(output.get("status", 502))
-        except (ValueError, TypeError):
-            recovery = return_to_local_instance("The agent returned an invalid response.")
-            return recovery if recovery is not None else Response("The agent returned an invalid response.", status=502)
-        if (
-            status == 404
-            and request.method == "GET"
-            and remote_path
-            and request.accept_mimetypes.accept_html
-        ):
-            flash("That page is not available on the selected instance.", "warning")
-            return redirect(url_for("agent_ui", agent_id=agent_id))
-        response = Response(content, status=status)
-        for pair in output.get("headers", []):
-            if isinstance(pair, list) and len(pair) == 2:
-                response.headers[str(pair[0])] = str(pair[1])
-        response.headers["X-TWN-Instance"] = agent_id
+            response = build_agent_response(distributed_job_store, current, g.current_user['id'])
+        except (ValueError, TypeError) as exc:
+            recovery = return_to_local_instance(str(exc))
+            return recovery if recovery is not None else Response(str(exc), status=502)
+        if response.status_code == 404 and request.method == 'GET' and remote_path and request.accept_mimetypes.accept_html:
+            response.close()
+            flash('That page is not available on the selected instance.', 'warning')
+            return redirect(url_for('agent_ui', agent_id=agent_id))
         return response
+
+    @app.get('/operations/<job_id>/response')
+    def distributed_operation_response(job_id):
+        operation = distributed_job_store.get_for_requester(job_id, g.current_user['id'])
+        if not operation or operation['capability_id'] != 'system.http.tunnel':
+            abort(404)
+        if not g.current_user.get('is_admin'):
+            abort(403)
+        if auth_store.execution_context(g.current_user['id']) != operation['agent_id']:
+            return Response('Select the original Agent before retrieving its response.', status=409)
+        if operation['state'] != 'succeeded' or not operation.get('output'):
+            return unavailable_agent_response()
+        if request.method == 'HEAD':
+            return Response(status=200)
+        try:
+            return redirect(completed_response_location(operation), code=303)
+        except (ValueError, TypeError) as exc:
+            return Response(str(exc), status=502)
+
+    def unavailable_agent_response():
+        return Response('This response is unavailable, expired, or already retrieved. The operation was not rerun.', status=410)
+
+    def retained_agent_response(operation):
+        if operation['state'] != 'succeeded' or not operation.get('output'):
+            return unavailable_agent_response()
+        if request.method == 'HEAD':
+            return Response(status=200)
+        try:
+            return build_agent_response(distributed_job_store, operation, g.current_user['id'])
+        except ResponseUnavailable:
+            return unavailable_agent_response()
+        except (ValueError, TypeError) as exc:
+            return Response(str(exc), status=502)
 
     @app.get("/operations/<job_id>")
     def distributed_operation(job_id: str):

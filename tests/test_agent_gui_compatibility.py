@@ -24,7 +24,7 @@ def heartbeat(store, agent_id, **versions):
                                   toolkit_version='0.24.0', protocol_version=1, **versions)
 
 
-@pytest.mark.parametrize('job,gui', [(0,0),(1,1),(2,0),(3,1),(2,2),(2,True),('2',1),(2,'1'),(-1,1)])
+@pytest.mark.parametrize('job,gui', [(0,0),(1,1),(2,0),(2,1),(3,1),(2,3),(2,True),('2',1),(2,'1'),(-1,1)])
 def test_missing_malformed_or_unsupported_protocols_never_enable_gui(tmp_path, job, gui):
     store = DistributedAgentStore(tmp_path); agent_id = enroll(store)
     agent = heartbeat(store, agent_id, job_protocol_version=job, gui_protocol_version=gui)
@@ -36,7 +36,7 @@ def test_missing_malformed_or_unsupported_protocols_never_enable_gui(tmp_path, j
 def test_fresh_heartbeat_enables_same_release_and_legacy_heartbeat_removes_support(tmp_path):
     store = DistributedAgentStore(tmp_path); agent_id = enroll(store)
     old = heartbeat(store, agent_id)
-    new = heartbeat(store, agent_id, job_protocol_version=2, gui_protocol_version=1)
+    new = heartbeat(store, agent_id, job_protocol_version=2, gui_protocol_version=2)
     assert old['toolkit_version'] == new['toolkit_version']
     assert not old['gui_compatible'] and new['gui_compatible']
     assert selectable_gui_agents([new]) == [new]
@@ -77,7 +77,7 @@ def test_selection_and_stale_context_block_before_queue_and_recover_after_heartb
     assert response.status_code == 409
     response = client.get(f'/agents/{agent_id}/ui/', headers={'Accept':'text/html'})
     assert response.status_code == 302 and auth.execution_context(user_id) == 'local'
-    heartbeat(store, agent_id, job_protocol_version=2, gui_protocol_version=1)
+    heartbeat(store, agent_id, job_protocol_version=2, gui_protocol_version=2)
     response = client.post('/execution-context', data={'context_id':agent_id, 'next':'/'})
     assert response.status_code == 302 and auth.execution_context(user_id) == agent_id
 

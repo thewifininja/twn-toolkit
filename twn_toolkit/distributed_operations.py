@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .distributed_jobs import JOB_PROTOCOL_VERSION, MAX_JOB_PAYLOAD_BYTES
 from .operational import OperationalSettingsStore
+from .distributed_response import response_writer
 from .distributed_payloads import DistributedPayloadCipher
 _BOOT_ID = secrets.token_hex(16)
 
@@ -191,12 +192,13 @@ def execute_owned(instance, jobs, client, lane, execute):
                             pass
                 renewer = threading.Thread(target=renew, name="twn-operation-lease", daemon=True)
                 renewer.start()
-                output = execute(
-                    instance,
-                    str(job.get("capability_id", "")),
-                    str(job.get("capability_version", "")),
-                    job.get("inputs", {}),
-                )
+                with response_writer(lambda position, body: client.response_chunk(job, position, body)):
+                    output = execute(
+                        instance,
+                        str(job.get("capability_id", "")),
+                        str(job.get("capability_version", "")),
+                        job.get("inputs", {}),
+                    )
                 result.update(state="succeeded", output=output, error="")
         except Exception as exc:
             # Generic handlers may raise after an external effect. Never claim a safe retry.

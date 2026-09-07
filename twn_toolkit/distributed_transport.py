@@ -320,6 +320,15 @@ class EnrollmentServer:
             attempt_token=str(payload.get("attempt_token", "")), activation_id=str(payload.get("activation_id", "")),
             action=str(payload.get("action", "")))
 
+    def response_chunk(self, certificate_der, payload):
+        agent_id = self._approved_certificate_agent(certificate_der)
+        if payload.get('job_protocol') != JOB_PROTOCOL_VERSION:
+            raise ValueError('Unsupported operation protocol.')
+        return self.job_store.append_response_chunk(
+            str(payload.get('id', '')), agent_id=agent_id,
+            attempt_token=str(payload.get('attempt_token', '')), activation_id=str(payload.get('activation_id', '')),
+            position=payload.get('position'), body=payload.get('body'))
+
     def _approved_certificate_agent(self, certificate_der: bytes | None) -> str:
         if not certificate_der:
             raise ValueError("A Mainframe-issued client certificate is required.")
@@ -497,6 +506,15 @@ class EnrollmentClient:
             request_timeout=max(REQUEST_TIMEOUT_SECONDS, wait_seconds + 5),
         )
 
+    def response_chunk(self, job, position, body):
+        result = self._request('POST', '/v1/jobs/response-chunk', {
+            'job_protocol': JOB_PROTOCOL_VERSION, 'id': job['id'],
+            'attempt_token': job['attempt_token'], 'activation_id': job.get('activation_id', ''),
+            'position': position, 'body': body,
+        }, authenticated=True)
+        if result.get('accepted') is not True:
+            raise ValueError('Response chunk was not acknowledged.')
+
     def job_control(self, job, action):
         return self._request("POST", "/v1/jobs/control", {"job_protocol": JOB_PROTOCOL_VERSION,
             "id": job["id"], "attempt_token": job["attempt_token"], "activation_id": job.get("activation_id", ""), "action": action}, authenticated=True)
@@ -653,7 +671,7 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
             )
 
         def do_POST(self) -> None:
-            if self.path not in {"/v1/enrollment", "/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control"}:
+            if self.path not in {"/v1/enrollment", "/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control", "/v1/jobs/response-chunk"}:
                 self._json(404, {"error": "Not found."})
                 return
             try:
@@ -663,7 +681,7 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
                 return
             maximum = (
                 MAX_AGENT_RPC_BYTES
-                if self.path in {"/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control"}
+                if self.path in {"/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control", "/v1/jobs/response-chunk"}
                 else MAX_ENROLLMENT_REQUEST_BYTES
             )
             if not 0 < length <= maximum:
@@ -684,6 +702,8 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
                         str(self.client_address[0]),
                         control_only=self.path == "/v1/agent-status",
                     )
+                elif self.path == "/v1/jobs/response-chunk":
+                    result = enrollment_server.response_chunk(self.connection.getpeercert(binary_form=True), payload)
                 elif self.path == "/v1/jobs/control":
                     result = enrollment_server.job_control(self.connection.getpeercert(binary_form=True), payload)
                 else:

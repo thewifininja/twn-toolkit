@@ -257,10 +257,10 @@ def test_response_closes_and_cache_pin_releases_on_every_result(tmp_path, monkey
     class Response:
         status_code = 200
         headers = {}
-        def get_data(self):
+        def iter_encoded(self):
             if failure == "read":
                 raise OSError("fixture read failed")
-            return b"x" * (http.MAX_TUNNEL_BODY_BYTES + 1) if failure == "oversized" else b"ok"
+            yield b"x" * (http.MAX_TUNNEL_BODY_BYTES + 1) if failure == "oversized" else b"ok"
         def close(self):
             closed.append(True)
     class Client:

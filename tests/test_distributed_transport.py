@@ -82,7 +82,7 @@ def test_loopback_enrollment_requires_approval_and_delivers_credentials(tmp_path
         connected = server.agent_store.get(enrollment["id"])
         assert connected["online"] is True
         assert connected["job_protocol_version"] == 2
-        assert connected["gui_protocol_version"] == 1
+        assert connected["gui_protocol_version"] == 2
         assert connected["gui_compatible"] is True
         assert connected["capabilities"] == [
             {"id": "system.identity", "version": "1"}

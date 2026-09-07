@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .operational import OperationalSettingsStore
+from .distributed_response import ResponseChunksMixin
 from .distributed_payloads import DistributedPayloadCipher, SEALED_PREFIX
 
 
@@ -19,7 +20,7 @@ JOB_STATES = {"queued", "claimed", "running", "cancel_requested", "unknown", "su
 TERMINAL_JOB_STATES = {"succeeded", "failed", "cancelled", "unknown"}
 
 
-class DistributedJobStore:
+class DistributedJobStore(ResponseChunksMixin):
     """Durable Mainframe queue with leased delivery and atomic state transitions."""
 
     def __init__(self, instance_path: str | Path) -> None:
@@ -49,6 +50,7 @@ class DistributedJobStore:
                 )
                 """
             )
+            self._init_response_tables(connection)
             columns = {
                 str(row["name"])
                 for row in connection.execute("PRAGMA table_info(distributed_jobs)")
@@ -219,6 +221,7 @@ class DistributedJobStore:
     def prune_payloads(self) -> None:
         with self._connect(write=True) as connection:
             self._expire(connection)
+            self._prune_response_chunks(connection)
 
     def discard_tunnel_output(self, job_id: str, *, requester_id: str) -> bool:
         """Drop a response copy without deleting its durable outcome record."""
@@ -229,6 +232,8 @@ class DistributedJobStore:
                 "AND state IN ('succeeded', 'failed')",
                 (job_id, requester_id),
             )
+            if cursor.rowcount:
+                connection.execute('DELETE FROM distributed_response_chunks WHERE job_id=?', (job_id,))
         return cursor.rowcount == 1
 
     def has_queued(self, agent_id: str, *, capability_id: str = "",
@@ -318,6 +323,8 @@ class DistributedJobStore:
                 return self._job(row)
             if row["state"] not in {"running", "cancel_requested", "unknown"}:
                 raise ValueError("An unstarted operation cannot complete.")
+            if state == 'succeeded' and (output or {}).get('body_transfer'):
+                self._verify_response(connection, row, output)
             # A receipt from the same attempt may resolve a previously unknown outcome.
             connection.execute("UPDATE distributed_jobs SET state = ?, output_json = ?, error = ?, completed_at = ?, payload_expires_at = ?, lease_expires_at = NULL WHERE id = ?",
                                (state, payload, sealed_error, time.time(), time.time() + self._retention_seconds(), job_id))
@@ -357,6 +364,9 @@ class DistributedJobStore:
                 "DELETE FROM distributed_jobs WHERE id = ? AND requester_id = ? AND state IN ('succeeded', 'failed', 'cancelled')",
                 (job_id, requester_id),
             )
+            if cursor.rowcount:
+                connection.execute('DELETE FROM distributed_response_chunks WHERE job_id=?', (job_id,))
+                connection.execute('DELETE FROM distributed_response_transfers WHERE job_id=?', (job_id,))
         return cursor.rowcount == 1
 
     def recent(self, *, requester_id: str, limit: int = 25) -> list[dict[str, Any]]:

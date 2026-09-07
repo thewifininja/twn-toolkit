@@ -126,8 +126,9 @@ payloads. Toolkit release labels are informational: the same label can describe
 a released Agent and a development checkout with different worker behavior.
 
 The Mainframe persists the authenticated heartbeat's operation protocol and GUI
-protocol. GUI protocol 1 declares owned operations on the dedicated interactive
-polling lane; the required operation protocol is 2. Missing, malformed, or
+protocol. GUI protocol 2 declares owned operations on the dedicated interactive
+polling lane plus bounded response-chunk transfer; the required operation protocol
+is 2. GUI protocol 1 peers must also upgrade. Missing, malformed, or
 unsupported values block GUI selection and direct GUI requests before enqueue.
 Approved Agents remain visible on the Mainframe page with their independent
 online/offline status and a GUI update-required explanation. Existing records
@@ -181,7 +182,10 @@ Mainframe browser tunnel waits are configurable. On timeout, unstarted work is
 cancelled and running work remains tracked. The response redirects to a
 requester-scoped operation status page or returns `202` with its URL; it never
 replays the original request. The page deliberately excludes stored request and
-response bodies. Administrators can set the Mainframe lease and tunnel wait and
+response bodies. A completed GUI operation links to its retained response, when
+available, without repeating the request. Retrieval requires the original
+requester to remain an administrator and select the original Agent. Administrators
+can set the Mainframe lease and tunnel wait and
 each Agent can set its receipt capacity in
 **Settings → Operations**. New claims use updated policy; the existing
 ownership and token checks are invariants rather than policy choices. Both roles
@@ -208,12 +212,20 @@ System identity and DNS are implemented as initial finite job capabilities.
 
 ## Current tunnel limits
 
-Interactive request and response bodies are bounded to 160 KiB before base64
-encoding so the body and metadata fit inside the 256 KiB durable-control
-envelope. Shared CSS is served locally by the mainframe. Ordinary pages, forms,
-redirects, and small downloads are supported. Large uploads, streaming bodies,
-Server-Sent Events, and WebSockets require a later multiplexed streaming
-transport and must not silently fall back to local execution.
+Interactive **request** bodies remain bounded to 160 KiB before base64 encoding.
+Small responses use the same inline budget inside the 256 KiB durable-control
+envelope. Larger finite responses are staged in encrypted 64 KiB chunks on the
+Mainframe, then streamed to the browser after completion and integrity checks.
+The default body limit is 16 MiB; response size, aggregate encrypted staging
+quota and retention are adjustable in **Settings → Operations**. See
+[Agent response transfer](agent-response-transfer.md) for limits and lifecycle.
+
+Shared CSS is served locally by the Mainframe. Ordinary populated pages, forms,
+redirects, and downloads within the configured response limit are supported,
+including range responses from routes that implement HTTP ranges. Larger uploads,
+indefinite streaming, Server-Sent Events, and WebSockets still require further
+transport work and must not silently fall back to local execution. This is staged
+finite-body delivery, not live forwarding before the Agent finishes.
 
 ## Persistence and audit
 
