@@ -7,6 +7,9 @@ import time
 from dataclasses import dataclass
 
 OUTGOING_TRANSFER_LIMITS = {
+    "outgoing_connections": (64, 1, 512, "Outgoing connection slots across protocols", "Shared across processes by SSH, transfers, TCP probes, ordinary DNS queries, RADIUS, SNMP, NTP and TLS certificate checks. FTP reserves two slots for control/data; intentional DNS load tests keep their separate pacing policy."),
+    "outgoing_host_connections": (8, 1, 128, "Outgoing connection slots per target", "Shared across normal protocols and ports for the same normalized target spelling. DNS aliases remain separate."),
+    "outgoing_admission_seconds": (30, 1, 300, "Probe capacity wait (seconds)", "Maximum wait before a normal probe starts. Connection/request timeouts begin after admission. SSH and transfer waits use their existing host deadline."),
     "transfer_connections": (32, 1, 256, "Outgoing connections across runs", "Shared by Bulk SSH, Bulk Transfer and their automation actions on this instance. New admissions use the current limit."),
     "transfer_host_connections": (4, 1, 64, "Outgoing connections per host", "Shared across SSH commands and transfer protocols/ports for the same host spelling. DNS aliases are separate."),
     "transfer_workers": (8, 1, 32, "Outgoing transfer workers", "Concurrent remote hosts per run."),

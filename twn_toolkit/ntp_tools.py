@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .outgoing_admission import outgoing_slot, resolve_instance, CapacityWaitTimeout
+
 import math
 import socket
 import struct
@@ -26,13 +28,15 @@ def test_ntp_servers(
     port: int = 123,
     timeout: float = 3.0,
     samples: int = 4,
+    *, instance_path=None,
 ) -> list[dict[str, Any]]:
     if not targets:
         raise ToolInputError("Enter at least one NTP server.")
+    instance_path = resolve_instance(instance_path)
     workers = min(10, len(targets))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(test_ntp_server, target["host"], port, timeout, samples): index
+            executor.submit(test_ntp_server, target["host"], port, timeout, samples, instance_path=instance_path): index
             for index, target in enumerate(targets)
         }
         indexed_results = []
@@ -44,7 +48,15 @@ def test_ntp_servers(
     return [result for _index, result in sorted(indexed_results)]
 
 
-def test_ntp_server(
+def test_ntp_server(host, port=123, timeout=3.0, samples=4, *, instance_path=None):
+    try:
+        with outgoing_slot(resolve_instance(instance_path), host):
+            return _test_ntp_server_connected(host, port, timeout, samples)
+    except CapacityWaitTimeout as exc:
+        raise ToolInputError(str(exc)) from exc
+
+
+def _test_ntp_server_connected(
     host: str,
     port: int = 123,
     timeout: float = 3.0,

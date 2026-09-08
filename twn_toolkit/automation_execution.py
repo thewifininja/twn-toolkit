@@ -82,8 +82,11 @@ def condition_worker_map(execute, items, limit):
         return []
     instance = _condition_instance.get()
     if instance:
+        def scoped(item):
+            with condition_worker_scope(instance):
+                return execute(item)
         with _borrow(instance, "condition") as (executor, workers):
-            return _map_window(executor, min(workers, limit), execute, items)
+            return _map_window(executor, min(workers, limit), scoped, items)
     # Non-condition callers keep independent per-call concurrency.
     with ThreadPoolExecutor(max_workers=min(limit, len(items))) as executor:
         return _map_window(executor, limit, execute, items)

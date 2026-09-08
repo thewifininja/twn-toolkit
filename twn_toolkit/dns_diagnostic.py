@@ -39,7 +39,7 @@ def execute_dns(store, job, config):
                              concurrency=int(form['concurrency']))
         summary = {'load_result': load, 'lookup_summary': None}
     else:
-        rows = dns_lookup_matrix(hosts, servers, form['record_type'], float(form['timeout']))
+        rows = dns_lookup_matrix(hosts, servers, form['record_type'], float(form['timeout']), instance_path=str(store.instance))
         latencies = [float(row['response_ms']) for row in rows if row.get('status') == 'success']
         summary = {'load_result': None, 'lookup_summary': {
             'queries': len(rows), 'successful': len(latencies), 'failed': len(rows) - len(latencies),

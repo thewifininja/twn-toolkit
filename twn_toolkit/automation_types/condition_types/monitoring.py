@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from ...outgoing_admission import CapacityWaitTimeout
 from ...automation_execution import condition_worker_map
 from typing import Any, Mapping
 #
@@ -169,6 +170,8 @@ def _evaluate_snmp(config: dict[str, Any]) -> ConditionResult:
         prepared_profiles,
         condition_workers=True,
     )
+    if any(row.get('capacity_limited') for row in raw_results):
+        raise CapacityWaitTimeout('Outgoing capacity prevented a complete condition check; prior state is preserved.')
     rule_by_id = {rule["id"]: rule for rule in normalized["rules"]}
     host_results: dict[str, dict[str, Any]] = {
         host["name"]: {"host_name": host["name"], "host": host["host"], "matched": False, "rules": []}
@@ -273,6 +276,10 @@ def _inspect_certificate_target(target: dict[str, Any], timeout: float) -> dict[
         result = inspect_certificate_chain(target["host"], target["port"], timeout)
         return {"target": target, "result": result, "error": ""}
     except (CertificateInspectionError, ValueError, OSError) as exc:
+        if isinstance(exc, CapacityWaitTimeout):
+            raise
+        if isinstance(exc.__cause__, CapacityWaitTimeout):
+            raise exc.__cause__
         return {"target": target, "result": None, "error": str(exc)}
 #
 #

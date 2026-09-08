@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .outgoing_admission import outgoing_slot, resolve_instance, CapacityWaitTimeout
+
 import hashlib
 import ipaddress
 import re
@@ -73,19 +75,25 @@ def normalize_certificate_target(value: str, port_value: str | int = 443) -> tup
     return normalized_host, port
 
 
-def inspect_certificate_chain(host: str, port: int = 443, timeout: float = 8.0) -> dict[str, Any]:
+def inspect_certificate_chain(host: str, port: int = 443, timeout: float = 8.0, *, instance_path=None) -> dict[str, Any]:
     if not 0.2 <= timeout <= 30:
         raise ValueError("Timeout must be between 0.2 and 30 seconds.")
 
     started = time.monotonic()
+    instance_path = resolve_instance(instance_path)
+    def admitted(function):
+        with outgoing_slot(instance_path, host):
+            return function(host, port, timeout)
     with ThreadPoolExecutor(max_workers=2) as executor:
-        chain_future = executor.submit(_retrieve_presented_chain, host, port, timeout)
-        trust_future = executor.submit(_validate_with_system_trust, host, port, timeout)
+        chain_future = executor.submit(admitted, _retrieve_presented_chain)
+        trust_future = executor.submit(admitted, _validate_with_system_trust)
         try:
             chain_der, tls_details = chain_future.result()
+            trust_result = trust_future.result()
+        except CapacityWaitTimeout as exc:
+            raise CertificateInspectionError(str(exc)) from exc
         except (OSError, ssl.SSLError) as exc:
             raise CertificateInspectionError(_connection_error(host, port, exc)) from exc
-        trust_result = trust_future.result()
     if not chain_der:
         raise CertificateInspectionError("The server completed TLS but did not provide a certificate.")
 

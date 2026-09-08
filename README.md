@@ -426,6 +426,18 @@ add a durable zero-to-24-hour delay without holding a scheduler worker, and
 resume after a toolkit restart. Bounded, non-secret summaries from earlier
 stages can be passed to later Webhook/API actions.
 
+Normal TCP probes, DNS comparisons, RADIUS, SNMP, NTP, TLS certificate checks,
+SSH and transfers share outgoing admission across processes on each instance.
+Defaults are 64 connection slots overall and 8 per normalized target spelling;
+FTP reserves two slots for its control/data sockets, and TLS checks reserve each
+handshake independently. SSH/transfers also retain their narrower limits. Probe admission waits
+up to 30 seconds before reporting that no operation started. Request timeouts
+and successful DNS response timing begin after admission. Capacity-skipped
+condition checks preserve automation state and debounce counters. Settings →
+Operations exposes these limits. Intentional DNS load tests retain their explicit
+QPS/concurrency pacing; ICMP rounds and distributed control have separate budgets.
+DNS aliases are separate target identities.
+
 Startup automations can run once per host boot or after every complete toolkit
 start. They wait briefly for DHCP, deduplicate events durably across scheduler
 restarts, and expose the configured instance name, hostname, version, current

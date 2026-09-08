@@ -1442,7 +1442,7 @@ class LiveToolRunner:
                 prepared.append((host, credential, interface_index))
                 prepared_indexes.append(index)
             for index, result in zip(
-                prepared_indexes, poll_snmp_interfaces(prepared)
+                prepared_indexes, poll_snmp_interfaces(prepared, instance_path=str(self.store.instance_path))
             ):
                 results[index] = result
             completed_results = [

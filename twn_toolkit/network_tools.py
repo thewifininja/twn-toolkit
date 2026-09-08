@@ -15,6 +15,7 @@ from functools import lru_cache
 from typing import Any, Callable
 
 from .automation_execution import condition_worker_map, execute_condition_ping, ssh_worker_pool
+from .outgoing_admission import outgoing_slot, resolve_instance, CapacityWaitTimeout
 from .transfer_admission import transfer_slot
 from .transfer_deadlines import TransferDeadline
 from .ssh_security import (
@@ -147,6 +148,7 @@ def scan_tcp_ports(
     ports: list[int],
     timeout: float = 1.0,
     max_workers: int = 100,
+    *, instance_path: str | None = None,
 ) -> list[dict[str, Any]]:
     if not targets or not ports:
         raise ToolInputError("Select at least one host and TCP port.")
@@ -158,13 +160,14 @@ def scan_tcp_ports(
         raise ToolInputError("Concurrency must be between 1 and 200.")
 
     jobs = [(target, port) for target in targets for port in ports]
-    return scan_tcp_checks(jobs, timeout=timeout, max_workers=max_workers)
+    return scan_tcp_checks(jobs, timeout=timeout, max_workers=max_workers, instance_path=instance_path)
 
 
 def scan_tcp_checks(
     checks: list[tuple[dict[str, str], int]],
     timeout: float = 1.0,
     max_workers: int = 100,
+    *, instance_path: str | None = None,
 ) -> list[dict[str, Any]]:
     if not checks:
         raise ToolInputError("Select at least one TCP host/port check.")
@@ -192,8 +195,9 @@ def scan_tcp_checks(
                 future.set_exception(exc)
         return future.result()
 
+    instance_path = resolve_instance(instance_path)
     return condition_worker_map(
-        lambda check: _scan_tcp_port(check[0], check[1], timeout, resolve), checks, max_workers,
+        lambda check: _scan_tcp_port(check[0], check[1], timeout, resolve, instance_path), checks, max_workers,
     )
 
 
@@ -215,13 +219,19 @@ def _connect_tcp_addresses(addresses: list, port: int, timeout: float) -> None:
 
 def _scan_tcp_port(
     target: dict[str, str], port: int, timeout: float, resolve: Callable[[str], list],
+    instance_path=None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     status = "error"
     detail = ""
+    capacity_limited = False
     try:
-        _connect_tcp_addresses(resolve(target["host"]), port, timeout)
+        with outgoing_slot(instance_path, target["host"]):
+            _connect_tcp_addresses(resolve(target["host"]), port, timeout)
         status = "open"
+    except CapacityWaitTimeout as exc:
+        detail = str(exc)
+        capacity_limited = True
     except ConnectionRefusedError:
         status = "closed"
         detail = "Connection refused"
@@ -237,6 +247,7 @@ def _scan_tcp_port(
     except OSError:
         service = ""
     return {
+        **({"capacity_limited": True} if capacity_limited else {}),
         "host": target["host"],
         "label": target.get("label", ""),
         "port": port,
@@ -411,12 +422,14 @@ def dns_lookup_matrix(
     servers: list[dict[str, str]],
     record_type: str = "A",
     timeout: float = 3.0,
+    *, instance_path: str | None = None,
 ) -> list[dict[str, Any]]:
     record_type = _validated_dns_query_settings(record_type, timeout)
 
+    instance_path = resolve_instance(instance_path)
     jobs = [(host, server) for host in hosts for server in servers]
     return condition_worker_map(
-        lambda job: _dns_lookup(job[0], job[1], record_type, timeout), jobs, 20,
+        lambda job: _dns_lookup(job[0], job[1], record_type, timeout, instance_path), jobs, 20,
     )
 
 
@@ -628,6 +641,7 @@ def radius_authenticate(
     timeout: float = 3.0,
     retries: int = 1,
     attributes: list[dict[str, Any]] | None = None,
+    *, instance_path: str | None = None,
 ) -> list[dict[str, Any]]:
     protocol = protocol.lower()
     if protocol not in {"pap", "chap"}:
@@ -636,6 +650,7 @@ def radius_authenticate(
         raise ToolInputError("RADIUS timeout must be between 0.2 and 30 seconds.")
     if not 1 <= retries <= 5:
         raise ToolInputError("RADIUS attempts must be between 1 and 5.")
+    instance_path = resolve_instance(instance_path)
     workers = min(10, len(servers))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
@@ -647,6 +662,7 @@ def radius_authenticate(
                 timeout,
                 retries,
                 attributes or [],
+                instance_path,
             ): index
             for index, server in enumerate(servers)
         }
@@ -654,7 +670,18 @@ def radius_authenticate(
     return [result for _index, result in sorted(indexed_results)]
 
 
-def _radius_authenticate_one(
+def _radius_authenticate_one(server, credentials, protocol, timeout, retries, attributes, instance_path=None):
+    started = time.monotonic()
+    try:
+        with outgoing_slot(instance_path, server['host']):
+            return _radius_authenticate_connected(server, credentials, protocol, timeout, retries, attributes)
+    except CapacityWaitTimeout as exc:
+        return {'server_name': server['name'], 'server': server['host'], 'port': server['port'],
+                'status': 'error', 'response_ms': round((time.monotonic()-started)*1000, 1),
+                'attributes': [], 'error': str(exc)}
+
+
+def _radius_authenticate_connected(
     server: dict[str, Any],
     credentials: dict[str, Any],
     protocol: str,
@@ -735,6 +762,8 @@ def _radius_authenticate_one(
             "attributes": [],
             "error": f"{type(exc).__name__}: {exc}",
         }
+    finally:
+        client._CloseSocket()
 
 
 def _radius_value(value: Any) -> str:
@@ -811,6 +840,7 @@ def _dns_lookup(
     server: dict[str, str],
     record_type: str,
     timeout: float,
+    instance_path=None,
 ) -> dict[str, Any]:
     import dns.exception
     import dns.resolver
@@ -821,7 +851,9 @@ def _dns_lookup(
     resolver.lifetime = timeout
     started = time.monotonic()
     try:
-        answer = resolver.resolve(host["host"], record_type, search=False)
+        with outgoing_slot(instance_path, server["address"]):
+            started = time.monotonic()
+            answer = resolver.resolve(host["host"], record_type, search=False)
         return {
             "host": host["host"],
             "host_label": host["label"],
@@ -847,6 +879,7 @@ def _dns_lookup(
         }
     except Exception as exc:
         return {
+            **({"capacity_limited": True} if isinstance(exc, CapacityWaitTimeout) else {}),
             "host": host["host"],
             "host_label": host["label"],
             "server": server["address"],
