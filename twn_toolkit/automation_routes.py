@@ -22,6 +22,7 @@ from flask import (
     render_template,
     request,
     send_file,
+    stream_with_context,
     url_for,
 )
 
@@ -901,7 +902,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         if not job:
             raise RuntimeError("Automation job could not be claimed.")
         run_id = AutomationEngine(store).process_job(job)
-        run = store.get_run(run_id) if run_id else None
+        run = store.get_run(run_id, metadata_only=True) if run_id else None
         run_status = (run or {}).get("status", "waiting")
         annotate_audit_event(
             category="Automation",
@@ -1083,7 +1084,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     @app.post("/automations/runs/<run_id>/delete")
     def delete_automation_run(run_id: str):
         require_admin()
-        run = store.get_run(run_id)
+        run = store.get_run(run_id, metadata_only=True)
         if not run:
             abort(404)
         store.delete_run(run_id)
@@ -1097,10 +1098,40 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         flash("Collected action run deleted.", "success")
         return redirect(url_for("automations", focus=run["automation_id"]))
 
+    @app.get('/automations/runs/<run_id>/results.json')
+    def download_automation_run_json(run_id):
+        require_admin()
+        from .sqlite_incremental import ReadSnapshot
+        snapshot = ReadSnapshot(store.path)
+        try:
+            rows = snapshot.query('SELECT rowid FROM automation_runs WHERE id=?', (run_id,))
+            if not rows:
+                abort(404)
+            rowid = rows[0][0]
+            limit = LocalDatastore(store.instance_path).upload_limit()
+            size = snapshot.blob_size('automation_runs', 'results_json', rowid)
+            # UTF-16 storage can expand on UTF-8 download; reserve an upper bound.
+            if size * (1 if snapshot.encoding.lower() == 'utf-8' else 2) > limit:
+                abort(400, 'Retained results JSON exceeds the configured download limit.')
+            response = Response(stream_with_context(snapshot.iter_utf8('automation_runs','results_json',rowid,maximum=limit)), mimetype='application/json')
+            response.call_on_close(snapshot.close)
+            response.headers['Content-Disposition'] = f'attachment; filename="{_safe_filename(run_id)}-results.json"'
+            response.headers['Cache-Control'] = 'no-store'
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            annotate_audit_event(category='Automation', action='automation.run_metadata_downloaded',
+                summary='Downloaded retained automation results JSON.', resource_type='automation run', resource_id=run_id)
+            return response
+        except BaseException:
+            snapshot.close()
+            raise
+
     @app.get("/automations/runs/<run_id>/download")
     def download_automation_run(run_id: str):
         require_admin()
-        run = store.get_run(run_id)
+        try:
+            run = store.get_run(run_id)
+        except (ValueError, UnicodeError) as exc:
+            abort(400, str(exc))
         if not run:
             abort(404)
         annotate_audit_event(
@@ -1124,7 +1155,10 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     @app.post("/automations/runs/<run_id>/case")
     def add_automation_run_to_case(run_id: str):
         require_admin()
-        run = store.get_run(run_id)
+        try:
+            run = store.get_run(run_id)
+        except (ValueError, UnicodeError) as exc:
+            abort(400, str(exc))
         if not run:
             abort(404)
         try:
