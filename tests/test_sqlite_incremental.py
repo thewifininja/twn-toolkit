@@ -122,3 +122,23 @@ def test_utf8_iterator_close_releases_blob_without_closing_snapshot(database):
         next(stream);assert read.blobs
         stream.close();assert not read.blobs
         assert read.query('SELECT 1')==[(1,)]
+
+
+def test_native_reader_uses_pythons_linked_sqlite_before_system_library():
+    import _sqlite3
+    import ctypes
+    import sqlite3
+    from twn_toolkit.sqlite_incremental import _api
+    with patch('twn_toolkit.sqlite_incremental.C.CDLL', wraps=ctypes.CDLL) as opened:
+        library = _api.__wrapped__()
+    assert opened.call_args_list[0].args[0] == _sqlite3.__file__
+    library.sqlite3_libversion.restype = ctypes.c_char_p
+    assert library.sqlite3_libversion().decode() == sqlite3.sqlite_version
+
+
+def test_readonly_wal_database_after_last_writer_closes(database):
+    with sqlite3.connect(database) as writer:
+        writer.execute('UPDATE sample SET payload=?', ('closed writer',))
+    writer.close()
+    with ReadSnapshot(database) as read:
+        assert read.read_blob('sample','payload',1,cap=100)[0] == b'closed writer'

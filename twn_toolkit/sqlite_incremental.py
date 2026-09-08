@@ -11,10 +11,22 @@ from pathlib import Path
 @lru_cache(maxsize=1)
 def _api():
     import _sqlite3
-    try:
-        lib = C.CDLL(ctypes.util.find_library('sqlite3') or _sqlite3.__file__)
-    except OSError as exc:
-        raise ValueError('Incremental SQLite reading is unavailable on this runtime.') from exc
+    # Resolve the C API from the extension's dependency graph first. On macOS
+    # the system SQLite can differ from Python's bundled SQLite, including WAL
+    # behavior. Own a new connection, but use the same library as Python.
+    lib = None
+    for candidate in (_sqlite3.__file__, ctypes.util.find_library('sqlite3')):
+        if not candidate:
+            continue
+        try:
+            loaded = C.CDLL(candidate)
+            getattr(loaded, 'sqlite3_blob_open')
+            lib = loaded
+            break
+        except (OSError, AttributeError):
+            continue
+    if lib is None:
+        raise ValueError('Incremental SQLite reading is unavailable on this runtime.')
     pointer = C.c_void_p
     signatures = {
         'sqlite3_open_v2': ([C.c_char_p,C.POINTER(pointer),C.c_int,C.c_char_p],C.c_int),
