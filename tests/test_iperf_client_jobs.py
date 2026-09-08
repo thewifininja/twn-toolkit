@@ -155,7 +155,9 @@ def test_worker_deadline_stops_descendants_without_scheduler_ticks(tmp_path, mon
         process.stdin.close()
         wait_for(ready.exists)
         process.wait(timeout=5)
-        assert process.returncode == -signal.SIGKILL
+        # macOS may complete os._exit(124) before delivering the queued self-signal.
+        # Either exit is valid only if the external descendant lock is released.
+        assert process.returncode in {124, -signal.SIGKILL}
         wait_for(lambda: unlocked(lock))
         store.recover()
         assert store.get(job_id, 'owner')['state'] == 'unknown'
