@@ -494,6 +494,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
 
             self.assertEqual(retried.status_code, 200)
             self.assertEqual(retried.get_json()["result"], retried_result)
+            self.assertEqual(retry.call_args.kwargs["instance_path"], instance)
             self.assertIn(b"Saved key replaced", retried.data)
             forget.assert_called_once_with(
                 "192.0.2.20",

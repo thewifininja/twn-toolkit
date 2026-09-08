@@ -14,7 +14,9 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_c
 from functools import lru_cache
 from typing import Any, Callable
 
-from .automation_execution import condition_worker_map, execute_condition_ping
+from .automation_execution import condition_worker_map, execute_condition_ping, ssh_worker_pool
+from .transfer_admission import transfer_slot
+from .transfer_deadlines import TransferDeadline
 from .ssh_security import (
     close_ssh_client,
     format_ssh_connection_error,
@@ -47,6 +49,7 @@ SSH_OUTPUT_LIMIT = 5 * 1024 * 1024
 SSH_TARGET_LIMIT = 5_000
 SSH_EXECUTION_BATCH_SIZE = 50
 SSH_EXECUTION_WORKERS = 10
+SSH_ADMISSION_WAIT_SECONDS = 30
 SSH_FLEET_OUTPUT_BUDGET = 50 * 1024 * 1024
 
 
@@ -1024,6 +1027,7 @@ def run_ssh_hosts(
     command_delay: float = 1.0,
     default_command_timeout: int = SSH_DEFAULT_COMMAND_TIMEOUT,
     allow_legacy_algorithms: bool = False,
+    instance_path: str | None = None,
 ) -> list[dict[str, Any]]:
     command_specs = parse_ssh_commands(commands, default_command_timeout)
     plans = []
@@ -1051,6 +1055,7 @@ def run_ssh_hosts(
         send_ctrl_y=send_ctrl_y,
         command_delay=command_delay,
         allow_legacy_algorithms=allow_legacy_algorithms,
+        instance_path=instance_path,
     )
 
 
@@ -1063,6 +1068,7 @@ def run_ssh_host_plans(
     send_ctrl_y: bool = False,
     command_delay: float = 1.0,
     allow_legacy_algorithms: bool = False,
+    instance_path: str | None = None,
 ) -> list[dict[str, Any]]:
     if not username:
         raise ToolInputError("Enter an SSH username.")
@@ -1125,29 +1131,29 @@ def run_ssh_host_plans(
             batch_start : batch_start + SSH_EXECUTION_BATCH_SIZE
         ]
         workers = min(SSH_EXECUTION_WORKERS, len(batch))
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {
-                executor.submit(
-                    _ssh_host,
-                    plan["host"],
-                    username,
-                    password,
-                    plan["command_specs"],
-                    port,
-                    allow_unknown_hosts,
-                    send_ctrl_y,
-                    command_delay,
-                    plan["label"],
-                    allow_legacy_algorithms,
-                    per_host_capture_limit,
-                    plan["required_host_key_fingerprint"],
-                ): batch_start + index
-                for index, plan in enumerate(batch)
-            }
-            indexed_results.extend(
-                (futures[future], future.result())
-                for future in as_completed(futures)
-            )
+        pool = ssh_worker_pool(instance_path, SSH_EXECUTION_WORKERS) if instance_path else ThreadPoolExecutor(max_workers=workers)
+        with pool as executor:
+            futures = {}
+            try:
+                for index, plan in enumerate(batch):
+                    future = executor.submit(
+                        _ssh_host, plan["host"], username, password,
+                        plan["command_specs"], port, allow_unknown_hosts,
+                        send_ctrl_y, command_delay, plan["label"],
+                        allow_legacy_algorithms, per_host_capture_limit,
+                        plan["required_host_key_fingerprint"], instance_path,
+                    )
+                    futures[future] = batch_start + index
+                indexed_results.extend(
+                    (futures[future], future.result())
+                    for future in as_completed(futures)
+                )
+            finally:
+                # A borrowed pool can outlive this caller. Stop unsent work and
+                # drain its running tasks before releasing our pool ownership.
+                for future in futures:
+                    future.cancel()
+                wait(futures)
     return [result for _index, result in sorted(indexed_results)]
 
 
@@ -1288,6 +1294,41 @@ def _ping_host(host: str, timeout: float) -> dict[str, Any]:
 
 
 def _ssh_host(
+    host: str,
+    username: str,
+    password: str,
+    commands: list[dict[str, Any]],
+    port: int,
+    allow_unknown_hosts: bool,
+    send_ctrl_y: bool,
+    command_delay: float,
+    host_label: str = "",
+    allow_legacy_algorithms: bool = False,
+    capture_limit: int = SSH_OUTPUT_LIMIT,
+    required_host_key_fingerprint: str = "",
+    instance_path: str | None = None,
+) -> dict[str, Any]:
+    arguments = (host, username, password, commands, port, allow_unknown_hosts,
+                 send_ctrl_y, command_delay, host_label, allow_legacy_algorithms,
+                 capture_limit, required_host_key_fingerprint)
+    if not instance_path:
+        return _ssh_host_connection(*arguments)
+    try:
+        # This deadline bounds admission only. Existing per-command and setup
+        # timeouts continue to govern the connection after it is admitted.
+        with TransferDeadline(SSH_ADMISSION_WAIT_SECONDS) as admission:
+            with transfer_slot(instance_path, host, admission):
+                # The connection helper closes its client before releasing the slot.
+                return _ssh_host_connection(*arguments)
+    except TimeoutError:
+        return {'host': host, 'host_label': host_label, 'status': 'error', 'output': '',
+                'error': 'SSH capacity wait exceeded its limit; no connection was started.'}
+    except Exception as exc:
+        return {'host': host, 'host_label': host_label, 'status': 'error', 'output': '',
+                'error': 'Unable to acquire outgoing SSH capacity: ' + type(exc).__name__}
+
+
+def _ssh_host_connection(
     host: str,
     username: str,
     password: str,

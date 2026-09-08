@@ -1438,6 +1438,7 @@ class NetworkToolTests(unittest.TestCase):
                 "switch-1",
             )
             self.assertTrue(ssh_run.call_args.kwargs["allow_legacy_algorithms"])
+            self.assertEqual(ssh_run.call_args.kwargs["instance_path"], instance)
             ssh_event = AuditStore(instance).recent(1)[0]
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
             self.assertEqual(
