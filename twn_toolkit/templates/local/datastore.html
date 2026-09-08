@@ -57,9 +57,10 @@
         {% endfor %}
       </select>
     </label>
-    <button type="button" class="secondary" data-datastore-download>Download selected</button>
+    <button type="button" class="secondary" data-datastore-download aria-describedby="datastore-zip-limit">Download selected</button>
     <button type="button" class="secondary" data-datastore-move>Move selected</button>
     <button type="button" class="danger" data-datastore-delete>Delete selected</button>
+    <span id="datastore-zip-limit">ZIP limit: {{ max_upload_display }} and 10,000 files and folders.</span>
   </div>
 
   <form method="post" action="{{ url_for('bulk_move_datastore_files') }}" data-datastore-move-form hidden>

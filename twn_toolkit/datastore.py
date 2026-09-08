@@ -7,6 +7,7 @@ from typing import BinaryIO
 
 
 MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 10_000
 
 
 class DatastoreError(ValueError):
@@ -215,12 +216,18 @@ class LocalDatastore:
             roots.append(source)
 
         members: list[tuple[Path, str, bool]] = []
+
+        def append_member(member):
+            if len(members) >= MAX_ARCHIVE_MEMBERS:
+                raise DatastoreError("A ZIP download may contain no more than 10,000 files and folders.")
+            members.append(member)
+
         for source in roots:
             relative = source.relative_to(base).as_posix()
             if source.is_file():
-                members.append((source, relative, False))
+                append_member((source, relative, False))
                 continue
-            members.append((source, relative, True))
+            append_member((source, relative, True))
             for folder, directory_names, file_names in os.walk(source, followlinks=False):
                 folder_path = Path(folder)
                 directory_names[:] = sorted(
@@ -228,11 +235,11 @@ class LocalDatastore:
                     if not (folder_path / name).is_symlink()
                 )
                 if folder_path != source:
-                    members.append((folder_path, folder_path.relative_to(base).as_posix(), True))
+                    append_member((folder_path, folder_path.relative_to(base).as_posix(), True))
                 for name in sorted(file_names, key=str.casefold):
                     file_path = folder_path / name
                     if file_path.is_file() and not file_path.is_symlink():
-                        members.append((file_path, file_path.relative_to(base).as_posix(), False))
+                        append_member((file_path, file_path.relative_to(base).as_posix(), False))
         return members
 
     def usage(self) -> dict[str, int]:
