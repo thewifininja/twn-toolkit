@@ -282,6 +282,7 @@
           {% if is_schedule %}<p class="field-note automation-context-note schedule-preview-note">Refresh is read-only. It recalculates the next occurrence without arming the schedule or running its actions.</p>{% elif is_network %}<p class="field-note automation-context-note">Preview is read-only and does not establish or alter the saved interface baseline.</p>{% endif %}
           <div class="automation-record-editor" id="edit-automation-{{ automation.id }}" hidden>{{ automation_form({}, automation) }}</div>
           {% if not is_manual %}<details class="automation-subsection"><summary>{{ 'Schedule history' if is_schedule else 'Startup history' if is_startup else 'Recent checks' }} <small>{{ automation.recent_checks|length }}</small></summary>{% if automation.recent_checks %}<div class="automation-history-list">{% for check in automation.recent_checks %}<article><span class="pill {{ 'error' if check.status == 'error' else 'planned' if check.status in ['scheduled', 'skipped', 'started'] or check.met else 'success' }}">{{ check.status }}</span><strong>{{ check.summary }}</strong><small>{{ check.checked_display }}</small></article>{% endfor %}</div>{% else %}<p class="empty">{{ 'No schedule occurrences yet.' if is_schedule else 'No startup events yet.' if is_startup else 'No checks have run yet.' }}</p>{% endif %}</details>{% endif %}
+          <p><a href="{{ url_for('automation_history', automation_id=automation.id) }}">Browse run and check history</a>{% if automation.history_preview_limited %} · Workspace history preview limited; open history for this automation.{% endif %}</p>
           <details class="automation-subsection automation-runs" {% if request.args.get('focus_run') and automation.recent_runs %}open{% endif %}>
             <summary><span>Collected action runs <small class="count-badge">{{ automation.recent_runs|length }}</small></span></summary>
             {% if automation.recent_runs %}
@@ -297,6 +298,7 @@
                       <span class="automation-run-summary"><strong>{{ run.trigger_summary }}</strong><small>{{ run.started_display }}</small></span>
                     </summary>
                     <div class="automation-run-body">
+                      {% if run.preview_limited %}<p>Browser preview shortened or omitted. Download the ZIP for complete retained results.</p>{% endif %}
                       <div class="automation-run-toolbar">
                         <span>Collected output</span>
                         <div class="button-row automation-run-actions"><a class="button-link secondary" href="{{ url_for('download_automation_run', run_id=run.id) }}">Download ZIP</a><form method="post" action="{{ url_for('add_automation_run_to_case', run_id=run.id) }}"><button class="secondary" type="submit">Add to case</button></form><form method="post" action="{{ url_for('delete_automation_run', run_id=run.id) }}" onsubmit="return confirm('Delete this collected action run?')"><button class="text-danger" type="submit">Delete run</button></form></div>

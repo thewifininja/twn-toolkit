@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h1>{{ automation.name }} history</h1>
+  <p><a href="{{ url_for('automations', focus=automation.id) }}">Back to automations</a></p>
+  <p>History previews are bounded. ZIP downloads contain complete retained results within the export limits.</p>
+  {% for run in history.runs %}
+  <details><summary>{{ run.started_display }} · {{ run.status }} · {{ run.trigger_summary }}</summary>
+    <p><a href="{{ url_for('download_automation_run', run_id=run.id) }}">Download ZIP</a></p>
+    {% if run.preview_limited %}<p>Browser preview shortened or omitted. Download the ZIP for complete retained results.</p>{% endif %}
+    <pre class="result-output">{{ run.results|tojson(indent=2) }}</pre>
+  </details>
+  {% else %}<p>No collected runs on this page.</p>{% endfor %}
+  <h2>Condition checks</h2>
+  {% for check in history.checks %}<p>{{ check.status }} · {{ check.summary }}</p>{% else %}<p>No checks on this page.</p>{% endfor %}
+  <nav aria-label="History pages">Page {{ page }} {% if page > 1 %}<a href="{{ url_for('automation_history', automation_id=automation.id, page=page-1) }}">Previous</a>{% endif %} {% if history.more and page < 5000 %}<a href="{{ url_for('automation_history', automation_id=automation.id, page=page+1) }}">Next</a>{% endif %}</nav>
+</section>
+{% endblock %}

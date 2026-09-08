@@ -661,28 +661,15 @@ class AutomationStore:
             ]
             recent_runs: dict[str, list[dict[str, Any]]] = {}
             recent_checks: dict[str, list[dict[str, Any]]] = {}
+            from .automation_history import HistoryBudget, history_rows
+            history_budget = HistoryBudget()
             for automation in automations:
                 automation_id = str(automation["id"])
-                recent_runs[automation_id] = [
-                    {**dict(row), "results": json.loads(row["results_json"])}
-                    for row in connection.execute(
-                        """
-                        SELECT * FROM automation_runs WHERE automation_id = ?
-                        ORDER BY started_at DESC LIMIT ?
-                        """,
-                        (automation_id, recent_limit),
-                    )
-                ]
-                recent_checks[automation_id] = [
-                    {**dict(row), "evidence": json.loads(row["evidence_json"])}
-                    for row in connection.execute(
-                        """
-                        SELECT * FROM automation_checks WHERE automation_id = ?
-                        ORDER BY checked_at DESC LIMIT ?
-                        """,
-                        (automation_id, recent_limit),
-                    )
-                ]
+                recent_runs[automation_id] = history_rows(
+                    connection, automation_id, limit=recent_limit, budget=history_budget)
+                recent_checks[automation_id] = history_rows(
+                    connection, automation_id, checks=True, limit=recent_limit, budget=history_budget)
+                automation['history_preview_limited'] = history_budget.rows == 0
             job_stats = self._job_stats_from_connection(connection, now)
         return {
             "automations": automations,
@@ -1814,6 +1801,18 @@ class AutomationStore:
                 for folder in staging_roots:
                     shutil.rmtree(folder, ignore_errors=True)
         return run_id
+
+    def history_page(self, automation_id: str, *, page: int = 1):
+        from .automation_history import HistoryBudget, history_rows
+        page = max(1, min(5000, int(page)))
+        with readonly_sqlite_connection(self.path, timeout_seconds=1.0) as connection:
+            connection.execute("BEGIN")
+            budget = HistoryBudget()
+            runs = history_rows(connection, automation_id, limit=21,
+                                offset=(page-1)*20, budget=budget)
+            checks = history_rows(connection, automation_id, checks=True, limit=21,
+                                  offset=(page-1)*20, budget=budget)
+        return {'runs': runs[:20], 'checks': checks[:20], 'more': len(runs)>20 or len(checks)>20}
 
     def recent_runs(self, automation_id: str, limit: int = 20) -> list[dict[str, Any]]:
         with self._connect() as connection:
