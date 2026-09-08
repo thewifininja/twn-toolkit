@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block content %}
+{% include 'components/diagnostic_job.html' %}
+{% set data = diagnostic_job.summary %}
+<section class="panel form">
+  <h2>Retained switch order</h2>
+  <p>{{ diagnostic_job.config.profile.name }} · {{ target_origin }} · VDOM {{ diagnostic_job.config.vdom }}</p>
+  {% if data.recording_warning %}<p class="message error" role="alert">{{ data.recording_warning }}</p>{% endif %}
+  {% if diagnostic_job.config.mode == 'apply' %}
+  <p>{{ data.completed_moves|default([])|length }} acknowledged moves · {{ data.attempted_moves|default(0) }} attempted moves.</p>
+  <p class="field-note">Cancellation stops further work when confirmed; it does not undo changes. After an incomplete or unknown outcome, load and review the appliance’s current order before another apply. This operation is never replayed automatically.</p>
+  {% if data.in_flight %}<p class="message error">Unconfirmed move: {{ data.in_flight.switch_id }} after {{ data.in_flight.after }}. This may have reached the appliance.</p>{% endif %}
+  {% if diagnostic_job.state == 'succeeded' %}<p class="message success">{{ data.message }}</p>{% endif %}
+  <div class="preview-table-wrap"><table>
+    <thead><tr><th scope="col">Position</th><th scope="col">Reviewed original</th><th scope="col">Reviewed desired</th></tr></thead>
+    <tbody>{% for original, desired in reviewed_orders %}<tr><td>{{ (page - 1) * 50 + loop.index }}</td><td>{{ original }}</td><td>{{ desired }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if completed_moves %}<h3>Acknowledged moves</h3><ol start="{{ (page - 1) * 50 + 1 }}">{% for move in completed_moves %}<li>{{ move.switch_id }} after {{ move.after }}</li>{% endfor %}</ol>{% endif %}
+  {% endif %}
+  {% if switches %}
+  <h3>{% if data.phase == 'verified' %}Verified order{% elif diagnostic_job.config.mode == 'load' %}Loaded order{% else %}Last observed order{% endif %}</h3>
+  <p class="field-note">Names, descriptions and serial labels show up to 256 characters; identifiers are retained in full. An observed order is not a guarantee of the appliance’s current state.</p>
+  <div class="preview-table-wrap"><table><thead><tr><th scope="col">Position</th><th scope="col">Identifier</th><th scope="col">Name</th><th scope="col">Description</th><th scope="col">Serial</th></tr></thead>
+  <tbody>{% for item in switches %}<tr><td>{{ (page - 1) * 50 + loop.index }}</td><td>{{ item.id }}</td><td>{{ item.name }}</td><td>{{ item.description }}</td><td>{{ item.serial }}</td></tr>{% endfor %}</tbody></table></div>
+  {% endif %}
+  {% if pages > 1 %}<nav class="button-row" aria-label="Switch order result pages">
+    {% if page > 1 %}<a class="button-link secondary" href="{{ url_for('switch_order_job', job_id=diagnostic_job.id, page=page-1) }}">Previous page</a>{% endif %}
+    <span>Page {{ page }} of {{ pages }} · up to 50 rows per section</span>
+    {% if page < pages %}<a class="button-link secondary" href="{{ url_for('switch_order_job', job_id=diagnostic_job.id, page=page+1) }}">Next page</a>{% endif %}
+  </nav>{% endif %}
+  <div class="button-row"><a class="button-link secondary" href="{{ url_for('switch_order') }}">Load and review current order</a></div>
+</section>
+<script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
+{% endblock %}

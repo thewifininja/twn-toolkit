@@ -18,6 +18,7 @@ from flask import (
 )
 
 from .activity_context import record_current_activity
+from .switch_order import managed_switch_order, switch_order_moves, _switch_order_error_summary, _valid_switch_order
 from .preview_binding import issue_bound_preview, valid_bound_preview
 from .rename_preview import (
     RENAME_PREVIEW_MAX_AGE_SECONDS, issue_rename_preview, valid_rename_preview, rename_target,
@@ -196,6 +197,8 @@ def register_fortigate_routes(
     tool_access_allowed: Callable[[str], bool],
 ) -> None:
     from .appliance_read_routes import queue_read, register_read_routes, recent_read_links
+    from .switch_order_routes import register_switch_order_jobs, queue_switch_order
+    register_switch_order_jobs(app)
     register_read_routes(app, 'fortigate')
     register_read_routes(app, 'fortigate', task_routes=True)
 
@@ -220,7 +223,8 @@ def register_fortigate_routes(
 
     @app.get("/fortigate/switch-order")
     def switch_order():
-        return render_template("switch_order.html", profiles=profile_store.all())
+        return render_template("switch_order.html", profiles=profile_store.all(),
+                               switch_order_recent=diagnostic_store().recent(g.current_user["id"], "switch_order"))
 
     @app.route("/fortigate/fortiap/client-history", methods=["GET", "POST"])
     def fortiap_client_history():
@@ -286,29 +290,7 @@ def register_fortigate_routes(
         if not profile:
             return jsonify({"error": "Select a valid FortiGate profile."}), 400
         vdom = request.form.get("vdom", "").strip() or profile.get("default_vdom", "root")
-        try:
-            switches = managed_switch_order(
-                FortiGateClient.from_profile(profile).get_managed_switches(vdom)
-            )
-        except FortiGateError as exc:
-            _record_fortinet_api_activity(
-                "Loaded FortiSwitch order",
-                f"{profile['name']}: failed",
-                failures=1,
-                count_action=False,
-            )
-            return jsonify({"error": str(exc)}), 502
-        _record_fortinet_api_activity(
-            "Loaded FortiSwitch order",
-            f"{profile['name']}: {len(switches)} switches",
-            count_action=False,
-        )
-        return jsonify({"switches": switches, "row_count": len(switches), "vdom": vdom,
-                        "target_origin": rename_target(profile),
-                        "load_token": issue_bound_preview("switch-order-load-v1", {
-                            "profile": profile, "vdom": vdom,
-                            "original_ids": [item["id"] for item in switches],
-                        })})
+        return queue_switch_order(app, profile, vdom=vdom, mode="load")
 
     @app.post("/fortigate/switch-order/preview")
     def preview_switch_order():
@@ -318,6 +300,8 @@ def register_fortigate_routes(
         original = request.form.getlist("original_switch_id")
         desired = request.form.getlist("switch_id")
         context = {"profile": profile, "vdom": vdom, "original_ids": original}
+        if request.form.get("target_revision"):
+            context["target_revision"] = request.form["target_revision"]
         if not profile or not _valid_switch_order(original, desired) or not valid_bound_preview(
             request.form.get("load_token", ""), "switch-order-load-v1", context,
         ):
@@ -353,143 +337,20 @@ def register_fortigate_routes(
             ), 400
 
         original_ids = request.form.getlist("original_switch_id")
+        context = {"profile": profile, "vdom": vdom, "original_ids": original_ids, "desired_ids": desired_ids}
+        if request.form.get("target_revision"):
+            context["target_revision"] = request.form["target_revision"]
         if not _valid_switch_order(original_ids, desired_ids) or not valid_bound_preview(
             request.form.get("preview_token", ""), "switch-order-apply-v1",
-            {"profile": profile, "vdom": vdom, "original_ids": original_ids, "desired_ids": desired_ids},
+            context,
         ):
             _annotate_switch_order(profile, vdom, outcome="aborted_stale_preview", desired_ids=desired_ids)
             return jsonify({"error": "The confirmed preview is missing, expired, or no longer matches. Reload and review the switches."}), 409
 
-        client = FortiGateClient.from_profile(profile)
-        try:
-            current = managed_switch_order(client.get_managed_switches(vdom))
-        except FortiGateError as exc:
-            _record_fortinet_api_activity(
-                "Applied FortiSwitch order",
-                f"{profile['name']}: initial load failed",
-                failures=1,
-            )
-            _annotate_switch_order(
-                profile,
-                vdom,
-                outcome="failed",
-                desired_ids=desired_ids,
-                status_code=exc.status_code,
-            )
-            return jsonify({"error": str(exc)}), 502
-
-        current_ids = [item["id"] for item in current]
-        if current_ids != original_ids or set(desired_ids) != set(current_ids):
-            _annotate_switch_order(
-                profile,
-                vdom,
-                outcome="aborted_stale_inventory",
-                current=current,
-                desired_ids=desired_ids,
-            )
-            return jsonify(
-                {
-                    "error": (
-                        "The managed-switch list or order changed after it was loaded. "
-                        "Reload the switches before applying an order."
-                    )
-                }
-            ), 409
-
-        moves = switch_order_moves(current_ids, desired_ids)
-        completed: list[dict[str, str]] = []
-        try:
-            with client.pooled() as pooled_client:
-                for move in moves:
-                    pooled_client.move_managed_switch_after(move["switch_id"], move["after"], vdom)
-                    completed.append(move)
-                verified = managed_switch_order(pooled_client.get_managed_switches(vdom))
-        except FortiGateError as exc:
-            _record_fortinet_api_activity(
-                "Applied FortiSwitch order",
-                f"{profile['name']}: {len(completed)} of {len(moves)} moves completed",
-                api_calls=2 + len(completed),
-                failures=1,
-            )
-            _annotate_switch_order(
-                profile,
-                vdom,
-                outcome="partial" if completed else "failed",
-                current=current,
-                desired_ids=desired_ids,
-                planned_moves=len(moves),
-                completed_moves=len(completed),
-                status_code=exc.status_code,
-            )
-            progress = (
-                "No switch moves were confirmed; reload to reconcile the current order."
-                if not completed
-                else f"{len(completed)} switch move(s) completed before the error; reload to inspect the current order."
-            )
-            return jsonify(
-                {
-                    "error": str(exc),
-                    "completed_moves": completed,
-                    "detail": str(exc),
-                    "message": (
-                        f"FortiGate rejected the reorder after {len(completed)} "
-                        "successful move(s). Reload to inspect its current order."
-                    ),
-                    "user_message": _switch_order_error_summary(exc, progress),
-                }
-            ), 502
-
-        verified_ids = [item["id"] for item in verified]
-        if verified_ids != desired_ids:
-            _record_fortinet_api_activity(
-                "Applied FortiSwitch order",
-                f"{profile['name']}: verification mismatch after {len(completed)} moves",
-                api_calls=2 + len(completed),
-                failures=1,
-            )
-            _annotate_switch_order(
-                profile,
-                vdom,
-                outcome="verification_failed",
-                current=current,
-                desired_ids=desired_ids,
-                planned_moves=len(moves),
-                completed_moves=len(completed),
-            )
-            return jsonify(
-                {
-                    "error": "FortiGate accepted the moves but the verified order does not match.",
-                    "completed_moves": completed,
-                    "switches": verified,
-                }
-            ), 409
-        _record_fortinet_api_activity(
-            "Applied FortiSwitch order",
-            f"{profile['name']}: {len(completed)} moves verified",
-            api_calls=2 + len(completed),
-        )
-        _annotate_switch_order(
-            profile,
-            vdom,
-            outcome="succeeded",
-            current=current,
-            desired_ids=desired_ids,
-            planned_moves=len(moves),
-            completed_moves=len(completed),
-        )
-        return jsonify(
-            {
-                "message": (
-                    f"Verified the new order of {len(verified)} "
-                    f"{'FortiSwitch' if len(verified) == 1 else 'FortiSwitches'}."
-                ),
-                "moves": completed,
-                "switches": verified,
-                "load_token": issue_bound_preview("switch-order-load-v1", {
-                    "profile": profile, "vdom": vdom, "original_ids": verified_ids,
-                }),
-            }
-        )
+        return queue_switch_order(app, profile, vdom=vdom, mode="apply",
+                                  original_ids=original_ids, desired_ids=desired_ids,
+                                  target_revision=request.form.get("target_revision", ""),
+                                  preview_token=request.form.get("preview_token", ""))
 
     @app.post("/profiles")
     def save_profile():
@@ -770,71 +631,7 @@ def register_fortigate_routes(
                           provider='fortigate', mode='preview', task=task, as_json=True)
 
 
-def managed_switch_order(items: list[dict[str, Any]]) -> list[dict[str, str]]:
-    switches: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for item in items:
-        identifier = str(
-            item.get("switch-id")
-            or item.get("switch_id")
-            or item.get("name")
-            or item.get("serial")
-            or item.get("sn")
-            or ""
-        ).strip()
-        if not identifier or identifier in seen:
-            continue
-        seen.add(identifier)
-        display_name = str(
-            item.get("name")
-            or item.get("switch-id")
-            or item.get("switch_id")
-            or identifier
-        ).strip()
-        description = str(item.get("description") or "").strip()
-        serial = str(item.get("sn") or item.get("serial") or "").strip()
-        switches.append(
-            {
-                "id": identifier,
-                "name": display_name,
-                "description": description,
-                "serial": serial,
-            }
-        )
-    return switches
 
-
-def switch_order_moves(
-    current_ids: list[str],
-    desired_ids: list[str],
-) -> list[dict[str, str]]:
-    simulated = list(current_ids)
-    moves: list[dict[str, str]] = []
-    for index in range(1, len(desired_ids)):
-        switch_id = desired_ids[index]
-        after = desired_ids[index - 1]
-        switch_index = simulated.index(switch_id)
-        if switch_index > 0 and simulated[switch_index - 1] == after:
-            continue
-        simulated.remove(switch_id)
-        after_index = simulated.index(after)
-        simulated.insert(after_index + 1, switch_id)
-        moves.append({"switch_id": switch_id, "after": after})
-    return moves
-
-
-def _switch_order_error_summary(exc: FortiGateError, progress: str) -> str:
-    if exc.status_code == 403:
-        return (
-            "FortiGate did not allow the reorder. Confirm the selected API profile has read-write access "
-            f"to managed FortiSwitches. {progress}"
-        )
-    if exc.status_code == 401:
-        return (
-            "FortiGate rejected the API token while applying the reorder. Confirm the token, trusted hosts, "
-            f"and API administrator status. {progress}"
-        )
-    return f"FortiGate rejected the reorder before it could be verified. {progress}"
 
 
 def connection_error_message(exc: FortiGateError) -> str:
@@ -865,9 +662,3 @@ def _reject_rename_preview(task, profile):
     )
     flash("Build a new dry-run preview and review it before applying. The previous preview is missing, expired, or no longer matches the target or changes.", "error")
     return redirect(url_for("task_form", task_id=task.id))
-
-
-def _valid_switch_order(original, desired):
-    return (len(original) >= 2 and len(original) == len(set(original))
-            and len(desired) == len(original) and len(desired) == len(set(desired))
-            and set(desired) == set(original))

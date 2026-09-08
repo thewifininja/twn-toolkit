@@ -3,6 +3,7 @@
 {% block content %}
 <section class="panel tool-panel switch-order-tool"
          id="switch-order-tool"
+         data-queued-orders="{{ 'true' if switch_order_recent is defined else 'false' }}"
          data-load-url="{{ url_for('switch_order_objects') }}"
          data-preview-url="{{ url_for('preview_switch_order') }}"
          data-apply-url="{{ url_for('apply_switch_order') }}">
@@ -45,6 +46,8 @@
       </div>
       <p id="switch-order-target" class="switch-order-target"></p>
       <div id="switch-order-detail" class="message error switch-order-detail" hidden></div>
+      <div id="switch-order-run" class="button-row" hidden></div>
+      <p class="field-note" id="switch-order-display-note" hidden>Names, descriptions and serial labels show up to 256 characters; identifiers are retained in full.</p>
 
       <ol id="switch-order-list" class="switch-order-list"></ol>
 
@@ -64,5 +67,6 @@
     <a class="button-link" href="{{ url_for('fortigate_home') }}">Create profile</a>
   {% endif %}
 </section>
+{% if switch_order_recent %}<details class="panel"><summary>Your recent switch-order runs</summary><ul>{% for item in switch_order_recent %}<li><a href="{{ url_for('switch_order_job', job_id=item.id) }}">{{ item.id[:12] }} · {{ item.state|replace('_', ' ') }}</a></li>{% endfor %}</ul></details>{% endif %}
 <script src="{{ url_for('static', filename='switch-order.js') }}" defer></script>
 {% endblock %}

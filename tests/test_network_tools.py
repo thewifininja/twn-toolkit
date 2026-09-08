@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.switch_order_helpers import complete_switch_order
+
 from tests.appliance_read_helpers import complete_appliance_read, export_fixture
 
 import re
@@ -446,7 +448,7 @@ class NetworkToolTests(unittest.TestCase):
                     side_effect=FortiGateError("raw permission detail", status_code=403),
                 ),
             ):
-                loaded = client.post("/fortigate/switch-order/objects", data={"profile": "ReadOnly", "vdom": "root"}).get_json()
+                loaded = complete_switch_order(client, client.post("/fortigate/switch-order/objects", data={"profile": "ReadOnly", "vdom": "root"})).get_json()["data"]
                 confirmed = client.post("/fortigate/switch-order/preview", data={
                     "profile": "ReadOnly", "vdom": "root", "original_switch_id": ["switch-a", "switch-b"],
                     "switch_id": ["switch-b", "switch-a"], "load_token": loaded["load_token"],
@@ -462,22 +464,24 @@ class NetworkToolTests(unittest.TestCase):
                         "confirmed": "on",
                     },
                 )
+                response = complete_switch_order(client, response)
             summary = ActivityStore(instance).summary()
             audit_event = AuditStore(instance).recent(1)[0]
             audit_database = (Path(instance) / "audit.sqlite3").read_bytes()
 
-        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertIn("did not allow the reorder", payload["user_message"])
-        self.assertIn("read-write access", payload["user_message"])
-        self.assertEqual(payload["detail"], "raw permission detail")
-        self.assertEqual(payload["completed_moves"], [])
+        self.assertEqual(payload["state"], "unknown")
+        self.assertIn("did not allow the reorder", payload["error"])
+        self.assertIn("read-write access", payload["error"])
+        self.assertIn("raw permission detail", payload["error"])
+        self.assertEqual(payload["data"]["completed_moves"], [])
         self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 3)
         self.assertEqual(summary["counters"]["fortinet"]["failures"], 1)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
         self.assertEqual(summary["recent"][0]["title"], "Applied FortiSwitch order")
-        self.assertEqual(audit_event["action"], "fortigate.switch_order_failed")
-        self.assertEqual(audit_event["details"]["outcome"], "failed")
+        self.assertEqual(audit_event["action"], "fortigate.switch_order_unknown")
+        self.assertEqual(audit_event["details"]["outcome"], "unknown")
         self.assertEqual(audit_event["details"]["completed move count"], 0)
         self.assertNotIn(b"secret", audit_database)
 

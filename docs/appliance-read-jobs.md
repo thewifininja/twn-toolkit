@@ -38,5 +38,6 @@ Deploy web and automation workers together. Discovery endpoints now return202 wi
 job/status/cancel URLs; completed status includes data. Export/connection test POSTs
 now return303 to job pages. Direct integrations must follow this job lifecycle.
 
-Signed rename application, switch-order operations and FAC cleanup remain separate
-mutation workflows; this change does not alter their reviewed-target safeguards.
+Signed rename application and FAC cleanup remain separate mutation workflows.
+Switch-order inventory and application use the supervised lifecycle described in
+[switch-order operation policy](switch-order-previews.md).

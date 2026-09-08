@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.switch_order_helpers import complete_switch_order
+
 from tests.appliance_read_helpers import complete_appliance_read, export_fixture
 
 from case_export_helpers import complete_case_export
@@ -2113,7 +2115,7 @@ class InvestigationRouteTests(unittest.TestCase):
                     "twn_toolkit.fortigate_routes.FortiGateClient.move_managed_switch_after"
                 ),
             ):
-                loaded = client.post("/fortigate/switch-order/objects", data={"profile": "Lab", "vdom": "root"}).get_json()
+                loaded = complete_switch_order(client, client.post("/fortigate/switch-order/objects", data={"profile": "Lab", "vdom": "root"})).get_json()["data"]
                 confirmed = client.post("/fortigate/switch-order/preview", data={
                     "profile": "Lab", "vdom": "root", "original_switch_id": ["switch-a", "switch-b"],
                     "switch_id": ["switch-b", "switch-a"], "load_token": loaded["load_token"],
@@ -2129,6 +2131,7 @@ class InvestigationRouteTests(unittest.TestCase):
                         "confirmed": "on",
                     },
                 )
+                apply = complete_switch_order(client, apply)
             self.assertEqual(apply.status_code, 200)
 
             events = store.events_for_user(investigation_id, "test-user")
@@ -2136,10 +2139,10 @@ class InvestigationRouteTests(unittest.TestCase):
                 event for event in events if event["tool_id"] == "fortigate.export_switches"
             )
             action_event = next(
-                event for event in events if event["tool_id"] == "fortigate.switch_order"
+                event for event in events if event["tool_id"] == "fortigate.switch_order" and event["event_type"].startswith("external.action")
             )
             self.assertEqual(export_event["event_type"], "external.export.completed")
-            self.assertEqual(action_event["event_type"], "external.action")
+            self.assertEqual(action_event["event_type"], "external.action.completed")
             serialized = json.dumps(events)
             self.assertNotIn("profile-secret", serialized)
             self.assertNotIn("Private Switch", serialized)
@@ -2154,7 +2157,7 @@ class InvestigationRouteTests(unittest.TestCase):
             )
             report = client.get(f"/investigations/{investigation_id}/report")
             self.assertIn(b"Export FortiSwitch Data", report.data)
-            self.assertIn(b"Applied and verified", report.data)
+            self.assertIn(b"Applied FortiSwitch order", report.data)
 
     def test_wireless_history_retains_collapsed_path_not_raw_vendor_rows(self) -> None:
         with tempfile.TemporaryDirectory() as instance:

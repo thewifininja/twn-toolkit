@@ -41,6 +41,14 @@ class DiagnosticJobStore:
             job_id TEXT NOT NULL REFERENCES diagnostic_jobs(id) ON DELETE CASCADE,
             position INTEGER NOT NULL, is_open INTEGER NOT NULL, payload TEXT NOT NULL,
             PRIMARY KEY(job_id, position))""")
+        # Receipts outlive pruned job history for the signed preview's lifetime.
+        db.execute("""CREATE TABLE IF NOT EXISTS diagnostic_receipts (
+            request_key TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+            job_id TEXT NOT NULL, expires REAL NOT NULL)""")
+        # One opaque revision per mutated origin. Unlike job history, this must
+        # survive pruning so an old review cannot bypass uncertain work.
+        db.execute("""CREATE TABLE IF NOT EXISTS diagnostic_mutation_targets (
+            target TEXT PRIMARY KEY, revision TEXT NOT NULL)""")
         db.execute("CREATE INDEX IF NOT EXISTS diagnostic_owner ON diagnostic_jobs(user_id, created DESC)")
         db.execute("CREATE INDEX IF NOT EXISTS diagnostic_queue ON diagnostic_jobs(state, created)")
         db.execute("CREATE INDEX IF NOT EXISTS diagnostic_expiry ON diagnostic_jobs(completed)")
@@ -55,6 +63,7 @@ class DiagnosticJobStore:
             yield db
 
     def _prune(self, db, policy, *, reserve=False):
+        db.execute("DELETE FROM diagnostic_receipts WHERE expires < ?", (time.time(),))
         db.execute("DELETE FROM diagnostic_jobs WHERE completed < ? AND token=''", (time.time() - policy["diagnostic_retention_hours"] * 3600,))
         count = db.execute("SELECT COUNT(*) FROM diagnostic_jobs").fetchone()[0]
         remove = max(0, count - policy["diagnostic_history_limit"] + int(reserve))
@@ -75,8 +84,8 @@ class DiagnosticJobStore:
         except (DatastoreError, OSError) as exc:
             logging.getLogger(__name__).warning("Upload staging cleanup failed: %s", type(exc).__name__)
 
-    def enqueue(self, *, user_id, config, tool="tcp_scan"):
-        if tool not in {"tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export", "appliance_read"} or not user_id:
+    def enqueue(self, *, user_id, config, tool="tcp_scan", request_key=None):
+        if tool not in {"tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export", "appliance_read", "switch_order"} or not user_id:
             raise ValueError("Invalid diagnostic request.")
         policy = self.policy.get()
         if tool in {"fac_inventory_devices", "fac_inventory_memberships", "appliance_read"}:
@@ -94,7 +103,16 @@ class DiagnosticJobStore:
         job_id = secrets.token_hex(16)
         sealed = self.cipher.seal(raw, job_id + ":diagnostic-config")
         with self.connect(write=True) as db:
+            db.execute("DELETE FROM diagnostic_receipts WHERE expires < ?", (time.time(),))
+            if request_key:
+                receipt = db.execute("SELECT * FROM diagnostic_receipts WHERE request_key=?", (request_key,)).fetchone()
+                if receipt:
+                    if receipt["user_id"] == user_id and db.execute("SELECT 1 FROM diagnostic_jobs WHERE id=? AND tool=?", (receipt["job_id"], tool)).fetchone():
+                        return receipt["job_id"]
+                    raise ValueError("This preview was already submitted. Reconcile its result and build a fresh preview.")
             self._prune(db, policy, reserve=True)
+            if request_key and db.execute("SELECT COUNT(*) FROM diagnostic_receipts").fetchone()[0] >= policy["diagnostic_history_limit"]:
+                raise ValueError("Recent change admission capacity is busy. Wait for older previews to expire.")
             if db.execute("SELECT COUNT(*) FROM diagnostic_jobs").fetchone()[0] >= policy["diagnostic_history_limit"]:
                 raise ValueError("Diagnostic storage capacity is busy. Wait for an active run to finish.")
             if db.execute("SELECT COUNT(*) FROM diagnostic_jobs WHERE state = 'queued'").fetchone()[0] >= policy["diagnostic_queue_limit"]:
@@ -125,6 +143,12 @@ class DiagnosticJobStore:
                 raise ValueError("Diagnostic results would cross the configured free-disk reserve.")
             db.execute("INSERT INTO diagnostic_jobs(id,user_id,tool,state,config,created,timeout) VALUES (?,?,?,'queued',?,?,?)",
                        (job_id, user_id, tool, sealed, time.time(), policy["diagnostic_timeout_seconds"]))
+            if request_key:
+                from .preview_binding import PREVIEW_MAX_AGE_SECONDS
+                db.execute("INSERT INTO diagnostic_receipts VALUES (?,?,?,?)",
+                           # Signed timestamps use whole seconds with inclusive
+                           # max_age. Retain through their last valid second.
+                           (request_key, user_id, job_id, time.time() + PREVIEW_MAX_AGE_SECONDS + 1))
         return job_id
 
     def claim(self):
@@ -195,6 +219,22 @@ class DiagnosticJobStore:
         with self.connect(write=True) as db:
             return db.execute("UPDATE diagnostic_jobs SET summary=? WHERE id=? AND token=? AND state='running'",
                               (sealed, job_id, token)).rowcount == 1
+
+    def mutation_revision(self, target):
+        with self.connect() as db:
+            row = db.execute("SELECT revision FROM diagnostic_mutation_targets WHERE target=?", (target,)).fetchone()
+            return row["revision"] if row else ""
+
+    def advance_mutation_revision(self, target, job_id, token, reviewed_revision):
+        """Fence a remote attempt before sending it, under the caller's origin lock."""
+        with self.connect(write=True) as db:
+            if not db.execute("SELECT 1 FROM diagnostic_jobs WHERE id=? AND token=? AND state='running'", (job_id, token)).fetchone():
+                return False
+            row = db.execute("SELECT revision FROM diagnostic_mutation_targets WHERE target=?", (target,)).fetchone()
+            if (row["revision"] if row else "") not in {reviewed_revision, job_id}:
+                return False
+            db.execute("INSERT INTO diagnostic_mutation_targets VALUES (?,?) ON CONFLICT(target) DO UPDATE SET revision=excluded.revision", (target, job_id))
+            return True
 
     def finish(self, job_id, token, rows, summary):
         if len(rows) > MAX_RESULT_ROWS:

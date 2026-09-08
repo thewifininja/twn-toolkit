@@ -16,6 +16,12 @@
       !alphabetizeButton || !applyButton || !confirmation || !profile || !vdom) return;
 
   const targetLabel = document.querySelector("#switch-order-target");
+  const runBox = document.querySelector("#switch-order-run");
+  const displayNote = document.querySelector("#switch-order-display-note");
+  let leaving = false;
+  window.addEventListener("pagehide", () => { leaving = true; });
+  window.addEventListener("pageshow", () => { leaving = false; });
+  let targetRevision = "";
   let revision = 0;
   let loadToken = "";
   let previewToken = "";
@@ -35,7 +41,7 @@
 
   function invalidateTarget() {
     revision += 1;
-    loadToken = previewToken = "";
+    loadToken = previewToken = targetRevision = "";
     loadedTarget = null;
     originalIds = [];
     list.replaceChildren();
@@ -55,6 +61,7 @@
     const body = new FormData();
     body.set("profile", loadedTarget.profile);
     body.set("vdom", loadedTarget.vdom);
+    body.set("target_revision", targetRevision);
     originalIds.forEach((id) => body.append("original_switch_id", id));
     currentIds().forEach((id) => body.append("switch_id", id));
     return body;
@@ -65,7 +72,7 @@
     loading = true;
     const generation = ++revision;
     const requestedProfile = profile.value;
-    loadToken = previewToken = "";
+    loadToken = previewToken = targetRevision = "";
     loadedTarget = null;
     loadButton.disabled = true;
     editor.hidden = false;
@@ -74,17 +81,13 @@
     preview.innerHTML = "";
     confirmation.checked = false;
     applyButton.disabled = true;
-    window.toolkitLoading?.show("Loading managed FortiSwitches…");
     try {
-      const response = await fetch(root.dataset.loadUrl, {
-        method: "POST",
-        body: new FormData(source),
-      });
-      const data = await response.json();
+      const data = await runOrder(root.dataset.loadUrl, new FormData(source), generation, false);
       if (generation !== revision) return;
-      if (!response.ok) throw new Error(data.error || "Unable to load managed switches.");
       if (!data.load_token) throw new Error("This response cannot authorize a reorder. Update the executing instance and reload.");
       loadToken = data.load_token;
+      targetRevision = data.target_revision || "";
+      if (displayNote) displayNote.hidden = false;
       loadedTarget = {profile: requestedProfile, vdom: data.vdom};
       if (targetLabel) targetLabel.textContent = `${requestedProfile} · ${data.target_origin} · VDOM ${data.vdom}`;
       vdom.value = data.vdom;
@@ -100,7 +103,6 @@
       loading = false;
       loadButton.disabled = false;
       updateApplyState();
-      window.toolkitLoading?.hide();
     }
   });
 
@@ -197,29 +199,20 @@
       setStatus("Still waiting for the appliance. Leaving this page does not cancel changes. Do not apply again until you have reconciled the current order.");
     }, 30000);
     try {
-      const response = await fetch(root.dataset.applyUrl, {method: "POST", body});
-      const data = await response.json();
+      const data = await runOrder(root.dataset.applyUrl, body, generation, true);
       if (generation !== revision) {
         setStatus("The previous target's apply request finished. Reload that target to reconcile its order.");
-        return;
-      }
-      if (!response.ok) {
-        status.dataset.operationState = data.completed_moves?.length ? "partial" : "uncertain";
-        loadToken = "";
-        confirmation.checked = false;
-        const summary = data.user_message || data.message || data.error || "Unable to apply switch order.";
-        const technicalDetail = data.detail || (data.user_message ? data.error : "");
-        setStatus(`${summary} Reload the current order before another apply.`, "error", technicalDetail);
         return;
       }
       renderSwitches(data.switches || []);
       originalIds = currentIds();
       loadToken = data.load_token || "";
+      targetRevision = data.target_revision || "";
       updatePreview();
       status.dataset.operationState = "complete";
       setStatus(data.message, "success");
     } catch (error) {
-      status.dataset.operationState = "uncertain";
+      status.dataset.operationState = error.state || "uncertain";
       loadToken = "";
       confirmation.checked = false;
       setStatus(`${error.message} The apply outcome may be incomplete. Reload and reconcile the target before retrying.`, "error");
@@ -230,6 +223,74 @@
       updateApplyState();
     }
   });
+
+  async function runOrder(url, body, generation, mutation) {
+    let response;
+    let queued;
+    // Only the supervised contract supports an admission retry. The exact same
+    // signed request resolves to its receipt; a legacy synchronous server does not.
+    const attempts = mutation && root.dataset.queuedOrders === "true" ? 2 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        response = await fetch(url, {method: "POST", body, headers: {Accept: "application/json"}, signal: AbortSignal.timeout(15000)});
+        queued = await response.json();
+        break;
+      } catch (error) {
+        if (attempt + 1 === attempts) throw new Error("Admission could not be confirmed. Check Your recent switch-order runs before another apply.");
+        setStatus("Recovering the submitted operation…");
+      }
+    }
+    if (!response.ok) throw new Error(queued.user_message || queued.error || "Unable to submit switch order.");
+    if (response.status !== 202) return queued;
+    const link = document.createElement("a");
+    link.href = queued.job_url;
+    link.textContent = "Open retained run";
+    link.className = "button-link secondary";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "secondary";
+    cancel.textContent = "Cancel run";
+    if (runBox) { runBox.hidden = false; runBox.replaceChildren(link, cancel); }
+    cancel.addEventListener("click", async () => {
+      cancel.disabled = true;
+      try {
+        const result = await fetch(queued.cancel_url, {method: "POST", signal: AbortSignal.timeout(15000)});
+        if (!result.ok) throw new Error();
+        setStatus("Cancellation requested. Already attempted changes are not undone.");
+      } catch (_) {
+        cancel.disabled = false;
+        setStatus("Cancellation could not be confirmed. Open the retained run to check.", "error");
+      }
+    });
+    try {
+      while (!leaving) {
+        if (generation !== revision && !mutation) throw new Error("Target changed; the previous load is retained in its run.");
+        await new Promise(resolve => window.setTimeout(resolve, 1500));
+        if (leaving || document.hidden) continue;
+        let job;
+        try {
+          const result = await fetch(queued.status_url, {headers: {Accept: "application/json"}, cache: "no-store", signal: AbortSignal.timeout(10000)});
+          if ([401, 403, 404, 410].includes(result.status)) throw Object.assign(new Error("This run is no longer accessible. Check the retained run before another apply."), {terminal: true});
+          if (!result.ok) throw new Error();
+          job = await result.json();
+        } catch (error) {
+          if (error.terminal) throw error;
+          if (generation === revision) setStatus("Status unavailable; retrying. The retained run remains available.");
+          continue;
+        }
+        if (job.state === "succeeded") return job.data;
+        if (!["queued", "running", "cancel_requested"].includes(job.state)) {
+          throw Object.assign(new Error(job.error || `Run ${job.state}.`), {state: job.state});
+        }
+        if (generation === revision) setStatus(job.state === "cancel_requested" ? "Cancellation requested; changes are not undone." :
+          job.state === "queued" ? "Queued. You can navigate away and return to the retained run." :
+          `Run in progress: ${job.stage || "checking appliance"}. ${job.data.completed_moves?.length || 0} moves acknowledged.`);
+      }
+      throw new Error("The page was closed. Check the retained run before another apply.");
+    } finally {
+      cancel.hidden = true;
+    }
+  }
 
   function renderSwitches(switches) {
     list.innerHTML = "";
