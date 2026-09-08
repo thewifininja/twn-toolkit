@@ -53,6 +53,7 @@ class RemoteConnectionStore:
         self, user_id: str, *, is_admin: bool = False,
         host_page: int | None = None, host_query: str = "",
         metadata_page: int | None = None, metadata_query: str = "", metadata_credential_id: str = "",
+        choice_kind: str = "", choice_owner: str = "", choice_manage: bool = False,
     ) -> dict[str, Any]:
         if metadata_page is not None and host_page is None:
             host_page = 1
@@ -190,18 +191,23 @@ class RemoteConnectionStore:
         if pagination is not None:
             result["pagination"] = pagination
         if metadata_page is not None:
-            self._page_library_metadata(result, metadata_page, metadata_query, metadata_credential_id)
+            self._page_library_metadata(result, metadata_page, metadata_query, metadata_credential_id, choice_kind, choice_owner, choice_manage)
         return result
 
 
     @staticmethod
-    def _page_library_metadata(library, requested_page, requested_query, credential_focus=""):
+    def _page_library_metadata(library, requested_page, requested_query, credential_focus="", choice_kind="", choice_owner="", choice_manage=False):
         query = str(requested_query).strip()[:200]
         folded = query.casefold()
         folders, credentials, hosts = library['folders'], library['credentials'], library['hosts']
         folder_map = {row['id']: row for row in folders}
         matched_folders = [row for row in folders if folded in row['name'].casefold()]
         matched_credentials = [row for row in credentials if folded in ' '.join(str(row.get(key, '')) for key in ('name','username','scoped_host_name')).casefold()]
+        if choice_kind:
+            def available(row):
+                return (not choice_owner or row['user_id'] == choice_owner) and (not choice_manage or row['can_manage'])
+            matched_folders = [row for row in matched_folders if available(row)] if choice_kind == 'folder' else []
+            matched_credentials = [row for row in matched_credentials if available(row) and (choice_kind == 'vault' or not row.get('scope_host_id'))] if choice_kind in {'credential', 'vault'} else []
         pages = max(1, (max(len(matched_folders), len(matched_credentials))+99)//100)
         page = min(max(1, int(requested_page)), pages)
         start = (page-1)*100

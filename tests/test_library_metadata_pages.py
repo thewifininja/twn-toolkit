@@ -101,3 +101,54 @@ def test_credential_inheritance_visits_a_deep_path_once():
     RemoteConnectionStore._annotate_effective_credentials(list(reversed(folders)),[],[{'id':'credential','name':'Saved','username':'api'}])
     assert len(visits)<=5000
     assert all(row['effective_credential_id']=='credential' for row in folders)
+
+
+def test_picker_pagination_filters_type_and_owner_before_slicing(browser):
+    app, client, user = browser
+    store = app.extensions['remote_connection_store']
+    populate_metadata(store, 250, owner=user['id'])
+    # Another visible owner's folders must not consume this owner's picker page.
+    with store._connect() as db:
+        db.execute("INSERT INTO remote_connection_folders (id,user_id,name,parent_id,credential_mode,credential_id,visibility,created_at,updated_at) VALUES ('other','another-owner','AAA shared','','inherit','','global',1,1)")
+    result = client.get('/tools/remote-terminal/library?choice_kind=folder&choice_manage=1&metadata_page=3').json['library']
+    matches = [row for row in result['folders'] if not row['context_only']]
+    assert len(matches) == 50 and all(row['user_id'] == user['id'] for row in matches)
+    assert result['metadata_pagination']['pages'] == 3
+    assert result['metadata_pagination']['credentials_matched'] == 0
+    found = client.get('/tools/remote-terminal/library?choice_kind=credential&metadata_query=00249').json['library']
+    assert [row['id'] for row in found['credentials'] if not row['context_only']] == ['c249']
+    assert found['metadata_pagination']['folders_matched'] == 0
+
+
+def test_picker_owner_parameter_does_not_grant_visibility(browser):
+    app, client, user = browser
+    store = app.extensions['remote_connection_store']
+    populate_metadata(store, 3, owner='another-owner')
+    result = client.get('/tools/remote-terminal/library?choice_kind=credential&choice_manage=1&choice_owner=another-owner&metadata_query=00002').json['library']
+    assert not result['credentials']
+    assert result['metadata_pagination']['credentials_matched'] == 0
+
+
+def test_unified_library_pages_and_search_reach_empty_folders(browser):
+    app, client, user = browser
+    populate_metadata(app.extensions['remote_connection_store'], 250, owner=user['id'])
+    result = client.get('/tools/remote-terminal/library?host_page=3&metadata_page=3').json['library']
+    assert result['connection_pagination']['page'] == 3
+    assert result['connection_pagination']['pages'] == 3
+    assert result['hosts'] == []  # Folder-only pages do not repeat the last host page.
+    assert 'f220' in {row['id'] for row in result['folders'] if not row['context_only']}
+    result = client.get('/tools/remote-terminal/library?host_query=00220&metadata_query=00220').json['library']
+    assert result['hosts'] == []
+    assert [row['id'] for row in result['folders'] if not row['context_only']] == ['f220']
+
+
+def test_vault_search_includes_host_credentials_but_connection_picker_excludes_them(browser):
+    app, client, user = browser
+    store = app.extensions['remote_connection_store']
+    populate_metadata(store, 3, owner=user['id'])
+    with store._connect() as db:
+        db.execute("UPDATE remote_connection_credentials SET scope_host_id='host' WHERE id='c2'")
+    shared = client.get('/tools/remote-terminal/library?choice_kind=credential&metadata_query=00002').json['library']
+    vault = client.get('/tools/remote-terminal/library?choice_kind=vault&metadata_query=00002').json['library']
+    assert shared['metadata_pagination']['credentials_matched'] == 0
+    assert [row['id'] for row in vault['credentials'] if not row['context_only']] == ['c2']
