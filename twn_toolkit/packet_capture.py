@@ -376,7 +376,7 @@ def _signal_capture(process: subprocess.Popen[str]) -> None:
 
 
 def _captured_packet_count(stderr: str) -> int:
-    match = re.search(r"(?m)^(\d+)\s+packets captured$", stderr or "")
+    match = re.search(r"(?m)^(\d+)\s+packets? captured$", stderr or "")
     return int(match.group(1)) if match else 0
 
 
