@@ -286,7 +286,7 @@
             <summary><span>Collected action runs <small class="count-badge">{{ automation.recent_runs|length }}</small></span></summary>
             {% if automation.recent_runs %}
               <div class="automation-runs-toolbar">
-                <span>Newest run first</span>
+                <span>Newest run first · ZIP exports allow up to 10,000 entries; compressed and expanded bytes must each fit the configured upload limit.</span>
                 <form method="post" action="{{ url_for('clear_automation_runs', automation_id=automation.id) }}" onsubmit="return confirm('Delete all collected action runs for this automation? Condition-check history will remain.')"><button class="text-danger" type="submit">Clear collected data</button></form>
               </div>
               <div class="automation-history-list">
