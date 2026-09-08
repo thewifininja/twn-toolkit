@@ -117,7 +117,7 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn(
             'class="button-link secondary active-investigation-action"', template
         )
-        self.assertIn('name="next" value="{{ request.full_path }}"', template)
+        self.assertIn('name="next" value="{{ request.script_root }}{{ request.full_path }}"', template)
         self.assertIn(".active-case-note-dialog {", stylesheet)
         self.assertIn("max-width: calc(100vw - 32px);", stylesheet)
         self.assertIn("flex-wrap: wrap;", stylesheet)
