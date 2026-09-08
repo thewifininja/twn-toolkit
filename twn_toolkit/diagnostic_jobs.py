@@ -64,19 +64,23 @@ class DiagnosticJobStore:
 
     def _prune(self, db, policy, *, reserve=False):
         db.execute("DELETE FROM diagnostic_receipts WHERE expires < ?", (time.time(),))
-        db.execute("DELETE FROM diagnostic_jobs WHERE completed < ? AND token=''", (time.time() - policy["diagnostic_retention_hours"] * 3600,))
+        db.execute("DELETE FROM diagnostic_jobs WHERE completed < ? AND token='' AND NOT (tool='certificate_enroll' AND state='unknown')", (time.time() - policy["diagnostic_retention_hours"] * 3600,))
         count = db.execute("SELECT COUNT(*) FROM diagnostic_jobs").fetchone()[0]
         remove = max(0, count - policy["diagnostic_history_limit"] + int(reserve))
         if remove:
-            db.execute("DELETE FROM diagnostic_jobs WHERE id IN (SELECT id FROM diagnostic_jobs WHERE completed IS NOT NULL AND token='' ORDER BY completed LIMIT ?)", (remove,))
+            db.execute("DELETE FROM diagnostic_jobs WHERE id IN (SELECT id FROM diagnostic_jobs WHERE completed IS NOT NULL AND token='' AND NOT (tool='certificate_enroll' AND state='unknown') ORDER BY completed LIMIT ?)", (remove,))
 
     def cleanup(self):
         policy = self.policy.get()
         with self.connect(write=True) as db:
             self._prune(db, policy)
+            from .certificate_jobs import scrub_certificate_inputs
+            scrub_certificate_inputs(self, db)
         from .diagnostic_artifacts import FAMILIES, cleanup_artifacts
         for family in FAMILIES:
             cleanup_artifacts(self, family)
+        from .certificate_jobs import cleanup_certificate_files
+        cleanup_certificate_files(self)
         from .uploads import reap_abandoned_uploads
         from .datastore import DatastoreError
         try:
@@ -85,7 +89,7 @@ class DiagnosticJobStore:
             logging.getLogger(__name__).warning("Upload staging cleanup failed: %s", type(exc).__name__)
 
     def enqueue(self, *, user_id, config, tool="tcp_scan", request_key=None):
-        if tool not in {"iperf_client", "tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export", "appliance_read", "switch_order", "appliance_rename", "fac_cleanup"} or not user_id:
+        if tool not in {"certificate_test", "certificate_enroll", "certificate_collect", "iperf_client", "tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export", "appliance_read", "switch_order", "appliance_rename", "fac_cleanup"} or not user_id:
             raise ValueError("Invalid diagnostic request.")
         policy = self.policy.get()
         if tool in {"fac_inventory_devices", "fac_inventory_memberships", "appliance_read"}:
@@ -197,6 +201,9 @@ class DiagnosticJobStore:
             raise ValueError("Invalid diagnostic outcome.")
         with self.connect(write=True) as db:
             previous = db.execute("SELECT * FROM diagnostic_jobs WHERE id=? AND token=? AND state IN ('running','cancel_requested')", (job_id, token)).fetchone()
+            if previous and previous["tool"] == "certificate_enroll":
+                from .certificate_jobs import interruption_state
+                state = interruption_state(self, dict(previous), state)
             db.execute("UPDATE diagnostic_jobs SET state=?, error=?, completed=? WHERE id=? AND token=? AND state IN ('running','cancel_requested')",
                        (state, error[:500], time.time(), job_id, token))
             return dict(previous) if previous else None
@@ -204,6 +211,8 @@ class DiagnosticJobStore:
     def release(self, job_id, token):
         with self.connect(write=True) as db:
             db.execute("UPDATE diagnostic_jobs SET token='' WHERE id=? AND token=? AND completed IS NOT NULL", (job_id, token))
+            from .certificate_jobs import scrub_certificate_inputs
+            scrub_certificate_inputs(self, db, job_id)
 
     def recover(self):
         # Called only by the singleton scheduler at startup. Never replay work
@@ -211,11 +220,20 @@ class DiagnosticJobStore:
         with self.connect(write=True) as db:
             previous = [dict(row) for row in db.execute("SELECT * FROM diagnostic_jobs WHERE state IN ('running','cancel_requested')")]
             db.execute("UPDATE diagnostic_jobs SET state='unknown', error='Scheduler restarted before confirming completion. This run was not replayed.', completed=?, token='' WHERE state IN ('running','cancel_requested')", (time.time(),))
+            from .certificate_jobs import interruption_state
+            for row in previous:
+                if row["tool"] == "certificate_enroll":
+                    db.execute("UPDATE diagnostic_jobs SET state=? WHERE id=?", (interruption_state(self, row, "unknown"), row["id"]))
             db.execute("UPDATE diagnostic_jobs SET token='' WHERE completed IS NOT NULL")
+            from .certificate_jobs import scrub_certificate_inputs
+            scrub_certificate_inputs(self, db)
             return previous
 
     def progress(self, job_id, token, summary):
-        sealed = self.cipher.seal(json.dumps(summary), job_id + ":diagnostic-summary")
+        raw = json.dumps(summary, allow_nan=False)
+        if len(raw.encode()) > MAX_RESULT_BYTES:
+            raise ValueError("Diagnostic progress storage envelope exceeded.")
+        sealed = self.cipher.seal(raw, job_id + ":diagnostic-summary")
         with self.connect(write=True) as db:
             return db.execute("UPDATE diagnostic_jobs SET summary=? WHERE id=? AND token=? AND state='running'",
                               (sealed, job_id, token)).rowcount == 1

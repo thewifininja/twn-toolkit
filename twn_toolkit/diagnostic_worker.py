@@ -127,6 +127,10 @@ def execute_scan(store, job_id, token):
     if not job or job["state"] != "running":
         return
     config = json.loads(store.cipher.open(job["config"], job_id + ":diagnostic-config"))
+    if job["tool"].startswith("certificate_"):
+        from .certificate_jobs import execute_certificate
+        execute_certificate(store, job, config)
+        return
     if job["tool"] == "iperf_client":
         from .iperf_client_jobs import execute_iperf_client
         execute_iperf_client(store, job, config)
@@ -236,6 +240,10 @@ def _abort(store, job_id, token, state, error):
 
 def record_unsuccessful_scan(store, job, state, error):
     """Best-effort attribution; recording errors never replay network work."""
+    if job["tool"].startswith("certificate_"):
+        from .certificate_jobs import record_certificate_outcome
+        record_certificate_outcome(store, job, state, error)
+        return
     if job["tool"] == "iperf_client":
         from .iperf_client_jobs import record_iperf_client_outcome
         record_iperf_client_outcome(store, job, state, error)

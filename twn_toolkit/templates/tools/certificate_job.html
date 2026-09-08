@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel tool-panel" {% if job.state in ['queued','running','cancel_requested'] %}data-diagnostic-status-url="{{ url_for('tools.certificate_job_status', job_id=job.id) }}"{% endif %}>
+  <h1>Certificate request</h1>
+  <p>{{ summary.label|default('Certificate operation') }} · <strong>{{ job.state }}</strong></p>
+  <p data-diagnostic-status role="status">{{ summary.stage|default('Waiting for a worker') }}</p>
+  {% if job.error %}<p role="alert">{{ job.error }}</p>{% endif %}
+  {% if summary.disposition %}<p>CA disposition: <strong>{{ summary.disposition }}</strong>{% if summary.request_id %} · Request ID: {{ summary.request_id }}{% endif %}</p>{% endif %}
+  {% if summary.http_status %}<p>Connection returned HTTP {{ summary.http_status }}.</p>{% endif %}
+  {% if summary.message %}<p>{{ summary.message }}</p>{% endif %}
+  {% if summary.recording_warning %}<p role="alert">{{ summary.recording_warning }}</p>{% endif %}
+  {% if summary.managed_id %}<p><a href="{{ url_for('tools.certificate_automation', section='adcs', certificate=summary.managed_id) }}#managed-certificates">View saved certificate/request</a></p>{% endif %}
+  {% if job.state in ['queued','running','cancel_requested'] %}
+    <form method="post" action="{{ url_for('tools.cancel_certificate_job', job_id=job.id) }}"><button class="secondary" {% if job.state=='cancel_requested' %}disabled{% endif %}>Cancel request</button></form>
+    <p>Cancellation after submission does not cancel or revoke a CA request. Its result may require reconciliation.</p>
+  {% endif %}
+  {% if job.state == 'unknown' %}
+    <p role="alert">Submission state is uncertain. This request will not be replayed. Reconcile CA records before starting another enrollment for this certificate.</p>
+    {% if summary.common_name %}<p>Common name: {{ summary.common_name }} · DNS names: {{ summary.dns_names|join(', ') }}</p>{% endif %}
+    {% if summary.enrollment_url %}<p>Issuer endpoint: {{ summary.enrollment_url }} · Template: {{ summary.template_identifier }}</p>{% endif %}
+    {% if recoverable %}
+      <p>Recovery downloads contain sensitive private-key material. Preserve the key with its CSR while reconciling CA state.</p>
+      <p><a href="{{ url_for('tools.download_certificate_recovery', job_id=job.id, material='key') }}">Download recovery private key</a> · <a href="{{ url_for('tools.download_certificate_recovery', job_id=job.id, material='csr') }}">Download recovery CSR</a></p>
+    {% endif %}
+    <form method="post" action="{{ url_for('tools.reconcile_certificate_job', job_id=job.id) }}">
+      <label><input type="checkbox" name="confirmed" value="yes" required> I reconciled the CA state and preserved any required key/CSR. Discard this job’s recovery material and allow another enrollment.</label>
+      <button class="danger">Finish reconciliation and discard recovery material</button>
+    </form>
+  {% endif %}
+  <p><a href="{{ url_for('tools.certificate_automation', section='adcs') }}">Certificate workspace and recent requests</a></p>
+</section>
+<script src="{{ url_for('static', filename='diagnostic-job.js', v=asset_version) }}"></script>
+{% endblock %}
