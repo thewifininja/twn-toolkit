@@ -161,6 +161,64 @@ class PacketCaptureTests(unittest.TestCase):
         self.assertEqual(result["packet_count_captured"], 12)
         self.assertEqual(result["size_bytes"], 32)
 
+    def test_single_packet_completion_reports_count_and_packet_limit(self) -> None:
+        class FakeProcess:
+            def __init__(self):
+                self.pid = 8123
+                self.returncode = 0
+
+            def poll(self):
+                return self.returncode
+
+            def send_signal(self, _signal):
+                self.returncode = -2
+
+            def communicate(self, timeout=None):
+                return "", "1 packet captured\n1 packet received by filter\n0 packets dropped by kernel\n"
+
+            def kill(self):
+                self.returncode = -9
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+        with tempfile.TemporaryDirectory() as instance:
+            output = Path(instance) / "packet_captures" / "capture.pcap"
+
+            def launch(command, **_kwargs):
+                Path(command[command.index("-w")+1]).write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 28)
+                self.assertFalse(output.exists())
+                self.assertTrue(_kwargs["pass_fds"])
+                launch.command = command
+                return FakeProcess()
+
+            capability, interfaces, compiler = self.capability_patches()
+            with (
+                capability,
+                interfaces,
+                compiler,
+                patch("twn_toolkit.packet_capture.subprocess.Popen", side_effect=launch),
+                patch("twn_toolkit.packet_capture.time.sleep"),
+            ):
+                result = run_packet_capture(
+                    {**VALID_CONFIG, "packet_count": "1"},
+                    instance_path=instance,
+                    output_path=output,
+                    should_stop=lambda: False,
+                )
+        self.assertIn("-i", launch.command)
+        self.assertIn("en7", launch.command)
+        self.assertIn("-c", launch.command)
+        self.assertIn("1", launch.command)
+        capture_wrapper = Path(launch.command[1])
+        self.assertTrue(capture_wrapper.is_absolute())
+        self.assertEqual(capture_wrapper.name, "packet_capture_exec.py")
+        self.assertNotIn("-m", launch.command[:4])
+        self.assertEqual(launch.command[-1], VALID_CONFIG["capture_filter"])
+        self.assertEqual(result["termination_reason"], "packet limit reached")
+        self.assertEqual(result["packet_count_captured"], 1)
+        self.assertEqual(result["size_bytes"], 32)
+
     @unittest.skipUnless(Path("/usr/bin/true").exists(), "requires POSIX true")
     def test_capture_exec_wrapper_does_not_depend_on_checkout_cwd(self) -> None:
         wrapper = (
