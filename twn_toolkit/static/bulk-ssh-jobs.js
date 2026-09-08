@@ -62,7 +62,7 @@
       });
       if (!response.ok) throw new Error();
       const job = await response.json();
-      status.textContent = `${job.state === 'succeeded' ? 'Finished' : job.state.replaceAll('_', ' ')} · ${job.completed} hosts completed; ${job.not_started} not started.`;
+      status.textContent = job.stage;
       if (!['queued', 'running', 'cancel_requested'].includes(job.state)) {
         const link = document.createElement('a');
         link.href = window.location.href;

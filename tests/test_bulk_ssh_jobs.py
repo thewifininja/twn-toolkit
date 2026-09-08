@@ -475,3 +475,67 @@ def test_single_host_download_is_bounded_to_the_selected_host(setup,monkeypatch)
     assert b'second.test' in response.data and b'first.test' not in response.data
     assert client.get(f'/tools/multi-ssh/jobs/{job_id}/download?host=2').status_code==404
     assert client.get(f'/tools/multi-ssh/jobs/{job_id}/download?host=invalid').status_code==400
+
+
+def test_friendly_run_name_survives_completion_and_is_escaped(setup, monkeypatch):
+    app, store = setup
+    identifier, form = submit(app, run_name='  Branch   <switch> checks  ')
+    monkeypatch.setattr(network, '_ssh_host_connection', success)
+    complete(store)
+    assert store.get(identifier, 'test-user')['config']['run_name'] == 'Branch <switch> checks'
+    assert 'password' not in store.get(identifier, 'test-user')['config']
+    for path in ('/tools/multi-ssh', '/tools/multi-ssh/jobs/' + identifier):
+        page = app.test_client().get(path)
+        assert b'Branch &lt;switch&gt; checks' in page.data
+        assert b'Branch <switch> checks' not in page.data
+        assert b'fixture-secret' not in page.data
+    # Resubmitting the same reviewed request preserves its original identity/name.
+    response = app.test_client().post('/tools/multi-ssh', data={**form, 'run_name': 'Changed label'}, headers={'Accept':'application/json'})
+    assert response.json['job_id'] == identifier
+    assert store.get(identifier, 'test-user')['config']['run_name'] == 'Branch <switch> checks'
+
+
+def test_legacy_run_gets_readable_name_and_owner_only_recent_metadata(setup):
+    app, store = setup
+    identifier, _ = submit(app, hosts='first.test\nsecond.test')
+    with store.connect(write=True) as db:
+        config = store.get(identifier, 'test-user')['config']
+        config.pop('run_name')
+        db.execute('UPDATE diagnostic_jobs SET config=? WHERE id=?',
+                   (store.cipher.seal(json.dumps(config), identifier+':diagnostic-config'), identifier))
+    recent = jobs.recent_runs(store, 'test-user')
+    assert recent[0]['run_name'] == 'Bulk SSH · 2 hosts'
+    assert recent[0]['created_display']
+    assert set(recent[0]) == {'id','state','run_name','created_display'}
+    assert jobs.recent_runs(store, 'another-user') == []
+    page = app.test_client().get('/tools/multi-ssh/jobs/'+identifier)
+    assert 'Bulk SSH · 2 hosts'.encode() in page.data
+
+
+def test_run_name_limit_and_matrix_default(setup):
+    app, store = setup
+    identifier, form = submit(app)
+    response = app.test_client().post('/tools/multi-ssh', data={**form,'run_name':'x'*101}, headers={'Accept':'application/json'})
+    assert response.status_code == 400
+    assert '100 characters' in response.json['error']
+    preview = {'plans':jobs.plans_for(store.get(identifier,'test-user')['config'])}
+    config = jobs.prepare({**form,'host_matrix_name':'Branch switches'}, preview, 'fixture-secret')
+    assert config['run_name'] == 'Branch switches'
+
+
+def test_running_host_progress_is_visible_before_completion(setup, monkeypatch):
+    app, store = setup
+    identifier, _ = submit(app, hosts='first.test\nsecond.test')
+    queued = app.test_client().get('/tools/multi-ssh/jobs/'+identifier+'/status').json
+    assert 'Waiting for a worker' in queued['stage']
+    def connection(*args):
+        response = app.test_client().get('/tools/multi-ssh/jobs/'+identifier+'/status')
+        status = response.json
+        assert status['started'] > status['completed']
+        assert 'in progress' in status['stage']
+        return success(*args)
+    monkeypatch.setattr(network, '_ssh_host_connection', connection)
+    complete(store)
+    page = app.test_client().get('/tools/multi-ssh/jobs/'+identifier)
+    assert b'Worker picked up this run after' in page.data
+    assert b'Finished' in page.data
