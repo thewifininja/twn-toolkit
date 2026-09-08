@@ -98,6 +98,9 @@ def test_tls_ntlm_channel_binding_and_intermediate_challenge_bound(tmp_path, mon
         serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     credentials = tmp_path / 'ntlm-users'; credentials.write_text('EXAMPLE:user:fixture-password\n')
     monkeypatch.setenv('NTLM_USER_FILE', str(credentials))
+    # The fixture's NTLM target name must not depend on runner DNS. The native
+    # macOS hostname may take longer to resolve than the HTTP test timeout.
+    monkeypatch.setattr('spnego._ntlm.socket.getfqdn', lambda *a: 'ntlm-fixture.example.test')
     binding = GssChannelBindings(application_data=b'tls-server-end-point:' + hashlib.sha256(cert.public_bytes(serialization.Encoding.DER)).digest())
     steps = []
     class Handler(BaseHTTPRequestHandler):
@@ -112,7 +115,7 @@ def test_tls_ntlm_channel_binding_and_intermediate_challenge_bound(tmp_path, mon
                 token = base64.b64decode(header.split()[1]); kind = int.from_bytes(token[8:12], 'little')
                 steps.append(kind)
                 if kind == 1:
-                    self.context = spnego.server(protocol='ntlm', channel_bindings=binding)
+                    self.context = spnego.server(protocol='ntlm', channel_bindings=binding, options=spnego.NegotiateOptions.use_ntlm)
                 output = self.context.step(token)
                 if output:
                     status, challenge = 401, 'NTLM ' + base64.b64encode(output).decode()
