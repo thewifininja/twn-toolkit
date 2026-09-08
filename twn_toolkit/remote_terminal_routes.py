@@ -1385,6 +1385,8 @@ def _connection_library(user_id: str, *, credential_id: str = "") -> dict[str, o
         paging = library['pagination']
         pages = max(paging['pages'], (library['metadata_pagination']['folders_matched'] + 99) // 100)
         library['connection_pagination'] = {**paging, 'pages': pages, 'page': min(page, pages)}
+        if min(page, pages) > paging['pages']:
+            library['hosts'] = []
     devices = {str(item["id"]): item for item in _serial_devices()}
     for host in library["hosts"]:
         if str(host.get("protocol", "")) != "console":

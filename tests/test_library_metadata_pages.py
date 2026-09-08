@@ -135,6 +135,7 @@ def test_unified_library_pages_and_search_reach_empty_folders(browser):
     result = client.get('/tools/remote-terminal/library?host_page=3&metadata_page=3').json['library']
     assert result['connection_pagination']['page'] == 3
     assert result['connection_pagination']['pages'] == 3
+    assert result['hosts'] == []  # Folder-only pages do not repeat the last host page.
     assert 'f220' in {row['id'] for row in result['folders'] if not row['context_only']}
     result = client.get('/tools/remote-terminal/library?host_query=00220&metadata_query=00220').json['library']
     assert result['hosts'] == []
