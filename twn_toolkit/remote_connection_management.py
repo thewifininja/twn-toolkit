@@ -92,6 +92,14 @@ def _check_shared_dependencies(store, values, items, visible, owner_id):
         # credential_id/host_id can identify the item itself, which is already checked.
         require_visible(kind, values.get(name))
 
+    children = {}
+    hosts_by_folder = {}
+    checked_folders = set()
+    for folder in owned["folders"]:
+        children.setdefault(folder["parent_id"], []).append(folder["id"])
+    for host in owned["hosts"]:
+        hosts_by_folder.setdefault(host["folder_id"], []).append(host["id"])
+
     for kind, public in items:
         item = owner_index[kind][public["id"]]
         if kind in {"host", "folder"}:
@@ -114,14 +122,13 @@ def _check_shared_dependencies(store, values, items, visible, owner_id):
                 values.get("credential_mode") == "credential" and values.get("credential_id") != item.get("credential_id")
             )
             if policy_change:
-                descendants = {item["id"]}
-                while True:
-                    expanded = descendants | {folder["id"] for folder in owned["folders"] if folder["parent_id"] in descendants}
-                    if expanded == descendants:
-                        break
-                    descendants = expanded
-                for folder_id in descendants:
+                pending = [item["id"]]
+                while pending:
+                    folder_id = pending.pop()
+                    if folder_id in checked_folders:
+                        continue
+                    checked_folders.add(folder_id)
                     require_visible("folder", folder_id)
-                for host in owned["hosts"]:
-                    if host["folder_id"] in descendants:
-                        require_visible("host", host["id"])
+                    for host_id in hosts_by_folder.get(folder_id, []):
+                        require_visible("host", host_id)
+                    pending.extend(children.get(folder_id, []))
