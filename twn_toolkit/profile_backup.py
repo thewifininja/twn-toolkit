@@ -122,8 +122,73 @@ def selected_backup_items(
     return [item for item in backup_catalog if item["id"] in selected_ids]
 
 
-def build_profile_backup(selected_items: list[dict[str, Any]]) -> dict[str, Any]:
-    exported = {item["id"]: item["store"].all() for item in selected_items}
+# The existing importer accepts 64 MiB on the wire. Leave room for the Fernet
+# token and JSON envelope without changing the interoperable v2 format.
+MAX_BACKUP_WIRE_BYTES = 64 * 1024 * 1024
+MAX_ENCRYPTED_BACKUP_PLAINTEXT_BYTES = (MAX_BACKUP_WIRE_BYTES - 1024) // 4 * 3 - 89
+
+
+def _backup_json_lower_bound(value: Any, limit: int) -> int:
+    """Reject oversized scalars/graphs before JSONEncoder copies a whole scalar.
+
+    Store adapters still own their initial all() read. This accounts for the
+    aggregate retained JSON graph between groups, not arbitrary store internals.
+    """
+    used = 0
+
+    def charge(size: int) -> None:
+        nonlocal used
+        used += size
+        if used > limit:
+            raise ValueError("Configuration backup is too large. Export fewer groups or reduce a large group.")
+
+    def visit(item: Any, depth: int) -> None:
+        if depth > 64:
+            raise ValueError("Configuration backup nesting exceeds 64 levels.")
+        if isinstance(item, str):
+            charge(2)
+            for offset in range(0, len(item), 16 * 1024):
+                charge(len(json.encoder.encode_basestring_ascii(item[offset:offset + 16 * 1024])) - 2)
+        elif isinstance(item, dict):
+            charge(2)
+            for index, (key, child) in enumerate(item.items()):
+                if not isinstance(key, str):
+                    raise ValueError("Configuration backup object keys must be strings.")
+                charge(1 + bool(index))
+                visit(key, depth + 1)
+                visit(child, depth + 1)
+        elif isinstance(item, (list, tuple)):
+            charge(2)
+            for index, child in enumerate(item):
+                charge(bool(index))
+                visit(child, depth + 1)
+        else:
+            charge(len(json.dumps(item)))
+
+    visit(value, 0)
+    return used
+
+
+def encode_backup_json(value: Any, limit: int = MAX_BACKUP_WIRE_BYTES) -> bytes:
+    _backup_json_lower_bound(value, limit)
+    output = bytearray()
+    for part in json.JSONEncoder(indent=2).iterencode(value):
+        # Scalars have already been checked before the encoder allocates them.
+        if len(output) + len(part) > limit:  # ensure_ascii output is ASCII
+            raise ValueError("Configuration backup is too large. Export fewer groups or reduce a large group.")
+        output.extend(part.encode('ascii'))
+    return bytes(output)
+
+
+def build_profile_backup(
+    selected_items: list[dict[str, Any]], *, max_bytes: int = MAX_BACKUP_WIRE_BYTES,
+) -> dict[str, Any]:
+    exported = {}
+    remaining = max_bytes
+    for item in selected_items:
+        records = item["store"].all()
+        remaining -= _backup_json_lower_bound(records, remaining)
+        exported[item["id"]] = records
     return {
         "format": CONFIGURATION_BACKUP_FORMAT,
         "version": 2,

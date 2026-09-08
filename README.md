@@ -317,6 +317,12 @@ but users from the source instance are not granted access automatically. See
 [Investigation journals](docs/investigations.md) for the event contract,
 portable archive and merge boundaries, and extension guidance.
 
+Portable configuration backup exports and imports accept files up to 64 MiB.
+Encrypted exports reserve room for the encryption envelope (just under 48 MiB
+of unencrypted JSON). Oversized selections fail with guidance to export fewer
+groups. Export serialization and accumulation between groups are bounded; each
+store adapter still owns its initial group read.
+
 ### Local Tools
 
 #### Datastore

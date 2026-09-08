@@ -34,6 +34,9 @@ from .profile_backup import (
     apply_remote_connection_owner_mappings,
     backup_entry_count,
     build_profile_backup,
+    encode_backup_json,
+    MAX_BACKUP_WIRE_BYTES,
+    MAX_ENCRYPTED_BACKUP_PLAINTEXT_BYTES,
     decrypt_backup,
     encrypt_backup,
     import_backup_items,
@@ -2635,12 +2638,21 @@ def register_admin_routes(
                 flash("Backup encryption passwords do not match.", "error")
                 return redirect(url_for("backup_settings"))
 
-        backup = build_profile_backup(selected_items)
-        payload = json.dumps(backup, indent=2).encode("utf-8")
-        filename_prefix = "twn-toolkit-configuration-backup"
-        if encrypt_requested:
-            payload = json.dumps(encrypt_backup(payload, password), indent=2).encode("utf-8")
-            filename_prefix = "twn-toolkit-encrypted-configuration-backup"
+        try:
+            limit = (MAX_ENCRYPTED_BACKUP_PLAINTEXT_BYTES if encrypt_requested
+                     else MAX_BACKUP_WIRE_BYTES)
+            backup = build_profile_backup(selected_items, max_bytes=limit)
+            payload = encode_backup_json(backup, limit)
+            del backup
+            filename_prefix = "twn-toolkit-configuration-backup"
+            if encrypt_requested:
+                encrypted = encrypt_backup(payload, password)
+                del payload
+                payload = encode_backup_json(encrypted, MAX_BACKUP_WIRE_BYTES)
+                filename_prefix = "twn-toolkit-encrypted-configuration-backup"
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("backup_settings"))
         annotate_audit_event(
             category="Backup and restore",
             action="backup.exported",
@@ -2679,8 +2691,8 @@ def register_admin_routes(
             return redirect(url_for("backup_settings", view="import"))
         encrypted_input = False
         try:
-            raw = upload.read(64 * 1024 * 1024 + 1)
-            if len(raw) > 64 * 1024 * 1024:
+            raw = upload.read(MAX_BACKUP_WIRE_BYTES + 1)
+            if len(raw) > MAX_BACKUP_WIRE_BYTES:
                 raise ValueError("Configuration backups may not exceed 64 MiB.")
             backup = json.loads(raw.decode("utf-8"))
             if is_encrypted_backup(backup):
