@@ -18308,7 +18308,7 @@ th {
     grid-column: auto;
   }
 
-  .remote-credential-manager-body > aside {
+  .remote-credential-manager-body .remote-credential-list {
     max-height: 250px;
   }
 

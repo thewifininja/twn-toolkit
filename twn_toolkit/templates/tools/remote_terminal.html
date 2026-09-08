@@ -53,6 +53,7 @@
       </div>
       <p class="field-note" data-library-status role="status" aria-live="polite"></p>
     </nav>
+    {% include 'components/remote_metadata_lookup.html' %}
     <div class="remote-connection-selection-bar" data-library-selection-bar hidden>
       <strong id="remote-connection-selection-count">0 selected</strong>
       <span class="button-row">
@@ -113,6 +114,7 @@
 
 <dialog class="remote-terminal-dialog remote-quick-connect-dialog" id="remote-quick-connect-dialog" aria-labelledby="remote-quick-connect-title">
   <form class="form remote-terminal-dialog-form" id="remote-terminal-form" data-start-url="{{ url_for('tools.start_remote_terminal_session') }}">
+    {% include 'components/remote_metadata_lookup.html' %}
     <header>
       <div><span class="eyebrow">Temporary connection</span><h2 id="remote-quick-connect-title">Quick connect</h2></div>
       <button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button>
@@ -197,6 +199,7 @@
 
 <dialog class="remote-terminal-dialog" id="remote-folder-dialog" aria-labelledby="remote-folder-title">
   <form class="form remote-terminal-dialog-form" id="remote-folder-form">
+    {% include 'components/remote_metadata_lookup.html' %}
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-folder-title">New folder</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro" data-shared-item-note hidden>You are editing a shared item. Changes apply to everyone who uses it. Only its owner can make it private.</p>
     <input id="remote-folder-id" type="hidden">
@@ -223,6 +226,7 @@
 
 <dialog class="remote-terminal-dialog remote-host-dialog" id="remote-host-dialog" aria-labelledby="remote-host-title">
   <form class="form remote-terminal-dialog-form" id="remote-host-form">
+    {% include 'components/remote_metadata_lookup.html' %}
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-host-title">New saved host</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro" data-shared-item-note hidden>You are editing a shared item. Changes apply to everyone who uses it. Only its owner can make it private.</p>
     <input id="remote-host-id" type="hidden">
@@ -291,6 +295,7 @@
           <div><h3>Saved credentials</h3><span id="remote-credential-count">0 saved</span></div>
           <button class="secondary compact" type="button" data-new-credential>New</button>
         </div>
+        {% include 'components/remote_metadata_lookup.html' %}
         <div id="remote-credential-list" class="remote-credential-list"></div>
       </aside>
       <form class="form" id="remote-credential-form">
@@ -317,6 +322,7 @@
 
 <dialog class="remote-terminal-dialog remote-library-bulk-dialog" id="remote-library-bulk-dialog" aria-labelledby="remote-library-bulk-title">
   <form class="form remote-terminal-dialog-form" id="remote-library-bulk-form">
+    {% include 'components/remote_metadata_lookup.html' %}
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-library-bulk-title">Edit selected items</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro" id="remote-library-bulk-summary">Choose a location, a credential behavior, or both. Explicit child overrides remain unchanged unless they are selected.</p>
     <section class="remote-library-bulk-section">
@@ -342,6 +348,7 @@
 
 <dialog class="remote-terminal-dialog remote-host-import-dialog" id="remote-host-import-dialog" aria-labelledby="remote-host-import-title">
   <form class="form remote-terminal-dialog-form" id="remote-host-import-form">
+    {% include 'components/remote_metadata_lookup.html' %}
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-host-import-title">Import saved hosts</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro">Paste a list or choose a CSV file, review the parsed hosts, then add the entire batch at once. Every imported host inherits credentials from its destination folder.</p>
     <section class="remote-host-import-source">
