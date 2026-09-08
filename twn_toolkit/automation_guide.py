@@ -71,6 +71,15 @@ def prepare_guide(store, form):
         when = 'When you explicitly choose Run now.'
         recovery = 'No automatic health recovery or repeat schedule.'
         next_run = 'Only after an explicit Run now; saving does not execute actions.'
+    elif source_type == 'system.startup':
+        event = 'host boot' if source['config']['mode'] == 'host_boot' else 'complete toolkit start'
+        when = f"After the next {event} following arming; wait up to {source['config']['network_wait_seconds']} seconds for network readiness."
+        recovery = 'The current startup becomes the baseline when armed; one run per matching startup.'
+        next_run = 'The next matching startup event, not a predicted calendar time.'
+    elif source_type == 'network.interface_change':
+        when = f"When monitored addresses change and remain stable for {source['config']['stabilization_seconds']} seconds."
+        recovery = 'The first observation establishes a silent baseline; later stable changes trigger runs.'
+        next_run = 'Depends on a future address change after arming; validation does not observe or change interfaces.'
     elif source_type == 'schedule.calendar':
         when = 'At the selected calendar occurrences, after you arm the automation.'
         recovery = 'Calendar runs do not use health-recovery thresholds.'

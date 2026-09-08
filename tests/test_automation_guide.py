@@ -154,3 +154,13 @@ def test_review_never_contains_saved_password(setup):
     assert 'SecretFixturePassword' not in json.dumps(result)
     assert app.test_client().get('/automations/guided').status_code == 200
     assert b'SecretFixturePassword' not in app.test_client().get('/automations/guided').data
+
+
+@pytest.mark.parametrize('kind,phrase', [('system.startup','next host boot'),('network.interface_change','remain stable')])
+def test_saved_event_trigger_review_describes_its_actual_semantics(setup, kind, phrase):
+    app, store, form = setup
+    ident = store.save_condition_definition(name='Event',type_id=kind,config={})
+    form.update(source_kind='saved',source_id=ident)
+    result = preview(app, form)
+    assert phrase in result['review']['when']
+    assert 'consecutive met checks' not in result['review']['when']
