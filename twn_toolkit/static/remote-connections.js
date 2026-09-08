@@ -24,8 +24,32 @@
   const quickProtocol = document.getElementById("remote-terminal-protocol");
   const hostProtocol = document.getElementById("remote-host-protocol");
   let library = JSON.parse(initial.textContent || "{}");
+  const editingItems = {host: null, folder: null, credential: null};
   let libraryRequest = 0;
   let searchTimer;
+  let metadataPage = library.metadata_pagination?.page || 1;
+  let metadataQuery = library.metadata_pagination?.query || "";
+  const metadataQueries = Array.from(document.querySelectorAll('[data-library-index-query]'));
+  metadataQueries.forEach((input) => {
+    input.value = metadataQuery;
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); clearTimeout(searchTimer); loadLibrary(library.pagination?.page || 1); }
+    });
+    input.addEventListener('input', () => {
+      metadataQuery = input.value;
+      metadataPage = 1;
+      metadataQueries.forEach((other) => { if (other !== input) other.value = metadataQuery; });
+      ++libraryRequest;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => loadLibrary(library.pagination?.page || 1), 250);
+    });
+  });
+  document.querySelectorAll('[data-library-index-previous]').forEach((button) => button.addEventListener('click', () => {
+    metadataPage = Math.max(1, metadataPage - 1); loadLibrary(library.pagination?.page || 1);
+  }));
+  document.querySelectorAll('[data-library-index-next]').forEach((button) => button.addEventListener('click', () => {
+    metadataPage += 1; loadLibrary(library.pagination?.page || 1);
+  }));
   const pageStatus = document.querySelector("[data-library-status]");
   search.value = library.pagination?.query || "";
   document.querySelector("[data-library-previous]").addEventListener("click", () => loadLibrary((library.pagination?.page || 1) - 1));
@@ -35,6 +59,8 @@
     const target = new URL(url, window.location.href);
     target.searchParams.set("host_page", page);
     target.searchParams.set("host_query", search.value.trim());
+    target.searchParams.set("metadata_page", metadataPage);
+    target.searchParams.set("metadata_query", metadataQuery.trim());
     return target;
   }
 
@@ -42,6 +68,7 @@
     clearTimeout(searchTimer);
     const requestId = ++libraryRequest;
     pageStatus.textContent = "Loading connections…";
+    document.querySelectorAll('[data-library-index-status]').forEach((item) => { item.textContent = 'Loading folders and credentials…'; });
     try {
       const response = await fetch(libraryUrl(manager.dataset.libraryUrl, page), {headers: {"Accept": "application/json"}});
       const data = await response.json();
@@ -51,7 +78,10 @@
       selectedHosts.clear(); selectedFolders.clear();
       render();
     } catch (error) {
-      if (requestId === libraryRequest) pageStatus.textContent = error.message;
+      if (requestId === libraryRequest) {
+        pageStatus.textContent = error.message;
+        document.querySelectorAll('[data-library-index-status]').forEach((item) => { item.textContent = error.message; });
+      }
     }
   }
   // A large connection library should open as an index, not as an already
@@ -75,6 +105,7 @@
   }
 
   function managementFields(type, subject) {
+    editingItems[type] = subject;
     const privacy = document.getElementById(`remote-${type}-visibility`);
     document.querySelector(`#remote-${type}-dialog [data-shared-item-note]`).hidden = !subject || subject.owned;
     privacy.querySelector('option[value="private"]').disabled = Boolean(subject && !subject.owned);
@@ -201,6 +232,15 @@
     library.folders ||= [];
     library.hosts ||= [];
     library.credentials ||= [];
+    const index = library.metadata_pagination;
+    document.querySelectorAll('.remote-metadata-lookup').forEach((item) => { item.hidden = !index; });
+    if (index) {
+      metadataPage = index.page;
+      document.querySelectorAll('[data-library-index-page]').forEach((item) => { item.textContent = `${index.page} / ${index.pages}`; });
+      document.querySelectorAll('[data-library-index-previous]').forEach((item) => { item.disabled = index.page <= 1; });
+      document.querySelectorAll('[data-library-index-next]').forEach((item) => { item.disabled = index.page >= index.pages; });
+      document.querySelectorAll('[data-library-index-status]').forEach((item) => { item.textContent = `${index.folders_matched} matching folders · ${index.credentials_matched} matching credentials. Up to 100 of each per page; current choices and related folders remain available.`; });
+    }
     const paging = library.pagination || {total: library.hosts.length, matched: library.hosts.length, page: 1, pages: 1};
     count.textContent = `${paging.total} host${paging.total === 1 ? "" : "s"}`;
     document.querySelector("[data-library-page]").textContent = `${paging.page} / ${paging.pages}`;
@@ -227,7 +267,7 @@
     const rootHosts = matchingHosts("");
     rootHosts.forEach((host) => root.append(hostRow(host)));
     library.folders
-      .filter((folder) => !folder.parent_id)
+      .filter((folder) => !library.folders.some((parent) => parent.id === folder.parent_id))
       .sort(byName)
       .forEach((folder) => {
         const node = folderNode(folder, query);
@@ -249,12 +289,14 @@
     }
   }
 
-  function folderNode(folder, query) {
+  function folderNode(folder, query, visited = new Set()) {
+    if (visited.has(folder.id)) return null;
+    visited.add(folder.id);
     const childFolders = library.folders.filter((item) => item.parent_id === folder.id).sort(byName);
     const directHosts = library.hosts.filter((host) => host.folder_id === folder.id).sort(byName);
     const folderMatches = !query || folder.name.toLocaleLowerCase().includes(query);
     const visibleHosts = directHosts.filter((host) => library.pagination || folderMatches || hostSearchText(host).includes(query));
-    const childNodes = childFolders.map((child) => folderNode(child, query)).filter(Boolean);
+    const childNodes = childFolders.map((child) => folderNode(child, query, visited)).filter(Boolean);
     if (query && !folderMatches && !visibleHosts.length && !childNodes.length) return null;
 
     const container = document.createElement("section");
@@ -272,6 +314,7 @@
     folderIcon.setAttribute("aria-hidden", "true");
     const name = document.createElement("strong");
     name.textContent = folder.name;
+    if (folder.parent_name && !library.folders.some((parent) => parent.id === folder.parent_id)) name.title = `Parent: ${folder.parent_name}`;
     const itemCount = document.createElement("small");
     itemCount.textContent = library.pagination ? `${directHosts.length} shown` : String(directHosts.length + childFolders.length);
     itemCount.title = "Hosts on this page; search covers the complete library.";
@@ -675,19 +718,33 @@
     const selectedParent = document.getElementById("remote-folder-parent").value;
     const selectedImportFolder = document.getElementById("remote-host-import-folder").value;
     const options = [{id: "", label: "Connections (root)"}, ...flattenFolders()];
-    setOptions(document.getElementById("remote-host-folder"), options, selectedHostFolder);
-    setOptions(document.getElementById("remote-folder-parent"), options, selectedParent);
+    setOptions(document.getElementById("remote-host-folder"), options.filter((option) => !option.id || sameLibrary(library.folders.find((item) => item.id === option.id), editingItems.host)), selectedHostFolder);
+    const blocked = editingItems.folder ? folderDescendants(editingItems.folder.id) : new Set();
+    if (editingItems.folder) blocked.add(editingItems.folder.id);
+    setOptions(document.getElementById("remote-folder-parent"), options.filter((option) => !option.id || (!blocked.has(option.id) && sameLibrary(library.folders.find((item) => item.id === option.id), editingItems.folder))), selectedParent);
     setOptions(document.getElementById("remote-host-import-folder"), options.filter((option) => !option.id || library.folders.find((item) => item.id === option.id)?.owned), selectedImportFolder);
   }
 
-  function flattenFolders(parentId = "", depth = 0, output = []) {
-    library.folders
-      .filter((folder) => folder.parent_id === parentId)
-      .sort(byName)
-      .forEach((folder) => {
-        output.push({id: folder.id, label: `${"— ".repeat(depth)}${folder.name}`});
-        flattenFolders(folder.id, depth + 1, output);
-      });
+  function flattenFolders() {
+    const index = new Map(library.folders.map((folder) => [folder.id, folder]));
+    const children = new Map();
+    library.folders.forEach((folder) => {
+      const parent = index.has(folder.parent_id) ? folder.parent_id : '';
+      if (!children.has(parent)) children.set(parent, []);
+      children.get(parent).push(folder);
+    });
+    children.forEach((items) => items.sort(byName));
+    const stack = (children.get('') || []).slice().reverse().map((folder) => ({folder, depth: 0}));
+    const output = [], visited = new Set();
+    while (stack.length) {
+      const {folder, depth} = stack.pop();
+      if (visited.has(folder.id)) continue;
+      visited.add(folder.id);
+      output.push({id: folder.id, label: `${'— '.repeat(Math.min(depth, 8))}${depth > 8 ? '… ' : ''}${folder.name}`});
+      (children.get(folder.id) || []).slice().reverse().forEach((child) => stack.push({folder:child, depth:depth+1}));
+    }
+    // Corrupt legacy cycles remain selectable for repair without recursion.
+    library.folders.filter((folder) => !visited.has(folder.id)).sort(byName).forEach((folder) => output.push({id:folder.id,label:folder.name}));
     return output;
   }
 
@@ -702,16 +759,18 @@
     const folder = document.getElementById("remote-folder-credential");
     const bulk = document.getElementById("remote-library-credential");
     setOptions(quick, options, quick.value, "No shared credentials saved");
-    setOptions(host, options, host.value, "No shared credentials saved");
-    setOptions(folder, options, folder.value, "No shared credentials saved");
+    const ownedOptions = (subject) => shared.filter((item) => sameLibrary(item, subject)).map((item) => ({id: item.id, label: `${item.name} · ${item.username}`}));
+    setOptions(host, ownedOptions(editingItems.host), host.value, "No shared credentials saved");
+    setOptions(folder, ownedOptions(editingItems.folder), folder.value, "No shared credentials saved");
     setOptions(bulk, options, bulk.value, "No shared credentials saved");
-    quick.disabled = !options.length;
-    host.disabled = !options.length;
-    folder.disabled = !options.length;
-    bulk.disabled = !options.length;
+    [quick, host, folder, bulk].forEach((select) => { select.disabled = !Array.from(select.options).some((option) => option.value); });
   }
 
   function setOptions(select, options, selected, emptyLabel = "") {
+    if (selected && !options.some((item) => item.id === selected)) {
+      const label = Array.from(select.options).find((item) => item.value === selected)?.textContent || 'Current selection (outside this page)';
+      options = [...options, {id:selected, label}];
+    }
     const nodes = [];
     if (emptyLabel && !options.length) {
       const option = document.createElement("option");
@@ -826,7 +885,7 @@
     document.getElementById("remote-host-credential").required = !isConsole && mode === "saved";
     document.getElementById("remote-host-username").required = !isConsole && mode === "host";
     const hostId = document.getElementById("remote-host-id").value;
-    const existing = library.hosts.find((host) => host.id === hostId);
+    const existing = library.hosts.find((host) => host.id === hostId) || (editingItems.host?.id === hostId ? editingItems.host : null);
     const keepsScopedSecret = existing?.credential_scope_host_id === hostId;
     const password = document.getElementById("remote-host-password");
     password.required = !isConsole && mode === "host" && !keepsScopedSecret;
@@ -840,7 +899,9 @@
       );
       preview.textContent = folder?.effective_credential_name
         ? `Will use ${folder.effective_credential_name} (${folder.effective_remote_username}) inherited from ${folder.credential_source_folder_name}.`
-        : "No credential is currently available from this folder path. Assign one to a parent folder or override it here before connecting.";
+        : !folder && document.getElementById("remote-host-folder").value
+          ? "The selected folder is outside this index page. Search for it to review its inherited credential; saving preserves the selected folder."
+          : "No credential is currently available from this folder path. Assign one to a parent folder or override it here before connecting.";
     } else if (mode === "saved") {
       preview.textContent = "This host overrides its folder and uses the selected shared credential.";
     } else if (mode === "host") {
@@ -869,7 +930,9 @@
     if (mode === "inherit") {
       preview.textContent = parent?.effective_credential_name
         ? `Will inherit ${parent.effective_credential_name} (${parent.effective_remote_username}) from ${parent.credential_source_folder_name}.`
-        : "No parent credential is currently available. Descendants can still override this folder.";
+        : !parent && document.getElementById("remote-folder-parent").value
+          ? "The selected parent is outside this index page. Search for it to review its inherited credential; saving preserves the selected parent."
+          : "No parent credential is currently available. Descendants can still override this folder.";
     } else if (mode === "credential") {
       preview.textContent = "Inheriting hosts and subfolders will use this credential until another folder or host overrides it.";
     } else {
@@ -1195,8 +1258,9 @@
   function renderCredentials() {
     const list = document.getElementById("remote-credential-list");
     document.getElementById("remote-credential-count").textContent =
-      `${library.credentials.length} saved`;
-    list.replaceChildren(...library.credentials.sort(byName).map((credential) => {
+      `${library.metadata_pagination?.credentials_total ?? library.credentials.length} saved`;
+    const visibleCredentials = library.credentials.filter((credential) => !credential.context_only);
+    list.replaceChildren(...visibleCredentials.sort(byName).map((credential) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "remote-credential-list-item";
@@ -1216,10 +1280,10 @@
       }
       return button;
     }));
-    if (!library.credentials.length) {
+    if (!visibleCredentials.length) {
       const note = document.createElement("p");
       note.className = "empty-state";
-      note.textContent = "No saved credentials.";
+      note.textContent = "No saved credentials match this index page.";
       list.append(note);
     }
   }
@@ -1248,9 +1312,9 @@
   async function saveCredential(event) {
     event.preventDefault();
     const id = document.getElementById("remote-credential-id").value;
-    const credentialIds = new Set(library.credentials.map((credential) => credential.id));
+    const previousIds = new Set(library.credentials.map((credential) => credential.id));
     try {
-      await mutate(id ? `${manager.dataset.credentialsUrl}/${id}` : manager.dataset.credentialsUrl, {
+      const data = await mutate(id ? `${manager.dataset.credentialsUrl}/${id}` : manager.dataset.credentialsUrl, {
         method: id ? "PATCH" : "POST",
         body: {
           name: document.getElementById("remote-credential-name").value,
@@ -1259,9 +1323,7 @@
           visibility: document.getElementById("remote-credential-visibility").value,
         },
       });
-      const updated = id
-        ? library.credentials.find((credential) => credential.id === id)
-        : library.credentials.find((credential) => !credentialIds.has(credential.id));
+      const updated = (data.library?.credentials || library.credentials).find((credential) => data.credential_id ? credential.id === data.credential_id : id ? credential.id === id : !previousIds.has(credential.id));
       editCredential(updated || null);
       setStatus("remote-credential-status", "Credential saved.");
     } catch (error) {
@@ -1271,11 +1333,11 @@
 
   async function duplicateCredential() {
     const id = document.getElementById("remote-credential-id").value;
+    const previousIds = new Set(library.credentials.map((credential) => credential.id));
     if (!id) return;
-    const credentialIds = new Set(library.credentials.map((credential) => credential.id));
     try {
-      await mutate(`${manager.dataset.credentialsUrl}/${id}/duplicate`, {method: "POST"});
-      const copied = library.credentials.find((credential) => !credentialIds.has(credential.id));
+      const data = await mutate(`${manager.dataset.credentialsUrl}/${id}/duplicate`, {method: "POST"});
+      const copied = (data.library?.credentials || library.credentials).find((credential) => data.credential_id ? credential.id === data.credential_id : !previousIds.has(credential.id));
       editCredential(copied || null);
     } catch (error) {
       setStatus("remote-credential-status", error.message);
@@ -1411,12 +1473,13 @@
   }
 
   function folderDescendants(folderId, output = new Set()) {
-    library.folders
-      .filter((folder) => folder.parent_id === folderId)
-      .forEach((folder) => {
-        output.add(folder.id);
-        folderDescendants(folder.id, output);
-      });
+    const pending = [folderId], visited = new Set();
+    while (pending.length) {
+      const parent = pending.pop();
+      if (visited.has(parent)) continue;
+      visited.add(parent);
+      library.folders.filter((folder) => folder.parent_id === parent).forEach((folder) => { output.add(folder.id); pending.push(folder.id); });
+    }
     return output;
   }
 

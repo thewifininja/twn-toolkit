@@ -414,7 +414,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             credential,
             resource_type="remote_credential",
         )
-        return _library_response(user["id"], 201)
+        return _library_response(user["id"], 201, credential_id=str(credential["id"]))
 
     @tools_bp.delete("/remote-terminal/credentials/<credential_id>")
     @_library_mutation
@@ -946,7 +946,7 @@ def _save_remote_terminal_credential(credential_id: str = ""):
         existing = next(
             (
                 item
-                for item in _connection_library(user["id"])["credentials"]
+                for item in _connection_store().library_for_user(user["id"], is_admin=bool(user.get("is_admin")), host_page=1)["credentials"]
                 if item["id"] == credential_id and item.get("can_manage")
             ),
             None,
@@ -999,7 +999,7 @@ def _save_remote_terminal_credential(credential_id: str = ""):
             "secret replaced": bool(payload.get("password")),
         },
     )
-    return _library_response(user["id"], 200 if credential_id else 201)
+    return _library_response(user["id"], 200 if credential_id else 201, credential_id=str(credential["id"]))
 
 def _save_remote_terminal_host(host_id: str = ""):
     payload = request.get_json(silent=True) or {}
@@ -1339,9 +1339,9 @@ def _connection_store() -> RemoteConnectionStore:
     return store
 
 
-def _library_response(user_id: str, status: int = 200):
+def _library_response(user_id: str, status: int = 200, *, credential_id: str = ""):
     return (
-        jsonify({"library": _connection_library(user_id)}),
+        jsonify({"library": _connection_library(user_id, credential_id=credential_id), **({"credential_id": credential_id} if credential_id else {})}),
         status,
     )
 
@@ -1362,15 +1362,21 @@ def _serial_devices() -> list[dict[str, object]]:
     return devices
 
 
-def _connection_library(user_id: str) -> dict[str, object]:
+def _connection_library(user_id: str, *, credential_id: str = "") -> dict[str, object]:
     try:
         page = max(1, int(request.args.get("host_page", "1")))
     except ValueError:
         page = 1
+    try:
+        metadata_page = max(1, int(request.args.get("metadata_page", "1")))
+    except ValueError:
+        metadata_page = 1
     library = _connection_store().library_for_user(
         user_id,
         is_admin=bool(getattr(g, "current_user", {}).get("is_admin")),
         host_page=page, host_query=request.args.get("host_query", ""),
+        metadata_page=metadata_page, metadata_query=request.args.get("metadata_query", ""),
+        metadata_credential_id=credential_id,
     )
     devices = {str(item["id"]): item for item in _serial_devices()}
     for host in library["hosts"]:

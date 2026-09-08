@@ -52,7 +52,10 @@ class RemoteConnectionStore:
     def library_for_user(
         self, user_id: str, *, is_admin: bool = False,
         host_page: int | None = None, host_query: str = "",
+        metadata_page: int | None = None, metadata_query: str = "", metadata_credential_id: str = "",
     ) -> dict[str, Any]:
+        if metadata_page is not None and host_page is None:
+            host_page = 1
         with self._connect() as connection:
             folders = connection.execute(
                 "SELECT * FROM remote_connection_folders ORDER BY name COLLATE NOCASE"
@@ -186,8 +189,35 @@ class RemoteConnectionStore:
         result = {"folders": folder_items, "credentials": credential_items, "hosts": host_items}
         if pagination is not None:
             result["pagination"] = pagination
+        if metadata_page is not None:
+            self._page_library_metadata(result, metadata_page, metadata_query, metadata_credential_id)
         return result
 
+
+    @staticmethod
+    def _page_library_metadata(library, requested_page, requested_query, credential_focus=""):
+        query = str(requested_query).strip()[:200]
+        folded = query.casefold()
+        folders, credentials, hosts = library['folders'], library['credentials'], library['hosts']
+        folder_map = {row['id']: row for row in folders}
+        matched_folders = [row for row in folders if folded in row['name'].casefold()]
+        matched_credentials = [row for row in credentials if folded in ' '.join(str(row.get(key, '')) for key in ('name','username','scoped_host_name')).casefold()]
+        pages = max(1, (max(len(matched_folders), len(matched_credentials))+99)//100)
+        page = min(max(1, int(requested_page)), pages)
+        start = (page-1)*100
+        folder_ids = {row['id'] for row in matched_folders[start:start+100]}
+        credential_ids = {row['id'] for row in matched_credentials[start:start+100]}
+        retained_folders = folder_ids | {row['folder_id'] for row in hosts if row['folder_id'] in folder_map}
+        # Direct parents preserve current edit choices. Do not send an unbounded
+        # ancestry chain merely because one displayed host is deeply nested.
+        retained_folders |= {folder_map[identifier]['parent_id'] for identifier in list(retained_folders) if folder_map[identifier]['parent_id'] in folder_map}
+        selected_folders = [row for row in folders if row['id'] in retained_folders]
+        related_credentials = {credential_focus} | {str(row.get(key, '')) for row in [*hosts, *selected_folders] for key in ('credential_id','effective_credential_id')}
+        library['folders'] = [{**row, 'parent_name': folder_map.get(row['parent_id'], {}).get('name', ''), 'context_only': row['id'] not in folder_ids} for row in selected_folders]
+        library['credentials'] = [{**row, 'context_only': row['id'] not in credential_ids} for row in credentials if row['id'] in credential_ids | related_credentials]
+        library['metadata_pagination'] = {'page':page, 'pages':pages, 'page_size':100, 'query':query,
+            'folders_total':len(folders), 'folders_matched':len(matched_folders),
+            'credentials_total':len(credentials), 'credentials_matched':len(matched_credentials)}
 
     def get_host(
         self, host_id: str, *, user_id: str, is_admin: bool = False
@@ -1449,31 +1479,28 @@ class RemoteConnectionStore:
         folder_cache: dict[str, tuple[str, str, str]] = {}
 
         def resolve_folder(folder_id: str) -> tuple[str, str, str]:
-            if not folder_id:
-                return "", "", ""
-            if folder_id in folder_cache:
-                return folder_cache[folder_id]
             current = folder_map.get(folder_id)
-            visited: set[str] = set()
-            while current and str(current["id"]) not in visited:
-                current_id = str(current["id"])
-                visited.add(current_id)
-                mode = str(current.get("credential_mode", "inherit"))
-                if mode == "credential":
-                    result = (
-                        str(current.get("credential_id", "")),
-                        current_id,
-                        str(current["name"]),
-                    )
-                    folder_cache[folder_id] = result
-                    return result
-                if mode == "none":
-                    result = ("", current_id, str(current["name"]))
-                    folder_cache[folder_id] = result
-                    return result
-                current = folder_map.get(str(current.get("parent_id", "")))
-            folder_cache[folder_id] = ("", "", "")
-            return folder_cache[folder_id]
+            path = []
+            visited = set()
+            result = ("", "", "")
+            while current:
+                identifier = str(current['id'])
+                if identifier in folder_cache:
+                    result = folder_cache[identifier]
+                    break
+                if identifier in visited:
+                    break
+                visited.add(identifier)
+                path.append(identifier)
+                mode = str(current.get('credential_mode', 'inherit'))
+                if mode in {'credential', 'none'}:
+                    result = (str(current.get('credential_id', '')) if mode == 'credential' else '', identifier, str(current['name']))
+                    break
+                parent = folder_map.get(str(current.get('parent_id', '')))
+                current = parent if parent and parent.get('user_id') == current.get('user_id') else None
+            for identifier in path:
+                folder_cache[identifier] = result
+            return result
 
         def apply_effective(
             item: dict[str, Any], credential_id: str, source_id: str, source_name: str
