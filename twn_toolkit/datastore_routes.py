@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 import json
-import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +11,7 @@ from flask import Flask, abort, flash, g, jsonify, redirect, render_template, re
 from .activity_context import record_current_activity
 from .audit import annotate_audit_event
 from .datastore import DatastoreError, LocalDatastore, format_bytes
+from .uploads import MultipartSpool
 from .network_tools import ToolInputError
 from .pcap_viewer import SUPPORTED_CAPTURE_SUFFIXES, inspect_packet_capture
 from .tftp import TFTPHistoryStore, TFTPSettingsStore, tftp_process_status
@@ -596,8 +596,10 @@ def register_datastore_routes(
             members = store.archive_members(
                 [str(value) for value in selected], request.form.get("path", "")
             )
-            archive = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024, mode="w+b")
-            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as bundle:
+            archive = MultipartSpool(store, store.upload_limit())
+            # ZIP writes sequentially to Upload (no seek), then the retained spool
+            # becomes read-only for the response. The lease lasts until close.
+            with zipfile.ZipFile(archive.upload, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as bundle:
                 for source, archive_name, is_directory in members:
                     if is_directory:
                         bundle.writestr(f"{archive_name.rstrip('/')}/", b"")
@@ -608,25 +610,33 @@ def register_datastore_routes(
             if 'archive' in locals():
                 archive.close()
             abort(400, str(exc) or "Select valid datastore files or folders to download.")
-        record_current_activity("Local storage", "Downloaded datastore items", f"{len(selected)} item(s)")
-        annotate_audit_event(
-            category="Local storage", action="datastore.items_downloaded",
-            summary=f"Downloaded {len(selected_items)} datastore item{'s' if len(selected_items) != 1 else ''} as a ZIP archive.",
-            resource_type="datastore_selection", resource_id=request.form.get("path", ""),
-            resource_name="Datastore selection",
-            details={
-                "base_path": request.form.get("path", ""),
-                "archive_member_count": len(members),
-                **audit_items(selected_items),
-            },
-        )
-        stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
-        return send_file(
-            archive,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=f"datastore-selection-{stamp}.zip",
-        )
+        except BaseException:
+            if 'archive' in locals():
+                archive.close()
+            raise
+        try:
+            record_current_activity("Local storage", "Downloaded datastore items", f"{len(selected)} item(s)")
+            annotate_audit_event(
+                category="Local storage", action="datastore.items_downloaded",
+                summary=f"Downloaded {len(selected_items)} datastore item{'s' if len(selected_items) != 1 else ''} as a ZIP archive.",
+                resource_type="datastore_selection", resource_id=request.form.get("path", ""),
+                resource_name="Datastore selection",
+                details={
+                    "base_path": request.form.get("path", ""),
+                    "archive_member_count": len(members),
+                    **audit_items(selected_items),
+                },
+            )
+            stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+            return send_file(
+                archive,
+                mimetype="application/zip",
+                as_attachment=True,
+                download_name=f"datastore-selection-{stamp}.zip",
+            )
+        except BaseException:
+            archive.close()
+            raise
 
     @app.post("/local/datastore/rename")
     def rename_datastore_entry():
