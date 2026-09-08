@@ -157,6 +157,7 @@ class CertificateAutomationStore:
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA synchronous = FULL")
         try:
             yield connection
             connection.commit()

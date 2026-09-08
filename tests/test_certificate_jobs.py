@@ -440,3 +440,11 @@ def test_unknown_ca_disposition_preserves_observed_request_id(fixture):
         provider.enroll(csr,'WebServer',key,'host.example.test',['host.example.test'],acknowledged=receipts.append)
     assert len(receipts)==1 and receipts[0].status=='unknown' and receipts[0].request_id=='456'
     assert session.gets==[]
+
+
+def test_submission_and_certificate_store_writes_require_full_sync(fixture):
+    jobs,certificates,*_=fixture
+    with jobs.connect(write=True) as db:
+        assert db.execute('PRAGMA synchronous').fetchone()[0]==2
+    with certificates._connect() as db:
+        assert db.execute('PRAGMA synchronous').fetchone()[0]==2

@@ -59,6 +59,9 @@ class DiagnosticJobStore:
         with sqlite_store_connection(self.path) as db:
             db.execute("PRAGMA secure_delete = ON")
             if write:
+                # Submission intent must survive a power-loss boundary before
+                # the worker sends a non-replayable remote mutation.
+                db.execute("PRAGMA synchronous = FULL")
                 db.execute("BEGIN IMMEDIATE")
             yield db
 
