@@ -71,11 +71,58 @@
   let searchTimer;
   let metadataPage = library.metadata_pagination?.page || 1;
   let metadataQuery = library.metadata_pagination?.query || "";
+  // Each picker searches its own available choices without changing the host tree
+  // or replacing another editor's draft selection.
+  const pickedRows = new Map();
+  const pickers = {
+    "remote-host-folder": ["folder", "host"], "remote-folder-parent": ["folder", "folder"],
+    "remote-host-import-folder": ["folder", "own"], "remote-library-destination": ["folder", "bulk"],
+    "remote-terminal-credential": ["credential", "quick"], "remote-host-credential": ["credential", "host"],
+    "remote-folder-credential": ["credential", "folder"], "remote-library-credential": ["credential", "bulk"],
+  };
+  for (const [id, [kind, subjectKind]] of Object.entries(pickers)) {
+    const select = document.getElementById(id);
+    select.dataset.lookupPlaceholder = kind === "folder" ? "Find a folder…" : "Credential name or username…";
+    select.twnLookup = async ({query, page, signal}) => {
+      let subject = editingItems[subjectKind];
+      if (subjectKind === "bulk") subject = [...library.hosts, ...library.folders].find((row) => selectedHosts.has(row.id) || selectedFolders.has(row.id));
+      const target = new URL(manager.dataset.libraryUrl, window.location.href);
+      target.searchParams.set("metadata_query", query);
+      target.searchParams.set("metadata_page", page);
+      target.searchParams.set("choice_kind", kind);
+      if (subjectKind !== "quick") {
+        target.searchParams.set("choice_manage", "1");
+        if (subject) target.searchParams.set("choice_owner", subject.user_id);
+      }
+      const response = await fetch(target, {signal, headers: {"Accept": "application/json"}});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Choices could not be loaded.");
+      const choices = data.library;
+      const blocked = new Set();
+      if (kind === "folder" && subjectKind === "folder" && subject) { folderDescendants(subject.id, blocked); blocked.add(subject.id); }
+      if (kind === "folder" && subjectKind === "bulk") selectedFolders.forEach((id) => { blocked.add(id); folderDescendants(id, blocked); });
+      const options = choices[kind === "folder" ? "folders" : "credentials"]
+        .filter((row) => !row.context_only && !blocked.has(row.id))
+        .map((row) => ({id: row.id, label: kind === "folder" ? row.name : `${row.name} · ${row.username}`, row}));
+      if (kind === "folder" && !query && page === 1) options.unshift({id: "", label: "Connections (root)"});
+      const paging = choices.metadata_pagination;
+      const total = kind === "folder" ? paging.folders_matched : paging.credentials_matched;
+      return {options, page: paging.page, pages: Math.max(1, Math.ceil(total / 100))};
+    };
+    select.twnLookupSelected = (item) => {
+      pickedRows.set(id, {kind, row: item.row});
+      const key = kind === "folder" ? "folders" : "credentials";
+      library[key] = library[key].filter((row) => !row.lookupOnly);
+      for (const picked of pickedRows.values()) {
+        if (picked.kind === kind && picked.row && !library[key].some((row) => row.id === picked.row.id)) library[key].push({...picked.row, lookupOnly: true, context_only: true});
+      }
+    };
+  }
   const metadataQueries = Array.from(document.querySelectorAll('[data-library-index-query]'));
   metadataQueries.forEach((input) => {
     input.value = metadataQuery;
     input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') { event.preventDefault(); clearTimeout(searchTimer); loadLibrary(library.pagination?.page || 1); }
+      if (event.key === 'Enter') { event.preventDefault(); clearTimeout(searchTimer); loadCredentials(); }
     });
     input.addEventListener('input', () => {
       metadataQuery = input.value;
@@ -83,26 +130,26 @@
       metadataQueries.forEach((other) => { if (other !== input) other.value = metadataQuery; });
       ++libraryRequest;
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => loadLibrary(library.pagination?.page || 1), 250);
+      searchTimer = setTimeout(() => loadCredentials(), 250);
     });
   });
   document.querySelectorAll('[data-library-index-previous]').forEach((button) => button.addEventListener('click', () => {
-    metadataPage = Math.max(1, metadataPage - 1); loadLibrary(library.pagination?.page || 1);
+    metadataPage = Math.max(1, metadataPage - 1); loadCredentials();
   }));
   document.querySelectorAll('[data-library-index-next]').forEach((button) => button.addEventListener('click', () => {
-    metadataPage += 1; loadLibrary(library.pagination?.page || 1);
+    metadataPage += 1; loadCredentials();
   }));
   const pageStatus = document.querySelector("[data-library-status]");
   search.value = library.pagination?.query || "";
-  document.querySelector("[data-library-previous]").addEventListener("click", () => loadLibrary((library.pagination?.page || 1) - 1));
-  document.querySelector("[data-library-next]").addEventListener("click", () => loadLibrary((library.pagination?.page || 1) + 1));
+  document.querySelector("[data-library-previous]").addEventListener("click", () => loadLibrary((library.connection_pagination?.page || library.pagination?.page || 1) - 1));
+  document.querySelector("[data-library-next]").addEventListener("click", () => loadLibrary((library.connection_pagination?.page || library.pagination?.page || 1) + 1));
 
   function libraryUrl(url, page = library.pagination?.page || 1) {
     const target = new URL(url, window.location.href);
     target.searchParams.set("host_page", page);
     target.searchParams.set("host_query", search.value.trim());
-    target.searchParams.set("metadata_page", metadataPage);
-    target.searchParams.set("metadata_query", metadataQuery.trim());
+    target.searchParams.set("metadata_page", credentialDialog.open ? metadataPage : page);
+    target.searchParams.set("metadata_query", credentialDialog.open ? metadataQuery.trim() : search.value.trim());
     return target;
   }
 
@@ -125,6 +172,22 @@
         document.querySelectorAll('[data-library-index-status]').forEach((item) => { item.textContent = error.message; });
       }
     }
+  }
+  async function loadCredentials() {
+    const requestId = ++libraryRequest;
+    const status = document.querySelector('[data-library-index-status]');
+    status.textContent = "Searching credentials…";
+    try {
+      const target = libraryUrl(manager.dataset.libraryUrl);
+      target.searchParams.set("choice_kind", "vault");
+      const response = await fetch(target, {headers: {"Accept": "application/json"}});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Credentials could not be loaded.");
+      if (requestId !== libraryRequest) return;
+      library.credentials = data.library.credentials;
+      library.metadata_pagination = data.library.metadata_pagination;
+      renderCredentialPaging(); renderCredentials();
+    } catch (error) { if (requestId === libraryRequest) status.textContent = error.message; }
   }
   // A large connection library should open as an index, not as an already
   // expanded wall of hosts. Searching still opens every matching path.
@@ -271,25 +334,28 @@
     editHost(null, event.detail || null);
   });
 
-  function render() {
-    library.folders ||= [];
-    library.hosts ||= [];
-    library.credentials ||= [];
+  function renderCredentialPaging() {
     const index = library.metadata_pagination;
-    document.querySelectorAll('.remote-metadata-lookup').forEach((item) => { item.hidden = !index; });
     if (index) {
       metadataPage = index.page;
       document.querySelectorAll('[data-library-index-page]').forEach((item) => { item.textContent = `${index.page} / ${index.pages}`; });
       document.querySelectorAll('[data-library-index-previous]').forEach((item) => { item.disabled = index.page <= 1; });
       document.querySelectorAll('[data-library-index-next]').forEach((item) => { item.disabled = index.page >= index.pages; });
-      document.querySelectorAll('[data-library-index-status]').forEach((item) => { item.textContent = `${index.folders_matched} matching folders · ${index.credentials_matched} matching credentials. Up to 100 of each per page; current choices and related folders remain available.`; });
+      document.querySelectorAll('[data-library-index-status]').forEach((item) => { item.textContent = `${index.credentials_matched} matching credentials`; });
     }
-    const paging = library.pagination || {total: library.hosts.length, matched: library.hosts.length, page: 1, pages: 1};
+  }
+
+  function render() {
+    library.folders ||= [];
+    library.hosts ||= [];
+    library.credentials ||= [];
+    renderCredentialPaging();
+    const paging = library.connection_pagination || library.pagination || {total: library.hosts.length, matched: library.hosts.length, page: 1, pages: 1};
     count.textContent = `${paging.total} host${paging.total === 1 ? "" : "s"}`;
     document.querySelector("[data-library-page]").textContent = `${paging.page} / ${paging.pages}`;
     document.querySelector("[data-library-previous]").disabled = paging.page <= 1;
     document.querySelector("[data-library-next]").disabled = paging.page >= paging.pages;
-    pageStatus.textContent = `${paging.matched} matching hosts · ${library.hosts.length} on this page. Search covers all saved hosts.`;
+    pageStatus.textContent = `${paging.matched} matching hosts · ${library.metadata_pagination?.folders_matched || 0} matching folders. Search covers the complete library.`;
     empty.hidden = library.hosts.length > 0 || library.folders.length > 0;
     tree.hidden = !empty.hidden;
     renderTree();
@@ -814,7 +880,7 @@
     setOptions(host, ownedOptions(editingItems.host), host.value, "No shared credentials saved");
     setOptions(folder, ownedOptions(editingItems.folder), folder.value, "No shared credentials saved");
     setOptions(bulk, options, bulk.value, "No shared credentials saved");
-    [quick, host, folder, bulk].forEach((select) => { select.disabled = !Array.from(select.options).some((option) => option.value); });
+    [quick, host, folder, bulk].forEach((select) => { select.disabled = false; });
   }
 
   function setOptions(select, options, selected, emptyLabel = "") {
@@ -899,7 +965,7 @@
     const savedRadio = quickForm.querySelector('input[name="quick_credential_mode"][value="saved"]');
     const temporaryRadio = quickForm.querySelector('input[name="quick_credential_mode"][value="temporary"]');
     const noneRadio = quickForm.querySelector('input[name="quick_credential_mode"][value="none"]');
-    const hasSaved = library.credentials.some((credential) => !credential.scope_host_id);
+    const hasSaved = Boolean(library.metadata_pagination?.credentials_total) || library.credentials.some((credential) => !credential.scope_host_id);
     const isTelnet = quickProtocol.value === "telnet";
     const isConsole = quickProtocol.value === "console";
     if (!isTelnet && noneRadio.checked) temporaryRadio.checked = true;
@@ -922,7 +988,7 @@
     const savedRadio = hostForm.querySelector('input[name="host_credential_mode"][value="saved"]');
     const hostRadio = hostForm.querySelector('input[name="host_credential_mode"][value="host"]');
     const noneRadio = hostForm.querySelector('input[name="host_credential_mode"][value="none"]');
-    const hasSaved = Array.from(document.getElementById("remote-host-credential").options).some((option) => option.value);
+    const hasSaved = Boolean(library.metadata_pagination?.credentials_total) || Array.from(document.getElementById("remote-host-credential").options).some((option) => option.value);
     const isTelnet = hostProtocol.value === "telnet";
     const isConsole = hostProtocol.value === "console";
     if (!isTelnet && noneRadio.checked) inheritRadio.checked = true;
@@ -967,7 +1033,7 @@
     if (!selected) return;
     const mode = selected.value;
     const saved = folderForm.querySelector("[data-folder-saved]");
-    const hasSaved = Array.from(document.getElementById("remote-folder-credential").options).some((option) => option.value);
+    const hasSaved = Boolean(library.metadata_pagination?.credentials_total) || Array.from(document.getElementById("remote-folder-credential").options).some((option) => option.value);
     if (mode === "credential" && !hasSaved) {
       folderForm.querySelector('input[name="folder_credential_mode"][value="inherit"]').checked = true;
       return syncFolderCredentialMode();
@@ -1310,6 +1376,7 @@
     renderCredentials();
     editCredential(credential || library.credentials.find((item) => canManage(item) && !item.scope_host_id) || null);
     openDialog(credentialDialog);
+    loadCredentials();
   }
 
   function renderCredentials() {
@@ -1340,7 +1407,7 @@
     if (!visibleCredentials.length) {
       const note = document.createElement("p");
       note.className = "empty-state";
-      note.textContent = "No saved credentials match this index page.";
+      note.textContent = "No saved credentials match your search.";
       list.append(note);
     }
   }

@@ -1,6 +1,17 @@
-APP_VERSION = "0.24.1"
+APP_VERSION = "0.24.2"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.24.2",
+        "date": "2026-09-08",
+        "title": "Connection library search",
+        "summary": "Find hosts and folders in one place, and search saved choices where you use them.",
+        "groups": ({"title": "Connection library", "items": (
+            "Combines host and folder search in the Connections sidebar, including empty folders beyond the first page.",
+            "Moves folder and credential lookup into their selection controls, preserving drafts and keeping searches independent.",
+            "Keeps credential search beside the vault results with bounded pages and existing access restrictions.",
+        )},),
+    },
     {
         "version": "0.24.1",
         "date": "2026-09-08",

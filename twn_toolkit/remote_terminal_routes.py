@@ -1377,7 +1377,14 @@ def _connection_library(user_id: str, *, credential_id: str = "") -> dict[str, o
         host_page=page, host_query=request.args.get("host_query", ""),
         metadata_page=metadata_page, metadata_query=request.args.get("metadata_query", ""),
         metadata_credential_id=credential_id,
+        choice_kind=request.args.get("choice_kind", "") if request.args.get("choice_kind") in {"folder", "credential", "vault"} else "",
+        choice_owner=(request.args.get("choice_owner") or user_id) if request.args.get("choice_manage") == "1" else "",
+        choice_manage=request.args.get("choice_manage") == "1",
     )
+    if not request.args.get("choice_kind"):
+        paging = library['pagination']
+        pages = max(paging['pages'], (library['metadata_pagination']['folders_matched'] + 99) // 100)
+        library['connection_pagination'] = {**paging, 'pages': pages, 'page': min(page, pages)}
     devices = {str(item["id"]): item for item in _serial_devices()}
     for host in library["hosts"]:
         if str(host.get("protocol", "")) != "console":

@@ -40,6 +40,90 @@
     let activeIndex = -1;
     let typeahead = "";
     let typeaheadTimer = null;
+    let lookupSerial = 0;
+    let lookupAbort = null;
+    let lookupTimer = null;
+    let lookupPanel = null;
+
+    const openLookup = () => {
+      menu.replaceChildren();
+      menu.setAttribute("role", "dialog");
+      trigger.setAttribute("aria-haspopup", "dialog");
+      const search = document.createElement("input");
+      search.type = "search";
+      search.maxLength = 200;
+      search.autocomplete = "off";
+      search.setAttribute("aria-label", `Search ${label.toLocaleLowerCase()}`);
+      search.placeholder = select.dataset.lookupPlaceholder || "Search…";
+      const results = document.createElement("div");
+      results.setAttribute("role", "listbox");
+      results.setAttribute("aria-label", `${label} results`);
+      const status = document.createElement("p");
+      status.className = "field-note";
+      status.setAttribute("role", "status");
+      const navigation = document.createElement("div");
+      navigation.className = "button-row";
+      const previous = document.createElement("button"), next = document.createElement("button");
+      for (const button of [previous, next]) { button.type = "button"; button.className = "secondary compact"; }
+      previous.textContent = "Previous"; next.textContent = "Next";
+      navigation.append(previous, next);
+      menu.append(search, status, results, navigation);
+      lookupPanel = {search, results};
+      let page = 1;
+      const load = async (requestedPage = 1) => {
+        clearTimeout(lookupTimer);
+        lookupAbort?.abort();
+        const abort = new AbortController(); lookupAbort = abort;
+        const serial = ++lookupSerial;
+        results.replaceChildren(); previous.disabled = next.disabled = true;
+        status.textContent = "Searching…";
+        try {
+          const found = await select.twnLookup({query: search.value.trim(), page: requestedPage, signal: abort.signal});
+          if (serial !== lookupSerial || menu.hidden) return;
+          page = found.page;
+          for (const item of found.options) {
+            const button = document.createElement("button");
+            button.type = "button"; button.className = "toolkit-select-option";
+            button.setAttribute("role", "option");
+            button.setAttribute("aria-selected", String(select.value === item.id));
+            button.textContent = item.label;
+            button.addEventListener("click", () => {
+              if (select.disabled) return;
+              select.twnLookupSelected?.(item);
+              const previousValue = select.value;
+              select.querySelectorAll('option[data-lookup-choice]').forEach((option) => { if (option.value !== item.id) option.remove(); });
+              let option = [...select.options].find((option) => option.value === item.id);
+              if (!option) { option = new Option(item.label, item.id); option.dataset.lookupChoice = "true"; select.add(option); }
+              const changed = previousValue !== item.id;
+              select.value = item.id; sync(); close({restoreFocus: true});
+              if (changed) {
+                select.dispatchEvent(new Event("input", {bubbles: true}));
+                select.dispatchEvent(new Event("change", {bubbles: true}));
+              }
+            });
+            results.append(button);
+          }
+          status.textContent = found.options.length ? `Page ${page} of ${found.pages}` : "No available matches on this page.";
+          previous.disabled = page <= 1; next.disabled = page >= found.pages;
+          navigation.hidden = found.pages <= 1;
+          position();
+        } catch (error) {
+          if (serial === lookupSerial && !abort.signal.aborted) status.textContent = error.message || "Choices could not be loaded.";
+        }
+      };
+      search.addEventListener("input", () => {
+        ++lookupSerial; lookupAbort?.abort(); clearTimeout(lookupTimer);
+        results.replaceChildren(); status.textContent = "Searching…";
+        previous.disabled = next.disabled = true;
+        lookupTimer = setTimeout(() => load(1), 250);
+      });
+      search.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") { event.preventDefault(); load(1); }
+      });
+      previous.addEventListener("click", () => load(page - 1));
+      next.addEventListener("click", () => load(page + 1));
+      load(); search.focus();
+    };
 
     wrapper.className = "toolkit-select";
     trigger.className = "toolkit-select-trigger";
@@ -128,6 +212,7 @@
 
     const close = ({restoreFocus = false} = {}) => {
       if (menu.hidden) return;
+      ++lookupSerial; lookupAbort?.abort(); clearTimeout(lookupTimer); lookupPanel = null;
       menu.hidden = true;
       wrapper.classList.remove("is-open");
       trigger.setAttribute("aria-expanded", "false");
@@ -166,14 +251,15 @@
     const open = () => {
       if (trigger.disabled) return;
       if (openControl && openControl.close !== close) openControl.close();
-      rebuild();
+      if (!select.twnLookup) rebuild();
       menu.hidden = false;
       wrapper.classList.add("is-open");
       trigger.setAttribute("aria-expanded", "true");
       activeIndex = select.selectedIndex >= 0 ? select.selectedIndex : 0;
       openControl = {close, menu, trigger, position};
       position();
-      setActive(activeIndex);
+      if (select.twnLookup) openLookup();
+      else setActive(activeIndex);
     };
 
     const choose = (index) => {
@@ -212,7 +298,7 @@
       trigger.disabled = select.disabled;
       wrapper.hidden = select.hidden;
       if (select.disabled) close();
-      if (!menu.hidden) {
+      if (!menu.hidden && !lookupPanel) {
         rebuild();
         setActive(select.selectedIndex, {scroll: false});
         position();
@@ -220,6 +306,18 @@
     };
 
     const handleKey = (event) => {
+      if (lookupPanel) {
+        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close({restoreFocus: true}); }
+        else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          const options = [...lookupPanel.results.querySelectorAll("button")];
+          const index = options.indexOf(document.activeElement);
+          const next = index + (event.key === "ArrowDown" ? 1 : -1);
+          if (next < 0) lookupPanel.search.focus();
+          else options[Math.min(next, options.length - 1)]?.focus();
+        }
+        return;
+      }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         if (menu.hidden) open();
