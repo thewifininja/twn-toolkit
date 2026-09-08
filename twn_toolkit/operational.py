@@ -206,4 +206,4 @@ def ensure_storage_capacity(instance_path: str | Path, area: str, incoming_bytes
 def _artifact_bytes(instance_path: Path) -> int:
     return directory_bytes(instance_path / "automation_artifacts") + directory_bytes(
         instance_path / "packet_captures"
-    )
+    ) + directory_bytes(instance_path / "automation_staging")

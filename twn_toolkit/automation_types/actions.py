@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 import re
 import shutil
-import tempfile
 import time
 from typing import Any, Mapping
 from urllib.parse import urlsplit
@@ -165,7 +164,11 @@ def _validate_sftp(config: dict[str, Any]) -> dict[str, Any]:
 def _execute_sftp(config: dict[str, Any], trigger: ConditionResult) -> ActionResult:
     normalized = _validate_sftp(config)
     instance_path = str(config.get("_instance_path", ""))
-    staging = Path(tempfile.mkdtemp(prefix="twn-automation-sftp-"))
+    if not instance_path:
+        raise ToolInputError("Automation file-transfer context is unavailable.")
+    from ..artifact_storage import staging_directory
+    policy = TransferPolicy.from_settings(OperationalSettingsStore(instance_path).get())
+    output_store, staging = staging_directory(instance_path, policy.run_bytes)
     keep_staging = False
     try:
         results = fetch_ssh_files(
@@ -181,7 +184,7 @@ def _execute_sftp(config: dict[str, Any], trigger: ConditionResult) -> ActionRes
             output_dir=staging, filename_pattern=normalized["filename_pattern"],
             protocol=normalized["protocol"],
             instance_path=instance_path,
-            policy=TransferPolicy.from_settings(OperationalSettingsStore(instance_path).get()) if instance_path else TransferPolicy(),
+            policy=policy, output_store=output_store,
         )
         successes = [item for item in results if item["status"] == "success"]
         artifacts: list[dict[str, Any]] = []
@@ -797,7 +800,8 @@ def _execute_packet_capture(
     instance_path = str(config.get("_instance_path", "")).strip()
     if not instance_path:
         raise ToolInputError("Automation packet-capture context is unavailable.")
-    staging = Path(tempfile.mkdtemp(prefix="twn-automation-pcap-"))
+    from ..artifact_storage import staging_directory
+    _output_store, staging = staging_directory(instance_path, normalized["max_size_mib"] * 1024**2)
     keep_staging = False
     try:
         timestamp = datetime.now().astimezone().strftime("%Y%m%d%H%M%S")

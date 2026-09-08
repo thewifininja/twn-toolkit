@@ -17,7 +17,6 @@ from string import Formatter
 from typing import Any, Callable, Iterator
 
 from .network_tools import ToolInputError
-from .operational import ensure_storage_capacity
 
 
 MIN_DURATION_SECONDS = 5
@@ -238,11 +237,36 @@ def run_packet_capture(
     progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     normalized = validate_capture_config(config, compile_filter=True)
+    from .artifact_storage import ArtifactStore
+    from .datastore import DatastoreError
+    instance = Path(instance_path).resolve()
+    output = Path(output_path).absolute()
+    raw_instance = Path(instance_path).absolute()
+    if output.is_relative_to(raw_instance):
+        output = instance / output.relative_to(raw_instance)
+    max_bytes = normalized['max_size_mib'] * 1024**2
+    area = next((name for name in ('packet_captures', 'automation_staging') if output.is_relative_to(instance / name)), None)
+    if area is None:
+        raise ToolInputError('Capture output must remain in its private capture or automation staging area.')
+    try:
+        store = ArtifactStore(instance, area, max_bytes)
+        parent = store.folder(store.relative(output.parent))
+        with store.begin_upload(store.relative(parent), output.name, max_bytes=max_bytes) as upload:
+            temporary, lease_fd = upload.external_writer()
+            result = _run_packet_capture_reserved(normalized, instance_path=instance, output_path=temporary,
+                should_stop=should_stop, progress=progress, lease_fd=lease_fd)
+            upload.commit()
+            return result
+    except DatastoreError as exc:
+        raise ToolInputError(str(exc)) from exc
+
+
+def _run_packet_capture_reserved(config, *, instance_path, output_path, should_stop, progress, lease_fd):
+    normalized = config
     instance = Path(instance_path)
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     max_bytes = normalized["max_size_mib"] * 1024 * 1024
-    ensure_storage_capacity(instance, "automation_artifacts", max_bytes)
     tcpdump_command = [
         capture_capability()["executable"],
         "-i",
@@ -278,6 +302,7 @@ def run_packet_capture(
                 stderr=subprocess.PIPE,
                 text=True,
                 start_new_session=True,
+                pass_fds=(lease_fd,),
             )
         except OSError as exc:
             raise ToolInputError(f"Could not start tcpdump: {exc}") from exc

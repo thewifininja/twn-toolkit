@@ -125,10 +125,12 @@ class PacketCaptureTests(unittest.TestCase):
                 return self.returncode
 
         with tempfile.TemporaryDirectory() as instance:
-            output = Path(instance) / "capture.pcap"
+            output = Path(instance) / "packet_captures" / "capture.pcap"
 
             def launch(command, **_kwargs):
-                output.write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 28)
+                Path(command[command.index("-w")+1]).write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 28)
+                self.assertFalse(output.exists())
+                self.assertTrue(_kwargs["pass_fds"])
                 launch.command = command
                 return FakeProcess()
 
@@ -137,7 +139,6 @@ class PacketCaptureTests(unittest.TestCase):
                 capability,
                 interfaces,
                 compiler,
-                patch("twn_toolkit.packet_capture.ensure_storage_capacity"),
                 patch("twn_toolkit.packet_capture.subprocess.Popen", side_effect=launch),
                 patch("twn_toolkit.packet_capture.time.sleep"),
             ):

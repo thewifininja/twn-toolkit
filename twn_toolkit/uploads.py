@@ -45,6 +45,7 @@ class Upload:
         self.total = 0
         self.closed = False
         self.committed = False
+        self._external = False
         self._buffer = bytearray()
         self._file = self._owner = self._parent = None
         self.registry = store.instance / ".upload-reservations"
@@ -107,6 +108,9 @@ class Upload:
         disk = os.fstat(self._file.fileno())
         pending = 0
         growth = 0
+        from .artifact_storage import ROOTS as artifact_areas
+        artifact_roots = {str(self.store.instance / area) for area in artifact_areas}
+        is_artifact = self.store.root_name in artifact_areas
         for token, record in records.items():
             if token == self.token:
                 continue
@@ -120,18 +124,21 @@ class Upload:
                 written, device = stat.st_size, stat.st_dev
             if device == disk.st_dev:
                 pending += max(0, record["capacity"] - written)
-            if record["root"] == str(self.store.root) and not record.get("staging_only", False):
+            if (record["root"] in artifact_roots if is_artifact else record["root"] == str(self.store.root)) and not record.get("staging_only", False):
                 growth += max(0, record["capacity"] - _credit(record))
         physical = disk.st_size + shutil.disk_usage(self.registry).free - int(settings["minimum_free_gib"]) * 1024**3 - pending
         logical = self.max_bytes
         if self.store.root_name == "datastore" and not self._record.get("staging_only", False):
             logical = int(settings["datastore_quota_gib"]) * 1024**3 - directory_bytes(self.store.root) + _credit(self._record) - growth
+        elif is_artifact and not self._record.get("staging_only", False):
+            current = sum(directory_bytes(Path(root)) for root in artifact_roots)
+            logical = int(settings["automation_artifact_quota_gib"]) * 1024**3 - current + _credit(self._record) - growth
         return logical, physical
 
     def _reserve(self, needed, records, *, exact=False):
         logical, physical = self._capacity(records)
         if needed > logical:
-            raise DatastoreError("The configured datastore quota would be exceeded.")
+            raise DatastoreError("The configured storage quota would be exceeded.")
         if needed > physical:
             raise DatastoreError("The upload would cross the configured minimum free-disk reserve.")
         step = min(MAX_RESERVATION_STEP, max(RESERVATION_BYTES, self._record["capacity"]))
@@ -149,6 +156,8 @@ class Upload:
             raise DatastoreError("The upload destination folder changed during the transfer.")
 
     def write(self, data):
+        if self._external:
+            raise DatastoreError("External output cannot also receive streamed writes.")
         if self.closed:
             raise DatastoreError("The upload is closed.")
         try:
@@ -194,6 +203,23 @@ class Upload:
                     view = view[count:]
                 del view
                 self._buffer.clear()
+        except BaseException:
+            self.abort()
+            raise
+
+    def external_writer(self):
+        """Reserve a bounded external writer; its child must inherit the lease fd.
+
+        The caller must reap that child before commit or abort. Inheriting the
+        lease prevents orphan cleanup while a surviving child can still write.
+        """
+        if self.closed or self._external or self.total or self.expected_bytes is not None:
+            raise DatastoreError("External output requires an empty undeclared upload.")
+        try:
+            with file_transaction(self._lock):
+                self._reserve(self.max_bytes, self._records(), exact=True)
+            self._external = True
+            return self.temporary, self._owner
         except BaseException:
             self.abort()
             raise
@@ -252,6 +278,14 @@ class Upload:
         try:
             if self._record.get("staging_only", False):
                 raise DatastoreError("Multipart staging must have a destination before publication.")
+            if self._external:
+                descriptor = os.fstat(self._file.fileno())
+                identity = _identity(self.temporary)
+                if not identity or identity[:2] != [descriptor.st_dev, descriptor.st_ino] or self.temporary.is_symlink():
+                    raise DatastoreError("External output staging changed during execution.")
+                if descriptor.st_size > self.max_bytes:
+                    raise DatastoreError("External output exceeded its file limit.")
+                self.total = descriptor.st_size
             if self.expected_bytes is not None and self.total != self.expected_bytes:
                 raise DatastoreError("Upload ended before its declared size was received.")
             self.flush()
@@ -364,6 +398,7 @@ class MultipartSpool:
 
 def _live_records(instance, registry):
     from .diagnostic_artifacts import FAMILIES
+    from .artifact_storage import ROOTS as artifact_areas
     records = {}
     for directory in registry.iterdir():
         if directory.name.startswith("."):
@@ -381,7 +416,7 @@ def _live_records(instance, registry):
                         raise ValueError("Invalid capacity")
                     destination, root = Path(record["destination"]), Path(record["root"])
                     roots = {(instance / name).resolve() for name in
-                             ("datastore", "tftp_runtime", "ssh_transfer_runtime", "ftp_runtime", *FAMILIES.values())}
+                             ("datastore", "tftp_runtime", "ssh_transfer_runtime", "ftp_runtime", *FAMILIES.values(), *artifact_areas)}
                     if root not in roots or destination == root or not destination.is_relative_to(root):
                         raise ValueError("Invalid destination")
                     original = record["original"]
