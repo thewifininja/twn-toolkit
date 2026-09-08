@@ -131,6 +131,9 @@
         </span>
       </header>
 
+      {% if capability.available and not capability.server_available|default(true) %}
+        <p class="message warning" role="status">{{ capability.server_detail }}</p>
+      {% endif %}
       {% if active_server %}
         <div class="iperf-action-form iperf-server-active">
           <div class="iperf-server-callout">
@@ -187,7 +190,7 @@
           </label>
           <footer>
             <span>Results and dashboard status are private to this toolkit user.</span>
-            <button type="submit" {{ 'disabled' if not capability.available else '' }}>Start server</button>
+            <button type="submit" {{ 'disabled' if not capability.server_available|default(capability.available) else '' }}>Start server</button>
           </footer>
         </form>
       {% endif %}

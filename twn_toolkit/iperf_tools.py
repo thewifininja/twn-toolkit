@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
+import selectors
+import signal
+import time
 import shlex
 import shutil
 import subprocess
@@ -17,44 +21,85 @@ IPERF_MAX_UDP_MEGABITS = 100_000
 IPERF_RAW_JSON_LIMIT = 1024 * 1024
 
 
-def iperf3_capability() -> dict[str, Any]:
-    executable = shutil.which("iperf3")
-    if not executable:
-        return {
-            "available": False,
-            "executable": "",
-            "version": "",
-            "detail": (
-                "iperf3 is not installed or is not on the toolkit service PATH. "
-                "Install it outside the toolkit, then restart the service."
-            ),
-        }
-    version = ""
+def _probe_iperf3(executable: str, option: str) -> str:
+    """Read trusted executable metadata within finite time and output budgets."""
+    command = [executable, option]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               start_new_session=True)
+    output = bytearray()
+    selector = None
     try:
-        completed = subprocess.run(
-            [executable, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            check=False,
-        )
-        version = next(
-            (
-                line.strip()
-                for line in (completed.stdout or completed.stderr or "").splitlines()
-                if line.strip()
-            ),
-            "",
-        )
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return {
-        "available": True,
-        "executable": executable,
-        "version": version,
-        "detail": version or f"iperf3 is available at {executable}.",
-    }
+        selector = selectors.DefaultSelector()
+        assert process.stdout is not None
+        descriptor = process.stdout.fileno()
+        os.set_blocking(descriptor, False)
+        selector.register(descriptor, selectors.EVENT_READ)
+        deadline = time.monotonic() + 3
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, 3)
+            if not selector.select(min(0.1, remaining)):
+                continue
+            try:
+                chunk = os.read(descriptor, 4096)
+            except BlockingIOError:
+                continue
+            if not chunk:
+                process.wait(timeout=max(0.001, deadline-time.monotonic()))
+                return output.decode('utf-8', errors='replace')
+            if len(output) + len(chunk) > 65536:
+                raise ValueError('iPerf3 capability output exceeded its limit.')
+            output.extend(chunk)
+    finally:
+        if selector is not None:
+            selector.close()
+        # The probe has a dedicated process group; descendants retaining its
+        # pipe must not survive a timeout or an exited parent.
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait(timeout=1)
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        if process.stdout is not None:
+            process.stdout.close()
 
+def iperf3_capability() -> dict[str, Any]:
+    executable = shutil.which('iperf3')
+    if not executable:
+        detail = ('iperf3 is not installed or is not on the toolkit service PATH. '
+                  'Install it outside the toolkit, then restart the service.')
+        return {'available': False, 'executable': '', 'version': '', 'detail': detail,
+                'server_available': False, 'server_detail': detail}
+    version = ''
+    try:
+        version = next((line.strip()[:256] for line in _probe_iperf3(executable, '--version').splitlines() if line.strip()), '')
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    streaming = False
+    try:
+        streaming = '--json-stream' in _probe_iperf3(executable, '--help').split()
+        reason = 'does not advertise --json-stream' if not streaming else ''
+    except (OSError, subprocess.SubprocessError, ValueError):
+        reason = 'could not be checked for --json-stream support'
+    detail = version or f'iperf3 is available at {executable}.'
+    return {'available': True, 'executable': executable, 'version': version, 'detail': detail,
+            'server_available': streaming,
+            'server_detail': (f'Managed server mode requires streaming JSON. {version or "The installed iPerf3"} '
+                              f'at {executable} {reason}. Client mode remains available. '
+                              'Use client mode with an existing server, or configure a streaming-capable '
+                              'iPerf3 on the toolkit service PATH and restart the service.') if not streaming else ''}
 
 def run_iperf3_client(config: dict[str, Any]) -> dict[str, Any]:
     normalized = validate_iperf3_client_config(config)
@@ -190,10 +235,12 @@ def validate_iperf3_server_config(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _iperf3_executable() -> str:
+def _iperf3_executable(*, require_streaming: bool = False) -> str:
     capability = iperf3_capability()
     if not capability["available"]:
         raise ToolInputError(capability["detail"])
+    if require_streaming and not capability["server_available"]:
+        raise ToolInputError(capability["server_detail"])
     return str(capability["executable"])
 
 
