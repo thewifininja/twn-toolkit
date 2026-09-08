@@ -27,7 +27,7 @@
         try { data = await response.json(); }
         catch (_) { throw new Error('Queue acknowledgement was lost. Check recent requests before retrying; your draft is still here.'); }
         if (!response.ok) throw new Error(data.error || 'The request could not be queued. Your draft is still here.');
-        if (typeof data.location !== 'string' || !data.location.startsWith('/tools/certificate-automation/jobs/')) {
+        if (typeof data.location !== 'string' || !data.location.startsWith(`${document.body.dataset.instancePrefix || ""}/tools/certificate-automation/jobs/`)) {
           throw new Error('Queue acknowledgement was not recognized. Check recent requests before retrying.');
         }
         guard?.acknowledge(form, snapshot);

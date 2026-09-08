@@ -484,11 +484,13 @@ def register_admin_routes(
         if not isinstance(payload, dict):
             return jsonify({"error": "Appearance settings must be an object."}), 400
         try:
-            appearance_context = (
-                auth_store.execution_context(g.current_user["id"])
-                if distributed_settings_store.get()["role"] == "mainframe"
-                else "local"
-            )
+            appearance_context = request.args.get("agent_id", "local")
+            if appearance_context != "local":
+                if distributed_settings_store.get()["role"] != "mainframe" or not g.current_user.get("is_admin"):
+                    return jsonify(error="Administrator Mainframe access is required."), 403
+                agent = distributed_agent_store.get(appearance_context)
+                if not agent or agent["state"] != "approved":
+                    return jsonify(error="That agent is unavailable."), 404
             appearance = auth_store.set_user_appearance(
                 g.current_user["id"], payload, appearance_context
             )
@@ -708,7 +710,9 @@ def register_admin_routes(
     def run_distributed_system_identity():
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
-        context_id = auth_store.execution_context(g.current_user["id"])
+        if distributed_settings_store.get()["role"] != "mainframe":
+            return Response("Agent workspaces require Mainframe mode.", status=409)
+        context_id = str(request.form.get("agent_id", "local"))
         if context_id == "local":
             identity = collect_system_identity(app.instance_path)["toolkit"]
             flash(
@@ -753,9 +757,6 @@ def register_admin_routes(
         agent = distributed_agent_store.get(agent_id)
         if not agent or agent["state"] != "approved":
             return Response("That agent workspace is unavailable.", status=404)
-        if auth_store.execution_context(g.current_user["id"]) != agent_id:
-            flash("Select that agent from the Instance menu before entering its workspace.", "error")
-            return redirect(url_for("mainframe"))
         job = distributed_job_store.latest(
             agent_id=agent_id,
             requester_id=g.current_user["id"],
@@ -780,9 +781,9 @@ def register_admin_routes(
             return Response("Administrator access is required.", status=403)
         agent = distributed_agent_store.get(agent_id)
         if (
-            not agent
+            distributed_settings_store.get()["role"] != "mainframe"
+            or not agent
             or agent["state"] != "approved"
-            or auth_store.execution_context(g.current_user["id"]) != agent_id
         ):
             return Response("That agent workspace is unavailable.", status=409)
         if not agent["online"]:
@@ -820,7 +821,6 @@ def register_admin_routes(
             distributed_settings_store.get()["role"] != "mainframe"
             or not agent
             or agent["state"] != "approved"
-            or auth_store.execution_context(g.current_user["id"]) != agent_id
         ):
             return Response("That agent workspace is unavailable.", status=409)
         capabilities = {(item["id"], item["version"]) for item in agent["capabilities"]}

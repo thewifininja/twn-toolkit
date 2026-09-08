@@ -159,7 +159,7 @@
       );
       body.set("values", submittedValues);
       try {
-        const response = await fetch(`/tools/dns-response/profiles/${kind}`, {
+        const response = await fetch(`${document.body.dataset.instancePrefix || ""}/tools/dns-response/profiles/${kind}`, {
           method: "POST",
           body,
         });
@@ -197,7 +197,7 @@
       body.set("name", deletedName);
       try {
         const response = await fetch(
-          `/tools/dns-response/profiles/${kind}/delete`,
+          `${document.body.dataset.instancePrefix || ""}/tools/dns-response/profiles/${kind}/delete`,
           {method: "POST", body},
         );
         const payload = await response.json();

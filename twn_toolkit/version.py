@@ -1,6 +1,17 @@
-APP_VERSION = "0.24.2"
+APP_VERSION = "0.24.3"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.24.3",
+        "date": "2026-09-08",
+        "title": "Independent agent tabs",
+        "summary": "Work on different agents in separate tabs and devices using the same login.",
+        "groups": ({"title": "Mainframe workspaces", "items": (
+            "Keeps agent selection in each page URL, so switching one tab leaves other tabs and devices on their own targets.",
+            "Preserves the target on reload, bookmarks, profile actions and per-agent appearance changes.",
+            "Opens saved operation responses on their original agent with existing administrator and owner restrictions.",
+        )},),
+    },
     {
         "version": "0.24.2",
         "date": "2026-09-08",

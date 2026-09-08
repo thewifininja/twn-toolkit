@@ -26,6 +26,7 @@ from flask import (
     url_for,
 )
 
+from .execution_context import request_target, switch_destination
 from .login_throttle import LoginThrottle, LoginThrottled, LOGIN_BODY_BYTES
 from .activity import ActivityStore
 from .automation import AutomationStore
@@ -325,53 +326,12 @@ def create_app(instance_path: str | None = None) -> Flask:
             session["last_seen"] = now
         return None
 
-    @app.before_request
-    def enforce_agent_workspace_boundary():
-        user = getattr(g, "current_user", None)
-        if not user or distributed_settings_store.get()["role"] != "mainframe":
-            return None
-        agent_id = auth_store.execution_context(user["id"])
-        if agent_id == "local":
-            return None
-        endpoint = request.endpoint or ""
-        allowed = {
-            "static",
-            "favicon",
-            "health",
-            "logout",
-            "update_appearance",
-            "session_activity",
-            "distributed_operation",
-            "distributed_operation_response",
-            "update_execution_context",
-            "agent_workspace",
-            "agent_dns_response",
-            "refresh_agent_workspace_identity",
-            "run_distributed_system_identity",
-            "agent_ui",
-        }
-        if endpoint in allowed:
-            return None
-        agent = distributed_agent_store.get(agent_id)
-        if not agent or agent["state"] != "approved":
-            auth_store.set_execution_context(user["id"], "local")
-            flash("The selected agent is no longer approved. Returned to this instance.", "error")
-            return redirect(url_for("index"))
-        if request.method == "GET" and request.accept_mimetypes.accept_html:
-            return redirect(f"/agents/{agent_id}/ui{request.full_path.rstrip('?')}")
-        return Response(
-            "This operation is not remote-enabled for the selected agent.",
-            status=409,
-            mimetype="text/plain",
-        )
-
     @app.route("/agents/<agent_id>/ui/", defaults={"remote_path": ""}, methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
     @app.route("/agents/<agent_id>/ui/<path:remote_path>", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
     def agent_ui(agent_id: str, remote_path: str):
         def return_to_local_instance(message: str):
             if request.method not in {"GET", "HEAD"} or not request.accept_mimetypes.accept_html:
                 return None
-            auth_store.set_execution_context(g.current_user["id"], "local")
             flash(f"{message} Returned to this instance.", "error")
             destination = "/" + remote_path
             if request.query_string:
@@ -382,8 +342,6 @@ def create_app(instance_path: str | None = None) -> Flask:
             abort(404)
         if not g.current_user.get("is_admin"):
             return Response("Administrator access is required.", status=403)
-        if auth_store.execution_context(g.current_user["id"]) != agent_id:
-            return Response("Select this agent before accessing it.", status=409)
         response_id = request.args.get('_twn_response')
         if response_id and request.method in {'GET', 'HEAD'}:
             operation = distributed_job_store.get_for_requester(response_id, g.current_user['id'])
@@ -434,7 +392,7 @@ def create_app(instance_path: str | None = None) -> Flask:
                     "logout_url": url_for("logout"),
                     "session_activity_url": url_for("session_activity"),
                     "session_login_url": url_for("login"),
-                    "appearance_url": url_for("update_appearance"),
+                    "appearance_url": url_for("update_appearance", agent_id=agent_id),
                     "appearance": auth_store.user_appearance(
                         g.current_user["id"], agent_id
                     ),
@@ -511,8 +469,6 @@ def create_app(instance_path: str | None = None) -> Flask:
             abort(404)
         if not g.current_user.get('is_admin'):
             abort(403)
-        if auth_store.execution_context(g.current_user['id']) != operation['agent_id']:
-            return Response('Select the original Agent before retrieving its response.', status=409)
         if operation['state'] != 'succeeded' or not operation.get('output'):
             return unavailable_agent_response()
         if request.method == 'HEAD':
@@ -555,6 +511,7 @@ def create_app(instance_path: str | None = None) -> Flask:
                 "completed_at": operation["completed_at"],
                 "error": operation["error"],
             })
+        g.operation_agent_id = operation["agent_id"]
         return render_template(
             "auth/distributed_operation.html",
             operation={
@@ -849,7 +806,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             str(delegated_fabric.get("context_id", "local"))
             if isinstance(delegated_fabric, dict)
             else
-            auth_store.execution_context(current_user["id"])
+            request_target()
             if current_user and distributed_settings["role"] == "mainframe"
             else "local"
         )
@@ -961,7 +918,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             "appearance_url": (
                 str(delegated_fabric.get("appearance_url", "/settings/appearance"))
                 if isinstance(delegated_fabric, dict)
-                else url_for("update_appearance")
+                else url_for("update_appearance", **({"agent_id": execution_context_id} if execution_context_id != "local" else {}))
             ),
             "execution_context_id": execution_context_id,
             "execution_agents": execution_agents,
@@ -1484,27 +1441,30 @@ def create_app(instance_path: str | None = None) -> Flask:
         settings = distributed_settings_store.get()
         if settings["role"] != "mainframe":
             return Response("Execution contexts require Mainframe mode.", status=409)
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
         context_id = str(request.form.get("context_id", "local"))
+        source = request.form.get("next", "/")
+        before, destination = switch_destination(source, context_id)
+        _, unchanged_destination = switch_destination(source, before)
         selected_agent = None
         if context_id != "local":
             selected_agent = distributed_agent_store.get(context_id)
             if not selected_agent or selected_agent["state"] != "approved":
                 flash("Select an approved agent.", "error")
-                return redirect(_validated_next_url(request.form.get("next", "")))
+                return redirect(unchanged_destination)
             if not selected_agent["online"]:
                 flash("That agent is offline and cannot be selected.", "error")
-                return redirect(_validated_next_url(request.form.get("next", "")))
+                return redirect(unchanged_destination)
             if not agent_supports_capability(
                 selected_agent, *GUI_TUNNEL_CAPABILITY
             ):
                 flash("That agent does not support GUI access.", "error")
-                return redirect(_validated_next_url(request.form.get("next", "")))
+                return redirect(unchanged_destination)
             compatibility_error = agent_gui_compatibility_error(selected_agent)
             if compatibility_error:
                 flash(compatibility_error, "error")
-                return redirect(_validated_next_url(request.form.get("next", "")))
-        before = auth_store.execution_context(g.current_user["id"])
-        auth_store.set_execution_context(g.current_user["id"], context_id)
+                return redirect(unchanged_destination)
         annotate_audit_event(
             category="Mainframe",
             action="distributed.execution_context_changed",
@@ -1519,19 +1479,7 @@ def create_app(instance_path: str | None = None) -> Flask:
             before={"context": before},
             after={"context": context_id},
         )
-        next_url = _validated_next_url(request.form.get("next", ""))
-        if before != "local":
-            prefix = f"/agents/{before}/ui"
-            if next_url == prefix:
-                next_url = "/"
-            elif next_url.startswith(prefix + "/"):
-                next_url = next_url[len(prefix):]
-        if not next_url.startswith("/"):
-            next_url = "/"
-        if selected_agent:
-            destination = f"/agents/{selected_agent['id']}/ui"
-            return redirect(destination + (next_url if next_url != "/" else "/"))
-        return redirect(next_url)
+        return redirect(destination)
 
     @app.post("/favorites/order")
     def reorder_tool_favorites():

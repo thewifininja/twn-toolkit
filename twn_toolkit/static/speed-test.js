@@ -181,7 +181,7 @@
     const notice = document.getElementById("speed-case-recorded");
     const link = document.getElementById("speed-case-link");
     if (!notice || !result?.case_recorded || !result.investigation_id) return;
-    link.href = `/investigations/${encodeURIComponent(result.investigation_id)}`;
+    link.href = `${document.body.dataset.instancePrefix || ""}/investigations/${encodeURIComponent(result.investigation_id)}`;
     notice.hidden = false;
   }
 

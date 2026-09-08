@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=asset_version) }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='appearance.css', v=asset_version) }}">
   </head>
-  <body>
+  <body data-instance-prefix="{{ request.script_root }}">
     <a class="skip-link" href="#main-content">Skip to main content</a>
     {% if current_user %}
       <aside id="session-expiry-notice" class="session-expiry-notice" role="status" aria-live="polite" hidden
@@ -48,7 +48,7 @@
         {% if current_user %}
           {% if execution_context_enabled %}
             <form method="post" action="{{ execution_context_url }}" class="execution-context-form" data-execution-context-form>
-              <input type="hidden" name="next" value="{{ request.full_path }}">
+              <input type="hidden" name="next" value="{{ request.script_root }}{{ request.full_path }}">
               <label for="execution-context-select"><span>Instance</span>
                 <select id="execution-context-select" name="context_id" data-execution-context-select>
                   <option value="local" {% if execution_context_id == 'local' %}selected{% endif %}>This instance{% if execution_local_name %} · {{ execution_local_name }}{% endif %}</option>
@@ -141,7 +141,7 @@
             </a>
             {% if favorite_enabled and tool.grantable %}
               <form class="side-nav-favorite-form" method="post" action="{{ url_for('toggle_tool_favorite', tool_id=tool.id) }}">
-                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <input type="hidden" name="next" value="{{ request.script_root }}{{ request.full_path }}">
                 <button
                   class="side-nav-favorite-button {{ 'active' if tool.id in favorite_ids else '' }}"
                   type="submit"
@@ -239,7 +239,7 @@
                     {% if sidebar_favorites|length > 1 %}
                       <form data-favorites-order-form method="post" action="{{ url_for('reorder_tool_favorites') }}" hidden>
                         <input type="hidden" name="order">
-                        <input type="hidden" name="next" value="{{ request.full_path }}">
+                        <input type="hidden" name="next" value="{{ request.script_root }}{{ request.full_path }}">
                       </form>
                       <span class="sr-only" aria-live="polite" data-favorites-status></span>
                     {% endif %}
@@ -399,7 +399,7 @@
               <a class="button-link secondary active-investigation-action" href="{{ url_for('investigation_detail', investigation_id=active_investigation.id) }}">Open case journal</a>
               {% if active_investigation.can_manage_case %}
                 <form method="post" action="{{ url_for('update_investigation_state', investigation_id=active_investigation.id) }}">
-                  <input type="hidden" name="next" value="{{ request.full_path }}">
+                  <input type="hidden" name="next" value="{{ request.script_root }}{{ request.full_path }}">
                   <input type="hidden" name="state" value="{{ 'paused' if active_investigation.is_recording else 'recording' }}">
                   <button type="submit" class="secondary active-investigation-action">{{ 'Pause' if active_investigation.is_recording else 'Resume' }}</button>
                 </form>
@@ -413,7 +413,7 @@
     {% if active_investigation %}
       <dialog class="active-case-note-dialog" data-case-note-dialog aria-labelledby="active-case-note-title">
         <form method="post" action="{{ url_for('add_investigation_note', investigation_id=active_investigation.id) }}" class="active-case-note-form">
-          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <input type="hidden" name="next" value="{{ request.script_root }}{{ request.full_path }}">
           <header>
             <span class="eyebrow">Case journal</span>
             <h2 id="active-case-note-title">Add a quick note</h2>

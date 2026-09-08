@@ -231,8 +231,9 @@ def test_delayed_response_preserves_agent_url_and_never_replays(tmp_path):
     other = app.test_client()
     _login(other, 'other')
     assert other.get(url).status_code == 404
-    assert client.get(url).status_code == 409  # Must choose original Agent.
-    auth.set_execution_context(owner['id'], agent_id)
+    assert client.get(url).status_code == 303  # The retained job identifies its original Agent.
+    auth.set_execution_context(owner['id'], 'agent_other_tab')
+    assert client.get('/').status_code == 200
     assert client.head(url).status_code == 200
     assert store.get(job['id'])['output']
     page = client.get(f'/operations/{job["id"]}')
@@ -244,6 +245,8 @@ def test_delayed_response_preserves_agent_url_and_never_replays(tmp_path):
     location = response.headers['Location']
     assert location.startswith(f'/agents/{agent_id}/ui/tools/fixture?name=a+b&')
     assert f'_twn_response={job["id"]}' in location
+    assert client.get(location.replace(agent_id, 'agent_wrong')).status_code == 404
+    assert other.get(location).status_code == 404
     assert client.head(location).status_code == 200
     with patch.object(store, 'enqueue', side_effect=AssertionError('Recovered response replayed HTTP')):
         recovered = client.get(location)
