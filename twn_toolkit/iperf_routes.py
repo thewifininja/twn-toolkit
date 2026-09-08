@@ -5,6 +5,7 @@ import time
 
 from flask import (
     Blueprint,
+    Response,
     abort,
     current_app,
     flash,
@@ -16,6 +17,10 @@ from flask import (
     url_for,
 )
 
+from .diagnostic_routes import diagnostic_store, owned_diagnostic
+from .diagnostic_worker import record_unsuccessful_scan
+from .iperf_client_jobs import prepare_iperf_client
+from .automation_heartbeat import read_automation_heartbeat
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run
 from .iperf_server import (
@@ -28,7 +33,6 @@ from .iperf_tools import (
     IPERF_MAX_PARALLEL_STREAMS,
     IPERF_MAX_UDP_MEGABITS,
     iperf3_capability,
-    run_iperf3_client,
 )
 from .network_tools import ToolInputError
 from .investigation_context import record_current_investigation_event
@@ -64,6 +68,8 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
         result = None
         journal_event = None
         error = ""
+        store = diagnostic_store()
+        job = None
         if request.method == "POST":
             operation_id = f"iperf3-client:{secrets.token_hex(12)}"
             journal_started_at = time.time()
@@ -77,20 +83,14 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
                         "Confirm that you are authorized to test this "
                         "iPerf3 destination."
                     )
-                result = run_iperf3_client(
-                    {
-                        "host": client_form["host"],
-                        "port": client_form["port"],
-                        "protocol": client_form["protocol"],
-                        "family": client_form["family"],
-                        "duration_seconds": client_form["duration_seconds"],
-                        "parallel_streams": client_form["parallel_streams"],
-                        "bind_address": client_form["bind_address"],
-                        "reverse": client_form["reverse"] == "on",
-                        "udp_megabits": client_form["udp_megabits"],
-                    }
-                )
-            except (ToolInputError, TypeError, ValueError) as exc:
+                config = prepare_iperf_client(client_form)
+                config.update(username=g.current_user['username'], investigation_id=recording_case_id(
+                    current_app.instance_path, str(g.current_user['id'])))
+                job_id = store.enqueue(user_id=str(g.current_user['id']), tool='iperf_client', config=config)
+                annotate_tool_run(category='Network tools', action_namespace='iperf3.client',
+                    tool_name='iPerf3 client test', outcome='queued', details={'operation id': job_id})
+                return redirect(url_for('tools.iperf3', job=job_id), code=303)
+            except (ToolInputError, TypeError, ValueError, OSError) as exc:
                 error = str(exc) or "Enter valid iPerf3 client settings."
             _record_client_activity(result, error, client_form)
             safe_result = _journal_iperf_result(result)
@@ -134,6 +134,16 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
                 completed_at=time.time(),
             )
 
+        if request.method == 'GET' and request.args.get('job'):
+            job = owned_diagnostic(request.args['job'], 'iperf_client')
+            client_form = job['config']['form']
+            result = job['summary'].get('result') if job['state'] == 'succeeded' else None
+            journal_event = job['summary'].get('journal_event')
+            if result:
+                # Keep the complete retained payload behind an owned download.
+                raw = result.get('raw_json', '')
+                result = {**result, 'raw_json': raw.encode('utf-8')[:16384].decode('utf-8', errors='ignore'), 'raw_preview_truncated': len(raw.encode('utf-8')) > 16384}
+
         user_id = str(g.current_user["id"])
         managed_store = server_store()
         active_server = managed_store.active_for_user(user_id)
@@ -165,7 +175,39 @@ def register_iperf_routes(tools_bp: Blueprint) -> None:
             server_result_revision=managed_store.result_revision(user_id),
             server_results=server_results,
             journal_event=journal_event,
+            diagnostic_job=job, diagnostic_recent=store.recent(user_id, 'iperf_client'),
+            diagnostic_scheduler=read_automation_heartbeat(store.instance / 'automation-heartbeat.json'),
         )
+
+    @tools_bp.get('/iperf3/jobs/<job_id>/status')
+    def iperf_client_job_status(job_id):
+        job = owned_diagnostic(job_id, 'iperf_client')
+        response = jsonify({'state': job['state'], 'error': job['error']})
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @tools_bp.post('/iperf3/jobs/<job_id>/cancel')
+    def cancel_iperf_client_job(job_id):
+        owned_diagnostic(job_id, 'iperf_client')
+        store = diagnostic_store()
+        cancelled = store.cancel(job_id, g.current_user['id'])
+        if cancelled:
+            record_unsuccessful_scan(store, cancelled, 'cancelled', 'Cancelled before execution started.')
+        annotate_tool_run(category='Network tools', action_namespace='iperf3.client.cancel',
+            tool_name='iPerf3 client test', outcome='requested', details={'operation id': job_id})
+        return redirect(url_for('tools.iperf3', job=job_id), code=303)
+
+    @tools_bp.get('/iperf3/jobs/<job_id>/raw')
+    def download_iperf_client_raw(job_id):
+        job = owned_diagnostic(job_id, 'iperf_client')
+        result = job['summary'].get('result')
+        if job['state'] != 'succeeded' or not result:
+            abort(404)
+        response = Response(result.get('raw_json', ''), mimetype='text/plain')
+        response.headers['Content-Disposition'] = 'attachment; filename="iperf3-' + job['id'] + '.txt"'
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
 
     @tools_bp.post("/iperf3/server/start")
     def start_iperf3_server():

@@ -114,9 +114,62 @@ def iperf3_capability() -> dict[str, Any]:
                               'Use client mode with an existing server, or configure a streaming-capable '
                               'iPerf3 on the toolkit service PATH and restart the service.') if not streaming else ''}
 
-def run_iperf3_client(config: dict[str, Any]) -> dict[str, Any]:
+def _run_iperf3_client_command(command, *, timeout, owned_group=False):
+    """Bound both output pipes and elapsed time, including a silent child."""
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               start_new_session=not owned_group, bufsize=0)
+    selector = None
+    output = {'stdout': bytearray(), 'stderr': bytearray()}
+    total = 0
+    deadline = time.monotonic() + timeout
+    try:
+        selector = selectors.DefaultSelector()
+        for name in output:
+            pipe = getattr(process, name)
+            os.set_blocking(pipe.fileno(), False)
+            selector.register(pipe, selectors.EVENT_READ, name)
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, timeout)
+            for key, _ in selector.select(min(0.1, remaining)):
+                try:
+                    chunk = os.read(key.fd, 65536)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                total += len(chunk)
+                if total > 2 * 1024 * 1024:
+                    raise ToolInputError('iPerf3 client output exceeded the 2 MiB result limit.')
+                output[key.data].extend(chunk)
+        process.wait(timeout=max(0.001, deadline - time.monotonic()))
+        return subprocess.CompletedProcess(command, process.returncode,
+            output['stdout'].decode('utf-8', errors='replace'),
+            output['stderr'].decode('utf-8', errors='replace'))
+    finally:
+        if selector is not None:
+            selector.close()
+        try:
+            if owned_group:
+                # The diagnostic supervisor owns this entire group. Never signal
+                # our own group here; its worker still has to retain the result.
+                if process.poll() is None:
+                    process.kill()
+            else:
+                _signal_iperf_group(process, signal.SIGKILL)
+            process.wait(timeout=2)
+        finally:
+            for name in output:
+                pipe = getattr(process, name)
+                if pipe is not None:
+                    pipe.close()
+
+
+def run_iperf3_client(config: dict[str, Any], *, executable: str | None = None, owned_group: bool = False) -> dict[str, Any]:
     normalized = validate_iperf3_client_config(config)
-    executable = _iperf3_executable()
+    executable = executable or _iperf3_executable()
     command = [
         executable,
         "-c",
@@ -144,13 +197,8 @@ def run_iperf3_client(config: dict[str, Any]) -> dict[str, Any]:
             ["-u", "-b", f"{normalized['udp_megabits']}M"]
         )
     try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=normalized["duration_seconds"] + 15,
-            check=False,
-        )
+        completed = _run_iperf3_client_command(command,
+            timeout=normalized['duration_seconds'] + 15, owned_group=owned_group)
     except subprocess.TimeoutExpired as exc:
         raise ToolInputError(
             "The iPerf3 client did not finish within the bounded test window."

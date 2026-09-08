@@ -3,12 +3,19 @@
 
 {% block content %}
 {% set has_results = result is not none %}
-{% set initial_iperf_tab = 'client' if has_results or not active_server else 'server' %}
-<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}" data-workspace-tabs data-initial-tab="{{ initial_iperf_tab }}" data-forced-tab="{{ 'true' if has_results else 'false' }}" data-workspace-tabs-key="twn.iperf-workspace-tab">
+{% set initial_iperf_tab = 'client' if has_results or diagnostic_job or not active_server else 'server' %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}" data-workspace-tabs data-initial-tab="{{ initial_iperf_tab }}" data-forced-tab="{{ 'true' if has_results or diagnostic_job else 'false' }}" data-workspace-tabs-key="twn.iperf-workspace-tab">
 {% if has_results %}
 {{ tool_result_runbar('Client test complete', 'iPerf3 throughput', (result.protocol ~ ' · ' ~ result.direction ~ ' · ' ~ result.transferred_display) if has_results else '', 'iperf-client-form', 'iperf-settings', has_results, '') }}
 {% endif %}
 {{ case_recorded_notice(journal_event) }}
+{% with diagnostic_label='iPerf3 client', diagnostic_draft_form='iperf-client-form', diagnostic_status_endpoint='tools.iperf_client_job_status', diagnostic_cancel_endpoint='tools.cancel_iperf_client_job', diagnostic_result_endpoint='tools.iperf3' %}
+{% include 'components/diagnostic_job.html' %}
+{% endwith %}
+{% if diagnostic_job %}
+<p class="field-note">Submitted test: {{ diagnostic_job.config.form.host }}:{{ diagnostic_job.config.form.port }} · {{ diagnostic_job.config.form.protocol|upper }} · {{ diagnostic_job.config.form.duration_seconds }} seconds. Changes below apply to a new run.</p>
+{% if diagnostic_job.summary.recording_warning %}<p class="message warning">{{ diagnostic_job.summary.recording_warning }}</p>{% endif %}
+{% endif %}
 <section class="panel iperf-workspace-panel tool-setup-panel" id="iperf-settings" data-tool-settings-panel>
   <header class="panel-head iperf-workspace-head">
     <div>
@@ -51,7 +58,7 @@
         </div>
         <span class="iperf-action-badge">Outbound</span>
       </header>
-      <form class="iperf-action-form" id="iperf-client-form" method="post" data-loading-message="Running the bounded iPerf3 client test…">
+      <form class="iperf-action-form" id="iperf-client-form" method="post" data-unsaved-form data-loading-message="Submitting the iPerf3 client test…">
         <div class="iperf-fields">
           <label class="wide">Destination
             <input name="client_host" value="{{ client_form.host }}" placeholder="iperf.example.net or 192.0.2.10" required>
@@ -283,6 +290,8 @@
 
   <details class="iperf-raw-result">
     <summary>Raw iPerf3 JSON{% if result.raw_json_truncated %} · truncated{% endif %}</summary>
+    {% if diagnostic_job %}<p><a href="{{ url_for('tools.download_iperf_client_raw', job_id=diagnostic_job.id) }}">Download retained raw output</a></p>{% endif %}
+    {% if result.raw_preview_truncated %}<p class="field-note">Showing the first 16 KiB of retained output. Download it to inspect the rest.</p>{% endif %}
     <pre class="result-output">{{ result.raw_json }}</pre>
   </details>
 </section>
@@ -315,6 +324,8 @@
 </section>
 </div>
 
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=app_version) }}"></script>
+<script src="{{ url_for('static', filename='diagnostic-job.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='iperf3.js', v=app_version) }}"></script>
 </div>
 {% endblock %}
