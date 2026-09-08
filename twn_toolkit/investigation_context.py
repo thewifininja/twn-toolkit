@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
+from typing import Any, BinaryIO
 
 from flask import current_app, g
 
@@ -26,7 +26,8 @@ def record_current_investigation_event(**event: Any) -> dict[str, Any] | None:
 
 
 def add_current_investigation_generated_evidence_event(
-    *, filename: str, content_type: str, content: bytes, **event: Any
+    *, filename: str, content_type: str, content: bytes | None = None,
+    stream: BinaryIO | None = None, **event: Any
 ) -> dict[str, dict[str, Any]] | None:
     """Atomically retain generated output when this user is recording a case."""
     user = getattr(g, "current_user", {}) or {}
@@ -45,6 +46,7 @@ def add_current_investigation_generated_evidence_event(
             filename=filename,
             content_type=content_type,
             content=content,
+            stream=stream,
             **event,
         )
     except (InvestigationError, OSError, sqlite3.Error) as exc:

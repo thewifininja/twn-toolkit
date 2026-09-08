@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
@@ -19,6 +18,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     url_for,
 )
 
@@ -31,7 +31,8 @@ from .automation import (
 from .automation_registry import AUTOMATION_REGISTRY
 from .audit import annotate_audit_event
 from .activity_context import record_current_activity
-from .datastore import LocalDatastore
+from .datastore import DatastoreError, LocalDatastore
+from .uploads import MultipartSpool
 from .duplication import duplicate_name
 from .investigation_context import add_current_investigation_generated_evidence_event
 from .network_tools import (
@@ -1029,12 +1030,16 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             resource_name=run["automation_name"],
             details={"automation id": run["automation_id"], "started at": run["started_at"]},
         )
-        output, filename = _automation_run_archive(store, run)
-        return Response(
-            output,
-            mimetype="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
+        try:
+            output, filename = _automation_run_archive(store, run)
+        except (DatastoreError, OSError, ValueError) as exc:
+            abort(400, str(exc))
+        try:
+            return send_file(output, mimetype="application/zip", as_attachment=True,
+                             download_name=filename)
+        except BaseException:
+            output.close()
+            raise
 
     @app.post("/automations/runs/<run_id>/case")
     def add_automation_run_to_case(run_id: str):
@@ -1042,47 +1047,53 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         run = store.get_run(run_id)
         if not run:
             abort(404)
-        output, filename = _automation_run_archive(store, run)
-        results = [
-            {
-                "status": result.get("status", ""),
-                "summary": str(result.get("summary", ""))[:2_000],
-                "stage": result.get("output", {}).get("_pipeline", {}).get("stage_name", ""),
-                "action": result.get("output", {}).get("_pipeline", {}).get("action_name", ""),
-            }
-            for result in run.get("results", [])[:100]
-            if isinstance(result, dict)
-        ]
-        succeeded = sum(result["status"] == "success" for result in results)
-        failed = sum(result["status"] == "error" for result in results)
-        added = add_current_investigation_generated_evidence_event(
-            operation_id=f"automation-run:{run_id}",
-            event_type="automation.run.attached",
-            tool_id="automation.home",
-            action="Automation run",
-            outcome=(
-                "succeeded"
-                if run["status"] == "success"
-                else "failed"
-                if run["status"] == "error"
-                else "incomplete"
-            ),
-            summary=f"Attached collected run from automation {run['automation_name']}.",
-            targets={"automation_id": run["automation_id"], "automation": run["automation_name"]},
-            parameters={"run_id": run_id, "trigger": run["trigger_summary"]},
-            metrics={
-                "result_count": len(results),
-                "successful_results": succeeded,
-                "failed_results": failed,
-                "archive_bytes": len(output),
-            },
-            details={"results": results},
-            started_at=float(run["started_at"]),
-            completed_at=float(run["finished_at"]),
-            filename=filename,
-            content_type="application/zip",
-            content=output,
-        )
+        try:
+            output, filename = _automation_run_archive(store, run)
+        except (DatastoreError, OSError, ValueError) as exc:
+            abort(400, str(exc))
+        try:
+            results = [
+                {
+                    "status": result.get("status", ""),
+                    "summary": str(result.get("summary", ""))[:2_000],
+                    "stage": result.get("output", {}).get("_pipeline", {}).get("stage_name", ""),
+                    "action": result.get("output", {}).get("_pipeline", {}).get("action_name", ""),
+                }
+                for result in run.get("results", [])[:100]
+                if isinstance(result, dict)
+            ]
+            succeeded = sum(result["status"] == "success" for result in results)
+            failed = sum(result["status"] == "error" for result in results)
+            added = add_current_investigation_generated_evidence_event(
+                operation_id=f"automation-run:{run_id}",
+                event_type="automation.run.attached",
+                tool_id="automation.home",
+                action="Automation run",
+                outcome=(
+                    "succeeded"
+                    if run["status"] == "success"
+                    else "failed"
+                    if run["status"] == "error"
+                    else "incomplete"
+                ),
+                summary=f"Attached collected run from automation {run['automation_name']}.",
+                targets={"automation_id": run["automation_id"], "automation": run["automation_name"]},
+                parameters={"run_id": run_id, "trigger": run["trigger_summary"]},
+                metrics={
+                    "result_count": len(results),
+                    "successful_results": succeeded,
+                    "failed_results": failed,
+                    "archive_bytes": output.upload.total,
+                },
+                details={"results": results},
+                started_at=float(run["started_at"]),
+                completed_at=float(run["finished_at"]),
+                filename=filename,
+                content_type="application/zip",
+                stream=output,
+            )
+        finally:
+            output.close()
         annotate_audit_event(
             category="Automation",
             action="automation.run_added_to_case" if added else "automation.run_case_add_skipped",
@@ -1105,76 +1116,93 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         return redirect(url_for("automations", focus=run["automation_id"], focus_run=run_id))
 
 
+MAX_RUN_ARCHIVE_MEMBERS = 10_000
+_ARCHIVE_CHUNK_BYTES = 64 * 1024
+
+
 def _automation_run_archive(
     store: AutomationStore, run: dict[str, Any]
-) -> tuple[bytes, str]:
+) -> tuple[MultipartSpool, str]:
+    """Build an accounted ZIP; the caller owns and must close the returned spool.
+
+    Bound both expanded input and compressed output by the configured upload
+    limit. In particular, compressible artifacts cannot bypass the work bound.
+    """
+    datastore = LocalDatastore(str(store.instance_path))
+    limit = datastore.upload_limit()
+    output = MultipartSpool(datastore, limit)
     run_id = str(run["id"])
-    output = io.BytesIO()
+    remaining = limit
+    members = 0
     file_timestamp = _filename_timestamp(run["started_at"])
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        metadata = {
-            "automation": run["automation_name"],
-            "started_at": _format_time(run["started_at"]),
-            "finished_at": _format_time(run["finished_at"]),
-            "status": run["status"],
-            "trigger": run["trigger_summary"],
-        }
-        archive.writestr("summary.json", json.dumps(metadata, indent=2))
-        for action_index, result in enumerate(run["results"], 1):
-            archive.writestr(
-                f"action-{action_index}-summary.json",
-                json.dumps(
-                    {key: value for key, value in result.items() if key != "output"},
-                    indent=2,
-                ),
-            )
-            destinations = result.get("output", {}).get("destinations", [])
-            if destinations:
-                archive.writestr(
-                    f"action-{action_index}-destinations.json",
-                    json.dumps(destinations, indent=2),
-                )
-            endpoints = result.get("output", {}).get("endpoints", [])
-            if endpoints:
-                archive.writestr(
-                    f"action-{action_index}-endpoints.json",
-                    json.dumps(endpoints, indent=2),
-                )
-            for host_index, host in enumerate(
-                result.get("output", {}).get("hosts", []), 1
-            ):
-                host_name = _safe_filename(
-                    str(
-                        host.get("host_label")
-                        or host.get("host", f"host-{host_index}")
-                    )
-                )
-                body = str(host.get("output", ""))
-                if host.get("host_label"):
-                    body = (
-                        f"Friendly name: {host['host_label']}\n"
-                        f"Target: {host.get('host', '')}\n\n{body}"
-                    )
-                if host.get("error"):
-                    body = f"ERROR: {host['error']}\n\n{body}"
-                archive.writestr(
-                    f"action-{action_index}/{file_timestamp}-{host_name}.txt",
-                    body or "No output captured.\n",
-                )
-            for artifact in result.get("output", {}).get("artifacts", []):
-                try:
-                    source = store.run_artifact(run_id, str(artifact["artifact_path"]))
-                except (KeyError, ValueError):
-                    continue
-                archive.write(
-                    source,
-                    (
-                        f"action-{action_index}/files/"
-                        f"{_safe_filename(str(artifact.get('filename', source.name)))}"
-                    ),
-                )
-    filename = _safe_filename(str(run["automation_name"])) or "automation-run"
-    return output.getvalue(), f"{filename}-{run_id}.zip"
+    try:
+        with zipfile.ZipFile(output.upload, "w", compression=zipfile.ZIP_DEFLATED,
+                             allowZip64=True) as archive:
+            def write_parts(name, parts):
+                nonlocal remaining, members
+                members += 1
+                if members > MAX_RUN_ARCHIVE_MEMBERS:
+                    raise DatastoreError("Automation ZIP exports allow at most 10,000 members.")
+                with archive.open(name, "w", force_zip64=True) as target:
+                    for part in parts:
+                        # Slice before encoding: a retained string may itself be large.
+                        for offset in range(0, len(part), _ARCHIVE_CHUNK_BYTES):
+                            chunk = part[offset:offset + _ARCHIVE_CHUNK_BYTES]
+                            if isinstance(chunk, str):
+                                chunk = chunk.encode("utf-8")
+                            remaining -= len(chunk)
+                            if remaining < 0:
+                                raise DatastoreError(
+                                    "Automation ZIP expanded content exceeds the configured upload limit."
+                                )
+                            target.write(chunk)
+
+            def write_json(name, value):
+                write_parts(name, json.JSONEncoder(indent=2).iterencode(value))
+
+            write_json("summary.json", {
+                "automation": run["automation_name"],
+                "started_at": _format_time(run["started_at"]),
+                "finished_at": _format_time(run["finished_at"]),
+                "status": run["status"],
+                "trigger": run["trigger_summary"],
+            })
+            for action_index, result in enumerate(run["results"], 1):
+                write_json(f"action-{action_index}-summary.json",
+                           {key: value for key, value in result.items() if key != "output"})
+                result_output = result.get("output", {})
+                for key in ("destinations", "endpoints"):
+                    if result_output.get(key):
+                        write_json(f"action-{action_index}-{key}.json", result_output[key])
+                for host_index, host in enumerate(result_output.get("hosts", []), 1):
+                    host_name = _safe_filename(str(host.get("host_label") or
+                                                   host.get("host", f"host-{host_index}")))
+                    parts = []
+                    if host.get("error"):
+                        parts.extend(("ERROR: ", str(host["error"]), "\n\n"))
+                    if host.get("host_label"):
+                        parts.extend(("Friendly name: ", str(host["host_label"]),
+                                      "\nTarget: ", str(host.get("host", "")), "\n\n"))
+                    parts.append(str(host.get("output", "")))
+                    write_parts(f"action-{action_index}/{file_timestamp}-{host_name}.txt",
+                                parts if any(parts) else ["No output captured.\n"])
+                for artifact in result_output.get("artifacts", []):
+                    try:
+                        source = store.run_artifact(run_id, str(artifact["artifact_path"]))
+                    except (KeyError, ValueError):
+                        continue
+                    with source.open("rb") as stream:
+                        write_parts(
+                            f"action-{action_index}/files/"
+                            f"{_safe_filename(str(artifact.get('filename', source.name)))}",
+                            iter(lambda: stream.read(_ARCHIVE_CHUNK_BYTES), b""),
+                        )
+        output.seek(0)
+        filename = _safe_filename(str(run["automation_name"])) or "automation-run"
+        return output, f"{filename}-{run_id}.zip"
+    except BaseException:
+        output.close()
+        raise
 
 
 def _empty_form() -> dict[str, str]:

@@ -289,6 +289,10 @@ structured events or generated evidence. Operators can also:
 - upload collision-safe evidence files to a managed per-case Datastore
   folder with retained size, content type, and SHA-256 metadata;
 - explicitly add an IP-address snapshot or a collected Automation run ZIP;
+  Automation ZIP downloads and case attachments use reserved temporary storage,
+  allow up to 10,000 entries, and limit both expanded content and ZIP output to
+  the configured upload limit. Archive construction remains synchronous and the
+  retained run metadata is still loaded before building the archive;
 - review a chronological journal and download retained evidence;
 - curate a deterministic case report without changing source evidence;
 - download its compact timeline, linked detailed-result pages, and evidence
