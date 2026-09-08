@@ -25,8 +25,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs7
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
-from requests.adapters import HTTPAdapter
 
+from .adcs_response_bounds import BoundedAdcsAdapter, AdcsResponseTooLarge
 from .certificate_tools import HOSTNAME_PATTERN
 from .duplication import duplicate_name
 
@@ -884,7 +884,7 @@ def _stored_certificate_details(certificate_pem: bytes) -> dict[str, str]:
     }
 
 
-class _DirectAddressAdapter(HTTPAdapter):
+class _DirectAddressAdapter(BoundedAdcsAdapter):
     def __init__(self, hostname: str, *args: Any, **kwargs: Any) -> None:
         self.hostname = hostname
         super().__init__(*args, **kwargs)
@@ -921,6 +921,7 @@ class AdcsWebEnrollmentProvider:
                 "AD CS enrollment requires the requests-ntlm runtime dependency."
             ) from exc
         session = requests.Session()
+        session.mount("https://", BoundedAdcsAdapter())
         session.auth = HttpNtlmAuth(self.username, self.password)
         session.headers.update({"User-Agent": "TWN-Toolkit-Certificate-Automation/1"})
         return session
@@ -1199,6 +1200,8 @@ def _extract_chain(content: bytes, leaf: x509.Certificate) -> bytes:
 
 
 def _request_error(exc: requests.RequestException) -> str:
+    if isinstance(exc, AdcsResponseTooLarge):
+        return "The PKI server response exceeded the 4 MiB limit."
     if isinstance(exc, requests.exceptions.SSLError):
         detail = str(exc).casefold()
         if "certificate has expired" in detail or "certificate expired" in detail:
