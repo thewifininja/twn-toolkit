@@ -2244,3 +2244,23 @@ dialog::backdrop { background: rgb(5 8 10 / 68%); }
 .operation-status[data-operation-state="uncertain"],
 .operation-status[data-operation-state="partial"] { border-inline-start-color: var(--warn); }
 .operation-status[data-operation-state="complete"] { border-inline-start-color: var(--ok); }
+
+/* Native inputs and enhanced selects must use the same line box at every text scale. */
+#remote-host-form {
+  --host-control-min-height: var(--ui-control-height);
+}
+#remote-host-form :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  select:not([multiple]),
+  .toolkit-select-trigger
+) {
+  box-sizing: border-box;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  height: max(var(--host-control-min-height), calc(1.5em + 16px));
+  min-height: max(var(--host-control-min-height), calc(1.5em + 16px));
+  padding-block: 7px;
+}
+@media (max-width: 900px) {
+  #remote-host-form { --host-control-min-height: 44px; }
+}

@@ -17742,18 +17742,24 @@ th {
   grid-column: 1 / -1;
 }
 
+/* New and Edit Host share paired, equally sized fields. */
 .remote-terminal-dialog-grid {
-  grid-template-columns: 140px minmax(220px, 1fr) 130px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.remote-terminal-dialog-grid label:nth-child(2) {
-  grid-column: span 2;
+.remote-terminal-dialog-grid > label {
+  min-width: 0;
+  align-content: start;
 }
 
-.remote-terminal-dialog-grid .remote-host-availability-field {
+/* Leave room for an FQDN while keeping the port tied to its target. */
+.remote-host-target-fields {
   grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) 8rem;
   min-width: 0;
 }
+
+.remote-host-target-fields[hidden] { display: none; }
 
 .remote-host-address-field {
   grid-column: span 1;
@@ -18284,6 +18290,7 @@ th {
   }
 
   .remote-terminal-dialog-grid,
+  .remote-host-target-fields,
   .remote-console-line-grid,
   .remote-terminal-credential-fields,
   .remote-host-import-options,
@@ -18297,8 +18304,6 @@ th {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .remote-terminal-dialog-grid label:nth-child(2),
-  .remote-terminal-dialog-grid .remote-host-availability-field,
   .remote-host-address-field {
     grid-column: auto;
   }
