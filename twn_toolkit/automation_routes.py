@@ -132,6 +132,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         workspace_duration = (time.perf_counter() - workspace_started) * 1000
         context_started = time.perf_counter()
         automations = workspace["automations"]
+        display_budget = {'text': 64 * 1024, 'nodes': 2000, 'limited': False}
         for automation in automations:
             for stage in automation["action_stages"]:
                 stage["delay_display"] = _format_duration(
@@ -162,7 +163,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 for stage in automation["action_stages"]
             ]
             automation["recent_runs"] = [
-                _format_run(run)
+                _format_run(run, display_budget)
                 for run in workspace["recent_runs"].get(automation["id"], [])
             ]
             automation["recent_checks"] = [
@@ -1000,6 +1001,24 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         )
         return redirect(url_for("automations", focus=automation_id))
 
+    @app.get('/automations/<automation_id>/history')
+    def automation_history(automation_id):
+        require_admin()
+        automation = store.get(automation_id)
+        if not automation:
+            abort(404)
+        try:
+            page = max(1, min(5000, int(request.args.get('page', 1))))
+        except ValueError:
+            abort(400)
+        history = store.history_page(automation_id, page=page)
+        budget = {'text': 64 * 1024, 'nodes': 2000, 'limited': False}
+        history['runs'] = [_format_run(run, budget) for run in history['runs']]
+        response = Response(render_template('automations/history.html', automation=automation,
+                                           history=history, page=page))
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
     @app.post("/automations/runs/<run_id>/delete")
     def delete_automation_run(run_id: str):
         require_admin()
@@ -1300,28 +1319,23 @@ def _filename_timestamp(value: Any) -> str:
     return datetime.fromtimestamp(float(value)).astimezone().strftime("%Y%m%d%H%M%S")
 
 
-def _format_run(run: dict[str, Any]) -> dict[str, Any]:
-    formatted_results = []
-    for result in run.get("results", []):
-        output = dict(result.get("output", {}))
-        hosts = []
-        for host in output.get("hosts", []):
-            formatted_host = dict(host)
-            captured = str(formatted_host.get("output", ""))
-            if len(captured) > 40_000:
-                formatted_host["output"] = (
-                    f"{captured[:40_000]}\n\n"
-                    "[Browser preview shortened. Download the ZIP for the complete captured output.]"
-                )
-            hosts.append(formatted_host)
-        if "hosts" in output:
-            output["hosts"] = hosts
-        formatted_results.append({**result, "output": output})
-    return {
-        **run,
-        "results": formatted_results,
-        "started_display": _format_time(run["started_at"]),
-    }
+def _format_run(run: dict[str, Any], budget=None) -> dict[str, Any]:
+    from .automation_history import preview_value
+    budget = budget if budget is not None else {'text': 64 * 1024, 'nodes': 2000, 'limited': False}
+    budget['limited'] = False
+    source = run.get('results', [])
+    valid = isinstance(source, list) and all(isinstance(result, dict) for result in source)
+    results = preview_value(source if valid else [], budget)
+    if not valid:
+        budget['limited'] = True
+    for result in results:
+        if not isinstance(result.get('output'), dict):
+            result['output'] = {}
+        result.setdefault('status', '')
+        result.setdefault('summary', '')
+    return {**run, 'results': results,
+            'preview_limited': bool(run.get('preview_limited') or budget['limited']),
+            'started_display': _format_time(run['started_at'])}
 
 
 def _format_check(check: dict[str, Any]) -> dict[str, Any]:

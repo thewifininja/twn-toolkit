@@ -306,6 +306,10 @@ structured events or generated evidence. Operators can also:
   metadata nesting beyond 64 levels, allow up to 10,000 entries, and limit both
   expanded content and ZIP output to the configured upload limit. Archive construction remains synchronous and the
   retained run metadata is still loaded before building the archive;
+- browse automation run/check history in pages of 20. Workspace history reads
+  at most 100 rows and 2 MiB of JSON, with 256 KiB per-row previews. Large results
+  are explicitly omitted or shortened in the browser; retained ZIP contents are
+  unchanged. Preview text and nested result counts also share a display budget;
 - review a chronological journal and download retained evidence;
 - curate a deterministic case report without changing source evidence;
 - download its compact timeline, linked detailed-result pages, and evidence
