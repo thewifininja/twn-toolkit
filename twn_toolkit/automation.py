@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .backup_source_reads import source_json_loads
+from .outgoing_admission import CapacityWaitTimeout
 
 import base64
 import hashlib
@@ -2934,6 +2935,8 @@ class AutomationEngine:
                     condition["config"],
                     observed_at=observed_at,
                 )
+            except CapacityWaitTimeout:
+                raise
             except Exception as exc:
                 raise RuntimeError(
                     f"{condition['name']}: {type(exc).__name__}: {exc}"
@@ -3000,6 +3003,9 @@ class AutomationEngine:
         observed_at = time.time()
         try:
             result = self.test_condition(automation, observed_at=observed_at)
+        except CapacityWaitTimeout as exc:
+            self.store.record_observation(automation["id"], "capacity_wait", str(exc))
+            return
         except Exception as exc:
             self.store.record_error(
                 automation["id"], f"{type(exc).__name__}: {exc}"

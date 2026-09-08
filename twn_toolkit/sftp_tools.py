@@ -186,7 +186,7 @@ def fetch_ssh_files(
             arguments["allow_legacy_algorithms"] = allow_legacy_algorithms
         try:
             with TransferDeadline(policy.deadline_seconds) as deadline:
-                with transfer_slot(instance_path, host["host"], deadline):
+                with transfer_slot(instance_path, host["host"], deadline, weight=2 if protocol == "ftp" else 1):
                     return fetcher(**arguments, policy=policy, deadline=deadline)
         except (TimeoutError, OSError) as exc:
             return [_result(host["host"], host.get("label", ""), path, "error",

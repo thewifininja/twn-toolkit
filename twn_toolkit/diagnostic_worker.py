@@ -179,7 +179,8 @@ def execute_scan(store, job_id, token):
         raise ValueError("Unsupported diagnostic.")
     form = config["form"]
     rows = scan_tcp_ports(config["targets"], config["ports"],
-                          timeout=float(form["timeout"]), max_workers=int(form["concurrency"]))
+                          timeout=float(form["timeout"]), max_workers=int(form["concurrency"]),
+                          instance_path=str(store.instance))
     stats = {"combinations": len(rows)}
     stats.update({state: sum(row["status"] == state for row in rows) for state in ("open", "closed", "timeout", "error")})
     if store.finish(job_id, token, rows, {"stats": stats}):

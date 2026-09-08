@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .outgoing_admission import async_slot, outgoing_scope, resolve_instance, CapacityWaitTimeout
+
 import asyncio
 import re
 import time
@@ -281,29 +283,62 @@ def run_snmp_tests(
     oid_profiles: list[dict[str, Any]],
     *,
     condition_workers: bool = False,
+    instance_path: str | None = None,
 ) -> list[dict[str, Any]]:
+    instance_path = resolve_instance(instance_path)
     if condition_workers:
         jobs = [(host, profile) for host in hosts for profile in oid_profiles]
 
         def poll(job):
             host, profile = job
             # Each poll owns its event loop and engine through dispatcher cleanup.
-            return asyncio.run(_poll_host_profile(
-                host, credentials_by_name[host["credential_name"]], profile,
-            ))
+            with outgoing_scope(instance_path):
+                return asyncio.run(_poll_host_profile(
+                    host, credentials_by_name[host["credential_name"]], profile,
+                ))
 
         return condition_worker_map(poll, jobs, max(1, len(jobs)))
-    return asyncio.run(_run_snmp_tests(hosts, credentials_by_name, oid_profiles))
+    with outgoing_scope(instance_path):
+        return asyncio.run(_run_snmp_tests(hosts, credentials_by_name, oid_profiles))
 
 
 def discover_snmp_interfaces(
-    host: dict[str, Any], credential: dict[str, Any]
+    host: dict[str, Any], credential: dict[str, Any], *, instance_path=None,
 ) -> dict[str, Any]:
     """Discover standard IF-MIB interfaces without exposing stored credentials."""
-    return asyncio.run(_discover_snmp_interfaces(host, credential))
+    with outgoing_scope(instance_path):
+        return asyncio.run(_discover_snmp_interfaces(host, credential))
 
 
-async def _discover_snmp_interfaces(
+async def _discover_snmp_interfaces(host, credential):
+    try:
+        async with async_slot(resolve_instance(), host['host']):
+            return await _discover_snmp_interfaces_connected(host, credential)
+    except CapacityWaitTimeout as exc:
+        raise ToolInputError(str(exc)) from exc
+
+
+async def _poll_snmp_interface(host, credential, interface_index):
+    try:
+        async with async_slot(resolve_instance(), host['host']):
+            return await _poll_snmp_interface_connected(host, credential, interface_index)
+    except CapacityWaitTimeout as exc:
+        raise ToolInputError(str(exc)) from exc
+
+
+async def _poll_host_profile(host, credential, oid_profile):
+    started = time.monotonic()
+    try:
+        async with async_slot(resolve_instance(), host['host']):
+            return await _poll_host_profile_connected(host, credential, oid_profile)
+    except CapacityWaitTimeout as exc:
+        return {'host_name': host['name'], 'host': host['host'], 'port': host['port'],
+                'credential_name': credential['name'], 'profile_name': oid_profile['name'],
+                'status': 'error', 'error': str(exc), 'rows': [], 'capacity_limited': True,
+                'elapsed_ms': round((time.monotonic()-started)*1000, 1)}
+
+
+async def _discover_snmp_interfaces_connected(
     host: dict[str, Any], credential: dict[str, Any]
 ) -> dict[str, Any]:
     engine = SnmpEngine()
@@ -355,17 +390,20 @@ async def _discover_snmp_interfaces(
 
 
 def poll_snmp_interface(
-    host: dict[str, Any], credential: dict[str, Any], interface_index: int
+    host: dict[str, Any], credential: dict[str, Any], interface_index: int, *, instance_path=None,
 ) -> dict[str, Any]:
     """Read one absolute IF-MIB counter sample for browser-side rate calculation."""
-    return asyncio.run(_poll_snmp_interface(host, credential, interface_index))
+    with outgoing_scope(instance_path):
+        return asyncio.run(_poll_snmp_interface(host, credential, interface_index))
 
 
 def poll_snmp_interfaces(
     targets: list[tuple[dict[str, Any], dict[str, Any], int]],
+    *, instance_path=None,
 ) -> list[dict[str, Any]]:
     """Poll a bounded interface set concurrently while isolating target failures."""
-    return asyncio.run(_poll_snmp_interfaces(targets))
+    with outgoing_scope(instance_path):
+        return asyncio.run(_poll_snmp_interfaces(targets))
 
 
 async def _poll_snmp_interfaces(
@@ -399,7 +437,7 @@ async def _poll_snmp_interfaces(
     return results
 
 
-async def _poll_snmp_interface(
+async def _poll_snmp_interface_connected(
     host: dict[str, Any], credential: dict[str, Any], interface_index: int
 ) -> dict[str, Any]:
     engine = SnmpEngine()
@@ -543,7 +581,7 @@ async def _run_snmp_tests(
     return list(await asyncio.gather(*jobs))
 
 
-async def _poll_host_profile(
+async def _poll_host_profile_connected(
     host: dict[str, Any],
     credential: dict[str, Any],
     oid_profile: dict[str, Any],

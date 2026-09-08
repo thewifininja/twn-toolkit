@@ -44,7 +44,7 @@ def wait_finished(scheduler, job_id):
 def test_dns_enqueue_does_not_execute_and_results_are_paged(tmp_path, monkeypatch):
     app = create_app(str(tmp_path)); app.testing = True
     client = app.test_client()
-    monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_lookup_matrix', lambda *a: pytest.fail('HTTP performed DNS'))
+    monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_lookup_matrix', lambda *a, **kw: pytest.fail('HTTP performed DNS'))
     response = client.post('/tools/dns-response', data=FORM)
     assert response.status_code == 303
     location = response.headers['Location']
@@ -53,7 +53,7 @@ def test_dns_enqueue_does_not_execute_and_results_are_paged(tmp_path, monkeypatc
     assert b'Run in progress' in client.get(location).data
     assert client.get('/health').status_code == 200
     rows = [row(i) for i in range(150)]
-    monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_lookup_matrix', lambda *a: rows)
+    monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_lookup_matrix', lambda *a, **kw: rows)
     execute_scan(store, job['id'], job['token'])
     first = client.get(location).data; second = client.get(location + '&page=2').data
     assert b'150 lookup results' in first and b'Next page' in first
@@ -179,7 +179,7 @@ def test_dns_case_capture_survives_navigation_and_refresh_does_not_duplicate(tmp
     submitted = client.post('/tools/dns-response', data=FORM)
     client.post('/investigations', data={'title': 'Different case'})
     store = app.extensions['diagnostic_job_store']; job = store.claim()
-    monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_lookup_matrix', lambda *a: [row()])
+    monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_lookup_matrix', lambda *a, **kw: [row()])
     execute_scan(store, job['id'], job['token'])
     for _ in range(2):
         assert client.get(submitted.headers['Location']).status_code == 200

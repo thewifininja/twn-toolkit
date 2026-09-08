@@ -433,7 +433,8 @@ class LiveToolStoreTests(unittest.TestCase):
         host_all = SNMPHostProfileStore.all
         credential_all = SNMPCredentialProfileStore.all
 
-        def poll(prepared):
+        def poll(prepared, *, instance_path):
+            self.assertEqual(instance_path, str(self.store.instance_path))
             return [
                 {
                     "host_name": host_profile["name"],
@@ -469,7 +470,8 @@ class LiveToolStoreTests(unittest.TestCase):
         get_host.assert_not_called()
         get_credential.assert_not_called()
         poll_interfaces.assert_called_once_with(
-            [(host, credential, 2), (host, credential, 3)]
+            [(host, credential, 2), (host, credential, 3)],
+            instance_path=str(self.store.instance_path),
         )
         detail = self.store.get_session(
             str(session["id"]), user_id="operator-1"
@@ -506,7 +508,8 @@ class LiveToolStoreTests(unittest.TestCase):
         claimed = self.store.claim_due()[0]
         communities = []
 
-        def poll(prepared):
+        def poll(prepared, *, instance_path):
+            self.assertEqual(instance_path, str(self.store.instance_path))
             communities.append(prepared[0][1]["community"])
             return [
                 {

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...outgoing_admission import CapacityWaitTimeout
+
 """ICMP, DNS, TCP, manual, and calendar condition implementations."""
 
 import json
@@ -286,6 +288,8 @@ def _evaluate_dns(config: dict[str, Any]) -> ConditionResult:
         record_type=normalized["record_type"],
         timeout=normalized["timeout"],
     )
+    if any(row.get('capacity_limited') for row in results):
+        raise CapacityWaitTimeout('Outgoing capacity prevented a complete condition check; prior state is preserved.')
     expected = {
         _canonical_dns_answer(answer)
         for answer in normalized["expected_answers"].splitlines()
@@ -394,6 +398,8 @@ def _evaluate_dns_performance(config: dict[str, Any]) -> ConditionResult:
         record_type=normalized["record_type"],
         timeout=normalized["timeout"],
     )
+    if any(row.get('capacity_limited') for row in results):
+        raise CapacityWaitTimeout('Outgoing capacity prevented a complete condition check; prior state is preserved.')
     evaluated: list[dict[str, Any]] = []
     for result in results:
         response_ms = float(result.get("response_ms", 0))
@@ -513,6 +519,8 @@ def _evaluate_tcp(config: dict[str, Any]) -> ConditionResult:
         host = parse_ping_targets(host_text, limit=1)[0]
         checks.extend((host, port) for port in parse_tcp_ports(ports_text, limit=200))
     results = scan_tcp_checks(checks, timeout=normalized["timeout"])
+    if any(row.get('capacity_limited') for row in results):
+        raise CapacityWaitTimeout('Outgoing capacity prevented a complete condition check; prior state is preserved.')
     expected = normalized["expected_state"]
     evaluated = [
         {
