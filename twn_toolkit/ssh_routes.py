@@ -8,6 +8,10 @@ import time
 
 from flask import (
     Blueprint,
+    Response,
+    abort,
+    g,
+    stream_with_context,
     current_app,
     flash,
     jsonify,
@@ -18,6 +22,10 @@ from flask import (
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
+from .diagnostic_routes import diagnostic_store, owned_diagnostic
+from .diagnostic_worker import record_unsuccessful_scan
+from .ping_investigation import recording_case_id
+from . import bulk_ssh_jobs
 from .activity_context import record_current_activity
 from .audit import annotate_audit_event, annotate_tool_run, suppress_audit_event
 from .network_tools import (
@@ -141,7 +149,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     )
                     _annotate_preview_scale(preview)
                     preview_token = _preview_serializer().dumps(
-                        {"digest": ssh_command_plan_digest(preview["plans"])}
+                        {"digest": ssh_command_plan_digest(preview["plans"]), "nonce": secrets.token_hex(16)}
                     )
                     success = (
                         "The legacy host list was imported. Review the rendered "
@@ -246,7 +254,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     _annotate_preview_scale(preview)
                     if action == "preview":
                         preview_token = _preview_serializer().dumps(
-                            {"digest": ssh_command_plan_digest(preview["plans"])}
+                            {"digest": ssh_command_plan_digest(preview["plans"]), "nonce": secrets.token_hex(16)}
                         )
                         suppress_audit_event()
                     elif action == "run":
@@ -259,12 +267,14 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                             raise ToolInputError(
                                 "Confirm that you intend to execute the previewed commands."
                             )
-                        results = _run_plans(form, preview)
-                        _attach_host_key_retry_tokens(results, preview, form)
+                        return _enqueue_ssh(form, preview, request.form.get('password', ''), preview_token)
                     else:
                         raise ToolInputError("Choose Preview commands or Run commands.")
                 except (ToolInputError, TypeError, ValueError) as exc:
                     error = str(exc) if str(exc) else "Enter a valid SSH port."
+                    if action == 'run' and request.accept_mimetypes.best == 'application/json':
+                        suppress_audit_event()
+                        return jsonify({'error': error}), 400
                     if action == "run":
                         _record_failed_run(form, preview)
                         journal_event = _record_ssh_investigation(
@@ -323,7 +333,69 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             ssh_batch_size=SSH_EXECUTION_BATCH_SIZE,
             ssh_execution_workers=SSH_EXECUTION_WORKERS,
             journal_event=journal_event,
+            ssh_job_api=True,
+            ssh_job_timeout=diagnostic_store().policy.get()['diagnostic_timeout_seconds'],
+            ssh_recent=diagnostic_store().recent(str(g.current_user['id']), 'bulk_ssh'),
         )
+
+    @tools_bp.get('/multi-ssh/jobs/<job_id>')
+    def ssh_job(job_id):
+        job = _owned_ssh_job(job_id)
+        try:
+            page = max(1, min(50, int(request.args.get('page', 1))))
+        except ValueError:
+            abort(400)
+        rows = bulk_ssh_jobs.host_rows(diagnostic_store(), job, offset=(page-1)*100)
+        preview_limit = min(16384, (1024 * 1024) // max(1, len(rows)) // 6)
+        for row in rows:
+            raw = str(row.get('output', '')).encode('utf-8')
+            row['preview_truncated'] = len(raw) > preview_limit
+            row['output'] = raw[:preview_limit].decode('utf-8', errors='ignore')
+        response = Response(render_template('tools/ssh_job.html', job=job,
+            rows=rows,
+            counts=bulk_ssh_jobs.counts(diagnostic_store(), job), page=page,
+            pages=(job['config']['host_count']+99)//100,
+            active=job['state'] in ('queued','running','cancel_requested')))
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @tools_bp.get('/multi-ssh/jobs/<job_id>/status')
+    def ssh_job_status(job_id):
+        job = _owned_ssh_job(job_id)
+        stats = bulk_ssh_jobs.counts(diagnostic_store(), job)
+        response = jsonify(state=job['state'], error=job['error'], **stats,
+            stage=f"{stats['completed']} hosts completed; {stats['not_started']} not started")
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @tools_bp.post('/multi-ssh/jobs/<job_id>/cancel')
+    def cancel_ssh_job(job_id):
+        _owned_ssh_job(job_id)
+        store = diagnostic_store()
+        cancelled = store.cancel(job_id, str(g.current_user['id']))
+        if cancelled:
+            record_unsuccessful_scan(store, cancelled, 'cancelled', 'Cancelled before execution started.')
+            store.release(job_id, '')
+        annotate_tool_run(category='Network tools', action_namespace='ssh.cancel',
+            tool_name='Bulk SSH', outcome='requested', details={'operation id': job_id})
+        return redirect(url_for('tools.ssh_job', job_id=job_id), code=303)
+
+    @tools_bp.get('/multi-ssh/jobs/<job_id>/download')
+    def download_ssh_job(job_id):
+        job = _owned_ssh_job(job_id)
+        position = None
+        if 'host' in request.args:
+            try:
+                position = int(request.args['host'])
+            except ValueError:
+                abort(400)
+            if not 0 <= position < job['config']['host_count']:
+                abort(404)
+        response = Response(stream_with_context(bulk_ssh_jobs.output_parts(diagnostic_store(), job, position=position)), mimetype='text/plain')
+        response.headers['Content-Disposition'] = f'attachment; filename="bulk-ssh-{job_id}.txt"'
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
 
     @tools_bp.post("/multi-ssh/import-hosts")
     def import_ssh_hosts():
@@ -340,115 +412,48 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.post("/multi-ssh/host-keys/retry")
     def retry_multi_ssh_host_key():
-        payload = request.get_json(silent=True)
+        payload = request.get_json(silent=True) if request.is_json else request.form.to_dict()
         if not isinstance(payload, dict):
             suppress_audit_event()
-            return jsonify({"error": "Send a valid host-key retry request."}), 400
+            return jsonify({'error': 'Send a valid host-key retry request.'}), 400
         try:
-            preview = build_ssh_command_plans(
-                str(payload.get("matrix", "")),
-                str(payload.get("commands", "")),
-                int(payload.get("command_timeout", SSH_DEFAULT_COMMAND_TIMEOUT)),
-            )
-            _validate_preview_token(
-                str(payload.get("preview_token", "")),
-                preview["plans"],
-            )
-            retry_context = _validate_host_key_retry_token(
-                str(payload.get("retry_token", "")),
-                preview["plans"],
-            )
-            username = str(payload.get("username", "")).strip()
-            password = str(payload.get("password", ""))
-            if not username:
-                raise ToolInputError("Enter an SSH username.")
-            if not password:
-                raise ToolInputError("Enter an SSH password.")
+            if payload.get('source_job'):
+                if payload.get('verified') != 'on':
+                    raise ToolInputError('Confirm that you verified the presented host-key fingerprint.')
+                source = _owned_ssh_job(str(payload['source_job']))
+                position = int(payload.get('position', -1))
+                if not 0 <= position < source['config']['host_count']:
+                    raise ToolInputError('Invalid host-key retry position.')
+                row = bulk_ssh_jobs.host_rows(diagnostic_store(), source, offset=position, limit=1)[0]
+                signed = str(payload.get('retry_token', ''))
+                if not signed or not hmac.compare_digest(signed, str(row.get('host_key_retry_token', ''))):
+                    raise ToolInputError('This host-key retry does not match the retained result.')
+                form = {**source['config'], 'username': str(payload.get('username', '')).strip()}
+                preview = build_ssh_command_plans(form['matrix'], form['commands'], int(form['command_timeout']))
+            else:
+                form = dict(payload)
+                preview = build_ssh_command_plans(str(form.get('matrix', '')), str(form.get('commands', '')),
+                                                  int(form.get('command_timeout', SSH_DEFAULT_COMMAND_TIMEOUT)))
+                _validate_preview_token(str(payload.get('preview_token', '')), preview['plans'])
+                signed = str(payload.get('retry_token', ''))
+            retry = _validate_host_key_retry_token(signed, preview['plans'])
+            if retry.get('source_job'):
+                source = _owned_ssh_job(str(retry['source_job']))
+                if payload.get('verified') != 'on':
+                    raise ToolInputError('Confirm that you verified the presented host-key fingerprint.')
+                position = int(retry['position'])
+                retained = bulk_ssh_jobs.host_rows(diagnostic_store(), source, offset=position, limit=1)
+                if not retained or not hmac.compare_digest(signed, str(retained[0].get('host_key_retry_token', ''))):
+                    raise ToolInputError('This host-key retry does not match its retained result.')
+            form.update(port=retry['port'], allow_unknown_hosts=False,
+                        allow_legacy_algorithms=bool(retry['allow_legacy_algorithms']), send_ctrl_y=bool(retry['send_ctrl_y']))
+            return _enqueue_ssh(form, preview, str(payload.get('password', '')), signed, retry=retry)
         except (ToolInputError, TypeError, ValueError) as exc:
             suppress_audit_event()
-            return jsonify({"error": str(exc) or "Review the retry details."}), 400
-
-        plan_index = int(retry_context["plan_index"])
-        plan = dict(preview["plans"][plan_index])
-        host = str(plan["host"])
-        port = int(retry_context["port"])
-        expected_fingerprint = str(retry_context["expected_fingerprint"])
-        presented_fingerprint = str(retry_context["presented_fingerprint"])
-        try:
-            forgotten = forget_ssh_known_host(
-                host,
-                port,
-                expected_fingerprint,
-                allow_missing=True,
-                allow_existing_fingerprint=presented_fingerprint,
-            )
-        except SSHKnownHostsError as exc:
-            suppress_audit_event()
-            return jsonify({"error": str(exc)}), 409
-
-        plan["required_host_key_fingerprint"] = presented_fingerprint
-        started_at = time.time()
-        result = run_ssh_host_plans(
-            [plan],
-            instance_path=current_app.instance_path,
-            username=username,
-            password=password,
-            port=port,
-            allow_unknown_hosts=False,
-            allow_legacy_algorithms=bool(retry_context["allow_legacy_algorithms"]),
-            send_ctrl_y=bool(retry_context["send_ctrl_y"]),
-        )[0]
-        status = str(result.get("status", "error"))
-        record_current_activity(
-            "Automation",
-            "Retried Bulk SSH host",
-            f"{plan.get('label') or host} · {status}",
-            counters={"ssh": {"hosts": 1, "commands": len(plan["commands"])}},
-        )
-        retry_form = {
-            "port": str(port),
-            "command_timeout": str(payload.get("command_timeout", "")),
-            "allow_unknown_hosts": False,
-            "allow_legacy_algorithms": bool(
-                retry_context["allow_legacy_algorithms"]
-            ),
-        }
-        _record_ssh_investigation(
-            retry_form,
-            {"plans": [plan]},
-            [result],
-            error="",
-            operation_id=f"multi-ssh-retry:{secrets.token_hex(12)}",
-            started_at=started_at,
-        )
-        annotate_audit_event(
-            category="Network tools",
-            action="ssh.host_key_recovery_run",
-            summary=f"Processed verified SSH host-key recovery and retried {host}:{port}.",
-            resource_type="ssh_host_key",
-            resource_id=f"{host}:{port}",
-            resource_name=host,
-            details={
-                "host": host,
-                "port": port,
-                "expected fingerprint": expected_fingerprint,
-                "presented fingerprint": presented_fingerprint,
-                "removed entries": int(forgotten["removed_entries"]),
-                "command count": len(plan["commands"]),
-                "outcome": status,
-            },
-        )
-        return jsonify(
-            {
-                "forgotten": forgotten,
-                "result": result,
-                "message": (
-                    "Saved key replaced and this host was rerun."
-                    if status == "success"
-                    else "The stale saved key was cleared, but this host's retry did not complete successfully."
-                ),
-            }
-        )
+            if request.is_json or request.accept_mimetypes.best == 'application/json':
+                return jsonify({'error': str(exc) or 'Review the retry details.'}), 400
+            flash(str(exc), 'error')
+            return redirect(url_for('tools.multi_ssh'))
 
     @tools_bp.post("/multi-ssh/commandlets/delete")
     def delete_ssh_commandlet():
@@ -671,19 +676,31 @@ def _build_ssh_preview(form: dict[str, object]) -> dict[str, object]:
     return preview
 
 
-def _run_plans(
-    form: dict[str, object], preview: dict[str, object]
-) -> list[dict[str, object]]:
-    return run_ssh_host_plans(
-        preview["plans"],
-        instance_path=current_app.instance_path,
-        username=str(form["username"]),
-        password=request.form.get("password", ""),
-        port=int(str(form["port"])),
-        allow_unknown_hosts=bool(form["allow_unknown_hosts"]),
-        allow_legacy_algorithms=bool(form["allow_legacy_algorithms"]),
-        send_ctrl_y=bool(form["send_ctrl_y"]),
-    )
+def _owned_ssh_job(job_id):
+    allowed = getattr(g, 'allowed_tool_ids', None)
+    if allowed is not None and 'tools.multi_ssh' not in allowed:
+        abort(403)
+    return owned_diagnostic(job_id, 'bulk_ssh')
+
+
+def _enqueue_ssh(form, preview, password, signed, *, retry=None):
+    allowed = getattr(g, 'allowed_tool_ids', None)
+    if allowed is not None and 'tools.multi_ssh' not in allowed:
+        abort(403)
+    store = diagnostic_store()
+    user_id = str(g.current_user['id'])
+    config = bulk_ssh_jobs.prepare(form, preview, password, retry=retry)
+    config.update(delegated=bool(current_app.config.get('DISTRIBUTED_AGENT_DISPATCH') and request.environ.get('twn.delegated_user')),
+                  username=str(g.current_user['username']),
+                  investigation_id=recording_case_id(current_app.instance_path, user_id))
+    job_id = store.enqueue(user_id=user_id, tool='bulk_ssh', config=config,
+                          request_key=bulk_ssh_jobs.request_key(store, user_id, signed))
+    annotate_tool_run(category='Network tools', action_namespace='ssh.multi_host_execution',
+        tool_name='Bulk SSH', outcome='queued', details={'operation id': job_id, 'host count': config['host_count']})
+    location = url_for('tools.ssh_job', job_id=job_id)
+    if request.is_json or request.accept_mimetypes.best == 'application/json':
+        return jsonify({'job_id': job_id, 'url': location}), 202
+    return redirect(location, code=303)
 
 
 def _annotate_preview_scale(preview: dict[str, object]) -> None:

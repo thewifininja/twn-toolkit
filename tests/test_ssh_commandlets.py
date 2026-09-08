@@ -10,6 +10,9 @@ from unittest.mock import patch
 
 from twn_toolkit import create_app
 from twn_toolkit.audit import AuditStore
+from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+from twn_toolkit.bulk_ssh_jobs import plans_for
+from tests.test_bulk_ssh_jobs import complete
 from twn_toolkit.network_tools import ToolInputError
 from twn_toolkit.ssh_commandlets import (
     SSH_MATRIX_ROW_LIMIT,
@@ -361,9 +364,12 @@ class SSHCommandletRouteTests(unittest.TestCase):
                     },
                 )
 
-            self.assertIn(b"SSH Results", response.data)
+            self.assertEqual(response.status_code, 303)
+            run.assert_not_called()
+            job = DiagnosticJobStore(instance).get(response.location.rsplit('/', 1)[-1], 'test-user')
+            self.assertEqual(job['state'], 'queued')
             self.assertNotIn(b"not-rendered", response.data)
-            plans = run.call_args.args[0]
+            plans = plans_for(job['config'])
             self.assertEqual(plans[0]["commands"], ["interface vlan 4", "show host switch-1"])
             self.assertEqual(plans[1]["commands"], ["interface vlan 8", "show host switch-2"])
 
@@ -451,14 +457,18 @@ class SSHCommandletRouteTests(unittest.TestCase):
                     },
                 )
 
-            self.assertIn(b"Host identity changed", response.data)
-            self.assertIn(b"Retry this host", response.data)
+            self.assertEqual(response.status_code, 303)
+            store = DiagnosticJobStore(instance)
+            with patch('twn_toolkit.network_tools._ssh_host_connection', return_value=mismatch):
+                source_job = complete(store)
+            response = client.get(response.location)
+            self.assertIn(b"Saved key fingerprint", response.data)
             self.assertIn(b"Verify, replace &amp; retry", response.data)
             self.assertIn(("SHA256:" + "E" * 43).encode(), response.data)
             self.assertIn(("SHA256:" + "P" * 43).encode(), response.data)
             self.assertNotIn(b"raw base64", response.data)
             retry_token = re.search(
-                rb'data-retry-token="([^"]+)"', response.data
+                rb'name="retry_token" value="([^"]+)"', response.data
             ).group(1).decode()
 
             retried_result = {
@@ -468,7 +478,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
                 "output": "System status output",
             }
             with patch(
-                "twn_toolkit.ssh_routes.forget_ssh_known_host",
+                "twn_toolkit.ssh_security.forget_ssh_known_host",
                 return_value={
                     "hostname": "192.0.2.20",
                     "port": 22,
@@ -483,6 +493,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
                     "/tools/multi-ssh/host-keys/retry",
                     json={
                         "retry_token": retry_token,
+                        "verified": "on",
                         "preview_token": token,
                         "matrix": form["matrix"],
                         "commands": form["commands"],
@@ -492,25 +503,22 @@ class SSHCommandletRouteTests(unittest.TestCase):
                     },
                 )
 
-            self.assertEqual(retried.status_code, 200)
-            self.assertEqual(retried.get_json()["result"], retried_result)
-            self.assertEqual(retry.call_args.kwargs["instance_path"], instance)
-            self.assertIn(b"Saved key replaced", retried.data)
-            forget.assert_called_once_with(
-                "192.0.2.20",
-                22,
-                "SHA256:" + "E" * 43,
-                allow_missing=True,
-                allow_existing_fingerprint="SHA256:" + "P" * 43,
-            )
-            retry_plan = retry.call_args.args[0]
+            self.assertEqual(retried.status_code, 202)
+            forget.assert_not_called()
+            retry.assert_not_called()
+            retry_job = store.get(retried.json['job_id'], 'test-user')
+            retry_plan = plans_for(retry_job['config'])
             self.assertEqual(len(retry_plan), 1)
-            self.assertEqual(retry_plan[0]["host"], "192.0.2.20")
-            self.assertEqual(
-                retry_plan[0]["required_host_key_fingerprint"],
-                "SHA256:" + "P" * 43,
-            )
-            self.assertFalse(retry.call_args.kwargs["allow_unknown_hosts"])
+            self.assertEqual(retry_plan[0]['host'], '192.0.2.20')
+            self.assertEqual(retry_plan[0]['required_host_key_fingerprint'], 'SHA256:' + 'P' * 43)
+            self.assertFalse(retry_job['config']['allow_unknown_hosts'])
+            with patch('twn_toolkit.ssh_security.forget_ssh_known_host') as forget, patch(
+                'twn_toolkit.network_tools._ssh_host_connection', return_value=retried_result
+            ):
+                completed_job = complete(store)
+            self.assertEqual(completed_job['state'], 'succeeded')
+            forget.assert_called_once_with('192.0.2.20', 22, 'SHA256:' + 'E' * 43,
+                                          allow_missing=True, allow_existing_fingerprint='SHA256:' + 'P' * 43)
 
     def test_host_key_retry_endpoint_rejects_invalid_token(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -874,8 +882,10 @@ class SSHCommandletRouteTests(unittest.TestCase):
                     },
                 )
 
-            self.assertIn(b"SSH Results", response.data)
-            plans = run.call_args.args[0]
+            self.assertEqual(response.status_code, 303)
+            run.assert_not_called()
+            job = DiagnosticJobStore(instance).get(response.location.rsplit('/', 1)[-1], 'test-user')
+            plans = plans_for(job['config'])
             self.assertEqual(
                 [spec["command"] for spec in plans[0]["command_specs"]],
                 ["get system status", "show port1"],

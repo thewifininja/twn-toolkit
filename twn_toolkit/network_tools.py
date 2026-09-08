@@ -1069,6 +1069,7 @@ def run_ssh_host_plans(
     command_delay: float = 1.0,
     allow_legacy_algorithms: bool = False,
     instance_path: str | None = None,
+    *, before_host=None, after_host=None,
 ) -> list[dict[str, Any]]:
     if not username:
         raise ToolInputError("Enter an SSH username.")
@@ -1125,6 +1126,27 @@ def run_ssh_host_plans(
         SSH_OUTPUT_LIMIT,
         max(8 * 1024, SSH_FLEET_OUTPUT_BUDGET // len(normalized_plans)),
     )
+    interrupted = threading.Event()
+
+    def execute_host(index, plan):
+        if interrupted.is_set():
+            raise InterruptedError("SSH batch stopped before this host started.")
+        try:
+            if before_host:
+                before_host(index, plan)
+            result = _ssh_host(
+                plan["host"], username, password, plan["command_specs"], port,
+                allow_unknown_hosts, send_ctrl_y, command_delay, plan["label"],
+                allow_legacy_algorithms, per_host_capture_limit,
+                plan["required_host_key_fingerprint"], instance_path,
+            )
+            if after_host:
+                after_host(index, result)
+            return result
+        except BaseException:
+            interrupted.set()
+            raise
+
     indexed_results: list[tuple[int, dict[str, Any]]] = []
     for batch_start in range(0, len(normalized_plans), SSH_EXECUTION_BATCH_SIZE):
         batch = normalized_plans[
@@ -1136,13 +1158,7 @@ def run_ssh_host_plans(
             futures = {}
             try:
                 for index, plan in enumerate(batch):
-                    future = executor.submit(
-                        _ssh_host, plan["host"], username, password,
-                        plan["command_specs"], port, allow_unknown_hosts,
-                        send_ctrl_y, command_delay, plan["label"],
-                        allow_legacy_algorithms, per_host_capture_limit,
-                        plan["required_host_key_fingerprint"], instance_path,
-                    )
+                    future = executor.submit(execute_host, batch_start + index, plan)
                     futures[future] = batch_start + index
                 indexed_results.extend(
                     (futures[future], future.result())
@@ -1344,6 +1360,7 @@ def _ssh_host_connection(
 ) -> dict[str, Any]:
     client = None
     output: list[str] = []
+    command_attempted = False
     try:
         client = open_ssh_client(
             hostname=host,
@@ -1358,7 +1375,7 @@ def _ssh_host_connection(
         )
         channel = client.invoke_shell(width=200, height=1000)
         channel.settimeout(0.2)
-        initial_output = _read_channel(channel, max_wait=5.0, quiet_after=0.5)
+        initial_output = _read_channel(channel, max_wait=5.0, quiet_after=0.5, capture_limit=capture_limit)
         output.append(initial_output)
         prompt = _extract_ssh_prompt(initial_output)
         if send_ctrl_y:
@@ -1366,6 +1383,7 @@ def _ssh_host_connection(
         for command_spec in commands:
             command = str(command_spec["command"])
             command_timeout = int(command_spec["timeout"])
+            command_attempted = True
             channel.send(f"{command}\n")
             if command_delay > 0:
                 time.sleep(min(command_delay, 0.25))
@@ -1389,6 +1407,7 @@ def _ssh_host_connection(
                     "error": (
                         f"Command exceeded its {command_timeout}-second timeout: {command}"
                     ),
+                    "execution_unknown": True,
                     "timed_out_command": command,
                     "command_timeout": command_timeout,
                 }
@@ -1405,6 +1424,7 @@ def _ssh_host_connection(
             "status": "error",
             "output": _bounded_output("".join(output), limit=capture_limit),
             "error": format_ssh_connection_error(exc),
+            "execution_unknown": command_attempted,
         }
         mismatch = ssh_host_key_mismatch(exc)
         if mismatch:
@@ -1414,13 +1434,19 @@ def _ssh_host_connection(
         close_ssh_client(client)
 
 
-def _read_channel(channel: Any, max_wait: float, quiet_after: float = 0.35) -> str:
+def _read_channel(channel: Any, max_wait: float, quiet_after: float = 0.35,
+                  capture_limit: int = SSH_OUTPUT_LIMIT) -> str:
     chunks: list[str] = []
+    captured = 0
     deadline = time.monotonic() + max_wait
     quiet_since = time.monotonic()
     while time.monotonic() < deadline:
         if channel.recv_ready():
-            chunks.append(channel.recv(65535).decode("utf-8", errors="replace"))
+            data = channel.recv(65535).decode("utf-8", errors="replace")
+            kept = data[:max(0, capture_limit - captured)]
+            if kept:
+                chunks.append(kept)
+            captured += len(kept)
             quiet_since = time.monotonic()
         elif time.monotonic() - quiet_since >= quiet_after:
             break

@@ -20,6 +20,7 @@
       </div>
       <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
     </div>
+    {% if ssh_job_api %}<p class="field-note">Background runs have a {{ ssh_job_timeout }}-second total deadline, adjustable in Operations settings. Hosts that do not start before cancellation or the deadline are not replayed.</p>{% endif %}
     {% if error %}<div class="message error">{{ error }}</div>{% endif %}
     {% if success %}<div class="message success">{{ success }}</div>{% endif %}
 
@@ -57,7 +58,7 @@
 
     <div class="multi-ssh-workspace-panels">
       <section id="multi-ssh-hosts-panel" role="tabpanel" aria-labelledby="multi-ssh-hosts-tab" data-ssh-workspace-panel="hosts" {% if active_workspace != 'hosts' %}hidden{% endif %}>
-        <form class="form multi-ssh-host-form" method="post" autocomplete="off" data-ssh-host-form data-ssh-target-limit="{{ ssh_target_limit }}">
+        <form class="form multi-ssh-host-form" method="post" autocomplete="off" data-ssh-host-form data-unsaved-form data-ssh-target-limit="{{ ssh_target_limit }}">
           <input type="hidden" name="workspace" value="hosts">
           <input type="hidden" name="host_matrix_original_name" value="{{ form.host_matrix_original_name }}">
           <input type="hidden" name="source_host_matrix" value="{{ form.source_host_matrix }}">
@@ -159,7 +160,7 @@
             {% if action_sources %}
               <details class="multi-ssh-action-copy">
                 <summary>Copy from another matrix</summary>
-                <form method="post" class="multi-ssh-action-copy-form">
+                <form method="post" class="multi-ssh-action-copy-form" data-unsaved-form>
                   <input type="hidden" name="action" value="copy_matrix_action">
                   <input type="hidden" name="workspace" value="actions">
                   <input type="hidden" name="host_matrix_original_name" value="{{ selected_matrix.name }}">
@@ -180,7 +181,7 @@
             <p class="multi-ssh-library-note">Saving an action adds it to this library only. Nothing runs until you add actions to a runbook on the Run tab.</p>
           </section>
 
-          <form class="form multi-ssh-action-editor" method="post" autocomplete="off">
+          <form class="form multi-ssh-action-editor" method="post" autocomplete="off" data-unsaved-form>
             <input type="hidden" name="workspace" value="actions">
             <input type="hidden" name="host_matrix_original_name" value="{{ selected_matrix.name }}">
             <input type="hidden" name="matrix_action_original_name" value="{{ action_editor.original_name }}">
@@ -216,7 +217,7 @@
 
       <section id="multi-ssh-run-panel" role="tabpanel" aria-labelledby="multi-ssh-run-tab" data-ssh-workspace-panel="run" {% if active_workspace != 'run' %}hidden{% endif %}>
         {% if selected_matrix and matrix_actions %}
-          <form class="form multi-ssh-run-form" id="multi-ssh-run-form" method="post" autocomplete="off" data-multi-ssh data-ssh-host-count="{{ selected_matrix.target_count }}">
+          <form class="form multi-ssh-run-form" id="multi-ssh-run-form" method="post" autocomplete="off" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count="{{ selected_matrix.target_count }}">
             <input type="hidden" name="workspace" value="run">
             <input type="hidden" name="matrix_action_run" value="on">
             <input type="hidden" name="host_matrix_original_name" value="{{ selected_matrix.name }}">
@@ -294,7 +295,7 @@
             {% endif %}
           </form>
         {% elif preview %}
-          <form class="form multi-ssh-run-form" id="multi-ssh-run-form" method="post" autocomplete="off" data-multi-ssh data-ssh-host-count="{{ preview.plans|length }}">
+          <form class="form multi-ssh-run-form" id="multi-ssh-run-form" method="post" autocomplete="off" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count="{{ preview.plans|length }}">
             <input type="hidden" name="workspace" value="run">
             <input type="hidden" name="matrix" value="{{ form.matrix }}">
             <textarea name="commands" hidden>{{ form.commands }}</textarea>
@@ -338,6 +339,10 @@
 </div>
 {{ tool_settings_backdrop('Bulk SSH') }}
 
+{% if ssh_job_api %}
+<section class="panel"><h2>Recent Bulk SSH runs</h2><p>Runs continue in the background. Open a retained run for progress, cancellation, and results.</p>
+{% for job in ssh_recent %}<p><a href="{{ url_for('tools.ssh_job', job_id=job.id) }}">{{ job.id[:12] }}</a> · {{ 'Finished' if job.state == 'succeeded' else job.state|replace('_', ' ') }}</p>{% else %}<p>No retained runs yet.</p>{% endfor %}</section>
+{% endif %}
 <div data-tool-results-anchor tabindex="-1">
 {% if results is not none %}
   <section class="panel tool-panel multi-ssh-panel">
@@ -370,5 +375,6 @@
 </div>
 <script src="{{ url_for('static', filename='ssh-matrix-editor.js') }}"></script>
 <script src="{{ url_for('static', filename='multi-ssh.js') }}"></script>
+{% if ssh_job_api %}<script src="{{ url_for('static', filename='unsaved-forms.js') }}"></script><script src="{{ url_for('static', filename='bulk-ssh-jobs.js') }}"></script>{% endif %}
 </div>
 {% endblock %}
