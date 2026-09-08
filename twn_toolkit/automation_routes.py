@@ -1158,7 +1158,11 @@ def _automation_run_archive(
                             target.write(chunk)
 
             def write_json(name, value):
-                write_parts(name, json.JSONEncoder(indent=2).iterencode(value))
+                from .json_stream import iter_pretty_json
+                try:
+                    write_parts(name, iter_pretty_json(value))
+                except (ValueError, TypeError) as exc:
+                    raise DatastoreError(f"Automation ZIP metadata could not be encoded: {exc}") from exc
 
             write_json("summary.json", {
                 "automation": run["automation_name"],
