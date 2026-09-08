@@ -620,13 +620,14 @@ class AutomationStore:
         recent_limit: int = 10,
         now: float | None = None,
     ) -> dict[str, Any]:
-        """Read the Automation workspace through one non-mutating connection."""
+        """Read configuration and bounded history through read-only snapshots."""
+        from .sqlite_incremental import ReadSnapshot
         now = time.time() if now is None else now
         recent_limit = max(1, min(100, int(recent_limit)))
         with readonly_sqlite_connection(
             self.path,
             timeout_seconds=1.0,
-        ) as connection:
+        ) as connection, ReadSnapshot(self.path) as history_connection:
             connection.execute("BEGIN")
             source_definitions = [
                 self._condition_definition_from_row(row)
@@ -666,9 +667,9 @@ class AutomationStore:
             for automation in automations:
                 automation_id = str(automation["id"])
                 recent_runs[automation_id] = history_rows(
-                    connection, automation_id, limit=recent_limit, budget=history_budget)
+                    history_connection, automation_id, limit=recent_limit, budget=history_budget)
                 recent_checks[automation_id] = history_rows(
-                    connection, automation_id, checks=True, limit=recent_limit, budget=history_budget)
+                    history_connection, automation_id, checks=True, limit=recent_limit, budget=history_budget)
                 automation['history_preview_limited'] = history_budget.rows == 0
             job_stats = self._job_stats_from_connection(connection, now)
         return {
@@ -1805,8 +1806,8 @@ class AutomationStore:
     def history_page(self, automation_id: str, *, page: int = 1):
         from .automation_history import HistoryBudget, history_rows
         page = max(1, min(5000, int(page)))
-        with readonly_sqlite_connection(self.path, timeout_seconds=1.0) as connection:
-            connection.execute("BEGIN")
+        from .sqlite_incremental import ReadSnapshot
+        with ReadSnapshot(self.path) as connection:
             budget = HistoryBudget()
             runs = history_rows(connection, automation_id, limit=21,
                                 offset=(page-1)*20, budget=budget)
@@ -1815,36 +1816,42 @@ class AutomationStore:
         return {'runs': runs[:20], 'checks': checks[:20], 'more': len(runs)>20 or len(checks)>20}
 
     def recent_runs(self, automation_id: str, limit: int = 20) -> list[dict[str, Any]]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT * FROM automation_runs WHERE automation_id = ?
-                ORDER BY started_at DESC LIMIT ?
-                """,
-                (automation_id, limit),
-            ).fetchall()
-        return [
-            {
-                **dict(row),
-                "results": json.loads(row["results_json"]),
-            }
-            for row in rows
-        ]
+        from .sqlite_incremental import ReadSnapshot
+        from .retained_json import MAX_RETAINED_JSON_BYTES
+        with ReadSnapshot(self.path) as connection:
+            rows = connection.query("SELECT r.rowid,r.id,r.automation_id,r.started_at,r.finished_at,a.name FROM automation_runs r JOIN automations a ON a.id=r.automation_id WHERE r.automation_id=? ORDER BY r.started_at DESC,r.id DESC LIMIT ?",
+                                    (automation_id, max(1, min(100, int(limit)))))
+            budget = [MAX_RETAINED_JSON_BYTES]
+            return [self._read_retained_run(connection, row, budget=budget) for row in rows]
 
-    def get_run(self, run_id: str) -> dict[str, Any] | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT automation_runs.*, automations.name AS automation_name
-                FROM automation_runs
-                JOIN automations ON automations.id = automation_runs.automation_id
-                WHERE automation_runs.id = ?
-                """,
-                (run_id,),
-            ).fetchone()
-        if not row:
-            return None
-        return {**dict(row), "results": json.loads(row["results_json"])}
+    @staticmethod
+    def _read_retained_run(connection, row, *, metadata_only=False, budget=None):
+        from .retained_json import decode_retained_json, MAX_RETAINED_JSON_BYTES
+        budget = budget if budget is not None else [MAX_RETAINED_JSON_BYTES]
+        run = dict(zip(('rowid','id','automation_id','started_at','finished_at','automation_name'), row))
+        rowid = run.pop('rowid')
+        run['status'], _ = connection.text_prefix('automation_runs','status',rowid,32)
+        if metadata_only:
+            run['trigger_summary'], _ = connection.text_prefix('automation_runs','trigger_summary',rowid,2048)
+            return run
+        size = connection.blob_size('automation_runs','results_json',rowid)
+        summary_size = connection.blob_size('automation_runs','trigger_summary',rowid)
+        if size + summary_size > budget[0]:
+            raise ValueError('Retained metadata exceeds the 64 MiB archive read limit. Download the retained results JSON directly; original artifacts are preserved.')
+        budget[0] -= size + summary_size
+        summary, _ = connection.read_blob('automation_runs','trigger_summary',rowid,cap=summary_size)
+        raw, _ = connection.read_blob('automation_runs','results_json',rowid,cap=size)
+        run['trigger_summary'] = summary.decode(connection.encoding)
+        run['results'] = decode_retained_json(raw, connection.encoding)
+        if not isinstance(run['results'], list) or any(not isinstance(item, dict) or not isinstance(item.get('output', {}), dict) for item in run['results']):
+            raise ValueError('Retained run results are invalid. Download the retained results JSON directly.')
+        return run
+
+    def get_run(self, run_id: str, *, metadata_only: bool = False) -> dict[str, Any] | None:
+        from .sqlite_incremental import ReadSnapshot
+        with ReadSnapshot(self.path) as connection:
+            rows = connection.query("SELECT r.rowid,r.id,r.automation_id,r.started_at,r.finished_at,a.name FROM automation_runs r JOIN automations a ON a.id=r.automation_id WHERE r.id=?", (run_id,))
+            return self._read_retained_run(connection, rows[0], metadata_only=metadata_only) if rows else None
 
     def delete_run(self, run_id: str) -> None:
         with self._connect() as connection:

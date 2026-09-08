@@ -22,28 +22,28 @@ def history_rows(connection, automation_id, *, checks=False, limit=10, offset=0,
     stamp = 'checked_at' if checks else 'started_at'
     summary = 'summary' if checks else 'trigger_summary'
     extra = 'met' if checks else 'finished_at'
-    # CASE keeps oversized JSON out of Python, including escaped/NUL-containing
-    # text. Query one row at a time so every row observes the remaining budget.
+    # Incremental reads check cell size before copying JSON into memory.
+    # Query one row at a time so every row observes the remaining budget.
     rows = []
     for index in range(limit):
         cap = min(ROW_JSON_BYTES, budget.bytes)
-        row = connection.execute(f'''
-            SELECT id,automation_id,{stamp},{extra},substr(status,1,32) AS status,
-                   substr({summary},1,2048) AS {summary},
-                   length({summary})>2048 AS summary_shortened,
-                   CASE WHEN length(CAST({field} AS BLOB))<=? THEN {field} END AS payload
-            FROM {table} WHERE automation_id=? ORDER BY {stamp} DESC,id DESC LIMIT 1 OFFSET ?
-        ''', (cap, automation_id, offset + index)).fetchone()
-        if row is None:
+        fields = ['rowid', 'id', 'automation_id', stamp, extra]
+        found = connection.query(f"SELECT rowid,id,automation_id,{stamp},{extra} FROM {table} WHERE automation_id=? ORDER BY {stamp} DESC,id DESC LIMIT 1 OFFSET ?",
+                                 (automation_id, offset + index))
+        if not found:
             break
-        item = dict(row)
-        raw = item.pop('payload')
+        item = dict(zip(fields, found[0]))
+        rowid = item.pop('rowid')
+        item[summary], shortened = connection.text_prefix(table, summary, rowid, 2048)
+        item['status'], _ = connection.text_prefix(table, 'status', rowid, 32)
+        raw, _ = connection.read_blob(table, field, rowid, cap=cap)
+        item['summary_shortened'] = shortened
         item['preview_limited'] = bool(item.pop('summary_shortened')) or raw is None
         value = {} if checks else []
         if raw is not None:
-            budget.bytes -= len(raw.encode())
+            budget.bytes -= len(raw)
             try:
-                value = json.loads(raw)
+                value = json.loads(raw.decode(connection.encoding))
                 if not isinstance(value, dict if checks else list):
                     value = {} if checks else []
                     item['preview_limited'] = True

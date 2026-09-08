@@ -304,10 +304,13 @@ structured events or generated evidence. Operators can also:
   Automation ZIP downloads and case attachments use reserved temporary storage,
   stream metadata strings without allocating their complete escaped JSON, reject
   metadata nesting beyond 64 levels, allow up to 10,000 entries, and limit both
-  expanded content and ZIP output to the configured upload limit. Archive construction remains synchronous and the
-  retained run metadata is still loaded before building the archive;
+  expanded content and ZIP output to the configured upload limit. Archive construction remains synchronous;
+  retained run metadata reads are capped at 64 MiB and reject excessive JSON
+  complexity. Larger results remain available through a streaming retained-results
+  JSON download, subject to the configured download limit;
 - browse automation run/check history in pages of 20. Workspace history reads
-  at most 100 rows and 2 MiB of JSON, with 256 KiB per-row previews. Large results
+  at most 100 rows and 2 MiB of JSON, with 256 KiB per-row previews. Incremental
+  SQLite reads check cell sizes before copying oversized retained payloads. Large results
   are explicitly omitted or shortened in the browser; retained ZIP contents are
   unchanged. Preview text and nested result counts also share a display budget;
 - review a chronological journal and download retained evidence;

@@ -11,6 +11,7 @@ from twn_toolkit.automation import AutomationStore
 from twn_toolkit.automation_registry import ActionResult, ConditionResult
 from twn_toolkit.automation_history import HistoryBudget, history_rows, preview_value
 from twn_toolkit.operational import OperationalSettingsStore
+from twn_toolkit.sqlite_incremental import ReadSnapshot
 
 
 @pytest.fixture
@@ -67,7 +68,7 @@ def test_workspace_row_budget_and_paged_access_preserve_older_runs(setup):
     assert first['more'] and not second['more']
     assert len(first['runs']) == 20 and len(second['runs']) == 5
     assert {r['id'] for r in first['runs'] + second['runs']} == ids
-    with store._connect() as db:
+    with ReadSnapshot(store.path) as db:
         budget = HistoryBudget(); budget.rows = 3
         assert len(history_rows(db, aid, limit=20, budget=budget)) == 3
         assert history_rows(db, aid, budget=budget) == []
@@ -81,7 +82,7 @@ def test_workspace_row_budget_and_paged_access_preserve_older_runs(setup):
 def test_json_byte_budget_is_shared_across_rows(setup):
     _, store, aid, record = setup
     record('a' * 100_000); record('b' * 100_000)
-    with store._connect() as db:
+    with ReadSnapshot(store.path) as db:
         budget = HistoryBudget(); budget.bytes = 150_000
         rows = history_rows(db, aid, budget=budget)
     assert len(rows) == 2
@@ -121,7 +122,7 @@ def test_exhausted_display_budget_keeps_valid_result_shapes(setup):
 def test_history_requires_authenticated_admin(setup):
     from twn_toolkit.auth import AuthStore
     app, _, aid, record = setup
-    record()
+    rid = record()
     auth = AuthStore(app.instance_path)
     auth.create_user('owner', 'TemporaryPassword123!', is_admin=True)
     auth.create_user('viewer', 'TemporaryPassword123!', is_admin=False)
@@ -130,3 +131,59 @@ def test_history_requires_authenticated_admin(setup):
     assert client.get(f'/automations/{aid}/history').status_code == 302
     client.post('/login', data={'username':'viewer','password':'TemporaryPassword123!'})
     assert client.get(f'/automations/{aid}/history').status_code == 403
+    assert client.get(f'/automations/runs/{rid}/results.json').status_code == 403
+
+
+def test_large_run_rejected_before_read_but_metadata_and_raw_download_survive(setup):
+    app, store, aid, record = setup
+    rid = record()
+    with store._connect() as db:
+        db.execute('UPDATE automation_runs SET results_json=zeroblob(?) WHERE id=?', (65*1024*1024,rid))
+    original = ReadSnapshot.read_blob
+    def guarded(self, table, column, rowid, **kwargs):
+        assert column != 'results_json', 'oversized JSON must be rejected before reading'
+        return original(self, table, column, rowid, **kwargs)
+    with patch.object(ReadSnapshot,'read_blob',guarded):
+        with pytest.raises(ValueError,match='64 MiB'):
+            store.get_run(rid)
+        assert store.get_run(rid,metadata_only=True)['id'] == rid
+        assert app.test_client().get(f'/automations/runs/{rid}/download').status_code == 400
+    # Partial streaming consumption must not load the remaining 65 MiB.
+    response = app.test_client().get(f'/automations/runs/{rid}/results.json', buffered=False)
+    try:
+        assert response.status_code == 200
+        assert len(next(iter(response.response))) <= 65536
+    finally:
+        response.close()
+    with store._connect() as db:
+        assert db.execute('SELECT count(*) FROM automation_runs WHERE id=?',(rid,)).fetchone()[0] == 1
+
+
+def test_raw_download_preserves_invalid_data_and_closes_snapshot(setup):
+    app, store, _, record = setup
+    rid = record()
+    raw = '['*70 + '"中文😀"' + ']'*70
+    with store._connect() as db:
+        db.execute('UPDATE automation_runs SET results_json=? WHERE id=?',(raw,rid))
+    opened=[]
+    def capture(path):
+        read=ReadSnapshot(path);opened.append(read);return read
+    with patch('twn_toolkit.sqlite_incremental.ReadSnapshot',side_effect=capture):
+        response=app.test_client().get(f'/automations/runs/{rid}/results.json')
+        assert response.status_code==200 and response.data==raw.encode()
+        response.close()
+        assert all(read.db is None and not read.blobs for read in opened)
+        missing=app.test_client().get('/automations/runs/missing/results.json')
+        assert missing.status_code==404
+        assert all(read.db is None for read in opened)
+    assert app.test_client().get(f'/automations/runs/{rid}/download').status_code==400
+
+
+def test_recent_runs_share_read_budget(setup):
+    _,store,aid,record=setup
+    record('one');record('two')
+    with store._connect() as db:
+        total = db.execute('SELECT sum(length(CAST(results_json AS BLOB))+length(CAST(trigger_summary AS BLOB))) FROM automation_runs').fetchone()[0]
+    with patch('twn_toolkit.retained_json.MAX_RETAINED_JSON_BYTES',total-1):
+        with pytest.raises(ValueError,match='read limit'):
+            store.recent_runs(aid)
