@@ -246,3 +246,16 @@ def test_orphan_cleanup_waits_for_in_progress_publication(storage, monkeypatch):
         run_id = writing.result(timeout=5)
         assert cleaning.result(timeout=5)['count'] == 0
     assert store.run_artifact(run_id,'action-1/source').read_bytes() == b'collected'
+
+
+def test_run_publication_accepts_a_symlink_alias_for_the_instance(storage):
+    from twn_toolkit.automation_registry import ActionResult, ConditionResult
+    alias = storage.instance.parent / (storage.instance.name + '-alias')
+    alias.symlink_to(storage.instance, target_is_directory=True)
+    store, automation_id = automation_store(alias)
+    output, stage = staging_directory(alias, 100)
+    output.save_upload(output.relative(stage),'source',io.BytesIO(b'collected'))
+    result = ActionResult('success','collected',{'_artifact_sources':[{'source_path':str(stage/'source'),'filename':'source'}]})
+    run_id = store.record_run(automation_id,ConditionResult(True,'met','manual',{}),[result])
+    assert store.run_artifact(run_id,'action-1/source').read_bytes() == b'collected'
+    assert not stage.exists()

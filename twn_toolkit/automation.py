@@ -1768,7 +1768,7 @@ class AutomationStore:
                     staging_roots.add(source.parent)
                     source_size = source.stat().st_size
                     output_store = ArtifactStore(self.instance_path, 'automation_artifacts', source_size)
-                    action_folder = run_root / f"action-{action_index}"
+                    action_folder = output_store.root / run_id / f"action-{action_index}"
                     action_folder.mkdir(parents=True, exist_ok=True, mode=0o700)
                     filename = self._artifact_filename(str(item.get("filename", source.name)), source_index)
                     target = action_folder / filename
