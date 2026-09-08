@@ -8,16 +8,13 @@ import sys
 from .diagnostic_artifacts import artifact_directory, PrivateArtifactStore
 from .datastore import DatastoreError
 from .investigations import InvestigationStore
+from .case_export_source import CaseExportLimitError, selected_case_snapshot
 from .investigation_reporting import case_report_contents
 from .investigation_exports import build_case_report_pdf, build_case_package, case_package_filename, case_report_filename
 from .investigation_portability import build_portable_case_archive, portable_case_filename
 
 TOOL = 'case_export'
 KINDS = {'pdf': 'PDF report', 'package': 'Case package', 'portable': 'Portable case'}
-
-
-class CaseExportLimitError(ValueError):
-    pass
 
 
 class ExportCaseStore(InvestigationStore):
@@ -33,31 +30,25 @@ class ExportCaseStore(InvestigationStore):
                 yield connection
 
     def snapshot(self, case_id, user_id, kind, input_limit):
-        with super()._connect() as connection:
-            connection.execute('PRAGMA query_only=ON')
-            connection.execute('BEGIN')
+        if kind not in KINDS:
+            raise CaseExportLimitError('Unknown case export format.')
+        with selected_case_snapshot(self.path, case_id, user_id, kind, input_limit) as (connection, counts, names):
             self.snapshot_connection = connection
             try:
-                investigation = self.get_for_user(case_id, user_id)
-                selected = kind != 'portable'
-                condition = " AND report_placement='main'" if selected else ''
-                fields = '+'.join('length(CAST('+key+' AS BLOB))' for key in (
-                    'targets_json','parameters_json','metrics_json','details_json','summary','action','created_by_username'))
-                size = connection.execute('SELECT COALESCE(SUM('+fields+'+1024),0) FROM investigation_events WHERE investigation_id=?'+condition, (case_id,)).fetchone()[0]
-                condition = " AND report_placement='appendix'" if selected else ''
-                size += connection.execute('SELECT COALESCE(SUM(length(display_name)+length(relative_path)+1024),0) FROM investigation_artifacts WHERE investigation_id=?'+condition, (case_id,)).fetchone()[0]
-                if size > input_limit:
-                    raise CaseExportLimitError('Case metadata exceeds the configured export input limit. Reduce the report selection or increase the limit in Settings → Operations.')
                 if kind == 'portable':
-                    return self.portable_case_for_user(case_id, user_id)
-                participants = self.participants_for_user(case_id, user_id)
-                events = self.events_for_user(case_id, user_id, report_only=True)
-                artifacts = self.artifacts_for_user(case_id, user_id, report_only=True)
-                names = {str(item.get('username','')) for item in (investigation.get('source_operators') or participants)}
-                names.update(row[0] for row in connection.execute('SELECT DISTINCT created_by_username FROM investigation_events WHERE investigation_id=?',(case_id,)))
-                investigation['participants'] = participants
-                investigation['operator_names'] = ', '.join(sorted(name for name in names if name))
-                return {'investigation':investigation, 'events':events, 'artifacts':artifacts}
+                    result = self.portable_case_for_user(case_id, user_id)
+                else:
+                    investigation = self.get_for_user(case_id, user_id)
+                    participants = self.participants_for_user(case_id, user_id)
+                    events = self.events_for_user(case_id, user_id, report_only=True)
+                    artifacts = self.artifacts_for_user(case_id, user_id, report_only=True)
+                    names.update(str(item.get('username', '')) for item in (investigation.get('source_operators') or participants))
+                    investigation['participants'] = participants
+                    investigation['operator_names'] = ', '.join(sorted(name for name in names if name))
+                    result = {'investigation': investigation, 'events': events, 'artifacts': artifacts}
+                result['investigation']['event_count'] = counts['events']
+                result['investigation']['artifact_count'] = counts['artifacts']
+                return result
             finally:
                 self.snapshot_connection = None
 

@@ -211,7 +211,7 @@ def configuration_snapshot(store, tables, *, empty_tables=(), maximum=64*1024*10
 
 
 @contextmanager
-def bounded_backup_store(adapter):
+def bounded_backup_store(adapter, *, rollback=False):
     if current_source_budget() is None:
         yield adapter
         return
@@ -221,6 +221,8 @@ def bounded_backup_store(adapter):
     )
     if isinstance(adapter, AutomationBackupStore):
         tables = ('automations', 'automation_conditions', 'automation_actions')
+        if rollback:
+            tables += ('automation_event_state',)
         empty = ()
     elif isinstance(adapter, RemoteConnectionBackupStore):
         tables = ('remote_connection_folders', 'remote_connection_credentials', 'remote_connection_hosts')

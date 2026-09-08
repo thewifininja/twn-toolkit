@@ -2604,11 +2604,17 @@ def register_admin_routes(
             except ValueError as exc:
                 flash(str(exc), "error")
                 preview_token = ""
-        return _configuration_backup_page(
-            active_view=active_view,
-            preview_token=preview_token,
-            pending_import=pending,
-        )
+        try:
+            return _configuration_backup_page(
+                active_view=active_view,
+                preview_token=preview_token,
+                pending_import=pending,
+            )
+        except (ValueError, OSError) as exc:
+            if not pending:
+                raise
+            flash(f"Backup preview could not be prepared: {exc}", "error")
+            return _configuration_backup_page(active_view="import")
 
     @app.post("/settings/backup/export")
     def export_profile_backup():

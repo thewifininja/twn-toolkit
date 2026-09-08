@@ -345,7 +345,11 @@ configuration tables, including an allowance per SQLite cell. Tables are capped
 at 10,000 rows; JSON parsing shares a 500,000-node budget and rejects nesting
 beyond 64 levels. Configuration snapshots exclude run history and issued
 certificate material. Source failures stop the export without changing saved
-data. Serialization and accumulation between groups are also bounded.
+data. Serialization and accumulation between groups are also bounded. Import
+previews and private rollback snapshots use the same source limits; all selected
+destinations must pass before the first import write. Rollback retains private
+authorization and automation event state that portable backups omit. This does
+not create a transaction across independent databases.
 
 ### Local Tools
 
