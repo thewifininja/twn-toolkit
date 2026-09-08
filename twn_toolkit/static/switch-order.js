@@ -191,7 +191,11 @@
     profile.disabled = vdom.disabled = loadButton.disabled = true;
     updateApplyState();
     setStatus("Applying moves and verifying the resulting order…");
-    window.toolkitLoading?.show("Applying switch moves and verifying order…");
+    status.dataset.operationState = "submitted";
+    const waitingTimer = window.setTimeout(() => {
+      status.dataset.operationState = "uncertain";
+      setStatus("Still waiting for the appliance. Leaving this page does not cancel changes. Do not apply again until you have reconciled the current order.");
+    }, 30000);
     try {
       const response = await fetch(root.dataset.applyUrl, {method: "POST", body});
       const data = await response.json();
@@ -200,6 +204,7 @@
         return;
       }
       if (!response.ok) {
+        status.dataset.operationState = data.completed_moves?.length ? "partial" : "uncertain";
         loadToken = "";
         confirmation.checked = false;
         const summary = data.user_message || data.message || data.error || "Unable to apply switch order.";
@@ -211,16 +216,18 @@
       originalIds = currentIds();
       loadToken = data.load_token || "";
       updatePreview();
+      status.dataset.operationState = "complete";
       setStatus(data.message, "success");
     } catch (error) {
+      status.dataset.operationState = "uncertain";
       loadToken = "";
       confirmation.checked = false;
       setStatus(`${error.message} The apply outcome may be incomplete. Reload and reconcile the target before retrying.`, "error");
     } finally {
+      window.clearTimeout(waitingTimer);
       applying = false;
       profile.disabled = vdom.disabled = loadButton.disabled = false;
       updateApplyState();
-      window.toolkitLoading?.hide();
     }
   });
 

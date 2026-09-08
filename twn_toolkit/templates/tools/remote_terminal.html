@@ -231,8 +231,10 @@
       <label>Folder<select id="remote-host-folder"></select></label>
       <label class="remote-host-availability-field">Availability<select id="remote-host-visibility"><option value="inherit">Inherit from folder</option><option value="global">Global</option><option value="admins_only">Admins Only</option><option value="private">Private</option></select><small>Top-level hosts inherit Admins Only.</small></label>
       <label>Protocol<select id="remote-host-protocol"><option value="ssh">SSH</option><option value="telnet">Telnet</option><option value="console">Console</option></select></label>
-      <label class="remote-host-address-field" data-host-network>Host<input id="remote-host-address" maxlength="255" required placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"></label>
-      <label data-host-network><span id="remote-host-port-label">SSH port</span><input id="remote-host-port" type="number" min="1" max="65535" value="22" required></label>
+      <div class="form-grid remote-host-target-fields" data-host-network>
+        <label class="remote-host-address-field">Hostname or IP address<input id="remote-host-address" maxlength="255" required placeholder="switch01.example.com" autocapitalize="none" spellcheck="false"></label>
+        <label><span id="remote-host-port-label">SSH port</span><input id="remote-host-port" type="number" min="1" max="65535" value="22" required></label>
+      </div>
     </div>
     <div class="remote-console-settings" data-host-console hidden>
       <div class="remote-console-device-row">

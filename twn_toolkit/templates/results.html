@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import appliance_outcome %}
 
 {% block content %}
 <section class="panel">
@@ -8,17 +9,13 @@
     <p>Target: <strong>{{ target_origin }}</strong> · Default VDOM: <strong>{{ profile.default_vdom }}</strong></p>
     <p>Endpoint: <code>{{ endpoint_template }}</code>. Each row shows its VDOM.</p>
   </div>
-  {% set success_count = results | selectattr('status', 'equalto', 'success') | list | length %}
-  {% set error_count = results | selectattr('status', 'equalto', 'error') | list | length %}
   {% set planned_count = results | selectattr('status', 'equalto', 'planned') | list | length %}
   {% if dry_run %}
     <div class="message warning">
       Preview complete: {{ planned_count }} change{{ '' if planned_count == 1 else 's' }} planned. Review every row before applying. This preview expires after {{ preview_expiry_minutes }} minutes; changing the profile or request requires a new preview.
     </div>
   {% else %}
-    <div class="message {{ 'error' if error_count and not success_count else 'warning' if error_count else 'success' }}">
-      Live run complete: {{ success_count }} succeeded · {{ error_count }} failed · {{ results | length }} total.
-    </div>
+    {{ appliance_outcome(results) }}
   {% endif %}
   <div class="table-wrap">
     <table>
@@ -48,7 +45,7 @@
   </div>
   <div class="button-row result-actions">
     {% if dry_run and entries and preview_token %}
-      <form method="post" action="{{ url_for('rename_objects', task_id=task.id) }}">
+      <form method="post" action="{{ url_for('rename_objects', task_id=task.id) }}" data-appliance-operation>
         <input name="profile" type="hidden" value="{{ profile.name }}">
         <input name="endpoint_template" type="hidden" value="{{ endpoint_template }}">
         <input name="preview_token" type="hidden" value="{{ preview_token }}">
@@ -62,8 +59,9 @@
         <button type="submit">Apply these changes</button>
       </form>
     {% endif %}
-    <a class="button-link" href="{{ url_for('task_form', task_id=task.id) }}">Run again</a>
+    <a class="button-link" href="{{ url_for('task_form', task_id=task.id) }}">Build another preview</a>
     <a class="button-link secondary" href="{{ url_for('fortigate_home') }}">FortiGate home</a>
   </div>
 </section>
+<script src="{{ url_for('static', filename='appliance-operation.js') }}"></script>
 {% endblock %}

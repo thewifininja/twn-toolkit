@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/ui.html" import appliance_outcome %}
 
 {% block content %}
 <section class="panel">
@@ -9,6 +10,7 @@
       {{ "Membership removal" if action == "remove_memberships" else "Global device deletion" }}
     </p>
   </div>
+  {{ appliance_outcome(results) }}
   <div class="table-wrap">
     <table>
       <thead>
