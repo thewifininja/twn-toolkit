@@ -11,8 +11,12 @@ text line and padding. Compact controls start at 34px, comfortable controls at
 the height when needed. The shared declarations override legacy page styles so
 native inputs and enhanced selects cannot drift apart at larger text scales.
 
+Multiline textareas share field typography and padding, while keeping their rows,
+editor heights and resizing behavior. Mobile/touch fields use at least 16px text
+and honor larger text scaling. The hidden terminal input capture is excluded.
+
 Field widths belong to the form layout: paired metadata can use equal columns,
-while a hostname can take more space than its port. Textareas, multi-select/list
+while a hostname can take more space than its port. Multi-select/list
 boxes, file pickers, ranges, colors, checkboxes, radios and action buttons have
 separate sizing requirements and are excluded from the single-line field rule.
 

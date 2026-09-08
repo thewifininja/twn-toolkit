@@ -12,7 +12,8 @@
   --ui-gap: 6px;
   --ui-panel-padding: 10px;
   --ui-control-height: 34px;
-  --ui-field-height: max(var(--ui-control-height), calc(1.08rem + 16px));
+  --ui-field-font-size: 0.72rem;
+  --ui-field-height: max(var(--ui-control-height), calc(var(--ui-field-font-size) * 1.5 + 16px));
   --ui-sidebar-expanded-width: 274px;
   --ui-sidebar-width: var(--ui-sidebar-expanded-width);
   --topbar-height: 50px;
@@ -2255,13 +2256,24 @@ dialog::backdrop { background: rgb(5 8 10 / 68%); }
   .toolkit-select-trigger
 ) {
   box-sizing: border-box;
-  font-size: 0.72rem !important;
+  font-size: var(--ui-field-font-size) !important;
   line-height: 1.5 !important;
   height: var(--ui-field-height) !important;
   min-height: var(--ui-field-height) !important;
   padding-block: 7px !important;
 }
 
-@media (max-width: 900px) {
-  :root { --ui-field-height: max(44px, calc(1.08rem + 16px)); }
+/* Multiline editors share typography and padding, but preserve rows, explicit
+   editor heights and resizing. The terminal's hidden input capture is not a field. */
+textarea:not(.remote-terminal-input-capture) {
+  font-size: var(--ui-field-font-size) !important;
+  line-height: 1.5 !important;
+  padding: 7px 9px !important;
+}
+
+@media (max-width: 900px), (any-pointer: coarse) {
+  :root {
+    --ui-field-font-size: max(16px, 1rem);
+    --ui-field-height: max(44px, calc(var(--ui-field-font-size) * 1.5 + 16px));
+  }
 }
