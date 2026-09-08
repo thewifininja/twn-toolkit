@@ -83,3 +83,5 @@ def register_tools(registry: Any) -> None:
         registry.map_endpoints({spec['endpoint']+'_'+suffix:spec['tool_id'] for suffix in ('status','cancel','download')})
 
     registry.map_endpoints({"fortiauthenticator_connection_"+suffix:"fortiauthenticator.home" for suffix in ("job","status","cancel","download")})
+
+    registry.map_endpoints({"fac_cleanup_"+suffix:"fortiauthenticator.mac_cleanup" for suffix in ("job","status","cancel")})
