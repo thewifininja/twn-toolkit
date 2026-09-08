@@ -118,10 +118,16 @@ def test_late_async_acquisition_cannot_leak_slot(tmp_path,stop,create_before_wai
         original_close(descriptor);closed.set()
     async def run():
         with patch('twn_toolkit.outgoing_admission._try_acquire',slow_acquire),patch('twn_toolkit.outgoing_admission.os.close',side_effect=close):
-            task=asyncio.create_task(try_async(tmp_path,'fixture',timeout=.03 if stop=='deadline' else 5))
-            while not entered.is_set():await asyncio.sleep(.001)
-            if stop=='cancel':task.cancel()
+            task=asyncio.create_task(try_async(tmp_path,'fixture',timeout=1 if stop=='deadline' else 5))
+            async def await_start():
+                while not entered.is_set():
+                    if task.done():
+                        await task
+                        pytest.fail('acquisition ended before the worker started')
+                    await asyncio.sleep(.001)
             try:
+                await asyncio.wait_for(await_start(),5)
+                if stop=='cancel':task.cancel()
                 with pytest.raises(asyncio.CancelledError if stop=='cancel' else asyncio.TimeoutError):await task
             finally:release.set()
             for _ in range(100):
