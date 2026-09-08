@@ -17,6 +17,7 @@ from typing import Any, Callable, Iterator
 
 from .iperf_tools import (
     _iperf3_executable,
+    _signal_iperf_group,
     normalize_iperf3_result,
     validate_iperf3_server_config,
 )
@@ -51,7 +52,7 @@ class IperfServerStore:
     ) -> str:
         normalized = validate_iperf3_server_config(config)
         self._reconcile_workers()
-        _iperf3_executable()
+        _iperf3_executable(require_streaming=True)
         assert_iperf3_listener_available(normalized)
         session_id = os.urandom(12).hex()
         now = time.time()
@@ -1002,7 +1003,7 @@ def run_managed_iperf3_server(
     """Run a continuous JSON-stream listener until its managed stop is requested."""
 
     normalized = validate_iperf3_server_config(config)
-    executable = _iperf3_executable()
+    executable = _iperf3_executable(require_streaming=True)
     command = [
         executable,
         "-s",
@@ -1019,74 +1020,73 @@ def run_managed_iperf3_server(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
+            bufsize=0,
             start_new_session=True,
         )
     except OSError as exc:
         raise ToolInputError(
             f"Could not start the managed iPerf3 listener: {exc}"
         ) from exc
-    if process_started:
-        process_started(process.pid)
-    collector = IperfJsonStreamCollector(
-        config=normalized,
-        command=command,
-    )
-    selector = selectors.DefaultSelector()
-    if process.stdout is None:  # pragma: no cover - PIPE is authoritative
-        _terminate_process(process)
-        raise ToolInputError("The managed iPerf3 listener did not expose output.")
-    selector.register(process.stdout, selectors.EVENT_READ)
+    selector = None
+    pending = bytearray()
     try:
+        if process_started:
+            process_started(process.pid)
+        collector = IperfJsonStreamCollector(config=normalized, command=command)
+        selector = selectors.DefaultSelector()
+        if process.stdout is None:
+            raise ToolInputError('The managed iPerf3 listener did not expose output.')
+        if should_stop():
+            return 'stopped'
+        descriptor = process.stdout.fileno()
+        os.set_blocking(descriptor, False)
+        selector.register(descriptor, selectors.EVENT_READ)
         while True:
             if should_stop():
-                _terminate_process(process)
-                return "stopped"
-            if (
-                collector.test_started_monotonic is not None
-                and time.monotonic() - collector.test_started_monotonic
-                >= IPERF_SERVER_CYCLE_SECONDS
-            ):
-                _terminate_process(process)
-                raise ToolInputError(
-                    "An iPerf3 server test exceeded the managed ten-minute limit."
-                )
-            events = selector.select(timeout=0.25)
-            for key, _mask in events:
-                line = key.fileobj.readline()
-                if not line:
-                    continue
+                return 'stopped'
+            if (collector.test_started_monotonic is not None
+                    and time.monotonic() - collector.test_started_monotonic >= IPERF_SERVER_CYCLE_SECONDS):
+                raise ToolInputError('An iPerf3 server test exceeded the managed ten-minute limit.')
+            eof = False
+            if selector.select(timeout=0.25):
                 try:
+                    chunk = os.read(descriptor, 65536)
+                except BlockingIOError:
+                    chunk = None
+                if chunk is not None:
+                    eof = not chunk
+                    pending.extend(chunk)
+            while b'\n' in pending or (eof and pending):
+                newline = pending.find(b'\n')
+                length = newline + 1 if newline >= 0 else len(pending)
+                if length > IPERF_SERVER_OUTPUT_LIMIT:
+                    raise ToolInputError('The iPerf3 listener exceeded its output limit.')
+                try:
+                    line = bytes(pending[:length]).decode('utf-8', errors='strict')
+                    del pending[:length]
                     result, error = collector.feed(line)
                 except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                    raise ToolInputError(
-                        "The installed iPerf3 command did not return supported "
-                        "streaming JSON. Update iPerf3 outside the toolkit."
-                    ) from exc
+                    raise ToolInputError('The iPerf3 listener returned invalid or oversized streaming JSON. '
+                                         'Review the installed binary and the listener result before retrying.') from exc
                 if error and transient_error:
                     transient_error(error)
                 if result:
                     result_completed(result)
-            if process.poll() is not None:
-                for line in process.stdout:
-                    result, error = collector.feed(line)
-                    if error and transient_error:
-                        transient_error(error)
-                    if result:
-                        result_completed(result)
+            if len(pending) > IPERF_SERVER_OUTPUT_LIMIT:
+                raise ToolInputError('The iPerf3 listener exceeded its output limit.')
+            if eof:
                 if should_stop():
-                    return "stopped"
-                raise ToolInputError(
-                    f"The managed iPerf3 listener exited with status "
-                    f"{process.returncode}."
-                )
+                    return 'stopped'
+                raise ToolInputError(f'The managed iPerf3 listener closed its output (status {process.poll()}).')
     finally:
-        selector.close()
-        if process.poll() is None:
-            _terminate_process(process)
+        if selector is not None:
+            selector.close()
+        _terminate_process(process)
+        if process.stdout is not None:
+            process.stdout.close()
         if process_started:
             process_started(None)
+
 
 
 class IperfJsonStreamCollector:
@@ -1098,6 +1098,7 @@ class IperfJsonStreamCollector:
     ) -> None:
         self.config = config
         self.command = command
+        self.retained_bytes = 0
         self.payload: dict[str, Any] | None = None
         self.test_started_monotonic: float | None = None
 
@@ -1112,6 +1113,9 @@ class IperfJsonStreamCollector:
         event_name = str(event.get("event") or "")
         data = event.get("data")
         if event_name == "start":
+            if self.payload is not None:
+                raise ValueError("A new iPerf3 test started before the previous test finished.")
+            self.retained_bytes = len(line.encode("utf-8"))
             if not isinstance(data, dict):
                 raise ValueError("Invalid iPerf3 start event.")
             self.payload = {
@@ -1121,6 +1125,10 @@ class IperfJsonStreamCollector:
             }
             self.test_started_monotonic = time.monotonic()
             return None, ""
+        if event_name in {"interval", "end"} and self.payload is not None:
+            self.retained_bytes += len(line.encode("utf-8"))
+            if self.retained_bytes > IPERF_SERVER_OUTPUT_LIMIT:
+                raise ValueError("iPerf3 test output exceeded its aggregate limit.")
         if event_name == "interval":
             if self.payload is not None and isinstance(data, dict):
                 intervals = self.payload["intervals"]
@@ -1151,14 +1159,23 @@ class IperfJsonStreamCollector:
 
 def _terminate_process(process: subprocess.Popen[Any]) -> None:
     try:
-        process.send_signal(signal.SIGTERM)
+        _signal_iperf_group(process, signal.SIGTERM)
     except ProcessLookupError:
-        return
+        pass
     try:
         process.wait(timeout=2)
     except subprocess.TimeoutExpired:
-        process.kill()
+        try:
+            _signal_iperf_group(process, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         process.wait(timeout=2)
+    finally:
+        # A child that outlives its parent must not keep the listener group alive.
+        try:
+            _signal_iperf_group(process, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
 def _process_alive(process_id: int) -> bool:

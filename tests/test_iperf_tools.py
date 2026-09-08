@@ -144,8 +144,8 @@ class IperfToolTests(unittest.TestCase):
                 return_value="/usr/bin/iperf3",
             ),
             patch(
-                "twn_toolkit.iperf_tools.subprocess.run",
-                return_value=version,
+                'twn_toolkit.iperf_tools._probe_iperf3',
+                side_effect=["iperf 3.18\n", "--json-stream\n"],
             ),
         ):
             available = iperf3_capability()
@@ -632,7 +632,7 @@ class IperfToolTests(unittest.TestCase):
         class RunningProcess:
             pid = 102
             returncode = None
-            stdout = object()
+            stdout = MagicMock()
 
             def __init__(self):
                 self.terminated = False
@@ -671,6 +671,7 @@ class IperfToolTests(unittest.TestCase):
                 "twn_toolkit.iperf_server.selectors.DefaultSelector",
                 return_value=FakeSelector(),
             ),
+            patch('twn_toolkit.iperf_server.os.killpg', side_effect=lambda _pid, sig: process.send_signal(sig)),
         ):
             outcome = run_managed_iperf3_server(
                 {
