@@ -133,6 +133,9 @@ def register_tools(registry: Any) -> None:
             "switch_order_objects": "fortigate.switch_order",
             "preview_switch_order": "fortigate.switch_order",
             "apply_switch_order": "fortigate.switch_order",
+            "switch_order_job": "fortigate.switch_order",
+            "switch_order_status": "fortigate.switch_order",
+            "switch_order_cancel": "fortigate.switch_order",
         }
     )
 

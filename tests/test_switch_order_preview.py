@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.switch_order_helpers import complete_switch_order
+
 import time
 from unittest.mock import patch
 
@@ -41,10 +43,11 @@ def test_unbound_confirmation_does_not_create_client(browser):
 
 def load(client):
     with patch('twn_toolkit.fortigate_routes.FortiGateClient.get_managed_switches', return_value=SWITCHES):
-        response = client.post('/fortigate/switch-order/objects', data={'profile': 'Lab', 'vdom': 'root'})
+        response = complete_switch_order(client, client.post('/fortigate/switch-order/objects', data={'profile': 'Lab', 'vdom': 'root'}))
     assert response.status_code == 200
     assert b'fixture-secret' not in response.data
-    return response.get_json()['load_token']
+    assert response.get_json()['state'] == 'succeeded'
+    return response.get_json()['data']['load_token']
 
 
 def confirm(client):
@@ -61,12 +64,14 @@ def test_reviewed_order_applies_and_returns_fresh_load_binding(browser):
     _, client = browser
     token = confirm(client)
     with patch('twn_toolkit.fortigate_routes.FortiGateClient.get_managed_switches', side_effect=[SWITCHES, list(reversed(SWITCHES))]), patch('twn_toolkit.fortigate_routes.FortiGateClient.move_managed_switch_after') as move:
-        response = client.post('/fortigate/switch-order/apply', data={**order_form(), 'preview_token': token})
+        response = complete_switch_order(client, client.post('/fortigate/switch-order/apply', data={**order_form(), 'preview_token': token}))
     assert response.status_code == 200
+    assert response.get_json()['state'] == 'succeeded'
     move.assert_called_once_with('a', 'b', 'root')
     refreshed = client.post('/fortigate/switch-order/preview', data={
         **order_form(), 'original_switch_id': ['b', 'a'], 'switch_id': ['a', 'b'],
-        'load_token': response.get_json()['load_token'],
+        'load_token': response.get_json()['data']['load_token'],
+        'target_revision': response.get_json()['data']['target_revision'],
     })
     assert refreshed.status_code == 200
 
@@ -106,8 +111,10 @@ def test_device_order_or_inventory_drift_aborts_before_moves(browser, changed):
     _, client = browser
     token = confirm(client)
     with patch('twn_toolkit.fortigate_routes.FortiGateClient.get_managed_switches', return_value=changed), patch('twn_toolkit.fortigate_routes.FortiGateClient.move_managed_switch_after') as move:
-        response = client.post('/fortigate/switch-order/apply', data={**order_form(), 'preview_token': token})
-    assert response.status_code == 409
+        response = complete_switch_order(client, client.post('/fortigate/switch-order/apply', data={**order_form(), 'preview_token': token}))
+    assert response.status_code == 200
+    assert response.get_json()['state'] == 'failed'
+    assert 'list or order changed' in response.get_json()['error']
     move.assert_not_called()
 
 

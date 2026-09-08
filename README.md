@@ -94,7 +94,8 @@ counters are intentionally excluded.
   previews, explicit apply confirmation, partial-result summaries, and read-back
   verification.
 - Reorder managed FortiSwitches by drag-and-drop or alphabetically, with an
-  in-page preview and explicit confirmation.
+  in-page preview, explicit confirmation, supervised execution and retained
+  progress for interrupted changes. See [switch-order operation policy](docs/switch-order-previews.md).
 - Find a normalized client MAC in local wireless association logs, combine log
   and live state, and collapse repeated visits into a clean AP history.
 
