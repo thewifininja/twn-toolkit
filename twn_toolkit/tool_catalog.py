@@ -79,6 +79,7 @@ class ToolRegistry:
             "task_fields",
             "task_preview",
             "appliance_task_job", "appliance_task_status", "appliance_task_cancel", "appliance_task_download",
+            "rename_job", "rename_job_status", "rename_job_cancel",
         }:
             return self.task_tool_ids.get(str((view_args or {}).get("task_id", "")))
         return self._endpoint_tool_ids.get(endpoint)

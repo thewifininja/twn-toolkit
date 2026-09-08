@@ -49,6 +49,7 @@
         <input name="profile" type="hidden" value="{{ profile.name }}">
         <input name="endpoint_template" type="hidden" value="{{ endpoint_template }}">
         <input name="preview_token" type="hidden" value="{{ preview_token }}">
+        <input name="target_revision" type="hidden" value="{{ target_revision|default('') }}">
         <input name="confirmed_live" type="hidden" value="on">
         {% for entry in entries %}
           <input name="identifier" type="hidden" value="{{ entry.identifier }}">

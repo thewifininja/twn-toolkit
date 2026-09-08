@@ -9,16 +9,19 @@ RENAME_PREVIEW_MAX_AGE_SECONDS = PREVIEW_MAX_AGE_SECONDS
 _SCOPE = "fortigate-rename-preview-v1"
 
 
-def _context(task, profile, endpoint, entries):
-    return {"task": task.id, "profile": profile, "endpoint": endpoint, "entries": entries}
+def _context(task, profile, endpoint, entries, target_revision=""):
+    context = {"task": task.id, "profile": profile, "endpoint": endpoint, "entries": entries}
+    if target_revision:
+        context["target_revision"] = target_revision
+    return context
 
 
-def issue_rename_preview(task, profile, endpoint, entries):
-    return issue_bound_preview(_SCOPE, _context(task, profile, endpoint, entries))
+def issue_rename_preview(task, profile, endpoint, entries, *, target_revision=""):
+    return issue_bound_preview(_SCOPE, _context(task, profile, endpoint, entries, target_revision))
 
 
-def valid_rename_preview(token, task, profile, endpoint, entries):
-    return valid_bound_preview(token, _SCOPE, _context(task, profile, endpoint, entries),
+def valid_rename_preview(token, task, profile, endpoint, entries, *, target_revision=""):
+    return valid_bound_preview(token, _SCOPE, _context(task, profile, endpoint, entries, target_revision),
                                max_age=RENAME_PREVIEW_MAX_AGE_SECONDS)
 
 

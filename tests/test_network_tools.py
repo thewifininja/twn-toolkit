@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from tests.switch_order_helpers import complete_switch_order
+from tests.rename_helpers import complete_rename
 
 from tests.appliance_read_helpers import complete_appliance_read, export_fixture
 
@@ -602,6 +603,7 @@ class NetworkToolTests(unittest.TestCase):
                         "preview_token": token,
                     },
                 )
+                rename = complete_rename(client, rename)
             events = AuditStore(instance).recent(2)
             audit_database = (Path(instance) / "audit.sqlite3").read_bytes()
 
@@ -632,7 +634,7 @@ class NetworkToolTests(unittest.TestCase):
             ["fortigate.objects_renamed", "fortigate.export_succeeded"],
         )
         rename_event = events[0]
-        self.assertEqual(rename_event["details"]["outcome"], "success")
+        self.assertEqual(rename_event["details"]["outcome"], "succeeded")
         self.assertEqual(rename_event["details"]["successful object count"], 1)
         self.assertEqual(event_count_after_dry_run, 3)
         self.assertNotIn(b"profile-secret", audit_database)

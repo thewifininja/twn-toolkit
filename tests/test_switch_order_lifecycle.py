@@ -33,6 +33,12 @@ class Appliance:
         return [{'switch-id': 'a'}, {'switch-id': 'b'}]
     def move_managed_switch_after(self, *args):
         stall()
+    def get_object(self, *args):
+        if phase == 'inventory':
+            stall()
+        return {'results': [{'name': 'Old'}]}
+    def rename_object(self, *args, **kwargs):
+        stall()
 
 operations.FortiGateClient.from_profile = lambda _: Appliance()
 sys.argv = ['diagnostic', '--instance', instance, '--job', job_id]
@@ -42,7 +48,8 @@ runpy.run_module('twn_toolkit.diagnostic_worker', run_name='__main__')
 
 @pytest.mark.parametrize("phase", ["inventory", "move"])
 @pytest.mark.parametrize("reason", ["cancel", "deadline", "shutdown", "restart"])
-def test_real_child_interruption_preserves_progress_and_never_replays(tmp_path, monkeypatch, phase, reason):
+@pytest.mark.parametrize("tool", ["switch_order", "appliance_rename"])
+def test_real_child_interruption_preserves_progress_and_never_replays(tmp_path, monkeypatch, phase, reason, tool):
     original = subprocess.Popen
 
     def launch(command, **kwargs):
@@ -57,7 +64,14 @@ def test_real_child_interruption_preserves_progress_and_never_replays(tmp_path, 
                   investigation_id="", original_ids=["a", "b"], desired_ids=["b", "a"])
     signer = PreviewSigner(load_or_create_secret_key(str(tmp_path)), store.instance, "owner")
     config["preview_token"] = signer.issue("switch-order-apply-v1", review_context(config))
-    job_id = store.enqueue(user_id="owner", tool="switch_order", config=config, request_key="review")
+    if tool == 'appliance_rename':
+        from twn_toolkit.tasks import get_task
+        from twn_toolkit.rename_preview import _context, _SCOPE
+        task = get_task('rename-aps')
+        config.update(task_id=task.id, endpoint=task.endpoint_template, target_revision='',
+                      entries=[{'identifier': 'AP1', 'current_name': 'Old', 'new_name': 'New', 'vdom': 'root'}])
+        config['preview_token'] = signer.issue(_SCOPE, _context(task, profile, config['endpoint'], config['entries']))
+    job_id = store.enqueue(user_id="owner", tool=tool, config=config, request_key="review")
     process = None
     try:
         scheduler.tick()
@@ -94,7 +108,7 @@ def test_real_child_interruption_preserves_progress_and_never_replays(tmp_path, 
         assert result["state"] == expected
         assert result["summary"] == saved
         assert store.claim() is None
-        assert store.enqueue(user_id="owner", tool="switch_order", config=config, request_key="review") == job_id
+        assert store.enqueue(user_id="owner", tool=tool, config=config, request_key="review") == job_id
         assert not scheduler.active
     finally:
         scheduler.close()
