@@ -448,3 +448,19 @@ def test_submission_and_certificate_store_writes_require_full_sync(fixture):
         assert db.execute('PRAGMA synchronous').fetchone()[0]==2
     with certificates._connect() as db:
         assert db.execute('PRAGMA synchronous').fetchone()[0]==2
+
+
+def test_template_keeps_classic_forms_without_job_api_context(fixture,monkeypatch):
+    from twn_toolkit import certificate_automation_routes as routes
+    jobs,*_=fixture
+    app=create_app(str(jobs.instance));app.testing=True
+    render=routes.render_template
+    def older_context(template,**values):
+        for key in ('certificate_job_api','certificate_job_nonce','certificate_jobs','recovery_jobs','recovery_more','recovery_page'):
+            values.pop(key,None)
+        return render(template,**values)
+    monkeypatch.setattr(routes,'render_template',older_context)
+    response=app.test_client().get('/tools/certificate-automation?section=adcs')
+    assert response.status_code==200
+    assert b'data-certificate-job-form' not in response.data
+    assert b'certificate-jobs.js' not in response.data

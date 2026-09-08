@@ -121,7 +121,7 @@ class DiagnosticJobStore:
             if request_key and db.execute("SELECT COUNT(*) FROM diagnostic_receipts").fetchone()[0] >= policy["diagnostic_history_limit"]:
                 raise ValueError("Recent change admission capacity is busy. Wait for older previews to expire.")
             if db.execute("SELECT COUNT(*) FROM diagnostic_jobs").fetchone()[0] >= policy["diagnostic_history_limit"]:
-                raise ValueError("Diagnostic storage capacity is busy. Wait for an active run to finish.")
+                raise ValueError("Diagnostic storage capacity is busy. Finish active runs or reconcile unresolved certificate submissions.")
             if db.execute("SELECT COUNT(*) FROM diagnostic_jobs WHERE state = 'queued'").fetchone()[0] >= policy["diagnostic_queue_limit"]:
                 raise ValueError("The diagnostic queue is full. Try again after a run finishes.")
             if db.execute("SELECT COUNT(*) FROM diagnostic_jobs WHERE user_id = ? AND state IN ('queued','running','cancel_requested')", (user_id,)).fetchone()[0] >= policy["diagnostic_user_limit"]:

@@ -10,11 +10,11 @@
   {'label': 'Microsoft AD CS · Beta', 'href': url_for('tools.certificate_automation', section='adcs'), 'active': certificate_section == 'adcs'}
 ], 'certificate-page-nav') }}
 
-{% if certificate_section == 'adcs' %}
+{% if certificate_section == 'adcs' and certificate_job_api|default(false) %}
 <section class="panel tool-panel">
   <h2>Recent certificate requests</h2>
   <p>Requests run in the background. Enrollment key uploads are limited to 16 KiB PEM RSA files.</p>
-  {% for item in certificate_jobs %}<p><a href="{{ url_for('tools.certificate_job_result', job_id=item.id) }}">{{ item.tool|replace('certificate_', '') }} · {{ item.state }} · {{ item.id[:8] }}</a></p>{% else %}<p>No recent certificate requests.</p>{% endfor %}
+  {% for item in certificate_jobs %}<p><a href="{{ url_for('tools.certificate_job_result', job_id=item.id) }}">{{ item.tool|replace('certificate_', '') }} · {{ 'finished' if item.state == 'succeeded' else item.state }} · {{ item.id[:8] }}</a></p>{% else %}<p>No recent certificate requests.</p>{% endfor %}
   <h3>Unresolved submissions</h3>
   <p>Recovery records survive ordinary history expiry until you explicitly reconcile them.</p>
   {% for item in recovery_jobs %}<p><a href="{{ url_for('tools.certificate_job_result', job_id=item.id) }}">Reconcile request {{ item.id[:8] }}</a></p>{% else %}<p>No unresolved submissions on this page.</p>{% endfor %}
@@ -241,7 +241,7 @@
       <a class="button-link secondary" href="#pki-profiles">Open PKI profiles</a>
     {% endcall %}
   {% else %}
-    <form data-certificate-job-form class="form certificate-request-form" data-unsaved-form method="post" action="{{ url_for('tools.enroll_managed_certificate') }}" enctype="multipart/form-data">
+    <form {% if certificate_job_api|default(false) %}data-certificate-job-form {% endif %}class="form certificate-request-form" data-unsaved-form method="post" action="{{ url_for('tools.enroll_managed_certificate') }}" enctype="multipart/form-data">
 <input type="hidden" name="job_nonce" value="{{ certificate_job_nonce }}">
       <div class="certificate-form-grid">
         <label>Managed certificate name
@@ -339,7 +339,7 @@
             {% if selected.message %}<p class="certificate-disposition-message">{{ selected.message }}</p>{% endif %}
             <div class="certificate-detail-actions">
               {% if selected.status == 'pending' %}
-                <form data-certificate-job-form data-unsaved-form method="post" action="{{ url_for('tools.collect_pending_certificate', managed_id=selected.id) }}">
+                <form {% if certificate_job_api|default(false) %}data-certificate-job-form {% endif %}data-unsaved-form method="post" action="{{ url_for('tools.collect_pending_certificate', managed_id=selected.id) }}">
 <input type="hidden" name="job_nonce" value="{{ certificate_job_nonce }}">
                   <label class="sr-only" for="pending-credential">Credential profile</label>
                   <select id="pending-credential" name="credential_id">
@@ -352,7 +352,7 @@
               {% endif %}
               <details class="certificate-rotate-details">
                 <summary>Rotate certificate</summary>
-                <form data-certificate-job-form class="form" method="post" action="{{ url_for('tools.enroll_managed_certificate') }}" enctype="multipart/form-data" data-unsaved-form>
+                <form {% if certificate_job_api|default(false) %}data-certificate-job-form {% endif %}class="form" method="post" action="{{ url_for('tools.enroll_managed_certificate') }}" enctype="multipart/form-data" data-unsaved-form>
 <input type="hidden" name="job_nonce" value="{{ certificate_job_nonce }}">
                   <input type="hidden" name="managed_id" value="{{ selected.id }}">
                   <input type="hidden" name="name" value="{{ selected.name }}">
@@ -469,7 +469,7 @@
           {% call action_row(detached=true) %}
             <button type="submit" form="pki-server-{{ profile.id }}">Update</button>
             <form method="post" action="{{ url_for('tools.duplicate_pki_server', server_id=profile.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form>
-            <form data-certificate-job-form data-unsaved-form method="post" action="{{ url_for('tools.test_pki_server', server_id=profile.id) }}">
+            <form {% if certificate_job_api|default(false) %}data-certificate-job-form {% endif %}data-unsaved-form method="post" action="{{ url_for('tools.test_pki_server', server_id=profile.id) }}">
 <input type="hidden" name="job_nonce" value="{{ certificate_job_nonce }}">
               {% if not profile.credential_id %}<details class="certificate-one-time-credentials"><summary>Credentials for test</summary><div class="certificate-inline-fields"><label>Username<input name="username" autocomplete="username"></label><label>Password<input name="password" type="password" autocomplete="current-password"></label></div></details>{% endif %}
               <button class="secondary" type="submit">Test connection</button>
@@ -516,6 +516,6 @@
 </div>
 <script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='certificate-profile-editor.js', v=asset_version) }}"></script>
-<script src="{{ url_for('static', filename='certificate-jobs.js', v=asset_version) }}"></script>
+{% if certificate_job_api|default(false) %}<script src="{{ url_for('static', filename='certificate-jobs.js', v=asset_version) }}"></script>{% endif %}
 {% if certificate_section == 'acme' %}<script src="{{ url_for('static', filename='certificate-automation.js') }}"></script>{% endif %}
 {% endblock %}

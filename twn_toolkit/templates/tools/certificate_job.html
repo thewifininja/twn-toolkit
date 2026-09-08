@@ -2,7 +2,7 @@
 {% block content %}
 <section class="panel tool-panel" {% if job.state in ['queued','running','cancel_requested'] %}data-diagnostic-status-url="{{ url_for('tools.certificate_job_status', job_id=job.id) }}"{% endif %}>
   <h1>Certificate request</h1>
-  <p>{{ summary.label|default('Certificate operation') }} · <strong>{{ job.state }}</strong></p>
+  <p>{{ summary.label|default('Certificate operation') }} · <strong>{{ 'Finished' if job.state == 'succeeded' else job.state|replace('_', ' ') }}</strong></p>
   <p data-diagnostic-status role="status">{{ summary.stage|default('Waiting for a worker') }}</p>
   {% if job.error %}<p role="alert">{{ job.error }}</p>{% endif %}
   {% if summary.disposition %}<p>CA disposition: <strong>{{ summary.disposition }}</strong>{% if summary.request_id %} · Request ID: {{ summary.request_id }}{% endif %}</p>{% endif %}

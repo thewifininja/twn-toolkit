@@ -33,7 +33,7 @@
         guard?.acknowledge(form, snapshot);
         form.querySelectorAll('input[type=password],input[type=file]').forEach((field) => { field.value = ''; });
         const nonce = form.querySelector('[name=job_nonce]');
-        if (nonce) nonce.value = crypto.randomUUID().replaceAll('-', '');
+        if (nonce) nonce.value = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
         status.textContent = 'Request queued. ';
         const link = document.createElement('a');
         link.href = data.location;

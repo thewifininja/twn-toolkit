@@ -228,7 +228,7 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
             recovery_jobs = [dict(row) for row in db.execute("SELECT id,state,created FROM diagnostic_jobs WHERE user_id=? AND tool='certificate_enroll' AND state='unknown' ORDER BY created DESC LIMIT 21 OFFSET ?", (str(g.current_user['id']), (recovery_page-1)*20))]
         return render_template(
             "tools/certificate_automation.html",
-            certificate_job_nonce=secrets.token_hex(16), certificate_jobs=certificate_jobs, recovery_jobs=recovery_jobs[:20], recovery_more=len(recovery_jobs)>20, recovery_page=recovery_page,
+            certificate_job_api=True, certificate_job_nonce=secrets.token_hex(16), certificate_jobs=certificate_jobs, recovery_jobs=recovery_jobs[:20], recovery_more=len(recovery_jobs)>20, recovery_page=recovery_page,
             certificate_section=certificate_section,
             certificate_profile_editor_api=True,
             credentials=credentials,
