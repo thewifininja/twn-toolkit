@@ -19,13 +19,15 @@ _held = threading.local()
 
 
 @contextmanager
-def file_transaction(path: str | Path) -> Iterator[None]:
+def file_transaction(path: str | Path, *, blocking: bool = True) -> Iterator[None]:
     """Serialize a complete read/validate/write operation on a local file.
 
     Separate opens make flock serialize both threads and processes on Linux
     and macOS. Reentry in the same thread permits compound store operations.
     For transactions involving several files, acquire paths in sorted order.
-    This is not a transaction across files: callers still own rollback.
+    With blocking=False, a busy lock raises BlockingIOError for caller-owned
+    deadline/admission handling. This is not a transaction across files:
+    callers still own rollback.
     """
     target = Path(path).resolve()
     process_id = os.getpid()
@@ -46,7 +48,7 @@ def file_transaction(path: str | Path) -> Iterator[None]:
     descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
     try:
         os.fchmod(descriptor, 0o600)
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        fcntl.flock(descriptor, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
         descriptors[target] = descriptor
         try:
             yield

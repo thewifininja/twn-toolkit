@@ -28,7 +28,7 @@ def _try_acquire(instance, host, *, directory='.transfer-admission', total_key='
     target = _host_key(host)
     candidate = None
     try:
-        with file_transaction(root / 'admission'):
+        with file_transaction(root / 'admission', blocking=False):
             settings = OperationalSettingsStore(str(instance)).get()
             if weight not in (1, 2):
                 raise ValueError('Invalid outgoing slot weight.')
@@ -67,6 +67,9 @@ def _try_acquire(instance, host, *, directory='.transfer-admission', total_key='
                 raise OSError('Could not publish outgoing slot ownership.')
             descriptor, candidate = candidate, None
             return descriptor
+    except BlockingIOError:
+        # Busy bookkeeping is capacity contention, not an unbounded lock wait.
+        return None
     finally:
         if candidate is not None:
             os.close(candidate)

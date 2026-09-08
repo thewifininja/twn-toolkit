@@ -347,3 +347,34 @@ def test_protocol_weight_larger_than_configured_limit_fails_without_wait(tmp_pat
     OperationalSettingsStore(str(tmp_path)).save({'outgoing_connections':1})
     with pytest.raises(CapacityWaitTimeout,match='requiring 2 slots'):
         with outgoing_slot(tmp_path,'fixture',weight=2):pytest.fail('admitted two sockets into one slot')
+
+
+@pytest.mark.parametrize('kind', ['sync', 'async', 'transfer'])
+def test_busy_bookkeeping_lock_stays_inside_admission_deadline(tmp_path, kind):
+    from twn_toolkit.file_transactions import file_transaction
+    entered=threading.Event();release=threading.Event()
+    directory='.transfer-admission' if kind=='transfer' else '.outgoing-admission'
+    def hold():
+        with file_transaction(tmp_path/directory/'admission'):
+            entered.set();release.wait(3)
+    thread=threading.Thread(target=hold);thread.start()
+    assert entered.wait(2)
+    async def asynchronous():
+        async with async_slot(tmp_path,'fixture',wait_seconds=.05):
+            pytest.fail('entered while bookkeeping lock was held')
+    started=time.monotonic()
+    try:
+        with pytest.raises(TimeoutError):
+            if kind=='async':
+                asyncio.run(asynchronous())
+            elif kind=='transfer':
+                with TransferDeadline(.05) as deadline,transfer_slot(tmp_path,'fixture',deadline):
+                    pytest.fail('entered while bookkeeping lock was held')
+            else:
+                with outgoing_slot(tmp_path,'fixture',wait_seconds=.05):
+                    pytest.fail('entered while bookkeeping lock was held')
+        assert time.monotonic()-started<1
+        assert thread.is_alive()
+    finally:
+        release.set();thread.join(5)
+    with outgoing_slot(tmp_path,'fixture',wait_seconds=.2):pass
