@@ -14,7 +14,7 @@ from typing import Any, Iterator
 from cryptography.fernet import Fernet, InvalidToken
 
 from .remote_connection_management import managed_mutation
-from .duplication import duplicate_name
+from .duplication import DuplicateNameIndex, duplicate_name
 from .serial_console import serial_settings
 
 
@@ -501,33 +501,84 @@ class RemoteConnectionStore:
         return self.get_folder(str(existing["id"]), user_id=user_id)  # type: ignore[return-value]
 
     def duplicate_folder(self, folder_id: str, *, user_id: str) -> dict[str, Any]:
-        with self._connect() as connection:
+        # One snapshot and transaction: an interrupted or rejected copy must not
+        # leave a partial tree. The recursive SQL uses UNION to terminate cycles.
+        limit = 10_000
+        with self.transaction(), self._connect() as connection:
             source = self._require_folder(connection, folder_id, user_id)
-            sibling_names = [
-                str(row[0])
-                for row in connection.execute(
-                    """
-                    SELECT name FROM remote_connection_folders
-                    WHERE user_id = ? AND parent_id = ?
-                    """,
-                    (user_id, source["parent_id"]),
+            self._require_folder(connection, str(source["parent_id"]), user_id, allow_root=True)
+            subtree = """
+                WITH RECURSIVE subtree(id) AS (
+                    SELECT id FROM remote_connection_folders WHERE id=? AND user_id=?
+                    UNION
+                    SELECT f.id FROM subtree s CROSS JOIN remote_connection_folders f
+                    WHERE f.parent_id=s.id AND f.user_id=?
+                    LIMIT 10001
                 )
-            ]
-        copied = self.create_folder(
-            user_id=user_id,
-            name=duplicate_name(str(source["name"]), sibling_names),
-            parent_id=str(source["parent_id"]),
-            credential_mode=str(source["credential_mode"]),
-            credential_id=str(source["credential_id"]),
-        )
-        self.set_visibility(
-            "folder", str(copied["id"]), user_id=user_id,
-            visibility=str(source["visibility"]),
-        )
-        self._copy_folder_children(
-            source_id=folder_id, destination_id=str(copied["id"]), user_id=user_id
-        )
-        return copied
+            """
+            parameters = (folder_id, user_id, user_id)
+            folders = connection.execute(
+                subtree + "SELECT f.* FROM subtree s CROSS JOIN remote_connection_folders f WHERE f.id=s.id LIMIT ?",
+                (*parameters, limit + 1),
+            ).fetchall()
+            hosts = connection.execute(
+                subtree + "SELECT h.* FROM subtree s CROSS JOIN remote_connection_hosts h WHERE h.folder_id=s.id AND h.user_id=? LIMIT ?",
+                (*parameters, user_id, limit + 1),
+            ).fetchall()
+            if len(folders) + len(hosts) > limit:
+                raise RemoteConnectionError(
+                    "Duplicate no more than 10,000 folders and hosts at once. Choose a smaller folder."
+                )
+            folder_ids = {str(row['id']): 'rf_' + secrets.token_hex(10) for row in folders}
+            if str(source['parent_id']) in folder_ids:
+                raise RemoteConnectionError("Repair the folder's parent cycle before duplicating it.")
+            credential_ids = {str(row['credential_id']) for row in [*folders, *hosts] if row['credential_id']}
+            credentials = {}
+            for identifier in credential_ids:
+                credentials[identifier] = dict(self._require_credential_row(connection, identifier, user_id))
+            for row in folders:
+                credential = credentials.get(str(row['credential_id']))
+                if credential and credential['scope_host_id']:
+                    raise RemoteConnectionError("A folder cannot use a host-restricted credential.")
+            for row in hosts:
+                credential = credentials.get(str(row['credential_id']))
+                if credential and credential['scope_host_id'] not in ('', row['id']):
+                    raise RemoteConnectionError("A saved host has a credential restricted to another host.")
+            sibling_names = [row[0] for row in connection.execute(
+                "SELECT name FROM remote_connection_folders WHERE user_id=? AND parent_id=?",
+                (user_id, source['parent_id']),
+            )]
+            root_name = duplicate_name(str(source['name']), sibling_names)
+            credential_names = DuplicateNameIndex(row[0] for row in connection.execute(
+                "SELECT name FROM remote_connection_credentials WHERE user_id=?", (user_id,)
+            ))
+            now = time.time()
+
+            def insert(table, original, **changes):
+                row = {**dict(original), **changes, 'created_at': now, 'updated_at': now}
+                columns = ','.join('"' + key.replace('"', '""') + '"' for key in row)
+                placeholders = ','.join('?' for _ in row)
+                connection.execute(f'INSERT INTO {table} ({columns}) VALUES ({placeholders})', tuple(row.values()))
+
+            for row in folders:
+                identifier = str(row['id'])
+                insert('remote_connection_folders', row, id=folder_ids[identifier],
+                       name=root_name if identifier == folder_id else row['name'],
+                       parent_id=folder_ids.get(str(row['parent_id']), str(row['parent_id'])))
+            for row in hosts:
+                identifier = 'rh_' + secrets.token_hex(10)
+                credential_id = str(row['credential_id'])
+                credential = credentials.get(credential_id)
+                if credential and credential['scope_host_id']:
+                    credential_id = 'rc_' + secrets.token_hex(10)
+                    name = credential_names.reserve(str(credential['name']))
+                    insert('remote_connection_credentials', credential, id=credential_id,
+                           scope_host_id=identifier, name=name)
+                insert('remote_connection_hosts', row, id=identifier,
+                       folder_id=folder_ids[str(row['folder_id'])], credential_id=credential_id)
+            copied = self.get_folder(folder_ids[folder_id], user_id=user_id)
+            assert copied is not None
+            return copied
 
     @managed_mutation("folder", "folder_id")
     def delete_folder(self, folder_id: str, *, user_id: str) -> None:
@@ -1259,79 +1310,6 @@ class RemoteConnectionStore:
             seen.add(current_id)
             current_id = str(folder["parent_id"])
         return folders
-
-    def _copy_folder_children(
-        self, *, source_id: str, destination_id: str, user_id: str
-    ) -> None:
-        library = self.library_for_user(user_id)
-        for host in [item for item in library["hosts"] if item["folder_id"] == source_id]:
-            host_credential = None
-            credential_id = str(host["credential_id"])
-            if host["credential_scope_host_id"] == host["id"]:
-                resolved = self.resolve_credential(
-                    credential_id, user_id=user_id, host_id=str(host["id"])
-                )
-                existing_credential_names = [
-                    str(item["name"])
-                    for item in self.library_for_user(user_id)["credentials"]
-                ]
-                host_credential = {
-                    "name": duplicate_name(
-                        str(host["credential_name"]), existing_credential_names
-                    ),
-                    "username": resolved["username"],
-                    "password": resolved["password"],
-                }
-                credential_id = ""
-            copied_host = self.save_host(
-                user_id=user_id,
-                name=str(host["name"]),
-                host=str(host["host"]),
-                port=int(host["port"]),
-                folder_id=destination_id,
-                credential_id=credential_id,
-                allow_unknown_hosts=bool(host["allow_unknown_hosts"]),
-                allow_legacy_algorithms=bool(host["allow_legacy_algorithms"]),
-                notes=str(host["notes"]),
-                host_credential=host_credential,
-                protocol=str(host.get("protocol", "ssh")),
-                credential_mode=str(host.get("credential_mode", "credential")),
-                console_device_id=str(host.get("console_device_id", "")),
-                console_device_path=str(host.get("console_device_path", "")),
-                console_device_label=str(host.get("console_device_label", "")),
-                console_baud_rate=int(host.get("console_baud_rate", 9600)),
-                console_data_bits=int(host.get("console_data_bits", 8)),
-                console_parity=str(host.get("console_parity", "none")),
-                console_stop_bits=str(host.get("console_stop_bits", "1")),
-                console_flow_control=str(host.get("console_flow_control", "none")),
-            )
-            self.set_visibility(
-                "host", str(copied_host["id"]), user_id=user_id,
-                visibility=str(host["visibility"]),
-            )
-            copied_host = self.get_host(str(copied_host["id"]), user_id=user_id)
-            if copied_host and copied_host.get("credential_scope_host_id") == copied_host.get("id"):
-                self.set_visibility(
-                    "credential", str(copied_host["credential_id"]), user_id=user_id,
-                    visibility=str(copied_host["effective_visibility"]),
-                )
-        for folder in [item for item in library["folders"] if item["parent_id"] == source_id]:
-            copied_folder = self.create_folder(
-                user_id=user_id,
-                name=str(folder["name"]),
-                parent_id=destination_id,
-                credential_mode=str(folder.get("credential_mode", "inherit")),
-                credential_id=str(folder.get("credential_id", "")),
-            )
-            self.set_visibility(
-                "folder", str(copied_folder["id"]), user_id=user_id,
-                visibility=str(folder["visibility"]),
-            )
-            self._copy_folder_children(
-                source_id=str(folder["id"]),
-                destination_id=str(copied_folder["id"]),
-                user_id=user_id,
-            )
 
     def _credential_by_id(
         self, credential_id: str, *, user_id: str
