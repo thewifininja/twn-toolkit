@@ -1,4 +1,4 @@
-"""Private capture and automation output sharing upload capacity reservations."""
+"""Private artifacts sharing upload capacity reservations."""
 from __future__ import annotations
 
 import os
@@ -9,7 +9,7 @@ import time
 
 from .datastore import LocalDatastore, DatastoreError
 
-ROOTS = ('automation_artifacts', 'packet_captures', 'automation_staging')
+ROOTS = ('automation_artifacts', 'packet_captures', 'automation_staging', '.configuration-imports')
 
 
 class ArtifactStore(LocalDatastore):

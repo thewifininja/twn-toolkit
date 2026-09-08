@@ -1,3 +1,4 @@
+from export_job_helpers import complete_export, run_export
 import io
 import json
 import tracemalloc
@@ -52,7 +53,7 @@ def test_oversized_history_never_decodes_payload_and_download_is_complete(setup)
     response = client.get(f'/automations?focus={aid}&focus_run={rid}')
     assert response.status_code == 200 and len(response.data) < 400_000
     assert b'preview shortened or omitted' in response.data
-    response = client.get(f'/automations/runs/{rid}/download')
+    response = complete_export(client, client.get(f'/automations/runs/{rid}/download'))
     try:
         with zipfile.ZipFile(io.BytesIO(response.data)) as archive:
             assert json.loads(archive.read('action-1-summary.json'))['summary'] == value
@@ -147,7 +148,8 @@ def test_large_run_rejected_before_read_but_metadata_and_raw_download_survive(se
         with pytest.raises(ValueError,match='64 MiB'):
             store.get_run(rid)
         assert store.get_run(rid,metadata_only=True)['id'] == rid
-        assert app.test_client().get(f'/automations/runs/{rid}/download').status_code == 400
+        client=app.test_client()
+        assert run_export(client,client.get(f'/automations/runs/{rid}/download'))['state']=='failed'
     # Partial streaming consumption must not load the remaining 65 MiB.
     response = app.test_client().get(f'/automations/runs/{rid}/results.json', buffered=False)
     try:
@@ -176,7 +178,8 @@ def test_raw_download_preserves_invalid_data_and_closes_snapshot(setup):
         missing=app.test_client().get('/automations/runs/missing/results.json')
         assert missing.status_code==404
         assert all(read.db is None for read in opened)
-    assert app.test_client().get(f'/automations/runs/{rid}/download').status_code==400
+    client=app.test_client()
+    assert run_export(client,client.get(f'/automations/runs/{rid}/download'))['state']=='failed'
 
 
 def test_recent_runs_share_read_budget(setup):

@@ -55,6 +55,22 @@ This boundary prevents an import from silently changing access to the
 destination host, replacing its identity, or mixing operational evidence with
 configuration.
 
+## Export jobs and preview limits
+
+Export requests queue a finite job. The worker reads the selected groups when
+execution starts; the result page shows progress, cancellation, and the retained
+download. Leaving the page does not stop the job. Only the requesting current
+administrator can access its output. The encryption password is sealed in the
+queue and removed when the worker releases a terminal job, or immediately when
+a queued job is cancelled. Interrupted jobs are not replayed automatically.
+
+Backup files are limited to 64 MiB, including the encryption envelope. Incoming
+and decrypted JSON must fit a depth of 64 and a shared 500,000-node budget.
+Inspection previews expire after 30 minutes and use reserved private storage;
+an instance can retain at most 100 previews. Oversized or invalid previews are
+unavailable without applying any configuration. Imports still require review
+and explicit confirmation.
+
 ## Export format and compatibility
 
 New files use `twn-toolkit-configuration-backup` format version 2. The manifest

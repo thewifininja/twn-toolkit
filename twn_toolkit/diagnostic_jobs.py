@@ -81,6 +81,8 @@ class DiagnosticJobStore:
             scrub_certificate_inputs(self, db)
             from .bulk_ssh_jobs import scrub_inputs
             scrub_inputs(self, db)
+            from .export_jobs import scrub_inputs as scrub_export_inputs
+            scrub_export_inputs(self, db)
         from .diagnostic_artifacts import FAMILIES, cleanup_artifacts
         for family in FAMILIES:
             cleanup_artifacts(self, family)
@@ -94,7 +96,7 @@ class DiagnosticJobStore:
             logging.getLogger(__name__).warning("Upload staging cleanup failed: %s", type(exc).__name__)
 
     def enqueue(self, *, user_id, config, tool="tcp_scan", request_key=None):
-        if tool not in {"bulk_ssh", "certificate_test", "certificate_enroll", "certificate_collect", "iperf_client", "tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export", "appliance_read", "switch_order", "appliance_rename", "fac_cleanup"} or not user_id:
+        if tool not in {"automation_export", "configuration_export", "bulk_ssh", "certificate_test", "certificate_enroll", "certificate_collect", "iperf_client", "tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export", "appliance_read", "switch_order", "appliance_rename", "fac_cleanup"} or not user_id:
             raise ValueError("Invalid diagnostic request.")
         policy = self.policy.get()
         if tool in {"fac_inventory_devices", "fac_inventory_memberships", "appliance_read"}:
@@ -103,6 +105,11 @@ class DiagnosticJobStore:
             config = {**config, "artifact_bytes": policy["diagnostic_case_export_max_mib"] * 1024**2,
                       "input_bytes": policy["diagnostic_case_export_input_mib"] * 1024**2,
                       "pdf_cells": policy["diagnostic_case_export_pdf_cells"]}
+        if tool in {"automation_export", "configuration_export"}:
+            from .datastore import LocalDatastore
+            from .profile_backup import MAX_BACKUP_WIRE_BYTES
+            maximum = LocalDatastore(str(self.instance)).upload_limit() if tool == "automation_export" else MAX_BACKUP_WIRE_BYTES
+            config = {**config, "artifact_bytes": maximum}
         if tool == "transfer":
             from .transfer_deadlines import TransferPolicy
             config = {**config, "transfer_policy": asdict(TransferPolicy.from_settings(policy))}
@@ -146,9 +153,9 @@ class DiagnosticJobStore:
                 saved = json.loads(self.cipher.open(queued["config"], queued["id"] + ":diagnostic-config"))
                 if saved["mode"] == "export":
                     reserved += 3 * saved["artifact_bytes"]
-            if tool == "case_export":
+            if tool in {"case_export", "automation_export", "configuration_export"}:
                 reserved += 2 * config["artifact_bytes"]
-            for queued in db.execute("SELECT id,config FROM diagnostic_jobs WHERE tool='case_export' AND (state IN ('queued','running','cancel_requested') OR token!='')"):
+            for queued in db.execute("SELECT id,config FROM diagnostic_jobs WHERE tool IN ('case_export','automation_export','configuration_export') AND (state IN ('queued','running','cancel_requested') OR token!='')"):
                 saved = json.loads(self.cipher.open(queued["config"], queued["id"] + ":diagnostic-config"))
                 reserved += 2 * saved["artifact_bytes"]
             if shutil.disk_usage(self.instance).free - reserved < policy["minimum_free_gib"] * 1024**3:
@@ -202,6 +209,8 @@ class DiagnosticJobStore:
                 state=CASE WHEN state='queued' THEN 'cancelled' ELSE 'cancel_requested' END,
                 completed=CASE WHEN state='queued' THEN ? ELSE NULL END
                 WHERE id=? AND user_id=? AND state IN ('queued','running')""", (time.time(), job_id, user_id))
+            from .export_jobs import scrub_inputs as scrub_export_inputs
+            scrub_export_inputs(self, db, job_id)
             return dict(previous) if previous else None
 
     def abort(self, job_id, token, state, error):
@@ -209,6 +218,9 @@ class DiagnosticJobStore:
             raise ValueError("Invalid diagnostic outcome.")
         with self.connect(write=True) as db:
             previous = db.execute("SELECT * FROM diagnostic_jobs WHERE id=? AND token=? AND state IN ('running','cancel_requested')", (job_id, token)).fetchone()
+            if previous and previous["tool"] == "automation_export":
+                from .export_jobs import interruption_outcome as export_interruption_outcome
+                state, error = export_interruption_outcome(self, dict(previous), state, error)
             if previous and previous["tool"] == "bulk_ssh":
                 from .bulk_ssh_jobs import interruption_state as ssh_interruption_state
                 state = ssh_interruption_state(self, db, job_id, state)
@@ -226,6 +238,8 @@ class DiagnosticJobStore:
             scrub_certificate_inputs(self, db, job_id)
             from .bulk_ssh_jobs import scrub_inputs
             scrub_inputs(self, db, job_id)
+            from .export_jobs import scrub_inputs as scrub_export_inputs
+            scrub_export_inputs(self, db, job_id)
 
     def recover(self):
         # Called only by the singleton scheduler at startup. Never replay work
@@ -245,6 +259,8 @@ class DiagnosticJobStore:
             scrub_certificate_inputs(self, db)
             from .bulk_ssh_jobs import scrub_inputs
             scrub_inputs(self, db)
+            from .export_jobs import scrub_inputs as scrub_export_inputs
+            scrub_export_inputs(self, db)
             return previous
 
     def progress(self, job_id, token, summary):

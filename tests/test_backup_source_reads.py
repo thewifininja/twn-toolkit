@@ -1,3 +1,4 @@
+from export_job_helpers import run_export
 import json
 import os
 import sqlite3
@@ -181,9 +182,11 @@ def test_large_source_export_error_can_render_backup_page(tmp_path):
     item=next(item for item in build_backup_catalog(str(tmp_path)) if item['id']=='ping_profiles')
     with item['store'].path.open('wb') as file:
         file.write(b'[]');file.truncate(65*1024*1024)
-    with patch('twn_toolkit.admin_routes.encrypt_backup') as encrypt:
-        response=app.test_client().post('/settings/backup/export',data={'item':'ping_profiles'},follow_redirects=True)
-    assert response.status_code==200
-    assert b'Export fewer groups' in response.data and b'Count unavailable' in response.data
+    client=app.test_client()
+    with patch('twn_toolkit.export_jobs.encrypt_backup') as encrypt:
+        result=run_export(client,client.post('/settings/backup/export',data={'item':'ping_profiles'}))
+    assert result['state']=='failed' and 'Export fewer groups' in result['error']
+    response=client.get('/settings/backup')
+    assert response.status_code==200 and b'Count unavailable' in response.data
     assert item['store'].path.stat().st_size==65*1024*1024
     encrypt.assert_not_called()

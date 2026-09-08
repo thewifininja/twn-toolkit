@@ -38,7 +38,6 @@ from .activity_context import record_current_activity
 from .datastore import DatastoreError, LocalDatastore
 from .uploads import MultipartSpool
 from .duplication import duplicate_name
-from .investigation_context import add_current_investigation_generated_evidence_event
 from .network_tools import (
     SSH_EXECUTION_BATCH_SIZE,
     SSH_EXECUTION_WORKERS,
@@ -1125,109 +1124,25 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             snapshot.close()
             raise
 
+    from .export_routes import register_export_family
+    register_export_family(app, "automation_export")
+
     @app.get("/automations/runs/<run_id>/download")
     def download_automation_run(run_id: str):
-        require_admin()
+        from .export_routes import queue_automation_export
         try:
-            run = store.get_run(run_id)
-        except (ValueError, UnicodeError) as exc:
-            abort(400, str(exc))
-        if not run:
-            abort(404)
-        annotate_audit_event(
-            category="Automation", action="automation.run_downloaded",
-            summary=f"Downloaded a collected run from {run['automation_name']}.",
-            resource_type="automation run", resource_id=run_id,
-            resource_name=run["automation_name"],
-            details={"automation id": run["automation_id"], "started at": run["started_at"]},
-        )
-        try:
-            output, filename = _automation_run_archive(store, run)
+            return queue_automation_export(store, run_id)
         except (DatastoreError, OSError, ValueError) as exc:
             abort(400, str(exc))
-        try:
-            return send_file(output, mimetype="application/zip", as_attachment=True,
-                             download_name=filename)
-        except BaseException:
-            output.close()
-            raise
 
     @app.post("/automations/runs/<run_id>/case")
     def add_automation_run_to_case(run_id: str):
-        require_admin()
+        from .export_routes import queue_automation_export
         try:
-            run = store.get_run(run_id)
-        except (ValueError, UnicodeError) as exc:
-            abort(400, str(exc))
-        if not run:
-            abort(404)
-        try:
-            output, filename = _automation_run_archive(store, run)
+            return queue_automation_export(store, run_id, attach=True)
         except (DatastoreError, OSError, ValueError) as exc:
-            abort(400, str(exc))
-        try:
-            results = [
-                {
-                    "status": result.get("status", ""),
-                    "summary": str(result.get("summary", ""))[:2_000],
-                    "stage": result.get("output", {}).get("_pipeline", {}).get("stage_name", ""),
-                    "action": result.get("output", {}).get("_pipeline", {}).get("action_name", ""),
-                }
-                for result in run.get("results", [])[:100]
-                if isinstance(result, dict)
-            ]
-            succeeded = sum(result["status"] == "success" for result in results)
-            failed = sum(result["status"] == "error" for result in results)
-            added = add_current_investigation_generated_evidence_event(
-                operation_id=f"automation-run:{run_id}",
-                event_type="automation.run.attached",
-                tool_id="automation.home",
-                action="Automation run",
-                outcome=(
-                    "succeeded"
-                    if run["status"] == "success"
-                    else "failed"
-                    if run["status"] == "error"
-                    else "incomplete"
-                ),
-                summary=f"Attached collected run from automation {run['automation_name']}.",
-                targets={"automation_id": run["automation_id"], "automation": run["automation_name"]},
-                parameters={"run_id": run_id, "trigger": run["trigger_summary"]},
-                metrics={
-                    "result_count": len(results),
-                    "successful_results": succeeded,
-                    "failed_results": failed,
-                    "archive_bytes": output.upload.total,
-                },
-                details={"results": results},
-                started_at=float(run["started_at"]),
-                completed_at=float(run["finished_at"]),
-                filename=filename,
-                content_type="application/zip",
-                stream=output,
-            )
-        finally:
-            output.close()
-        annotate_audit_event(
-            category="Automation",
-            action="automation.run_added_to_case" if added else "automation.run_case_add_skipped",
-            summary=(
-                f"Added a collected run from {run['automation_name']} to the active case."
-                if added
-                else f"Could not add a collected run from {run['automation_name']} because no case was recording."
-            ),
-            resource_type="automation run",
-            resource_id=run_id,
-            resource_name=run["automation_name"],
-            details={"automation id": run["automation_id"], "run status": run["status"]},
-        )
-        flash(
-            "Added the collected run ZIP to the active case."
-            if added
-            else "Open or resume a recording case before adding a collected run.",
-            "success" if added else "error",
-        )
-        return redirect(url_for("automations", focus=run["automation_id"], focus_run=run_id))
+            flash(str(exc), "error")
+            return redirect(url_for("automations", focus_run=run_id))
 
 
 MAX_RUN_ARCHIVE_MEMBERS = 10_000
@@ -1235,7 +1150,7 @@ _ARCHIVE_CHUNK_BYTES = 64 * 1024
 
 
 def _automation_run_archive(
-    store: AutomationStore, run: dict[str, Any]
+    store: AutomationStore, run: dict[str, Any], *, max_bytes: int | None = None,
 ) -> tuple[MultipartSpool, str]:
     """Build an accounted ZIP; the caller owns and must close the returned spool.
 
@@ -1244,6 +1159,8 @@ def _automation_run_archive(
     """
     datastore = LocalDatastore(str(store.instance_path))
     limit = datastore.upload_limit()
+    if max_bytes is not None:
+        limit = min(limit, max_bytes)
     output = MultipartSpool(datastore, limit)
     run_id = str(run["id"])
     remaining = limit

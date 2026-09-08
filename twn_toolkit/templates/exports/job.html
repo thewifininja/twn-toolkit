@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+{% include 'components/diagnostic_job.html' %}
+<section class="panel form">
+  {% if export_family == 'configuration_export' %}
+  <p>The worker reads the selected configuration when execution starts. You can leave this page and return to this result link.</p>
+  {% else %}
+  <p>The worker prepares a ZIP from the retained automation run. You can leave this page and return to this result link.</p>
+  {% endif %}
+  {% if diagnostic_job.state == 'succeeded' %}
+    {% if diagnostic_job.summary.case_artifact_id %}
+    <p>The collected run is attached to the original case. Its evidence remains in that case if the automation run is later deleted.</p>
+    <div class="button-row"><a class="button-link" href="{{ url_for('download_investigation_evidence', investigation_id=diagnostic_job.summary.case_id, artifact_id=diagnostic_job.summary.case_artifact_id) }}">Download case evidence</a></div>
+    {% else %}
+    <p>{{ format_bytes(diagnostic_job.summary.byte_count) }}{% if export_family == 'configuration_export' %} · {{ diagnostic_job.summary.group_count }} groups · {{ 'Encrypted' if diagnostic_job.summary.encrypted else 'Plain JSON' }}{% endif %}</p>
+    <div class="button-row"><a class="button-link" href="{{ url_for(export_download_endpoint, job_id=diagnostic_job.id) }}">Download {{ diagnostic_label }}</a></div>
+    <p class="field-note">This download uses the completed export. Large files may require direct Agent access under the GUI tunnel response limit.</p>
+    {% endif %}
+  {% endif %}
+  {% if diagnostic_job.config.investigation_id %}
+    {% if diagnostic_job.state == 'unknown' %}<p role="note">The attachment may have completed before the worker stopped. Inspect the original case before retrying.</p>{% endif %}
+    <div class="button-row"><a class="button-link secondary" href="{{ url_for('investigation_report', investigation_id=diagnostic_job.config.investigation_id) }}">Open original case</a></div>
+  {% elif export_family == 'configuration_export' %}
+    <div class="button-row"><a class="button-link secondary" href="{{ url_for('backup_settings') }}">Back to configuration backups</a></div>
+  {% else %}
+    <div class="button-row"><a class="button-link secondary" href="{{ url_for('automations') }}">Back to automations</a></div>
+  {% endif %}
+</section>
+<script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
+{% endblock %}

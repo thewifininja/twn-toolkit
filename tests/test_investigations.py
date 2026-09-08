@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from export_job_helpers import complete_export
+
 from tests.switch_order_helpers import complete_switch_order
 
 from tests.appliance_read_helpers import complete_appliance_read, export_fixture
@@ -2335,8 +2337,8 @@ class InvestigationRouteTests(unittest.TestCase):
                 ],
             )
             client.post("/investigations", data={"title": "Automation evidence"})
-            response = client.post(f"/automations/runs/{run_id}/case")
-            self.assertEqual(response.status_code, 302)
+            response = complete_export(client, client.post(f"/automations/runs/{run_id}/case"))
+            self.assertEqual(response.status_code, 200)
 
             store = InvestigationStore(instance)
             investigation = store.active_for_user("test-user")

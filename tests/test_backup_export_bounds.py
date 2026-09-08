@@ -1,4 +1,6 @@
 """Portable exports stop before unbounded serialization or encryption."""
+from export_job_helpers import run_export
+
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -64,9 +66,8 @@ def test_export_bound_returns_actionable_error_without_encryption(tmp_path, encr
     data = {'item': 'ping_profiles'}
     if encrypted:
         data.update(encrypt_backup='on', backup_password='fixture', confirm_backup_password='fixture')
-    with patch('twn_toolkit.admin_routes.MAX_BACKUP_WIRE_BYTES', 100), patch('twn_toolkit.admin_routes.MAX_ENCRYPTED_BACKUP_PLAINTEXT_BYTES', 80), patch('twn_toolkit.admin_routes.encrypt_backup') as encrypt:
-        response = app.test_client().post('/settings/backup/export', data=data, follow_redirects=True)
-    assert response.status_code == 200
-    assert b'Export fewer groups' in response.data
-    assert 'attachment' not in response.headers.get('Content-Disposition', '')
+    with patch('twn_toolkit.export_jobs.MAX_BACKUP_WIRE_BYTES', 100), patch('twn_toolkit.export_jobs.MAX_ENCRYPTED_BACKUP_PLAINTEXT_BYTES', 80), patch('twn_toolkit.export_jobs.encrypt_backup') as encrypt:
+        client=app.test_client()
+        result=run_export(client,client.post('/settings/backup/export',data=data))
+    assert result['state']=='failed' and 'Export fewer groups' in result['error']
     encrypt.assert_not_called()

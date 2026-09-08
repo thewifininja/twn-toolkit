@@ -337,6 +337,12 @@ but users from the source instance are not granted access automatically. See
 [Investigation journals](docs/investigations.md) for the event contract,
 portable archive and merge boundaries, and extension guidance.
 
+Automation ZIP downloads, attachment to a case, and configuration backup exports
+run as finite background jobs. Their result pages support progress and cancellation;
+completed downloads remain private to the requesting administrator. Case attachment
+uses the original case and reports an uncertain outcome if interrupted during
+publication, so the operator can inspect that case before retrying.
+
 Portable configuration backup exports and imports accept files up to 64 MiB.
 Encrypted exports reserve room for the encryption envelope (just under 48 MiB
 of unencrypted JSON). Oversized selections fail with guidance to export fewer

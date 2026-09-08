@@ -31,14 +31,14 @@ def current_source_budget():
     return _budget.get()
 
 
-def source_json_loads(data):
+def checked_source_json_text(data):
     budget = _budget.get()
-    if budget is None:
-        return json.loads(data)
     try:
         text = data.decode('utf-8') if isinstance(data, bytes) else data
     except UnicodeError as exc:
         raise SourceReadLimit('Backup source contains invalid UTF-8.') from exc
+    if budget is None:
+        return text
     quoted = escaped = False
     depth = 0
     for char in text:
@@ -63,6 +63,13 @@ def source_json_loads(data):
             budget[1] -= 1
         if budget[1] < 0:
             raise SourceReadLimit('Backup source JSON is too complex to export.')
+    return text
+
+
+def source_json_loads(data):
+    if _budget.get() is None:
+        return json.loads(data)
+    text = checked_source_json_text(data)
     try:
         return json.loads(text)
     except (ValueError, RecursionError) as exc:
