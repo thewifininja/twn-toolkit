@@ -390,6 +390,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
         started_at = time.time()
         result = run_ssh_host_plans(
             [plan],
+            instance_path=current_app.instance_path,
             username=username,
             password=password,
             port=port,
@@ -675,6 +676,7 @@ def _run_plans(
 ) -> list[dict[str, object]]:
     return run_ssh_host_plans(
         preview["plans"],
+        instance_path=current_app.instance_path,
         username=str(form["username"]),
         password=request.form.get("password", ""),
         port=int(str(form["port"])),

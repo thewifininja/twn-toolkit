@@ -99,6 +99,7 @@ def _execute_ssh(config: dict[str, Any], trigger: ConditionResult) -> ActionResu
     )
     results = run_ssh_host_plans(
         preview["plans"],
+        instance_path=str(config.get("_instance_path", "")) or None,
         username=normalized["username"],
         password=normalized["password"],
         port=normalized["port"],

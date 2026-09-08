@@ -16,12 +16,12 @@ _condition_instance = ContextVar('automation_condition_instance', default=None)
 
 
 @contextmanager
-def _borrow(instance, kind="action"):
+def _borrow(instance, kind="action", *, worker_limit=None):
     key = (os.getpid(), str(Path(instance).resolve()), kind)
     with _lock:
         entry = _pools.get(key)
         if entry is None:
-            workers = OperationalSettingsStore(key[1]).get()[f'automation_{kind}_workers']
+            workers = worker_limit if worker_limit is not None else OperationalSettingsStore(key[1]).get()[f'automation_{kind}_workers']
             entry = {'executor': ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f'twn-{kind}'),
                      'workers': workers, 'users': 0}
             _pools[key] = entry
@@ -38,6 +38,13 @@ def _borrow(instance, kind="action"):
         if shutdown:
             # Callers drain their submitted work before returning the pool.
             entry['executor'].shutdown(wait=True)
+
+
+@contextmanager
+def ssh_worker_pool(instance, workers):
+    """Share host workers across concurrent SSH runs on this process/instance."""
+    with _borrow(instance, 'ssh', worker_limit=workers) as (executor, _):
+        yield executor
 
 
 @contextmanager
