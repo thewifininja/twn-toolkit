@@ -15,6 +15,21 @@
         if (!response.ok) throw new Error("Status unavailable");
         const job = await response.json();
         if (!["queued", "running", "cancel_requested"].includes(job.state)) {
+          const draftForm = document.getElementById(panel.dataset.diagnosticDraftForm || "");
+          if (draftForm && window.TwnUnsavedForms?.hasChanges(draftForm)) {
+            const link = document.createElement("a");
+            link.href = window.location.href;
+            link.textContent = "View retained result";
+            status.replaceChildren(document.createTextNode("Run finished. Your new settings are still here. "), link);
+            link.addEventListener("click", (event) => {
+              event.preventDefault();
+              if (window.confirm("Discard your new settings and view this run's result?")) {
+                window.TwnUnsavedForms.reset(draftForm);
+                window.location.reload();
+              }
+            });
+            return;
+          }
           window.location.reload();
           return;
         }

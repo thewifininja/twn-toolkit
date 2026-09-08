@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -12,6 +13,17 @@ from pathlib import Path
 
 from .diagnostic_jobs import DiagnosticJobStore
 from .network_tools import scan_tcp_ports
+
+
+def _signal_work(work, sig):
+    process = work['process']
+    if work.get('owned_group'):
+        from .iperf_tools import _signal_iperf_group
+        _signal_iperf_group(process, sig)
+    elif sig == signal.SIGKILL:
+        process.kill()
+    else:
+        process.terminate()
 
 
 class DiagnosticScheduler:
@@ -32,8 +44,10 @@ class DiagnosticScheduler:
             process = work["process"]
             job = self.store.owned(job_id, work["token"])
             if process.poll() is not None:
+                if work.get("owned_group"):
+                    _signal_work(work, signal.SIGKILL)
                 if job and job["state"] in {"running", "cancel_requested"}:
-                    reason = work.get("reason") or ("deadline" if process.returncode == 124 else "")
+                    reason = work.get("reason") or ("deadline" if process.returncode == 124 or now >= work["deadline"] else "")
                     state = "cancelled" if reason == "cancel" or job["state"] == "cancel_requested" else "failed"
                     error = "Diagnostic cancelled." if state == "cancelled" else (
                         "Run deadline exceeded; no complete result was confirmed." if reason == "deadline"
@@ -49,14 +63,15 @@ class DiagnosticScheduler:
             if reason and not work.get("reason"):
                 work["reason"] = reason
                 work["kill_at"] = now + 2
-                process.terminate()
+                _signal_work(work, signal.SIGTERM)
             elif work.get("reason") and now >= work["kill_at"]:
-                process.kill()
+                _signal_work(work, signal.SIGKILL)
         while running() and len(self.active) < policy["diagnostic_workers"]:
             job = self.store.claim()
             if not job:
                 break
             process = None
+            owned_group = job["tool"] == "iperf_client"
             try:
                 process = subprocess.Popen(
                     [sys.executable, "-m", "twn_toolkit.diagnostic_worker",
@@ -66,17 +81,17 @@ class DiagnosticScheduler:
                     # package root explicitly for source checkouts and bundles.
                     cwd=str(Path(__file__).resolve().parent.parent),
                     # Use the scheduler log; inputs and tokens are never logged.
-                    close_fds=True,
+                    close_fds=True, start_new_session=owned_group,
                 )
-                process.stdin.write(json.dumps({"token": job["token"], "parent": os.getpid(), "timeout": job["timeout"]}).encode())
+                process.stdin.write(json.dumps({"token": job["token"], "parent": os.getpid(), "timeout": job["timeout"], "owned_group": owned_group}).encode())
                 process.stdin.close()
                 self.active[job["id"]] = {
-                    "process": process, "token": job["token"],
+                    "process": process, "token": job["token"], "owned_group": owned_group,
                     "deadline": time.monotonic() + job["timeout"],
                 }
             except (OSError, ValueError):
                 if process is not None:
-                    process.kill()
+                    _signal_work({"process": process, "owned_group": owned_group}, signal.SIGKILL)
                     process.wait()
                     try:
                         process.stdin.close()
@@ -91,15 +106,17 @@ class DiagnosticScheduler:
         # Confirm process termination before reporting an interrupted outcome.
         for work in self.active.values():
             if work["process"].poll() is None:
-                work["process"].terminate()
+                _signal_work(work, signal.SIGTERM)
         deadline = time.monotonic() + 2
         for job_id, work in self.active.items():
             process = work["process"]
             try:
                 process.wait(timeout=max(0, deadline - time.monotonic()))
             except subprocess.TimeoutExpired:
-                process.kill()
+                _signal_work(work, signal.SIGKILL)
                 process.wait()
+            if work.get("owned_group"):
+                _signal_work(work, signal.SIGKILL)
             _abort(self.store, job_id, work["token"], "unknown", "Scheduler stopped before confirming completion. This run was not replayed.")
             self.store.release(job_id, work["token"])
         self.active.clear()
@@ -110,6 +127,10 @@ def execute_scan(store, job_id, token):
     if not job or job["state"] != "running":
         return
     config = json.loads(store.cipher.open(job["config"], job_id + ":diagnostic-config"))
+    if job["tool"] == "iperf_client":
+        from .iperf_client_jobs import execute_iperf_client
+        execute_iperf_client(store, job, config)
+        return
     if job["tool"] in {"fac_inventory_devices", "fac_inventory_memberships"}:
         from .fac_inventory import execute_inventory
         execute_inventory(store, job, config)
@@ -215,6 +236,10 @@ def _abort(store, job_id, token, state, error):
 
 def record_unsuccessful_scan(store, job, state, error):
     """Best-effort attribution; recording errors never replay network work."""
+    if job["tool"] == "iperf_client":
+        from .iperf_client_jobs import record_iperf_client_outcome
+        record_iperf_client_outcome(store, job, state, error)
+        return
     if job["tool"] in {"fac_inventory_devices", "fac_inventory_memberships"}:
         from .fac_inventory import record_inventory_outcome
         record_inventory_outcome(store, job, state, error)
@@ -290,13 +315,23 @@ def main():
     deadline = time.monotonic() + float(ownership["timeout"])
     token = str(ownership["token"])
 
+    owned_group = bool(ownership.get('owned_group'))
+    if owned_group and os.getpgrp() != os.getpid():
+        # Direct worker entry points must also own their group before spawning.
+        os.setsid()
+
+    def stop_owned(code):
+        if owned_group:
+            os.killpg(os.getpid(), signal.SIGKILL)
+        os._exit(code)
+
     def parent_watch():
         # A killed/restarted scheduler must not leave orphan scan threads.
         while True:
             if time.monotonic() >= deadline:
-                os._exit(124)
+                stop_owned(124)
             if os.getppid() != parent:
-                os._exit(1)
+                stop_owned(1)
             time.sleep(0.2)
 
     threading.Thread(target=parent_watch, daemon=True, name="diagnostic-parent-watch").start()

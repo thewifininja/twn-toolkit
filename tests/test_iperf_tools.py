@@ -165,7 +165,7 @@ class IperfToolTests(unittest.TestCase):
                 return_value="/usr/bin/iperf3",
             ),
             patch(
-                "twn_toolkit.iperf_tools.subprocess.run",
+                "twn_toolkit.iperf_tools._run_iperf3_client_command",
                 return_value=completed,
             ) as run,
         ):
@@ -208,7 +208,7 @@ class IperfToolTests(unittest.TestCase):
                 return_value="/usr/bin/iperf3",
             ),
             patch(
-                "twn_toolkit.iperf_tools.subprocess.run",
+                "twn_toolkit.iperf_tools._run_iperf3_client_command",
                 return_value=completed,
             ) as run,
         ):
@@ -767,11 +767,8 @@ class IperfToolTests(unittest.TestCase):
                     return_value=capability,
                 ),
                 patch(
-                    "twn_toolkit.iperf_routes.run_iperf3_client",
-                    return_value={
-                        **_route_result("client"),
-                        "raw_json": json.dumps(TCP_PAYLOAD),
-                    },
+                    "twn_toolkit.iperf_routes.prepare_iperf_client",
+                    side_effect=lambda form: {'form': form, 'settings': {}, 'executable': '/fixture'},
                 ) as client_run,
             ):
                 unauthorized = client.post(
@@ -798,8 +795,17 @@ class IperfToolTests(unittest.TestCase):
                     },
                 )
             self.assertIn(b"Confirm that you are authorized", unauthorized.data)
-            self.assertIn(b"TCP throughput result", response.data)
-            self.assertIn(b"980.0 Mbps", response.data)
+            self.assertEqual(response.status_code, 303)
+            from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+            jobs = DiagnosticJobStore(instance)
+            job = jobs.claim()
+            self.assertEqual(job['tool'], 'iperf_client')
+            jobs.finish(job['id'], job['token'], [], {'result': {
+                **_route_result('client'), 'raw_json': json.dumps(TCP_PAYLOAD)}})
+            with patch('twn_toolkit.iperf_routes.iperf3_capability', return_value=capability):
+                retained = client.get(response.location)
+            self.assertIn(b"TCP throughput result", retained.data)
+            self.assertIn(b"980.0 Mbps", retained.data)
             client_run.assert_called_once()
 
             with (
@@ -884,10 +890,10 @@ class IperfToolTests(unittest.TestCase):
             self.assertEqual(managed_store.recent_results(user_id), [])
 
             summary = ActivityStore(instance).summary()
-            self.assertEqual(summary["counters"]["speedtest"]["runs"], 1)
+            self.assertEqual(summary["counters"]["speedtest"]["runs"], 0)
             self.assertEqual(
                 summary["counters"]["speedtest"]["bytes_transferred"],
-                1_250_000_000,
+                0,
             )
             event = AuditStore(instance).recent(1)[0]
             self.assertEqual(
