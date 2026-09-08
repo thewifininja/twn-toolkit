@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .backup_source_reads import read_json_file
+
 import json
 import os
 import tempfile
@@ -63,7 +65,7 @@ class DashboardLayoutStore:
         if not self.path.exists():
             return {}
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
+            data = read_json_file(self.path)
         except (OSError, json.JSONDecodeError):
             return {}
         return data if isinstance(data, dict) else {}

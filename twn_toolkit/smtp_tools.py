@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .backup_source_reads import read_json_file
+
 import base64
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -87,7 +89,7 @@ class SMTPSettingsStore:
 
     def _read(self) -> dict[str, Any]:
         try:
-            value = json.loads(self.path.read_text(encoding="utf-8"))
+            value = read_json_file(self.path)
         except FileNotFoundError:
             return {}
         except (OSError, ValueError) as exc:

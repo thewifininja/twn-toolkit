@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .backup_source_reads import read_json_file
+
 import json
 import os
 import tempfile
@@ -80,8 +82,7 @@ class JsonListStore:
 
     def _read(self) -> list[dict[str, Any]]:
         try:
-            with self.path.open("r", encoding="utf-8") as handle:
-                return json.load(handle)
+            return read_json_file(self.path)
         except FileNotFoundError:
             return self._default_profiles()
 

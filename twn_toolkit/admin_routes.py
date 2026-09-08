@@ -35,6 +35,7 @@ from .profile_backup import (
     backup_entry_count,
     build_profile_backup,
     encode_backup_json,
+    bounded_backup_counts,
     MAX_BACKUP_WIRE_BYTES,
     MAX_ENCRYPTED_BACKUP_PLAINTEXT_BYTES,
     decrypt_backup,
@@ -431,14 +432,7 @@ def register_admin_routes(
         preview_token: str = "",
         pending_import: dict[str, Any] | None = None,
     ) -> str:
-        catalog_display: list[dict[str, Any]] = []
-        for catalog_item in backup_catalog:
-            catalog_display.append(
-                {
-                    **catalog_item,
-                    "record_count": backup_entry_count(catalog_item["store"]),
-                }
-            )
+        catalog_display = bounded_backup_counts(backup_catalog)
         preview = None
         if pending_import:
             backup = pending_import["backup"]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .backup_source_reads import source_json_loads
+
 import base64
 import hashlib
 import ipaddress
@@ -520,7 +522,7 @@ class CertificateAutomationStore:
     @staticmethod
     def _managed_row(row: sqlite3.Row) -> dict[str, Any]:
         result = dict(row)
-        result["dns_names"] = json.loads(result.pop("dns_names_json"))
+        result["dns_names"] = source_json_loads(result.pop("dns_names_json"))
         not_after = result.get("not_after")
         result["days_remaining"] = None
         if not_after:

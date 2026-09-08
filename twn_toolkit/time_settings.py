@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .backup_source_reads import read_json_file
+
 import json
 import os
 import secrets
@@ -44,7 +46,7 @@ class TimeSettingsStore:
 
     def get(self) -> dict[str, str]:
         try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            raw = read_json_file(self.path)
         except (FileNotFoundError, OSError, ValueError, TypeError):
             raw = {}
         if not isinstance(raw, dict):

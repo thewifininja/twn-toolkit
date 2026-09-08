@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .backup_source_reads import read_json_file
+
 import json
 import os
 import re
@@ -545,8 +547,7 @@ class AuthStore:
                 "access_profiles": [],
             }
         try:
-            with self.path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
+            data = read_json_file(self.path)
         except (json.JSONDecodeError, OSError) as exc:
             raise RuntimeError(f"Could not read authentication data: {exc}") from exc
         if not isinstance(data, dict):
