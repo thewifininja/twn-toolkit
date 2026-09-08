@@ -21,6 +21,19 @@ IPERF_MAX_UDP_MEGABITS = 100_000
 IPERF_RAW_JSON_LIMIT = 1024 * 1024
 
 
+def _signal_iperf_group(process: subprocess.Popen[Any], sig: int) -> None:
+    try:
+        os.killpg(process.pid, sig)
+    except ProcessLookupError:
+        pass
+    except PermissionError as error:
+        # macOS can reject a signal as a group leader exits. Ignore that race only after confirming our child has exited.
+        try:
+            process.wait(timeout=0.1)
+        except subprocess.TimeoutExpired:
+            raise error
+
+
 def _probe_iperf3(executable: str, option: str) -> str:
     """Read trusted executable metadata within finite time and output budgets."""
     command = [executable, option]
@@ -57,19 +70,19 @@ def _probe_iperf3(executable: str, option: str) -> str:
         # The probe has a dedicated process group; descendants retaining its
         # pipe must not survive a timeout or an exited parent.
         try:
-            os.killpg(process.pid, signal.SIGTERM)
+            _signal_iperf_group(process, signal.SIGTERM)
         except ProcessLookupError:
             pass
         try:
             process.wait(timeout=1)
         except subprocess.TimeoutExpired:
             try:
-                os.killpg(process.pid, signal.SIGKILL)
+                _signal_iperf_group(process, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             process.wait(timeout=1)
         try:
-            os.killpg(process.pid, signal.SIGKILL)
+            _signal_iperf_group(process, signal.SIGKILL)
         except ProcessLookupError:
             pass
         if process.stdout is not None:

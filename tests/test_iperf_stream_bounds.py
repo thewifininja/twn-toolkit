@@ -165,3 +165,17 @@ def test_unsupported_listener_http_submission_returns_actionable_error_without_l
   assert b'Client mode remains available' in response.data
   with server.IperfServerStore(tmp_path)._connect() as db:assert db.execute('SELECT count(*) FROM iperf_server_sessions').fetchone()[0]==0
  finally:app.extensions['remote_session_manager'].close()
+
+
+@pytest.mark.parametrize('exited',[False,True])
+def test_group_permission_error_is_ignored_only_after_confirmed_child_exit(monkeypatch,exited):
+ class Child:
+  pid=123
+  def wait(self,timeout):
+   if not exited:raise subprocess.TimeoutExpired('fixture',timeout)
+   return 0
+ def denied(pid,sig):raise PermissionError('fixture exited-group race')
+ monkeypatch.setattr(os,'killpg',denied)
+ if exited:tools._signal_iperf_group(Child(),15)
+ else:
+  with pytest.raises(PermissionError,match='exited-group race'):tools._signal_iperf_group(Child(),15)

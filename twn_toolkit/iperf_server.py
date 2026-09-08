@@ -17,6 +17,7 @@ from typing import Any, Callable, Iterator
 
 from .iperf_tools import (
     _iperf3_executable,
+    _signal_iperf_group,
     normalize_iperf3_result,
     validate_iperf3_server_config,
 )
@@ -1158,21 +1159,21 @@ class IperfJsonStreamCollector:
 
 def _terminate_process(process: subprocess.Popen[Any]) -> None:
     try:
-        os.killpg(process.pid, signal.SIGTERM)
+        _signal_iperf_group(process, signal.SIGTERM)
     except ProcessLookupError:
         pass
     try:
         process.wait(timeout=2)
     except subprocess.TimeoutExpired:
         try:
-            os.killpg(process.pid, signal.SIGKILL)
+            _signal_iperf_group(process, signal.SIGKILL)
         except ProcessLookupError:
             pass
         process.wait(timeout=2)
     finally:
         # A child that outlives its parent must not keep the listener group alive.
         try:
-            os.killpg(process.pid, signal.SIGKILL)
+            _signal_iperf_group(process, signal.SIGKILL)
         except ProcessLookupError:
             pass
 
