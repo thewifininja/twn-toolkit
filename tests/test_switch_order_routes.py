@@ -95,3 +95,27 @@ def test_result_and_cancel_require_current_tool_permission(browser):
     assert client.get(links['job_url']).status_code == 403
     assert client.get(links['status_url']).status_code == 403
     assert client.post(links['cancel_url']).status_code == 403
+
+
+def test_worker_and_request_bind_same_instance_through_symlink(tmp_path):
+    from twn_toolkit import create_app
+    from twn_toolkit.profiles import ProfileStore
+
+    actual = tmp_path / 'actual'
+    actual.mkdir()
+    alias = tmp_path / 'alias'
+    alias.symlink_to(actual, target_is_directory=True)
+    app = create_app(str(alias))
+    app.testing = True
+    ProfileStore(str(alias)).upsert({'name': 'Lab', 'host': 'https://fixture.invalid',
+                                   'api_key': 'fixture-secret', 'default_vdom': 'root'})
+    client = app.test_client()
+    try:
+        with patch('twn_toolkit.fortigate.FortiGateClient.get_managed_switches', return_value=SWITCHES):
+            result = complete_switch_order(client, client.post('/fortigate/switch-order/objects', data={'profile': 'Lab'})).get_json()
+        assert result['state'] == 'succeeded'
+        response = client.post('/fortigate/switch-order/preview', data={**order_form(), 'load_token': result['data']['load_token']})
+        assert response.status_code == 200
+        assert response.get_json()['preview_token']
+    finally:
+        app.extensions['remote_session_manager'].close()

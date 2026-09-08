@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hmac
 import json
+from pathlib import Path
 from flask import current_app, g
 from itsdangerous import BadData, URLSafeTimedSerializer
 
@@ -12,7 +13,9 @@ PREVIEW_MAX_AGE_SECONDS = 15 * 60
 class PreviewSigner:
     def __init__(self, secret_key, instance, actor):
         self.secret_key = secret_key
-        self.instance = str(instance)
+        # Workers resolve their instance directory; requests may use a symlink
+        # (notably /var on macOS). Bind the same filesystem instance in both.
+        self.instance = str(Path(instance).resolve())
         self.actor = actor
 
     def serializer(self, scope):

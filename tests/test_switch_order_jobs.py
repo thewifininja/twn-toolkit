@@ -354,3 +354,24 @@ def test_ownership_loss_between_intent_and_origin_fence_prevents_send(operation,
     result = run(operation)
     assert result["state"] == "unknown"
     assert appliance.calls == ["read"]
+
+
+@pytest.mark.parametrize('count', [3, 500])
+def test_audit_retains_bounded_before_after_references(operation, count):
+    from twn_toolkit.audit import AuditStore
+
+    store, job, config, _, _ = operation
+    rows = [{'id': str(i) + 'x' * 120, 'name': str(i) + 'n' * 250,
+             'description': 'Do not copy this vendor field into the audit'} for i in range(count)]
+    summary = {'original_switches': rows, 'switches': list(reversed(rows)),
+               'completed_moves': [], 'attempted_moves': 0, 'phase': 'verified'}
+    assert store.finish(job['id'], job['token'], [], summary)
+    REAL_RECORD_OUTCOME(store, job, 'succeeded', config=config)
+    details = AuditStore(str(store.instance)).recent(1)[0]['details']
+    assert details['outcome'] == 'succeeded'
+    assert details['changes']
+    assert details['omitted switch references'] == max(0, count - 20)
+    import json
+    serialized = json.dumps(details)
+    assert len(serialized.encode()) < 32768
+    assert 'vendor field' not in serialized

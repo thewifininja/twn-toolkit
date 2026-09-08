@@ -162,7 +162,7 @@ def execute_switch_order(store, job, config):
 
 def record_switch_outcome(store, job, state, *, config=None):
     from .activity import ActivityStore
-    from .audit import AuditStore
+    from .audit import AuditStore, audit_changes, audit_reference
     from .investigations import InvestigationStore
     try:
         if config is None:
@@ -175,6 +175,15 @@ def record_switch_outcome(store, job, state, *, config=None):
         details = {'outcome': state, 'operation id': job['id'], 'profile': config['profile']['name'],
                    'VDOM': config['vdom'], 'completed move count': len(summary.get('completed_moves', [])),
                    'attempted move count': summary.get('attempted_moves', 0), 'phase': summary.get('phase', 'queued')}
+        if apply and state == 'succeeded':
+            def references(rows):
+                return [audit_reference('FortiSwitch', row['id'], row['name']) for row in rows[:20]]
+            # AuditStore.record accepts curated details, not the request
+            # annotator's before/after arguments. Keep its 32 KiB envelope.
+            original = summary.get('original_switches', [])
+            observed = summary.get('switches', [])
+            details['changes'] = audit_changes({'switch order': references(original)}, {'switch order': references(observed)})
+            details['omitted switch references'] = max(0, max(len(original), len(observed)) - 20)
         ActivityStore(str(store.instance)).record_event('Fortinet', title, config['profile']['name'] + ': ' + state,
             counters={'fortinet': {'api_calls': summary.get('api_calls', 0), 'failures': int(state != 'succeeded')}},
             count_action=apply, **identity)
@@ -182,9 +191,7 @@ def record_switch_outcome(store, job, state, *, config=None):
             path='/fortigate/switch-order/jobs/' + job['id'], status_code=200,
             category='FortiGate', action='fortigate.switch_order_' + state if apply else 'fortigate.switch_order_load_' + state,
             summary=title + ': ' + state + '.', resource_type='fortigate_switch_order',
-            resource_id=config['profile']['name'] + ':' + config['vdom'], details=details,
-            before={'switch order': summary.get('original_switches', [])[:100]} if apply else None,
-            after={'switch order': summary.get('switches', [])[:100]} if state == 'succeeded' else None)
+            resource_id=config['profile']['name'] + ':' + config['vdom'], details=details)
         if config.get('investigation_id'):
             InvestigationStore(str(store.instance)).record_for_case(
                 investigation_id=config['investigation_id'], **identity,
