@@ -43,7 +43,17 @@
       });
       baselines.set(form, JSON.stringify(baseline));
     },
-    hasChanges: () => pendingSaves.size > 0 || forms.some(dirty),
+    reset: (form) => {
+      if (!baselines.has(form) || pendingSaves.has(form)) return false;
+      baselines.set(form, signature(form));
+      delete form.dataset.unsavedInitial;
+      return true;
+    },
+    settle: (form) => pendingSaves.delete(form),
+    isPending: (form) => pendingSaves.has(form),
+    hasChanges: (form) => form
+      ? baselines.has(form) && (pendingSaves.has(form) || dirty(form))
+      : pendingSaves.size > 0 || forms.some(dirty),
   });
   let approvedSubmit = null;
 

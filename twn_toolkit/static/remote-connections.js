@@ -21,6 +21,48 @@
   const credentialForm = document.getElementById("remote-credential-form");
   const bulkForm = document.getElementById("remote-library-bulk-form");
   const importForm = document.getElementById("remote-host-import-form");
+  const editorForms = [folderForm, hostForm, credentialForm, bulkForm, importForm];
+  const guard = () => window.TwnUnsavedForms;
+  function editorStatus(form, message) {
+    const status = form.querySelector('.tool-status');
+    if (status) status.textContent = message;
+  }
+  function mayReplaceEditor(form) {
+    if (!editorForms.includes(form)) return true;
+    if (guard()?.isPending(form)) {
+      editorStatus(form, 'Wait for the current request to finish before closing or changing this editor.');
+      return false;
+    }
+    return !guard()?.hasChanges(form) || window.confirm('Discard this editor’s unsaved changes?');
+  }
+  function resetEditor(form) {
+    if (editorForms.includes(form)) guard()?.reset(form);
+  }
+  function closeEditor(dialog, saved = false) {
+    const form = dialog?.querySelector('form');
+    if (!saved && form && !mayReplaceEditor(form)) return;
+    if (editorForms.includes(form)) {
+      form.querySelectorAll('input[type="password"]').forEach((input) => { input.value = ""; });
+      resetEditor(form);
+    }
+    dialog?.close();
+  }
+  function beginEditorRequest(form) {
+    if (!editorForms.includes(form)) return null;
+    if (guard()?.isPending(form)) throw new Error('This editor already has a request in progress.');
+    const snapshot = guard()?.capture(form);
+    form.querySelector('[data-editor-lock]').disabled = true;
+    form.setAttribute('aria-busy', 'true');
+    editorStatus(form, 'Saving…');
+    return snapshot;
+  }
+  function endEditorRequest(form, snapshot, saved = false) {
+    if (!editorForms.includes(form)) return;
+    if (saved) guard()?.acknowledge(form, snapshot);
+    else guard()?.settle(form);
+    form.querySelector('[data-editor-lock]').disabled = false;
+    form.removeAttribute('aria-busy');
+  }
   const quickProtocol = document.getElementById("remote-terminal-protocol");
   const hostProtocol = document.getElementById("remote-host-protocol");
   let library = JSON.parse(initial.textContent || "{}");
@@ -145,11 +187,12 @@
     button.addEventListener("click", openHostImport);
   });
   document.querySelectorAll("[data-dialog-close]").forEach((button) => {
-    button.addEventListener("click", () => button.closest("dialog")?.close());
+    button.addEventListener("click", () => closeEditor(button.closest("dialog")));
   });
   document.querySelectorAll(".remote-terminal-dialog").forEach((dialog) => {
+    dialog.addEventListener('cancel', (event) => { event.preventDefault(); closeEditor(dialog); });
     dialog.addEventListener("click", (event) => {
-      if (event.target === dialog) dialog.close();
+      if (event.target === dialog) closeEditor(dialog);
     });
   });
   document.addEventListener("click", (event) => {
@@ -259,6 +302,7 @@
     syncProtocolControls("quick", true);
     syncProtocolControls("host", true);
     updateSelectionBar();
+    editorForms.filter((form) => !form.closest("dialog").open).forEach(resetEditor);
   }
 
   function renderTree() {
@@ -600,12 +644,15 @@
       event.target.value = "";
       return;
     }
+    const snapshot = beginEditorRequest(importForm);
     try {
       document.getElementById("remote-host-import-text").value = await file.text();
       setStatus("remote-host-import-status", `${file.name} loaded. Review the rows before importing.`);
       invalidateHostImport();
     } catch (_error) {
       setStatus("remote-host-import-status", "The selected file could not be read.");
+    } finally {
+      endEditorRequest(importForm, snapshot);
     }
   }
 
@@ -625,6 +672,8 @@
 
   async function submitHostImport(event) {
     event.preventDefault();
+    if (guard()?.isPending(importForm)) return;
+    const snapshot = beginEditorRequest(importForm);
     const submit = document.getElementById("remote-host-import-submit");
     submit.disabled = true;
     setStatus("remote-host-import-status", importPreview?.ready ? "Importing hosts…" : "Checking host rows…");
@@ -661,10 +710,12 @@
       }
       library = data.library;
       render();
-      importDialog.close();
+      endEditorRequest(importForm, snapshot, true);
+      closeEditor(importDialog, true);
     } catch (error) {
       setStatus("remote-host-import-status", error.message);
     } finally {
+      endEditorRequest(importForm, snapshot);
       submit.disabled = false;
     }
   }
@@ -941,6 +992,7 @@
   }
 
   function editFolder(folder = null, parentId = "") {
+    if (folderDialog.open && !mayReplaceEditor(folderForm)) return;
     const existing = typeof folder === "object" && folder;
     const selectedParent = existing?.parent_id || parentId;
     managementFields("folder", existing);
@@ -983,37 +1035,40 @@
           visibility: document.getElementById("remote-folder-visibility").value,
         },
       });
-      folderDialog.close();
+      closeEditor(folderDialog, true);
     } catch (error) {
       setStatus("remote-folder-status", error.message);
     }
   }
 
   async function duplicateFolder() {
+    if (!mayReplaceEditor(folderForm)) return;
     const id = document.getElementById("remote-folder-id").value;
     if (!id) return;
     setStatus("remote-folder-status", "Duplicating folder and its contents…");
     try {
       await mutate(`${manager.dataset.foldersUrl}/${id}/duplicate`, {method: "POST"});
-      folderDialog.close();
+      closeEditor(folderDialog, true);
     } catch (error) {
       setStatus("remote-folder-status", error.message);
     }
   }
 
   async function deleteFolder() {
+    if (!mayReplaceEditor(folderForm)) return;
     const id = document.getElementById("remote-folder-id").value;
     const name = document.getElementById("remote-folder-name").value;
     if (!id || !window.confirm(`Delete '${name}'? The folder must be empty.`)) return;
     try {
       await mutate(`${manager.dataset.foldersUrl}/${id}`, {method: "DELETE"});
-      folderDialog.close();
+      closeEditor(folderDialog, true);
     } catch (error) {
       setStatus("remote-folder-status", error.message);
     }
   }
 
   function editHost(host = null, session = null) {
+    if (hostDialog.open && !mayReplaceEditor(hostForm)) return;
     const existing = typeof host === "object" && host;
     const presetFolderId = typeof host === "string" ? host : "";
     managementFields("host", existing);
@@ -1101,30 +1156,32 @@
           console_flow_control: document.getElementById("remote-host-console-flow").value,
         },
       });
-      hostDialog.close();
+      closeEditor(hostDialog, true);
     } catch (error) {
       setStatus("remote-host-status", error.message);
     }
   }
 
   async function duplicateHost() {
+    if (!mayReplaceEditor(hostForm)) return;
     const id = document.getElementById("remote-host-id").value;
     if (!id) return;
     try {
       await mutate(`${manager.dataset.hostsUrl}/${id}/duplicate`, {method: "POST"});
-      hostDialog.close();
+      closeEditor(hostDialog, true);
     } catch (error) {
       setStatus("remote-host-status", error.message);
     }
   }
 
   async function deleteHost() {
+    if (!mayReplaceEditor(hostForm)) return;
     const id = document.getElementById("remote-host-id").value;
     const name = document.getElementById("remote-host-name").value;
     if (!id || !window.confirm(`Delete saved host '${name}'?`)) return;
     try {
       await mutate(`${manager.dataset.hostsUrl}/${id}`, {method: "DELETE"});
-      hostDialog.close();
+      closeEditor(hostDialog, true);
     } catch (error) {
       setStatus("remote-host-status", error.message);
     }
@@ -1235,7 +1292,7 @@
           credential_id: document.getElementById("remote-library-credential").value,
         },
       });
-      bulkDialog.close();
+      closeEditor(bulkDialog, true);
       selectionMode = false;
       selectedHosts.clear();
       selectedFolders.clear();
@@ -1288,7 +1345,8 @@
     }
   }
 
-  function editCredential(credential = null) {
+  function editCredential(credential = null, confirmed = false) {
+    if (!confirmed && credentialDialog.open && !mayReplaceEditor(credentialForm)) return;
     managementFields("credential", credential);
     document.getElementById("remote-credential-id").value = credential?.id || "";
     document.getElementById("remote-credential-name").value = credential?.name || "";
@@ -1306,6 +1364,7 @@
     document.querySelector("[data-duplicate-credential]").hidden = !credential?.owned;
     setStatus("remote-credential-status", "");
     renderCredentials();
+    resetEditor(credentialForm);
     document.getElementById("remote-credential-name").focus({preventScroll: true});
   }
 
@@ -1324,7 +1383,7 @@
         },
       });
       const updated = (data.library?.credentials || library.credentials).find((credential) => data.credential_id ? credential.id === data.credential_id : id ? credential.id === id : !previousIds.has(credential.id));
-      editCredential(updated || null);
+      editCredential(updated || null, true);
       setStatus("remote-credential-status", "Credential saved.");
     } catch (error) {
       setStatus("remote-credential-status", error.message);
@@ -1332,52 +1391,63 @@
   }
 
   async function duplicateCredential() {
+    if (!mayReplaceEditor(credentialForm)) return;
     const id = document.getElementById("remote-credential-id").value;
     const previousIds = new Set(library.credentials.map((credential) => credential.id));
     if (!id) return;
     try {
       const data = await mutate(`${manager.dataset.credentialsUrl}/${id}/duplicate`, {method: "POST"});
       const copied = (data.library?.credentials || library.credentials).find((credential) => data.credential_id ? credential.id === data.credential_id : !previousIds.has(credential.id));
-      editCredential(copied || null);
+      editCredential(copied || null, true);
     } catch (error) {
       setStatus("remote-credential-status", error.message);
     }
   }
 
   async function deleteCredential() {
+    if (!mayReplaceEditor(credentialForm)) return;
     const id = document.getElementById("remote-credential-id").value;
     const name = document.getElementById("remote-credential-name").value;
     if (!id || !window.confirm(`Delete saved credential '${name}'?`)) return;
     try {
       await mutate(`${manager.dataset.credentialsUrl}/${id}`, {method: "DELETE"});
-      editCredential(library.credentials[0] || null);
+      editCredential(library.credentials[0] || null, true);
     } catch (error) {
       setStatus("remote-credential-status", error.message);
     }
   }
 
   async function mutate(url, options) {
-    const requestId = ++libraryRequest;
-    clearTimeout(searchTimer);
-    const response = await fetch(libraryUrl(url), {
-      method: options.method,
-      headers: {"Accept": "application/json", "Content-Type": "application/json"},
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "The connection library could not be updated.");
-    if (data.library) {
-      if (requestId === libraryRequest) {
-        library = data.library;
-        render();
-      } else {
-        await loadLibrary(library.pagination?.page || 1);
+    const form = document.querySelector('.remote-terminal-dialog[open] form');
+    const snapshot = beginEditorRequest(form);
+    let saved = false;
+    try {
+      const requestId = ++libraryRequest;
+      clearTimeout(searchTimer);
+      const response = await fetch(libraryUrl(url), {
+        method: options.method,
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The connection library could not be updated.");
+      if (data.library) {
+        if (requestId === libraryRequest) {
+          library = data.library;
+          render();
+        } else {
+          await loadLibrary(library.pagination?.page || 1);
+        }
       }
+      saved = true;
+      return data;
+    } finally {
+      endEditorRequest(form, snapshot, saved);
     }
-    return data;
   }
 
   function openDialog(dialog, focusId = "") {
+    resetEditor(dialog.querySelector("form"));
     if (!dialog.open) dialog.showModal();
     if (focusId) window.setTimeout(() => document.getElementById(focusId)?.focus(), 0);
   }
