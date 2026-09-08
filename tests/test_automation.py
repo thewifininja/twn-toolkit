@@ -128,7 +128,8 @@ class AutomationStoreTests(unittest.TestCase):
             }}],
             created_by="user-1",
         )
-        staging = Path(tempfile.mkdtemp())
+        from twn_toolkit.artifact_storage import staging_directory
+        _output_store, staging = staging_directory(self.store.instance_path, 100)
         source = staging / "config.cfg"
         source.write_bytes(b"configuration")
         run_id = self.store.record_run(

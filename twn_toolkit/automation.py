@@ -1734,6 +1734,16 @@ class AutomationStore:
         trigger: ConditionResult,
         results: list[ActionResult],
     ) -> str:
+        from .file_transactions import file_transaction
+        with file_transaction(self.instance_path / 'automation-artifact-publication'):
+            return self._record_run_locked(automation_id, trigger, results)
+
+    def _record_run_locked(
+        self,
+        automation_id: str,
+        trigger: ConditionResult,
+        results: list[ActionResult],
+    ) -> str:
         now = time.time()
         run_id = secrets.token_hex(12)
         status = (
@@ -1746,27 +1756,31 @@ class AutomationStore:
         run_root = self.artifact_root / run_id
         payload = []
         staging_roots: set[Path] = set()
+        published = False
         try:
             for action_index, result in enumerate(results, 1):
                 output = dict(result.output)
                 sources = output.pop("_artifact_sources", [])
                 artifacts = []
                 for source_index, item in enumerate(sources, 1):
-                    source = Path(str(item.get("source_path", ""))).resolve()
-                    if not source.is_file() or source.is_symlink():
-                        raise ValueError("Automation artifact source is unavailable.")
-                    from .operational import ensure_storage_capacity
-                    ensure_storage_capacity(self.instance_path, "automation_artifacts", source.stat().st_size)
+                    from .artifact_storage import ArtifactStore, checked_automation_source
+                    source = checked_automation_source(self.instance_path, str(item.get("source_path", "")))
                     staging_roots.add(source.parent)
-                    action_folder = run_root / f"action-{action_index}"
+                    source_size = source.stat().st_size
+                    output_store = ArtifactStore(self.instance_path, 'automation_artifacts', source_size)
+                    action_folder = output_store.root / run_id / f"action-{action_index}"
                     action_folder.mkdir(parents=True, exist_ok=True, mode=0o700)
                     filename = self._artifact_filename(str(item.get("filename", source.name)), source_index)
                     target = action_folder / filename
                     if target.exists():
                         filename = f"{source_index}-{filename}"
                         target = action_folder / filename
-                    shutil.move(str(source), target)
-                    os.chmod(target, 0o600)
+                    with source.open('rb') as incoming, output_store.begin_upload(
+                        output_store.relative(action_folder), filename, expected_bytes=source_size
+                    ) as upload:
+                        while chunk := incoming.read(1024 * 1024):
+                            upload.write(chunk)
+                        upload.commit()
                     artifacts.append({
                         key: value for key, value in item.items() if key != "source_path"
                     } | {"artifact_path": f"action-{action_index}/{filename}"})
@@ -1791,12 +1805,14 @@ class AutomationStore:
                     json.dumps(payload, separators=(",", ":")),
                     ),
                 )
+            published = True
         except Exception:
             shutil.rmtree(run_root, ignore_errors=True)
             raise
         finally:
-            for folder in staging_roots:
-                shutil.rmtree(folder, ignore_errors=True)
+            if published:
+                for folder in staging_roots:
+                    shutil.rmtree(folder, ignore_errors=True)
         return run_id
 
     def recent_runs(self, automation_id: str, limit: int = 20) -> list[dict[str, Any]]:
@@ -1986,6 +2002,13 @@ class AutomationStore:
         return {"count": len(folders), "bytes": total}
 
     def cleanup_orphan_artifacts(self) -> dict[str, int]:
+        from .file_transactions import file_transaction
+        with file_transaction(self.instance_path / 'automation-artifact-publication'):
+            return self._cleanup_orphan_artifacts_locked()
+
+    def _cleanup_orphan_artifacts_locked(self) -> dict[str, int]:
+        from .artifact_storage import ArtifactStore
+        ArtifactStore(self.instance_path, "automation_artifacts", 0)
         stats = self.orphan_artifact_stats()
         with self._connect() as connection:
             known = {str(row[0]) for row in connection.execute("SELECT id FROM automation_runs")}
@@ -2036,6 +2059,8 @@ class AutomationStore:
             )
         for run_id in expired_run_ids:
             shutil.rmtree(self.artifact_root / str(run_id), ignore_errors=True)
+        from .artifact_storage import cleanup_staging
+        cleanup_staging(self, now=now)
         return {"checks": int(deleted_checks), "runs": int(deleted_runs)}
 
     def prune_history_if_due(self, now: float | None = None) -> dict[str, int] | None:
