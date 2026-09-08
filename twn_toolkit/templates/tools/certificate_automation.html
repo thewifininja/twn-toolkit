@@ -80,7 +80,7 @@
   {% endif %}
 
   <div class="acme-workspace">
-    <form class="form acme-request-form" method="post" action="{{ url_for('tools.start_acme_dns_request') }}" data-loading-message="Starting Certbot…">
+    <form class="form acme-request-form" data-unsaved-form method="post" action="{{ url_for('tools.start_acme_dns_request') }}" data-loading-message="Starting Certbot…">
       <div>
         <span class="section-kicker">Step 1</span>
         <h3>Describe the certificate</h3>
@@ -228,7 +228,7 @@
       <a class="button-link secondary" href="#pki-profiles">Open PKI profiles</a>
     {% endcall %}
   {% else %}
-    <form class="form certificate-request-form" method="post" action="{{ url_for('tools.enroll_managed_certificate') }}" enctype="multipart/form-data" data-loading-message="Submitting certificate request…">
+    <form class="form certificate-request-form" data-unsaved-form method="post" action="{{ url_for('tools.enroll_managed_certificate') }}" enctype="multipart/form-data" data-loading-message="Submitting certificate request…">
       <div class="certificate-form-grid">
         <label>Managed certificate name
           <input name="name" maxlength="100" required placeholder="District RADIUS server">
@@ -337,7 +337,7 @@
               {% endif %}
               <details class="certificate-rotate-details">
                 <summary>Rotate certificate</summary>
-                <form class="form" method="post" action="{{ url_for('tools.enroll_managed_certificate') }}" enctype="multipart/form-data" data-loading-message="Rotating managed certificate…">
+                <form class="form" method="post" action="{{ url_for('tools.enroll_managed_certificate') }}" enctype="multipart/form-data" data-unsaved-form data-loading-message="Rotating managed certificate…">
                   <input type="hidden" name="managed_id" value="{{ selected.id }}">
                   <input type="hidden" name="name" value="{{ selected.name }}">
                   <input type="hidden" name="template_id" value="{{ selected.template_id }}">
@@ -395,22 +395,22 @@
   <div class="access-profile-list certificate-profile-columns saved-profile-library">
     {% call profile_section("Credentials", credentials|length ~ " saved · Enrollment identities with locally encrypted passwords", not credentials, "certificate-profile-section") %}
       {% call profile_create("New credential", not credentials) %}
-          <form class="form" method="post" action="{{ url_for('tools.save_pki_credential') }}">
+          <form class="form" method="post" action="{{ url_for('tools.save_pki_credential') }}" data-unsaved-form {% if certificate_profile_editor_api|default(false) %}data-certificate-profile-editor{% endif %}><fieldset class="remote-editor-lock" data-editor-lock>
             <label>Profile name<input name="name" maxlength="100" required placeholder="Enrollment account"></label>
             <label>Username<input name="username" required autocomplete="off" placeholder="DOMAIN\username or user@example.org"></label>
             <label>Password<input name="password" type="password" required autocomplete="new-password"></label>
             <span class="field-note">Encrypted locally and never displayed again.</span>
             <button type="submit">Save credential</button>
-          </form>
+          </fieldset><p class="tool-status" role="status" aria-live="polite" data-profile-editor-status></p></form>
       {% endcall %}
       <div class="access-profile-list nested-profile-list">
         {% for profile in credentials %}{% call profile_card(profile.name, profile.username) %}
-          <form class="form" id="pki-credential-{{ profile.id }}" method="post" action="{{ url_for('tools.save_pki_credential') }}">
+          <form class="form" id="pki-credential-{{ profile.id }}" method="post" action="{{ url_for('tools.save_pki_credential') }}" data-unsaved-form {% if certificate_profile_editor_api|default(false) %}data-certificate-profile-editor{% endif %}><fieldset class="remote-editor-lock" data-editor-lock>
             <input type="hidden" name="id" value="{{ profile.id }}">
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
             <label>Username<input name="username" required value="{{ profile.username }}"></label>
             <label>New password<input name="password" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved password"></label>
-          </form>
+          </fieldset><p class="tool-status" role="status" aria-live="polite" data-profile-editor-status></p></form>
           {% call action_row(detached=true) %}
             <button type="submit" form="pki-credential-{{ profile.id }}">Update</button>
             <form method="post" action="{{ url_for('tools.duplicate_pki_credential', credential_id=profile.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form>
@@ -422,7 +422,7 @@
 
     {% call profile_section("PKI servers", servers|length ~ " saved · Enrollment endpoints, trust, and retrieval settings", not servers, "certificate-profile-section") %}
       {% call profile_create("New PKI server", not servers) %}
-          <form class="form" method="post" action="{{ url_for('tools.save_pki_server') }}" enctype="multipart/form-data">
+          <form class="form" method="post" action="{{ url_for('tools.save_pki_server') }}" enctype="multipart/form-data" data-unsaved-form {% if certificate_profile_editor_api|default(false) %}data-certificate-profile-editor{% endif %}><fieldset class="remote-editor-lock" data-editor-lock>
             <label>Profile name<input name="name" maxlength="100" required placeholder="Production AD CS"></label>
             <label>Provider<select name="provider" disabled><option>Microsoft AD CS Web Enrollment</option></select></label>
             <label>Enrollment URL<input name="enrollment_url" type="url" required placeholder="https://pki.example.org/certsrv"></label>
@@ -433,11 +433,11 @@
             <label>Timeout<input name="timeout" type="number" min="2" max="60" value="15"></label>
             <span class="field-note">HTTPS certificate verification is enabled by default. Upload a private CA bundle when system trust is insufficient.</span>
             <button type="submit">Save PKI server</button>
-          </form>
+          </fieldset><p class="tool-status" role="status" aria-live="polite" data-profile-editor-status></p></form>
       {% endcall %}
       <div class="access-profile-list nested-profile-list">
         {% for profile in servers %}{% call profile_card(profile.name, profile.enrollment_url) %}
-          <form class="form" id="pki-server-{{ profile.id }}" method="post" action="{{ url_for('tools.save_pki_server') }}" enctype="multipart/form-data">
+          <form class="form" id="pki-server-{{ profile.id }}" method="post" action="{{ url_for('tools.save_pki_server') }}" enctype="multipart/form-data" data-unsaved-form {% if certificate_profile_editor_api|default(false) %}data-certificate-profile-editor{% endif %}><fieldset class="remote-editor-lock" data-editor-lock>
             <input type="hidden" name="id" value="{{ profile.id }}">
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
             <label>Enrollment URL<input name="enrollment_url" type="url" required value="{{ profile.enrollment_url }}"></label>
@@ -449,7 +449,7 @@
             {% if not profile.verify_tls %}<div class="message warning">HTTPS certificate verification is disabled for this PKI server. The server identity and enrollment traffic cannot be authenticated by TLS.</div>{% endif %}
             <label>Certificate retrieval<select name="retrieval_strategy"><option value="same_endpoint" {% if profile.retrieval_strategy == 'same_endpoint' %}selected{% endif %}>Use enrollment endpoint</option><option value="resolved_ipv4" {% if profile.retrieval_strategy == 'resolved_ipv4' %}selected{% endif %}>Search resolved IPv4 backends</option></select></label>
             <label>Timeout<input name="timeout" type="number" min="2" max="60" value="{{ profile.timeout|int }}"></label>
-          </form>
+          </fieldset><p class="tool-status" role="status" aria-live="polite" data-profile-editor-status></p></form>
           {% call action_row(detached=true) %}
             <button type="submit" form="pki-server-{{ profile.id }}">Update</button>
             <form method="post" action="{{ url_for('tools.duplicate_pki_server', server_id=profile.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form>
@@ -465,25 +465,25 @@
 
     {% call profile_section("Templates", templates|length ~ " saved · Reusable certificate request and renewal policies", not templates, "certificate-profile-section") %}
       {% call profile_create("New template", not templates) %}
-          <form class="form" method="post" action="{{ url_for('tools.save_pki_template') }}">
+          <form class="form" method="post" action="{{ url_for('tools.save_pki_template') }}" data-unsaved-form {% if certificate_profile_editor_api|default(false) %}data-certificate-profile-editor{% endif %}><fieldset class="remote-editor-lock" data-editor-lock>
             <label>Profile name<input name="name" maxlength="100" required placeholder="RADIUS TLS server"></label>
             <label>PKI server<select name="server_id" required><option value="">Select a PKI server</option>{% for profile in servers %}<option value="{{ profile.id }}">{{ profile.name }}</option>{% endfor %}</select></label>
             <label>Template name or OID<input name="template_identifier" required placeholder="InternalWebServer"></label>
             <label>RSA key size<select name="key_size">{% for size in valid_key_sizes %}<option value="{{ size }}">{{ size }} bits</option>{% endfor %}</select></label>
             <label>Renewal window<input name="renewal_days" type="number" min="1" max="365" value="30"><span class="field-note">Days before expiration.</span></label>
             <button type="submit">Save template</button>
-          </form>
+          </fieldset><p class="tool-status" role="status" aria-live="polite" data-profile-editor-status></p></form>
       {% endcall %}
       <div class="access-profile-list nested-profile-list">
         {% for profile in templates %}{% call profile_card(profile.name, profile.server_name ~ " · " ~ profile.template_identifier) %}
-          <form class="form" id="pki-template-{{ profile.id }}" method="post" action="{{ url_for('tools.save_pki_template') }}">
+          <form class="form" id="pki-template-{{ profile.id }}" method="post" action="{{ url_for('tools.save_pki_template') }}" data-unsaved-form {% if certificate_profile_editor_api|default(false) %}data-certificate-profile-editor{% endif %}><fieldset class="remote-editor-lock" data-editor-lock>
             <input type="hidden" name="id" value="{{ profile.id }}">
             <label>Profile name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
             <label>PKI server<select name="server_id" required>{% for server in servers %}<option value="{{ server.id }}" {% if server.id == profile.server_id %}selected{% endif %}>{{ server.name }}</option>{% endfor %}</select></label>
             <label>Template name or OID<input name="template_identifier" required value="{{ profile.template_identifier }}"></label>
             <label>RSA key size<select name="key_size">{% for size in valid_key_sizes %}<option value="{{ size }}" {% if size == profile.key_size %}selected{% endif %}>{{ size }} bits</option>{% endfor %}</select></label>
             <label>Renewal window<input name="renewal_days" type="number" min="1" max="365" value="{{ profile.renewal_days }}"></label>
-          </form>
+          </fieldset><p class="tool-status" role="status" aria-live="polite" data-profile-editor-status></p></form>
           {% call action_row(detached=true) %}
             <button type="submit" form="pki-template-{{ profile.id }}">Update</button>
             <form method="post" action="{{ url_for('tools.duplicate_pki_template', template_id=profile.id) }}"><button class="secondary duplicate-action" type="submit">Duplicate</button></form>
@@ -497,5 +497,7 @@
 
 {% endif %}
 </div>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
+<script src="{{ url_for('static', filename='certificate-profile-editor.js', v=asset_version) }}"></script>
 {% if certificate_section == 'acme' %}<script src="{{ url_for('static', filename='certificate-automation.js') }}"></script>{% endif %}
 {% endblock %}

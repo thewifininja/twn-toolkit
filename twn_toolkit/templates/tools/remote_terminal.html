@@ -198,7 +198,7 @@
 </dialog>
 
 <dialog class="remote-terminal-dialog" id="remote-folder-dialog" aria-labelledby="remote-folder-title">
-  <form class="form remote-terminal-dialog-form" id="remote-folder-form">
+  <form class="form remote-terminal-dialog-form" id="remote-folder-form" data-unsaved-form><fieldset class="remote-editor-lock" data-editor-lock>
     {% include 'components/remote_metadata_lookup.html' %}
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-folder-title">New folder</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro" data-shared-item-note hidden>You are editing a shared item. Changes apply to everyone who uses it. Only its owner can make it private.</p>
@@ -221,11 +221,11 @@
       <span class="button-row" data-folder-existing-actions hidden><button class="secondary" type="button" data-duplicate-folder title="Copy this saved folder and its contents, up to 10,000 folders and hosts">Duplicate</button><button class="danger" type="button" data-delete-folder>Delete</button></span>
       <span class="button-row"><button class="secondary" type="button" data-dialog-close>Cancel</button><button type="submit">Save folder</button></span>
     </footer>
-  </form>
+  </fieldset></form>
 </dialog>
 
 <dialog class="remote-terminal-dialog remote-host-dialog" id="remote-host-dialog" aria-labelledby="remote-host-title">
-  <form class="form remote-terminal-dialog-form" id="remote-host-form">
+  <form class="form remote-terminal-dialog-form" id="remote-host-form" data-unsaved-form><fieldset class="remote-editor-lock" data-editor-lock>
     {% include 'components/remote_metadata_lookup.html' %}
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-host-title">New saved host</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro" data-shared-item-note hidden>You are editing a shared item. Changes apply to everyone who uses it. Only its owner can make it private.</p>
@@ -281,7 +281,7 @@
       <span class="button-row" data-host-existing-actions hidden><button class="secondary" type="button" data-duplicate-host>Duplicate</button><button class="danger" type="button" data-delete-host>Delete</button></span>
       <span class="button-row"><button class="secondary" type="button" data-dialog-close>Cancel</button><button type="submit">Save host</button></span>
     </footer>
-  </form>
+  </fieldset></form>
 </dialog>
 
 <dialog class="remote-terminal-dialog remote-credential-dialog" id="remote-credential-dialog" aria-labelledby="remote-credential-title">
@@ -298,7 +298,7 @@
         {% include 'components/remote_metadata_lookup.html' %}
         <div id="remote-credential-list" class="remote-credential-list"></div>
       </aside>
-      <form class="form" id="remote-credential-form">
+      <form class="form" id="remote-credential-form" data-unsaved-form><fieldset class="remote-editor-lock" data-editor-lock>
         <input id="remote-credential-id" type="hidden">
         <div class="remote-credential-editor-head">
           <div><h3 id="remote-credential-editor-title">New credential</h3><p>Enter the identity used to authenticate to SSH or Telnet devices.</p></div>
@@ -315,13 +315,13 @@
           <span class="button-row" data-credential-existing-actions hidden><button class="secondary" type="button" data-duplicate-credential>Duplicate</button><button class="danger" type="button" data-delete-credential>Delete</button></span>
           <span class="button-row"><button class="secondary" type="button" data-dialog-close>Close</button><button id="remote-credential-save" type="submit">Save credential</button></span>
         </footer>
-      </form>
+      </fieldset></form>
     </div>
   </div>
 </dialog>
 
 <dialog class="remote-terminal-dialog remote-library-bulk-dialog" id="remote-library-bulk-dialog" aria-labelledby="remote-library-bulk-title">
-  <form class="form remote-terminal-dialog-form" id="remote-library-bulk-form">
+  <form class="form remote-terminal-dialog-form" id="remote-library-bulk-form" data-unsaved-form><fieldset class="remote-editor-lock" data-editor-lock>
     {% include 'components/remote_metadata_lookup.html' %}
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-library-bulk-title">Edit selected items</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro" id="remote-library-bulk-summary">Choose a location, a credential behavior, or both. Explicit child overrides remain unchanged unless they are selected.</p>
@@ -343,11 +343,11 @@
     </section>
     <p class="tool-status" id="remote-library-bulk-status" role="status"></p>
     <footer><span></span><button class="secondary" type="button" data-dialog-close>Cancel</button><button type="submit">Apply changes</button></footer>
-  </form>
+  </fieldset></form>
 </dialog>
 
 <dialog class="remote-terminal-dialog remote-host-import-dialog" id="remote-host-import-dialog" aria-labelledby="remote-host-import-title">
-  <form class="form remote-terminal-dialog-form" id="remote-host-import-form">
+  <form class="form remote-terminal-dialog-form" id="remote-host-import-form" data-unsaved-form><fieldset class="remote-editor-lock" data-editor-lock>
     {% include 'components/remote_metadata_lookup.html' %}
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-host-import-title">Import saved hosts</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro">Paste a list or choose a CSV file, review the parsed hosts, then add the entire batch at once. Every imported host inherits credentials from its destination folder.</p>
@@ -378,9 +378,10 @@
       <button class="secondary" type="button" data-dialog-close>Cancel</button>
       <button type="submit" id="remote-host-import-submit">Review hosts</button>
     </footer>
-  </form>
+  </fieldset></form>
 </dialog>
 
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 <script id="remote-terminal-initial-sessions" type="application/json">{{ remote_sessions|tojson }}</script>
 <script id="remote-connection-library" type="application/json">{{ remote_connection_library|tojson }}</script>
 <script src="{{ url_for('static', filename='terminal-emulator.js', v=app_version) }}"></script>

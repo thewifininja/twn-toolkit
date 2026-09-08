@@ -18068,7 +18068,7 @@ th {
   margin: 0;
 }
 
-.remote-terminal-dialog-form > footer,
+.remote-terminal-dialog-form footer,
 .remote-credential-manager footer {
   align-items: center;
   border-top: 1px solid var(--line);
@@ -18078,7 +18078,7 @@ th {
   padding-top: 16px;
 }
 
-.remote-terminal-dialog-form > footer .tool-status {
+.remote-terminal-dialog-form footer .tool-status {
   margin-right: auto;
 }
 
@@ -22321,3 +22321,5 @@ body.remote-terminal-resizing * {
 .skip-link:focus {
   transform: none;
 }
+
+.remote-editor-lock { display: contents; }

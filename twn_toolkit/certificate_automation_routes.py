@@ -115,6 +115,7 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
         return render_template(
             "tools/certificate_automation.html",
             certificate_section=certificate_section,
+            certificate_profile_editor_api=True,
             credentials=credentials,
             servers=servers,
             templates=templates,
@@ -292,10 +293,10 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
         store = _store()
         credential_id = request.form.get("id", "").strip()
         before = store.credential_profile(credential_id) if credential_id else None
-        name = _profile_name(request.form.get("name", ""))
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         try:
+            name = _profile_name(request.form.get("name", ""))
             if not username or len(username) > 320:
                 raise ValueError("Enter an enrollment username of 320 characters or fewer.")
             saved = store.save_credential(
@@ -305,6 +306,8 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
                 password=password,
             )
         except ValueError as exc:
+            if request.accept_mimetypes.best == "application/json":
+                return jsonify({"error": str(exc)}), 400
             flash(str(exc), "error")
         else:
             annotate_profile_saved(
@@ -315,6 +318,8 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
                 after=saved,
                 credential_updated=bool(password),
             )
+            if request.accept_mimetypes.best == "application/json":
+                return jsonify({"saved": {"id": saved["id"], "name": saved["name"]}})
             flash(f"Saved credential profile {saved['name']}.", "success")
         return _redirect_home(anchor="pki-profiles")
 
@@ -387,6 +392,8 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
                 }
             )
         except (TypeError, ValueError) as exc:
+            if request.accept_mimetypes.best == "application/json":
+                return jsonify({"error": str(exc)}), 400
             flash(str(exc), "error")
         else:
             annotate_profile_saved(
@@ -396,6 +403,8 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
                 before=_server_audit_snapshot(before),
                 after=_server_audit_snapshot(saved),
             )
+            if request.accept_mimetypes.best == "application/json":
+                return jsonify({"saved": {"id": saved["id"], "name": saved["name"]}})
             flash(f"Saved PKI server profile {saved['name']}.", "success")
         return _redirect_home(anchor="pki-profiles")
 
@@ -499,6 +508,8 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
                 }
             )
         except (TypeError, ValueError) as exc:
+            if request.accept_mimetypes.best == "application/json":
+                return jsonify({"error": str(exc)}), 400
             flash(str(exc), "error")
         else:
             annotate_profile_saved(
@@ -508,6 +519,8 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
                 before=before,
                 after=saved,
             )
+            if request.accept_mimetypes.best == "application/json":
+                return jsonify({"saved": {"id": saved["id"], "name": saved["name"]}})
             flash(f"Saved certificate template profile {saved['name']}.", "success")
         return _redirect_home(anchor="pki-profiles")
 
