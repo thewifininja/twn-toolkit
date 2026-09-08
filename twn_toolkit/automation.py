@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .backup_source_reads import source_json_loads
+
 import base64
 import hashlib
 import json
@@ -2300,12 +2302,12 @@ class AutomationStore:
         action_map: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         condition_definition_id = str(row["condition_definition_id"] or "")
-        condition_definition_ids = json.loads(
+        condition_definition_ids = source_json_loads(
             row["condition_definition_ids"] or "[]"
         )
         if not condition_definition_ids and condition_definition_id:
             condition_definition_ids = [condition_definition_id]
-        action_definition_ids = json.loads(row["action_definition_ids"] or "[]")
+        action_definition_ids = source_json_loads(row["action_definition_ids"] or "[]")
         if condition_map is None:
             conditions = [
                 definition
@@ -2335,7 +2337,7 @@ class AutomationStore:
                     resolved_action_map[action_id] = action
         else:
             resolved_action_map = action_map
-        raw_stages = json.loads(row["action_stages"] or "null")
+        raw_stages = source_json_loads(row["action_stages"] or "null")
         normalized_stages = self._normalize_action_stages(raw_stages, action_definition_ids)
         stages = [
             {
@@ -2357,7 +2359,7 @@ class AutomationStore:
                 "id": "",
                 "name": "Legacy condition",
                 "type": row["condition_type"],
-                "config": json.loads(row["condition_config"]),
+                "config": source_json_loads(row["condition_config"]),
             },
             "conditions": conditions
             or [
@@ -2365,7 +2367,7 @@ class AutomationStore:
                     "id": "",
                     "name": "Legacy condition",
                     "type": row["condition_type"],
-                    "config": json.loads(row["condition_config"]),
+                    "config": source_json_loads(row["condition_config"]),
                 }
             ],
             "condition_definition_ids": [
@@ -2380,7 +2382,7 @@ class AutomationStore:
     def _condition_definition_from_row(row: sqlite3.Row) -> dict[str, Any]:
         return {
             **dict(row),
-            "config": json.loads(row["config_json"]),
+            "config": source_json_loads(row["config_json"]),
         }
 
     def _action_definition_from_row(
@@ -2467,7 +2469,7 @@ class AutomationStore:
 
     def _decrypt(self, value: str) -> Any:
         try:
-            return json.loads(self._cipher.decrypt(value.encode("ascii")))
+            return source_json_loads(self._cipher.decrypt(value.encode("ascii")))
         except (InvalidToken, ValueError, TypeError, json.JSONDecodeError) as exc:
             raise RuntimeError("Could not decrypt saved automation actions.") from exc
 

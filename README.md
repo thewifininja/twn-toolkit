@@ -340,8 +340,12 @@ portable archive and merge boundaries, and extension guidance.
 Portable configuration backup exports and imports accept files up to 64 MiB.
 Encrypted exports reserve room for the encryption envelope (just under 48 MiB
 of unencrypted JSON). Oversized selections fail with guidance to export fewer
-groups. Export serialization and accumulation between groups are bounded; each
-store adapter still owns its initial group read.
+groups. Exports share a 64 MiB source-read budget across JSON files and SQLite
+configuration tables, including an allowance per SQLite cell. Tables are capped
+at 10,000 rows; JSON parsing shares a 500,000-node budget and rejects nesting
+beyond 64 levels. Configuration snapshots exclude run history and issued
+certificate material. Source failures stop the export without changing saved
+data. Serialization and accumulation between groups are also bounded.
 
 ### Local Tools
 

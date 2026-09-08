@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from typing import Any
 
+from .backup_source_reads import bounded_source_reads, bounded_backup_store, SourceReadLimit
 from .version import APP_VERSION
 from .file_transactions import file_transaction
 
@@ -185,10 +186,15 @@ def build_profile_backup(
 ) -> dict[str, Any]:
     exported = {}
     remaining = max_bytes
-    for item in selected_items:
-        records = item["store"].all()
-        remaining -= _backup_json_lower_bound(records, remaining)
-        exported[item["id"]] = records
+    try:
+        with bounded_source_reads(MAX_BACKUP_WIRE_BYTES):
+            for item in selected_items:
+                with bounded_backup_store(item["store"]) as source:
+                    records = source.all()
+                remaining -= _backup_json_lower_bound(records, remaining)
+                exported[item["id"]] = records
+    except SourceReadLimit as exc:
+        raise ValueError(str(exc)) from exc
     return {
         "format": CONFIGURATION_BACKUP_FORMAT,
         "version": 2,
@@ -346,6 +352,23 @@ def backup_entry_count(store: Any, records: list[dict[str, Any]] | None = None) 
     values = records if records is not None else store.all()
     custom_count = getattr(store, "record_count", None)
     return int(custom_count(values)) if callable(custom_count) else len(values)
+
+
+
+def bounded_backup_counts(catalog):
+    """Keep the backup page available when a source cannot be counted safely."""
+    display = []
+    with bounded_source_reads(MAX_BACKUP_WIRE_BYTES):
+        for item in catalog:
+            error = ''
+            try:
+                with bounded_backup_store(item['store']) as source:
+                    count = backup_entry_count(source)
+            except (OSError, ValueError, RuntimeError, TypeError):
+                count = '—'
+                error = 'Count unavailable. Source data exceeds preview limits or could not be read.'
+            display.append({**item, 'record_count': count, 'count_error': error})
+    return display
 
 
 def preview_import_items(

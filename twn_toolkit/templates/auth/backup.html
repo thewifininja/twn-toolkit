@@ -50,7 +50,7 @@
                     <span class="backup-choice-copy">
                       <span class="backup-choice-title">
                         <strong>{{ item.label }}</strong>
-                        <span class="backup-count">{{ item.record_count }}</span>
+                        <span class="backup-count"{% if item.count_error %} title="{{ item.count_error }}" aria-label="{{ item.count_error }}"{% endif %}>{{ item.record_count }}</span>
                         {% if item.sensitive %}<span class="backup-secret-badge">Encrypted</span>{% endif %}
                       </span>
                       <small>{{ item.description }}</small>
