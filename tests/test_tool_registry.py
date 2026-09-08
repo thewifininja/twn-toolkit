@@ -102,6 +102,12 @@ class ToolRegistryTests(unittest.TestCase):
                 self.assertIn("task_id", tool.endpoint_values)
                 self.assertEqual(TASK_TOOL_IDS[tool.endpoint_values["task_id"]], tool.id)
 
+    def test_rename_job_routes_resolve_the_selected_task_permission(self) -> None:
+        for endpoint in ('rename_job', 'rename_job_status', 'rename_job_cancel'):
+            for task_id in ('rename-aps', 'rename-switches'):
+                self.assertEqual(tool_id_for_endpoint(endpoint, {'task_id': task_id}), TASK_TOOL_IDS[task_id])
+            self.assertIsNone(tool_id_for_endpoint(endpoint, {'task_id': 'missing'}))
+
     def test_access_profile_groups_exclude_non_grantable_tools(self) -> None:
         access_tool_ids = {
             tool.id
@@ -124,6 +130,7 @@ class ToolRegistryTests(unittest.TestCase):
             "task_fields",
             "task_preview",
             "appliance_task_job", "appliance_task_status", "appliance_task_cancel", "appliance_task_download",
+            "rename_job", "rename_job_status", "rename_job_cancel",
         }
         public_or_self_service = {
             "session_activity",
