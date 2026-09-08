@@ -44,6 +44,8 @@ def execute_read(store, job, config):
             task = get_task(config['task_id'])
             endpoint = config['endpoint_template'] or task.endpoint_template
             vdom = profile.get('default_vdom', 'root')
+            if isinstance(task, ExportTask):
+                client = client.for_display_export()
             with client.pooled() as pooled:
                 if mode == 'objects' and isinstance(task, RenameTask):
                     objects = task.discover_objects(client=pooled, endpoint_template=endpoint, default_vdom=vdom)
@@ -88,6 +90,8 @@ def execute_read(store, job, config):
                             raise ApplianceReadLimitError('Unknown appliance read operation.')
                 else:
                     raise ApplianceReadLimitError('Invalid appliance task.')
+        if getattr(client, 'response_warnings', []):
+            data['response_warnings'] = list(client.response_warnings)
         if len(json.dumps(data).encode()) > MAX_UI_BYTES:
             raise ApplianceReadLimitError('The browser result exceeds its 1 MiB envelope. Use a scoped endpoint or a CSV export.')
         if store.finish(job['id'], job['token'], [], data):
