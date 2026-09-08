@@ -118,6 +118,10 @@ def execute_scan(store, job_id, token):
         from .switch_order_jobs import execute_switch_order
         execute_switch_order(store, job, config)
         return
+    if job["tool"] == "fac_cleanup":
+        from .fac_cleanup_jobs import execute_cleanup
+        execute_cleanup(store, job, config)
+        return
     if job["tool"] == "appliance_rename":
         from .rename_jobs import execute_rename
         execute_rename(store, job, config)
@@ -201,7 +205,7 @@ def _record_scan(store, job, config, rows, stats):
 
 def _abort(store, job_id, token, state, error):
     current = store.owned(job_id, token)
-    if current and current["tool"] in {"switch_order", "appliance_rename"}:
+    if current and current["tool"] in {"switch_order", "appliance_rename", "fac_cleanup"}:
         from .switch_order_jobs import interruption_outcome
         state, error = interruption_outcome(store, current, state, error)
     job = store.abort(job_id, token, state, error)
@@ -218,6 +222,10 @@ def record_unsuccessful_scan(store, job, state, error):
     if job["tool"] == "switch_order":
         from .switch_order_jobs import record_switch_outcome
         record_switch_outcome(store, job, state)
+        return
+    if job["tool"] == "fac_cleanup":
+        from .fac_cleanup_jobs import record_cleanup_outcome
+        record_cleanup_outcome(store, job, state)
         return
     if job["tool"] == "appliance_rename":
         from .rename_jobs import record_rename_outcome

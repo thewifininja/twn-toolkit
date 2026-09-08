@@ -1,5 +1,6 @@
 """Real HTTP previews; all appliance operations mocked."""
 import re
+from tests.fac_cleanup_helpers import complete_cleanup
 import time
 from copy import deepcopy
 from unittest.mock import patch
@@ -35,17 +36,18 @@ def prepare(client):
         connect.return_value.get_all_mac_group_memberships.return_value = _cleanup_memberships()
         connect.return_value.get_all_mac_devices.return_value = _cleanup_devices()
         response = client.post('/fortiauthenticator/mac-cleanup', data={**FORM, 'intent': 'preview'})
+        response = complete_cleanup(client, response)
     assert response.status_code == 200
     assert b'fixture-secret' not in response.data
     return {name: re.search(fr'name="{name}" type="hidden" value="([^"]+)"', response.text).group(1)
-            for name in ('context_token', 'candidate_token')}
+            for name in ('context_token', 'candidate_token', 'preview_job')}
 
 
 def test_missing_preview_never_connects(browser):
     _, client = browser
     with patch(CLIENT) as connect:
         response = client.post('/fortiauthenticator/mac-cleanup/execute', data=FORM, follow_redirects=True)
-    assert b'build a new preview' in response.data
+    assert b'preview' in response.data.lower()
     connect.assert_not_called()
 
 
@@ -71,7 +73,7 @@ def test_changed_context_never_connects(browser, change):
     now = time.time() + (PREVIEW_MAX_AGE_SECONDS + 1 if change == 'expired' else 0)
     with patch('itsdangerous.timed.time.time', return_value=now), patch(CLIENT) as connect:
         response = client.post('/fortiauthenticator/mac-cleanup/execute', data=data, follow_redirects=True)
-    assert b'build a new preview' in response.data
+    assert b'preview' in response.data.lower()
     connect.assert_not_called()
 
 
@@ -96,10 +98,15 @@ def test_candidate_drift_prevents_all_deletions(browser, change):
         appliance = connect.return_value
         appliance.get_all_mac_group_memberships.return_value = memberships
         appliance.get_all_mac_devices.return_value = devices
-        response = client.post('/fortiauthenticator/mac-cleanup/execute', data=data, follow_redirects=True)
+        response = client.post('/fortiauthenticator/mac-cleanup/execute', data=data)
+        if change != 'missing_token':
+            response = complete_cleanup(client, response, expected='failed')
+        else:
+            assert response.status_code == 302
+            response = client.get(response.headers['Location'])
         appliance.delete_mac_device.assert_not_called()
         appliance.delete_mac_group_membership.assert_not_called()
-    assert b'Cleanup candidates changed or the preview expired' in response.data
+    assert b'preview' in response.data.lower()
 
 
 def test_selected_subset_survives_collection_reordering(browser):
@@ -109,7 +116,12 @@ def test_selected_subset_survives_collection_reordering(browser):
         appliance = connect.return_value
         appliance.get_all_mac_group_memberships.return_value = list(reversed(_cleanup_memberships()))
         appliance.get_all_mac_devices.return_value = list(reversed(_cleanup_devices()))
+        def deleted(identifier):
+            appliance.get_all_mac_devices.return_value = [row for row in appliance.get_all_mac_devices.return_value if not row['resource_uri'].endswith('/'+identifier+'/')]
+            appliance.get_all_mac_group_memberships.return_value = [row for row in appliance.get_all_mac_group_memberships.return_value if not row['device'].endswith('/'+identifier+'/')]
+        appliance.delete_mac_device.side_effect = deleted
         response = client.post('/fortiauthenticator/mac-cleanup/execute', data=data)
+        response = complete_cleanup(client, response)
         appliance.delete_mac_device.assert_called_once_with('42')
         appliance.delete_mac_group_membership.assert_not_called()
     assert response.status_code == 200

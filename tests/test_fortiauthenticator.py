@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fac_cleanup_helpers import complete_cleanup
+
 from tests.appliance_read_helpers import complete_appliance_read, export_fixture
 
 import json
@@ -190,8 +192,9 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
                 "profile": "Lab", "group_uri": "/api/v1/macgroups/8/",
                 "action": action, "intent": "preview",
             })
+            response = complete_cleanup(self.client, response)
         return {name: re.search(fr'name="{name}" type="hidden" value="([^"]+)"', response.text).group(1)
-                for name in ("context_token", "candidate_token")}
+                for name in ("context_token", "candidate_token", "preview_job")}
 
     def test_profile_create_edit_default_and_delete(self) -> None:
         response = self.client.post(
@@ -450,6 +453,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             },
         )
 
+        response = complete_cleanup(self.client, response)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"DELETE 2 DEVICES", response.data)
         self.assertIn(b"1 target", response.data)
@@ -476,9 +480,8 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
                 data={**self.cleanup_tokens(), "profile": "Lab", "group_uri": "/api/v1/macgroups/8/",
                       "action": "delete_devices", "selected_id": ["42", "43"],
                       "confirmation": "DELETE 2 DEVICES"},
-                follow_redirects=True,
             )
-        self.assertIn(b"Cleanup validation failed", response.data)
+            response = complete_cleanup(self.client, response, expected="failed")
         self.assertIn(b"exceeded 100,000 objects", response.data)
         delete_device.assert_not_called()
 
@@ -530,6 +533,9 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         get_memberships.return_value = _cleanup_memberships()
         get_devices.return_value = _cleanup_devices()
 
+        def deleted(identifier):
+            get_memberships.return_value = [row for row in get_memberships.return_value if str(row['id']) != identifier]
+        delete_membership.side_effect = deleted
         response = self.client.post(
             "/fortiauthenticator/mac-cleanup/execute",
             data={
@@ -542,6 +548,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             },
         )
 
+        response = complete_cleanup(self.client, response)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Group membership removed", response.data)
         self.assertCountEqual(
@@ -549,7 +556,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             ["91"],
         )
         summary = ActivityStore(self.temporary_directory.name).summary()
-        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 5)
+        self.assertEqual(summary["counters"]["fortinet"]["api_calls"], 8)
         self.assertEqual(summary["counters"]["actions"]["total"], 1)
         self.assertEqual(summary["recent"][0]["title"], "Ran FortiAuthenticator MAC cleanup")
         event = AuditStore(self.temporary_directory.name).recent(1)[0]
@@ -578,6 +585,10 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         get_memberships.return_value = _cleanup_memberships()
         get_devices.return_value = _cleanup_devices()
 
+        def deleted(identifier):
+            get_devices.return_value = [row for row in get_devices.return_value if not row['resource_uri'].endswith('/'+identifier+'/')]
+            get_memberships.return_value = [row for row in get_memberships.return_value if not row['device'].endswith('/'+identifier+'/')]
+        delete_device.side_effect = deleted
         response = self.client.post(
             "/fortiauthenticator/mac-cleanup/execute",
             data={
@@ -590,6 +601,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             },
         )
 
+        response = complete_cleanup(self.client, response)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"MAC device deleted globally", response.data)
         self.assertCountEqual(

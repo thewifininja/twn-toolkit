@@ -215,241 +215,23 @@ def register_fortiauthenticator_routes(
     from .fac_inventory_routes import register_fac_inventory_routes
     register_fac_inventory_routes(app, profile_store)
 
-    @app.route("/fortiauthenticator/mac-cleanup", methods=["GET", "POST"])
+    from .fac_cleanup_routes import register_cleanup_jobs, queue_cleanup, recent_cleanup_links
+    from .diagnostic_routes import diagnostic_store
+    register_cleanup_jobs(app, profile_store)
+
+    @app.route('/fortiauthenticator/mac-cleanup', methods=['GET', 'POST'])
     def fortiauthenticator_mac_cleanup():
-        profiles = profile_store.all()
-        selected_name = request.form.get("profile", "") if request.method == "POST" else ""
-        selected_group_uri = request.form.get("group_uri", "") if request.method == "POST" else ""
-        selected_action = request.form.get("action", "remove_memberships")
-        groups: list[dict[str, Any]] = []
-        preview: dict[str, Any] | None = None
+        if request.method == 'POST':
+            mode = 'preview' if request.form.get('intent') == 'preview' else 'groups'
+            return queue_cleanup(app, profile_store.get(request.form.get('profile', '')), mode)
+        return render_template('fortiauthenticator/mac_cleanup.html', profiles=profile_store.all(),
+            groups=[], preview=None, selected_name='', selected_group_uri='', selected_action='remove_memberships',
+            preview_minutes=PREVIEW_MAX_AGE_SECONDS//60, appliance_recent=recent_cleanup_links())
 
-        if request.method == "POST":
-            suppress_audit_event()
-            profile = profile_store.get(selected_name)
-            if not profile:
-                flash("Select a valid FortiAuthenticator profile.", "error")
-            else:
-                client = FortiAuthenticatorClient.from_profile(profile)
-                try:
-                    memberships = client.get_all_mac_group_memberships()
-                    groups = _mac_groups(memberships)
-                    api_calls = 1
-                    if request.form.get("intent") == "preview":
-                        if selected_action not in {"remove_memberships", "delete_devices"}:
-                            raise FortiAuthenticatorError("Select a valid cleanup action.")
-                        if selected_group_uri not in {group["uri"] for group in groups}:
-                            raise FortiAuthenticatorError("Select a valid MAC group.")
-                        devices = client.get_all_mac_devices()
-                        api_calls += 1
-                        preview = _build_mac_cleanup_preview(
-                            memberships,
-                            devices,
-                            selected_group_uri,
-                            selected_action,
-                        )
-                        context = _cleanup_preview_context(profile, selected_group_uri, selected_action)
-                        preview["context_token"] = issue_bound_preview("mac-cleanup-context-v1", context)
-                        preview["candidate_token"] = issue_bound_preview(
-                            "mac-cleanup-candidates-v1", {**context, "targets": preview["targets"],
-                                                         "group_name": preview["group_name"]},
-                        )
-                except FortiAuthenticatorError as exc:
-                    _record_fortinet_api_activity(
-                        "Previewed FortiAuthenticator MAC cleanup",
-                        f"{selected_name}: failed",
-                        failures=1,
-                        count_action=False,
-                    )
-                    flash(f"Cleanup preview failed: {exc}", "error")
-                else:
-                    _record_fortinet_api_activity(
-                        "Previewed FortiAuthenticator MAC cleanup",
-                        f"{selected_name}: {len(groups)} groups",
-                        api_calls=api_calls,
-                        count_action=False,
-                    )
-
-        return render_template(
-            "fortiauthenticator/mac_cleanup.html",
-            profiles=profiles,
-            groups=groups,
-            selected_name=selected_name,
-            selected_group_uri=selected_group_uri,
-            selected_action=selected_action,
-            preview=preview,
-            preview_limit=500,
-            preview_minutes=PREVIEW_MAX_AGE_SECONDS // 60,
-        )
-
-    @app.post("/fortiauthenticator/mac-cleanup/execute")
+    @app.post('/fortiauthenticator/mac-cleanup/execute')
     def execute_fortiauthenticator_mac_cleanup():
-        profile = profile_store.get(request.form.get("profile", ""))
-        group_uri = request.form.get("group_uri", "")
-        action = request.form.get("action", "")
-        confirmation = request.form.get("confirmation", "").strip()
-        requested_ids = list(
-            dict.fromkeys(
-                value.strip()
-                for value in request.form.getlist("selected_id")
-                if value.strip()
-            )
-        )
-        if not profile or action not in {"remove_memberships", "delete_devices"}:
-            flash("Cleanup request is invalid. Build a new preview.", "error")
-            return redirect(url_for("fortiauthenticator_mac_cleanup"))
-
-        context = _cleanup_preview_context(profile, group_uri, action)
-        if not valid_bound_preview(request.form.get("context_token", ""), "mac-cleanup-context-v1", context):
-            _annotate_mac_cleanup(profile, group_uri, action, outcome="aborted_stale_preview",
-                                  requested_count=len(requested_ids))
-            flash("Cleanup preview expired or its target changed. Nothing was changed; build a new preview.", "error")
-            return redirect(url_for("fortiauthenticator_mac_cleanup"))
-
-        client = FortiAuthenticatorClient.from_profile(profile)
-        try:
-            memberships = client.get_all_mac_group_memberships()
-            if group_uri not in {group["uri"] for group in _mac_groups(memberships)}:
-                raise FortiAuthenticatorError("The selected MAC group is no longer available.")
-            devices = client.get_all_mac_devices()
-            preview = _build_mac_cleanup_preview(memberships, devices, group_uri, action)
-        except FortiAuthenticatorError as exc:
-            _record_fortinet_api_activity(
-                "Ran FortiAuthenticator MAC cleanup",
-                f"{profile['name']}: validation failed",
-                api_calls=2,
-                failures=1,
-            )
-            _annotate_mac_cleanup(
-                profile,
-                group_uri,
-                action,
-                outcome="validation_failed",
-                requested_count=len(requested_ids),
-                status_code=exc.status_code,
-            )
-            flash(f"Cleanup validation failed: {exc}", "error")
-            return redirect(url_for("fortiauthenticator_mac_cleanup"))
-
-        if not valid_bound_preview(
-            request.form.get("candidate_token", ""), "mac-cleanup-candidates-v1",
-            {**context, "targets": preview["targets"], "group_name": preview["group_name"]},
-        ):
-            _annotate_mac_cleanup(profile, group_uri, action, outcome="aborted_stale_preview",
-                                  requested_count=len(requested_ids), group_name=preview["group_name"])
-            flash("Cleanup candidates changed or the preview expired. Nothing was changed; build a new preview.", "error")
-            return redirect(url_for("fortiauthenticator_mac_cleanup"))
-
-        if not preview["targets"]:
-            _annotate_mac_cleanup(
-                profile,
-                group_uri,
-                action,
-                outcome="aborted_no_targets",
-                requested_count=len(requested_ids),
-                group_name=preview["group_name"],
-            )
-            flash("No matching records remain. Nothing was changed.", "error")
-            return redirect(url_for("fortiauthenticator_mac_cleanup"))
-        if not requested_ids:
-            _annotate_mac_cleanup(
-                profile,
-                group_uri,
-                action,
-                outcome="aborted_no_selection",
-                requested_count=0,
-                group_name=preview["group_name"],
-            )
-            flash("Select at least one device. Nothing was changed.", "error")
-            return redirect(url_for("fortiauthenticator_mac_cleanup"))
-
-        id_key = "membership_id" if action == "remove_memberships" else "device_id"
-        targets_by_id = {target[id_key]: target for target in preview["targets"]}
-        stale_ids = [identifier for identifier in requested_ids if identifier not in targets_by_id]
-        if stale_ids:
-            _annotate_mac_cleanup(
-                profile,
-                group_uri,
-                action,
-                outcome="aborted_stale_preview",
-                requested_count=len(requested_ids),
-                target_count=len(targets_by_id),
-                group_name=preview["group_name"],
-            )
-            flash(
-                "The selected targets changed after the preview. Nothing was changed; build a new preview.",
-                "error",
-            )
-            return redirect(url_for("fortiauthenticator_mac_cleanup"))
-
-        targets = [targets_by_id[identifier] for identifier in requested_ids]
-        expected_confirmation = _cleanup_confirmation(action, len(targets))
-        if confirmation != expected_confirmation:
-            _annotate_mac_cleanup(
-                profile,
-                group_uri,
-                action,
-                outcome="aborted_confirmation",
-                requested_count=len(requested_ids),
-                target_count=len(targets),
-                group_name=preview["group_name"],
-            )
-            flash(
-                f"Confirmation did not match. Nothing was changed. Expected: {expected_confirmation}",
-                "error",
-            )
-            return redirect(url_for("fortiauthenticator_mac_cleanup"))
-
-        results = []
-        for target in targets:
-            try:
-                if action == "remove_memberships":
-                    client.delete_mac_group_membership(target["membership_id"])
-                else:
-                    client.delete_mac_device(target["device_id"])
-            except FortiAuthenticatorError as exc:
-                results.append({**target, "status": "error", "message": str(exc)})
-            else:
-                operation = (
-                    "Group membership removed."
-                    if action == "remove_memberships"
-                    else "MAC device deleted globally."
-                )
-                results.append({**target, "status": "success", "message": operation})
-
-        failures = sum(1 for result in results if result["status"] == "error")
-        _record_fortinet_api_activity(
-            "Ran FortiAuthenticator MAC cleanup",
-            f"{profile['name']}: {len(targets) - failures} of {len(targets)} succeeded",
-            api_calls=2 + len(targets),
-            failures=failures,
-        )
-        success_count = len(targets) - failures
-        outcome = (
-            "succeeded"
-            if not failures
-            else "partial"
-            if success_count
-            else "failed"
-        )
-        _annotate_mac_cleanup(
-            profile,
-            group_uri,
-            action,
-            outcome=outcome,
-            requested_count=len(requested_ids),
-            target_count=len(targets),
-            success_count=success_count,
-            failure_count=failures,
-            group_name=preview["group_name"],
-        )
-        return render_template(
-            "fortiauthenticator/mac_cleanup_results.html",
-            action=action,
-            group_name=preview["group_name"],
-            profile=profile,
-            results=results,
-        )
+        reviewed = diagnostic_store().get(request.form.get('preview_job', ''), g.current_user['id'])
+        return queue_cleanup(app, profile_store.get(request.form.get('profile', '')), 'apply', reviewed=reviewed)
 
 
 def _resource_id(resource_uri: str) -> str:
@@ -476,8 +258,9 @@ def _mac_groups(memberships: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(groups.values(), key=lambda group: (group["name"].lower(), group["uri"]))
 
 
-def _cleanup_preview_context(profile, group_uri, action):
-    return {"profile": profile, "group_uri": group_uri, "action": action}
+def _cleanup_preview_context(profile, group_uri, action, target_revision=""):
+    return {"profile": profile, "group_uri": group_uri, "action": action,
+            **({"target_revision": target_revision} if target_revision else {})}
 
 
 def _build_mac_cleanup_preview(
