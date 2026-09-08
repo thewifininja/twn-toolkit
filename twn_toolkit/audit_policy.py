@@ -92,6 +92,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "run_distributed_system_identity",
         "save_access_profile",
         "save_automation",
+        "create_guided_automation",
         "save_automation_action",
         "save_automation_condition",
         "save_automation_schedule",
@@ -267,6 +268,7 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
     {
         # Frequent interaction metadata; authentication lifecycle is audited separately.
         "session_activity",
+        "preview_guided_automation",
         # The relay itself does not perform the operation. The agent's native
         # endpoint records the delegated administrator and its local mutation.
         "agent_ui",
