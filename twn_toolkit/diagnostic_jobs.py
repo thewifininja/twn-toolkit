@@ -79,6 +79,8 @@ class DiagnosticJobStore:
             self._prune(db, policy)
             from .certificate_jobs import scrub_certificate_inputs
             scrub_certificate_inputs(self, db)
+            from .bulk_ssh_jobs import scrub_inputs
+            scrub_inputs(self, db)
         from .diagnostic_artifacts import FAMILIES, cleanup_artifacts
         for family in FAMILIES:
             cleanup_artifacts(self, family)
@@ -92,7 +94,7 @@ class DiagnosticJobStore:
             logging.getLogger(__name__).warning("Upload staging cleanup failed: %s", type(exc).__name__)
 
     def enqueue(self, *, user_id, config, tool="tcp_scan", request_key=None):
-        if tool not in {"certificate_test", "certificate_enroll", "certificate_collect", "iperf_client", "tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export", "appliance_read", "switch_order", "appliance_rename", "fac_cleanup"} or not user_id:
+        if tool not in {"bulk_ssh", "certificate_test", "certificate_enroll", "certificate_collect", "iperf_client", "tcp_scan", "dns", "transfer", "wireless_history", "fac_inventory_devices", "fac_inventory_memberships", "case_export", "appliance_read", "switch_order", "appliance_rename", "fac_cleanup"} or not user_id:
             raise ValueError("Invalid diagnostic request.")
         policy = self.policy.get()
         if tool in {"fac_inventory_devices", "fac_inventory_memberships", "appliance_read"}:
@@ -105,7 +107,7 @@ class DiagnosticJobStore:
             from .transfer_deadlines import TransferPolicy
             config = {**config, "transfer_policy": asdict(TransferPolicy.from_settings(policy))}
         raw = json.dumps(config, separators=(",", ":"), allow_nan=False)
-        if len(raw.encode()) > 64 * 1024:
+        if len(raw.encode()) > (2 * 1024 * 1024 if tool == "bulk_ssh" else 64 * 1024):
             raise ValueError("Diagnostic configuration exceeds the storage envelope.")
         job_id = secrets.token_hex(16)
         sealed = self.cipher.seal(raw, job_id + ":diagnostic-config")
@@ -130,6 +132,9 @@ class DiagnosticJobStore:
             # Reserve headroom for this queue's active result envelopes, including
             # encryption/journal overhead. Other artifact writers remain separate.
             reserved = (active + 1) * 32 * 1024**2
+            # Bulk SSH retains a larger, paged, encrypted host-output envelope.
+            ssh_active = db.execute("SELECT COUNT(*) FROM diagnostic_jobs WHERE tool='bulk_ssh' AND (state IN ('queued','running','cancel_requested') OR token!='')").fetchone()[0]
+            reserved += (ssh_active + int(tool == 'bulk_ssh')) * 128 * 1024**2
             if tool == "transfer":
                 reserved += 2 * config["transfer_policy"]["run_bytes"]
             for queued in db.execute("SELECT id,config FROM diagnostic_jobs WHERE tool='transfer' AND state IN ('queued','running','cancel_requested')"):
@@ -155,7 +160,7 @@ class DiagnosticJobStore:
                 db.execute("INSERT INTO diagnostic_receipts VALUES (?,?,?,?)",
                            # Signed timestamps use whole seconds with inclusive
                            # max_age. Retain through their last valid second.
-                           (request_key, user_id, job_id, time.time() + PREVIEW_MAX_AGE_SECONDS + 1))
+                           (request_key, user_id, job_id, time.time() + (1800 if tool == "bulk_ssh" else PREVIEW_MAX_AGE_SECONDS) + 1))
         return job_id
 
     def claim(self):
@@ -204,6 +209,9 @@ class DiagnosticJobStore:
             raise ValueError("Invalid diagnostic outcome.")
         with self.connect(write=True) as db:
             previous = db.execute("SELECT * FROM diagnostic_jobs WHERE id=? AND token=? AND state IN ('running','cancel_requested')", (job_id, token)).fetchone()
+            if previous and previous["tool"] == "bulk_ssh":
+                from .bulk_ssh_jobs import interruption_state as ssh_interruption_state
+                state = ssh_interruption_state(self, db, job_id, state)
             if previous and previous["tool"] == "certificate_enroll":
                 from .certificate_jobs import interruption_state
                 state = interruption_state(self, dict(previous), state)
@@ -216,6 +224,8 @@ class DiagnosticJobStore:
             db.execute("UPDATE diagnostic_jobs SET token='' WHERE id=? AND token=? AND completed IS NOT NULL", (job_id, token))
             from .certificate_jobs import scrub_certificate_inputs
             scrub_certificate_inputs(self, db, job_id)
+            from .bulk_ssh_jobs import scrub_inputs
+            scrub_inputs(self, db, job_id)
 
     def recover(self):
         # Called only by the singleton scheduler at startup. Never replay work
@@ -225,11 +235,16 @@ class DiagnosticJobStore:
             db.execute("UPDATE diagnostic_jobs SET state='unknown', error='Scheduler restarted before confirming completion. This run was not replayed.', completed=?, token='' WHERE state IN ('running','cancel_requested')", (time.time(),))
             from .certificate_jobs import interruption_state
             for row in previous:
+                if row["tool"] == "bulk_ssh":
+                    from .bulk_ssh_jobs import interruption_state as ssh_interruption_state
+                    db.execute("UPDATE diagnostic_jobs SET state=? WHERE id=?", (ssh_interruption_state(self, db, row['id'], 'unknown'), row['id']))
                 if row["tool"] == "certificate_enroll":
                     db.execute("UPDATE diagnostic_jobs SET state=? WHERE id=?", (interruption_state(self, row, "unknown"), row["id"]))
             db.execute("UPDATE diagnostic_jobs SET token='' WHERE completed IS NOT NULL")
             from .certificate_jobs import scrub_certificate_inputs
             scrub_certificate_inputs(self, db)
+            from .bulk_ssh_jobs import scrub_inputs
+            scrub_inputs(self, db)
             return previous
 
     def progress(self, job_id, token, summary):

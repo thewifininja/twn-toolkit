@@ -1424,21 +1424,24 @@ class NetworkToolTests(unittest.TestCase):
                         "confirm_execution": "on",
                     },
                 )
+            self.assertEqual(response.status_code, 303)
+            ssh_run.assert_not_called()
+            from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+            from twn_toolkit.bulk_ssh_jobs import plans_for
+            from tests.test_bulk_ssh_jobs import complete
+            store = DiagnosticJobStore(instance)
+            queued = store.get(response.location.rsplit('/', 1)[-1], 'test-user')
+            self.assertEqual(plans_for(queued['config'])[0]['host'], 'switch-1')
+            self.assertTrue(queued['config']['allow_legacy_algorithms'])
+            with patch('twn_toolkit.network_tools._ssh_host_connection', return_value={
+                'host': 'switch-1', 'host_label': 'Closet Switch', 'status': 'success', 'output': 'ok'
+            }):
+                complete(store)
+            response = client.get(response.location)
             self.assertIn(b"ok", response.data)
             self.assertIn(b"Closet Switch", response.data)
-            self.assertIn(b'data-address="switch-1"', response.data)
             self.assertNotIn(b"not-rendered", response.data)
-            self.assertIn(b"Expand all", response.data)
-            self.assertIn(b"data-ssh-toggle-all", response.data)
-            self.assertIn(b"Download all results", response.data)
-            self.assertIn(b"Download this host", response.data)
-            self.assertIn(b"multi-ssh-export.js", response.data)
-            self.assertEqual(
-                ssh_run.call_args.args[0][0]["host"],
-                "switch-1",
-            )
-            self.assertTrue(ssh_run.call_args.kwargs["allow_legacy_algorithms"])
-            self.assertEqual(ssh_run.call_args.kwargs["instance_path"], instance)
+            self.assertIn(b"Download retained results", response.data)
             ssh_event = AuditStore(instance).recent(1)[0]
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
             self.assertEqual(

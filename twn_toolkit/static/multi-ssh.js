@@ -282,7 +282,7 @@
 
   runForm.addEventListener("submit", (event) => {
     const action = event.submitter?.value;
-    if (["preview", "run"].includes(action) && !runbook?.querySelector("[data-ssh-runbook-action]")) {
+    if (["preview", "run"].includes(action) && runbook && !runbook.querySelector("[data-ssh-runbook-action]")) {
       event.preventDefault();
       summary?.scrollIntoView({ block: "nearest" });
       return;

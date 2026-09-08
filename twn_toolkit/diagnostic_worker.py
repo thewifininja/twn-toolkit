@@ -71,7 +71,7 @@ class DiagnosticScheduler:
             if not job:
                 break
             process = None
-            owned_group = job["tool"] == "iperf_client"
+            owned_group = job["tool"] in {"iperf_client", "bulk_ssh"}
             try:
                 process = subprocess.Popen(
                     [sys.executable, "-m", "twn_toolkit.diagnostic_worker",
@@ -130,6 +130,10 @@ def execute_scan(store, job_id, token):
     if job["tool"].startswith("certificate_"):
         from .certificate_jobs import execute_certificate
         execute_certificate(store, job, config)
+        return
+    if job["tool"] == "bulk_ssh":
+        from .bulk_ssh_jobs import execute_ssh
+        execute_ssh(store, job, config)
         return
     if job["tool"] == "iperf_client":
         from .iperf_client_jobs import execute_iperf_client
@@ -243,6 +247,10 @@ def record_unsuccessful_scan(store, job, state, error):
     if job["tool"].startswith("certificate_"):
         from .certificate_jobs import record_certificate_outcome
         record_certificate_outcome(store, job, state, error)
+        return
+    if job["tool"] == "bulk_ssh":
+        from .bulk_ssh_jobs import record_outcome
+        record_outcome(store, job, state, error)
         return
     if job["tool"] == "iperf_client":
         from .iperf_client_jobs import record_iperf_client_outcome

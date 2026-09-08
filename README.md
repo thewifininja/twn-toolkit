@@ -154,8 +154,20 @@ The sidebar and Network Tools page use the same functional organization.
   and the compact importer accepts friendly host lists and inclusive IPv4/IPv6
   ranges. Fleet runs support up to 5,000 targets in batches of 50 with at most
   10 simultaneous SSH connections and a bounded aggregate output budget.
-  Credentials remain per-run only, and a signed preview resolves the selected
-  runbook before execution. Older saved command sets migrate into matrix-owned
+  Runs and verified host-key retries are background jobs: leave and return to
+  retained progress, paged host results, and whole-run or per-host downloads.
+  Cancellation stops remaining work; completed hosts remain retained, interrupted
+  commands have an unknown outcome, and unsent hosts are shown as not started.
+  Verify device state before resubmitting uncertain commands; jobs never replay
+  automatically. A signed preview admits one run, so retrying a lost admission
+  response returns the same job; refresh the preview for an intentional new run.
+  Credentials use encrypted temporary job storage and are removed after the
+  worker stops. Local access is rechecked before each host; delegated Agent runs
+  use the authority accepted by the Mainframe at admission. Jobs obey the shared
+  diagnostic deadline and retention settings, a 2 MiB configuration envelope,
+  and a 64 MiB retained-result envelope. Large host output is visibly shortened
+  where necessary; browser previews are smaller than retained downloads.
+  A signed preview resolves the selected runbook before execution. Older saved command sets migrate into matrix-owned
   actions when they contain saved targets and otherwise remain available as
   optional copy sources.
 - **Bulk Transfer** — fetch files concurrently over SFTP, SCP, or FTP into the
