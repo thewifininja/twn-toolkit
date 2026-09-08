@@ -36,7 +36,7 @@
       if (data.endpoint_used) {
         endpointInput.value = data.endpoint_used;
       }
-      status.textContent = `Loaded ${data.fields.length} fields from ${data.row_count} row(s). Select, reorder, then apply.`;
+      status.textContent = `Loaded ${data.fields.length} fields from ${data.row_count} row(s). Select, reorder, then apply. ${(data.response_warnings || []).join(' ')}`;
     } catch (error) {
       status.textContent = error.message;
       fieldList.innerHTML = "";
@@ -68,7 +68,7 @@
       if (data.endpoint_used) {
         endpointInput.value = data.endpoint_used;
       }
-      previewStatus.textContent = `${data.preview_count} of ${data.row_count} row(s) shown using ${data.endpoint_used}.${data.fields_clipped ? " Long values shortened for preview." : ""} CSV exports retain full values.`;
+      previewStatus.textContent = `${data.preview_count} of ${data.row_count} row(s) shown using ${data.endpoint_used}.${data.fields_clipped ? " Long values shortened for preview." : ""} CSV exports retain full values. ${(data.response_warnings || []).join(' ')}`;
     } catch (error) {
       previewStatus.textContent = error.message;
     } finally {

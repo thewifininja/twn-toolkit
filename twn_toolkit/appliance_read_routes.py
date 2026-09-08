@@ -105,8 +105,10 @@ def register_read_routes(app, provider, *, task_routes=False):
 def recent_read_links(provider, task_id=''):
     store = diagnostic_store()
     links = []
+    from .time_settings import resolve_toolkit_timezone, localized_time_values
+    timezone = resolve_toolkit_timezone(store.instance)
     with store.connect() as db:
-        recent = db.execute("SELECT id,state,config FROM diagnostic_jobs WHERE user_id=? AND tool=? ORDER BY created DESC LIMIT 10",
+        recent = db.execute("SELECT id,state,config,created FROM diagnostic_jobs WHERE user_id=? AND tool=? ORDER BY created DESC LIMIT 10",
                             (g.current_user['id'], TOOL)).fetchall()
     for row in recent:
         job = dict(row)
@@ -116,5 +118,7 @@ def recent_read_links(provider, task_id=''):
         prefix = 'appliance_task' if task_id else provider + '_connection'
         args = {'task_id': task_id} if task_id else {}
         links.append({'url': url_for(prefix + '_job', job_id=job['id'], **args),
-                      'id': job['id'], 'state': job['state'], 'mode': config['mode']})
+                      'id': job['id'], 'state': job['state'], 'mode': config['mode'],
+                      'profile_name': config['profile']['name'], 'created': job['created'],
+                      'created_display': localized_time_values(job['created'], timezone)['display']})
     return links

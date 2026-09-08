@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json as json_module
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
@@ -63,6 +64,8 @@ class FortiGateClient:
     verify_tls: bool = True
     timeout: int = DEFAULT_HTTP_TIMEOUT_SECONDS
     _session: requests.Session | None = field(default=None, repr=False, compare=False)
+    _display_bytes: bool = field(default=False, repr=False, compare=False)
+    response_warnings: list[str] = field(default_factory=list, repr=False, compare=False)
 
     @contextmanager
     def pooled(self):
@@ -80,6 +83,10 @@ class FortiGateClient:
             api_key=normalize_api_key(profile["api_key"]),
             verify_tls=profile.get("verify_tls", True),
         )
+
+    def for_display_export(self) -> "FortiGateClient":
+        """Permit visible byte escapes only for read-only display/export data."""
+        return replace(self, _display_bytes=True)
 
     def test_connection(self) -> dict[str, Any]:
         return self.request("GET", "/api/v2/monitor/system/status")
@@ -345,10 +352,29 @@ class FortiGateClient:
             return {}
 
         try:
-            data = json_module.loads(content)
-        except (ValueError, RecursionError) as exc:
+            try:
+                data = json_module.loads(content)
+            except UnicodeDecodeError:
+                if not self._display_bytes or method.upper() != "GET":
+                    raise
+                # Wireless names can contain arbitrary octets. Preserve each bad
+                # byte visibly in read-only exports, not in mutation responses.
+                text = content.decode('utf-8', errors='surrogateescape')
+                text = re.sub(r'[\udc80-\udcff]',
+                              lambda match: '\\\\x' + format(ord(match[0]) - 0xdc00, '02x'), text)
+                data = json_module.loads(text)
+                warning = 'The appliance returned invalid UTF-8 text. Original bytes are shown as \\xNN escapes in previews and CSV files.'
+                if warning not in self.response_warnings:
+                    self.response_warnings.append(warning)
+        except UnicodeDecodeError as exc:
             raise FortiGateError(
-                f"Expected JSON response, got: {content[:200].decode(errors='replace')}"
+                f'FortiGate returned invalid text encoding at byte {exc.start}. No complete response was decoded.'
+            ) from exc
+        except (ValueError, RecursionError) as exc:
+            position = getattr(exc, 'pos', None)
+            detail = f' at character {position}' if position is not None else ''
+            raise FortiGateError(
+                f'FortiGate returned malformed JSON{detail} ({len(content):,} response bytes). No complete response was decoded.'
             ) from exc
         if not isinstance(data, dict):
             raise FortiGateError("Expected a JSON object from FortiGate.")

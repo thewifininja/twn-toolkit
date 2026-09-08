@@ -1,6 +1,23 @@
-APP_VERSION = "0.24.0"
+APP_VERSION = "0.24.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.24.1",
+        "date": "2026-09-08",
+        "title": "Audit hardening and automation feedback",
+        "summary": "Hardens finite jobs, storage and recovery boundaries, and improves retained operator results.",
+        "groups": (
+            {
+                "title": "Reliable operations and retained results",
+                "items": (
+                    "Runs Bulk SSH, appliance changes, certificate operations and exports through supervised jobs with bounded inputs, cancellation and recovery outcomes.",
+                    "Adds friendly Bulk SSH run names, timestamps and active-host progress, and makes recent appliance runs easier to find.",
+                    "Preserves invalid wireless-client text bytes as visible escapes in read-only previews and exports, with an explicit warning.",
+                    "Bounds source reads, export and preview storage, protocol admission and retained histories; corrects single-packet capture statistics.",
+                ),
+            },
+        ),
+    },
     {
         "version": "0.24.0",
         "date": "2026-09-03",

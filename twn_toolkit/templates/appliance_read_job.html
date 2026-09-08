@@ -8,6 +8,7 @@
   {% endif %}
   {% if diagnostic_job.state == 'succeeded' %}
   {% set data = diagnostic_job.summary %}
+  {% for warning in data.response_warnings|default([]) %}<p class="message warning" role="status">{{ warning }}</p>{% endfor %}
   {% if data.recording_warning %}<p class="message error" role="alert">{{ data.recording_warning }}</p>{% endif %}
   {% if data.rows is defined %}<p>{{ data.preview_count }} of {{ data.row_count }} rows shown. {% if data.fields_clipped %}Long values shortened for preview.{% endif %} CSV exports retain full values.</p>
   <div class="preview-table-wrap"><table><thead><tr>{% for column in data.columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead>

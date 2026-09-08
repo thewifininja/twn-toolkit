@@ -124,8 +124,11 @@ def register_rename_jobs(app):
 def recent_rename_links(task_id):
     store = diagnostic_store()
     links = []
+    from .time_settings import resolve_toolkit_timezone, localized_time_values
+    timezone = resolve_toolkit_timezone(store.instance)
     for row in store.recent(g.current_user['id'], TOOL):
         job = store.get(row['id'], g.current_user['id'])
         if job and job['config']['task_id'] == task_id:
-            links.append({**row, 'mode': 'apply', 'url': url_for('rename_job', task_id=task_id, job_id=row['id'])})
+            links.append({**row, 'mode': 'rename', 'profile_name': job['config']['profile']['name'],
+                          'created_display': localized_time_values(row['created'], timezone)['display'], 'url': url_for('rename_job', task_id=task_id, job_id=row['id'])})
     return links

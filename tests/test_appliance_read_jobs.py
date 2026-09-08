@@ -182,3 +182,26 @@ def test_case_recording_failure_is_visible_without_exposing_evidence(browser, mo
     assert b'private evidence detail' not in page.data
     assert store.get(job['id'], 'test-user')['state'] == 'succeeded'
     assert url.encode() in browser.get('/tasks/export-switches').data
+
+
+@pytest.mark.parametrize('mode',['fields','preview','export'])
+def test_wireless_bad_text_is_retained_with_visible_warning(browser,monkeypatch,mode):
+    response=Mock(status_code=200)
+    response.iter_content.side_effect=lambda **kw:[b'{"results":[{"host":"client\xff","ip":"192.0.2.10"}]}']
+    monkeypatch.setattr('twn_toolkit.fortigate.requests.Session.request',lambda *a,**kw:response)
+    queued=browser.post('/tasks/export-wireless-clients/'+('run' if mode=='export' else mode),data={'profile':'Lab','fields':'host,ip'})
+    store,job,url=finish(browser,queued)
+    result=store.get(job['id'],'test-user')
+    assert result['state']=='succeeded'
+    assert 'invalid UTF-8' in result['summary']['response_warnings'][0]
+    assert b'invalid UTF-8' in browser.get(url).data
+    status=browser.get(url.rsplit('/',1)[0]+'/status').json
+    assert status['data']['response_warnings']==result['summary']['response_warnings']
+    if mode=='export':
+        download=browser.get(url.rsplit('/',1)[0]+'/download')
+        assert br'client\xff' in download.data
+    elif mode=='preview':assert result['summary']['rows'][0]['host']==r'client\xff'
+    store.release(job['id'],job['token'])
+    page=browser.get('/tasks/export-wireless-clients').data
+    assert b'<h2>Recent appliance runs</h2>' in page
+    assert b'Lab' in page and b'class="field-note"' in page
