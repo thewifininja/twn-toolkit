@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import io
 import re
+import secrets
 import zipfile
 from typing import Any
 
 from flask import (
     Blueprint,
+    abort,
+    g,
     Response,
     current_app,
     flash,
@@ -17,6 +20,10 @@ from flask import (
     send_file,
     url_for,
 )
+from .certificate_jobs import KINDS, KEY_UPLOAD_BYTES, prepare_certificate, record_certificate_outcome, admission_key
+from .diagnostic_routes import diagnostic_store
+from .ping_investigation import recording_case_id
+
 from .acme_dns import (
     AcmeDnsError,
     AcmeDnsManager,
@@ -48,6 +55,105 @@ from .certificate_automation import (
 
 
 def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
+    def owned_certificate_job(job_id):
+        job = diagnostic_store().get(job_id, str(g.current_user['id']))
+        if not job or job['tool'] not in KINDS:
+            abort(404)
+        return job
+
+    def admit(mode, *, server_id='', managed_id=''):
+        try:
+            key_bytes = b''
+            if mode == 'enroll' and request.form.get('key_source') == 'upload':
+                upload = request.files.get('private_key')
+                key_bytes = upload.read(KEY_UPLOAD_BYTES + 1) if upload and upload.filename else b''
+            store = diagnostic_store()
+            config = prepare_certificate(store, mode, request.form, server_id=server_id, managed_id=managed_id, key_bytes=key_bytes)
+            config.update(username=g.current_user['username'], investigation_id=recording_case_id(current_app.instance_path, str(g.current_user['id'])))
+            nonce = request.form.get('job_nonce', '')
+            if nonce and not re.fullmatch(r'[a-f0-9]{32}', nonce):
+                raise ValueError('Invalid request identity. Reload the request form.')
+            request_key = admission_key(store, nonce, config) if nonce else None
+            job_id = store.enqueue(user_id=str(g.current_user['id']), tool='certificate_' + mode, config=config, request_key=request_key)
+        except (ValueError, OSError) as exc:
+            # JSON form submissions keep passwords, file inputs and draft values
+            # in the browser; none are reflected in the error response.
+            return jsonify(error=str(exc) or 'The request could not be queued.'), 400
+        annotate_tool_run(category='Network tools', action_namespace='certificate_automation.enrollment',
+            tool_name='certificate ' + mode, outcome='queued', details={'operation id': job_id})
+        location = url_for('tools.certificate_job_result', job_id=job_id)
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify(location=location), 202
+        return redirect(location, code=303)
+
+    @tools_bp.get('/certificate-automation/jobs/<job_id>')
+    def certificate_job_result(job_id):
+        job = owned_certificate_job(job_id)
+        # Strict projection: the generic decrypted job includes credentials and
+        # recovery keys, which must never enter template context or status JSON.
+        summary = {key: value for key, value in job['summary'].items() if key in {
+            'stage','label','attempted','settled','disposition','request_id','ca_name','message',
+            'managed_id','version_id','http_status','recording_warning','journal_event',
+            'common_name','dns_names','enrollment_url','template_identifier'}}
+        if job['tool'] == 'certificate_enroll':
+            operation = _store().enrollment_operation(job_id)
+            if operation:
+                summary.update(managed_id=operation['managed_id'], version_id=operation['id'])
+        response = current_app.make_response(render_template('tools/certificate_job.html',
+            job={key:job[key] for key in ('id','state','error','created')}, summary=summary,
+            recoverable=bool(job['summary'].get('private_key_pem') and job['state']=='unknown')))
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @tools_bp.get('/certificate-automation/jobs/<job_id>/status')
+    def certificate_job_status(job_id):
+        job = owned_certificate_job(job_id)
+        response = jsonify(state=job['state'], stage=job['summary'].get('stage', ''))
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @tools_bp.post('/certificate-automation/jobs/<job_id>/cancel')
+    def cancel_certificate_job(job_id):
+        owned_certificate_job(job_id)
+        store = diagnostic_store()
+        cancelled = store.cancel(job_id, str(g.current_user['id']))
+        if cancelled:
+            record_certificate_outcome(store, cancelled, 'cancelled', 'Cancelled before execution.')
+        annotate_tool_run(category='Network tools', action_namespace='certificate_automation.enrollment', tool_name='certificate cancellation', outcome='requested', details={'operation id':job_id})
+        return redirect(url_for('tools.certificate_job_result', job_id=job_id), code=303)
+
+    @tools_bp.get('/certificate-automation/jobs/<job_id>/recovery/<material>')
+    def download_certificate_recovery(job_id, material):
+        job = owned_certificate_job(job_id)
+        field = {'key':'private_key_pem', 'csr':'csr_pem'}.get(material)
+        if job['state'] != 'unknown' or not field or not job['summary'].get(field):
+            abort(404)
+        annotate_audit_event(category='Network tools', action='certificate_automation.material_downloaded', summary='Downloaded certificate recovery material.', resource_id=job_id, details={'material':material})
+        response = Response(job['summary'][field], mimetype='application/x-pem-file')
+        response.headers['Content-Disposition'] = f'attachment; filename="certificate-{job_id}.{material}.pem"'
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @tools_bp.post('/certificate-automation/jobs/<job_id>/reconcile')
+    def reconcile_certificate_job(job_id):
+        job = owned_certificate_job(job_id)
+        if job['tool'] != 'certificate_enroll' or job['state'] != 'unknown' or request.form.get('confirmed') != 'yes':
+            abort(400, 'Confirm CA reconciliation and preservation of any required recovery material.')
+        store = diagnostic_store()
+        # Preserve a bounded disposition record but erase recovery secrets and
+        # allow normal age/count retention. Never resubmit a remote request.
+        summary = {key:value for key,value in job['summary'].items() if key in {'label','request_id','managed_id','version_id','disposition'}}
+        summary.update(stage='Reconciled by owner', reconciled=True)
+        import json
+        with store.connect(write=True) as db:
+            changed = db.execute("UPDATE diagnostic_jobs SET state='failed',error='Reconciled by owner; recovery material discarded.',config=?,summary=? WHERE id=? AND user_id=? AND state='unknown' AND token=''",
+                (store.cipher.seal(json.dumps({'mode':'enroll','username':g.current_user['username']}), job_id+':diagnostic-config'),
+                 store.cipher.seal(json.dumps(summary),job_id+':diagnostic-summary'),job_id,str(g.current_user['id']))).rowcount
+        if not changed:
+            abort(409, 'The worker has not finished releasing this request. Refresh before reconciling.')
+        annotate_tool_run(category='Network tools', action_namespace='certificate_automation.enrollment', tool_name='certificate recovery', outcome='reconciled', details={'operation id':job_id})
+        return redirect(url_for('tools.certificate_job_result', job_id=job_id), code=303)
+
     @tools_bp.get("/certificate-automation")
     def certificate_automation():
         selected_id = request.args.get("certificate", "").strip()
@@ -112,8 +218,17 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
                     for item in managed
                 ),
             }
+        jobs = diagnostic_store()
+        try:
+            recovery_page = max(1, min(1000, int(request.args.get('recovery_page', '1'))))
+        except ValueError:
+            recovery_page = 1
+        with jobs.connect() as db:
+            certificate_jobs = [dict(row) for row in db.execute("SELECT id,state,tool,created FROM diagnostic_jobs WHERE user_id=? AND tool IN ('certificate_test','certificate_enroll','certificate_collect') ORDER BY created DESC LIMIT 10", (str(g.current_user['id']),))]
+            recovery_jobs = [dict(row) for row in db.execute("SELECT id,state,created FROM diagnostic_jobs WHERE user_id=? AND tool='certificate_enroll' AND state='unknown' ORDER BY created DESC LIMIT 21 OFFSET ?", (str(g.current_user['id']), (recovery_page-1)*20))]
         return render_template(
             "tools/certificate_automation.html",
+            certificate_job_api=True, certificate_job_nonce=secrets.token_hex(16), certificate_jobs=certificate_jobs, recovery_jobs=recovery_jobs[:20], recovery_more=len(recovery_jobs)>20, recovery_page=recovery_page,
             certificate_section=certificate_section,
             certificate_profile_editor_api=True,
             credentials=credentials,
@@ -449,34 +564,7 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.post("/certificate-automation/servers/<server_id>/test")
     def test_pki_server(server_id: str):
-        store = _store()
-        profile = store.server_profile(server_id)
-        if not profile:
-            flash("PKI server profile not found.", "error")
-            return _redirect_home(anchor="pki-profiles")
-        try:
-            username, password = _request_credentials(store, profile)
-            status_code = _provider(profile, username, password).test_connection()
-        except (CertificateAutomationError, ValueError) as exc:
-            annotate_profile_tested(
-                category="Network tools",
-                action_namespace="certificate_automation.servers",
-                profile_type="PKI server profile",
-                profile=profile,
-                outcome="failed",
-            )
-            flash(str(exc), "error")
-        else:
-            annotate_profile_tested(
-                category="Network tools",
-                action_namespace="certificate_automation.servers",
-                profile_type="PKI server profile",
-                profile=profile,
-                outcome="succeeded",
-                status_code=status_code,
-            )
-            flash(f"Connected to {profile['name']} successfully.", "success")
-        return _redirect_home(anchor="pki-profiles")
+        return admit('test', server_id=server_id)
 
     @tools_bp.post("/certificate-automation/templates")
     def save_pki_template():
@@ -565,116 +653,11 @@ def register_certificate_automation_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.post("/certificate-automation/enroll")
     def enroll_managed_certificate():
-        store = _store()
-        managed_id = request.form.get("managed_id", "").strip()
-        existing = store.managed_certificate(managed_id) if managed_id else None
-        try:
-            name = _profile_name(request.form.get("name", ""))
-            template = store.template_profile(request.form.get("template_id", "").strip())
-            if not template:
-                raise ValueError("Select a valid certificate template profile.")
-            server = store.server_profile(template["server_id"])
-            if not server:
-                raise ValueError("The template's PKI server profile no longer exists.")
-            common_name, dns_names = normalize_certificate_identity(
-                request.form.get("common_name", ""), request.form.get("dns_names", "")
-            )
-            private_key = _request_private_key(store, existing, int(template["key_size"]))
-            key_pem, csr_pem = build_certificate_request(common_name, dns_names, private_key)
-            username, password = _request_credentials(store, server)
-            result = _provider(server, username, password).enroll(
-                csr_pem,
-                template["template_identifier"],
-                key_pem,
-                common_name,
-                dns_names,
-            )
-            managed = store.save_enrollment(
-                managed_id=managed_id,
-                name=name,
-                server_id=server["id"],
-                template_id=template["id"],
-                common_name=common_name,
-                dns_names=dns_names,
-                private_key_pem=key_pem,
-                result=result,
-            )
-        except (CertificateAutomationError, ValueError) as exc:
-            annotate_tool_run(
-                category="Network tools",
-                action_namespace="certificate_automation.enrollment",
-                tool_name="certificate enrollment",
-                outcome="failed",
-                details={"rotation": bool(existing)},
-            )
-            flash(str(exc), "error")
-            return _redirect_home(anchor="request-certificate")
-        annotate_tool_run(
-            category="Network tools",
-            action_namespace="certificate_automation.enrollment",
-            tool_name="certificate rotation" if existing else "certificate enrollment",
-            outcome=result.status,
-            details={"rotation": bool(existing), "disposition": result.status},
-        )
-        record_current_activity(
-            "TLS",
-            "Rotated managed certificate" if existing else "Enrolled managed certificate",
-            f"{name} · {result.status}",
-            counters={"certificates": {"enrollments": 1}},
-        )
-        flash(
-            f"Certificate request {result.request_id or ''} is {result.status}.".replace("  ", " "),
-            "success" if result.status == "issued" else "warning",
-        )
-        return redirect(
-            url_for(
-                "tools.certificate_automation",
-                section="adcs",
-                certificate=managed["id"],
-            )
-            + "#managed-certificates"
-        )
+        return admit('enroll', managed_id=request.form.get('managed_id', '').strip())
 
     @tools_bp.post("/certificate-automation/managed/<managed_id>/collect")
     def collect_pending_certificate(managed_id: str):
-        store = _store()
-        managed = store.managed_certificate(managed_id)
-        material = store.version_material(managed_id) if managed else None
-        if not managed or not material or material["status"] != "pending":
-            flash("Pending certificate request not found.", "error")
-            return _redirect_home(anchor="managed-certificates")
-        server = store.server_profile(managed["server_id"])
-        try:
-            if not server:
-                raise ValueError("The PKI server profile no longer exists.")
-            username, password = _request_credentials(store, server)
-            result = _provider(server, username, password).retrieve(
-                material["request_id"],
-                material["private_key_pem"],
-                managed["common_name"],
-                managed["dns_names"],
-                ca_name=material["ca_name"],
-            )
-            store.complete_pending_version(managed_id, material["id"], result)
-        except (CertificateAutomationError, ValueError) as exc:
-            flash(str(exc), "error")
-        else:
-            annotate_tool_run(
-                category="Network tools",
-                action_namespace="certificate_automation.collection",
-                tool_name="pending certificate collection",
-                outcome="succeeded",
-                details={"request ID": material["request_id"]},
-            )
-            flash("The pending certificate has been issued and collected.", "success")
-        return redirect(
-            url_for(
-                "tools.certificate_automation",
-                section="adcs",
-                certificate=managed_id,
-            )
-            + "#managed-certificates"
-        )
+        return admit('collect', managed_id=managed_id)
 
     @tools_bp.get("/certificate-automation/managed/<managed_id>/download")
     def download_managed_certificate(managed_id: str):

@@ -100,6 +100,9 @@ class _Session:
     def mount(self, prefix: str, adapter: object) -> None:
         self.mounts.append((prefix, adapter))
 
+    def close(self):
+        self.closed = True
+
 
 class _FailingSession:
     def __init__(self, error: requests.RequestException) -> None:
@@ -646,6 +649,7 @@ class CertificateAutomationRouteTests(unittest.TestCase):
         )
 
         class FakeProvider:
+            session = _Session(_Response(), [])
             def enroll(
                 self,
                 csr_pem: bytes,
@@ -653,7 +657,10 @@ class CertificateAutomationRouteTests(unittest.TestCase):
                 key_pem: bytes,
                 common_name: str,
                 dns_names: list[str],
+                *, before_submit, acknowledged,
             ) -> EnrollmentResult:
+                before_submit()
+                acknowledged(EnrollmentResult('issued', '101', 'Test CA', 'Certificate issued.'))
                 key = serialization.load_pem_private_key(key_pem, password=None)
                 leaf, _chain, ca = _ca_and_leaf(key, dns_names)
                 return EnrollmentResult(
@@ -667,7 +674,7 @@ class CertificateAutomationRouteTests(unittest.TestCase):
                 )
 
         with patch(
-            "twn_toolkit.certificate_automation_routes._provider",
+            "twn_toolkit.certificate_jobs.AdcsWebEnrollmentProvider",
             return_value=FakeProvider(),
         ):
             response = self.client.post(
@@ -682,7 +689,13 @@ class CertificateAutomationRouteTests(unittest.TestCase):
                     "password": "one-time-password",
                 },
             )
-        self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.status_code, 303)
+            from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+            from twn_toolkit.diagnostic_worker import execute_scan
+            jobs = DiagnosticJobStore(self.directory.name)
+            job = jobs.claim()
+            execute_scan(jobs, job['id'], job['token'])
+            self.assertEqual(jobs.get(job['id'],job['user_id'])['state'], 'succeeded')
         managed = store.managed_certificates()[0]
         download = self.client.get(
             f"/tools/certificate-automation/managed/{managed['id']}/download"
@@ -732,19 +745,26 @@ class CertificateAutomationRouteTests(unittest.TestCase):
         )
 
         class FailingProvider:
+            session = _Session(_Response(), [])
             def test_connection(self) -> int:
                 raise CertificateAutomationError(
                     "The PKI server's HTTPS certificate has expired."
                 )
 
         with patch(
-            "twn_toolkit.certificate_automation_routes._provider",
+            "twn_toolkit.certificate_jobs.AdcsWebEnrollmentProvider",
             return_value=FailingProvider(),
         ):
             response = self.client.post(
                 f"/tools/certificate-automation/servers/{server['id']}/test",
                 follow_redirects=True,
             )
+            from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+            from twn_toolkit.diagnostic_worker import execute_scan
+            jobs = DiagnosticJobStore(self.directory.name)
+            job = jobs.claim()
+            execute_scan(jobs, job['id'], job['token'])
+            response = self.client.get('/tools/certificate-automation/jobs/' + job['id'])
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"HTTPS certificate has expired", response.data)
         self.assertNotIn(b"Internal Server Error", response.data)

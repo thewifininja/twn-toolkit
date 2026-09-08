@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Callable
 from urllib.parse import urlsplit, urlunsplit
 
 import requests
@@ -145,6 +145,11 @@ class CertificateAutomationStore:
                 connection.execute(
                     "ALTER TABLE pki_servers ADD COLUMN verify_tls INTEGER NOT NULL DEFAULT 1"
                 )
+            connection.execute("BEGIN IMMEDIATE")
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(certificate_versions)")}
+            if "operation_id" not in columns:
+                connection.execute("ALTER TABLE certificate_versions ADD COLUMN operation_id TEXT")
+            connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS certificate_operation ON certificate_versions(operation_id)")
         os.chmod(self.path, 0o600)
 
     @contextmanager
@@ -152,6 +157,7 @@ class CertificateAutomationStore:
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA synchronous = FULL")
         try:
             yield connection
             connection.commit()
@@ -533,12 +539,20 @@ class CertificateAutomationStore:
         dns_names: list[str],
         private_key_pem: bytes,
         result: EnrollmentResult,
+        operation_id: str = "",
     ) -> dict[str, Any]:
+        if operation_id and not re.fullmatch(r"[a-f0-9]{32}", operation_id):
+            raise ValueError("Invalid enrollment operation identity.")
         now = time.time()
         managed_id = managed_id or self._new_id()
         version_id = self._new_id()
         certificate_details = _stored_certificate_details(result.certificate_pem)
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if operation_id:
+                prior = connection.execute("SELECT managed_id FROM certificate_versions WHERE operation_id=?", (operation_id,)).fetchone()
+                if prior:
+                    return self.managed_certificate(prior["managed_id"]) or {}
             existing = connection.execute(
                 "SELECT created_at FROM managed_certificates WHERE id = ?", (managed_id,)
             ).fetchone()
@@ -573,8 +587,8 @@ class CertificateAutomationStore:
                     INSERT INTO certificate_versions
                         (id, managed_id, status, request_id, ca_name, backend, message,
                          private_key_encrypted, certificate_pem, chain_pem, serial_number,
-                         fingerprint_sha256, not_before, not_after, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         fingerprint_sha256, not_before, not_after, created_at, operation_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         version_id,
@@ -592,11 +606,17 @@ class CertificateAutomationStore:
                         certificate_details["not_before"],
                         certificate_details["not_after"],
                         now,
+                        operation_id or None,
                     ),
                 )
             except sqlite3.IntegrityError as exc:
                 raise ValueError("A managed certificate already uses that name.") from exc
         return self.managed_certificate(managed_id) or {}
+
+    def enrollment_operation(self, operation_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute("SELECT id,managed_id,status,request_id FROM certificate_versions WHERE operation_id=?", (operation_id,)).fetchone()
+        return dict(row) if row else None
 
     def version_material(self, managed_id: str, version_id: str = "") -> dict[str, Any] | None:
         with self._connect() as connection:
@@ -629,12 +649,19 @@ class CertificateAutomationStore:
             raise ValueError("Only an issued certificate can complete a pending request.")
         details = _stored_certificate_details(result.certificate_pem)
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT status FROM certificate_versions WHERE id = ? AND managed_id = ?",
+                """SELECT v.status,v.request_id,v.private_key_encrypted,m.common_name,m.dns_names_json
+                   FROM certificate_versions v JOIN managed_certificates m ON m.current_version_id=v.id
+                   WHERE v.id=? AND v.managed_id=? AND m.id=v.managed_id""",
                 (version_id, managed_id),
             ).fetchone()
             if not row or row["status"] != "pending":
-                raise ValueError("The pending certificate request was not found.")
+                raise ValueError("The pending certificate request was not found or is no longer current.")
+            if row["request_id"] != result.request_id:
+                raise ValueError("The collected certificate request ID changed.")
+            validate_issued_certificate(result.certificate_pem, self._decrypt(row["private_key_encrypted"]),
+                                        row["common_name"], json.loads(row["dns_names_json"]))
             connection.execute(
                 """
                 UPDATE certificate_versions SET
@@ -905,8 +932,10 @@ class AdcsWebEnrollmentProvider:
         password: str,
         *,
         session: requests.Session | None = None,
+        temporary_directory: Path | None = None,
     ) -> None:
         self.profile = profile
+        self.temporary_directory = temporary_directory
         self.username = username
         self.password = password
         self.base_url = validate_enrollment_url(str(profile["enrollment_url"]))
@@ -936,7 +965,7 @@ class AdcsWebEnrollmentProvider:
             yield True
             return
         handle = tempfile.NamedTemporaryFile(
-            mode="w", encoding="ascii", prefix="twn-pki-ca-", suffix=".pem", delete=False
+            mode="w", encoding="ascii", prefix="twn-pki-ca-", suffix=".pem", delete=False, dir=self.temporary_directory
         )
         try:
             handle.write(ca_bundle)
@@ -972,8 +1001,12 @@ class AdcsWebEnrollmentProvider:
         private_key_pem: bytes,
         common_name: str,
         dns_names: list[str],
+        *, before_submit: Callable[[], None] | None = None,
+        acknowledged: Callable[[EnrollmentResult], None] | None = None,
     ) -> EnrollmentResult:
         with self._verify_value() as verify:
+            if before_submit:
+                before_submit()
             try:
                 response = self.session.post(
                     self.base_url + "/certfnsh.asp",
@@ -997,7 +1030,17 @@ class AdcsWebEnrollmentProvider:
                 raise CertificateAutomationError(
                     f"The PKI server returned HTTP {response.status_code} while submitting the request."
                 )
-            status, request_id, ca_name, message = parse_adcs_response(response.text)
+            try:
+                status, request_id, ca_name, message = parse_adcs_response(response.text)
+            except CertificateAutomationError as exc:
+                # A recognizable request ID remains useful even when the
+                # disposition cannot be understood. It is not proof of issuance.
+                if acknowledged:
+                    observed = re.search(r"\bReqID[=: ]+([0-9]{1,32})(?![0-9])", response.text, re.IGNORECASE)
+                    acknowledged(EnrollmentResult("unknown", observed.group(1) if observed else "", message=str(exc)))
+                raise
+            if acknowledged:
+                acknowledged(EnrollmentResult(status, request_id, ca_name, message))
             if status != "issued":
                 return EnrollmentResult(status, request_id, ca_name, message)
             certificate_pem, chain_pem, backend = self._retrieve_issued(
@@ -1095,24 +1138,28 @@ class AdcsWebEnrollmentProvider:
             session.mount(f"https://{netloc}", _DirectAddressAdapter(hostname))
             headers["Host"] = parsed.netloc
         try:
-            response = session.get(
-                url,
-                headers=headers,
-                timeout=self.timeout,
-                verify=verify,
-                allow_redirects=False,
-            )
-        except requests.RequestException as exc:
-            raise CertificateAutomationError(_request_error(exc)) from exc
-        if response.status_code == 401:
-            raise CertificateAutomationError("The PKI server rejected the enrollment credentials.")
-        if response.status_code >= 400:
-            request_id = request_id_from_path(path)
-            raise CertificateAutomationError(
-                f"A PKI backend returned HTTP {response.status_code} "
-                f"while retrieving request {request_id}."
-            )
-        return response.content
+            try:
+                response = session.get(
+                    url,
+                    headers=headers,
+                    timeout=self.timeout,
+                    verify=verify,
+                    allow_redirects=False,
+                )
+            except requests.RequestException as exc:
+                raise CertificateAutomationError(_request_error(exc)) from exc
+            if response.status_code == 401:
+                raise CertificateAutomationError("The PKI server rejected the enrollment credentials.")
+            if response.status_code >= 400:
+                request_id = request_id_from_path(path)
+                raise CertificateAutomationError(
+                    f"A PKI backend returned HTTP {response.status_code} "
+                    f"while retrieving request {request_id}."
+                )
+            return response.content
+        finally:
+            if session is not self.session:
+                session.close()
 
 
 def request_id_from_path(path: str) -> str:

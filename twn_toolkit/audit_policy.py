@@ -176,6 +176,8 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.cancel_port_scanner_job",
         "tools.cancel_dns_job",
         "tools.cancel_iperf_client_job",
+        "tools.cancel_certificate_job",
+        "tools.reconcile_certificate_job",
         "tools.cancel_transfer_job",
         "fortiauthenticator_mac_devices_cancel",
         "fortiauthenticator_mac_group_memberships_cancel",
