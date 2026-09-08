@@ -54,7 +54,7 @@ def interruption_outcome(store, job, state, error):
     except Exception:
         return 'unknown', 'The retained progress could not be decoded. Reconcile the appliance before another run.'
     if summary.get('attempted_moves', 0):
-        return 'unknown', error[:280] + ' Changes may have reached the appliance. Review the retained progress and reconcile its current order; this run was not replayed.'
+        return 'unknown', error[:280] + ' Changes may have reached the appliance. Review the retained progress and reconcile its current state; this run was not replayed.'
     return state, error
 
 

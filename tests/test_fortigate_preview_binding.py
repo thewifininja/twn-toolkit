@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from tests.rename_helpers import complete_rename
+from twn_toolkit.tasks import TaskResult
+
 import io
 import re
 import time
@@ -32,7 +35,7 @@ def entries_form():
 
 def test_confirmation_without_preview_never_executes(browser):
     _, client = browser
-    with patch('twn_toolkit.fortigate_routes.RenameTask.run_entries', return_value=[]) as run:
+    with patch('twn_toolkit.fortigate_routes.RenameTask.run_entries', return_value=[TaskResult(1, 'Lobby AP', 'Lobby AP New', 'root', 'success', 'Updated and verified.')]) as run:
         response = client.post('/tasks/rename-aps/rename', data=entries_form())
     assert response.status_code == 302
     run.assert_not_called()
@@ -61,8 +64,8 @@ def preview(client, form=None):
 def test_matching_preview_executes_exact_reviewed_rows(browser):
     _, client = browser
     token = preview(client)
-    with patch('twn_toolkit.fortigate_routes.RenameTask.run_entries', return_value=[]) as run:
-        response = client.post('/tasks/rename-aps/rename', data={**entries_form(), 'preview_token': token})
+    with patch('twn_toolkit.fortigate_routes.RenameTask.run_entries', return_value=[TaskResult(1, 'Lobby AP', 'Lobby AP New', 'root', 'success', 'Updated and verified.')]) as run:
+        response = complete_rename(client, client.post('/tasks/rename-aps/rename', data={**entries_form(), 'preview_token': token}))
     assert response.status_code == 200
     assert run.call_count == 1
     assert run.call_args.kwargs['dry_run'] is False
@@ -128,7 +131,7 @@ def test_csv_preview_produces_usable_bound_confirmation(browser):
     })
     assert response.status_code == 200
     token = re.search(rb'name="preview_token"[^>]*value="([^"]+)"', response.data)[1].decode()
-    with patch('twn_toolkit.fortigate_routes.RenameTask.run_entries', return_value=[]) as run:
-        response = client.post('/tasks/rename-aps/rename', data={**entries_form(), 'preview_token': token})
+    with patch('twn_toolkit.fortigate_routes.RenameTask.run_entries', return_value=[TaskResult(1, 'Lobby AP', 'Lobby AP New', 'root', 'success', 'Updated and verified.')]) as run:
+        response = complete_rename(client, client.post('/tasks/rename-aps/rename', data={**entries_form(), 'preview_token': token}))
     assert response.status_code == 200
     assert run.call_count == 1

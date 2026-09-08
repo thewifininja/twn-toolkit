@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+
 from typing import Any, Callable
 import secrets
 import time
@@ -124,71 +126,6 @@ def _annotate_switch_order(
     )
 
 
-def _annotate_rename_task(
-    profile: dict[str, Any],
-    task: RenameTask,
-    entries: list[dict[str, str]],
-    results: list[Any],
-    *,
-    dry_run: bool,
-) -> None:
-    if dry_run:
-        suppress_audit_event()
-        return
-    success_count = sum(1 for result in results if result.status == "success")
-    failure_count = sum(1 for result in results if result.status == "error")
-    outcome = (
-        "success"
-        if success_count == len(entries) and not failure_count
-        else "partial"
-        if success_count
-        else "failed"
-    )
-    successful_entries = [
-        entry
-        for entry, result in zip(entries, results)
-        if result.status == "success"
-    ]
-    retained_entries = successful_entries[:100]
-    before = {
-        "objects": [
-            audit_reference(
-                "FortiGate object",
-                entry["identifier"],
-                entry["current_name"] or entry["identifier"],
-            )
-            for entry in retained_entries
-        ]
-    }
-    after = {
-        "objects": [
-            audit_reference("FortiGate object", entry["identifier"], entry["new_name"])
-            for entry in retained_entries
-        ]
-    }
-    annotate_audit_event(
-        category="FortiGate",
-        action="fortigate.objects_renamed",
-        summary=f"Ran {task.label}: {success_count} of {len(entries)} object rename(s) succeeded.",
-        resource_type="fortigate_task",
-        resource_id=task.id,
-        resource_name=task.label,
-        details={
-            "profile": audit_reference("FortiGate profile", profile["name"], profile["name"]),
-            "outcome": outcome,
-            "requested object count": len(entries),
-            "successful object count": success_count,
-            "failed object count": failure_count,
-            "omitted successful object count": max(
-                0, len(successful_entries) - len(retained_entries)
-            ),
-            "VDOMs": sorted({entry["vdom"] for entry in entries})[:100],
-        },
-        before=before,
-        after=after,
-    )
-
-
 def register_fortigate_routes(
     app: Flask,
     *,
@@ -199,6 +136,27 @@ def register_fortigate_routes(
     from .appliance_read_routes import queue_read, register_read_routes, recent_read_links
     from .switch_order_routes import register_switch_order_jobs, queue_switch_order
     register_switch_order_jobs(app)
+    from .rename_routes import register_rename_jobs, queue_rename, bounded_rename_entries, read_rename_csv, recent_rename_links
+    from .rename_jobs import target_key
+    register_rename_jobs(app)
+
+    def rename_preview_response(task, profile, entries, endpoint, *, start_row=1):
+        try:
+            bounded_rename_entries(entries, endpoint)
+            results = task.run_entries(client=None, entries=entries, dry_run=True,
+                                       endpoint_template=endpoint, default_vdom=profile.get('default_vdom', 'root'), start_row=start_row)
+        except ValueError as exc:
+            flash(str(exc), 'error')
+            return redirect(url_for('task_form', task_id=task.id))
+        valid_entries = [entry for entry in entries if entry['identifier'] and entry['new_name']]
+        revision = diagnostic_store().mutation_revision(target_key(profile))
+        suppress_audit_event()
+        _record_fortinet_api_activity('Previewed FortiGate rename task',
+            f"{profile['name']}: {task.label} ({len(entries)} rows)", api_calls=0, count_action=False)
+        return render_template('results.html', entries=valid_entries, profile=profile, task=task,
+            results=results, dry_run=True, endpoint_template=endpoint, target_origin=rename_target(profile),
+            target_revision=revision, preview_expiry_minutes=RENAME_PREVIEW_MAX_AGE_SECONDS // 60,
+            preview_token=issue_rename_preview(task, profile, endpoint, valid_entries, target_revision=revision) if valid_entries else '')
     register_read_routes(app, 'fortigate')
     register_read_routes(app, 'fortigate', task_routes=True)
 
@@ -432,7 +390,7 @@ def register_fortigate_routes(
         if not task:
             flash("Task not found.", "error")
             return redirect(url_for("fortigate_home"))
-        return render_template("task.html", profiles=profile_store.all(), task=task, appliance_recent=recent_read_links('fortigate', task_id))
+        return render_template("task.html", profiles=profile_store.all(), task=task, appliance_recent=recent_read_links('fortigate', task_id) + recent_rename_links(task_id))
 
     @app.get("/tasks/<task_id>/template.csv")
     def task_csv_template(task_id: str):
@@ -460,7 +418,6 @@ def register_fortigate_routes(
         if isinstance(task, RenameTask) and not dry_run:
             return _reject_rename_preview(task, profile)
 
-        client = FortiGateClient.from_profile(profile)
         if isinstance(task, ExportTask):
             return queue_read(app, profile, provider='fortigate', mode='export', task=task)
 
@@ -472,42 +429,13 @@ def register_fortigate_routes(
             flash("Choose a CSV file to import.", "error")
             return redirect(url_for("task_form", task_id=task_id))
 
-        with client.pooled() as pooled_client:
-            results, entries = task.run_with_entries(
-                client=pooled_client,
-                csv_stream=upload.stream,
-                dry_run=dry_run,
-                endpoint_template=endpoint_template or task.endpoint_template,
-                default_vdom=profile.get("default_vdom", "root"),
-            )
-        _record_fortinet_api_activity(
-            "Ran FortiGate rename task",
-            f"{profile['name']}: {task.label} ({len(entries)} row{'s' if len(entries) != 1 else ''})",
-            api_calls=max(1, len(entries)),
-            failures=sum(1 for result in results if result.status == "error"),
-        )
-        _annotate_rename_task(
-            profile,
-            task,
-            entries,
-            results,
-            dry_run=dry_run,
-        )
-
-        return render_template(
-            "results.html",
-            entries=entries if dry_run else None,
-            preview_token=issue_rename_preview(
-                task, profile, endpoint_template or task.endpoint_template, entries,
-            ) if dry_run and entries else "",
-            target_origin=rename_target(profile),
-            preview_expiry_minutes=RENAME_PREVIEW_MAX_AGE_SECONDS // 60,
-            endpoint_template=endpoint_template or task.endpoint_template,
-            profile=profile,
-            task=task,
-            results=results,
-            dry_run=dry_run,
-        )
+        try:
+            entries = read_rename_csv(upload.stream, profile.get('default_vdom', 'root'))
+        except (ValueError, csv.Error) as exc:
+            flash(str(exc), 'error')
+            return redirect(url_for('task_form', task_id=task_id))
+        return rename_preview_response(task, profile, entries,
+                                       endpoint_template or task.endpoint_template, start_row=2)
 
     @app.post("/tasks/<task_id>/objects")
     def task_objects(task_id: str):
@@ -574,45 +502,19 @@ def register_fortigate_routes(
         if not dry_run and not valid_rename_preview(
             request.form.get("preview_token", ""), task, profile,
             endpoint_template or task.endpoint_template, entries,
+            target_revision=request.form.get("target_revision", ""),
         ):
             return _reject_rename_preview(task, profile)
 
-        client = FortiGateClient.from_profile(profile)
-        with client.pooled() as pooled_client:
-            results = task.run_entries(
-                client=pooled_client,
-                entries=entries,
-                dry_run=dry_run,
-                endpoint_template=endpoint_template or task.endpoint_template,
-                default_vdom=profile.get("default_vdom", "root"),
-            )
-        _record_fortinet_api_activity(
-            "Ran FortiGate rename task",
-            f"{profile['name']}: {task.label} ({len(entries)} row{'s' if len(entries) != 1 else ''})",
-            api_calls=max(1, len(entries)),
-            failures=sum(1 for result in results if result.status == "error"),
-        )
-        _annotate_rename_task(
-            profile,
-            task,
-            entries,
-            results,
-            dry_run=dry_run,
-        )
-        return render_template(
-            "results.html",
-            entries=entries if dry_run else None,
-            preview_token=issue_rename_preview(
-                task, profile, endpoint_template or task.endpoint_template, entries,
-            ) if dry_run and entries else "",
-            target_origin=rename_target(profile),
-            preview_expiry_minutes=RENAME_PREVIEW_MAX_AGE_SECONDS // 60,
-            endpoint_template=endpoint_template or task.endpoint_template,
-            profile=profile,
-            task=task,
-            results=results,
-            dry_run=dry_run,
-        )
+        endpoint = endpoint_template or task.endpoint_template
+        try:
+            bounded_rename_entries(entries, endpoint)
+        except ValueError as exc:
+            flash(str(exc), 'error')
+            return redirect(url_for('task_form', task_id=task_id))
+        if dry_run:
+            return rename_preview_response(task, profile, entries, endpoint)
+        return queue_rename(app, task, profile, entries, endpoint)
 
     @app.post("/tasks/<task_id>/fields")
     def task_fields(task_id: str):

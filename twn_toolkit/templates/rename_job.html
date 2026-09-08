@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block content %}
+{% include 'components/diagnostic_job.html' %}
+{% set data = diagnostic_job.summary %}
+<section class="panel form">
+  <h2>Retained rename progress</h2>
+  <p>{{ diagnostic_job.config.profile.name }} · {{ target_origin }}</p>
+  <p>Endpoint: <code>{{ diagnostic_job.config.endpoint }}</code></p>
+  <p>{{ data.completed_moves|default([])|length }} acknowledged renames · {{ data.results|default([])|selectattr('status', 'equalto', 'success')|list|length }} verified.</p>
+  {% if data.recording_warning %}<p class="message error" role="alert">{{ data.recording_warning }}</p>{% endif %}
+  {% if data.in_flight %}<p class="message error">Unconfirmed rename: {{ data.in_flight.identifier }} to {{ data.in_flight.new_name }} in {{ data.in_flight.vdom }}. It may have reached the appliance.</p>{% endif %}
+  <p class="field-note">Cancellation does not undo changes. Interrupted renames are never replayed automatically. Load and review current objects before another apply; unprocessed rows were not sent.</p>
+  <h3>Reviewed changes</h3>
+  <div class="preview-table-wrap"><table><thead><tr><th scope="col">Identifier</th><th scope="col">Reviewed current name</th><th scope="col">New name</th><th scope="col">VDOM</th></tr></thead>
+  <tbody>{% for entry in entries %}<tr><td>{{ entry.identifier }}</td><td>{{ entry.current_name }}</td><td>{{ entry.new_name }}</td><td>{{ entry.vdom }}</td></tr>{% endfor %}</tbody></table></div>
+  {% if results %}<h3>Verified results and errors</h3><div class="preview-table-wrap"><table><thead><tr><th scope="col">Row</th><th scope="col">New name</th><th scope="col">Status</th><th scope="col">Message</th></tr></thead><tbody>{% for result in results %}<tr><td>{{ result.row_number }}</td><td>{{ result.new_name }}</td><td>{{ result.status }}</td><td>{{ result.message }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+  {% if pages > 1 %}<nav class="button-row" aria-label="Rename result pages">{% if page > 1 %}<a class="button-link secondary" href="{{ url_for('rename_job', task_id=task.id, job_id=diagnostic_job.id, page=page-1) }}">Previous page</a>{% endif %}<span>Page {{ page }} of {{ pages }} · up to 50 rows per section</span>{% if page < pages %}<a class="button-link secondary" href="{{ url_for('rename_job', task_id=task.id, job_id=diagnostic_job.id, page=page+1) }}">Next page</a>{% endif %}</nav>{% endif %}
+  <div class="button-row"><a class="button-link secondary" href="{{ url_for('task_form', task_id=task.id) }}">Build another preview</a></div>
+</section>
+<script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
+{% endblock %}
