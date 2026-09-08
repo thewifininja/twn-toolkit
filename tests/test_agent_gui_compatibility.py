@@ -76,7 +76,7 @@ def test_selection_and_stale_context_block_before_queue_and_recover_after_heartb
     response = client.get(f'/agents/{agent_id}/ui/', headers={'Accept':'application/json'})
     assert response.status_code == 409
     response = client.get(f'/agents/{agent_id}/ui/', headers={'Accept':'text/html'})
-    assert response.status_code == 302 and auth.execution_context(user_id) == 'local'
+    assert response.status_code == 302 and auth.execution_context(user_id) == agent_id
     heartbeat(store, agent_id, job_protocol_version=2, gui_protocol_version=2)
     response = client.post('/execution-context', data={'context_id':agent_id, 'next':'/'})
     assert response.status_code == 302 and auth.execution_context(user_id) == agent_id

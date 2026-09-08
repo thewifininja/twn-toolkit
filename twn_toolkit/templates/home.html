@@ -86,7 +86,7 @@
               <span class="workspace-tool-card-arrow" aria-hidden="true">→</span>
             </a>
             <form method="post" action="{{ url_for('toggle_tool_favorite', tool_id=tool.id) }}">
-              <input type="hidden" name="next" value="{{ request.full_path }}">
+              <input type="hidden" name="next" value="{{ request.script_root }}{{ request.full_path }}">
               <button
                 class="workspace-tool-favorite {{ 'active' if tool.id in favorite_ids else '' }}"
                 type="submit"
@@ -290,7 +290,7 @@
             <p>{{ card.secondary }}</p>
             {% if current_user.is_admin %}
               <form method="post" action="{{ url_for('reset_activity_metric', metric=card.metric) }}">
-                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <input type="hidden" name="next" value="{{ request.script_root }}{{ request.full_path }}">
                 <button class="link-button subtle" type="submit">Reset</button>
               </form>
             {% endif %}
@@ -338,7 +338,7 @@
               {% endif %}
               {% if current_user.is_admin and dashboard.scoreboard %}
                 <form method="post" action="{{ url_for('reset_activity_scoreboard') }}">
-                  <input type="hidden" name="next" value="{{ request.full_path }}">
+                  <input type="hidden" name="next" value="{{ request.script_root }}{{ request.full_path }}">
                   <button class="button-link secondary" type="submit">Clear all scores</button>
                 </form>
               {% endif %}
@@ -376,7 +376,7 @@
                     </dl>
                     {% if current_user.is_admin %}
                       <form method="post" action="{{ url_for('reset_activity_user_score', user_id=user.user_id) }}">
-                        <input type="hidden" name="next" value="{{ request.full_path }}">
+                        <input type="hidden" name="next" value="{{ request.script_root }}{{ request.full_path }}">
                         <button class="link-button subtle" type="submit">Clear score</button>
                       </form>
                     {% endif %}

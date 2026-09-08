@@ -12,7 +12,7 @@
       status.textContent = "Saving…";
       try {
         const kind = form.dataset.kind;
-        const response = await fetch(`/tools/radius-test/profiles/${kind}`, {
+        const response = await fetch(`${document.body.dataset.instancePrefix || ""}/tools/radius-test/profiles/${kind}`, {
           method: "POST", body: new FormData(form),
         });
         const payload = await response.json();
@@ -74,7 +74,7 @@
       if (!window.confirm(`Delete profile “${button.dataset.name}”?`)) return;
       const body = new FormData();
       body.set("name", button.dataset.name);
-      const response = await fetch(`/tools/radius-test/profiles/${button.dataset.kind}/delete`, {
+      const response = await fetch(`${document.body.dataset.instancePrefix || ""}/tools/radius-test/profiles/${button.dataset.kind}/delete`, {
         method: "POST",
         body,
       });

@@ -246,7 +246,7 @@ def test_browser_flow_requests_compares_approves_and_installs(tmp_path):
         assert selected.headers["Location"].endswith(
             f"/agents/{enrollment['id']}/ui/tools/multi-ssh"
         )
-        assert mainframe_auth.execution_context(administrator["id"]) == enrollment["id"]
+        assert mainframe_auth.execution_context(administrator["id"]) == "local"
         with ThreadPoolExecutor(max_workers=1) as executor:
             selected_request = executor.submit(
                 mainframe_web.get, selected.headers["Location"]
@@ -271,10 +271,8 @@ def test_browser_flow_requests_compares_approves_and_installs(tmp_path):
         assert b"Bulk SSH" in selected_page.data
         assert f'/agents/{enrollment["id"]}/ui/static/styles.css'.encode() in selected_page.data
         local_navigation = mainframe_web.get("/", headers={"Accept": "text/html"})
-        assert local_navigation.status_code == 302
-        assert local_navigation.headers["Location"].endswith(
-            f"/agents/{enrollment['id']}/ui/"
-        )
+        assert local_navigation.status_code == 200
+        assert b'Welcome' in local_navigation.data or b'TWN Toolkit' in local_navigation.data
 
         remote_dns = mainframe_web.post(
             f"/agents/{enrollment['id']}/tools/dns-response",
@@ -314,7 +312,7 @@ def test_browser_flow_requests_compares_approves_and_installs(tmp_path):
         assert b"192.0.2.10" in dns_page.data
         assert b"12.3 ms" in dns_page.data
 
-        assert mainframe_web.post("/mainframe/system-identity").status_code == 302
+        assert mainframe_web.post("/mainframe/system-identity", data={"agent_id": enrollment["id"]}).status_code == 302
         jobs = mainframe_app.extensions["distributed_job_store"].recent(
             requester_id=administrator["id"]
         )

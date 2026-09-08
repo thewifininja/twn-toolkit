@@ -15,7 +15,7 @@
         This operation is still tracked. Do not resubmit it.
       {% endif %}
     </p>
-    {% if operation.state == 'succeeded' and operation.capability_id == 'system.http.tunnel' and operation.output %}<p><a class="button" href="{{ url_for('distributed_operation_response', job_id=operation.id) }}">View completed response</a></p><p class="field-note">Retrieves the stored response once without repeating the operation. Select its original Agent first.</p>{% endif %}
+    {% if operation.state == 'succeeded' and operation.capability_id == 'system.http.tunnel' and operation.output %}<p><a class="button" href="{{ url_for('distributed_operation_response', job_id=operation.id) }}">View completed response</a></p><p class="field-note">Opens the saved response on its original agent without repeating the operation.</p>{% endif %}
     {% if operation.error %}<p>{{ operation.error }}</p>{% endif %}
     <dl class="detail-list">
       <div><dt>Created</dt><dd>{{ operation.created_display }}</dd></div>
