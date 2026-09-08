@@ -178,3 +178,72 @@ def test_large_artifact_does_not_materialize_archive_in_memory(setup):
     finally:
         tracemalloc.stop()
     assert not stages(app)
+
+
+def test_large_metadata_streams_without_whole_scalar_allocation(setup):
+    import tracemalloc
+    app, run, _ = setup
+    # Allocate input before measuring the serializer, including JSON escaping.
+    value = '\x00😀"\\' * (1024 * 1024)
+    run['results'][0]['summary'] = value
+    store = AutomationStore(app.instance_path, app.secret_key)
+    tracemalloc.start()
+    try:
+        output, _ = _automation_run_archive(store, run)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    try:
+        assert peak < 3 * 1024 * 1024
+        with zipfile.ZipFile(io.BytesIO(output.read())) as archive:
+            assert archive.read('action-1-summary.json') == json.dumps(
+                {'status': 'success', 'summary': value}, indent=2).encode()
+    finally:
+        output.close()
+    assert not stages(app)
+
+
+@pytest.mark.parametrize('route', ['download', 'case'])
+@pytest.mark.parametrize('kind', ['scalar', 'key', 'deep', 'cycle'])
+def test_bad_or_oversized_metadata_releases_archive_and_preserves_source(setup, route, kind):
+    app, run, source = setup
+    original = source.read_bytes()
+    if kind == 'scalar':
+        run['trigger_summary'] = '\x00' * 100_000
+    elif kind == 'key':
+        run['results'][0]['\x00' * 100_000] = 'value'
+    else:
+        value = []
+        if kind == 'deep':
+            for _ in range(66):
+                value = [value]
+        else:
+            value.append(value)
+        run['results'][0]['summary'] = value
+    with patch.object(LocalDatastore, 'upload_limit', return_value=256 * 1024):
+        client = app.test_client()
+        response = (client.get if route == 'download' else client.post)(
+            f'/automations/runs/run-test/{route}')
+    assert response.status_code == 400
+    assert not stages(app)
+    assert source.read_bytes() == original
+
+
+def test_metadata_limit_stops_before_reading_later_artifacts(setup):
+    app, run, _ = setup
+    run['results'][0]['summary'] = '\x00' * 100_000
+    with patch.object(LocalDatastore, 'upload_limit', return_value=256 * 1024), patch.object(
+            AutomationStore, 'run_artifact', side_effect=AssertionError('must stop before artifact')):
+        assert download(app).status_code == 400
+    assert not stages(app)
+
+
+def test_metadata_members_share_the_expanded_budget(setup):
+    app, run, _ = setup
+    run['results'][0]['summary'] = 'a' * 150_000
+    run['results'][0]['output'] = {'endpoints': [{'detail': 'b' * 150_000}]}
+    with patch.object(LocalDatastore, 'upload_limit', return_value=256 * 1024):
+        response = download(app)
+    assert response.status_code == 400
+    assert b'expanded content' in response.data
+    assert not stages(app)
