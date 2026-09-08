@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from export_job_helpers import complete_export
+
 import io
 import json
 from unittest.mock import patch
@@ -605,14 +607,14 @@ def test_admin_can_export_and_import_selected_profile_backups(tmp_path):
     assert b"FortiGate profiles" in page.data
     assert b"Requires encrypted backup" not in page.data
 
-    export = client.post(
+    export = complete_export(client, client.post(
         "/settings/backup/export",
         data={
             "item": ["fortigate_profiles", "ping_profiles"],
             "backup_password": "backup password",
             "confirm_backup_password": "backup password",
         },
-    )
+    ))
     assert export.status_code == 200
     backup = json.loads(export.data)
     assert backup["format"] == "twn-toolkit-encrypted-configuration-backup"
@@ -674,10 +676,10 @@ def test_sensitive_backup_requires_password_and_plain_backup_can_merge(tmp_path)
     )
     assert b"Enter an encryption password for this backup." in blocked.data
 
-    export = client.post(
+    export = complete_export(client, client.post(
         "/settings/backup/export",
         data={"item": ["ping_profiles"]},
-    )
+    ))
     backup = json.loads(export.data)
     assert backup["format"] == "twn-toolkit-configuration-backup"
     assert backup["items"]["ping_profiles"][0]["name"] == "WAN"

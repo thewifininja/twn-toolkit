@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from export_job_helpers import complete_export
+
 import io
 import json
 import tempfile
@@ -75,14 +77,14 @@ class ProfileBackupRouteTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            export = client.post(
+            export = complete_export(client, client.post(
                 "/settings/backup/export",
                 data={
                     "item": ["fortigate_profiles"],
                     "backup_password": "correct password",
                     "confirm_backup_password": "correct password",
                 },
-            )
+            ))
 
             response = client.post(
                 "/settings/backup/inspect",
@@ -121,10 +123,10 @@ class ProfileBackupRouteTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            export = client.post(
+            export = complete_export(client, client.post(
                 "/settings/backup/export",
                 data={"item": ["ping_profiles"]},
-            )
+            ))
             self.assertEqual(export.status_code, 200)
             inspected = client.post(
                 "/settings/backup/inspect",
@@ -191,10 +193,10 @@ class ProfileBackupRouteTests(unittest.TestCase):
             )
             client = app.test_client()
 
-            export = client.post(
+            export = complete_export(client, client.post(
                 "/settings/backup/export",
                 data={"item": ["access_profiles"]},
-            )
+            ))
             self.assertEqual(export.status_code, 200)
             inspected = client.post(
                 "/settings/backup/inspect",

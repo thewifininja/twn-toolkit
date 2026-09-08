@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from export_job_helpers import complete_export
+
 import tempfile
 import unittest
 import io
@@ -2298,7 +2300,7 @@ class AutomationRouteTests(unittest.TestCase):
                     )
                 ],
             )
-            download = client.get(f"/automations/runs/{run_id}/download")
+            download = complete_export(client, client.get(f"/automations/runs/{run_id}/download"))
             self.assertEqual(download.status_code, 200)
             self.assertEqual(download.mimetype, "application/zip")
             with zipfile.ZipFile(io.BytesIO(download.data)) as archive:

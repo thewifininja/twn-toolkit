@@ -159,6 +159,10 @@ def execute_scan(store, job_id, token):
         from .appliance_read import execute_read
         execute_read(store, job, config)
         return
+    if job["tool"] in {"automation_export", "configuration_export"}:
+        from .export_jobs import execute_export
+        execute_export(store, job, config)
+        return
     if job["tool"] == "case_export":
         from .case_export import execute_case_export
         execute_case_export(store, job, config)
@@ -276,6 +280,10 @@ def record_unsuccessful_scan(store, job, state, error):
     if job["tool"] == "appliance_read":
         from .appliance_read import record_read_outcome
         record_read_outcome(store, job, state)
+        return
+    if job["tool"] in {"automation_export", "configuration_export"}:
+        from .export_jobs import record_outcome as record_export_outcome
+        record_export_outcome(store, job, state)
         return
     if job["tool"] == "case_export":
         from .case_export import record_case_export_outcome

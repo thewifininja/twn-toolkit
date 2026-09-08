@@ -33,13 +33,9 @@ from .profile_backup import (
     ConfigurationImportStore,
     apply_remote_connection_owner_mappings,
     backup_entry_count,
-    build_profile_backup,
-    encode_backup_json,
     bounded_backup_counts,
     MAX_BACKUP_WIRE_BYTES,
-    MAX_ENCRYPTED_BACKUP_PLAINTEXT_BYTES,
     decrypt_backup,
-    encrypt_backup,
     import_backup_items,
     inspect_profile_backup,
     is_encrypted_backup,
@@ -2586,6 +2582,9 @@ def register_admin_routes(
             ),
         )
 
+    from .export_routes import register_export_family
+    register_export_family(app, "configuration_export")
+
     @app.get("/settings/backup")
     def backup_settings():
         if not g.current_user.get("is_admin"):
@@ -2638,44 +2637,12 @@ def register_admin_routes(
                 flash("Backup encryption passwords do not match.", "error")
                 return redirect(url_for("backup_settings"))
 
+        from .export_routes import queue_configuration_export
         try:
-            limit = (MAX_ENCRYPTED_BACKUP_PLAINTEXT_BYTES if encrypt_requested
-                     else MAX_BACKUP_WIRE_BYTES)
-            backup = build_profile_backup(selected_items, max_bytes=limit)
-            payload = encode_backup_json(backup, limit)
-            del backup
-            filename_prefix = "twn-toolkit-configuration-backup"
-            if encrypt_requested:
-                encrypted = encrypt_backup(payload, password)
-                del payload
-                payload = encode_backup_json(encrypted, MAX_BACKUP_WIRE_BYTES)
-                filename_prefix = "twn-toolkit-encrypted-configuration-backup"
-        except ValueError as exc:
+            return queue_configuration_export(selected_items, encrypt_requested, password)
+        except (OSError, ValueError) as exc:
             flash(str(exc), "error")
             return redirect(url_for("backup_settings"))
-        annotate_audit_event(
-            category="Backup and restore",
-            action="backup.exported",
-            summary=f"Exported {len(selected_items)} backup group(s).",
-            resource_type="configuration_backup",
-            resource_id="export",
-            resource_name="Configuration backup export",
-            details={
-                "selected groups": _backup_audit_references(selected_items),
-                "group count": len(selected_items),
-                "encrypted": encrypt_requested,
-                "contains sensitive groups": has_sensitive_items,
-                "export size bytes": len(payload),
-            },
-        )
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        return Response(
-            payload,
-            mimetype="application/json",
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename_prefix}-{stamp}.json"'
-            },
-        )
 
     @app.post("/settings/backup/inspect")
     def inspect_configuration_backup():
@@ -2694,7 +2661,8 @@ def register_admin_routes(
             raw = upload.read(MAX_BACKUP_WIRE_BYTES + 1)
             if len(raw) > MAX_BACKUP_WIRE_BYTES:
                 raise ValueError("Configuration backups may not exceed 64 MiB.")
-            backup = json.loads(raw.decode("utf-8"))
+            from .backup_inputs import decode_backup_json
+            backup = decode_backup_json(raw)
             if is_encrypted_backup(backup):
                 encrypted_input = True
                 backup_password = request.form.get("backup_password", "")

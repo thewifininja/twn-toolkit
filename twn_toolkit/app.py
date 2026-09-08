@@ -573,6 +573,8 @@ def create_app(instance_path: str | None = None) -> Flask:
             "download_investigation_evidence",
             "download_automation_artifact",
             "download_automation_run",
+            "automation_export_download",
+            "configuration_export_download",
             "download_automation_run_json",
             "download_datastore_file",
             "tools.download_acme_dns_certificate",

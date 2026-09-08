@@ -14,6 +14,10 @@ from datetime import datetime
 from typing import Any
 
 from .backup_source_reads import bounded_source_reads, bounded_backup_store, SourceReadLimit
+from .backup_inputs import (
+    MAX_BACKUP_WIRE_BYTES, MAX_PREVIEW_PLAIN_BYTES, MAX_PREVIEW_CIPHER_BYTES,
+    decode_backup_json, read_preview_file,
+)
 from .version import APP_VERSION
 from .file_transactions import file_transaction
 
@@ -125,7 +129,6 @@ def selected_backup_items(
 
 # The existing importer accepts 64 MiB on the wire. Leave room for the Fernet
 # token and JSON envelope without changing the interoperable v2 format.
-MAX_BACKUP_WIRE_BYTES = 64 * 1024 * 1024
 MAX_ENCRYPTED_BACKUP_PLAINTEXT_BYTES = (MAX_BACKUP_WIRE_BYTES - 1024) // 4 * 3 - 89
 
 
@@ -246,8 +249,12 @@ def decrypt_backup(encrypted_backup: dict[str, Any], password: str) -> dict[str,
         or not isinstance(encrypted_backup.get("ciphertext"), str)
     ):
         raise ValueError("This encrypted backup format is not supported.")
+    if len(encrypted_backup["salt"]) > 64 or len(encrypted_backup["ciphertext"]) > MAX_BACKUP_WIRE_BYTES:
+        raise ValueError("This encrypted backup exceeds the input limit.")
     try:
         salt = base64.urlsafe_b64decode(encrypted_backup["salt"].encode("ascii"))
+        if len(salt) != 16:
+            raise ValueError("Invalid backup salt.")
         ciphertext = encrypted_backup["ciphertext"].encode("ascii")
     except (ValueError, UnicodeEncodeError) as exc:
         raise ValueError("This encrypted backup is not valid.") from exc
@@ -255,7 +262,7 @@ def decrypt_backup(encrypted_backup: dict[str, Any], password: str) -> dict[str,
         plaintext = Fernet(_backup_key(password, salt)).decrypt(ciphertext)
     except InvalidToken as exc:
         raise ValueError("The backup password is incorrect or the encrypted file is damaged.") from exc
-    return json.loads(plaintext.decode("utf-8"))
+    return decode_backup_json(plaintext)
 
 
 def is_encrypted_backup(value: Any) -> bool:
@@ -493,11 +500,12 @@ class ConfigurationImportStore:
         encrypted_input: bool,
         import_mode: str,
     ) -> str:
-        self.cleanup()
-        self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(self.directory, 0o700)
+        from .artifact_storage import ArtifactStore
+        artifacts = ArtifactStore(self.directory.parent, '.configuration-imports', MAX_PREVIEW_CIPHER_BYTES)
+        with file_transaction(self.directory / 'admission'):
+            self._require_preview_capacity()
         token = secrets.token_hex(24)
-        payload = json.dumps(
+        payload = encode_backup_json(
             {
                 "created_at": time.time(),
                 "user_id": user_id,
@@ -505,26 +513,31 @@ class ConfigurationImportStore:
                 "import_mode": import_mode,
                 "backup": backup,
             },
-            separators=(",", ":"),
-        ).encode("utf-8")
-        path = self.directory / f"{token}.token"
-        temporary = self.directory / f".{token}.tmp"
-        temporary.write_bytes(self._cipher.encrypt(payload))
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
+            MAX_PREVIEW_PLAIN_BYTES,
+        )
+        decode_backup_json(payload, preview=True, validate_only=True)
+        encrypted = self._cipher.encrypt(payload)
+        del payload
+        with file_transaction(self.directory / 'admission'):
+            self._require_preview_capacity()
+            with artifacts.begin_upload('', f'{token}.token') as output:
+                for offset in range(0, len(encrypted), 65536):
+                    output.write(encrypted[offset:offset+65536])
+                output.commit()
         return token
 
     def get(self, token: str, *, user_id: str) -> dict[str, Any]:
         path = self._path(token)
         try:
-            payload = json.loads(
-                self._cipher.decrypt(path.read_bytes()).decode("utf-8")
+            payload = decode_backup_json(
+                self._cipher.decrypt(read_preview_file(path)), preview=True,
             )
-        except (FileNotFoundError, InvalidToken, UnicodeError, ValueError) as exc:
+        except (OSError, InvalidToken, UnicodeError, ValueError) as exc:
             raise ValueError("This import preview expired or is no longer available.") from exc
+        if not isinstance(payload, dict) or str(payload.get("user_id", "")) != user_id:
+            raise ValueError("This import preview expired or is no longer available.")
         if (
-            str(payload.get("user_id", "")) != user_id
-            or time.time() - float(payload.get("created_at", 0)) > IMPORT_PREVIEW_TTL_SECONDS
+            time.time() - float(payload.get("created_at", 0)) > IMPORT_PREVIEW_TTL_SECONDS
             or not isinstance(payload.get("backup"), dict)
         ):
             path.unlink(missing_ok=True)
@@ -534,18 +547,31 @@ class ConfigurationImportStore:
     def delete(self, token: str) -> None:
         self._path(token).unlink(missing_ok=True)
 
+    def _require_preview_capacity(self) -> None:
+        self.cleanup()
+        with os.scandir(self.directory) as entries:
+            count = 0
+            for entry in entries:
+                if entry.name.endswith('.token'):
+                    count += 1
+                    if count >= 100:
+                        raise ValueError('Import preview capacity is full. Finish a preview or wait for older previews to expire.')
+
     def cleanup(self) -> None:
+        from itertools import islice
+        cutoff = time.time() - IMPORT_PREVIEW_TTL_SECONDS
         try:
-            paths = tuple(self.directory.glob("*.token"))
+            with os.scandir(self.directory) as entries:
+                for entry in islice(entries, 1000):
+                    if not entry.name.endswith('.token'):
+                        continue
+                    try:
+                        if entry.stat(follow_symlinks=False).st_mtime < cutoff:
+                            os.unlink(entry.path)
+                    except OSError:
+                        continue
         except OSError:
             return
-        cutoff = time.time() - IMPORT_PREVIEW_TTL_SECONDS
-        for path in paths:
-            try:
-                if path.stat().st_mtime < cutoff:
-                    path.unlink(missing_ok=True)
-            except OSError:
-                continue
 
     def _path(self, token: str) -> Path:
         if not self._TOKEN_PATTERN.fullmatch(str(token)):

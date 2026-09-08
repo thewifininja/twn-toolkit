@@ -1753,6 +1753,7 @@ class InvestigationStore:
         content: bytes | None = None,
         stream: BinaryIO | None = None,
         max_bytes: int = MAX_UPLOAD_BYTES,
+        before_publish: Callable[[], None] | None = None,
     ) -> dict[str, dict[str, Any]]:
         """Atomically describe generated evidence without adding timeline noise."""
         user_id = self._clean_identity(user_id, "user")
@@ -1819,6 +1820,8 @@ class InvestigationStore:
             with self._connect() as connection, connection:
                 connection.execute("BEGIN IMMEDIATE")
                 self._require_open_member(connection, investigation_id, user_id)
+                if before_publish is not None:
+                    before_publish()
                 existing = connection.execute(
                     """
                     SELECT id FROM investigation_events
