@@ -883,9 +883,15 @@ class UIComponentTests(unittest.TestCase):
             "@media (max-width: 900px), (hover: none) and (pointer: coarse) {",
             stylesheet,
         )
+        # Touch text sizing may change field metrics, but must not opt a wide
+        # device into mobile sidebar geometry. Only field tokens are exempt.
+        field_only_touch_rule = re.compile(
+            r"@media \(max-width: 900px\), \(any-pointer: coarse\) \{"
+            r"\s*:root \{(?:\s*--ui-field-[a-z-]+:[^;{}]+;)+\s*\}\s*\}"
+        )
         self.assertNotIn(
             "@media (max-width: 900px), (any-pointer: coarse) {",
-            appearance_stylesheet,
+            field_only_touch_rule.sub("", appearance_stylesheet),
         )
         self.assertIn('window.matchMedia("(min-width: 901px)")', sidebar_script)
         self.assertNotIn("pointer: fine", sidebar_script)
