@@ -105,6 +105,9 @@ def register_tools(registry) -> None:
             "delete_automation_run": "automation.home",
             "download_automation_run": "automation.home",
             "automation_history": "automation.home",
+            "guided_automation": "automation.home",
+            "preview_guided_automation": "automation.home",
+            "create_guided_automation": "automation.home",
             "add_automation_run_to_case": "automation.home",
         }
     )

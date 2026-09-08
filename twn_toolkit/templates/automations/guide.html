@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+<h1>Create your first automation</h1>
+<p>Choose when to run, choose an action, then review the complete behavior. Creation leaves it paused.</p>
+<p><a href="{{ url_for('automations') }}">Advanced editor</a></p>
+<form data-automation-guide data-unsaved-form action="{{ url_for('create_guided_automation') }}" method="post" data-preview-url="{{ url_for('preview_guided_automation') }}">
+<label>Automation name<input name="name" maxlength="80" required></label>
+<fieldset><legend>1. When should it run?</legend>
+<label>Trigger<select name="source_kind" data-guide-source><option value="manual">Only when I choose Run now</option><option value="ping">When a host stops answering ping</option><option value="daily">Every day at a chosen time</option><option value="saved">Use a saved condition or schedule</option></select></label>
+<div data-guide-source-fields="ping" hidden><label>Hosts to check<textarea name="targets" rows="3" maxlength="8192" required></textarea></label><p>Any unreachable host meets the condition. This validation sends no network probes.</p></div>
+<div data-guide-source-fields="daily" hidden><label>Time<input type="time" name="daily_time" value="09:00" required></label><label>Timezone<input name="timezone" value="{{ timezone }}" maxlength="100" required></label><p>Missed occurrences are skipped.</p></div>
+<div data-guide-source-fields="saved" hidden><label>Saved condition or schedule<select name="source_id" required><option value="">Select a saved object</option>{% for item in sources %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label></div>
+<details><summary>Check and recovery timing</summary><label>Check every (seconds)<input name="interval_seconds" type="number" min="1" max="86400" value="30" required></label><label>Trigger after consecutive met checks<input name="trigger_after" type="number" min="1" max="100" value="3" required></label><label>Recover after consecutive clear checks<input name="recover_after" type="number" min="1" max="100" value="3" required></label><label>Cooldown (seconds)<input name="cooldown_seconds" type="number" min="0" max="604800" value="300" required></label><p>Health-check thresholds apply to conditions, not manual or calendar triggers.</p></details>
+</fieldset>
+<fieldset><legend>2. What should it do?</legend>
+<label>Action<select name="action_kind" data-guide-action><option value="new_ssh">Create SSH command collection</option><option value="saved">Use a saved action</option></select></label>
+<div data-guide-action-fields="saved" hidden><label>Saved action<select name="action_id" required><option value="">Select a saved action</option>{% for item in actions %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></label></div>
+<div data-guide-action-fields="new_ssh"><label>SSH hosts<textarea name="ssh_hosts" rows="3" maxlength="8192" required placeholder="Core = 192.0.2.10"></textarea></label><label>Username<input name="username" maxlength="256" autocomplete="username" required></label><label>Password<input type="password" name="password" maxlength="4096" autocomplete="current-password" required></label><label>Commands<textarea name="commands" rows="5" maxlength="131072" required placeholder="show clock"></textarea></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="22" required></label><label>Command timeout (seconds)<input name="command_timeout" type="number" min="1" max="3600" value="300" required></label><label class="check"><input name="allow_unknown_hosts" type="checkbox">Trust a previously unknown host key on first connection</label><p>Guided setup supports 20 hosts and 20 commands. Commands may change devices; review them before any later execution. Existing host-key changes still require verification.</p></div>
+</fieldset>
+<button type="submit" value="preview">Validate and review</button>
+<section data-guide-review hidden><h2>3. Review before creating</h2><div data-guide-summary></div><p>Validation checks configuration and renders commands. It does not connect to devices, send messages, or execute actions.</p><input type="hidden" name="review_token"><label class="check"><input name="confirm_review" type="checkbox">I reviewed this behavior and want to create a paused automation.</label><button type="submit" value="create">Create paused automation</button></section>
+<p data-guide-status role="status"></p>
+</form>
+</section>
+<script src="{{ url_for('static', filename='unsaved-forms.js') }}"></script>
+<script src="{{ url_for('static', filename='automation-guide.js') }}"></script>
+{% endblock %}

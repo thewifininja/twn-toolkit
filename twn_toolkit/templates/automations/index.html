@@ -239,6 +239,7 @@
 {% endif %}
 
 {% if page_section == 'automations' %}
+<p><a class="button-link" href="{{ url_for('guided_automation') }}">Guided automation setup</a> · Create and review a paused automation step by step.</p>
 <section class="panel automation-manager">
   <div class="section-head"><div><h2>Automations</h2><p>{{ automations|length }} configured · checks continue without an open browser</p></div></div>
   {% if not scheduler.running %}<div class="message warning automation-scheduler-warning"><strong>Automation scheduler is {{ 'not responding' if scheduler.process_running else 'not running' }}.</strong> Armed automations will not run until the toolkit is restarted with <code>./twn restart</code>.</div>{% endif %}
