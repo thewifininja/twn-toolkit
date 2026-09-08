@@ -10,13 +10,14 @@ from .datastore import format_bytes
 from .diagnostic_artifacts import artifact_directory
 from .diagnostic_routes import diagnostic_store, owned_diagnostic
 from .case_export import KINDS, TOOL, record_case_export_outcome
-from .investigations import InvestigationStore, InvestigationError
+from .investigations import InvestigationError
+from .case_export_source import require_case_export_access
 
 
 def queue_case_export(case_id, kind):
     user = g.current_user
     try:
-        InvestigationStore(current_app.instance_path).get_for_user(case_id, user['id'])
+        require_case_export_access(current_app.instance_path, case_id, user['id'])
     except InvestigationError:
         abort(404)
     suppress_audit_event()
@@ -33,7 +34,7 @@ def register_case_export_routes(app):
         job = owned_diagnostic(identifier, TOOL)
         if require_case:
             try:
-                InvestigationStore(app.instance_path).get_for_user(job['config']['investigation_id'], g.current_user['id'])
+                require_case_export_access(app.instance_path, job['config']['investigation_id'], g.current_user['id'])
             except InvestigationError:
                 abort(404)
         return job

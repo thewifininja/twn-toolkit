@@ -281,3 +281,12 @@ the tool's report builder in `investigation_reporting.py`; keep presentation
 logic out of the shared Jinja template. Persistent tools must attach the
 case/user identity when they start and finalize with `record_for_case`, so
 pausing does not orphan their terminal evidence.
+
+Case export input limits cover case headers, participants, import attribution,
+selected events and evidence metadata. The worker reads SQLite text and binary
+fields incrementally before copying selected records into a consistent, read-only
+snapshot. Excluded diagnostic payloads are not loaded for PDF or case-package
+exports; portable cases include them and must fit the configured input limit.
+JSON metadata shares a 500,000-node budget and a 64-level nesting limit. Original
+case counts and operator attribution remain available without loading excluded
+payloads. Export authorization checks do not load case descriptions or import JSON.

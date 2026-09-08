@@ -371,7 +371,15 @@ def bounded_backup_counts(catalog):
     return display
 
 
-def preview_import_items(
+def preview_import_items(backup_items, selected_items, import_mode):
+    try:
+        with bounded_source_reads(MAX_BACKUP_WIRE_BYTES):
+            return _preview_import_items(backup_items, selected_items, import_mode)
+    except SourceReadLimit as exc:
+        raise ValueError(str(exc)) from exc
+
+
+def _preview_import_items(
     backup_items: dict[str, Any],
     selected_items: list[dict[str, Any]],
     import_mode: str,
@@ -384,7 +392,8 @@ def preview_import_items(
         records = backup_items.get(item["id"])
         if not isinstance(records, list):
             continue
-        existing = item["store"].all()
+        with bounded_backup_store(item["store"]) as bounded:
+            existing = bounded.all()
         existing_names = {
             str(record.get("name", "")).casefold()
             for record in existing
@@ -412,6 +421,7 @@ def preview_import_items(
             }
         )
     return preview
+
 
 
 def remote_connection_owner_mappings(
@@ -582,18 +592,30 @@ def import_backup_items(
     with ExitStack() as transactions:
         for path in transaction_paths:
             transactions.enter_context(file_transaction(path))
+        # Prepare every rollback record before the first write. A large or
+        # unreadable later destination must not start a partial import.
+        prepared = []
+        try:
+            with bounded_source_reads(MAX_BACKUP_WIRE_BYTES):
+                for item, profiles in validated:
+                    with bounded_backup_store(item["store"], rollback=True) as source:
+                        snapshotter = getattr(source, "backup_snapshot", None)
+                        custom_snapshot = callable(snapshotter)
+                        snapshot = snapshotter() if custom_snapshot else deepcopy(source.all())
+                        # Validate/decrypt the portable projection under the same
+                        # complexity budget as its raw private rollback snapshot.
+                        portable = source.all() if custom_snapshot else snapshot
+                        existing = None
+                        if import_mode == "merge" and not callable(getattr(source, "import_records", None)):
+                            existing = portable
+                        prepared.append((item, profiles, snapshot, custom_snapshot, existing))
+        except (SourceReadLimit, ValueError, OSError) as exc:
+            raise ValueError(f"{item['label']} import could not prepare bounded rollback data: {exc}") from exc
         imported: list[tuple[str, int]] = []
         snapshots: list[tuple[dict[str, Any], Any, bool]] = []
         try:
-            for item, profiles in validated:
+            for item, profiles, snapshot, custom_snapshot, existing in prepared:
                 store = item["store"]
-                snapshotter = getattr(store, "backup_snapshot", None)
-                custom_snapshot = callable(snapshotter)
-                snapshot = (
-                    snapshotter()
-                    if custom_snapshot
-                    else deepcopy(store.all())
-                )
                 snapshots.append((item, snapshot, custom_snapshot))
                 custom_import = getattr(store, "import_records", None)
                 if callable(custom_import):
@@ -604,7 +626,7 @@ def import_backup_items(
                         # A custom snapshot may contain private rollback state
                         # rather than the portable records exposed by all().
                         imported_profiles = merge_profiles_by_name(
-                            deepcopy(store.all()), imported_profiles
+                            deepcopy(existing), imported_profiles
                         )
                     store.replace_all(imported_profiles)
                     count = len(imported_profiles)
