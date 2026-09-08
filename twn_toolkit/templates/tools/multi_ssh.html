@@ -287,6 +287,7 @@
             {% if preview_token %}
               <section class="multi-ssh-workspace-card multi-ssh-run-confirmation" data-ssh-run-confirmation>
                 <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Credentials and safeguards</h2><p>The preview is signed. Credentials are used for this run. Mainframe requests use temporary encrypted storage.</p></div><span class="pill success">{{ preview.action_count }} actions · {{ preview.action_execution_count }} executions</span></div>
+                <label>Run name (optional)<input name="run_name" maxlength="100" value="{{ form.run_name }}" placeholder="{{ form.host_matrix_name or 'Branch switch checks' }}"><span class="field-note">Use a name you will recognize in recent runs. A timestamp is shown automatically.</span></label>
                 <div class="form-grid"><label>Username<input name="username" value="{{ form.username }}" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required></label></div>
                 {% include "tools/_multi_ssh_run_options.html" %}
                 <label class="check execution-confirm"><input name="confirm_execution" type="checkbox" required>I reviewed the selected actions and intend to execute this signed run plan</label>
@@ -321,6 +322,7 @@
             {% if preview_token %}
               <section class="multi-ssh-workspace-card multi-ssh-run-confirmation" data-ssh-run-confirmation>
                 <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Credentials and safeguards</h2><p>The preview is signed. Credentials are used for this run. Mainframe requests use temporary encrypted storage.</p></div><span class="pill success">{{ preview.command_count }} commands · {{ preview.plans|length }} hosts</span></div>
+                <label>Run name (optional)<input name="run_name" maxlength="100" value="{{ form.run_name }}" placeholder="{{ form.host_matrix_name or 'Branch switch checks' }}"><span class="field-note">Use a name you will recognize in recent runs. A timestamp is shown automatically.</span></label>
                 <div class="form-grid"><label>Username<input name="username" value="{{ form.username }}" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required></label></div>
                 {% include "tools/_multi_ssh_run_options.html" %}
                 <label class="check execution-confirm"><input name="confirm_execution" type="checkbox" required>I reviewed the rendered commands and intend to execute this signed run plan</label>
@@ -341,7 +343,7 @@
 
 {% if ssh_job_api %}
 <section class="panel"><h2>Recent Bulk SSH runs</h2><p>Runs continue in the background. Open a retained run for progress, cancellation, and results.</p>
-{% for job in ssh_recent %}<p><a href="{{ url_for('tools.ssh_job', job_id=job.id) }}">{{ job.id[:12] }}</a> · {{ 'Finished' if job.state == 'succeeded' else job.state|replace('_', ' ') }}</p>{% else %}<p>No retained runs yet.</p>{% endfor %}</section>
+{% for job in ssh_recent %}<p><a href="{{ url_for('tools.ssh_job', job_id=job.id) }}">{{ job.run_name }}</a> · {{ job.created_display }} · {{ 'Finished' if job.state == 'succeeded' else job.state|replace('_', ' ') }}</p>{% else %}<p>No retained runs yet.</p>{% endfor %}</section>
 {% endif %}
 <div data-tool-results-anchor tabindex="-1">
 {% if results is not none %}

@@ -1,13 +1,16 @@
 {% extends 'base.html' %}
 {% block content %}
 <section class="panel">
-  <h1>Bulk SSH run</h1>
+  <h1>{{ job.run_name }}</h1>
+  <p>{{ job.created_display }}{% if job.queue_seconds is not none %} · Worker picked up this run after {{ job.queue_seconds }} seconds.{% endif %}</p>
+  <details><summary>Run identifier</summary><code>{{ job.id }}</code></details>
   <p><a href="{{ url_for('tools.multi_ssh') }}">Back to Bulk SSH</a> · <a href="{{ url_for('tools.download_ssh_job', job_id=job.id) }}">Download retained results</a></p>
   <div {% if active %}data-diagnostic-status-url="{{ url_for('tools.ssh_job_status', job_id=job.id) }}"{% endif %}>
-    <p data-diagnostic-status role="status">{{ 'Finished' if job.state == 'succeeded' else job.state|replace('_', ' ') }} · {{ counts.completed }} of {{ job.config.host_count }} hosts completed.</p>
+    <p data-diagnostic-status role="status">{{ progress_text }}</p>
     <p>{{ counts.unconfirmed }} unconfirmed · {{ counts.not_started }} not started. Interrupted or timed-out commands may have run. Verify the device before submitting another run; commands are never automatically replayed.</p>
     {% if active %}<form method="post" action="{{ url_for('tools.cancel_ssh_job', job_id=job.id) }}"><button class="secondary" {% if job.state == 'cancel_requested' %}disabled{% endif %}>Cancel remaining work</button></form>{% endif %}
   </div>
+  {% if active %}<p>Hosts in progress may be waiting for connection capacity, connecting, or running commands. Completed host output appears below when you refresh the results.</p>{% endif %}
   {% if job.error %}<p class="message error">{{ job.error }}</p>{% endif %}
   {% if job.summary.recording_warning %}<p class="message error">{{ job.summary.recording_warning }}</p>{% endif %}
   <p><a href="{{ url_for('tools.ssh_job', job_id=job.id, page=page) }}">Refresh host results</a></p>

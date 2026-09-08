@@ -335,12 +335,14 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             journal_event=journal_event,
             ssh_job_api=True,
             ssh_job_timeout=diagnostic_store().policy.get()['diagnostic_timeout_seconds'],
-            ssh_recent=diagnostic_store().recent(str(g.current_user['id']), 'bulk_ssh'),
+            ssh_recent=bulk_ssh_jobs.recent_runs(diagnostic_store(), str(g.current_user['id'])),
         )
 
     @tools_bp.get('/multi-ssh/jobs/<job_id>')
     def ssh_job(job_id):
         job = _owned_ssh_job(job_id)
+        from .time_settings import resolve_toolkit_timezone
+        bulk_ssh_jobs.describe_run(job, resolve_toolkit_timezone(current_app.instance_path))
         try:
             page = max(1, min(50, int(request.args.get('page', 1))))
         except ValueError:
@@ -351,9 +353,11 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             raw = str(row.get('output', '')).encode('utf-8')
             row['preview_truncated'] = len(raw) > preview_limit
             row['output'] = raw[:preview_limit].decode('utf-8', errors='ignore')
+        stats = bulk_ssh_jobs.counts(diagnostic_store(), job)
         response = Response(render_template('tools/ssh_job.html', job=job,
+            progress_text=bulk_ssh_jobs.progress_text(job, stats),
             rows=rows,
-            counts=bulk_ssh_jobs.counts(diagnostic_store(), job), page=page,
+            counts=stats, page=page,
             pages=(job['config']['host_count']+99)//100,
             active=job['state'] in ('queued','running','cancel_requested')))
         response.headers['Cache-Control'] = 'no-store'
@@ -364,7 +368,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
         job = _owned_ssh_job(job_id)
         stats = bulk_ssh_jobs.counts(diagnostic_store(), job)
         response = jsonify(state=job['state'], error=job['error'], **stats,
-            stage=f"{stats['completed']} hosts completed; {stats['not_started']} not started")
+            stage=bulk_ssh_jobs.progress_text(job, stats))
         response.headers['Cache-Control'] = 'no-store'
         return response
 
@@ -517,6 +521,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
 
 def _default_form() -> dict[str, object]:
     return {
+        "run_name": "",
         "hosts": "",
         "matrix": "",
         "username": "",
@@ -546,6 +551,7 @@ def _default_form() -> dict[str, object]:
 
 def _posted_form() -> dict[str, object]:
     return {
+        "run_name": request.form.get("run_name", "").strip(),
         "hosts": request.form.get("hosts", "").strip(),
         "matrix": request.form.get("matrix", "").strip(),
         "username": request.form.get("username", "").strip(),

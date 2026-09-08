@@ -38,10 +38,20 @@ def prepare(form, preview, password, *, retry=None):
         raise ToolInputError('Enter an SSH username and password.')
     if len(login) > 256 or len(password) > 4096:
         raise ToolInputError('SSH credentials exceed the input limit.')
+    run_name = ' '.join(str(form.get('run_name', '')).split())
+    if len(run_name) > 100:
+        raise ToolInputError('Run names must not exceed 100 characters.')
+    if not run_name:
+        run_name = str(form.get('host_matrix_original_name') or form.get('host_matrix_name') or '')[:100]
+    if not run_name:
+        count = 1 if retry else len(preview['plans'])
+        run_name = f"Bulk SSH · {count} {'host' if count == 1 else 'hosts'}"
+    if retry:
+        run_name = run_name[:92] + ' · retry'
     port = int(form['port'])
     if not 1 <= port <= 65535:
         raise ToolInputError('SSH port must be between 1 and 65535.')
-    return {'matrix': str(form['matrix']), 'commands': str(form['commands']),
+    return {'run_name': run_name, 'matrix': str(form['matrix']), 'commands': str(form['commands']),
             'command_timeout': int(form['command_timeout']), 'port': port,
             'allow_unknown_hosts': bool(form.get('allow_unknown_hosts')),
             'allow_legacy_algorithms': bool(form.get('allow_legacy_algorithms')),
@@ -277,3 +287,35 @@ def record_outcome(store, previous, state, error):
     with store.connect(write=True) as db:
         db.execute('UPDATE diagnostic_jobs SET summary=? WHERE id=?',
                    (store.cipher.seal(json.dumps(summary), job['id'] + ':diagnostic-summary'), job['id']))
+
+
+def describe_run(job, timezone):
+    """Public presentation from the owner's retained, encrypted configuration."""
+    from .time_settings import localized_time_values
+    count = job['config']['host_count']
+    job['run_name'] = job['config'].get('run_name') or f"Bulk SSH · {count} {'host' if count == 1 else 'hosts'}"
+    job['created_display'] = localized_time_values(job['created'], timezone)['display']
+    job['queue_seconds'] = round(max(0, job['started'] - job['created']), 2) if job.get('started') is not None else None
+    return job
+
+
+def recent_runs(store, user_id):
+    from .time_settings import resolve_toolkit_timezone
+    timezone = resolve_toolkit_timezone(store.instance)
+    result = []
+    for row in store.recent(user_id, 'bulk_ssh'):
+        job = store.get(row['id'], user_id)
+        if job:
+            described = describe_run(job, timezone)
+            result.append({key: described[key] for key in ('id', 'state', 'run_name', 'created_display')})
+    return result
+
+
+def progress_text(job, stats):
+    if job['state'] == 'queued':
+        return f"Waiting for a worker · {stats['not_started']} {'host' if stats['not_started'] == 1 else 'hosts'} not started."
+    if job['state'] == 'running':
+        pending = stats['started'] - stats['completed']
+        return f"{pending} {'host' if pending == 1 else 'hosts'} in progress · {stats['completed']} completed · {stats['not_started']} not started."
+    label = 'Finished' if job['state'] == 'succeeded' else job['state'].replace('_', ' ').capitalize()
+    return f"{label} · {stats['completed']} {'host' if stats['completed'] == 1 else 'hosts'} completed; {stats['unconfirmed']} unconfirmed."
