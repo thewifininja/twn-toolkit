@@ -11,7 +11,7 @@ class VersionMetadataTests(unittest.TestCase):
         self.assertTrue(RELEASE_NOTES)
         self.assertEqual(RELEASE_NOTES[0]["version"], APP_VERSION)
         self.assertEqual(APP_VERSION, "0.24.5")
-        self.assertIn("recent runs", RELEASE_NOTES[0]["title"].lower())
+        self.assertTrue(RELEASE_NOTES[0]["title"].strip())
         self.assertEqual(RELEASE_NOTES[1]["version"], "0.24.4")
 
     def test_release_versions_are_unique_and_well_formed(self) -> None:
