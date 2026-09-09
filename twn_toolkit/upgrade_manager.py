@@ -297,6 +297,17 @@ class UpgradeManager:
             recent_active = False
         if recent_active:
             raise UpgradeError("Another upgrade or recovery operation is already running.")
+        # Guided setup releases operation.lock before service handoff, but retains
+        # this flock until health checks finish. Do not start an upgrade mid-setup.
+        import fcntl
+        guard = self.workspace / "setup.guard"
+        if guard.exists():
+            with guard.open("a") as handle:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError as exc:
+                    raise UpgradeError("Guided setup is already running.") from exc
+                fcntl.flock(handle, fcntl.LOCK_UN)
         request_id = uuid.uuid4().hex
         lock_path = self.workspace / "operation.lock"
         try:

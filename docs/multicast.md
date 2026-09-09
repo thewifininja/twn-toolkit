@@ -94,7 +94,7 @@ Groups in `224.0.0.0/24` can hide this problem because switches normally flood
 that link-local control range without ordinary learned membership.
 
 The toolkit does not change a host firewall from the web interface or the
-general installer. On affected macOS hosts, use the separately authorized CLI
+unattended installer. Interactive guided setup can offer this as a separately approved advanced step, delegating to the same helper without a live PF reload. On affected macOS hosts, you can also use the separately authorized CLI
 helper from the toolkit directory:
 
 ```bash

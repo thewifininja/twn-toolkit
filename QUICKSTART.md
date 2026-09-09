@@ -30,6 +30,9 @@ Optional workflows need their own system commands or remote permissions:
 
 ## Install or upgrade
 
+For a guided setup or to revisit installation choices, run `./twn setup`. The first question chooses service or manual mode; location guidance then follows your choice. See [guided installation](docs/guided-installation.md). Use `./install.sh --non-interactive` for the established unattended path.
+
+
 From the project directory:
 
 ```bash

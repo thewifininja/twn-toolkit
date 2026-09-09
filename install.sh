@@ -41,6 +41,24 @@ if ! python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))'; then
   exit 1
 fi
 
+# Interactive onboarding is separate from the unattended upgrade/rollback contract.
+PREPARE_ONLY=0
+GUIDED=auto
+for argument in "$@"; do
+  case "$argument" in
+    --guided) GUIDED=1 ;;
+    --non-interactive) GUIDED=0 ;;
+    --prepare-only) PREPARE_ONLY=1; GUIDED=0 ;;
+    *) echo "Usage: ./install.sh [--guided|--non-interactive]" >&2; exit 2 ;;
+  esac
+done
+if [ -n "$INSTALL_STATUS_FILE" ] || [ -n "${TWN_TOOLKIT_UPGRADE_REQUEST_ID:-}" ] || [ -n "${TWN_TOOLKIT_SETUP_ACTIVE:-}" ]; then
+  GUIDED=0
+fi
+if [ "$GUIDED" = 1 ] || { [ "$GUIDED" = auto ] && [ -t 0 ] && [ -t 1 ] && [ "$FRESH_INSTALL" -eq 1 ]; }; then
+  exec python3 "$ROOT/scripts/guided_install.py"
+fi
+
 if [ -x "$VENV/bin/python" ] && "$ROOT/twn" status >/dev/null 2>&1; then
   WAS_RUNNING=1
 fi
@@ -65,6 +83,12 @@ echo "Installing toolkit requirements..."
 
 chmod +x "$ROOT/twn"
 mkdir -p "$INSTANCE"
+
+if [ "$PREPARE_ONLY" -eq 1 ]; then
+  INSTALL_STAGE=complete
+  echo "Python environment prepared; settings and startup are managed by guided setup."
+  exit 0
+fi
 
 if [ "$FRESH_INSTALL" -eq 1 ]; then
   INSTALL_STAGE=https-certificate

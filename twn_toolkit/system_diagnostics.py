@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+from .setup_dependencies import DEPENDENCIES
 from .network_tools import ping_engine_capability
 from .serial_diagnostics import linux_serial_capability
 
@@ -83,74 +84,24 @@ def _command_entry(
 def command_dependencies(*, system: str | None = None) -> list[dict[str, Any]]:
     """Inventory external executables used by toolkit workflows on this platform."""
     detected_system = system or platform.system()
-    dependencies = [
-        _command_entry("ping", "Ping, Path MTU, and automation fallback"),
-        _command_entry("traceroute", "Traceroute"),
-        _command_entry("tcpdump", "Packet Capture", optional=True),
-        _command_entry("iperf3", "iPerf3 client and managed server", optional=True),
-        _command_entry("eapol_test", "RADIUS PEAP and EAP-TLS", optional=True),
-        _command_entry("certbot", "ACME DNS-01 certificates", optional=True),
-        _command_entry(
-            "sudo",
-            "Privileged service, recovery, and narrow PF helper operations",
-            optional=True,
-        ),
-    ]
-
-    ping_capability = ping_engine_capability()
-    dependencies.append(
-        {
-            "name": "fping",
-            "workflow": "Accelerated live Ping and ping automations",
-            "available": bool(ping_capability["accelerated"]),
-            "optional": True,
-            "detail": str(ping_capability["detail"]),
-        }
-    )
-
-    if detected_system == "Darwin":
-        dependencies.extend(
-            (
-                _command_entry("ping6", "IPv6 Ping and Path MTU"),
-                _command_entry("traceroute6", "IPv6 Traceroute"),
-                _command_entry("ifconfig", "Interface discovery and Wake-on-LAN"),
-                _command_entry(
-                    "pfctl", "Optional macOS multicast compatibility", optional=True
-                ),
-                _command_entry("launchctl", "Autostart service management"),
-                _command_entry(
-                    "sysctl", "Operating-system boot identity fallback", optional=True
-                ),
-            )
-        )
-    elif detected_system == "Linux":
-        dependencies.extend(
-            (
-                _command_entry(
-                    "ip or ifconfig",
-                    "Interface and address discovery",
-                    alternatives=("ip", "ifconfig"),
-                ),
-                _command_entry("systemctl", "Autostart service management"),
-            )
-        )
-
-    dependencies.extend(
-        (
-            _command_entry("ps", "Process discovery and recovery"),
-            _command_entry("lsof", "Listener recovery fallback", optional=True),
-            {
-                **_command_entry(
-                    "shasum or sha256sum",
-                    "Requirements change detection",
-                    alternatives=("shasum", "sha256sum"),
-                    optional=True,
-                ),
-                "detail": "A Python hashing fallback is always available.",
-            },
-        )
-    )
+    dependencies = []
+    for spec in DEPENDENCIES:
+        if detected_system not in spec.systems or not spec.commands:
+            continue
+        optional = spec.category not in {'system', 'bootstrap'}
+        if spec.id == 'fping':
+            ping = ping_engine_capability()
+            dependencies.append({'name':'fping','workflow':spec.purpose,'available':bool(ping['accelerated']),
+                                 'optional':True,'detail':str(ping['detail'])})
+        elif spec.all_commands:
+            dependencies.extend(_command_entry(name, spec.purpose, optional=optional, detail=spec.note)
+                                for name in spec.commands)
+        else:
+            name = ' or '.join(spec.commands)
+            dependencies.append(_command_entry(name, spec.purpose, alternatives=spec.commands,
+                                               optional=optional, detail=spec.note))
     return dependencies
+
 
 
 def _current_account() -> tuple[str, list[str]]:

@@ -122,12 +122,17 @@ def _service_path(root: Path) -> str:
         (
             str(root / ".venv" / "bin"),
             "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
             "/usr/local/bin",
             "/usr/local/sbin",
             "/usr/bin",
             "/usr/sbin",
             "/bin",
             "/sbin",
+            "/opt/homebrew/opt/lsof/bin",
+            "/opt/homebrew/opt/lsof/sbin",
+            "/usr/local/opt/lsof/bin",
+            "/usr/local/opt/lsof/sbin",
         )
     )
 
