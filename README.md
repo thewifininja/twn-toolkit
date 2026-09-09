@@ -13,16 +13,21 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.24.0**
+Current release: **v0.25.0**
 
-v0.24.0 makes distributed workspaces safer to operate with an in-product
-restart action, reliable escape from unavailable agents, hardened standalone
-transitions, and an online-only instance selector. Remote Terminal definitions
-now support Global, Admins Only, and Private availability, with existing data
-migrated to Admins Only. The release also adds stable IPv4 and IPv6 interface-
-change automations plus Arch and Omarchy compatibility improvements for serial
-access and LLDP. It adds no Python dependency, retains the v0.9.0 minimum
-direct-upgrade boundary, and requires no general service reinstall.
+v0.25.0 adds a full-screen installer with service-first location choices,
+searchable timezones and individually selected dependencies. Mainframe agent
+selection is independent in every tab and device. Supervised background work,
+friendly Bulk SSH run names, themed host results and consistent collapsed
+Recent runs make long operations easier to follow. Connection libraries use one
+host/folder search with contextual saved-choice lookup. The release also hardens
+job, export, storage and recovery boundaries and fixes wireless-client exports.
+Automation creation uses the full builder; existing workflows are preserved.
+
+Use the built-in updater on Mainframe and Agents, then reload open browser pages.
+The verified bundle retains the v0.9.0 minimum direct-upgrade boundary; see the
+existing updater exceptions below for older service installations.
+[Release notes and compatibility](docs/release-0.25.0-checklist.md).
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
@@ -156,6 +161,9 @@ The sidebar and Network Tools page use the same functional organization.
   10 simultaneous SSH connections and a bounded aggregate output budget.
   Runs and verified host-key retries are background jobs: leave and return to
   retained progress, paged host results, and whole-run or per-host downloads.
+  Give a run a friendly name and reopen it from the collapsed Recent runs panel
+  near the heading. Host rows start collapsed, with green success, red failure
+  and amber active/unconfirmed badges; progress and cancellation stay visible.
   Cancellation stops remaining work; completed hosts remain retained, interrupted
   commands have an unknown outcome, and unsent hosts are shown as not started.
   Verify device state before resubmitting uncertain commands; jobs never replay

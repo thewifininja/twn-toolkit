@@ -18,8 +18,8 @@ Optional workflows need their own system commands or remote permissions:
 - FortiAuthenticator workflows use an administrator with **Web service
   access** and its Web Service API Access Key.
 - RADIUS PEAP/MSCHAPv2 and EAP-TLS testing is [temporarily disabled](docs/radius-eap-status.md); PAP and CHAP are available.
-- iPerf3 client and server tests require an existing system `iperf3` command;
-  the toolkit does not install it.
+- iPerf3 client and server tests require the system `iperf3` command; select it
+  in guided setup or install it separately.
 - Multicast tests use the host's IPv4 socket support and require at least one
   multicast-capable interface. No extra package is installed.
 - DHCP Discover, Packet Capture, Packet Replay, and LLDP Lab transmission need
@@ -30,7 +30,17 @@ Optional workflows need their own system commands or remote permissions:
 
 ## Install or upgrade
 
-For a guided setup or to revisit installation choices, run `./twn setup`. The first question chooses service or manual mode; location guidance then follows your choice. See [guided installation](docs/guided-installation.md). Use `./install.sh --non-interactive` for the established unattended path.
+Fresh interactive `./install.sh` opens the full-screen installer. Revisit choices
+with `./twn setup`: choose service or manual startup before the install location,
+select individual optional tools, search for your timezone, and review the plan
+before applying it. Setup checks the detected platform's package manager and
+requests native authorization only for selected privileged changes. See
+[guided installation](docs/guided-installation.md). Use
+`./install.sh --non-interactive` for the established unattended path.
+
+To convert a manual installation to a service, rerun `./twn setup` and choose
+service mode. To return to manual startup, run `./twn service uninstall` first;
+setup explains this requirement and preserves your instance data.
 
 
 From the project directory:
@@ -179,8 +189,19 @@ After the agent reports online, use the top-bar instance selector. Selecting an
 agent opens its native toolkit interface through the Mainframe while keeping the
 agent's own profiles, interfaces, history, and theme authoritative. Switching
 instances preserves the current tool path when the destination supports it.
+Selection belongs to the current tab's URL: another tab or device using the same
+login can target a different agent. Reloads and bookmarks retain that target.
 Agents need no inbound firewall opening; their control and interface traffic is
 outbound mutual TLS.
+
+## Reopen background work
+
+Supported background tools show a compact **Recent runs** panel near the heading.
+It starts collapsed; expand it for names, status, timestamps and **View** links.
+Current progress and cancellation remain visible separately. Name Bulk SSH runs
+for easier identification; individual host rows start collapsed and show green
+success, red failure or amber active/unconfirmed outcomes. Investigate an
+unconfirmed outcome before rerunning commands.
 
 ## Start a troubleshooting case
 

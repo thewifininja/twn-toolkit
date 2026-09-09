@@ -12,6 +12,16 @@ prompts, or `--no-motion` for a still banner. Python 3.10 or newer must already 
 available to start setup. On Debian/Ubuntu, virtual-environment support may also
 require `python3-venv`; it appears as a prerequisite in the dependency inventory.
 
+## Changing startup mode
+
+Rerun `./twn setup` to convert an existing manual installation to a service.
+Setup validates the current checkout location first, including macOS privacy
+restrictions. To return from service to manual startup, run
+`./twn service uninstall` from that checkout before choosing manual mode in setup.
+The wizard explains this requirement rather than silently removing a service.
+Uninstalling the service retains instance data; use `./twn start` for later
+manual launches.
+
 ## What setup changes
 
 - Manual mode starts this installation when setup finishes, but adds no boot
