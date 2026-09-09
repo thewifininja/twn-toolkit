@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
+<header class="run-page-heading"><h1>Re-order Managed FortiSwitches</h1></header>
+{% if switch_order_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 <section class="panel tool-panel switch-order-tool"
          id="switch-order-tool"
          data-queued-orders="{{ 'true' if switch_order_recent is defined else 'false' }}"
@@ -8,7 +10,7 @@
          data-preview-url="{{ url_for('preview_switch_order') }}"
          data-apply-url="{{ url_for('apply_switch_order') }}">
   <div class="panel-head">
-    <h1>Re-order Managed FortiSwitches</h1>
+
     <p>Load the FortiGate’s current table order, then drag or alphabetize the switches.</p>
   </div>
 
@@ -67,6 +69,6 @@
     <a class="button-link" href="{{ url_for('fortigate_home') }}">Create profile</a>
   {% endif %}
 </section>
-{% if switch_order_recent %}<details class="panel"><summary>Your recent switch-order runs</summary><ul>{% for item in switch_order_recent %}<li><a href="{{ url_for('switch_order_job', job_id=item.id) }}">{{ item.id[:12] }} · {{ item.state|replace('_', ' ') }}</a></li>{% endfor %}</ul></details>{% endif %}
+
 <script src="{{ url_for('static', filename='switch-order.js') }}" defer></script>
 {% endblock %}

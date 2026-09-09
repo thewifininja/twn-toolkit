@@ -6,6 +6,8 @@
 {% set diagnostic_status_endpoint = 'tools.dns_job_status' %}
 {% set diagnostic_cancel_endpoint = 'tools.cancel_dns_job' %}
 {% set diagnostic_result_endpoint = 'tools.dns_response' %}
+<header class="run-page-heading"><h1>DNS Tester</h1></header>
+{% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 {% include 'components/diagnostic_job.html' %}
 {% set dns_has_results = results is not none or load_result is not none %}
 <div class="tool-workspace dns-tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if dns_has_results else 'setup' }}">
@@ -41,7 +43,7 @@
   <header class="panel-head dns-workspace-head">
     <div>
       <span class="eyebrow">Resolution workspace</span>
-      <h1>DNS Tester</h1>
+
       <p>Compare answers and latency across resolvers, or apply a controlled query load to DNS servers you are authorized to test.</p>
     </div>
     <div class="tool-setup-heading-actions">

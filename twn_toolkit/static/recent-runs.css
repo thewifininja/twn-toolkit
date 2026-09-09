@@ -1,0 +1,31 @@
+/* One compact, theme-aware history disclosure across background workflows. */
+.run-page-heading { margin: 0 0 12px; }
+.run-page-heading h1 { margin: 0; font-size: 1.65rem; }
+details.recent-runs { padding: 0; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: none; overflow: hidden; }
+.recent-runs > summary { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 14px; box-sizing: border-box; cursor: pointer; list-style: none; }
+.recent-runs > summary::-webkit-details-marker { display: none; }
+.recent-runs > summary::marker { content: ''; }
+.recent-runs > summary:hover { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+.recent-runs-title { font-weight: 650; font-size: .9rem; }
+.recent-runs .count-badge { min-width: 22px; text-align: center; padding: 1px 6px; background: var(--bg); color: var(--muted); border: 1px solid var(--line); border-radius: 12px; font-size: .75rem; }
+.recent-runs-chevron { margin-left: auto; flex: none; color: var(--muted); }
+.recent-runs[open] > summary .recent-runs-chevron { transform: rotate(90deg); }
+.recent-runs > summary:focus-visible, .recent-run-view:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 6px; }
+.recent-runs-list { list-style: none; margin: 0; padding: 0 14px; max-height: 22rem; overflow-y: auto; }
+.recent-run { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(12rem, auto) auto; align-items: center; column-gap: 16px; row-gap: 4px; margin: 0; padding: 10px 0; border-top: 1px solid var(--line); font-size: .85rem; }
+.recent-run-name { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.recent-run-state { justify-self: start; white-space: nowrap; }
+.recent-run .pill.neutral { color: var(--muted); background: var(--bg); }
+.recent-run-time { color: var(--muted); font-size: .78rem; }
+.recent-run-actions { display: flex; align-items: center; gap: 8px; }
+.recent-run-actions form { margin: 0; }
+.recent-run-view { display: inline-flex; align-items: center; min-height: 32px; padding: 0 10px; font-weight: 600; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--bg); text-decoration: none; }
+.recent-runs-empty { padding: 12px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: .85rem; }
+@media (max-width: 800px) {
+  .recent-run { grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; }
+  .recent-run-state { justify-self: end; }
+  .recent-run-actions { justify-self: end; }
+  .recent-run-view { min-height: 44px; }
+}
+
+.recent-run-view:hover { border-color: var(--accent); color: var(--accent); }

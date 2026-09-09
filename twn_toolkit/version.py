@@ -1,6 +1,16 @@
-APP_VERSION = "0.24.4"
+APP_VERSION = "0.24.5"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.24.5",
+        "date": "2026-09-08",
+        "title": "Consistent recent runs",
+        "summary": "Compact themed run histories in a consistent location across background tools.",
+        "groups": ({"title": "Run history", "items": (
+            "Uses a shared collapsed Recent runs panel near page headings, with names, status badges, timestamps and View actions.",
+            "Keeps current-run progress, cancellation and certificate recovery visible separately from previous runs.",
+        )},),
+    },
     {
         "version": "0.24.4",
         "date": "2026-09-08",

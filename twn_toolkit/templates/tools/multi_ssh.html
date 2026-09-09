@@ -4,6 +4,8 @@
 {% block shell_classes %} multi-ssh-shell{% endblock %}
 
 {% block content %}
+<header class="run-page-heading"><h1>Bulk SSH</h1></header>
+{% if ssh_job_api %}{% include 'components/recent_runs.html' %}{% endif %}
 {% set has_results = results is not none %}
 {% set success_count = results|selectattr('status', 'equalto', 'success')|list|length if has_results else 0 %}
 <div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
@@ -15,7 +17,7 @@
     <div class="panel-head tool-setup-heading">
       <div>
         <p class="eyebrow">Fleet command workspace</p>
-        <h1>Bulk SSH</h1>
+
         <p>Keep reusable hosts, per-host variables, and a compatible CLI action library together in one matrix.</p>
       </div>
       <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
@@ -341,10 +343,7 @@
 </div>
 {{ tool_settings_backdrop('Bulk SSH') }}
 
-{% if ssh_job_api %}
-<section class="panel"><h2>Recent Bulk SSH runs</h2><p>Runs continue in the background. Open a retained run for progress, cancellation, and results.</p>
-{% for job in ssh_recent %}<p><a href="{{ url_for('tools.ssh_job', job_id=job.id) }}">{{ job.run_name }}</a> · {{ job.created_display }} · {{ 'Finished' if job.state == 'succeeded' else job.state|replace('_', ' ') }}</p>{% else %}<p>No retained runs yet.</p>{% endfor %}</section>
-{% endif %}
+
 <div data-tool-results-anchor tabindex="-1">
 {% if results is not none %}
   <section class="panel tool-panel multi-ssh-panel">

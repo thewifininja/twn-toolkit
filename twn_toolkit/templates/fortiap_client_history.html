@@ -7,11 +7,13 @@
 {% set diagnostic_cancel_endpoint = 'cancel_wireless_history_job' %}
 {% set diagnostic_result_endpoint = 'fortiap_client_history' %}
 {% set diagnostic_completion_label = diagnostic_job.summary.get('outcome', 'succeeded')|title if diagnostic_job and diagnostic_job.state == 'succeeded' else none %}
+<header class="run-page-heading"><h1>Find Wireless Client History</h1></header>
+{% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 {% include 'components/diagnostic_job.html' %}
 {{ case_recorded_notice(journal_event) }}
 <section class="panel tool-panel">
   <div class="panel-head">
-    <h1>Find Wireless Client History</h1>
+
     <p>Search local FortiGate wireless-client logs for a client MAC and collapse matching AP events into transitions.</p>
   </div>
   <form class="form" method="post" action="{{ url_for('fortiap_client_history') }}"

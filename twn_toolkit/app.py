@@ -140,6 +140,8 @@ def create_app(instance_path: str | None = None) -> Flask:
     from .multipart_uploads import AccountedUploadRequest
     app.request_class = AccountedUploadRequest
     from .transfer_deadlines import OUTGOING_TRANSFER_LIMITS
+    from .run_history import history_time
+    app.jinja_env.filters["history_time"] = history_time
     app.jinja_env.globals["outgoing_transfer_limits"] = OUTGOING_TRANSFER_LIMITS
     app.config.from_mapping(
         BOOT_ID=secrets.token_hex(12),

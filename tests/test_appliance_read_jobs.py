@@ -203,5 +203,5 @@ def test_wireless_bad_text_is_retained_with_visible_warning(browser,monkeypatch,
     elif mode=='preview':assert result['summary']['rows'][0]['host']==r'client\xff'
     store.release(job['id'],job['token'])
     page=browser.get('/tasks/export-wireless-clients').data
-    assert b'<h2>Recent appliance runs</h2>' in page
+    assert b'data-recent-runs' in page
     assert b'Lab' in page and b'class="field-note"' in page

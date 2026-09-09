@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
+<header class="run-page-heading"><h1>{{ diagnostic_label }}</h1></header>
+{% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 {% include 'components/diagnostic_job.html' %}
 <section class="panel form">
   <p>The worker captures the case and saved selection when execution starts. You can leave this page and return to this result link.</p>
