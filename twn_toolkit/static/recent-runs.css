@@ -29,3 +29,48 @@ details.recent-runs { padding: 0; margin: 0 0 16px; border: 1px solid var(--line
 }
 
 .recent-run-view:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Retained Bulk SSH results: visible progress, compact hosts, explicit outcomes. */
+.ssh-run-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ssh-run-heading > div { min-width: 0; }
+.ssh-run-heading h1 { overflow-wrap: anywhere; }
+.ssh-run-heading .field-note { margin: 6px 0 0; }
+.ssh-run-heading .button-link { flex: none; }
+.ssh-run-overview { padding: 18px; }
+.ssh-run-progress { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ssh-run-progress p { margin: 0; }
+.ssh-run-progress .pill.neutral, .ssh-run-host .pill.neutral { color: var(--muted); background: var(--bg); }
+.ssh-run-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 14px 0; margin: 14px 0; border-block: 1px solid var(--line); }
+.ssh-run-stats dt { color: var(--muted); font-size: .8rem; }
+.ssh-run-stats dd { margin: 4px 0 0; font-size: 1.5rem; font-weight: 650; }
+.ssh-run-actions form { margin: 0; }
+.ssh-run-metadata { margin-top: 14px; color: var(--muted); font-size: .85rem; }
+.ssh-run-metadata summary { cursor: pointer; }
+.ssh-run-metadata dl, .ssh-run-host-body dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 14px; }
+.ssh-run-metadata dd, .ssh-run-host-body dd { margin: 0; overflow-wrap: anywhere; }
+.ssh-run-hosts-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.ssh-run-hosts-heading h2 { margin: 0; }
+.ssh-run-host-list { display: grid; gap: 10px; }
+.ssh-run-host { background: var(--panel); padding: 0; border-inline-start: 3px solid var(--line); }
+.ssh-run-host[data-host-status="success"] { border-inline-start-color: var(--ok); }
+.ssh-run-host[data-host-status="error"], .ssh-run-host[data-host-status="failed"], .ssh-run-host[data-host-status="timeout"] { border-inline-start-color: var(--bad); }
+.ssh-run-host[data-host-status="unknown"], .ssh-run-host[data-host-status="running"] { border-inline-start-color: var(--warn); }
+.ssh-run-host > summary { padding: 12px 14px; min-height: 48px; box-sizing: border-box; list-style: none; }
+.ssh-run-host > summary::-webkit-details-marker { display: none; }
+.ssh-run-host > summary .ssh-result-identity { flex: 1; overflow-wrap: anywhere; }
+.ssh-run-host > summary .pill, .ssh-run-chevron { flex: none; }
+.ssh-run-chevron { color: var(--muted); }
+.ssh-run-host[open] > summary { margin: 0; border-bottom: 1px solid var(--line); }
+.ssh-run-host[open] > summary .ssh-run-chevron { transform: rotate(90deg); }
+.ssh-run-host > summary:hover { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+.ssh-run-host > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.ssh-run-host-body { display: grid; gap: 12px; padding: 14px; min-width: 0; }
+.ssh-run-host-body .result-output { overflow-wrap: anywhere; line-height: 1.5; }
+.ssh-run-pagination { margin-top: 16px; }
+@media (max-width: 650px) {
+  .ssh-run-heading { align-items: flex-start; flex-direction: column; }
+  .ssh-run-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ssh-run-hosts { padding: 14px; }
+  .ssh-run-hosts-heading { align-items: flex-start; flex-direction: column; }
+  .ssh-run-metadata dl, .ssh-run-host-body dl { grid-template-columns: minmax(0, 1fr); }
+}

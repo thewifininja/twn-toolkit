@@ -27,7 +27,7 @@
           signal: AbortSignal.timeout(15000),
         });
         if (!response.headers.get('content-type')?.includes('application/json')) {
-          throw new Error('The server did not confirm admission. Check Recent Bulk SSH runs or retry this submission.');
+          throw new Error('The server did not confirm admission. Check Recent runs on Bulk SSH or retry this submission.');
         }
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Unable to admit this run.');
@@ -63,7 +63,21 @@
       if (!response.ok) throw new Error();
       const job = await response.json();
       status.textContent = job.stage;
+      const counts = { ...job, in_progress: ['queued', 'running', 'cancel_requested'].includes(job.state) ? Math.max(0, job.started - job.completed) : 0 };
+      panel.querySelectorAll('[data-ssh-count]').forEach((node) => {
+        const value = counts[node.dataset.sshCount];
+        if (Number.isFinite(value) && value >= 0) node.textContent = String(value);
+      });
+      const badge = panel.querySelector('[data-ssh-run-state]');
+      if (badge) {
+        const labels = { succeeded: 'Finished', unknown: 'Unconfirmed', cancel_requested: 'Cancelling' };
+        badge.textContent = labels[job.state] || job.state.replaceAll('_', ' ').replace(/^./, (c) => c.toUpperCase());
+        badge.className = 'pill ' + (['failed', 'timed_out'].includes(job.state) ? 'error' :
+          ['queued', 'running', 'cancel_requested', 'unknown'].includes(job.state) ? 'warning' : 'neutral');
+      }
       if (!['queued', 'running', 'cancel_requested'].includes(job.state)) {
+        const cancelButton = panel.querySelector('[data-ssh-cancel] button');
+        if (cancelButton) cancelButton.disabled = true;
         const link = document.createElement('a');
         link.href = window.location.href;
         link.textContent = 'View completed host results';

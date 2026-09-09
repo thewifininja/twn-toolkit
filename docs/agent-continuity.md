@@ -1050,3 +1050,10 @@ owner-filtered histories and scoped result URLs; do not load credentials or expa
 retention just to render the list. Empty previews still explain that no runs are
 retained. Condition timelines, certificate version records, and detailed automation
 run editors are distinct records, not this recent-job navigation component.
+
+Retained Bulk SSH run pages use the same theme and explicit text badges: success
+uses the theme's `--ok`, failure uses `--bad`, and unconfirmed outcomes remain
+warnings. Every host starts collapsed, including failures. Progress polling updates
+the summary and counters without replacing host output, expanding rows, or clearing
+retry drafts; loading newer output remains an explicit refresh. Terminal runs must
+not show hosts as still in progress solely because an acknowledgment was lost.

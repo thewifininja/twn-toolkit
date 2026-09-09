@@ -317,5 +317,5 @@ def progress_text(job, stats):
     if job['state'] == 'running':
         pending = stats['started'] - stats['completed']
         return f"{pending} {'host' if pending == 1 else 'hosts'} in progress · {stats['completed']} completed · {stats['not_started']} not started."
-    label = 'Finished' if job['state'] == 'succeeded' else job['state'].replace('_', ' ').capitalize()
+    label = 'Finished' if job['state'] == 'succeeded' else 'Unconfirmed' if job['state'] == 'unknown' else job['state'].replace('_', ' ').capitalize()
     return f"{label} · {stats['completed']} {'host' if stats['completed'] == 1 else 'hosts'} completed; {stats['unconfirmed']} unconfirmed."

@@ -9,6 +9,7 @@ RELEASE_NOTES = (
         "groups": ({"title": "Run history", "items": (
             "Uses a shared collapsed Recent runs panel near page headings, with names, status badges, timestamps and View actions.",
             "Keeps current-run progress, cancellation and certificate recovery visible separately from previous runs.",
+            "Formats retained Bulk SSH runs with a themed progress summary and collapsed host rows with explicit success, failure and unconfirmed badges.",
         )},),
     },
     {

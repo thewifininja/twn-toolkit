@@ -537,5 +537,26 @@ def test_running_host_progress_is_visible_before_completion(setup, monkeypatch):
     monkeypatch.setattr(network, '_ssh_host_connection', connection)
     complete(store)
     page = app.test_client().get('/tools/multi-ssh/jobs/'+identifier)
-    assert b'Worker picked up this run after' in page.data
+    assert b'<dt>Worker pickup</dt>' in page.data
     assert b'Finished' in page.data
+
+
+def test_retained_host_rows_start_collapsed_with_explicit_outcome_badges(setup):
+    app,store=setup
+    identifier,_=submit(app,hosts='success.test\nfailed.test\nunknown.test\npending.test')
+    job=store.claim()
+    for index,status in enumerate(('success','error','unknown')):
+        row={'host':f'host-{index}.test','host_label':f'Branch {index}','status':status,'output':'<script>retained output</script>','error':'Connection failed' if status=='error' else ''}
+        jobs._persist_host(store,job,index,row,started=True)
+        jobs._persist_host(store,job,index,row)
+    page=app.test_client().get('/tools/multi-ssh/jobs/'+identifier).data.decode()
+    hosts=re.findall(r'<details class="ssh-result ssh-run-host"([^>]*)>',page)
+    assert len(hosts)==4 and all('open' not in attributes for attributes in hosts)
+    assert '<span class="pill success">Success</span>' in page
+    assert '<span class="pill error">Failed</span>' in page
+    assert '<span class="pill warning">Unconfirmed</span>' in page
+    assert '<span class="pill neutral">Not Started</span>' in page
+    assert '&lt;script&gt;retained output&lt;/script&gt;' in page
+    assert f'/tools/multi-ssh/jobs/{identifier}/download?host=0' in page
+    assert page.index('Cancel remaining work')<page.index('class="ssh-result ssh-run-host"')
+    assert 'data-ssh-count="completed">3<' in page

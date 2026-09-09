@@ -1,29 +1,48 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="panel">
-  <h1>{{ job.run_name }}</h1>
-  <p>{{ job.created_display }}{% if job.queue_seconds is not none %} · Worker picked up this run after {{ job.queue_seconds }} seconds.{% endif %}</p>
-  <details><summary>Run identifier</summary><code>{{ job.id }}</code></details>
-  <p><a href="{{ url_for('tools.multi_ssh') }}">Back to Bulk SSH</a> · <a href="{{ url_for('tools.download_ssh_job', job_id=job.id) }}">Download retained results</a></p>
-  <div {% if active %}data-diagnostic-status-url="{{ url_for('tools.ssh_job_status', job_id=job.id) }}"{% endif %}>
-    <p data-diagnostic-status role="status">{{ progress_text }}</p>
-    <p>{{ counts.unconfirmed }} unconfirmed · {{ counts.not_started }} not started. Interrupted or timed-out commands may have run. Verify the device before submitting another run; commands are never automatically replayed.</p>
-    {% if active %}<form method="post" action="{{ url_for('tools.cancel_ssh_job', job_id=job.id) }}"><button class="secondary" {% if job.state == 'cancel_requested' %}disabled{% endif %}>Cancel remaining work</button></form>{% endif %}
+<header class="run-page-heading ssh-run-heading">
+  <div><p class="eyebrow">Bulk SSH run</p><h1>{{ job.run_name }}</h1><p class="field-note">{{ job.created_display }}</p></div>
+  <a class="button-link secondary" href="{{ url_for('tools.multi_ssh') }}">Back to Bulk SSH</a>
+</header>
+<section class="panel ssh-run-overview" {% if active %}data-diagnostic-status-url="{{ url_for('tools.ssh_job_status', job_id=job.id) }}"{% endif %}>
+  <div class="ssh-run-progress">
+    <span class="pill {{ 'error' if job.state in ['failed', 'timed_out'] else 'warning' if active or job.state == 'unknown' else 'neutral' }}" data-ssh-run-state>{{ 'Finished' if job.state == 'succeeded' else 'Unconfirmed' if job.state == 'unknown' else job.state|replace('_', ' ')|title }}</span>
+    <p data-diagnostic-status role="status" aria-live="polite">{{ progress_text }}</p>
   </div>
-  {% if active %}<p>Hosts in progress may be waiting for connection capacity, connecting, or running commands. Completed host output appears below when you refresh the results.</p>{% endif %}
+  <dl class="ssh-run-stats" aria-label="Run progress">
+    <div><dt>Hosts</dt><dd>{{ job.config.host_count }}</dd></div>
+    <div><dt>Completed</dt><dd data-ssh-count="completed">{{ counts.completed }}</dd></div>
+    <div><dt>In progress</dt><dd data-ssh-count="in_progress">{{ counts.started - counts.completed if active else 0 }}</dd></div>
+    <div><dt>Not started</dt><dd data-ssh-count="not_started">{{ counts.not_started }}</dd></div>
+  </dl>
+  <div class="button-row ssh-run-actions">
+    <a class="button-link" href="{{ url_for('tools.download_ssh_job', job_id=job.id) }}">Download retained results</a>
+    <a class="button-link secondary" href="{{ url_for('tools.ssh_job', job_id=job.id, page=page) }}">Refresh host results</a>
+    {% if active %}<form data-ssh-cancel method="post" action="{{ url_for('tools.cancel_ssh_job', job_id=job.id) }}"><button class="secondary danger" {% if job.state == 'cancel_requested' %}disabled{% endif %}>Cancel remaining work</button></form>{% endif %}
+  </div>
+  {% if active %}<p class="field-note">You can leave this page while the run continues. Hosts may be waiting for connection capacity, connecting, or running commands. Progress updates here; refresh host results to load newly captured output.</p>{% endif %}
+  {% if not active and counts.unconfirmed %}<p class="message warning">{{ counts.unconfirmed }} unconfirmed. Commands may have run; verify the device before submitting another run. Interrupted commands are never replayed automatically.</p>{% endif %}
   {% if job.error %}<p class="message error">{{ job.error }}</p>{% endif %}
   {% if job.summary.recording_warning %}<p class="message error">{{ job.summary.recording_warning }}</p>{% endif %}
-  <p><a href="{{ url_for('tools.ssh_job', job_id=job.id, page=page) }}">Refresh host results</a></p>
-  <p>Total run deadline: {{ job.timeout|int }} seconds, including connection setup and capacity waits.</p>
-  <p>Closing this page does not cancel the run. Results follow configured diagnostic retention. Download needed evidence before it expires.</p>
+  <details class="ssh-run-metadata"><summary>Run details &amp; retention</summary>
+    <dl><dt>Run identifier</dt><dd><code>{{ job.id }}</code></dd><dt>Total deadline</dt><dd>{{ job.timeout|int }} seconds, including connection setup and capacity waits</dd>
+    {% if job.queue_seconds is not none %}<dt>Worker pickup</dt><dd>{{ job.queue_seconds }} seconds after submission</dd>{% endif %}</dl>
+    <p class="field-note">Closing this page does not cancel the run. Results follow configured diagnostic retention. Download needed evidence before it expires.</p>
+  </details>
+</section>
+<section class="panel ssh-run-hosts">
+  <div class="ssh-run-hosts-heading"><h2>Host results</h2><span class="field-note">{{ rows|length }} shown · Page {{ page }} of {{ pages }}</span></div>
+  <div class="ssh-run-host-list">
   {% for row in rows %}
-  <details class="ssh-result" {% if row.status != 'success' %}open{% endif %}>
-    <summary><strong>{{ row.host_label or row.host }}</strong> · {{ row.host }} · {{ row.status|replace('_', ' ') }}</summary>
-    <p><a href="{{ url_for('tools.download_ssh_job', job_id=job.id, host=row.position) }}">Download this host</a></p>
-    {% if row.error %}<p class="message error">{{ row.error }}</p>{% endif %}
+  {% set tone = 'success' if row.status == 'success' else 'error' if row.status in ['error', 'failed', 'timeout'] else 'warning' if row.status in ['unknown', 'running'] else 'neutral' %}
+  <details class="ssh-result ssh-run-host" data-host-status="{{ row.status }}">
+    <summary><span class="ssh-result-identity"><strong>{{ row.host_label or row.host }}</strong>{% if row.host_label and row.host_label != row.host %}<small>{{ row.host }}</small>{% endif %}</span><span class="pill {{ tone }}">{{ 'Success' if row.status == 'success' else 'Failed' if row.status in ['error', 'failed'] else 'Unconfirmed' if row.status == 'unknown' else row.status|replace('_', ' ')|title }}</span><svg class="ssh-run-chevron" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+    <div class="ssh-run-host-body">
+    <div class="button-row"><a class="button-link secondary compact" href="{{ url_for('tools.download_ssh_job', job_id=job.id, host=row.position) }}">Download this host</a></div>
+    {% if row.error %}<p class="message {{ 'warning' if row.status == 'unknown' else 'error' }}">{{ row.error }}</p>{% endif %}
     {% if row.host_key_mismatch and row.host_key_retry_token %}
     <dl><dt>Saved key fingerprint</dt><dd>{{ row.host_key_mismatch.expected_fingerprint }}</dd><dt>Presented key fingerprint</dt><dd>{{ row.host_key_mismatch.presented_fingerprint }}</dd></dl>
-    <form method="post" action="{{ url_for('tools.retry_multi_ssh_host_key') }}" data-ssh-queued-retry data-unsaved-form>
+    <form method="post" action="{{ url_for('tools.retry_multi_ssh_host_key') }}" class="form ssh-run-retry" data-ssh-queued-retry data-unsaved-form>
       <input type="hidden" name="source_job" value="{{ job.id }}"><input type="hidden" name="position" value="{{ row.position }}"><input type="hidden" name="retry_token" value="{{ row.host_key_retry_token }}">
       <label>Username<input name="username" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label>
       <label class="check"><input type="checkbox" name="verified" required>I verified the presented fingerprint with the device owner and authorize replacing the saved key and retrying this host.</label>
@@ -31,13 +50,14 @@
     </form>
     {% endif %}
     <pre class="result-output">{{ row.output or 'No output captured.' }}</pre>
-    {% if row.preview_truncated %}<p>Browser preview shortened. Download this host for the complete retained output.</p>{% endif %}
-    {% if row.output_truncated %}<p>Retained output was shortened to fit the run storage limit.</p>{% endif %}
+    {% if row.preview_truncated %}<p class="field-note">Browser preview shortened. Download this host for the complete retained output.</p>{% endif %}
+    {% if row.output_truncated %}<p class="field-note">Retained output was shortened to fit the run storage limit.</p>{% endif %}
+    </div>
   </details>
   {% endfor %}
-  <nav aria-label="Host result pages">Page {{ page }} of {{ pages }} {% if page > 1 %}<a href="{{ url_for('tools.ssh_job', job_id=job.id, page=page-1) }}">Previous</a>{% endif %} {% if page < pages %}<a href="{{ url_for('tools.ssh_job', job_id=job.id, page=page+1) }}">Next</a>{% endif %}</nav>
+  </div>
+  {% if pages > 1 %}<nav class="button-row ssh-run-pagination" aria-label="Host result pages"><span>Page {{ page }} of {{ pages }}</span>{% if page > 1 %}<a class="button-link secondary" href="{{ url_for('tools.ssh_job', job_id=job.id, page=page-1) }}">Previous</a>{% endif %}{% if page < pages %}<a class="button-link secondary" href="{{ url_for('tools.ssh_job', job_id=job.id, page=page+1) }}">Next</a>{% endif %}</nav>{% endif %}
 </section>
 <script src="{{ url_for('static', filename='unsaved-forms.js') }}"></script>
 <script src="{{ url_for('static', filename='bulk-ssh-jobs.js') }}"></script>
-
 {% endblock %}
