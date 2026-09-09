@@ -412,7 +412,7 @@ accepted replay frames.
   TWN sequence-aware reporting, live cancelable telemetry, and bounded JSON
   exports. Its optional macOS PF compatibility helper is a separate privileged
   CLI workflow that detects, installs, verifies, updates, and removes only
-  TWN-managed IGMP rules; the web application and installer never change the
+  TWN-managed IGMP rules; the web application and unattended installer never change the
   host firewall. Automation pipelines now support durable zero-to-24-hour
   delays after eligible stages, persisting encrypted progress in a waiting job
   without occupying a worker and resuming after restart. Stage continuation can
@@ -814,7 +814,8 @@ make state, risk, and the next action obvious.
   subprocess per round and a 250-target limit. Missing or unusable `fping`
   retains the 20-worker system-`ping` compatibility engine and its 100-target
   limit. Do not auto-install OS packages or invoke privilege escalation from
-  the web application or installer. Persistent rounds are claimed and executed
+  the web application or unattended installer. Guided setup may execute explicitly
+  reviewed package and service actions. Persistent rounds are claimed and executed
   by `automation_worker` through `LiveToolStore`/`LiveToolRunner`; Gunicorn
   workers only create, inspect, update, and stop user-owned sessions in
   `instance/live_tools.sqlite3`. A five-minute lease is renewed by the global

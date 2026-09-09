@@ -2065,6 +2065,9 @@ service_control() {
       echo "This service-manager operation requires root, but sudo is unavailable." >&2
       return 1
     fi
+    if [ "${TWN_TOOLKIT_SETUP_UNATTENDED:-}" = 1 ]; then
+      exec sudo -n "$PYTHON" -m twn_toolkit.service_cli --root "$ROOT" "$service_action" "$@"
+    fi
     exec sudo "$PYTHON" -m twn_toolkit.service_cli --root "$ROOT" "$service_action" "$@"
   fi
   cd "$ROOT"
@@ -2072,6 +2075,10 @@ service_control() {
 }
 
 case "${1:-}" in
+  setup)
+    shift
+    exec python3 "$ROOT/scripts/guided_install.py" "$@"
+    ;;
   start)
     start
     ;;
@@ -2169,7 +2176,7 @@ case "${1:-}" in
     disable_https
     ;;
   *)
-    echo "Usage: ./twn {start|stop|restart|recover|status|logs|service|upgrade|backup|rollback|upgrade-status|multicast-pf|enable-https|disable-https|fix-permissions|adminreset|reset-data|distributed-restart|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
+    echo "Usage: ./twn {setup|start|stop|restart|recover|status|logs|service|upgrade|backup|rollback|upgrade-status|multicast-pf|enable-https|disable-https|fix-permissions|adminreset|reset-data|distributed-restart|automation-restart|tftp-restart|ssh-transfer-restart|ftp-restart}" >&2
     exit 2
     ;;
 esac

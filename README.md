@@ -533,6 +533,11 @@ are removed from navigation and remain blocked by the server if requested direct
 
 ## Installation
 
+### Guided installation
+
+Fresh interactive `./install.sh` runs the guided terminal installer. Revisit setup with `./twn setup`; choose service/manual mode before the location, individual optional tools, a searchable timezone, and an explicit final plan. Automated upgrades remain prompt-free. See [guided installation](docs/guided-installation.md) for the complete dependency inventory, platform requirements and unattended configuration.
+
+
 ### Requirements
 
 - Python 3.10 or newer

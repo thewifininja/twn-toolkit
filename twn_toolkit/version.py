@@ -1,6 +1,17 @@
-APP_VERSION = "0.24.3"
+APP_VERSION = "0.24.4"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.24.4",
+        "date": "2026-09-08",
+        "title": "Guided installation",
+        "summary": "A terminal installer with service-first location guidance and individually selected dependencies.",
+        "groups": ({"title": "Installation and diagnostics", "items": (
+            "Adds a full-screen setup wizard with Back/Next navigation, automatic OS detection, searchable timezones, and a reviewed installation plan.",
+            "Inventories optional tools including lsof, lldpd, tcpdump and traceroute, with package-manager checks and separate permission/daemon verification.",
+            "Preserves unattended upgrades and existing settings; offers explicit service and macOS multicast setup through the existing helpers.",
+        )},),
+    },
     {
         "version": "0.24.3",
         "date": "2026-09-08",
