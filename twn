@@ -2065,6 +2065,9 @@ service_control() {
       echo "This service-manager operation requires root, but sudo is unavailable." >&2
       return 1
     fi
+    if [ "${TWN_TOOLKIT_SETUP_UNATTENDED:-}" = 1 ]; then
+      exec sudo -n "$PYTHON" -m twn_toolkit.service_cli --root "$ROOT" "$service_action" "$@"
+    fi
     exec sudo "$PYTHON" -m twn_toolkit.service_cli --root "$ROOT" "$service_action" "$@"
   fi
   cd "$ROOT"

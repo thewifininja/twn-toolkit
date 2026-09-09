@@ -283,3 +283,21 @@ def test_homebrew_keg_only_lsof_and_sbin_are_visible_to_setup_and_services(check
         assert '/opt/homebrew/sbin' in value.split(os.pathsep)
         assert '/opt/homebrew/opt/lsof/bin' in value.split(os.pathsep)
         assert '/usr/local/opt/lsof/bin' in value.split(os.pathsep)
+
+
+@pytest.mark.parametrize('unattended',[False,True])
+def test_real_service_wrapper_disables_native_auth_prompt_only_for_unattended_setup(tmp_path,capfd,unattended):
+    import shutil
+    root=tmp_path/'toolkit';root.mkdir()
+    shutil.copy2(ROOT/'twn',root/'twn')
+    binaries=root/'.venv/bin';binaries.mkdir(parents=True)
+    for name,source in {
+        'python':'#!/bin/sh\nexit 0\n',
+        'id':'#!/bin/sh\necho 1000\n',
+        'sudo':'#!/bin/sh\nprintf "sudo-argument:%s\\n" "$@"\n',
+    }.items():
+        path=binaries/name;path.write_text(source);path.chmod(0o755)
+    run_command([str(root/'twn'),'service','install','--user','fixture'],root=root,unattended=unattended)
+    output=capfd.readouterr().out
+    assert ('sudo-argument:-n\n' in output)==unattended
+    assert 'sudo-argument:twn_toolkit.service_cli' in output

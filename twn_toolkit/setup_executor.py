@@ -41,6 +41,7 @@ def run_command(command: list[str], *, root: Path, unattended: bool = False):
     env = dict(os.environ, PATH=executable_path(root), TWN_TOOLKIT_SETUP_ACTIVE='1', PIP_NO_INPUT='1')
     if unattended:
         env['NONINTERACTIVE'] = '1'
+        env['TWN_TOOLKIT_SETUP_UNATTENDED'] = '1'
         if any(Path(part).name == 'apt-get' for part in command):
             command.insert(command.index('install')+1,'-y')
             env['DEBIAN_FRONTEND'] = 'noninteractive'
