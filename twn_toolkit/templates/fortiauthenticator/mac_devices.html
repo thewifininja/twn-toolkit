@@ -1,12 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
+<header class="run-page-heading"><h1>MAC Devices</h1></header>
+{% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 {% include 'components/diagnostic_job.html' %}
 {% from 'components/ui.html' import case_recorded_notice %}
 {{ case_recorded_notice(journal_event) }}
 <section class="panel tool-panel">
   <div class="panel-head">
-    <h1>MAC Devices</h1>
+
     <p>Fetch the complete FortiAuthenticator MAC device inventory for an in-page preview or CSV export.</p>
   </div>
   {% if profiles %}

@@ -1,5 +1,0 @@
-{% if appliance_recent %}
-<section class="panel"><h2>Recent appliance runs</h2>
-<ul>{% for run in appliance_recent|sort(attribute='created', reverse=true) %}<li><a href="{{ run.url }}">{{ run.mode|replace('_', ' ')|title }} · {{ run.profile_name }} · {{ run.state|replace('_', ' ')|title }}</a><br><span class="field-note">{{ run.created_display }}</span></li>{% endfor %}</ul>
-</section>
-{% endif %}

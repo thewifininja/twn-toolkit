@@ -10,6 +10,8 @@
 {% endif %}
 {{ case_recorded_notice(journal_event) }}
 {% with diagnostic_label='iPerf3 client', diagnostic_draft_form='iperf-client-form', diagnostic_status_endpoint='tools.iperf_client_job_status', diagnostic_cancel_endpoint='tools.cancel_iperf_client_job', diagnostic_result_endpoint='tools.iperf3' %}
+<header class="run-page-heading"><h1>iPerf3 Tester</h1></header>
+{% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 {% include 'components/diagnostic_job.html' %}
 {% endwith %}
 {% if diagnostic_job %}
@@ -20,7 +22,7 @@
   <header class="panel-head iperf-workspace-head">
     <div>
       <span class="eyebrow">Throughput workspace</span>
-      <h1>iPerf3 Tester</h1>
+
       <p>Run an authorized client test or manage a multi-test iPerf3 listener using the binary already installed on this toolkit host.</p>
     </div>
     <div class="tool-setup-heading-actions">

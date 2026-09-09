@@ -17,6 +17,7 @@
     <meta name="theme-color" content="{{ '#0e0e14' if user_theme == 'dark' else '#f2f0e5' }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=asset_version) }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='appearance.css', v=asset_version) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='recent-runs.css', v=asset_version) }}">
   </head>
   <body data-instance-prefix="{{ request.script_root }}">
     <a class="skip-link" href="#main-content">Skip to main content</a>

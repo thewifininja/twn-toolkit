@@ -10,9 +10,3 @@
   {% if diagnostic_job.state in ['queued', 'running', 'cancel_requested'] %}<noscript><p><a href="{{ diagnostic_result_url or url_for(diagnostic_result_endpoint, job=diagnostic_job.id) }}">Refresh run status</a></p></noscript>{% endif %}
 </section>
 {% endif %}
-{% if diagnostic_recent %}
-<details class="panel"><summary>Your recent runs</summary><ul>
-{% for item in diagnostic_recent %}<li><a href="{{ url_for(diagnostic_result_endpoint, job=item.id) }}">{{ item.id[:12] }} · {{ item.state|replace('_', ' ') }}</a></li>{% endfor %}
-</ul></details>
-{% endif %}
-

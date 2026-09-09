@@ -6,6 +6,8 @@
 {% set diagnostic_status_endpoint = 'tools.transfer_job_status' %}
 {% set diagnostic_cancel_endpoint = 'tools.cancel_transfer_job' %}
 {% set diagnostic_result_endpoint = 'tools.multi_transfer' %}
+<header class="run-page-heading"><h1>Bulk Transfer</h1></header>
+{% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 {% include 'components/diagnostic_job.html' %}
 {% if diagnostic_job and form.output_mode == 'datastore' %}
 <p class="message">Files publish individually. If a run stops or becomes unconfirmed, inspect the destination before retrying; already published files are not rolled back.</p>
@@ -22,7 +24,7 @@
 {{ case_recorded_notice(journal_event) }}
 <section class="panel tool-panel tool-setup-panel" id="bulk-transfer-settings" data-tool-settings-panel>
   <div class="panel-head tool-setup-heading">
-    <div><p class="eyebrow">Network tools</p><h1>Bulk Transfer</h1><p>Fetch the same file set from multiple hosts using SFTP, SCP, or FTP, then retain it in the datastore or download a retained ZIP.</p></div>
+    <div><p class="eyebrow">Network tools</p><p>Fetch the same file set from multiple hosts using SFTP, SCP, or FTP, then retain it in the datastore or download a retained ZIP.</p></div>
     <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}

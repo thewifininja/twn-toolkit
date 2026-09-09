@@ -6,6 +6,8 @@
 {% set diagnostic_status_endpoint = 'tools.port_scanner_job_status' %}
 {% set diagnostic_cancel_endpoint = 'tools.cancel_port_scanner_job' %}
 {% set diagnostic_result_endpoint = 'tools.port_scanner' %}
+<header class="run-page-heading"><h1>TCP Port Scanner</h1></header>
+{% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 {% include 'components/diagnostic_job.html' %}
 
 {% set has_results = stats is not none %}
@@ -13,7 +15,7 @@
 {{ tool_result_runbar('Scan complete', 'TCP port scan', (stats.combinations ~ ' tested · ' ~ stats.open ~ ' open') if has_results else '', 'port-scan-form', 'port-scan-settings', has_results, 'Scan again') }}
 <section class="panel compact-tool-workspace-panel tool-setup-panel" id="port-scan-settings" data-tool-settings-panel>
   <div class="panel-head compact-tool-workspace-head tool-setup-heading">
-    <div><span class="eyebrow">TCP reachability</span><h1>TCP Port Scanner</h1><p>Check selected TCP services across authorized hosts from the toolkit server.</p></div>
+    <div><span class="eyebrow">TCP reachability</span><p>Check selected TCP services across authorized hosts from the toolkit server.</p></div>
     <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}

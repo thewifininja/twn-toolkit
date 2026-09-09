@@ -1037,3 +1037,23 @@ not installed globally:
 ```bash
 /Users/nkarrick/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --check path/to/file.js
 ```
+
+### Recent background runs
+
+Use `components/recent_runs.html` and `recent-runs.css` for retained background-job
+previews. Place the single collapsed disclosure directly below the page title,
+outside settings panels that can be hidden when results arrive. Its count describes
+the displayed, bounded recent list. Rows show a descriptive name, themed status,
+toolkit-local timestamp, and View action. Keep active progress, cancellation,
+certificate recovery, and result downloads outside the disclosure. Use existing
+owner-filtered histories and scoped result URLs; do not load credentials or expand
+retention just to render the list. Empty previews still explain that no runs are
+retained. Condition timelines, certificate version records, and detailed automation
+run editors are distinct records, not this recent-job navigation component.
+
+Retained Bulk SSH run pages use the same theme and explicit text badges: success
+uses the theme's `--ok`, failure uses `--bad`, and unconfirmed outcomes remain
+warnings. Every host starts collapsed, including failures. Progress polling updates
+the summary and counters without replacing host output, expanding rows, or clearing
+retry drafts; loading newer output remains an explicit refresh. Terminal runs must
+not show hosts as still in progress solely because an acknowledgment was lost.

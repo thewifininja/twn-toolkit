@@ -1,6 +1,19 @@
-APP_VERSION = "0.24.4"
+APP_VERSION = "0.24.5"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.24.5",
+        "date": "2026-09-08",
+        "title": "Run history and automation interface",
+        "summary": "Consistent themed run histories, clearer Bulk SSH results and direct access to the full automation builder.",
+        "groups": ({"title": "Run history", "items": (
+            "Uses a shared collapsed Recent runs panel near page headings, with names, status badges, timestamps and View actions.",
+            "Keeps current-run progress, cancellation and certificate recovery visible separately from previous runs.",
+            "Formats retained Bulk SSH runs with a themed progress summary and collapsed host rows with explicit success, failure and unconfirmed badges.",
+        )}, {"title": "Automation", "items": (
+            "Removes Guided Automation setup; use the full builder for new and existing workflows. Old setup bookmarks redirect to Automations.",
+        )}),
+    },
     {
         "version": "0.24.4",
         "date": "2026-09-08",

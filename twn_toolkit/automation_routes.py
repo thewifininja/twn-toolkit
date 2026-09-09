@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import hmac
-import secrets
 import os
 import re
 import time
@@ -282,63 +280,11 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
         )
         return response
 
-    def guide_serializer():
-        from itsdangerous import URLSafeTimedSerializer
-        return URLSafeTimedSerializer(app.secret_key, salt='automation-guide-v1')
-
-    @app.get('/automations/guided')
+    @app.get("/automations/guided")
     def guided_automation():
+        # Preserve old bookmarks while using the full automation builder.
         require_admin()
-        response = Response(render_template('automations/guide.html',
-            sources=store.source_definitions(), actions=store.action_definitions(),
-            timezone=TimeSettingsStore(store.instance_path).resolved_timezone()))
-        response.headers['Cache-Control'] = 'no-store'
-        return response
-
-    @app.post('/automations/guided/preview')
-    def preview_guided_automation():
-        require_admin()
-        suppress_audit_event()
-        request.max_content_length = 256 * 1024
-        from .automation_guide import prepare_guide
-        try:
-            _, digest, review = prepare_guide(store, request.form)
-            token = guide_serializer().dumps({'user': str(g.current_user['id']),
-                'digest': digest, 'nonce': secrets.token_hex(16)})
-            response = jsonify(review=review, review_token=token)
-        except (ValueError, TypeError, ToolInputError) as exc:
-            response = jsonify(error=str(exc)); response.status_code = 400
-        response.headers['Cache-Control'] = 'no-store'
-        return response
-
-    @app.post('/automations/guided/create')
-    def create_guided_automation():
-        require_admin()
-        request.max_content_length = 256 * 1024
-        from itsdangerous import BadSignature
-        from .automation_guide import prepare_guide, save_guide_atomically
-        try:
-            values, digest, _ = prepare_guide(store, request.form)
-            if request.form.get('confirm_review') != 'on':
-                raise ValueError('Confirm that you reviewed the behavior before creating.')
-            token = guide_serializer().loads(request.form.get('review_token', ''), max_age=600)
-            if token.get('user') != str(g.current_user['id']) or not hmac.compare_digest(str(token.get('digest', '')), digest):
-                raise ValueError('The setup changed after review. Validate it again before creating.')
-            automation_id = save_guide_atomically(store, values, str(g.current_user['username']))
-        except BadSignature:
-            suppress_audit_event()
-            return jsonify(error='The review expired or is invalid. Validate again before creating.'), 400
-        except (ValueError, TypeError, ToolInputError) as exc:
-            suppress_audit_event()
-            return jsonify(error=str(exc)), 400
-        annotate_audit_event(category='Automation', action='automation.created',
-            summary=f"Created paused automation {values['name']} through guided setup.",
-            resource_type='automation', resource_id=automation_id, resource_name=values['name'],
-            details={'source type': values['condition']['type'], 'action type': values['actions'][0]['type'], 'enabled': False})
-        response = jsonify(url=url_for('automations', focus=automation_id), automation_id=automation_id)
-        response.status_code = 201
-        response.headers['Cache-Control'] = 'no-store'
-        return response
+        return redirect(url_for("automations"))
 
     @app.get("/automations")
     def automations():

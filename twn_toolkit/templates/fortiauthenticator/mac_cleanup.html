@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
+<header class="run-page-heading"><h1>MAC Device Cleanup</h1></header>
+{% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 {% include 'components/diagnostic_job.html' %}
-{% include 'components/appliance_recent.html' %}
 <section class="panel tool-panel">
   <div class="panel-head">
-    <h1>MAC Device Cleanup</h1>
+
     <p>Build a live preview before removing group memberships or deleting MAC devices globally.</p>
   </div>
   {% if profiles %}

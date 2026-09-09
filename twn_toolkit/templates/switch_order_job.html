@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
+<header class="run-page-heading"><h1>{{ diagnostic_label }}</h1></header>
+{% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 {% include 'components/diagnostic_job.html' %}
 {% set data = diagnostic_job.summary %}
 <section class="panel form">

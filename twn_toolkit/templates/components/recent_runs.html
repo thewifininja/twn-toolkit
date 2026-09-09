@@ -1,0 +1,40 @@
+{# Adapt only the owner's already-authorized, bounded history previews. #}
+{% set history = namespace(rows=[], ids=[]) %}
+{% for item in diagnostic_recent|default([]) %}
+  {% set history.rows = history.rows + [dict(id=item.id, name=diagnostic_label|default('Run'), state=item.state, created=item.created, when=item.created|history_time, url=url_for(diagnostic_result_endpoint, job=item.id))] %}
+  {% set history.ids = history.ids + [item.id] %}
+{% endfor %}
+{% for item in appliance_recent|default([]) %}
+  {% if item.id not in history.ids %}{% set history.rows = history.rows + [dict(id=item.id, name=(item.mode|replace('_', ' ')|title) ~ ' · ' ~ item.profile_name, state=item.state, created=item.created, when=item.created_display, url=item.url)] %}{% endif %}
+{% endfor %}
+{% for item in ssh_recent|default([]) %}
+  {% set history.rows = history.rows + [dict(id=item.id, name=item.run_name, state=item.state, created=item.created|default(0), when=item.created_display, url=url_for('tools.ssh_job', job_id=item.id))] %}
+{% endfor %}
+{% for item in switch_order_recent|default([]) %}
+  {% set history.rows = history.rows + [dict(id=item.id, name='Switch order', state=item.state, created=item.created, when=item.created|history_time, url=url_for('switch_order_job', job_id=item.id))] %}
+{% endfor %}
+{% if certificate_section|default('') == 'adcs' %}
+  {% for item in certificate_jobs|default([]) %}
+    {% set history.rows = history.rows + [dict(id=item.id, name='Certificate ' ~ (item.tool|replace('certificate_', '')|replace('_', ' ')), state=item.state, created=item.created, when=item.created|history_time, url=url_for('tools.certificate_job_result', job_id=item.id))] %}
+  {% endfor %}
+{% elif certificate_section|default('') == 'acme' %}
+  {% for item in acme_jobs|default([]) %}
+    {% set history.rows = history.rows + [dict(id=item.id, name=item.name ~ ' · ' ~ (item.environment|title), state=item.status, created=item.created_at, when=item.created_at_display, url=url_for('tools.certificate_automation', section='acme', acme=item.id) ~ '#acme-issuance', delete_url=url_for('tools.delete_failed_acme_dns_request', job_id=item.id) if item.status in ['failed', 'cancelled', 'interrupted'] else '')] %}
+  {% endfor %}
+{% endif %}
+{% set labels = {'succeeded':'Finished', 'issued':'Issued', 'cancel_requested':'Cancelling', 'unknown':'Unconfirmed', 'timed_out':'Timed out'} %}
+<details class="panel recent-runs" data-recent-runs>
+  <summary><span class="recent-runs-title">Recent runs</span><span class="count-badge">{{ history.rows|length }}</span><svg class="recent-runs-chevron" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+  <ul class="recent-runs-list" aria-label="Recent runs">
+  {% for item in history.rows|sort(attribute='created', reverse=true) %}
+    {% set tone = 'success' if item.state in ['succeeded', 'issued'] else 'error' if item.state in ['failed', 'timed_out', 'timeout'] else 'warning' if item.state in ['queued', 'running', 'cancel_requested', 'unknown', 'interrupted', 'pending', 'awaiting_dns', 'issuing', 'starting', 'validating'] else 'neutral' %}
+    <li class="recent-run">
+      <strong class="recent-run-name">{{ item.name }}</strong>
+      <span class="pill {{ tone }} recent-run-state">{{ labels.get(item.state, item.state|replace('_', ' ')|title) }}</span>
+      <span class="recent-run-time">{{ item.when }}</span>
+      <div class="recent-run-actions"><a class="recent-run-view" href="{{ item.url }}" aria-label="View {{ item.name }} · {{ item.when }}">View<span class="sr-only"> run</span></a>
+      {% if item.delete_url %}<form method="post" action="{{ item.delete_url }}" onsubmit="return confirm('Delete this failed ACME request?');"><button class="text-danger" type="submit">Delete</button></form>{% endif %}</div>
+    </li>
+  {% else %}<li class="recent-runs-empty">No retained runs yet.</li>{% endfor %}
+  </ul>
+</details>
