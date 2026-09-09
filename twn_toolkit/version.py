@@ -1,6 +1,35 @@
-APP_VERSION = "0.24.5"
+APP_VERSION = "0.25.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.25.0",
+        "date": "2026-09-08",
+        "title": "Guided installation and reliable remote operations",
+        "summary": "A full-screen installer, independent agent tabs, retained background work and consistent run history.",
+        "groups": (
+            {"title": "Installation and platform support", "items": (
+                "Adds a full-screen installer with Back/Next navigation, detected OS, service-first location choices, searchable timezones and individually selected optional dependencies.",
+                "Checks package managers and existing tools before applying a reviewed plan; uses native authorization for selected privileged operations and preserves unattended upgrades.",
+                "Supports revisiting setup to enable a service, with explicit service-removal guidance when returning to manual startup.",
+            )},
+            {"title": "Remote workspaces and libraries", "items": (
+                "Keeps Mainframe agent selection in each tab URL so the same login can work on different agents across tabs and devices.",
+                "Preserves agent targeting through reloads, bookmarks, profile actions and retained responses, with existing access controls.",
+                "Combines host and folder search in the Connections sidebar and places bounded folder and credential lookup in the controls where those choices are used.",
+            )},
+            {"title": "Background work and retained results", "items": (
+                "Runs Bulk SSH, appliance changes, certificate operations and exports through supervised jobs with bounded input, cancellation and explicit recovery outcomes.",
+                "Adds friendly Bulk SSH run names, progress and themed host results collapsed by default, with success, failure and unconfirmed outcomes.",
+                "Standardizes Recent runs near page headings with collapsed history, names, status, timestamps and View actions; keeps current progress and cancellation visible.",
+                "Handles invalid wireless-client display text in read-only exports with visible byte escapes and warnings, and corrects single-packet capture statistics.",
+                "Hardens storage admission, export and preview bounds, retained history, worker recovery and protocol deadlines.",
+            )},
+            {"title": "Automation and upgrades", "items": (
+                "Uses the full automation builder for new and existing workflows; removes Guided Automation setup while preserving existing definitions and redirecting old bookmarks.",
+                "Retains verified bundle upgrades with matched code and instance recovery points. Upgrade Mainframe and Agents to the same release and reload open pages.",
+            )},
+        ),
+    },
     {
         "version": "0.24.5",
         "date": "2026-09-08",

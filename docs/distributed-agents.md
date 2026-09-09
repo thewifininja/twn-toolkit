@@ -92,12 +92,13 @@ intermediary attack.
 
 ## Execution context
 
-The mainframe top bar owns one execution-context selector for each
-authenticated user. `This instance` is the default; each online, compatible,
-approved agent appears by its administrator-assigned name. The selection is
-per-user rather than global so operators may work through different agents at
-the same time. It persists across navigation and applies to every supported
-tool until the user changes it.
+The Mainframe top bar selects the execution target for the current browser tab.
+`This instance` is the default; each online, compatible, approved agent appears
+by its administrator-assigned name. The page URL carries the target, so another
+tab or device using the same login can work on a different agent. Navigation,
+reloads and bookmarks retain that tab's target. Unprefixed Mainframe URLs address
+the Mainframe itself; agent URLs use `/agents/<id>/ui/`. Selection does not change
+object ownership or permissions.
 
 Switching instances preserves the current relative path and query when the
 destination supports it. A missing destination route falls back to that
