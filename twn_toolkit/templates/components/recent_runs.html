@@ -19,7 +19,7 @@
   {% endfor %}
 {% elif certificate_section|default('') == 'acme' %}
   {% for item in acme_jobs|default([]) %}
-    {% set history.rows = history.rows + [dict(id=item.id, name=item.name, state=item.status, created=item.created_at, when=item.created_at_display, url=url_for('tools.certificate_automation', section='acme', acme=item.id) ~ '#acme-issuance', delete_url=url_for('tools.delete_failed_acme_dns_request', job_id=item.id) if item.status in ['failed', 'cancelled', 'interrupted'] else '')] %}
+    {% set history.rows = history.rows + [dict(id=item.id, name=item.name ~ ' · ' ~ (item.environment|title), state=item.status, created=item.created_at, when=item.created_at_display, url=url_for('tools.certificate_automation', section='acme', acme=item.id) ~ '#acme-issuance', delete_url=url_for('tools.delete_failed_acme_dns_request', job_id=item.id) if item.status in ['failed', 'cancelled', 'interrupted'] else '')] %}
   {% endfor %}
 {% endif %}
 {% set labels = {'succeeded':'Finished', 'issued':'Issued', 'cancel_requested':'Cancelling', 'unknown':'Unconfirmed', 'timed_out':'Timed out'} %}
@@ -27,7 +27,7 @@
   <summary><span class="recent-runs-title">Recent runs</span><span class="count-badge">{{ history.rows|length }}</span><svg class="recent-runs-chevron" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
   <ul class="recent-runs-list" aria-label="Recent runs">
   {% for item in history.rows|sort(attribute='created', reverse=true) %}
-    {% set tone = 'success' if item.state in ['succeeded', 'issued'] else 'error' if item.state in ['failed', 'timed_out', 'timeout'] else 'warning' if item.state in ['queued', 'running', 'cancel_requested', 'unknown', 'interrupted', 'pending', 'awaiting_dns', 'issuing'] else 'neutral' %}
+    {% set tone = 'success' if item.state in ['succeeded', 'issued'] else 'error' if item.state in ['failed', 'timed_out', 'timeout'] else 'warning' if item.state in ['queued', 'running', 'cancel_requested', 'unknown', 'interrupted', 'pending', 'awaiting_dns', 'issuing', 'starting', 'validating'] else 'neutral' %}
     <li class="recent-run">
       <strong class="recent-run-name">{{ item.name }}</strong>
       <span class="pill {{ tone }} recent-run-state">{{ labels.get(item.state, item.state|replace('_', ' ')|title) }}</span>

@@ -54,3 +54,14 @@ def test_collapsing_history_cannot_hide_progress_or_cancel(app):
     assert 'No retained runs yet.' in page
     assert 'Cancel run' not in page and 'Cancel run' in progress
     assert 'data-diagnostic-status-url' in progress and '<details' not in progress
+
+
+def test_certificate_history_preserves_environment_and_failed_request_action(app):
+    with app.test_request_context('/'):
+        page=render_template('components/recent_runs.html',certificate_section='acme',acme_jobs=[
+            {'id':'active','name':'Lab certificate','environment':'staging','status':'validating','created_at':2,'created_at_display':'Today'},
+            {'id':'failed','name':'Office certificate','environment':'production','status':'failed','created_at':1,'created_at_display':'Yesterday'}])
+    assert 'Lab certificate · Staging' in page and 'Office certificate · Production' in page
+    assert 'pill warning recent-run-state">Validating' in page
+    assert page.count('>Delete</button>')==1
+    assert 'onsubmit="return confirm(\'Delete this failed ACME request?\');"' in page

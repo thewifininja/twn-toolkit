@@ -246,7 +246,7 @@
         <fieldset>
           <legend>Private key</legend>
           <label class="check"><input type="radio" name="key_source" value="generate" checked><span><strong>Generate a new key</strong><small>Recommended for new requests and rotations.</small></span></label>
-          <label class="check"><input type="radio" name="key_source" value="upload"><span><strong>Import an existing key</strong><small>PEM-encoded RSA key, optionally protected by a passphrase.</small></span></label>
+          <label class="check"><input type="radio" name="key_source" value="upload"><span><strong>Import an existing key</strong><small>PEM-encoded RSA key, up to 16 KiB, optionally protected by a passphrase.</small></span></label>
           <div class="certificate-key-upload" hidden>
             <label>Private key file<input type="file" name="private_key" accept=".pem,.key"></label>
             <label>Key passphrase<input type="password" name="private_key_password" autocomplete="new-password"></label>
