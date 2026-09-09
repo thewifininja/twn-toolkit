@@ -404,13 +404,6 @@ outgoing collection concurrency, idle and host deadlines, and file/run budgets.
 
 ### Automation
 
-Guided automation setup creates a paused workflow from an inline manual, ping,
-or daily trigger and SSH action, or existing reusable objects. It validates
-configuration without probing devices or executing actions, shows when/do/recover
-behavior and upcoming calendar occurrences, and requires a current review before
-creation. Guided SSH plans allow 20 hosts and 20 commands; the advanced editor
-remains available for larger or multi-stage workflows.
-
 Automation is built from four reusable layers:
 
 - **Automation → Automations** chooses run mode and connects definitions to

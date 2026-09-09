@@ -111,8 +111,6 @@ def register_tools(registry) -> None:
             "download_automation_run_json": "automation.home",
             "automation_history": "automation.home",
             "guided_automation": "automation.home",
-            "preview_guided_automation": "automation.home",
-            "create_guided_automation": "automation.home",
             "add_automation_run_to_case": "automation.home",
         }
     )
