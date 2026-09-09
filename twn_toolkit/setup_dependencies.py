@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 import importlib.util
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 import platform
 import shutil
@@ -27,6 +28,7 @@ class Dependency:
 DEPENDENCIES = (
     Dependency('python', 'Python 3.10+', 'Toolkit runtime and virtual environment', ('python3',), ('python3','python3-venv'), ('python',), ('python',), category='bootstrap'),
     Dependency('venv', 'Python virtual-environment support', 'Create the isolated toolkit Python environment', apt=('python3-venv',), pacman=('python',), brew=('python',), category='system', note='Required before installing Python dependencies.'),
+    Dependency('tzdata', 'Timezone database', 'City/region timezone selection', apt=('tzdata',), pacman=('tzdata',), category='system', note='OS timezone data. If absent, install it and revisit setup to select a city; Follow host works without an override.'),
     Dependency('build', 'Native Python build tools', 'Compile dependencies when compatible binary wheels are unavailable', ('cc','make','pkg-config','cargo'), ('build-essential','python3-dev','libffi-dev','libssl-dev','pkg-config','cargo'), ('base-devel','rust'), category='optional', all_commands=True, note='On macOS install Apple Command Line Tools and Rust separately if pip needs native builds.'),
     Dependency('ping', 'Ping', 'Ping, Path MTU and automation fallback', ('ping',), ('iputils-ping',), ('iputils',), category='system'),
     Dependency('traceroute', 'Traceroute', 'Route diagnostics', ('traceroute',), ('traceroute',), ('traceroute',)),
@@ -87,6 +89,12 @@ def inventory(root: Path | None = None, *, system: str | None = None) -> list[di
         present = (all(paths.values()) if spec.all_commands else any(paths.values())) if paths else False
         if spec.id == 'venv':
             present = importlib.util.find_spec('venv') is not None and importlib.util.find_spec('ensurepip') is not None
+        if spec.id == 'tzdata':
+            try:
+                ZoneInfo('UTC')
+                present = True
+            except ZoneInfoNotFoundError:
+                present = False
         if spec.id == 'bpf':
             present = Path('/Library/LaunchDaemons/org.wireshark.ChmodBPF.plist').is_file()
         rows.append({'id':spec.id,'name':spec.name,'purpose':spec.purpose,'commands':paths,

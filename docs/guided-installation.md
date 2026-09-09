@@ -48,6 +48,7 @@ binary is not proof that its version, daemon or effective permissions are usable
 | Dependency | Ubuntu/Debian | Arch | macOS | Purpose / qualification |
 |---|---|---|---|---|
 | Python / venv | python3, python3-venv | python | Python prerequisite | Runtime; Python must exist before setup starts |
+| Timezone database | tzdata | tzdata | OS-provided | City/region selection; if missing, install and revisit the picker |
 | Native build support | build-essential, python3-dev, libffi-dev, libssl-dev, pkg-config, cargo | base-devel, rust | Apple Command Line Tools / Rust, provision separately | Only needed when no compatible Python wheels are available |
 | ping | iputils-ping | iputils | OS-provided | Ping / Path MTU |
 | traceroute | traceroute | traceroute | OS-provided | Route diagnostics; traceroute6 also checked on macOS |

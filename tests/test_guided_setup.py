@@ -31,7 +31,7 @@ def checkout(tmp_path,monkeypatch):
 
 def test_inventory_covers_every_optional_integration_and_bundled_certbot():
     specs={spec.id:spec for spec in DEPENDENCIES}
-    assert {'lsof','lldpd','tcpdump','traceroute','iperf3','fping','nmcli','iw','ethtool','venv','build'} <= specs.keys()
+    assert {'lsof','lldpd','tcpdump','traceroute','iperf3','fping','nmcli','iw','ethtool','venv','build','tzdata'} <= specs.keys()
     assert specs['lldpd'].all_commands and specs['lldpd'].commands==('lldpd','lldpcli')
     assert specs['certbot'].category=='python' and not specs['certbot'].apt
     assert specs['eapol_test'].category=='disabled'
