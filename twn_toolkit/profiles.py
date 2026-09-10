@@ -162,9 +162,64 @@ class FortiAuthenticatorProfileStore(ProfileStore):
 class PingProfileStore(JsonListStore):
     def __init__(self, instance_path: str, filename: str = "ping_profiles.json") -> None:
         super().__init__(instance_path, filename)
+        self._uses_mso = filename == "ping_profiles.json"
+        if self._uses_mso:
+            self.transaction_path = self.instance_path / "distributed_settings.json"
+
+    def mso_store(self):
+        from .mso import MsoStore
+        return MsoStore(self.instance_path)
+
+    def _read(self):
+        return self.mso_store().profiles() if self._uses_mso else super()._read()
+
+    def _write(self, profiles):
+        if self._uses_mso:
+            self.mso_store().replace_local(profiles)
+        else:
+            super()._write(profiles)
 
     def upsert(self, profile: dict[str, Any], original_name: str = "") -> None:
-        self._upsert(profile, original_name=original_name)
+        if self._uses_mso:
+            self.mso_store().save(profile, original_name)
+        else:
+            self._upsert(profile, original_name=original_name)
+
+    def delete(self, name):
+        return self.mso_store().delete(name) if self._uses_mso else super().delete(name)
+
+    def duplicate(self, name):
+        if not self._uses_mso:
+            return super().duplicate(name)
+        with file_transaction(self.transaction_path):
+            source = self.get(name)
+            if source is None:
+                raise ValueError("Profile not found.")
+            copied = deepcopy(source)
+            copied["name"] = duplicate_name(name, (p["name"] for p in self.all()))
+            self.mso_store().save(copied, enabled=False)
+            return copied
+
+    def backup_snapshot(self):
+        return self.mso_store().backup_snapshot() if self._uses_mso else self._read()
+
+    def restore_backup_snapshot(self, snapshot):
+        if self._uses_mso:
+            self.mso_store().restore_backup_snapshot(snapshot)
+        else:
+            self._write(snapshot)
+
+    def clear(self):
+        if self._uses_mso:
+            self.mso_store().replace_local([])
+        else:
+            super().clear()
+
+    def replace_all(self, profiles):
+        if self._uses_mso:
+            self.mso_store().replace_local(profiles)
+        else:
+            super().replace_all(profiles)
 
 
 class DNSProfileStore(PingProfileStore):

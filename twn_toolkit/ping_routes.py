@@ -28,6 +28,8 @@ from .ping_investigation import (
     recording_case_id,
 )
 from .profiles import PingProfileStore
+from .mso import MsoConflict
+from .distributed_agents import DistributedSettingsStore
 from .remote_sessions import RemoteSessionManager, public_remote_session
 from .snmp_investigation import finalize_pending_snmp_sessions
 
@@ -45,7 +47,8 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
         capability = ping_engine_capability()
         return render_template(
             "tools/ping.html",
-            profiles=_ping_profile_store().all(),
+            profiles=_ping_profile_store().mso_store().profiles(metadata=True),
+            mso_available=DistributedSettingsStore(current_app.instance_path).get()["role"] != "standalone",
             ping_capability=capability,
             ping_health_defaults=PING_HEALTH_DEFAULTS,
             ping_target_limit=capability["target_limit"],
@@ -524,7 +527,15 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
         }
         store = _ping_profile_store()
         before = store.get(original_name or name)
-        store.upsert(profile, original_name=original_name)
+        try:
+            profile = store.mso_store().save(
+                profile, original_name=original_name, enabled=payload.get("mso_enabled"),
+                expected=payload.get("version"), object_id=payload.get("object_id"), guarded=True,
+            )
+        except MsoConflict as exc:
+            return jsonify({"error": str(exc)}), 409
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
         annotate_profile_saved(
             category="Network tools",
             action_namespace="ping",
@@ -542,7 +553,11 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": "Select a profile to delete."}), 400
         store = _ping_profile_store()
         profile = store.get(name)
-        if not profile or not store.delete(name):
+        try:
+            deleted = store.mso_store().delete(name, expected=payload.get("version"), object_id=payload.get("object_id"), guarded=True)
+        except MsoConflict as exc:
+            return jsonify({"error": str(exc)}), 409
+        if not profile or not deleted:
             return jsonify({"error": "Profile not found."}), 404
         annotate_profile_deleted(
             category="Network tools",
@@ -551,6 +566,18 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
             profile=profile,
         )
         return jsonify({"deleted": name})
+
+    @tools_bp.get("/ping/profiles/status")
+    def ping_profile_status():
+        store = _ping_profile_store().mso_store()
+        identifier = request.args.get("id")
+        if identifier:
+            try:
+                return jsonify({"profile": store.profile(identifier), "sync": store.sync_status()})
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+        profiles = store.profiles(metadata=True)
+        return jsonify({"profiles": [{"name": p["name"], "id": p["mso"]["id"]} for p in profiles], "sync": store.sync_status()})
 
     @tools_bp.post("/ping/profiles/duplicate")
     def duplicate_ping_profile():

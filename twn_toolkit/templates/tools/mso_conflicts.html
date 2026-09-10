@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% macro profile_values(value) %}
+  <dl>
+    <dt>Name</dt><dd>{{ value.name }}</dd>
+    <dt>Targets</dt><dd>{% for target in value.targets %}<div style="overflow-wrap: anywhere">{% if target.label %}{{ target.label }} = {% endif %}{{ target.host }}</div>{% endfor %}</dd>
+    <dt>Round interval</dt><dd>{{ value.interval }} seconds</dd>
+    <dt>Probe timeout</dt><dd>{{ value.timeout }} seconds</dd>
+    {% set thresholds = value.get('health_thresholds', {}) %}
+    {% for key, label, unit in [('loss_pct', 'Packet loss threshold', '%'), ('latency_ms', 'Latency threshold', 'ms'), ('jitter_ms', 'Jitter threshold', 'ms')] %}
+      <dt>{{ label }}</dt><dd>{{ 'Default' if key not in thresholds else (thresholds[key]|string ~ ' ' ~ unit) if thresholds[key] is not none else 'Disabled' }}</dd>
+    {% endfor %}
+  </dl>
+{% endmacro %}
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <div><h1>MSO conflicts</h1><p>Review competing saved changes before choosing which version to keep.</p></div>
+    <a class="button secondary" href="{{ url_for('tools.ping_tool') }}">Ping profiles</a>
+  </div>
+  <p class="field-note">Choices apply across the fleet after sync. Unsaved editor changes are separate. Duplicate a profile in its tool first if you want an independent local copy.</p>
+  {% for profile in conflicts %}
+    {% set remote = profile.mso.conflict.remote %}
+    <article class="panel">
+      <h2>{{ profile.name }} <small>Ping profile</small></h2>
+      <p class="message warning">{{ profile.mso.conflict.error }}</p>
+      <div class="form-grid">
+        <div><h3>Saved here</h3>{% if profile.mso.deleted %}<p><strong>Shared removal requested here.</strong> Keeping this local change removes the fleet version.</p>{% endif %}{{ profile_values(profile) }}</div>
+        <div><h3>Fleet version{% if remote %} · revision {{ remote.revision }}{% endif %}</h3>
+          {% if remote and remote.deleted %}<p>Removed from the fleet.</p>
+          {% elif remote %}{{ profile_values(remote.payload) }}
+          {% else %}<p>Reconnect to retrieve the fleet version.</p>{% endif %}
+        </div>
+      </div>
+      {% if remote %}
+      <form method="post" action="{{ url_for('tools.resolve_mso_conflict') }}" class="button-row">
+        <input type="hidden" name="object_id" value="{{ profile.mso.id }}">
+        <input type="hidden" name="version" value="{{ profile.mso.version }}">
+        <button type="submit" name="choice" value="fleet">{{ 'Accept shared removal' if remote.deleted else 'Use fleet version' }}</button>
+        {% if not remote.deleted %}<button type="submit" class="secondary" name="choice" value="local">{{ "Confirm shared removal" if profile.mso.deleted else "Keep saved local version" }}</button>{% endif %}
+      </form>
+      {% endif %}
+    </article>
+  {% else %}<p class="empty-state">No MSO conflicts on this instance.</p>{% endfor %}
+  <div class="button-row">
+    {% if page > 1 %}<a href="{{ url_for('tools.mso_conflicts', page=page-1) }}">Previous</a>{% endif %}
+    {% if more %}<a href="{{ url_for('tools.mso_conflicts', page=page+1) }}">Next</a>{% endif %}
+  </div>
+</section>
+{% endblock %}

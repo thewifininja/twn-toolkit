@@ -7,7 +7,7 @@ import pytest
 
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.file_transactions import file_transaction
-from twn_toolkit.profiles import PingProfileStore
+from twn_toolkit.profiles import DNSProfileStore
 
 
 def _paused_update(instance, kind, ready, release):
@@ -16,7 +16,7 @@ def _paused_update(instance, kind, ready, release):
         user = store.get_user("admin")
         operation = lambda: store.set_user_theme(user["id"], "light")
     else:
-        store = PingProfileStore(instance)
+        store = DNSProfileStore(instance, "hosts")
         operation = lambda: store.upsert({"name": "first", "targets": "192.0.2.1"})
     write = store._write
 
@@ -36,7 +36,7 @@ def _second_update(instance, kind, started, done):
         store = AuthStore(instance)
         store.update_password(store.get_user("admin")["id"], "new password value")
     else:
-        PingProfileStore(instance).upsert({"name": "second", "targets": "192.0.2.2"})
+        DNSProfileStore(instance, "hosts").upsert({"name": "second", "targets": "192.0.2.2"})
     done.set()
 
 
@@ -69,7 +69,7 @@ def test_concurrent_store_updates_preserve_password_revocation_and_profiles(tmp_
             assert user["session_version"] == 2
             assert user["theme"] == "light"
         else:
-            assert [p["name"] for p in PingProfileStore(str(tmp_path)).all()] == ["first", "second"]
+            assert [p["name"] for p in DNSProfileStore(str(tmp_path), "hosts").all()] == ["first", "second"]
     finally:
         release.set()
         for process in (first, second):

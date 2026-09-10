@@ -684,15 +684,11 @@ def test_sensitive_backup_requires_password_and_plain_backup_can_merge(tmp_path)
     assert backup["format"] == "twn-toolkit-configuration-backup"
     assert backup["items"]["ping_profiles"][0]["name"] == "WAN"
 
-    ping_profiles.write_text(
-        json.dumps(
-            [
-                {"name": "LAN", "targets": "192.0.2.10"},
-                {"name": "WAN", "targets": "8.8.8.8"},
-            ]
-        ),
-        encoding="utf-8",
-    )
+    from twn_toolkit.profiles import PingProfileStore
+    PingProfileStore(tmp_path).replace_all([
+        {"name": "LAN", "targets": "192.0.2.10"},
+        {"name": "WAN", "targets": "8.8.8.8"},
+    ])
     inspected = client.post(
         "/settings/backup/inspect",
         data={
@@ -712,6 +708,6 @@ def test_sensitive_backup_requires_password_and_plain_backup_can_merge(tmp_path)
     assert imported.status_code == 302
     restored = {
         profile["name"]: profile["targets"]
-        for profile in json.loads(ping_profiles.read_text(encoding="utf-8"))
+        for profile in PingProfileStore(tmp_path).all()
     }
     assert restored == {"LAN": "192.0.2.10", "WAN": "1.1.1.1"}
