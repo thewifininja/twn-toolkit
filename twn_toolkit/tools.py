@@ -16,6 +16,7 @@ from .packet_replay_routes import register_packet_replay_routes
 from .packet_capture_routes import register_packet_capture_routes
 from .path_mtu_routes import register_path_mtu_routes
 from .ping_routes import register_ping_routes
+from .mso_routes import register_mso_routes
 from .port_scanner_routes import register_port_scanner_routes
 from .radius_routes import register_radius_routes
 from .remote_terminal_routes import register_remote_terminal_routes
@@ -44,6 +45,7 @@ register_packet_capture_routes(tools_bp)
 register_packet_replay_routes(tools_bp)
 register_path_mtu_routes(tools_bp)
 register_ping_routes(tools_bp)
+register_mso_routes(tools_bp)
 register_port_scanner_routes(tools_bp)
 register_radius_routes(tools_bp)
 register_remote_terminal_routes(tools_bp)

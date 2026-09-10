@@ -74,12 +74,12 @@ class ProfileStoreTests(unittest.TestCase):
 
             store.replace_all([{"name": "WAN", "targets": "1.1.1.1"}])
 
-            mode = stat.S_IMODE(store.path.stat().st_mode)
+            mode = stat.S_IMODE(store.mso_store().path.stat().st_mode)
             self.assertEqual(mode, 0o600)
 
     def test_failed_profile_replace_preserves_the_previous_json(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
-            store = PingProfileStore(instance)
+            store = DNSProfileStore(instance, "hosts")
             store.replace_all([{"name": "Before", "targets": "1.1.1.1"}])
 
             with (

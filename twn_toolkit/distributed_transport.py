@@ -199,6 +199,14 @@ class EnrollmentServer:
             self.pairing_store.consume(session_id, token)
         return response
 
+    def mso_exchange(self, certificate_der, payload):
+        from .mso import MsoStore
+        agent_id = self._approved_certificate_agent(certificate_der)
+        # Enrollment IDs and device IDs use the same public-key fingerprint,
+        # with different prefixes. MSO origin uses the stable device identity.
+        node_id = "twn_" + agent_id.removeprefix("agent_")
+        return MsoStore(self.instance_path).exchange(node_id, payload)
+
     def heartbeat(
         self, certificate_der: bytes | None, payload: dict[str, Any], address: str,
         *, control_only: bool = False,
@@ -243,6 +251,7 @@ class EnrollmentServer:
             "acknowledgements": acknowledgements,
             "state": "approved",
             "agent_id": agent["id"],
+            "mso_protocol": 1,
             "server_time": time.time(),
             "retry_after_seconds": retry,
             "jobs": jobs,
@@ -448,6 +457,9 @@ class EnrollmentClient:
     def enrolled(self) -> bool:
         return self.certificate_path.exists() and self.ca_path.exists()
 
+    def mso_exchange(self, payload):
+        return self._request("POST", "/v1/mso/exchange", payload, authenticated=True)
+
     def heartbeat(
         self,
         capabilities: list[dict[str, str]],
@@ -565,6 +577,15 @@ class EnrollmentClient:
                     self.mainframe_urls.insert(0, mainframe_url)
                 break
             except urllib.error.HTTPError as exc:
+                if path == "/v1/mso/exchange":
+                    try:
+                        raw = exc.read(MAX_ENROLLMENT_REQUEST_BYTES + 1)
+                        detail = json.loads(raw).get("error", "") if len(raw) <= MAX_ENROLLMENT_REQUEST_BYTES else ""
+                    except (OSError, ValueError, AttributeError):
+                        detail = ""
+                    finally:
+                        exc.close()
+                    raise EnrollmentTransportError(f"MSO sync failed (HTTP {exc.code}): {str(detail)[:240] or exc.reason}") from exc
                 exc.close()
                 if path == "/v1/agent-status" and exc.code == 404:
                     raise EnrollmentTransportError(
@@ -671,7 +692,7 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
             )
 
         def do_POST(self) -> None:
-            if self.path not in {"/v1/enrollment", "/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control", "/v1/jobs/response-chunk"}:
+            if self.path not in {"/v1/enrollment", "/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control", "/v1/jobs/response-chunk", "/v1/mso/exchange"}:
                 self._json(404, {"error": "Not found."})
                 return
             try:
@@ -681,7 +702,7 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
                 return
             maximum = (
                 MAX_AGENT_RPC_BYTES
-                if self.path in {"/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control", "/v1/jobs/response-chunk"}
+                if self.path in {"/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control", "/v1/jobs/response-chunk", "/v1/mso/exchange"}
                 else MAX_ENROLLMENT_REQUEST_BYTES
             )
             if not 0 < length <= maximum:
@@ -702,6 +723,8 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
                         str(self.client_address[0]),
                         control_only=self.path == "/v1/agent-status",
                     )
+                elif self.path == "/v1/mso/exchange":
+                    result = enrollment_server.mso_exchange(self.connection.getpeercert(binary_form=True), payload)
                 elif self.path == "/v1/jobs/response-chunk":
                     result = enrollment_server.response_chunk(self.connection.getpeercert(binary_form=True), payload)
                 elif self.path == "/v1/jobs/control":

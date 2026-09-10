@@ -8,6 +8,12 @@
   const updateTargetsButton = document.getElementById("ping-update-targets");
   const workspace = document.getElementById("ping-workspace");
   const profileSelect = document.getElementById("ping-profile");
+  const msoToggle = document.getElementById("ping-profile-mso");
+  const msoState = document.getElementById("ping-mso-state");
+  const msoConflictsLink = document.getElementById("ping-mso-conflicts-link");
+  const profileRefresh = document.getElementById("ping-profile-refresh");
+  let loadedMso = null;
+  let msoPollBusy = false;
   const profileNameInput = document.getElementById("ping-profile-name");
   const profileSaveButton = document.getElementById("ping-profile-save");
   const profileDeleteButton = document.getElementById("ping-profile-delete");
@@ -212,8 +218,21 @@
   historyOlder.addEventListener("click", () => shiftHistoryWindow(-1));
   historyNewer.addEventListener("click", () => shiftHistoryWindow(1));
 
-  profileSelect.addEventListener("change", () => {
-    const option = profileSelect.options[profileSelect.selectedIndex];
+  profileSelect.addEventListener("change", async () => {
+    let option = profileSelect.options[profileSelect.selectedIndex];
+    if (option?.value && !option.dataset.targets && option.dataset.mso) {
+      const id = JSON.parse(option.dataset.mso).id;
+      try {
+        const data = await readMso(id);
+        if (profileSelect.selectedOptions[0] !== option) return;
+        if (!data.profile) throw new Error("This profile was removed. Refresh profiles.");
+        updateProfileOption(data.profile, option.value);
+        option = profileSelect.selectedOptions[0];
+      } catch (error) { status.textContent = error.message; return; }
+    }
+    loadedMso = option?.value ? JSON.parse(option.dataset.mso || "null") : null;
+    if (msoToggle) msoToggle.checked = Boolean(loadedMso?.enabled);
+    showMso(loadedMso);
     if (!option || !option.value) {
       loadedProfileName = "";
       profileNameInput.value = "";
@@ -249,6 +268,7 @@
   }
 
   profileSaveButton.addEventListener("click", async () => {
+    if (loadedMso?.enabled && !msoToggle?.checked && !window.confirm("Turn MSO off? Keep an independent local copy here and remove the shared profile from the Mainframe and every other agent when they sync.")) return;
     profileSaveButton.disabled = true;
     status.textContent = "Saving profile...";
     try {
@@ -258,6 +278,9 @@
         body: JSON.stringify({
           name: profileNameInput.value,
           original_name: loadedProfileName,
+          mso_enabled: msoToggle ? msoToggle.checked : undefined,
+          object_id: loadedMso?.id,
+          version: loadedMso?.version,
           hosts: hostsInput.value,
           interval: intervalInput.value,
           timeout: timeoutInput.value,
@@ -270,6 +293,8 @@
       }
       updateProfileOption(data.profile, loadedProfileName);
       loadedProfileName = data.profile.name;
+      loadedMso = data.profile.mso;
+      showMso(loadedMso);
       sessionStorage.setItem(profileStorageKey, data.profile.name);
       profileNameInput.value = data.profile.name;
       status.textContent = `Saved profile '${data.profile.name}'.`;
@@ -288,7 +313,7 @@
       status.textContent = "Select a saved profile to delete.";
       return;
     }
-    if (!window.confirm(`Delete ping profile '${name}'?`)) {
+    if (!window.confirm(loadedMso?.enabled ? `Delete shared Ping profile '${name}' from the Mainframe and all agents when they sync?` : `Delete ping profile '${name}'?`)) {
       return;
     }
     profileDeleteButton.disabled = true;
@@ -296,7 +321,7 @@
       const response = await fetch(form.dataset.deleteProfileUrl, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name}),
+        body: JSON.stringify({name, object_id: loadedMso?.id, version: loadedMso?.version}),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -308,6 +333,9 @@
         loadedProfileName = "";
         profileNameInput.value = "";
       }
+      loadedMso = null;
+      if (msoToggle) msoToggle.checked = false;
+      showMso(null);
       sessionStorage.removeItem(profileStorageKey);
       status.textContent = `Deleted profile '${name}'.`;
     } catch (error) {
@@ -316,6 +344,61 @@
       profileDeleteButton.disabled = false;
     }
   });
+
+  function showMso(info, error = "") {
+    if (!msoState) return;
+    msoState.textContent = error ? `${info?.state || "Local"} · Sync unavailable` : info?.state || "Local";
+    msoState.title = error;
+    if (msoConflictsLink) msoConflictsLink.hidden = !info?.conflict;
+  }
+
+  async function readMso(id = "") {
+    const url = new URL(form.dataset.profileStatusUrl, window.location.href);
+    if (id) url.searchParams.set("id", id);
+    const response = await fetch(url, {headers: {Accept: "application/json"}});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not refresh profiles.");
+    return data;
+  }
+
+  async function refreshProfiles({confirm = true} = {}) {
+    if (confirm && (loadedMso || hostsInput.value.trim() || profileNameInput.value.trim()) && !window.confirm("Refresh saved profiles and reload the selected profile? Unsaved profile edits will be replaced. An active Ping run is unaffected.")) return;
+    const selectedId = loadedMso?.id;
+    const data = await readMso();
+    for (const option of [...profileSelect.options]) if (option.value) option.remove();
+    for (const profile of data.profiles) {
+      const option = document.createElement("option");
+      option.value = profile.name;
+      option.textContent = profile.name;
+      option.dataset.mso = JSON.stringify({id: profile.id});
+      profileSelect.appendChild(option);
+      if (profile.id === selectedId) option.selected = true;
+    }
+    profileSelect.dispatchEvent(new Event("change"));
+  }
+  profileRefresh?.addEventListener("click", async () => {
+    profileRefresh.disabled = true;
+    try { await refreshProfiles(); }
+    catch (error) { status.textContent = error.message; }
+    finally { profileRefresh.disabled = false; }
+  });
+  if (msoState && form.dataset.profileStatusUrl) window.setInterval(async () => {
+    if (document.hidden || msoPollBusy || !loadedMso?.id || profileSaveButton.disabled || profileRefresh.disabled) return;
+    msoPollBusy = true;
+    const selected = loadedMso;
+    try {
+      const data = await readMso(selected.id);
+      if (selected !== loadedMso) return;
+      if (!data.profile || data.profile.mso.version !== selected.version) {
+        msoState.textContent = data.profile ? "Profile changed · Refresh to load" : "Shared profile removed · Refresh";
+        if (msoConflictsLink) msoConflictsLink.hidden = !data.profile?.mso.conflict;
+      } else {
+        // Receipt/status changes never replace the editor or its saved base version.
+        showMso(data.profile.mso, data.sync.error);
+      }
+    } catch (error) { if (selected === loadedMso) showMso(selected, error.message); }
+    finally { msoPollBusy = false; }
+  }, 5000);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1780,6 +1863,7 @@
       profileSelect.appendChild(option);
     }
     option.textContent = profile.name;
+    option.dataset.mso = JSON.stringify(profile.mso || null);
     option.dataset.interval = String(profile.interval);
     option.dataset.timeout = String(profile.timeout || 1);
     option.dataset.targets = JSON.stringify(profile.targets);

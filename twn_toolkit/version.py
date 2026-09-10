@@ -1,6 +1,20 @@
-APP_VERSION = "0.25.0"
+APP_VERSION = "0.25.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.25.1",
+        "date": "2026-09-09",
+        "title": "Mainframe Synced Objects: Ping pilot",
+        "summary": "Share saved Ping profiles bidirectionally across a Mainframe fleet.",
+        "groups": (
+            {"title": "Saved profiles", "items": (
+                "Opt individual Ping profiles into MSO; saved changes sync from any participating instance without starting a Ping run.",
+                "Keep offline edits and resolve competing versions on the shared MSO conflicts page.",
+                "Disable MSO anywhere to keep an independent local copy there and remove shared replicas when peers reconnect.",
+                "Use stable object identities and durable background delivery; existing profiles remain local by default.",
+            )},
+        ),
+    },
     {
         "version": "0.25.0",
         "date": "2026-09-08",

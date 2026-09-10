@@ -8,7 +8,7 @@ import secrets
 import sqlite3
 import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import urlsplit
@@ -59,8 +59,11 @@ class DistributedSettingsStore:
             return defaults
 
     def save(self, settings: dict[str, Any]) -> dict[str, Any]:
-        with file_transaction(self.path):
+        with file_transaction(self.path), ExitStack() as changes:
             normalized = normalize_distributed_settings(settings)
+            if self.get()["role"] != normalized["role"] and (self.instance_path / "mso.sqlite3").exists():
+                from .mso import MsoStore
+                changes.enter_context(MsoStore(self.instance_path).changing_role())
             self.instance_path.mkdir(parents=True, exist_ok=True)
             fd, temporary_name = tempfile.mkstemp(
                 dir=self.instance_path, prefix=".distributed-settings-", suffix=".json"

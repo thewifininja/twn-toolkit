@@ -284,3 +284,11 @@ Peer outages, incompatible protocols, and interrupted operations still require
 their existing diagnosis/reconciliation paths. Restarting does not reset
 enrollment. After installing this change, restart the toolkit to load the new
 supervisor code; existing supervisor processes retain their loaded code.
+
+## Mainframe Synced Objects
+
+The v0.25.1 development build supports bidirectional fleet-wide sharing of saved
+Ping profiles. Each profile is local by default, with an MSO toggle to opt in.
+Authorized users can edit or disable MSO anywhere; conflicts use a shared review
+page instead of per-tool resolution controls. See the [Ping pilot guide](mainframe-synced-objects.md)
+for offline behavior, deletion, compatibility and recovery limits.

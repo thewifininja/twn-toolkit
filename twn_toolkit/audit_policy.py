@@ -197,6 +197,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "tools.save_dns_profile",
         "tools.save_ntp_profile",
         "tools.save_ping_profile",
+        "tools.resolve_mso_conflict",
         "tools.save_port_scan_profile",
         "tools.save_radius_profile",
         "tools.save_pki_credential",

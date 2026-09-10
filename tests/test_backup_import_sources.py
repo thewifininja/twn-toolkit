@@ -70,22 +70,30 @@ def test_import_merge_reuses_preflight_records_and_rolls_back_later_failure(tmp_
     assert first.all()==[{'name':'original','credential':'fixture-secret'}]
 
 
-def test_large_destination_preview_renders_actionable_error_without_import_controls(tmp_path):
+@pytest.mark.parametrize("identifier", ["ping_profiles", "dns_host_profiles"])
+def test_large_destination_preview_renders_actionable_error_without_import_controls(tmp_path, identifier):
     from twn_toolkit import create_app
     from twn_toolkit.profile_backup import build_profile_backup, ConfigurationImportStore
     from twn_toolkit.auth import load_or_create_secret_key
     app=create_app(str(tmp_path));app.testing=True
-    item=next(item for item in build_backup_catalog(str(tmp_path)) if item['id']=='ping_profiles')
+    item=next(item for item in build_backup_catalog(str(tmp_path)) if item['id']==identifier)
     backup=build_profile_backup([item])
     previews=ConfigurationImportStore(str(tmp_path),load_or_create_secret_key(str(tmp_path)))
     token=previews.create(backup,user_id='test-user',encrypted_input=False,import_mode='merge')
-    with item['store'].path.open('wb') as source:source.truncate(65*1024**2)
+    if identifier == "ping_profiles":
+        store = item['store'].mso_store()
+        store.save({'name':'large'})
+        with sqlite3.connect(store.path) as db:
+            db.execute('UPDATE mso_objects SET payload=zeroblob(?)', (65*1024**2,))
+    else:
+        with item['store'].path.open('wb') as source:source.truncate(65*1024**2)
     response=app.test_client().get('/settings/backup?view=import&preview='+token)
     assert response.status_code==200
     assert b'Backup preview could not be prepared' in response.data
     assert b'Export fewer groups' in response.data
     assert b'configuration-preview-form' not in response.data
-    assert item['store'].path.stat().st_size==65*1024**2
+    if identifier != 'ping_profiles':
+        assert item['store'].path.stat().st_size==65*1024**2
 
 
 def test_private_rollback_preflight_checks_json_before_first_group_mutation(tmp_path):
