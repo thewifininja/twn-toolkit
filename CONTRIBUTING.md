@@ -26,6 +26,10 @@ repository.
 
 ## Pull requests
 
+For interface changes, follow [the shared UI control guidelines](docs/ui-controls.md)
+and reuse existing components and theme classes. Check new controls beside their
+neighbors at desktop and mobile widths, including keyboard focus and hidden states.
+
 A pull request should explain:
 
 - what changed and why;

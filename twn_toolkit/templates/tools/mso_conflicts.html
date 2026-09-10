@@ -15,7 +15,7 @@
 <section class="panel">
   <div class="panel-head">
     <div><h1>MSO conflicts</h1><p>Review competing saved changes before choosing which version to keep.</p></div>
-    <a class="button secondary" href="{{ url_for('tools.ping_tool') }}">Ping profiles</a>
+    <a class="button-link secondary" href="{{ url_for('tools.ping_tool') }}">Ping profiles</a>
   </div>
   <p class="field-note">Choices apply across the fleet after sync. Unsaved editor changes are separate. Duplicate a profile in its tool first if you want an independent local copy.</p>
   {% for profile in conflicts %}
@@ -42,8 +42,8 @@
     </article>
   {% else %}<p class="empty-state">No MSO conflicts on this instance.</p>{% endfor %}
   <div class="button-row">
-    {% if page > 1 %}<a href="{{ url_for('tools.mso_conflicts', page=page-1) }}">Previous</a>{% endif %}
-    {% if more %}<a href="{{ url_for('tools.mso_conflicts', page=page+1) }}">Next</a>{% endif %}
+    {% if page > 1 %}<a class="button-link secondary" href="{{ url_for('tools.mso_conflicts', page=page-1) }}">Previous</a>{% endif %}
+    {% if more %}<a class="button-link secondary" href="{{ url_for('tools.mso_conflicts', page=page+1) }}">Next</a>{% endif %}
   </div>
 </section>
 {% endblock %}

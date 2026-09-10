@@ -26,6 +26,12 @@ unsaved editor contents.
 
 ![Compact MSO controls in the Ping profile manager](images/mso-ping-controls.png)
 
+The profile's **•••** menu always provides **MSO conflicts**, even when no
+conflicts need attention. The inline **Review conflicts** action appears only
+when the selected profile has a conflict. Both use the shared action styling.
+
+![MSO conflicts in the profile action menu](images/mso-profile-menu.png)
+
 ## Conflicts in one place
 
 **Review conflicts** opens the shared **MSO conflicts** page. It is also available
