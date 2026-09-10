@@ -422,3 +422,19 @@ def test_fleet_name_collision_cannot_report_false_resolution(fleet):
     with pytest.raises(MsoConflict, match='Rename'):
         a.resolve(conflict['id'], 'fleet', conflict['version'])
     assert next(p['mso'] for p in a.profiles(metadata=True) if p['mso']['conflict']) == conflict
+
+
+def test_unavailable_mso_database_does_not_break_agent_control(fleet):
+    import sqlite3
+    from twn_toolkit.distributed_worker import _agent_tick
+    _, a, _ = fleet
+    with patch('twn_toolkit.distributed_worker.EnrollmentClient') as constructor:
+        client = constructor.return_value
+        client.pending.return_value = False
+        client.enrolled.return_value = True
+        client.heartbeat.return_value = {'job_protocol':2, 'mso_protocol':1, 'state':'connected'}
+        with patch('twn_toolkit.mso.MsoStore', side_effect=sqlite3.OperationalError('fixture storage unavailable')):
+            status = _agent_tick(a.instance, a.settings.get(), control_only=True)
+        assert status['state'] == 'connected'
+        assert status['error'] == ''
+        assert 'storage unavailable' in status['mso_error']

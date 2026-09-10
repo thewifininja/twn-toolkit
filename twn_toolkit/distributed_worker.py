@@ -290,15 +290,22 @@ def _agent_tick(
         if result.get("job_protocol") != JOB_PROTOCOL_VERSION:
             raise ValueError("Upgrade the Mainframe for owned operation delivery.")
         receipts.acknowledge(result.get("acknowledgements", []))
+        mso_error = ""
         if control_only and result.get("mso_protocol") == 1:
             from .mso import MsoStore
-            mso = MsoStore(instance)
+            mso = None
             try:
+                mso = MsoStore(instance)
                 proposal = mso.request()
                 mso.receive(client.mso_exchange(proposal), proposal)
                 mso.sync_status("")
             except (EnrollmentTransportError, OSError, ValueError, sqlite3.Error) as exc:
-                mso.sync_status(" ".join(str(exc).split()))
+                mso_error = " ".join(str(exc).split())[:240]
+                if mso is not None:
+                    try:
+                        mso.sync_status(mso_error)
+                    except (OSError, ValueError, sqlite3.Error):
+                        pass  # The control status below still reports the sync failure.
         if not control_only and running():
             _execute_jobs(instance, result.get("jobs", []), client=client, lane="regular")
         completed = receipts.pending("regular", activation_id)
@@ -317,6 +324,8 @@ def _agent_tick(
             "last_connected_at": now,
             "error": "",
         }
+        if mso_error:
+            status["mso_error"] = mso_error
     except (EnrollmentTransportError, OSError, ValueError, sqlite3.Error) as exc:
         previous = _read_status(status_path)
         status = {
