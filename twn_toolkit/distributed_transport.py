@@ -202,7 +202,10 @@ class EnrollmentServer:
     def mso_exchange(self, certificate_der, payload):
         from .mso import MsoStore
         agent_id = self._approved_certificate_agent(certificate_der)
-        return MsoStore(self.instance_path).exchange(agent_id, payload)
+        # Enrollment IDs and device IDs use the same public-key fingerprint,
+        # with different prefixes. MSO origin uses the stable device identity.
+        node_id = "twn_" + agent_id.removeprefix("agent_")
+        return MsoStore(self.instance_path).exchange(node_id, payload)
 
     def heartbeat(
         self, certificate_der: bytes | None, payload: dict[str, Any], address: str,

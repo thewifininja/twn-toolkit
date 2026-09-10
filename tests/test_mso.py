@@ -254,6 +254,11 @@ def test_authenticated_transport_sync_and_revocation(tmp_path):
         request = a.request()
         a.receive(client.mso_exchange(request), request)
         assert only(main)["name"] == "Agent change"
+        origin = a.save(profile("Origin proof"), enabled=True)
+        request = a.request()
+        a.receive(client.mso_exchange(request), request)
+        assert main.profile(origin["mso"]["id"])["mso"]["origin"] == a.node
+        assert a.profile(origin["mso"]["id"])["mso"]["origin"] == a.node
         server.agent_store.set_state(agent["id"], "revoked")
         with pytest.raises(EnrollmentTransportError, match="400"):
             client.mso_exchange(a.request())
