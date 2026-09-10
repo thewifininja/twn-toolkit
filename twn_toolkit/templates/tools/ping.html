@@ -58,17 +58,24 @@
               {% endfor %}
             </select>
           </label>
+          {% if mso_available %}
           <div class="compact-profile-mso" id="ping-mso-controls">
-            <label class="check" title="{{ 'Sync this saved profile across the Mainframe fleet' if mso_available else 'Connect to a Mainframe or enable Mainframe mode to share profiles' }}"><input aria-label="MSO: Sync with Mainframe" type="checkbox" id="ping-profile-mso" {% if not mso_available %}disabled{% endif %}> MSO</label>
+            <label class="toggle-action" title="Sync this saved profile across the Mainframe fleet; applied when you save">
+              <input aria-label="MSO: Sync with Mainframe" role="switch" type="checkbox" id="ping-profile-mso">
+              <span class="button-link secondary">MSO</span>
+            </label>
             <span class="pill" id="ping-mso-state" role="status" hidden>Local</span>
           </div>
+          {% endif %}
         </div>
         <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
-        <details class="compact-profile-more" data-saved-profile-more data-saved-profile-always-more>
+        <details class="compact-profile-more" data-saved-profile-more {% if mso_available %}data-saved-profile-always-more{% endif %}>
           <summary aria-label="More Ping profile actions" title="More profile actions">•••</summary>
           <div>
+            {% if mso_available %}
             <button type="button" class="secondary" id="ping-profile-refresh">Refresh profiles</button>
             <a class="button-link secondary" id="ping-mso-conflicts-link" href="{{ url_for('tools.mso_conflicts') }}">MSO conflicts</a>
+            {% endif %}
             <button class="secondary" type="button" data-saved-profile-rename>Rename…</button>
             <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_ping_profile') }}" data-profile-select="#ping-profile" disabled>Duplicate</button>
             <button class="danger" id="ping-profile-delete" data-saved-profile-delete type="button" disabled>Delete</button>

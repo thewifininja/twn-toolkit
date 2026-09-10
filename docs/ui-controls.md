@@ -21,6 +21,14 @@ must share full-width, left-aligned action styling. Conditional actions must
 retain their `hidden` behavior. Check hover, visible keyboard focus, keyboard
 activation, and mobile layout against adjacent controls before shipping.
 
+For compact opt-in controls beside actions, `.toggle-action` wraps a native
+checkbox followed by a `.button-link.secondary` span. It preserves native
+Space-key behavior while sharing action sizing and focus treatment. A small
+square-edged switch track keeps the idle control unobtrusive; thumb position
+indicates checked state without relying on color. Align its click-target height
+with adjacent actions, rather than borrowing the taller text-field height.
+Hide feature-specific controls when the current instance role cannot use them.
+
 ## Fields
 
 `static/appearance.css` owns sizing for ordinary single-line inputs, native

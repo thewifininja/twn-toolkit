@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/mso.html" import list_switch with context %}
 {% from "components/ui.html" import case_recorded_notice, saved_profile_manager, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
@@ -23,7 +24,7 @@
   >
     {% call saved_profile_manager("Device groups", "Load or maintain reusable Wake-on-LAN device sets.", profiles|length) %}
       <div class="saved-profile-fields">
-        <label>Saved profile<select id="wol-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} device{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
+        <div class="compact-profile-target"><label>Saved profile<select id="wol-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} device{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>{{ list_switch('wol.targets') }}</div>
         <label>Profile name<input id="wol-profile-name" data-saved-profile-name placeholder="Office workstations" maxlength="100"></label>
       </div>
       <div class="saved-profile-manager-actions">

@@ -80,20 +80,17 @@ def test_large_destination_preview_renders_actionable_error_without_import_contr
     backup=build_profile_backup([item])
     previews=ConfigurationImportStore(str(tmp_path),load_or_create_secret_key(str(tmp_path)))
     token=previews.create(backup,user_id='test-user',encrypted_input=False,import_mode='merge')
-    if identifier == "ping_profiles":
-        store = item['store'].mso_store()
-        store.save({'name':'large'})
-        with sqlite3.connect(store.path) as db:
-            db.execute('UPDATE mso_objects SET payload=zeroblob(?)', (65*1024**2,))
-    else:
-        with item['store'].path.open('wb') as source:source.truncate(65*1024**2)
+    store = item['store'].mso_store()
+    store.save({'name':'large'})
+    with sqlite3.connect(store.path) as db:
+        db.execute('UPDATE mso_objects SET payload=zeroblob(?) WHERE kind=?', (65*1024**2, store.kind))
     response=app.test_client().get('/settings/backup?view=import&preview='+token)
     assert response.status_code==200
     assert b'Backup preview could not be prepared' in response.data
     assert b'Export fewer groups' in response.data
     assert b'configuration-preview-form' not in response.data
-    if identifier != 'ping_profiles':
-        assert item['store'].path.stat().st_size==65*1024**2
+    with sqlite3.connect(store.path) as db:
+        assert db.execute('SELECT length(payload) FROM mso_objects WHERE kind=?', (store.kind,)).fetchone()[0] == 65*1024**2
 
 
 def test_private_rollback_preflight_checks_json_before_first_group_mutation(tmp_path):

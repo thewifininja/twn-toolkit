@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import os
 import stat
 import subprocess
@@ -21,20 +22,24 @@ SECRET_STORES = [
 ]
 
 
+def storage_path(store):
+    return store.mso_store().path if getattr(store, '_uses_mso', False) else store.path
+
+
 @pytest.mark.parametrize('store_type,field', SECRET_STORES)
 def test_saved_secret_is_protected_without_changing_store_contract(tmp_path, store_type, field):
     store = store_type(str(tmp_path))
     profile = {'name': 'Lab', field: 'private-fixture-secret', 'host': 'https://example.com'}
     store.upsert(profile)
     assert profile[field] == 'private-fixture-secret'
-    assert 'private-fixture-secret' not in store.path.read_text()
-    assert stat.S_IMODE(store.path.stat().st_mode) == 0o600
+    assert b'private-fixture-secret' not in storage_path(store).read_bytes()
+    assert stat.S_IMODE(storage_path(store).stat().st_mode) == 0o600
     assert store.get('Lab') == profile
     assert store.duplicate('Lab')[field] == profile[field]
     assert store.get('Lab copy')[field] == profile[field]
     store.upsert({**profile, field: 'replacement-secret'})
     assert store.get('Lab')[field] == 'replacement-secret'
-    assert 'replacement-secret' not in store.path.read_text()
+    assert b'replacement-secret' not in storage_path(store).read_bytes()
 
 
 def test_legacy_read_is_nonmutating_and_any_write_protects_all_rows(tmp_path):
@@ -144,15 +149,16 @@ def test_configuration_backup_round_trip_uses_portable_secrets(tmp_path):
     for item in destination:
         field = fields[item['id']]
         assert item['store'].get('Lab')[field] == 'portable-secret'
-        assert 'portable-secret' not in item['store'].path.read_text()
+        assert b'portable-secret' not in storage_path(item['store']).read_bytes()
 
 
 def test_snmp_ciphertext_cannot_be_swapped_between_auth_and_privacy(tmp_path):
     store = SNMPCredentialProfileStore(str(tmp_path))
     store.upsert({'name': 'Lab', 'auth_key': 'authentication-secret', 'priv_key': 'privacy-secret'})
-    raw = json.loads(store.path.read_text())
-    raw[0]['auth_key'], raw[0]['priv_key'] = raw[0]['priv_key'], raw[0]['auth_key']
-    store.path.write_text(json.dumps(raw))
+    with sqlite3.connect(store.mso_store().path) as db:
+        raw = json.loads(db.execute("SELECT payload FROM mso_objects WHERE kind='snmp.credentials'").fetchone()[0])
+        raw['auth_key'], raw['priv_key'] = raw['priv_key'], raw['auth_key']
+        db.execute("UPDATE mso_objects SET payload=? WHERE kind='snmp.credentials'", (json.dumps(raw),))
     with pytest.raises(ValueError, match='could not be decrypted'):
         store.get('Lab')
 
@@ -172,5 +178,8 @@ def test_radius_attributes_remain_plain_and_do_not_create_key(tmp_path):
     store = RadiusProfileStore(str(tmp_path), 'attributes')
     profile = {'name': 'NAS', 'source': 'NAS-Identifier = lab'}
     store.upsert(profile)
-    assert json.loads(store.path.read_text()) == [profile]
+    import sqlite3
+    with sqlite3.connect(store.mso_store().path) as db:
+        raw = db.execute('SELECT payload FROM mso_objects WHERE kind=?', ('radius.attributes',)).fetchone()[0]
+    assert json.loads(raw) == profile
     assert not (tmp_path / 'session_secret').exists()

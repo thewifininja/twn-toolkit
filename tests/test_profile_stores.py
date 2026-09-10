@@ -66,7 +66,7 @@ class ProfileStoreTests(unittest.TestCase):
             store.upsert({"name": "Resolvers", "servers": "1.1.1.1"})
 
             self.assertEqual(store.path.name, "dns_servers_profiles.json")
-            self.assertTrue(store.path.exists())
+            self.assertTrue(store.mso_store().path.exists())
 
     def test_store_files_are_owner_readable_only(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
@@ -79,7 +79,7 @@ class ProfileStoreTests(unittest.TestCase):
 
     def test_failed_profile_replace_preserves_the_previous_json(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
-            store = DNSProfileStore(instance, "hosts")
+            store = ProfileStore(instance)
             store.replace_all([{"name": "Before", "targets": "1.1.1.1"}])
 
             with (

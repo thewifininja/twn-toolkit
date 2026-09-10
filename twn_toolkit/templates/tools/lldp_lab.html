@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/mso.html" import list_switch with context %}
 {% from "components/ui.html" import workspace_chrome, section_header, case_recorded_notice, empty_state %}
 
 {% block content %}
@@ -145,7 +146,7 @@
           <summary aria-label="Actions for {{ saved.name }}" title="Persona actions">•••</summary>
           <div class="lldp-persona-menu-popover">
             <form method="post" action="{{ url_for('tools.duplicate_lldp_persona', name=saved.name) }}"><button class="menu-action" type="submit">Duplicate</button></form>
-            <form method="post" action="{{ url_for('tools.delete_lldp_persona', name=saved.name) }}"><button class="menu-action danger-text" type="submit">Delete</button></form>
+            <form method="post" data-mso-delete-name="{{ saved.name }}" action="{{ url_for('tools.delete_lldp_persona', name=saved.name) }}">{% if mso_available %}{% set info = mso_metadata('lldp.persona').get(saved.name, {}) %}<input type="hidden" name="mso_kind" value="lldp.persona"><input type="hidden" name="mso_id" value="{{ info.id }}"><input type="hidden" name="mso_version" value="{{ info.version }}"><input type="hidden" name="mso_enabled" value="{{ 'true' if info.enabled else 'false' }}">{% endif %}<button class="menu-action danger-text" type="submit">Delete</button></form>
           </div>
         </details>
       </div>
@@ -227,7 +228,7 @@
       {% call section_header('Build an LLDP identity', 'Preview the exact fields before a bounded transmission. Saved personas remain independent of the selected interface.', 'Controlled egress') %}
         <span class="pill warning">transmits frames</span>
       {% endcall %}
-      <form method="post" class="form lldp-persona-form" data-loading-message="Preparing LLDP session…">
+      <form data-mso-native method="post" class="form lldp-persona-form" data-loading-message="Preparing LLDP session…">
         <input type="hidden" name="view" value="emulate">
         <input type="hidden" name="preset" value="{{ persona.preset }}">
         <input type="hidden" name="original_name" value="{{ selected_name }}">
@@ -345,6 +346,7 @@
         <div class="lldp-form-actions">
           <div class="lldp-editor-actions">
             <button class="secondary" type="submit" name="action" value="preview">Preview PDU</button>
+            {{ list_switch('lldp.persona', selected_name) }}
             <button class="secondary" type="submit" name="action" value="save">{{ 'Update persona' if selected_name else 'Save persona' }}</button>
           </div>
           <div class="lldp-send-actions">

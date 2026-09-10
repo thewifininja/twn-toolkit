@@ -16,13 +16,16 @@
       const submitButton = form.querySelector('button[type="submit"]');
       submitButton.disabled = true;
       try {
+        const body = new FormData(form);
+        if (!window.TwnMso.prepare(body, form)) return;
         const response = await fetch(form.dataset.saveUrl, {
           method: "POST",
-          body: new FormData(form),
+          body,
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Profile could not be saved.");
         const previousName = form.elements.original_name.value;
+        window.TwnMso.saved(form, data.profile);
         form.elements.original_name.value = data.profile.name;
         const card = form.closest("details");
         const summary = card?.querySelector(":scope > summary");
@@ -68,11 +71,12 @@
         status.textContent = "Select a saved profile to delete.";
         return;
       }
-      if (!window.confirm(`Delete '${name}'?`)) return;
+      if (!window.confirm(window.TwnMso.deleteMessage(form, name))) return;
       deleteButton.disabled = true;
       try {
         const body = new FormData();
         body.set("name", name);
+        if (!window.TwnMso.prepare(body, form, "delete")) return;
         const response = await fetch(form.dataset.deleteUrl, {method: "POST", body});
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Profile could not be deleted.");

@@ -1,6 +1,21 @@
-APP_VERSION = "0.25.3"
+APP_VERSION = "0.25.4"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.25.4",
+        "date": "2026-09-10",
+        "title": "Shared saved lists and SNMP credentials",
+        "summary": "Extend MSO across saved network lists with stable credential dependencies.",
+        "groups": (
+            {"title": "Mainframe Synced Objects", "items": (
+                "Share DNS, NTP, Traceroute, TCP scanner, Wake-on-LAN, SNMP and RADIUS lists and LLDP personas bidirectionally.",
+                "Sharing an SNMP host also shares its credential by UUID; prevent removal while shared hosts depend on it.",
+                "Protect credential secrets in saved objects, queued deliveries and conflicts, without displaying them in editors.",
+                "Reuse the compact themed MSO switch and central permission-aware conflicts; hide operational MSO controls in standalone mode.",
+                "Preserve legacy local lists, portable backups and Ping-only exchange with older participating builds.",
+            )},
+        ),
+    },
     {
         "version": "0.25.3",
         "date": "2026-09-10",

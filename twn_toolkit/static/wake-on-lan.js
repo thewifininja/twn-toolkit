@@ -57,6 +57,7 @@
     body.set("name", profileName.value);
     body.set("original_name", profile.value);
     body.set("values", targets.value);
+    if (!window.TwnMso.prepare(body, form, "save")) return;
     const response = await fetch(form.dataset.saveProfileUrl, {method: "POST", body});
     const payload = await response.json();
     if (!response.ok) {
@@ -68,9 +69,10 @@
   });
 
   document.getElementById("wol-delete-profile").addEventListener("click", async () => {
-    if (!profile.value || !window.confirm(`Delete device group “${profile.value}”?`)) return;
+    if (!profile.value || !window.confirm(window.TwnMso.deleteMessage(form, profile.value))) return;
     const body = new FormData();
     body.set("name", profile.value);
+    if (!window.TwnMso.prepare(body, form, "delete")) return;
     const response = await fetch(form.dataset.deleteProfileUrl, {method: "POST", body});
     const payload = await response.json();
     if (!response.ok) {

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/mso.html" import list_switch with context %}
 {% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
@@ -30,7 +31,7 @@
         </header>
         {% call saved_profile_manager("Host lists", "Reusable authorized scan targets.", host_profiles|length, "port-saved-profile-manager", compact=true) %}
           <div class="compact-profile-controls">
-            <label class="compact-profile-select">Saved list<select class="port-existing-profile" data-saved-profile-select><option value="">New / unsaved list</option>{% for profile in host_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }} · {{ profile.count }} host{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
+            <div class="compact-profile-target"><label class="compact-profile-select">Saved list<select class="port-existing-profile" data-saved-profile-select><option value="">New / unsaved list</option>{% for profile in host_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }} · {{ profile.count }} host{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>{{ list_switch('tcp.hosts') }}</div>
             <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
             <details class="compact-profile-more" data-saved-profile-more>
               <summary aria-label="More host-list actions" title="More profile actions">•••</summary>
@@ -60,7 +61,7 @@
         </header>
         {% call saved_profile_manager("Port lists", "Reusable TCP service sets.", port_profiles|length, "port-saved-profile-manager", compact=true) %}
           <div class="compact-profile-controls">
-            <label class="compact-profile-select">Saved list<select class="port-existing-profile" data-saved-profile-select><option value="">New / unsaved list</option>{% for profile in port_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }} · {{ profile.count }} port{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
+            <div class="compact-profile-target"><label class="compact-profile-select">Saved list<select class="port-existing-profile" data-saved-profile-select><option value="">New / unsaved list</option>{% for profile in port_profiles %}<option value="{{ profile.name }}" data-profile='{{ profile|tojson }}'>{{ profile.name }} · {{ profile.count }} port{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>{{ list_switch('tcp.ports') }}</div>
             <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
             <details class="compact-profile-more" data-saved-profile-more>
               <summary aria-label="More port-list actions" title="More profile actions">•••</summary>

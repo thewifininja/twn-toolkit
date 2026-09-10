@@ -1,25 +1,36 @@
-# Mainframe Synced Objects — Ping pilot
+# Mainframe Synced Objects
 
-The v0.25.1 development build introduces MSO for saved **Ping profiles**. Other
-saved lists, terminal folders and definitions, credentials, automations, cases,
-and files do not sync in this pilot. v0.25.0 remains the published stable release.
+Saved lists use the MSO framework first introduced by the Ping pilot. The saved-list
+rollout adds DNS query and server lists, NTP targets, Traceroute targets, TCP scanner
+hosts and ports, Wake-on-LAN groups, SNMP hosts, credentials and OID collections,
+RADIUS attribute sets, and LLDP personas. Terminal libraries, other credential
+stores, automations, cases, and files remain outside this wave.
 
 ## Using it
 
-Connect an Agent to a Mainframe, or use the Mainframe itself. In Ping, select or
+Connect an Agent to a Mainframe, or use the Mainframe itself. Select or
 create a saved profile, enable **MSO · Sync with Mainframe**, and save. The profile
 is shared with the whole enrolled fleet; there are no destination selectors.
 Existing and newly created profiles remain local unless MSO is enabled.
 
+Operational MSO controls and conflict management are available only in Mainframe
+or Agent mode. Standalone mode keeps the normal local profile controls and omits
+the MSO toggle, refresh action, conflict link, and MSO help topic. Direct conflict
+management URLs are unavailable there. Historical release notes still describe
+the feature.
+
 Create, rename, edit, disable MSO, or delete from any participating instance using
-its existing Ping permission. Origin identifies where an object began; it does
-not restrict editing. Receiving a profile never starts Ping or changes an active
-run. The receiving machine's installed Ping engine still determines which target
+its existing permission for that tool. Origin identifies where an object began; it does
+not restrict editing. Receiving a profile never starts a diagnostic or changes an active
+run. LLDP personas do not select an interface or start transmission. The receiving machine's installed Ping engine still determines which target
 counts and timeouts it can execute.
 
-The MSO checkbox sits beside the saved-profile dropdown. Its tooltip reports
-Local or Synced without adding a permanent status row. Pending, Conflict,
-Changed, Removed, and Unavailable appear beside it when attention is needed. Pending changes
+The MSO toggle uses a small square-edged switch beside its label, with no permanent
+button box. Its click target matches the adjacent Save action's height. The thumb
+moves right when enabled. It sits beside the saved-profile dropdown, or beside Save in card-based editors. Its tooltip reports
+the saved state without adding a permanent status row. Conflicts link to central
+review. Ping additionally shows Pending, Changed, Removed, and Unavailable during
+its background status checks. Pending changes
 remain on disk while offline and retry through the enrollment worker. Synced
 means the Mainframe accepted this revision; it does not assert every offline
 Agent has received it. Use **••• → Refresh profiles** to discover newly received items
@@ -38,17 +49,29 @@ force a network sync; that continues automatically in the background.
 
 ![MSO conflicts in the profile action menu](images/mso-profile-menu.png)
 
+![Shared DNS saved-list controls](images/mso-saved-dns.png)
+
 ## Conflicts in one place
+
+Other saved-list editors show **Review conflict** when a loaded object needs
+attention. Reload the page to discover incoming lists or load a newer saved
+version; save other drafts first. Saving or deleting a stale shared object is
+rejected rather than overwriting a newer revision. The conflict workspace only
+shows types the current user can access and checks that permission again when
+resolving a conflict.
+
+RADIUS attribute values and custom LLDP TLVs are shared as entered. Treat these
+as fleet-visible content when enabling MSO; SNMP hosts include their selected credential as described below.
 
 **Review conflicts** opens the shared **MSO conflicts** page. It is also available
 under the Ping profile's More actions menu. Resolution controls live there,
-not in each tool's editor. The pilot page shows conflicts on the instance you
+not in each tool's editor. The page shows conflicts on the instance you
 are currently using, including through a Mainframe agent tab. It cannot inspect
 an offline Agent's unsent draft.
 
 Compare the saved local and fleet versions, then choose **Use fleet version** or
 **Keep saved local version**. These choices use saved data, not an unsaved editor
-buffer. Duplicate first in Ping if you want an independent local copy. A deleted
+buffer. Duplicate first in the owning tool if you want an independent local copy. A deleted
 shared object cannot be resurrected by a stale offline edit: accept the removal
 or retain a local duplicate. If another change arrives while reviewing, refresh
 the conflict before choosing again.
@@ -58,6 +81,33 @@ collision appears with an identifying suffix and a conflict. Rename the existing
 local profile, then use the fleet version, or explicitly keep the suffixed name.
 
 ![Central MSO conflict comparison](images/mso-conflicts.png)
+
+## SNMP hosts and credentials
+
+Enabling MSO on a host also shares its selected credential. The selector explains
+this before saving. A credential can also be shared independently using its own
+MSO switch. Existing credentials and hosts start local after migration.
+
+Hosts reference credential UUIDs, not names. A credential rename updates the host's
+displayed selection without rebinding it. Incoming name collisions preserve the
+unrelated local credential and require conflict review. A missing or conflicted
+credential prevents new SNMP tests or monitors from using that host until resolved.
+An already running operation retains its existing configuration.
+
+Credentials are published before dependent hosts. Both the local store and the
+Mainframe enforce the dependency: a credential cannot be made local or deleted
+while shared hosts still reference it. Reassign those hosts or turn off their MSO
+first. This also applies to queued changes from offline Agents. Disabling a host
+does not implicitly unshare a credential that other hosts may use.
+
+Communities and authentication/privacy passphrases are protected with each
+instance's existing secret key in saved objects, hub records, pending deliveries,
+and conflicts. Exchange uses the authenticated enrollment transport. HTML, save
+responses, and conflict comparisons do not disclose secret values. Preserve the
+instance key with recovery data. Portable credential exports retain the existing
+sensitive-export protections and import as local objects.
+
+![SNMP host sharing includes its selected credential](images/mso-snmp-sharing.png)
 
 ## Removing or leaving
 
@@ -71,28 +121,34 @@ local profile, then use the fleet version, or explicitly keep the suffixed name.
   local objects with new UUIDs and discard their MSO membership. Late replies
   from the old membership cannot reattach them.
 - **Revoke an Agent:** existing certificate approval checks stop further sync.
-  This pilot does not remotely erase saved data already held by that Agent.
+  MSO does not remotely erase saved data already held by that Agent.
 
 ## Compatibility and recovery
 
-Upgrade Mainframe and participating Agents to a build supporting the pilot and
-restart their enrollment workers. Older peers can remain enrolled but do not
-sync MSOs. The Mainframe advertises MSO protocol support before an Agent attempts
-sync. Sync errors are separate from an otherwise healthy Agent connection.
+Upgrade Mainframe and participating Agents to a build supporting the desired list
+kinds. The heartbeat advertises supported types. Original Ping-only peers continue
+to exchange Ping objects; additional lists wait until both peers support them.
+Peers predating MSO remain enrolled without participating. On gaining support for
+new list kinds, an Agent rescans fleet history without replacing newer local edits
+or forgetting the last revision it already received. Capability changes cannot
+mask a Mainframe recovery below that known revision.
+Sync errors are separate from an otherwise healthy Agent connection.
 
-Ping profiles migrate once from `ping_profiles.json` to the owner-readable
-`mso.sqlite3` database. The legacy JSON file is retained but is no longer the
-active Ping store. Do not edit it to change profiles after migration. Other
-profile stores keep their existing formats.
+Each participating library migrates once from its existing JSON file into the
+owner-readable `mso.sqlite3` database. Existing entries retain their values and
+start local, with stable UUIDs. Legacy JSON files remain as migration sources but
+are no longer active stores after migration. Receiving a list first migrates any
+legacy local entries of that type, so a matching name cannot overwrite local data.
+Unrelated libraries are not read as part of that migration.
 
 Portable configuration exports contain profile values, without fleet identity
 or membership. Imported profiles are independent local objects. Replacing or
-merging a Ping library with active, pending, or conflicted MSOs is rejected:
+merging a participating library with active, pending, or conflicted MSOs is rejected:
 resolve/withdraw those objects first. A failed multi-group import restores the
 original UUIDs and pending operations. Recovery points include the SQLite store
 and its matching code. Restoring an older Mainframe may require explicit
-reconciliation if an Agent has a cursor beyond the restored history; this pilot
-does not silently reset that cursor or support moving Agents between Mainframes.
+reconciliation if an Agent has a cursor beyond the restored history; MSO
+does not silently reset a recovery cursor or support moving Agents between Mainframes.
 
 ## Framework boundaries
 
@@ -100,20 +156,21 @@ The shared store, authenticated exchange, revision checks, durable proposals,
 acknowledgements, tombstones and membership epoch are independent of Ping data.
 Types are registered with explicit payload validators; adding a new type also
 requires a permission-aware UI/storage adapter and its own migration/tests.
-There is no arbitrary file or secret replication.
+There is no arbitrary file replication; credential fields require an explicit adapter.
 
 Each exchange carries at most four proposals and four changed records. A shared
-object is limited to 64 KiB; Ping accepts up to 250 targets. The pilot retains up
+object is limited to 64 KiB; Ping accepts up to 250 targets. The store retains up
 to 5,000 shared identities, including deletion tombstones, and 10,000 recent
 operation receipts. Tombstones prevent stale resurrection. Reaching the identity
 limit produces an explicit error; automatic tombstone retirement and fleet-wide
-conflict aggregation are outside this pilot.
+conflict aggregation remain outside this rollout.
 
 ## Two-instance acceptance
 
-1. On Mainframe, enable MSO on a disposable Ping profile and save. On the Agent,
-   refresh profiles and verify targets/timing, then edit its name or targets and
-   save. Refresh on Mainframe and verify the change without starting Ping.
+1. On Mainframe, enable MSO on a disposable saved list and save. On the Agent,
+   reload the tool and verify its values, then edit its name or contents and
+   save. Reload on Mainframe and verify the change without running the tool.
+   Repeat with each supported list type; for LLDP, save a persona without starting it.
 2. Disconnect the Agent; save a profile edit there and another edit to the same
    profile on Mainframe. Reconnect, open Review conflicts on the Agent, compare
    both versions and resolve. Confirm the chosen version on both instances.

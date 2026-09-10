@@ -523,8 +523,6 @@ def register_tools(registry: Any) -> None:
             "tools.update_ping_session_targets": "tools.ping",
             "tools.save_ping_profile": "tools.ping",
             "tools.ping_profile_status": "tools.ping",
-            "tools.resolve_mso_conflict": "tools.ping",
-            "tools.mso_conflicts": "tools.ping",
             "tools.duplicate_ping_profile": "tools.ping",
             "tools.delete_ping_profile": "tools.ping",
             "tools.dns_response": "tools.dns_response",

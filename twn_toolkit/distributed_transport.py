@@ -17,6 +17,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 
+from .mso_types import LIST_TYPES
 from .distributed_agents import (
     GUI_PROTOCOL_VERSION,
     DistributedAgentStore,
@@ -252,6 +253,7 @@ class EnrollmentServer:
             "state": "approved",
             "agent_id": agent["id"],
             "mso_protocol": 1,
+            "mso_types": list(LIST_TYPES),
             "server_time": time.time(),
             "retry_after_seconds": retry,
             "jobs": jobs,

@@ -19654,8 +19654,12 @@ button.danger:hover {
   align-items: end;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
+}
+
+.compact-profile-target:has(.compact-profile-mso) {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .compact-profile-mso {
@@ -19665,10 +19669,11 @@ button.danger:hover {
   min-height: var(--ui-control-height);
 }
 
-.compact-profile-mso .check {
-  margin: 0;
+.compact-profile-mso .toggle-action > .button-link {
+  box-sizing: border-box;
+  height: var(--ui-control-height);
   min-height: var(--ui-control-height);
-  white-space: nowrap;
+  padding-block: 0;
 }
 
 .compact-profile-select select {
@@ -22348,3 +22353,19 @@ body.remote-terminal-resizing * {
 }
 
 .remote-editor-lock { display: contents; }
+
+.mso-comparison-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Match the existing taller mobile action rows without enlarging compact controls. */
+@media (max-width: 700px) {
+  .button-row > .compact-profile-mso .toggle-action > .button-link {
+    height: auto;
+    min-height: 42px;
+  }
+}
+@container saved-profile-manager (max-width: 650px) {
+  .saved-profile-manager:not(.compact-profile-manager) .compact-profile-mso .toggle-action > .button-link {
+    height: auto;
+    min-height: 42px;
+  }
+}

@@ -15,8 +15,8 @@ service.
 
 Current release: **v0.25.0**
 
-Development: **v0.25.3** includes the [MSO Ping profile pilot](docs/mainframe-synced-objects.md),
-with bidirectional fleet sharing and one central conflict-resolution page.
+Development: **v0.25.4** extends [MSO across saved network lists and SNMP credentials](docs/mainframe-synced-objects.md),
+with bidirectional fleet sharing, stable credential references and central conflict review.
 
 v0.25.0 adds a full-screen installer with service-first location choices,
 searchable timezones and individually selected dependencies. Mainframe agent

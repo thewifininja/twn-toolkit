@@ -320,10 +320,13 @@ def persona_from_form(form: Any, *, interface: str) -> dict[str, Any]:
     return validate_persona(persona, interface=interface)
 
 
-def validate_persona(persona: dict[str, Any], *, interface: str) -> dict[str, Any]:
-    valid_interfaces = {item["name"] for item in available_interfaces()}
-    if interface not in valid_interfaces:
-        raise ToolInputError("Choose a valid network interface.")
+def validate_persona(persona: dict[str, Any], *, interface: str | None) -> dict[str, Any]:
+    if interface is not None:
+        valid_interfaces = {item["name"] for item in available_interfaces()}
+        if interface not in valid_interfaces:
+            raise ToolInputError("Choose a valid network interface.")
+    elif not persona.get("source_mac"):
+        raise ToolInputError("A shared persona requires an explicit source MAC.")
     normalized = dict(persona)
     normalized["name"] = _bounded_text(persona.get("name"), "Persona name", 120)
     normalized["system_name"] = _bounded_text(

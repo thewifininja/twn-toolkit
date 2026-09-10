@@ -7,16 +7,35 @@ import pytest
 
 from twn_toolkit.auth import AuthStore
 from twn_toolkit.file_transactions import file_transaction
-from twn_toolkit.profiles import DNSProfileStore
+from twn_toolkit.profiles import PingProfileStore
+from twn_toolkit.mso import MsoStore
+from contextlib import contextmanager
+
+
+def _profile_store(instance):
+    return PingProfileStore(instance, "fixture_profiles.json")
 
 
 def _paused_update(instance, kind, ready, release):
+    if kind == "mso":
+        store = MsoStore(instance, "dns.hosts")
+        original_tx = store._tx
+        @contextmanager
+        def paused_tx():
+            with original_tx() as db:
+                ready.set()
+                if not release.wait(15):
+                    raise TimeoutError("Test did not release paused writer.")
+                yield db
+        store._tx = paused_tx
+        store.save({"name": "first", "values": []})
+        return
     if kind == "auth":
         store = AuthStore(instance)
         user = store.get_user("admin")
         operation = lambda: store.set_user_theme(user["id"], "light")
     else:
-        store = DNSProfileStore(instance, "hosts")
+        store = _profile_store(instance)
         operation = lambda: store.upsert({"name": "first", "targets": "192.0.2.1"})
     write = store._write
 
@@ -32,15 +51,17 @@ def _paused_update(instance, kind, ready, release):
 
 def _second_update(instance, kind, started, done):
     started.set()
-    if kind == "auth":
+    if kind == "mso":
+        MsoStore(instance, "dns.hosts").save({"name": "second", "values": []})
+    elif kind == "auth":
         store = AuthStore(instance)
         store.update_password(store.get_user("admin")["id"], "new password value")
     else:
-        DNSProfileStore(instance, "hosts").upsert({"name": "second", "targets": "192.0.2.2"})
+        _profile_store(instance).upsert({"name": "second", "targets": "192.0.2.2"})
     done.set()
 
 
-@pytest.mark.parametrize("kind", ["auth", "profiles"])
+@pytest.mark.parametrize("kind", ["auth", "profiles", "mso"])
 def test_concurrent_store_updates_preserve_password_revocation_and_profiles(tmp_path, kind):
     if kind == "auth":
         AuthStore(str(tmp_path)).create_user("admin", "old password value")
@@ -68,8 +89,10 @@ def test_concurrent_store_updates_preserve_password_revocation_and_profiles(tmp_
             assert user is not None
             assert user["session_version"] == 2
             assert user["theme"] == "light"
+        elif kind == "mso":
+            assert [p["name"] for p in MsoStore(tmp_path, "dns.hosts").profiles()] == ["first", "second"]
         else:
-            assert [p["name"] for p in DNSProfileStore(str(tmp_path), "hosts").all()] == ["first", "second"]
+            assert [p["name"] for p in _profile_store(str(tmp_path)).all()] == ["first", "second"]
     finally:
         release.set()
         for process in (first, second):
