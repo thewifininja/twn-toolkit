@@ -347,9 +347,12 @@
 
   function showMso(info, error = "") {
     if (!msoState) return;
-    msoState.textContent = error ? `${info?.state || "Local"} · Sync unavailable` : info?.state || "Local";
-    msoState.title = error;
-    if (msoConflictsLink) msoConflictsLink.hidden = !info?.conflict;
+    const state = info?.state || "Local";
+    msoState.textContent = error ? "Unavailable" : state;
+    msoState.hidden = !error && (state === "Local" || state === "Synced");
+    msoState.title = error || state;
+    if (msoToggle && !msoToggle.disabled) msoToggle.closest("label").title = `MSO · ${state}${error ? ` · ${error}` : ""}`;
+    if (msoConflictsLink) msoConflictsLink.textContent = info?.conflict ? "Review conflicts" : "MSO conflicts";
   }
 
   async function readMso(id = "") {
@@ -377,6 +380,7 @@
     profileSelect.dispatchEvent(new Event("change"));
   }
   profileRefresh?.addEventListener("click", async () => {
+    profileRefresh.closest("details").open = false;
     profileRefresh.disabled = true;
     try { await refreshProfiles(); }
     catch (error) { status.textContent = error.message; }
@@ -390,8 +394,11 @@
       const data = await readMso(selected.id);
       if (selected !== loadedMso) return;
       if (!data.profile || data.profile.mso.version !== selected.version) {
-        msoState.textContent = data.profile ? "Profile changed · Refresh to load" : "Shared profile removed · Refresh";
-        if (msoConflictsLink) msoConflictsLink.hidden = !data.profile?.mso.conflict;
+        msoState.textContent = data.profile?.mso.conflict ? "Conflict" : data.profile ? "Changed" : "Removed";
+        msoState.hidden = false;
+        msoState.title = "Open the profile actions menu and Refresh profiles to load saved changes. Unsaved edits are preserved until you confirm.";
+        if (msoToggle && !msoToggle.disabled) msoToggle.closest("label").title = `${msoState.textContent} · ${msoState.title}`;
+        if (msoConflictsLink) msoConflictsLink.textContent = data.profile?.mso.conflict ? "Review conflicts" : "MSO conflicts";
       } else {
         // Receipt/status changes never replace the editor or its saved base version.
         showMso(data.profile.mso, data.sync.error);

@@ -1,6 +1,19 @@
-APP_VERSION = "0.25.2"
+APP_VERSION = "0.25.3"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.25.3",
+        "date": "2026-09-10",
+        "title": "Readable Save actions and compact MSO controls",
+        "summary": "Improve shared Save contrast and keep Ping profile sharing unobtrusive.",
+        "groups": (
+            {"title": "Interface", "items": (
+                "Use readable shared Save colors across profile managers, including light themes and disabled controls.",
+                "Place Ping's MSO checkbox beside the profile dropdown, showing status text only when attention is needed.",
+                "Move Refresh profiles and conflict review into the profile actions menu, available even before selecting a profile.",
+            )},
+        ),
+    },
     {
         "version": "0.25.2",
         "date": "2026-09-10",

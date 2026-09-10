@@ -17,18 +17,24 @@ not restrict editing. Receiving a profile never starts Ping or changes an active
 run. The receiving machine's installed Ping engine still determines which target
 counts and timeouts it can execute.
 
-The compact status shows Local, Pending, Synced, or Conflict. Pending changes
+The MSO checkbox sits beside the saved-profile dropdown. Its tooltip reports
+Local or Synced without adding a permanent status row. Pending, Conflict,
+Changed, Removed, and Unavailable appear beside it when attention is needed. Pending changes
 remain on disk while offline and retry through the enrollment worker. Synced
 means the Mainframe accepted this revision; it does not assert every offline
-Agent has received it. Use **Refresh profiles** to discover newly received items
+Agent has received it. Use **••• → Refresh profiles** to discover newly received items
 or explicitly load a changed saved version. Background status checks preserve
 unsaved editor contents.
 
 ![Compact MSO controls in the Ping profile manager](images/mso-ping-controls.png)
 
-The profile's **•••** menu always provides **MSO conflicts**, even when no
-conflicts need attention. The inline **Review conflicts** action appears only
-when the selected profile has a conflict. Both use the shared action styling.
+![Readable Save action in a light palette](images/ping-profile-save-light.png)
+
+The **•••** menu is available even with no profile selected. It provides
+**Refresh profiles** and **MSO conflicts**; the latter reads **Review conflicts**
+when the selected profile has a conflict. Refresh reloads saved data already
+present on this instance and asks before replacing editor contents. It does not
+force a network sync; that continues automatically in the background.
 
 ![MSO conflicts in the profile action menu](images/mso-profile-menu.png)
 

@@ -315,7 +315,8 @@ def test_web_toggle_stale_forms_and_central_conflict_resolution(fleet):
     main.save(profile(host="192.0.2.3"))
     sync(main, a)
     page = client.get("/tools/ping")
-    assert b'Review conflicts' in page.data
+    assert b'MSO conflicts' in page.data
+    assert b'data-saved-profile-always-more' in page.data
     assert b'Use fleet version' not in page.data
     conflict_page = client.get("/tools/mso/conflicts")
     assert b'192.0.2.2' in conflict_page.data and b'192.0.2.3' in conflict_page.data
