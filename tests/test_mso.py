@@ -352,6 +352,7 @@ def test_withdrawal_conflict_keeps_local_copy_distinguishable(fleet):
     profiles = a.profiles(metadata=True)
     assert len(profiles) == 2
     assert len({p['name'] for p in profiles}) == 2
+    assert all(a.profile(p['mso']['id']) == p for p in profiles)
     conflict = next(p for p in profiles if p['mso']['conflict'])
     a.resolve(conflict['mso']['id'], 'local', conflict['mso']['version'])
     sync(main, a)

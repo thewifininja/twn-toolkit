@@ -173,7 +173,15 @@ class MsoStore:
     def profile(self, identifier):
         with self._tx() as db:
             row = db.execute("SELECT * FROM mso_objects WHERE id=? AND kind=? AND (deleted=0 OR conflict!='')", (_uuid(identifier), PING)).fetchone()
-            return {**json.loads(row["payload"]), "mso": self._info(row)} if row else None
+            if not row:
+                return None
+            payload = json.loads(row["payload"])
+            if row["deleted"] and row["conflict"] and any(
+                json.loads(other["payload"])["name"] == payload["name"]
+                for other in db.execute("SELECT payload FROM mso_objects WHERE kind=? AND deleted=0", (PING,))
+            ):
+                payload["name"] = payload["name"][:56] + " [MSO " + row["id"] + "]"
+            return {**payload, "mso": self._info(row)}
 
     def _info(self, row):
         state = "Conflict" if row["conflict"] else "Pending" if row["dirty"] else "Synced" if row["enabled"] else "Local"
