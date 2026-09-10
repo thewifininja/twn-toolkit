@@ -19715,7 +19715,8 @@ button.danger:hover {
   z-index: 35;
 }
 
-.compact-profile-more > div button {
+.compact-profile-more > div button,
+.compact-profile-more > div .button-link {
   justify-content: flex-start;
   width: 100%;
 }

@@ -1,6 +1,17 @@
-APP_VERSION = "0.25.1"
+APP_VERSION = "0.25.2"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.25.2",
+        "date": "2026-09-10",
+        "title": "Consistent MSO action styling",
+        "summary": "Match MSO navigation actions to the shared interface controls.",
+        "groups": (
+            {"title": "Interface", "items": (
+                "Style MSO conflict links consistently with adjacent menu and navigation actions, including keyboard focus and mobile sizing.",
+            )},
+        ),
+    },
     {
         "version": "0.25.1",
         "date": "2026-09-09",

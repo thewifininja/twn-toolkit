@@ -15,7 +15,7 @@ service.
 
 Current release: **v0.25.0**
 
-Development: **v0.25.1** adds the [MSO Ping profile pilot](docs/mainframe-synced-objects.md),
+Development: **v0.25.2** includes the [MSO Ping profile pilot](docs/mainframe-synced-objects.md),
 with bidirectional fleet sharing and one central conflict-resolution page.
 
 v0.25.0 adds a full-screen installer with service-first location choices,
