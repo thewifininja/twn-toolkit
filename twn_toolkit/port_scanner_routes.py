@@ -5,6 +5,7 @@ import time
 
 from flask import Blueprint, abort, current_app, g, jsonify, redirect, render_template, request, url_for
 
+from .mso_ui import save_profile, delete_profile, mutation
 from .audit import (
     annotate_profile_deleted,
     annotate_profile_duplicated,
@@ -111,6 +112,7 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
         return redirect(url_for("tools.port_scanner", job=job_id), code=303)
 
     @tools_bp.post("/port-scanner/profiles/<kind>")
+    @mutation
     def save_port_scan_profile(kind: str):
         if kind not in {"hosts", "ports"}:
             return jsonify({"error": "Unknown port scanner profile type."}), 404
@@ -130,7 +132,7 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": str(exc)}), 400
         store = _port_scan_profile_store(kind)
         before = store.get(original_name or name)
-        store.upsert(profile, original_name=original_name)
+        save_profile(store, profile, original_name=original_name)
         annotate_profile_saved(
             category="Network tools",
             action_namespace=f"tcp_scanner.{kind}",
@@ -141,13 +143,14 @@ def register_port_scanner_routes(tools_bp: Blueprint) -> None:
         return jsonify({"profile": profile})
 
     @tools_bp.post("/port-scanner/profiles/<kind>/delete")
+    @mutation
     def delete_port_scan_profile(kind: str):
         if kind not in {"hosts", "ports"}:
             return jsonify({"error": "Unknown port scanner profile type."}), 404
         name = request.form.get("name", "").strip()
         store = _port_scan_profile_store(kind)
         profile = store.get(name)
-        if not profile or not store.delete(name):
+        if not profile or not delete_profile(store, name):
             return jsonify({"error": "Profile not found."}), 404
         annotate_profile_deleted(
             category="Network tools",

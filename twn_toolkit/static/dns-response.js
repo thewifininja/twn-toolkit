@@ -130,7 +130,7 @@
     };
   };
 
-  const selectSavedProfile = (kind, profile) => {
+  const selectSavedProfile = (kind, profile, duplicate = false) => {
     const select = form.querySelector(`.dns-profile-select[data-kind="${kind}"]`);
     let option = Array.from(select.options).find((item) => item.value === profile.name);
     if (!option) {
@@ -138,6 +138,7 @@
       select.add(option);
     }
     option.dataset.values = JSON.stringify(profile.values);
+    window.TwnMso.saved(select.closest("[data-saved-profile-manager]"), profile, duplicate);
     select.value = profile.name;
     form.querySelector(`.profile-name-input[data-kind="${kind}"]`).value = profile.name;
     // Do not dispatch change: loading saved values would erase current edits.
@@ -159,6 +160,7 @@
       );
       body.set("values", submittedValues);
       try {
+        if (!window.TwnMso.prepare(body, button.closest("[data-saved-profile-manager]"))) return;
         const response = await fetch(`${document.body.dataset.instancePrefix || ""}/tools/dns-response/profiles/${kind}`, {
           method: "POST",
           body,
@@ -167,6 +169,13 @@
         if (!response.ok) {
           status.textContent = payload.error;
           return;
+        }
+        const originalName = body.get("original_name");
+        if (originalName && originalName !== payload.profile.name) {
+          form.querySelector(`.dns-profile-select[data-kind="${kind}"]`)
+            .querySelectorAll("option").forEach((option) => {
+              if (option.value === originalName) option.remove();
+            });
         }
         selectSavedProfile(kind, payload.profile);
         saved = true;
@@ -187,7 +196,7 @@
       const kind = button.dataset.kind;
       const select = form.querySelector(`.dns-profile-select[data-kind="${kind}"]`);
       if (pendingProfiles.has(kind) || !select.value
-        || !window.confirm(`Delete profile “${select.value}”?`)) return;
+        || !window.confirm(window.TwnMso.deleteMessage(button.closest("[data-saved-profile-manager]"), select.value))) return;
       const deletedName = select.value;
       const finish = beginProfileMutation(kind, button);
       if (!finish) return;
@@ -196,6 +205,7 @@
       const body = new FormData();
       body.set("name", deletedName);
       try {
+        if (!window.TwnMso.prepare(body, button.closest("[data-saved-profile-manager]"), "delete")) return;
         const response = await fetch(
           `${document.body.dataset.instancePrefix || ""}/tools/dns-response/profiles/${kind}/delete`,
           {method: "POST", body},
@@ -236,7 +246,7 @@
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "The profile could not be duplicated.");
-        selectSavedProfile(kind, payload.profile);
+        selectSavedProfile(kind, payload.profile, true);
         duplicated = true;
         status.textContent = `Duplicated saved profile as “${payload.profile.name}”. Current inputs are unchanged; edits are not part of the saved copy until you save them.`;
       } catch (error) {

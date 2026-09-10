@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/mso.html" import list_switch with context %}
 {% from "components/ui.html" import action_row, case_recorded_notice, profile_card, profile_create, profile_section, section_header, tool_result_runbar, tool_settings_backdrop, workspace_intro %}
 
 {% block content %}
@@ -68,7 +69,7 @@
             <label>Context name <span class="optional-label">(optional)</span><input name="context_name" autocomplete="off"></label>
             <span class="field-note">Saved passphrases are never rendered back into this page.</span>
           </div>
-          {% call action_row() %}<button type="submit">Save credential</button>{% endcall %}
+          {% call action_row() %}{{ list_switch('snmp.credentials') }}<button type="submit">Save credential</button>{% endcall %}
           <span class="tool-status snmp-form-status"></span>
         </form>
       {% endcall %}
@@ -121,7 +122,7 @@
                 <label>Context name <span class="optional-label">(optional)</span><input name="context_name" autocomplete="off" value="{{ profile.context_name }}"></label>
                 <span class="field-note">Leave secret fields blank while editing to keep their current values.</span>
               </div>
-              {% call action_row() %}
+              {% call action_row() %}{{ list_switch('snmp.credentials', profile.name) }}
                 <button type="submit">Update credential</button>
                 <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_snmp_profile', kind='credentials') }}" data-profile-name="{{ profile.name }}">Duplicate</button>
                 <button class="danger snmp-delete-profile" data-name="{{ profile.name }}" type="button">Delete</button>
@@ -144,8 +145,8 @@
             <label>Timeout<input name="timeout" type="number" min="0.2" max="30" step="0.1" value="2"></label>
             <label>Retries<input name="retries" type="number" min="0" max="5" value="1"></label>
           </div>
-          <label>SNMP profile<select name="credential_name" required><option value="">Select a profile</option>{% for profile in credentials %}<option value="{{ profile.name }}">{{ profile.name }}</option>{% endfor %}</select></label>
-          {% call action_row() %}<button type="submit">Save host</button>{% endcall %}
+          <label>SNMP profile<select name="credential_name" required><option value="">Select a profile</option>{% for profile in credentials %}<option value="{{ profile.name }}">{{ profile.name }}</option>{% endfor %}</select>{% if mso_available %}<span class="field-note">MSO also shares the selected credential.</span>{% endif %}</label>
+          {% call action_row() %}{{ list_switch('snmp.hosts') }}<button type="submit">Save host</button>{% endcall %}
           <span class="tool-status snmp-form-status"></span>
         </form>
       {% endcall %}
@@ -161,8 +162,8 @@
                 <label>Timeout<input name="timeout" type="number" min="0.2" max="30" step="0.1" value="{{ host.timeout }}"></label>
                 <label>Retries<input name="retries" type="number" min="0" max="5" value="{{ host.retries }}"></label>
               </div>
-              <label>SNMP profile<select name="credential_name" required><option value="">Select a profile</option>{% for profile in credentials %}<option value="{{ profile.name }}" {% if host.credential_name == profile.name %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select></label>
-              {% call action_row() %}
+              <label>SNMP profile<select name="credential_name" required><option value="">Select a profile</option>{% for profile in credentials %}<option value="{{ profile.name }}" {% if host.credential_name == profile.name %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select>{% if mso_available %}<span class="field-note">MSO also shares the selected credential.</span>{% endif %}</label>
+              {% call action_row() %}{{ list_switch('snmp.hosts', host.name) }}
                 <button type="submit">Update host</button>
                 <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_snmp_profile', kind='hosts') }}" data-profile-name="{{ host.name }}">Duplicate</button>
                 <button class="danger snmp-delete-profile" data-name="{{ host.name }}" type="button">Delete</button>
@@ -181,7 +182,7 @@
           <label>Collection name<input name="name" maxlength="100" required></label>
           <label>OIDs and calculations<textarea name="source" rows="11" placeholder="Current Memory KB = 1.3.6.1.4.1.999.1.0&#10;Total Memory KB = 1.3.6.1.4.1.999.2.0&#10;calc: Memory Usage % = percent(Current Memory KB, Total Memory KB)" required></textarea></label>
           <span class="field-note">Use <code>Label = numeric OID</code>, <code>walk: Label = OID</code>, or <code>calc: Label = function(Source A, Source B)</code>. Calculations support <code>percent</code>, <code>remaining_percent</code>, <code>difference</code>, and <code>sum</code>; sources must be scalar numeric values in this profile.</span>
-          {% call action_row() %}<button type="submit">Save OID profile</button>{% endcall %}
+          {% call action_row() %}{{ list_switch('snmp.oids') }}<button type="submit">Save OID profile</button>{% endcall %}
           <span class="tool-status snmp-form-status"></span>
         </form>
       {% endcall %}
@@ -193,7 +194,7 @@
               <label>Collection name<input name="name" maxlength="100" required value="{{ profile.name }}"></label>
               <label>OIDs and calculations<textarea name="source" rows="11" required>{{ profile.source }}</textarea></label>
               <span class="field-note">Use <code>Label = numeric OID</code>, <code>walk: Label = OID</code>, or <code>calc: Label = function(Source A, Source B)</code>. Calculations support <code>percent</code>, <code>remaining_percent</code>, <code>difference</code>, and <code>sum</code>; sources must be scalar numeric values in this profile.</span>
-              {% call action_row() %}
+              {% call action_row() %}{{ list_switch('snmp.oids', profile.name) }}
                 <button type="submit">Update OID profile</button>
                 <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_snmp_profile', kind='oids') }}" data-profile-name="{{ profile.name }}">Duplicate</button>
                 <button class="danger snmp-delete-profile" data-name="{{ profile.name }}" type="button">Delete</button>

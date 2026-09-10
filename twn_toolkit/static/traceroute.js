@@ -44,6 +44,7 @@
     body.set("name", profileName.value);
     body.set("original_name", profileSelect.value);
     body.set("values", hostsInput.value);
+    if (!window.TwnMso.prepare(body, form, "save")) return;
     const response = await fetch(form.dataset.saveProfileUrl, {method: "POST", body});
     const payload = await response.json();
     if (!response.ok) {
@@ -55,9 +56,10 @@
   });
 
   document.getElementById("traceroute-delete-profile").addEventListener("click", async () => {
-    if (!profileSelect.value || !window.confirm(`Delete profile “${profileSelect.value}”?`)) return;
+    if (!profileSelect.value || !window.confirm(window.TwnMso.deleteMessage(form, profileSelect.value))) return;
     const body = new FormData();
     body.set("name", profileSelect.value);
+    if (!window.TwnMso.prepare(body, form, "delete")) return;
     const response = await fetch(form.dataset.deleteProfileUrl, {method: "POST", body});
     const payload = await response.json();
     if (!response.ok) {

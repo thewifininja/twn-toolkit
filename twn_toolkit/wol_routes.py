@@ -5,6 +5,7 @@ import time
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from .mso_ui import save_profile, delete_profile, mutation
 from .activity_context import record_current_activity
 from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
 from .network_tools import ToolInputError
@@ -158,6 +159,7 @@ def register_wol_routes(tools_bp: Blueprint) -> None:
         )
 
     @tools_bp.post("/wake-on-lan/profiles")
+    @mutation
     def save_wol_profile():
         name = request.form.get("name", "").strip()
         original_name = request.form.get("original_name", "").strip()
@@ -176,7 +178,7 @@ def register_wol_routes(tools_bp: Blueprint) -> None:
         }
         store = WOLTargetProfileStore(current_app.instance_path)
         before = store.get(original_name or name)
-        store.upsert(profile, original_name=original_name)
+        save_profile(store, profile, original_name=original_name)
         annotate_profile_saved(
             category="Network tools",
             action_namespace="wol",
@@ -187,11 +189,12 @@ def register_wol_routes(tools_bp: Blueprint) -> None:
         return jsonify({"profile": profile})
 
     @tools_bp.post("/wake-on-lan/profiles/delete")
+    @mutation
     def delete_wol_profile():
         name = request.form.get("name", "").strip()
         store = WOLTargetProfileStore(current_app.instance_path)
         profile = store.get(name)
-        if not profile or not store.delete(name):
+        if not profile or not delete_profile(store, name):
             return jsonify({"error": "Device group not found."}), 404
         annotate_profile_deleted(
             category="Network tools",

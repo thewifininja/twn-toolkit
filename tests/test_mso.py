@@ -52,7 +52,8 @@ def test_migration_identity_duplicate_and_local_default(tmp_path):
     assert store.path.stat().st_mode & 0o777 == 0o600
     dns = DNSProfileStore(tmp_path, "hosts")
     dns.upsert({"name": "DNS", "hosts": "example.org"})
-    assert json.loads(dns.path.read_text())[0]["name"] == "DNS"
+    assert dns.get("DNS")["name"] == "DNS"
+    assert dns.mso_store().profiles(metadata=True)[0]["mso"]["state"] == "Local"
 
 
 def test_bidirectional_rename_edit_and_late_join(fleet):
@@ -334,7 +335,7 @@ def test_conflict_workspace_uses_existing_tool_permissions(fleet):
     auth = AuthStore(a.instance)
     auth.create_user('admin', 'Temporary admin password', is_admin=True)
     allowed = auth.save_access_profile(name='Ping', tool_ids=['tools.ping'])
-    denied = auth.save_access_profile(name='DNS', tool_ids=['tools.dns_response'])
+    denied = auth.save_access_profile(name='IP information', tool_ids=['tools.ip_info'])
     auth.create_user('allowed', 'Temporary user password', access_profile_ids=[allowed['id']])
     auth.create_user('denied', 'Temporary user password', access_profile_ids=[denied['id']])
     app = create_app(str(a.instance))
@@ -444,3 +445,25 @@ def test_unavailable_mso_database_does_not_break_agent_control(fleet):
         assert status['state'] == 'connected'
         assert status['error'] == ''
         assert 'storage unavailable' in status['mso_error']
+
+
+@pytest.mark.parametrize('role', ['standalone', 'mainframe', 'agent'])
+def test_operational_mso_controls_follow_instance_role(tmp_path, role):
+    from twn_toolkit.app import create_app
+    store = node(tmp_path / role, role)
+    app = create_app(instance_path=str(store.instance))
+    app.config['TESTING'] = True
+    client = app.test_client()
+    available = role != 'standalone'
+    page = client.get('/tools/ping')
+    assert page.status_code == 200
+    for marker in (b'id="ping-profile-mso"', b'id="ping-mso-conflicts-link"', b'id="ping-profile-refresh"'):
+        assert (marker in page.data) == available
+    assert (b'<summary>Mainframe Synced Objects' in client.get('/help').data) == available
+    assert client.get('/tools/mso/conflicts').status_code == (200 if available else 404)
+    if not available:
+        assert client.post('/tools/mso/conflicts/resolve', data={'choice': 'fleet'}).status_code == 404
+        saved = client.post('/tools/ping/profiles', json={'name': 'Local profile', 'hosts': '192.0.2.1'})
+        assert saved.status_code == 200
+        assert saved.json['profile']['mso']['state'] == 'Local'
+        assert client.post('/tools/ping/profiles', json={'name': 'Shared attempt', 'hosts': '192.0.2.1', 'mso_enabled': True}).status_code == 400

@@ -5,6 +5,7 @@ import time
 
 from flask import Blueprint, current_app, g, jsonify, redirect, render_template, request, url_for
 
+from .mso_ui import save_profile, delete_profile, mutation
 from .activity_context import record_current_activity
 from .diagnostic_routes import diagnostic_store, owned_diagnostic
 from .diagnostic_worker import record_unsuccessful_scan
@@ -126,6 +127,7 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
         return redirect(url_for('tools.dns_response', job=job_id), code=303)
 
     @tools_bp.post("/dns-response/profiles/<kind>")
+    @mutation
     def save_dns_profile(kind: str):
         if kind not in {"hosts", "servers"}:
             return jsonify({"error": "Unknown DNS profile type."}), 404
@@ -141,8 +143,9 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
             return jsonify({"error": str(exc)}), 400
         profile = {"name": name, "values": parsed}
         store = _dns_profile_store(kind)
-        before = store.get(name)
-        store.upsert(profile)
+        original_name = request.form.get("original_name", "").strip()
+        before = store.get(original_name or name)
+        save_profile(store, profile, original_name=original_name)
         annotate_profile_saved(
             category="Network tools",
             action_namespace=f"dns.{kind}",
@@ -153,13 +156,14 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
         return jsonify({"profile": profile})
 
     @tools_bp.post("/dns-response/profiles/<kind>/delete")
+    @mutation
     def delete_dns_profile(kind: str):
         if kind not in {"hosts", "servers"}:
             return jsonify({"error": "Unknown DNS profile type."}), 404
         name = request.form.get("name", "").strip()
         store = _dns_profile_store(kind)
         profile = store.get(name)
-        if not profile or not store.delete(name):
+        if not profile or not delete_profile(store, name):
             return jsonify({"error": "Profile not found."}), 404
         annotate_profile_deleted(
             category="Network tools",
@@ -184,7 +188,7 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
             profile_type=f"DNS {'host' if kind == 'hosts' else 'server'} profile",
             source=source, copied=copied,
         )
-        return jsonify({"profile": {"name": copied["name"]}})
+        return jsonify({"profile": next(p for p in store.mso_store().profiles(metadata=True) if p["name"] == copied["name"])})
 
 
 def _dns_profile_store(kind: str) -> DNSProfileStore:

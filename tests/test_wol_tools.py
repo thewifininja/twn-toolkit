@@ -276,9 +276,8 @@ class WakeOnLanToolTests(unittest.TestCase):
                     "values": "Office PC | 02:00:00:00:00:01 | private.internal",
                 },
             )
-            saved = json.loads(
-                Path(instance, "wol_target_profiles.json").read_text(encoding="utf-8")
-            )
+            from twn_toolkit.profiles import WOLTargetProfileStore
+            saved = WOLTargetProfileStore(instance).all()
             event = AuditStore(instance).recent(1)[0]
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
 

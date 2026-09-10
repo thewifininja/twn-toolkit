@@ -119,17 +119,32 @@ class ProtectedProfileSecrets:
     secret_fields: tuple[str, ...] = ()
 
     def _read(self):
+        if getattr(self, "_uses_mso", False):
+            return super()._read()
         from .profile_secrets import transform_profiles
         return transform_profiles(super()._read(), self.instance_path, self.path.name,
                                   self.secret_fields, encrypt=False)
 
     def _write(self, profiles):
+        if getattr(self, "_uses_mso", False):
+            return super()._write(profiles)
         from .profile_secrets import transform_profiles
         protected = transform_profiles(profiles, self.instance_path, self.path.name,
                                        self.secret_fields, encrypt=True)
         super()._write(protected)
 
     def protect_existing(self) -> bool:
+        if getattr(self, "_uses_mso", False):
+            self.mso_store().profiles()
+            with file_transaction(self.path):
+                if not self.path.exists():
+                    return False
+                # Protect the retained migration source without replacing active MSOs.
+                from .profile_secrets import transform_profiles
+                legacy = transform_profiles(read_json_file(self.path), self.instance_path, self.path.name, self.secret_fields, encrypt=False)
+                protected = transform_profiles(legacy, self.instance_path, self.path.name, self.secret_fields, encrypt=True)
+                JsonListStore._write(self, protected)
+                return True
         with file_transaction(self.path):
             if not self.path.exists():
                 return False
@@ -162,13 +177,15 @@ class FortiAuthenticatorProfileStore(ProfileStore):
 class PingProfileStore(JsonListStore):
     def __init__(self, instance_path: str, filename: str = "ping_profiles.json") -> None:
         super().__init__(instance_path, filename)
-        self._uses_mso = filename == "ping_profiles.json"
+        from .mso_types import FILE_TYPES
+        self._mso_kind = FILE_TYPES.get(filename)
+        self._uses_mso = self._mso_kind is not None
         if self._uses_mso:
             self.transaction_path = self.instance_path / "distributed_settings.json"
 
     def mso_store(self):
         from .mso import MsoStore
-        return MsoStore(self.instance_path)
+        return MsoStore(self.instance_path, self._mso_kind)
 
     def _read(self):
         return self.mso_store().profiles() if self._uses_mso else super()._read()

@@ -29,6 +29,7 @@
       body.set("name", name.value);
       body.set("original_name", select.value);
       body.set("values", values.value);
+      if (!window.TwnMso.prepare(body, manager, "save")) return;
       const response = await fetch(manager.dataset.saveUrl, {method: "POST", body});
       const payload = await response.json();
       if (!response.ok) {
@@ -40,9 +41,10 @@
     });
 
     manager.querySelector(".port-delete-profile").addEventListener("click", async () => {
-      if (!select.value || !window.confirm(`Delete profile “${select.value}”?`)) return;
+      if (!select.value || !window.confirm(window.TwnMso.deleteMessage(manager, select.value))) return;
       const body = new FormData();
       body.set("name", select.value);
+      if (!window.TwnMso.prepare(body, manager, "delete")) return;
       const response = await fetch(manager.dataset.deleteUrl, {method: "POST", body});
       const payload = await response.json();
       if (!response.ok) {

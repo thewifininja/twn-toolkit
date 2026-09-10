@@ -5,8 +5,9 @@ import secrets
 import time
 from typing import Any, BinaryIO
 
-from flask import Blueprint, current_app, g, jsonify, redirect, render_template, request, url_for
+from flask import flash, Blueprint, current_app, g, jsonify, redirect, render_template, request, url_for
 
+from .mso_ui import save_profile, delete_profile
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run, suppress_audit_event
 from .capture_sources import CLASSIC_PCAP_SUFFIXES, datastore_packet_captures
@@ -224,7 +225,7 @@ def register_lldp_routes(tools_bp: Blueprint) -> None:
                         original_name = request.form.get("original_name", "").strip()
                         stored = dict(persona)
                         stored.pop("custom_tlvs_text", None)
-                        persona_store.upsert(stored, original_name=original_name)
+                        save_profile(persona_store, stored, original_name=original_name)
                         selected_name = stored["name"]
                         message = f"Saved LLDP persona {stored['name']}."
                         annotate_tool_run(
@@ -480,7 +481,11 @@ def register_lldp_routes(tools_bp: Blueprint) -> None:
 
     @tools_bp.post("/lldp-lab/personas/<path:name>/delete")
     def delete_lldp_persona(name: str):
-        deleted = LLDPPersonaStore(current_app.instance_path).delete(name)
+        try:
+            deleted = delete_profile(LLDPPersonaStore(current_app.instance_path), name)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("tools.lldp_lab", view="emulate"))
         annotate_tool_run(
             category="Network tools",
             action_namespace="lldp.persona.delete",

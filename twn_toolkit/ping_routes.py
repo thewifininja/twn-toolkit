@@ -29,7 +29,6 @@ from .ping_investigation import (
 )
 from .profiles import PingProfileStore
 from .mso import MsoConflict
-from .distributed_agents import DistributedSettingsStore
 from .remote_sessions import RemoteSessionManager, public_remote_session
 from .snmp_investigation import finalize_pending_snmp_sessions
 
@@ -48,7 +47,6 @@ def register_ping_routes(tools_bp: Blueprint) -> None:
         return render_template(
             "tools/ping.html",
             profiles=_ping_profile_store().mso_store().profiles(metadata=True),
-            mso_available=DistributedSettingsStore(current_app.instance_path).get()["role"] != "standalone",
             ping_capability=capability,
             ping_health_defaults=PING_HEALTH_DEFAULTS,
             ping_target_limit=capability["target_limit"],

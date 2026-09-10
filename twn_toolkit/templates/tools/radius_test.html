@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/mso.html" import list_switch with context %}
 {% from "components/ui.html" import action_row, case_recorded_notice, profile_card, profile_create, profile_section, section_header, tool_result_runbar, tool_settings_backdrop %}
 
 {% block content %}
@@ -205,7 +206,7 @@
           <textarea name="attributes" rows="7" required placeholder="NAS-Identifier = HQ-WLC-01&#10;NAS-IP-Address = 192.0.2.10&#10;Called-Station-Id = AA-BB-CC-DD-EE-FF:Corp-WiFi"></textarea>
         </label>
         <span class="field-note">One <code>Name = value</code> per line. Unknown attributes accept <code>#type = hex</code> or <code>#vendor:type = hex</code>.</span>
-        {% call action_row() %}<button type="submit">Save attributes</button>{% endcall %}
+        {% call action_row() %}{{ list_switch('radius.attributes') }}<button type="submit">Save attributes</button>{% endcall %}
       </form>
     {% endcall %}
     <div class="access-profile-list nested-profile-list">
@@ -218,7 +219,7 @@
               <textarea name="attributes" rows="7" required>{{ profile.source }}</textarea>
             </label>
             <span class="field-note">One <code>Name = value</code> per line. Unknown attributes accept <code>#type = hex</code> or <code>#vendor:type = hex</code>.</span>
-            {% call action_row() %}
+            {% call action_row() %}{{ list_switch('radius.attributes', profile.name) }}
               <button type="submit">Update attributes</button>
               <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_radius_profile', kind='attributes') }}" data-profile-name="{{ profile.name }}">Duplicate</button>
               <button class="danger radius-delete-profile" data-kind="attributes" data-name="{{ profile.name }}" type="button">Delete</button>

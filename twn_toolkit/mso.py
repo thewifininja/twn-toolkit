@@ -16,6 +16,9 @@ from .backup_source_reads import read_json_file, current_source_budget, source_j
 from .distributed_agents import DistributedIdentityStore, DistributedSettingsStore
 from .file_transactions import file_transaction
 from .sqlite_store import bootstrap_sqlite_store, sqlite_store_connection
+from .mso_types import LIST_TYPES, default_profiles, validate_list
+from .mso_secrets import transform as transform_secrets
+from . import mso_references as references
 
 PROTOCOL = 1
 BATCH = 4
@@ -82,7 +85,7 @@ def _ping(value):
 
 
 # Adding a type requires an explicit validator, not arbitrary file replication.
-OBJECT_TYPES = {PING: _ping}
+OBJECT_TYPES = {PING: _ping, **{kind: (lambda payload, kind=kind: validate_list(kind, payload)) for kind in LIST_TYPES if kind != PING}}
 
 
 def validate(kind, payload):
@@ -94,13 +97,22 @@ def validate(kind, payload):
 
 
 class MsoStore:
-    def __init__(self, instance_path):
+    def __init__(self, instance_path, kind=PING):
+        if kind not in OBJECT_TYPES:
+            raise ValueError("Unsupported MSO object type.")
+        self.kind = kind
         self.instance = Path(instance_path)
         self.path = self.instance / "mso.sqlite3"
         self.settings = DistributedSettingsStore(self.instance)
         self.node = DistributedIdentityStore(self.instance).load_or_create()["device_id"]
         bootstrap_sqlite_store(self.path, self._schema)
         os.chmod(self.path, 0o600)
+
+    def _dump(self, value):
+        return _json(transform_secrets(value, self.instance, encrypt=True))
+
+    def _load(self, value):
+        return transform_secrets(source_json_loads(value), self.instance, encrypt=False)
 
     def _schema(self, db):
         db.execute("CREATE TABLE IF NOT EXISTS mso_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL)")
@@ -119,15 +131,36 @@ class MsoStore:
             object_id TEXT NOT NULL, revision INTEGER NOT NULL, UNIQUE(peer, operation))""")
         for key, value in (("epoch", str(uuid.uuid4())), ("fleet", ""), ("cursor", "0"), ("sequence", "0")):
             db.execute("INSERT OR IGNORE INTO mso_meta VALUES (?,?)", (key, value))
-        if not self._meta(db, "ping_migrated"):
-            try:
-                profiles = read_json_file(self.instance / "ping_profiles.json")
-            except FileNotFoundError:
-                profiles = []
-            for profile in profiles:
-                db.execute("INSERT INTO mso_objects(id,kind,payload,origin) VALUES (?,?,?,?)",
-                           (str(uuid.uuid4()), PING, _json(profile), self.node))
-            self._set(db, "ping_migrated", "1")
+        self._migrate(db, self.kind)
+        if self.kind == references.CREDENTIAL:
+            self._migrate(db, references.HOST)
+
+    def _migrate(self, db, kind):
+        spec = LIST_TYPES[kind]
+        marker = "ping_migrated" if kind == PING else "migrated:" + kind
+        if self._meta(db, marker):
+            return
+        try:
+            profiles = read_json_file(self.instance / spec.filename)
+        except FileNotFoundError:
+            profiles = default_profiles(kind)
+        if not isinstance(profiles, list) or any(
+            not isinstance(profile, dict) or not isinstance(profile.get("name"), str)
+            for profile in profiles
+        ):
+            raise ValueError(f"Invalid saved-list file: {spec.filename}. Repair it before migration.")
+        if kind == 'snmp.credentials':
+            from .profile_secrets import transform_profiles
+            from .mso_secrets import SNMP_SECRET_FIELDS
+            profiles = transform_profiles(profiles, self.instance, spec.filename, SNMP_SECRET_FIELDS, encrypt=False)
+        if kind == 'snmp.hosts':
+            self._migrate(db, 'snmp.credentials')
+            credentials = {self._load(row['payload'])['name']: row['id'] for row in db.execute("SELECT id,payload FROM mso_objects WHERE kind='snmp.credentials' AND deleted=0")}
+            profiles = [{**profile, 'credential_id': credentials.get(profile.get('credential_name'), '')} for profile in profiles]
+        for profile in profiles:
+            db.execute("INSERT INTO mso_objects(id,kind,payload,origin) VALUES (?,?,?,?)",
+                       (str(uuid.uuid4()), kind, self._dump(profile), self.node))
+        self._set(db, marker, "1")
 
     @staticmethod
     def _meta(db, key):
@@ -158,13 +191,15 @@ class MsoStore:
     def profiles(self, *, metadata=False):
         with self._tx() as db:
             self._charge_source(db)
-            rows = db.execute("SELECT * FROM mso_objects WHERE kind=? AND (deleted=0 OR conflict!='')", (PING,)).fetchall()
+            rows = db.execute("SELECT * FROM mso_objects WHERE kind=? AND (deleted=0 OR conflict!='')", (self.kind,)).fetchall()
             result = []
-            payloads = [source_json_loads(row["payload"]) for row in rows]
+            payloads = [self._load(row["payload"]) for row in rows]
             live_names = {payload["name"] for row, payload in zip(rows, payloads) if not row["deleted"]}
             for row, payload in zip(rows, payloads):
                 if row["deleted"] and row["conflict"] and payload["name"] in live_names:
                     payload["name"] = payload["name"][:56] + " [MSO " + row["id"] + "]"
+                if self.kind == references.HOST:
+                    payload = references.project_host(self, db, payload)
                 if metadata:
                     payload["mso"] = self._info(row)
                 result.append(payload)
@@ -172,22 +207,24 @@ class MsoStore:
 
     def profile(self, identifier):
         with self._tx() as db:
-            row = db.execute("SELECT * FROM mso_objects WHERE id=? AND kind=? AND (deleted=0 OR conflict!='')", (_uuid(identifier), PING)).fetchone()
+            row = db.execute("SELECT * FROM mso_objects WHERE id=? AND kind=? AND (deleted=0 OR conflict!='')", (_uuid(identifier), self.kind)).fetchone()
             if not row:
                 return None
-            payload = json.loads(row["payload"])
+            payload = self._load(row["payload"])
             if row["deleted"] and row["conflict"] and any(
-                json.loads(other["payload"])["name"] == payload["name"]
-                for other in db.execute("SELECT payload FROM mso_objects WHERE kind=? AND deleted=0", (PING,))
+                self._load(other["payload"])["name"] == payload["name"]
+                for other in db.execute("SELECT payload FROM mso_objects WHERE kind=? AND deleted=0", (self.kind,))
             ):
                 payload["name"] = payload["name"][:56] + " [MSO " + row["id"] + "]"
+            if self.kind == references.HOST:
+                payload = references.project_host(self, db, payload)
             return {**payload, "mso": self._info(row)}
 
     def _info(self, row):
         state = "Conflict" if row["conflict"] else "Pending" if row["dirty"] else "Synced" if row["enabled"] else "Local"
         return {"id": row["id"], "enabled": bool(row["enabled"]), "version": row["version"],
-                "revision": row["revision"], "state": state, "origin": row["origin"],
-                "can_withdraw": True, "deleted": bool(row["deleted"]), "conflict": json.loads(row["conflict"]) if row["conflict"] else None}
+                "kind": row["kind"], "revision": row["revision"], "state": state, "origin": row["origin"],
+                "can_withdraw": True, "deleted": bool(row["deleted"]), "conflict": self._load(row["conflict"]) if row["conflict"] else None}
 
     def save(self, payload, original_name="", *, enabled=None, expected=None, object_id=None, guarded=False):
         if enabled is not None and not isinstance(enabled, bool):
@@ -195,34 +232,42 @@ class MsoStore:
         payload = dict(payload)
         payload.pop("mso", None)
         with self._tx() as db:
-            rows = db.execute("SELECT * FROM mso_objects WHERE kind=? AND deleted=0", (PING,)).fetchall()
-            old = next((r for r in rows if json.loads(r["payload"])["name"] == (original_name or payload["name"])), None)
+            rows = db.execute("SELECT * FROM mso_objects WHERE kind=? AND deleted=0", (self.kind,)).fetchall()
+            old = next((r for r in rows if self._load(r["payload"])["name"] == (original_name or payload["name"])), None)
             self._guard(old, object_id, expected, guarded)
-            if any(json.loads(r["payload"])["name"] == payload["name"] and (not old or r["id"] != old["id"]) for r in rows):
+            if any(self._load(r["payload"])["name"] == payload["name"] and (not old or r["id"] != old["id"]) for r in rows):
                 raise MsoConflict("Another profile already uses that name. Choose a different name.")
             if old and expected is not None and expected != old["version"]:
                 raise MsoConflict("This profile changed. Reload before saving your changes.")
             active = bool(old["enabled"]) if enabled is None and old else bool(enabled)
             if active and self._role() == "standalone":
                 raise ValueError("Connect to a Mainframe or enable Mainframe mode before using MSO.")
+            if self.kind == references.HOST:
+                payload = references.prepare_host(self, db, payload, active)
             if active:
-                payload = validate(PING, payload)
+                payload = validate(self.kind, payload)
             if old and old["conflict"]:
                 raise MsoConflict("Resolve the MSO conflict before editing this profile.")
             if old and old["enabled"] and not active:
+                if self.kind == references.CREDENTIAL and (references.has_references(self, db, old['id'], shared_only=True) or references.has_references(self, db, old['id'], hub=True)):
+                    raise MsoConflict('Shared hosts still use this credential. Reassign them or turn off their MSO first.')
                 self._withdraw(db, old)
                 identifier = str(uuid.uuid4())
-                db.execute("INSERT INTO mso_objects(id,kind,payload,origin) VALUES (?,?,?,?)", (identifier, PING, _json(payload), self.node))
+                db.execute("INSERT INTO mso_objects(id,kind,payload,origin) VALUES (?,?,?,?)", (identifier, self.kind, self._dump(payload), self.node))
+                if self.kind == references.CREDENTIAL:
+                    references.remap_references(self, db, {old['id']: identifier})
             elif old:
                 identifier = old["id"]
                 db.execute("UPDATE mso_objects SET payload=?,enabled=?,dirty=?,version=version+1 WHERE id=?",
-                           (_json(payload), active, active, identifier))
+                           (self._dump(payload), active, active, identifier))
             else:
                 identifier = str(uuid.uuid4())
                 db.execute("INSERT INTO mso_objects(id,kind,payload,enabled,dirty,origin) VALUES (?,?,?,?,?,?)",
-                           (identifier, PING, _json(payload), active, active, self.node))
+                           (identifier, self.kind, self._dump(payload), active, active, self.node))
             if self._role() == "mainframe":
                 self._flush(db)
+            if self.kind == references.HOST:
+                payload = references.project_host(self, db, payload)
             return {**payload, "mso": self._info(db.execute("SELECT * FROM mso_objects WHERE id=?", (identifier,)).fetchone())}
 
     @staticmethod
@@ -239,12 +284,14 @@ class MsoStore:
 
     def delete(self, name, expected=None, *, object_id=None, guarded=False):
         with self._tx() as db:
-            row = next((r for r in db.execute("SELECT * FROM mso_objects WHERE kind=? AND deleted=0", (PING,)) if json.loads(r["payload"])["name"] == name), None)
+            row = next((r for r in db.execute("SELECT * FROM mso_objects WHERE kind=? AND deleted=0", (self.kind,)) if self._load(r["payload"])["name"] == name), None)
             self._guard(row, object_id, expected, guarded)
             if not row:
                 return False
             if expected is not None and expected != row["version"]:
                 raise MsoConflict("This profile changed. Reload before deleting it.")
+            if self.kind == references.CREDENTIAL and (references.has_references(self, db, row['id']) or references.has_references(self, db, row['id'], hub=True)):
+                raise MsoConflict('Hosts still use this credential. Reassign or remove them first.')
             if row["enabled"]:
                 if row["conflict"]:
                     raise MsoConflict("Resolve the MSO conflict before deleting this profile.")
@@ -255,12 +302,11 @@ class MsoStore:
                 db.execute("DELETE FROM mso_objects WHERE id=?", (row["id"],))
             return True
 
-    @staticmethod
-    def _charge_source(db):
+    def _charge_source(self, db):
         budget = current_source_budget()
         if budget is None:
             return
-        size, count = db.execute("SELECT COALESCE(SUM(length(CAST(payload AS BLOB))+length(CAST(inflight AS BLOB))+length(CAST(conflict AS BLOB))+256),0), COUNT(*) FROM mso_objects WHERE kind=?", (PING,)).fetchone()
+        size, count = db.execute("SELECT COALESCE(SUM(length(CAST(payload AS BLOB))+length(CAST(inflight AS BLOB))+length(CAST(conflict AS BLOB))+256),0), COUNT(*) FROM mso_objects WHERE kind=?", (self.kind,)).fetchone()
         if size > budget[0] or count * 14 > budget[1]:
             raise SourceReadLimit("Selected MSO backup data exceeds the read limit. Export fewer groups or reduce a large source.")
         budget[0] -= size
@@ -269,7 +315,7 @@ class MsoStore:
     def backup_snapshot(self):
         with self._tx() as db:
             self._charge_source(db)
-            rows = [dict(row) for row in db.execute("SELECT * FROM mso_objects WHERE kind=?", (PING,))]
+            rows = [dict(row) for row in db.execute("SELECT * FROM mso_objects WHERE kind=?", (self.kind,))]
             for row in rows:
                 for column in ("payload", "inflight", "conflict"):
                     checked_source_json_text(row[column])
@@ -278,36 +324,66 @@ class MsoStore:
     def restore_backup_snapshot(self, rows):
         # Private rollback only: preserve UUIDs, revisions and pending operations.
         with self._tx() as db:
-            db.execute("DELETE FROM mso_objects WHERE kind=?", (PING,))
+            previous = references.credential_ids(self, db) if self.kind == references.CREDENTIAL else {}
+            db.execute("DELETE FROM mso_objects WHERE kind=?", (self.kind,))
             for row in rows:
                 db.execute("INSERT INTO mso_objects(id,kind,payload,enabled,revision,dirty,deleted,version,origin,inflight,conflict) VALUES (:id,:kind,:payload,:enabled,:revision,:dirty,:deleted,:version,:origin,:inflight,:conflict)", row)
+            if previous:
+                references.remap_replaced_credentials(self, db, previous)
 
     def replace_local(self, profiles):
         with self._tx() as db:
-            if db.execute("SELECT 1 FROM mso_objects WHERE kind=? AND enabled=1 AND (deleted=0 OR dirty=1 OR conflict!='') LIMIT 1", (PING,)).fetchone():
-                raise ValueError("Withdraw MSO Ping profiles before replacing the Ping library from a configuration backup.")
-            db.execute("DELETE FROM mso_objects WHERE kind=?", (PING,))
+            if db.execute("SELECT 1 FROM mso_objects WHERE kind=? AND enabled=1 AND (deleted=0 OR dirty=1 OR conflict!='') LIMIT 1", (self.kind,)).fetchone():
+                raise ValueError("Withdraw MSO profiles before replacing this library from a configuration backup.")
+            previous = references.credential_ids(self, db) if self.kind == references.CREDENTIAL else {}
+            db.execute("DELETE FROM mso_objects WHERE kind=?", (self.kind,))
             for payload in profiles:
+                if self.kind == references.HOST:
+                    payload = references.prepare_host(self, db, payload, False)
                 payload = {k: v for k, v in payload.items() if k != "mso"}
-                db.execute("INSERT INTO mso_objects(id,kind,payload,origin) VALUES (?,?,?,?)", (str(uuid.uuid4()), PING, _json(payload), self.node))
+                db.execute("INSERT INTO mso_objects(id,kind,payload,origin) VALUES (?,?,?,?)", (str(uuid.uuid4()), self.kind, self._dump(payload), self.node))
+            if previous:
+                references.remap_replaced_credentials(self, db, previous)
 
     def _proposal(self, db, row):
         if row["inflight"]:
-            return json.loads(row["inflight"])
+            return self._load(row["inflight"])
         proposal = {"operation": str(uuid.uuid4()), "id": row["id"], "kind": row["kind"],
-                    "base": row["revision"], "payload": json.loads(row["payload"]),
+                    "base": row["revision"], "payload": self._load(row["payload"]),
                     "deleted": bool(row["deleted"]), "version": row["version"]}
-        db.execute("UPDATE mso_objects SET inflight=? WHERE id=?", (_json(proposal), row["id"]))
+        db.execute("UPDATE mso_objects SET inflight=? WHERE id=?", (self._dump(proposal), row["id"]))
         return proposal
 
-    def request(self):
+    @staticmethod
+    def _supported_types(types):
+        if not isinstance(types, list) or not 1 <= len(types) <= 64 or any(not isinstance(kind, str) or len(kind) > 64 for kind in types):
+            raise ValueError("Invalid MSO type capabilities.")
+        supported = sorted(set(types) & set(OBJECT_TYPES))
+        if not supported:
+            raise ValueError("No compatible MSO object types.")
+        return supported
+
+    def request(self, types=None):
+        supported = self._supported_types(list(OBJECT_TYPES) if types is None else types)
         with self._tx() as db:
-            proposals = [self._proposal(db, row) for row in db.execute("SELECT * FROM mso_objects WHERE dirty=1 AND conflict='' ORDER BY rowid LIMIT ?", (BATCH,)).fetchall()]
+            signature = self._dump(supported)
+            history = max(int(self._meta(db, "history") or 0), int(self._meta(db, "cursor")))
+            self._set(db, "history", history)
+            previous_types = self._load(self._meta(db, "cursor_types")) if self._meta(db, "cursor_types") else [PING]
+            if self._meta(db, "cursor_types") != signature:
+                # Rescan newly supported kinds without forgetting the recovery watermark.
+                if set(supported) - set(previous_types):
+                    self._set(db, "cursor", "0")
+                self._set(db, "cursor_types", signature)
+                self._set(db, "epoch", str(uuid.uuid4()))
+            placeholders = ",".join("?" for _ in supported)
+            proposals = [self._proposal(db, row) for row in db.execute(
+                f"SELECT * FROM mso_objects WHERE dirty=1 AND conflict='' AND kind IN ({placeholders}) ORDER BY {references.ORDER} LIMIT ?", (*supported, BATCH)).fetchall()]
             return {"protocol": PROTOCOL, "fleet": self._meta(db, "fleet"), "epoch": self._meta(db, "epoch"),
-                    "cursor": int(self._meta(db, "cursor")), "proposals": proposals}
+                    "cursor": int(self._meta(db, "cursor")), "history": history, "types": supported, "proposals": proposals}
 
     def _hub_record(self, row):
-        return {"id": row["id"], "kind": row["kind"], "payload": json.loads(row["payload"]),
+        return {"id": row["id"], "kind": row["kind"], "payload": self._load(row["payload"]),
                 "revision": row["revision"], "deleted": bool(row["deleted"]), "origin": row["origin"]}
 
     def _accept(self, db, peer, proposal):
@@ -326,6 +402,10 @@ class MsoStore:
             return {"id": ident, "operation": operation, "revision": receipt["revision"], "accepted": True}
         if old and old["kind"] != proposal["kind"]:
             raise ValueError("MSO object type cannot change.")
+        dependency_error = references.hub_dependency_error(self, db, proposal, payload)
+        if dependency_error:
+            return {"id": ident, "operation": operation, "accepted": False, "error": dependency_error,
+                    "remote": self._hub_record(old) if old else None}
         stale = base != (old["revision"] if old else 0) or bool(old and old["deleted"])
         if stale:
             return {"id": ident, "operation": operation, "accepted": False,
@@ -337,7 +417,7 @@ class MsoStore:
         self._set(db, "sequence", revision)
         origin = old["origin"] if old else peer
         db.execute("INSERT INTO mso_hub VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,revision=excluded.revision,deleted=excluded.deleted",
-                   (ident, proposal["kind"], _json(payload), revision, proposal["deleted"], origin))
+                   (ident, proposal["kind"], self._dump(payload), revision, proposal["deleted"], origin))
         db.execute("INSERT INTO mso_receipts(peer,operation,object_id,revision) VALUES (?,?,?,?)", (peer, operation, ident, revision))
         db.execute("DELETE FROM mso_receipts WHERE sequence < (SELECT COALESCE(MAX(sequence),0)-10000 FROM mso_receipts)")
         return {"id": ident, "operation": operation, "revision": revision, "accepted": True}
@@ -355,11 +435,18 @@ class MsoStore:
             cursor, proposals = request.get("cursor"), request.get("proposals")
             if isinstance(cursor, bool) or not isinstance(cursor, int) or not 0 <= cursor <= int(self._meta(db, "sequence")):
                 raise ValueError("Invalid MSO cursor; recovery requires explicit reconciliation.")
+            history = request.get("history", cursor)
+            if isinstance(history, bool) or not isinstance(history, int) or history < cursor or history > int(self._meta(db, "sequence")):
+                raise ValueError("Invalid MSO history; recovery requires explicit reconciliation.")
             if not isinstance(proposals, list) or len(proposals) > BATCH:
                 raise ValueError("MSO batch is too large.")
+            supported = self._supported_types(request.get("types", [PING]))
+            if any(not isinstance(p, dict) or p.get("kind") not in supported for p in proposals):
+                raise ValueError("Unsupported proposal type for this exchange.")
             self._flush(db)
             acknowledgements = [self._accept(db, peer, p) for p in proposals]
-            rows = db.execute("SELECT * FROM mso_hub WHERE revision>? ORDER BY revision LIMIT ?", (cursor, BATCH)).fetchall()
+            placeholders = ",".join("?" for _ in supported)
+            rows = db.execute(f"SELECT * FROM mso_hub WHERE revision>? AND kind IN ({placeholders}) ORDER BY revision LIMIT ?", (cursor, *supported, BATCH)).fetchall()
             # Mainframe's own local projection sees accepted agent edits immediately.
             for proposal in proposals:
                 row = db.execute("SELECT * FROM mso_hub WHERE id=?", (proposal["id"],)).fetchone()
@@ -373,36 +460,41 @@ class MsoStore:
         row = db.execute("SELECT * FROM mso_objects WHERE id=?", (acknowledgement["id"],)).fetchone()
         if not row or not row["inflight"]:
             return
-        sent = json.loads(row["inflight"])
+        sent = self._load(row["inflight"])
         if sent["operation"] != acknowledgement["operation"]:
             return
         if acknowledgement["accepted"]:
             db.execute("UPDATE mso_objects SET revision=?,dirty=?,inflight='' WHERE id=?",
                        (acknowledgement["revision"], row["version"] != sent["version"], row["id"]))
         else:
-            db.execute("UPDATE mso_objects SET conflict=?,inflight='',version=version+1 WHERE id=?", (_json(acknowledgement), row["id"]))
+            db.execute("UPDATE mso_objects SET conflict=?,inflight='',version=version+1 WHERE id=?", (self._dump(acknowledgement), row["id"]))
 
     def _apply(self, db, remote):
+        self._migrate(db, remote["kind"])
+        if remote["kind"] == references.CREDENTIAL:
+            self._migrate(db, references.HOST)
         ident = _uuid(remote["id"])
         payload = validate(remote["kind"], remote["payload"])
         row = db.execute("SELECT * FROM mso_objects WHERE id=?", (ident,)).fetchone()
+        if row and row["kind"] != remote["kind"]:
+            raise ValueError("MSO object type cannot change.")
         if row and remote["revision"] <= row["revision"]:
             return
         if row and (row["dirty"] or row["conflict"]):
-            conflict = _json({"remote": remote, "error": "The shared profile changed while local edits were pending."})
-            if row["conflict"] != conflict:
+            conflict = self._dump({"remote": remote, "error": "The shared profile changed while local edits were pending."})
+            if not row["conflict"] or self._load(row["conflict"]) != self._load(conflict):
                 db.execute("UPDATE mso_objects SET conflict=?,version=version+1 WHERE id=?", (conflict, ident))
             return
         # Names are display labels, never identity. Preserve colliding local data.
-        collision = next((r for r in db.execute("SELECT id,payload FROM mso_objects WHERE kind=? AND deleted=0 AND id!=?", (remote["kind"], ident)) if json.loads(r["payload"])["name"] == payload["name"]), None)
+        collision = next((r for r in db.execute("SELECT id,payload FROM mso_objects WHERE kind=? AND deleted=0 AND id!=?", (remote["kind"], ident)) if self._load(r["payload"])["name"] == payload["name"]), None)
         if collision and not remote["deleted"]:
             payload["name"] = payload["name"][:56] + " [MSO " + ident + "]"
-        collision_state = _json({"remote": remote, "error": "A local profile already uses this name. Rename it or explicitly keep this MSO name."}) if collision and not remote["deleted"] else ""
+        collision_state = self._dump({"remote": remote, "error": "A local profile already uses this name. Rename it or explicitly keep this MSO name."}) if collision and not remote["deleted"] else ""
         db.execute("""INSERT INTO mso_objects(id,kind,payload,enabled,revision,deleted,origin)
             VALUES (?,?,?,1,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,
             revision=excluded.revision,deleted=excluded.deleted,origin=excluded.origin,
             version=mso_objects.version+1,enabled=1,conflict='',dirty=0,inflight=''""",
-                   (ident, remote["kind"], _json(payload), remote["revision"], remote["deleted"], remote["origin"]))
+                   (ident, remote["kind"], self._dump(payload), remote["revision"], remote["deleted"], remote["origin"]))
         if collision_state:
             db.execute("UPDATE mso_objects SET conflict=? WHERE id=?", (collision_state, ident))
 
@@ -421,6 +513,8 @@ class MsoStore:
             previous = request["cursor"]
             for remote in objects:
                 self._validate_remote(remote)
+                if remote["kind"] not in request.get("types", [PING]):
+                    raise ValueError("Unexpected MSO response type.")
                 if not previous < remote["revision"] <= cursor:
                     raise ValueError("Invalid MSO response order.")
                 previous = remote["revision"]
@@ -440,6 +534,9 @@ class MsoStore:
                         raise ValueError("Invalid MSO acknowledgement revision.")
                 elif ack.get("remote") is not None:
                     self._validate_remote(ack["remote"])
+                    sent_kind = next(p["kind"] for p in request["proposals"] if p["id"] == ack["id"])
+                    if ack["remote"]["kind"] != sent_kind:
+                        raise ValueError("Invalid MSO conflict type.")
                     if ack["remote"]["id"] != ack["id"]:
                         raise ValueError("Invalid MSO conflict identity.")
             if seen != sent:
@@ -450,6 +547,7 @@ class MsoStore:
             for remote in response["objects"]:
                 self._apply(db, remote)
             self._set(db, "cursor", max(int(self._meta(db, "cursor")), response["cursor"]))
+            self._set(db, "history", max(int(self._meta(db, "history") or 0), response["cursor"]))
 
     @staticmethod
     def _validate_remote(remote):
@@ -471,7 +569,7 @@ class MsoStore:
 
     def _flush(self, db):
         self._ensure_fleet(db)
-        for row in db.execute("SELECT * FROM mso_objects WHERE dirty=1 AND conflict='' ORDER BY rowid").fetchall():
+        for row in db.execute(f"SELECT * FROM mso_objects WHERE dirty=1 AND conflict='' ORDER BY {references.ORDER}").fetchall():
             proposal = self._proposal(db, row)
             self._ack(db, self._accept(db, self.node, proposal))
 
@@ -480,7 +578,7 @@ class MsoStore:
             row = db.execute("SELECT * FROM mso_objects WHERE id=?", (_uuid(ident),)).fetchone()
             if not row or not row["conflict"] or row["version"] != expected:
                 raise MsoConflict("The conflict changed. Reload this profile.")
-            remote = json.loads(row["conflict"]).get("remote")
+            remote = self._load(row["conflict"]).get("remote")
             if not remote:
                 raise ValueError("Reconnect to retrieve the shared revision before resolving.")
             if choice == "fleet":
@@ -498,14 +596,17 @@ class MsoStore:
     @contextmanager
     def changing_role(self):
         with self._tx() as db:
+            identities = {}
             for row in db.execute("SELECT * FROM mso_objects WHERE enabled=1").fetchall():
                 if row["deleted"] and not row["conflict"]:
                     db.execute("DELETE FROM mso_objects WHERE id=?", (row["id"],))
                 else:
-                    db.execute("UPDATE mso_objects SET id=?,enabled=0,revision=0,dirty=0,deleted=0,inflight='',conflict='',origin=?,version=version+1 WHERE id=?", (str(uuid.uuid4()), self.node, row["id"]))
+                    identities[row["id"]] = str(uuid.uuid4())
+                    db.execute("UPDATE mso_objects SET id=?,enabled=0,revision=0,dirty=0,deleted=0,inflight='',conflict='',origin=?,version=version+1 WHERE id=?", (identities[row["id"]], self.node, row["id"]))
+            references.remap_references(self, db, identities)
             db.execute("DELETE FROM mso_hub")
             db.execute("DELETE FROM mso_receipts")
-            for key, value in (("fleet", ""), ("cursor", "0"), ("sequence", "0"), ("epoch", str(uuid.uuid4()))):
+            for key, value in (("fleet", ""), ("cursor", "0"), ("history", "0"), ("sequence", "0"), ("epoch", str(uuid.uuid4()))):
                 self._set(db, key, value)
             yield
 

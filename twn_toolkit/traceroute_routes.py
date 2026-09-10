@@ -14,6 +14,7 @@ from flask import (
     stream_with_context,
 )
 
+from .mso_ui import save_profile, delete_profile, mutation
 from .activity_context import record_current_activity
 from .audit import (
     annotate_profile_deleted,
@@ -151,6 +152,7 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
         )
 
     @tools_bp.post("/traceroute/profiles")
+    @mutation
     def save_traceroute_profile():
         name = request.form.get("name", "").strip()
         original_name = request.form.get("original_name", "").strip()
@@ -164,7 +166,7 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
         profile = {"name": name, "values": values, "targets": targets, "count": len(targets)}
         store = TracerouteHostProfileStore(current_app.instance_path)
         before = store.get(original_name or name)
-        store.upsert(profile, original_name=original_name)
+        save_profile(store, profile, original_name=original_name)
         annotate_profile_saved(
             category="Network tools",
             action_namespace="traceroute",
@@ -175,11 +177,12 @@ def register_traceroute_routes(tools_bp: Blueprint) -> None:
         return jsonify({"profile": profile})
 
     @tools_bp.post("/traceroute/profiles/delete")
+    @mutation
     def delete_traceroute_profile():
         name = request.form.get("name", "").strip()
         store = TracerouteHostProfileStore(current_app.instance_path)
         profile = store.get(name)
-        if not profile or not store.delete(name):
+        if not profile or not delete_profile(store, name):
             return jsonify({"error": "Profile not found."}), 404
         annotate_profile_deleted(
             category="Network tools",

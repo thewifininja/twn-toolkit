@@ -5,6 +5,7 @@ import time
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from .mso_ui import save_profile, delete_profile, mutation
 from .activity_context import record_current_activity
 from .audit import (
     annotate_profile_deleted,
@@ -112,6 +113,7 @@ def register_ntp_routes(tools_bp: Blueprint) -> None:
         )
 
     @tools_bp.post("/ntp-test/profiles")
+    @mutation
     def save_ntp_profile():
         name = request.form.get("name", "").strip()
         original_name = request.form.get("original_name", "").strip()
@@ -125,7 +127,7 @@ def register_ntp_routes(tools_bp: Blueprint) -> None:
         profile = {"name": name, "values": values, "targets": targets, "count": len(targets)}
         store = NTPHostProfileStore(current_app.instance_path)
         before = store.get(original_name or name)
-        store.upsert(profile, original_name=original_name)
+        save_profile(store, profile, original_name=original_name)
         annotate_profile_saved(
             category="Network tools",
             action_namespace="ntp",
@@ -136,11 +138,12 @@ def register_ntp_routes(tools_bp: Blueprint) -> None:
         return jsonify({"profile": profile})
 
     @tools_bp.post("/ntp-test/profiles/delete")
+    @mutation
     def delete_ntp_profile():
         name = request.form.get("name", "").strip()
         store = NTPHostProfileStore(current_app.instance_path)
         profile = store.get(name)
-        if not profile or not store.delete(name):
+        if not profile or not delete_profile(store, name):
             return jsonify({"error": "Profile not found."}), 404
         annotate_profile_deleted(
             category="Network tools",

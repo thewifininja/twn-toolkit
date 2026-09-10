@@ -1,0 +1,8 @@
+{% macro list_switch(kind, name='') %}
+{% if mso_available %}
+<span class="compact-profile-mso" data-mso-control data-mso-kind="{{ kind }}" data-mso-name="{{ name }}" data-mso-library='{{ mso_metadata(kind)|tojson }}'>
+  <label class="toggle-action"><input type="checkbox" name="mso_toggle" role="switch" data-mso-switch aria-label="Mainframe synced object"><span class="button-link secondary">MSO</span></label>
+  <a class="button-link secondary mso-list-attention" href="{{ url_for('tools.mso_conflicts') }}" data-mso-attention hidden>Review conflict</a>
+</span>
+{% endif %}
+{% endmacro %}

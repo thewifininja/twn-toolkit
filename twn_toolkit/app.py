@@ -26,6 +26,7 @@ from flask import (
     url_for,
 )
 
+from .mso_ui import metadata as mso_metadata
 from .execution_context import request_target, switch_destination
 from .login_throttle import LoginThrottle, LoginThrottled, LOGIN_BODY_BYTES
 from .activity import ActivityStore
@@ -890,6 +891,8 @@ def create_app(instance_path: str | None = None) -> Flask:
             "app_version": APP_VERSION,
             "asset_version": current_asset_version(),
             "release_notes": RELEASE_NOTES,
+            "mso_metadata": mso_metadata,
+            "mso_available": distributed_settings["role"] in {"mainframe", "agent"},
             "min_password_length": password_policy["min_length"],
             "password_policy": password_policy,
             "investigation_access": investigation_access,

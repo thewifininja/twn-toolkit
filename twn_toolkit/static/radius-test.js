@@ -12,12 +12,15 @@
       status.textContent = "Saving…";
       try {
         const kind = form.dataset.kind;
+        const body = new FormData(form);
+        if (!window.TwnMso.prepare(body, form)) return;
         const response = await fetch(`${document.body.dataset.instancePrefix || ""}/tools/radius-test/profiles/${kind}`, {
-          method: "POST", body: new FormData(form),
+          method: "POST", body,
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "Profile could not be saved.");
         const previousName = form.elements.original_name.value;
+        window.TwnMso.saved(form, payload.profile);
         form.elements.original_name.value = payload.profile.name;
         const card = form.closest("details");
         const summary = card?.querySelector(":scope > summary");
@@ -71,9 +74,10 @@
 
   document.querySelectorAll(".radius-delete-profile").forEach((button) => {
     button.addEventListener("click", async () => {
-      if (!window.confirm(`Delete profile “${button.dataset.name}”?`)) return;
+      if (!window.confirm(window.TwnMso.deleteMessage(button.closest("form"), button.dataset.name))) return;
       const body = new FormData();
       body.set("name", button.dataset.name);
+      if (!window.TwnMso.prepare(body, button.closest("form"), "delete")) return;
       const response = await fetch(`${document.body.dataset.instancePrefix || ""}/tools/radius-test/profiles/${button.dataset.kind}/delete`, {
         method: "POST",
         body,

@@ -6,6 +6,7 @@ from typing import Any
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from .mso_ui import save_profile, delete_profile, mutation
 from .activity_context import record_current_activity
 from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
 from .network_tools import (
@@ -179,6 +180,7 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
         )
 
     @tools_bp.post("/radius-test/profiles/<kind>")
+    @mutation
     def save_radius_profile(kind: str):
         if kind not in {"servers", "credentials", "attributes"}:
             return jsonify({"error": "Unknown RADIUS profile type."}), 404
@@ -225,7 +227,7 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
             if not attributes:
                 return jsonify({"error": "Enter at least one RADIUS attribute."}), 400
             profile = {"name": name, "count": len(attributes), "source": values.strip()}
-        store.upsert(profile, original_name=original_name)
+        save_profile(store, profile, original_name=original_name)
         profile_type = {
             "servers": "RADIUS server profile",
             "credentials": "RADIUS credential profile",
@@ -246,16 +248,17 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
             after=profile,
             credential_updated=credential_updated,
         )
-        return jsonify({"profile": {"name": name}})
+        return jsonify({"profile": {"name": name, **({"mso": profile["mso"]} if "mso" in profile else {})}})
 
     @tools_bp.post("/radius-test/profiles/<kind>/delete")
+    @mutation
     def delete_radius_profile(kind: str):
         if kind not in {"servers", "credentials", "attributes"}:
             return jsonify({"error": "Unknown RADIUS profile type."}), 404
         name = request.form.get("name", "").strip()
         store = _radius_profile_store(kind)
         profile = store.get(name)
-        if not profile or not store.delete(name):
+        if not profile or not delete_profile(store, name):
             return jsonify({"error": "Profile not found."}), 404
         profile_type = {
             "servers": "RADIUS server profile",

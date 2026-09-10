@@ -6,6 +6,7 @@ from typing import Any
 
 from flask import Blueprint, current_app, g, jsonify, render_template, request
 
+from .mso_ui import save_profile, delete_profile, mutation
 from .activity_context import increment_current_activity, record_current_activity
 from .audit import (
     annotate_audit_event,
@@ -225,6 +226,7 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
             requested_live_session=str(request.args.get("session", "")).strip()[:80],
         )
     @tools_bp.post("/snmp-test/profiles/<kind>")
+    @mutation
     def save_snmp_profile(kind: str):
         if kind not in {"credentials", "hosts", "oids"}:
             return jsonify({"error": "Unknown SNMP profile type."}), 404
@@ -254,14 +256,7 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
                 )
             except ToolInputError as exc:
                 return jsonify({"error": str(exc)}), 400
-            store.upsert(profile, original_name=original_name)
-            if original_name and original_name != name:
-                host_store = _snmp_host_store()
-                for host in host_store.all():
-                    if host["credential_name"] == original_name:
-                        host_store.upsert(
-                            {**host, "credential_name": name}, original_name=host["name"]
-                        )
+            save_profile(store, profile, original_name=original_name)
             annotate_profile_saved(
                 category="Network tools",
                 action_namespace="snmp.credentials",
@@ -303,7 +298,7 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
             }
             store = _snmp_host_store()
             before = store.get(original_name or name)
-            store.upsert(profile, original_name=original_name)
+            save_profile(store, profile, original_name=original_name)
             annotate_profile_saved(
                 category="Network tools",
                 action_namespace="snmp.hosts",
@@ -321,7 +316,7 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
         profile = {"name": name, "source": source.strip(), "count": len(entries)}
         store = _snmp_oid_store()
         before = store.get(original_name or name)
-        store.upsert(profile, original_name=original_name)
+        save_profile(store, profile, original_name=original_name)
         annotate_profile_saved(
             category="Network tools",
             action_namespace="snmp.oids",
@@ -332,6 +327,7 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
         return jsonify({"profile": profile})
 
     @tools_bp.post("/snmp-test/profiles/<kind>/delete")
+    @mutation
     def delete_snmp_profile(kind: str):
         if kind not in {"credentials", "hosts", "oids"}:
             return jsonify({"error": "Unknown SNMP profile type."}), 404
@@ -352,7 +348,7 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
         else:
             store = _snmp_oid_store()
         profile = store.get(name)
-        if not profile or not store.delete(name):
+        if not profile or not delete_profile(store, name):
             return jsonify({"error": "Profile not found."}), 404
         profile_type = {
             "credentials": "SNMP credential profile",
@@ -613,9 +609,11 @@ def _current_user() -> dict[str, str]:
 
 
 def _public_snmp_credential(profile: dict[str, Any]) -> dict[str, Any]:
+    from .mso_secrets import redact
+    public = redact(profile)
     return {
         key: value
-        for key, value in profile.items()
+        for key, value in public.items()
         if key not in {"community", "auth_key", "priv_key"}
     } | {
         "has_community": bool(profile.get("community")),

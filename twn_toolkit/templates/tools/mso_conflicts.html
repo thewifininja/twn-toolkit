@@ -1,5 +1,10 @@
 {% extends "base.html" %}
-{% macro profile_values(value) %}
+{% macro profile_values(value, kind) %}
+{% if kind != "ping.profile" %}
+  <dl>{% for key, entry in value.items() if key not in ["mso", "credential_name", "count", "targets"] %}
+    <dt>{{ key|replace("_", " ")|title }}</dt><dd class="mso-comparison-value">{% if entry is mapping %}{% for field, detail in entry.items() %}<div>{{ field|replace("_", " ") }}: {{ detail }}</div>{% endfor %}{% elif entry is iterable and entry is not string %}{% for item in entry %}<div>{% if item is mapping %}{% for field, detail in item.items() %}{{ field|replace("_", " ") }}: {{ detail }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}{{ item }}{% endif %}</div>{% endfor %}{% elif entry is sameas true %}On{% elif entry is sameas false %}Off{% else %}{{ entry }}{% endif %}</dd>
+  {% endfor %}</dl>
+{% else %}
   <dl>
     <dt>Name</dt><dd>{{ value.name }}</dd>
     <dt>Targets</dt><dd>{% for target in value.targets %}<div style="overflow-wrap: anywhere">{% if target.label %}{{ target.label }} = {% endif %}{{ target.host }}</div>{% endfor %}</dd>
@@ -10,29 +15,32 @@
       <dt>{{ label }}</dt><dd>{{ 'Default' if key not in thresholds else (thresholds[key]|string ~ ' ' ~ unit) if thresholds[key] is not none else 'Disabled' }}</dd>
     {% endfor %}
   </dl>
+{% endif %}
 {% endmacro %}
 {% block content %}
 <section class="panel">
   <div class="panel-head">
     <div><h1>MSO conflicts</h1><p>Review competing saved changes before choosing which version to keep.</p></div>
-    <a class="button-link secondary" href="{{ url_for('tools.ping_tool') }}">Ping profiles</a>
+
   </div>
   <p class="field-note">Choices apply across the fleet after sync. Unsaved editor changes are separate. Duplicate a profile in its tool first if you want an independent local copy.</p>
   {% for profile in conflicts %}
     {% set remote = profile.mso.conflict.remote %}
     <article class="panel">
-      <h2>{{ profile.name }} <small>Ping profile</small></h2>
+      <h2>{{ profile.name }} <small>{{ list_types[profile.mso.kind].label }}</small></h2>
+      <a class="button-link secondary" href="{{ url_for(list_types[profile.mso.kind].endpoint) }}">Open {{ list_types[profile.mso.kind].label|lower }} tool</a>
       <p class="message warning">{{ profile.mso.conflict.error }}</p>
       <div class="form-grid">
-        <div><h3>Saved here</h3>{% if profile.mso.deleted %}<p><strong>Shared removal requested here.</strong> Keeping this local change removes the fleet version.</p>{% endif %}{{ profile_values(profile) }}</div>
+        <div><h3>Saved here</h3>{% if profile.mso.deleted %}<p><strong>Shared removal requested here.</strong> Keeping this local change removes the fleet version.</p>{% endif %}{{ profile_values(profile, profile.mso.kind) }}</div>
         <div><h3>Fleet version{% if remote %} · revision {{ remote.revision }}{% endif %}</h3>
           {% if remote and remote.deleted %}<p>Removed from the fleet.</p>
-          {% elif remote %}{{ profile_values(remote.payload) }}
+          {% elif remote %}{{ profile_values(remote.payload, profile.mso.kind) }}
           {% else %}<p>Reconnect to retrieve the fleet version.</p>{% endif %}
         </div>
       </div>
       {% if remote %}
       <form method="post" action="{{ url_for('tools.resolve_mso_conflict') }}" class="button-row">
+        <input type="hidden" name="kind" value="{{ profile.mso.kind }}">
         <input type="hidden" name="object_id" value="{{ profile.mso.id }}">
         <input type="hidden" name="version" value="{{ profile.mso.version }}">
         <button type="submit" name="choice" value="fleet">{{ 'Accept shared removal' if remote.deleted else 'Use fleet version' }}</button>

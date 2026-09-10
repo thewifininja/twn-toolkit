@@ -1014,6 +1014,72 @@ button.secondary,
 button.secondary:hover,
 .button-link.secondary:hover { background: var(--surface-inset); border-color: var(--line-strong); }
 
+/* Native checkbox behavior with the same surface, size and focus as actions. */
+.toggle-action {
+  cursor: pointer;
+  margin: 0;
+  position: relative;
+}
+
+.toggle-action > input {
+  height: 1px;
+  margin: 0;
+  min-height: 0;
+  opacity: 0;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.toggle-action > .button-link {
+  background: transparent;
+  border: 1px solid transparent;
+  padding-inline: 34px 8px;
+  position: relative;
+  white-space: nowrap;
+}
+
+.toggle-action > .button-link::before {
+  background: var(--surface-inset);
+  border: 1px solid var(--muted);
+  box-sizing: border-box;
+  content: "";
+  height: 12px;
+  left: 8px;
+  position: absolute;
+  top: calc(50% - 6px);
+  width: 20px;
+}
+.toggle-action > .button-link::after {
+  background: var(--muted);
+  content: "";
+  height: 6px;
+  left: 11px;
+  position: absolute;
+  top: calc(50% - 3px);
+  width: 6px;
+}
+.toggle-action > input:checked + .button-link::before {
+  background: var(--depth-primary);
+  border-color: var(--depth-primary);
+}
+.toggle-action > input:checked + .button-link::after {
+  background: var(--panel);
+  left: 19px;
+}
+.toggle-action:hover > .button-link {
+  background: var(--surface-subtle);
+  border-color: transparent;
+}
+.toggle-action > input:focus-visible + .button-link {
+  outline: 2px solid var(--depth-primary);
+  outline-offset: 1px;
+}
+.toggle-action > input:disabled + .button-link {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 input,
 select,
 textarea {

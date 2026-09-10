@@ -25,6 +25,7 @@
     body.set("name", name.value);
     body.set("original_name", select.value);
     body.set("values", hosts.value);
+    if (!window.TwnMso.prepare(body, form, "save")) return;
     const response = await fetch(form.dataset.saveProfileUrl, {method: "POST", body});
     const payload = await response.json();
     if (!response.ok) {
@@ -36,9 +37,10 @@
   });
 
   document.getElementById("ntp-delete-profile").addEventListener("click", async () => {
-    if (!select.value || !window.confirm(`Delete profile “${select.value}”?`)) return;
+    if (!select.value || !window.confirm(window.TwnMso.deleteMessage(form, select.value))) return;
     const body = new FormData();
     body.set("name", select.value);
+    if (!window.TwnMso.prepare(body, form, "delete")) return;
     const response = await fetch(form.dataset.deleteProfileUrl, {method: "POST", body});
     const payload = await response.json();
     if (!response.ok) {

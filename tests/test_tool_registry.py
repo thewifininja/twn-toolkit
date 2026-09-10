@@ -155,6 +155,9 @@ class ToolRegistryTests(unittest.TestCase):
             "static",
             "tools.index",
             "tools.live_tool_sessions",
+            # MSO checks the permission for each object type in its route.
+            "tools.mso_conflicts",
+            "tools.resolve_mso_conflict",
             "tools.rename_live_tool_session",
             "tools.stop_live_tool_session",
             "update_appearance",

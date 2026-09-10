@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/mso.html" import list_switch with context %}
 {% from "components/ui.html" import case_recorded_notice, host_range_guidance, saved_profile_manager %}
 
 {% block content %}
@@ -35,7 +36,7 @@
   <form class="compact-tool-form" method="post" id="traceroute-form" data-run-url="{{ url_for('tools.traceroute_run') }}" data-save-profile-url="{{ url_for('tools.save_traceroute_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_traceroute_profile') }}">
     {% call saved_profile_manager("Destination lists", "Load or maintain reusable traceroute target lists.", profiles|length, "traceroute-profile-manager", compact=true) %}
       <div class="compact-profile-controls">
-        <label class="compact-profile-select">Saved profile<select id="traceroute-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} destination{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>
+        <div class="compact-profile-target"><label class="compact-profile-select">Saved profile<select id="traceroute-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} destination{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>{{ list_switch('traceroute.hosts') }}</div>
         <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
         <details class="compact-profile-more" data-saved-profile-more>
           <summary aria-label="More Traceroute profile actions" title="More profile actions">•••</summary>

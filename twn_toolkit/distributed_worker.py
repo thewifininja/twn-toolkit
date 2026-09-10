@@ -296,7 +296,7 @@ def _agent_tick(
             mso = None
             try:
                 mso = MsoStore(instance)
-                proposal = mso.request()
+                proposal = mso.request(types=result.get("mso_types", ["ping.profile"]))
                 mso.receive(client.mso_exchange(proposal), proposal)
                 mso.sync_status("")
             except (EnrollmentTransportError, OSError, ValueError, sqlite3.Error) as exc:
