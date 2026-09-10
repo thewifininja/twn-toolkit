@@ -169,3 +169,23 @@ def test_host_export_bounds_credential_reference_before_loading_it(tmp_path):
         db.execute("UPDATE mso_objects SET payload=zeroblob(?) WHERE kind='snmp.credentials'",(2*1024*1024,))
     with bounded_source_reads(1024*1024), pytest.raises(SourceReadLimit,match='reference exceeds'):
         hosts.all()
+
+
+def test_host_conflict_compares_credential_names_instead_of_raw_reference_ids(tmp_path):
+    from twn_toolkit.app import create_app
+    from twn_toolkit.auth import AuthStore
+    import re
+    from html import unescape
+    main=node(tmp_path/'main','mainframe');agent=node(tmp_path/'agent','agent')
+    creds=MsoStore(main.instance,CREDENTIAL);first=creds.save(credential(),enabled=True)
+    creds.save(credential('Alternative'),enabled=True)
+    hosts=MsoStore(main.instance,HOST);hosts.save(host(),enabled=True);sync(main,agent)
+    hosts.save(host(access='Alternative'))
+    MsoStore(agent.instance,HOST).save({**host(),'host':'192.0.2.2'})
+    sync(main,agent)
+    auth=AuthStore(agent.instance);auth.create_user('reviewer','Temporary admin password',is_admin=True)
+    app=create_app(str(agent.instance));client=app.test_client();client.post('/login',data={'username':'reviewer','password':'Temporary admin password'})
+    response=client.get('/tools/mso/conflicts');assert response.status_code==200
+    content=unescape(re.sub(r'<[^>]*>', '', response.get_data(as_text=True)))
+    assert 'Access' in content and 'Alternative' in content and 'Credential' in content
+    assert first['mso']['id'] not in content

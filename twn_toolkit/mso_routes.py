@@ -21,7 +21,8 @@ def register_mso_routes(tools_bp):
         conflicts = [redact(p) for p in profiles if p["mso"]["conflict"]]
         page = max(1, request.args.get("page", 1, type=int))
         return render_template("tools/mso_conflicts.html", conflicts=conflicts[(page-1)*25:page*25],
-                               page=page, more=len(conflicts) > page*25, list_types=LIST_TYPES)
+                               page=page, more=len(conflicts) > page*25, list_types=LIST_TYPES,
+                               credential_names={p["mso"]["id"]: p["name"] for p in profiles if p["mso"]["kind"] == "snmp.credentials"})
 
     @tools_bp.post("/mso/conflicts/resolve")
     def resolve_mso_conflict():

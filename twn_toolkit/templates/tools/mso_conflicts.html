@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% macro profile_values(value, kind) %}
 {% if kind != "ping.profile" %}
-  <dl>{% for key, entry in value.items() if key not in ["mso", "credential_name", "count", "targets"] %}
-    <dt>{{ key|replace("_", " ")|title }}</dt><dd class="mso-comparison-value">{% if entry is mapping %}{% for field, detail in entry.items() %}<div>{{ field|replace("_", " ") }}: {{ detail }}</div>{% endfor %}{% elif entry is iterable and entry is not string %}{% for item in entry %}<div>{% if item is mapping %}{% for field, detail in item.items() %}{{ field|replace("_", " ") }}: {{ detail }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}{{ item }}{% endif %}</div>{% endfor %}{% elif entry is sameas true %}On{% elif entry is sameas false %}Off{% else %}{{ entry }}{% endif %}</dd>
+  <dl>{% for key, entry in value.items() if key not in ["mso", "count", "targets"] %}
+    <dt>{{ "Credential" if key in ["credential_id", "credential_name"] else key|replace("_", " ")|title }}</dt><dd class="mso-comparison-value">{% if key == "credential_id" %}{{ credential_names.get(entry, "Unavailable") }}{% elif key == "credential_name" %}{{ entry or "Unavailable" }}{% elif entry is mapping %}{% for field, detail in entry.items() %}<div>{{ field|replace("_", " ") }}: {{ detail }}</div>{% endfor %}{% elif entry is iterable and entry is not string %}{% for item in entry %}<div>{% if item is mapping %}{% for field, detail in item.items() %}{{ field|replace("_", " ") }}: {{ detail }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}{{ item }}{% endif %}</div>{% endfor %}{% elif entry is sameas true %}On{% elif entry is sameas false %}Off{% else %}{{ entry }}{% endif %}</dd>
   {% endfor %}</dl>
 {% else %}
   <dl>
