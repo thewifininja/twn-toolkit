@@ -42,6 +42,10 @@ artifacts, or local packet/log files.
 
 ## Releases
 
+For pilot and beta builds, follow [beta release versioning](docs/beta-releases.md)
+before choosing an installed version. Preserve a forward upgrade path to the
+intended GA; prerelease suffixes require updater support before use.
+
 1. Freeze the intended feature scope. Create a release-preparation branch and
    record scope, compatibility, validation and publication gates in
    `docs/release-X.Y.Z-checklist.md`. Distinguish automated tests, operator

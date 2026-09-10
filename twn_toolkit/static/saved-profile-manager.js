@@ -45,7 +45,8 @@
         count.textContent = `${savedCount} saved`;
       }
       if (primary) primary.textContent = hasSavedProfile ? "Save changes" : "Save current…";
-      if (more) more.hidden = !hasSavedProfile;
+      if (more) more.hidden = !hasSavedProfile && !more.hasAttribute("data-saved-profile-always-more");
+      if (rename) rename.disabled = !hasSavedProfile;
     };
 
     const closeNaming = ({restoreName = true} = {}) => {

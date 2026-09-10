@@ -49,19 +49,26 @@
   >
     {% call saved_profile_manager("Ping profiles", "Reuse a saved target and timing set.", profiles|length, "ping-profile-manager", compact=true) %}
       <div class="compact-profile-controls">
-        <label class="compact-profile-select">Saved profile
-          <select id="ping-profile" data-saved-profile-select>
-            <option value="">New / unsaved profile</option>
-            {% for profile in profiles %}
-              <option value="{{ profile.name }}" data-mso='{{ profile.mso|tojson }}' data-interval="{{ profile.interval }}" data-timeout="{{ profile.get('timeout', 1) }}" data-targets='{{ profile.targets|tojson }}' data-health-thresholds='{{ profile.get("health_thresholds", ping_health_defaults)|tojson }}'>{{ profile.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
+        <div class="compact-profile-target">
+          <label class="compact-profile-select">Saved profile
+            <select id="ping-profile" data-saved-profile-select>
+              <option value="">New / unsaved profile</option>
+              {% for profile in profiles %}
+                <option value="{{ profile.name }}" data-mso='{{ profile.mso|tojson }}' data-interval="{{ profile.interval }}" data-timeout="{{ profile.get('timeout', 1) }}" data-targets='{{ profile.targets|tojson }}' data-health-thresholds='{{ profile.get("health_thresholds", ping_health_defaults)|tojson }}'>{{ profile.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="compact-profile-mso" id="ping-mso-controls">
+            <label class="check" title="{{ 'Sync this saved profile across the Mainframe fleet' if mso_available else 'Connect to a Mainframe or enable Mainframe mode to share profiles' }}"><input aria-label="MSO: Sync with Mainframe" type="checkbox" id="ping-profile-mso" {% if not mso_available %}disabled{% endif %}> MSO</label>
+            <span class="pill" id="ping-mso-state" role="status" hidden>Local</span>
+          </div>
+        </div>
         <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
-        <details class="compact-profile-more" data-saved-profile-more>
+        <details class="compact-profile-more" data-saved-profile-more data-saved-profile-always-more>
           <summary aria-label="More Ping profile actions" title="More profile actions">•••</summary>
           <div>
-            <a class="button-link secondary" href="{{ url_for('tools.mso_conflicts') }}">MSO conflicts</a>
+            <button type="button" class="secondary" id="ping-profile-refresh">Refresh profiles</button>
+            <a class="button-link secondary" id="ping-mso-conflicts-link" href="{{ url_for('tools.mso_conflicts') }}">MSO conflicts</a>
             <button class="secondary" type="button" data-saved-profile-rename>Rename…</button>
             <button class="secondary duplicate-action" type="button" data-saved-profile-duplicate data-profile-duplicate="{{ url_for('tools.duplicate_ping_profile') }}" data-profile-select="#ping-profile" disabled>Duplicate</button>
             <button class="danger" id="ping-profile-delete" data-saved-profile-delete type="button" disabled>Delete</button>
@@ -72,12 +79,6 @@
           <button class="profile-save-action" id="ping-profile-save" data-saved-profile-save type="button">Save profile</button>
           <button class="secondary" type="button" data-saved-profile-cancel>Cancel</button>
         </div>
-      </div>
-      <div class="button-row" id="ping-mso-controls">
-        <label class="check" title="{{ 'Sync this saved profile across the Mainframe fleet' if mso_available else 'Connect to a Mainframe or enable Mainframe mode to share profiles' }}"><input aria-label="MSO: Sync with Mainframe" type="checkbox" id="ping-profile-mso" {% if not mso_available %}disabled{% endif %}> MSO</label>
-        <span class="pill" id="ping-mso-state" role="status">Local</span>
-        <a class="button-link secondary" id="ping-mso-conflicts-link" href="{{ url_for('tools.mso_conflicts') }}" hidden>Review conflicts</a>
-        <button type="button" class="secondary" id="ping-profile-refresh">Refresh profiles</button>
       </div>
     {% endcall %}
     <label>

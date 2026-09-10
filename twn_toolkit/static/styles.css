@@ -19576,12 +19576,14 @@ button.danger:hover {
 
 .saved-profile-manager .profile-save-action {
   border-color: color-mix(in srgb, var(--line-strong), var(--depth-primary) 34%);
-  color: var(--depth-primary);
 }
 
 .saved-profile-manager button:disabled {
+  background: var(--surface-subtle);
+  border-color: var(--line);
+  color: var(--muted);
   cursor: not-allowed;
-  opacity: 0.42;
+  opacity: 1;
 }
 
 .saved-profile-manager.compact-profile-manager {
@@ -19646,6 +19648,27 @@ button.danger:hover {
 
 .compact-profile-select {
   min-width: 0;
+}
+
+.compact-profile-target {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.compact-profile-mso {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-height: var(--ui-control-height);
+}
+
+.compact-profile-mso .check {
+  margin: 0;
+  min-height: var(--ui-control-height);
+  white-space: nowrap;
 }
 
 .compact-profile-select select {
@@ -19971,7 +19994,8 @@ button.danger:hover {
 }
 
 @container saved-profile-manager (max-width: 360px) {
-  .compact-profile-select {
+  .compact-profile-controls > .compact-profile-select,
+  .compact-profile-target {
     grid-column: 1 / -1;
   }
 }

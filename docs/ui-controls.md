@@ -8,6 +8,14 @@ operations use `<button class="secondary">`. Reserve ordinary text links for
 inline prose. Keep destructive operations on the existing `danger` treatment.
 Do not invent page-specific button colors, padding, or typography.
 
+Keep the shared foreground/background pair on Save actions; an accent-colored
+label on a primary action background can become unreadable. Check all six
+palettes, including light themes, at rest and on hover. Enabled action text must
+have at least 4.5:1 contrast. Disabled profile actions use readable muted text
+on a theme surface rather than fading the whole control. Inspect rendered
+controls as well as palette tokens, since more specific selectors can override
+the shared text color.
+
 Saved-profile overflow menus use `.compact-profile-more`; links and buttons
 must share full-width, left-aligned action styling. Conditional actions must
 retain their `hidden` behavior. Check hover, visible keyboard focus, keyboard

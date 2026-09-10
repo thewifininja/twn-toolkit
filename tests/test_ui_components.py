@@ -795,6 +795,22 @@ class UIComponentTests(unittest.TestCase):
         self.assertIn("background: var(--action-primary-hover);", stylesheet)
         self.assertIn("background: var(--action-danger);", stylesheet)
 
+    def test_primary_action_text_contrast_across_palettes(self) -> None:
+        stylesheet = (TEMPLATE_ROOT.parent / "static" / "appearance.css").read_text(encoding="utf-8")
+
+        def luminance(value):
+            channels = [int(value[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+            linear = [channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4 for channel in channels]
+            return sum(channel * weight for channel, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+
+        palettes = re.findall(r'\[data-palette="([^"]+)"\] \{(.*?)\n\}', stylesheet, re.S)
+        self.assertTrue(palettes)
+        for palette, declarations in palettes:
+            for token in ("action-primary", "action-primary-hover"):
+                with self.subTest(palette=palette, state=token):
+                    color = re.search(rf"--{token}: (#[0-9a-fA-F]{{6}});", declarations).group(1)
+                    self.assertGreaterEqual(1.05 / (luminance(color) + 0.05), 4.5)
+
     def test_dashboard_metric_values_stay_within_their_cards(self) -> None:
         stylesheet = (TEMPLATE_ROOT.parent / "static" / "styles.css").read_text(
             encoding="utf-8"
