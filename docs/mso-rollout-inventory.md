@@ -2,7 +2,7 @@
 
 Inventory of current saved models, checked against the profile stores, portable
 backup registrations, Remote Terminal libraries, and automation/certificate
-stores. Development v0.25.5 implements the saved lists and tool libraries below,
+stores. v0.26.0 implements the saved lists and tool libraries below,
 including credentials. Automations and Certificates/PKI are deferred.
 
 Every participating object remains local by default, with one fleet-wide MSO
@@ -12,9 +12,9 @@ controls out of standalone mode.
 
 ## Saved lists and profiles
 
-| Model | Current state / proposed order |
+| Model | Current state |
 | --- | --- |
-| Ping profiles | Implemented pilot |
+| Ping profiles | Implemented |
 | DNS query/hostname lists | Implemented |
 | DNS server lists | Implemented |
 | NTP target lists | Implemented |
