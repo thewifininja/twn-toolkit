@@ -114,7 +114,7 @@ def metadata(store, library):
     states={}
     path=store.instance_path/'mso.sqlite3'
     if path.exists():
-        with sqlite3.connect(f'file:{path}?mode=ro',uri=True) as source:
+        with sqlite3.connect(f'{path.resolve().as_uri()}?mode=ro',uri=True) as source:
             states={row[0]:{'conflict':bool(row[1]),'pending':bool(row[2])} for row in source.execute("SELECT id,conflict!='',dirty FROM mso_objects WHERE kind LIKE 'terminal.%'")}
     for kind,collection in COLLECTIONS.items():
         for item in library[collection]:
@@ -384,7 +384,7 @@ def require_usable(store, kind, identifier, *, action="connecting"):
     path=store.instance_path/'mso.sqlite3'
     if not path.exists():
         return
-    with store._connect() as db, sqlite3.connect(f'{path.as_uri()}?mode=ro',uri=True) as mso:
+    with store._connect() as db, sqlite3.connect(f'{path.resolve().as_uri()}?mode=ro',uri=True) as mso:
         if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='remote_mso_links'").fetchone():
             return  # Portable export snapshots intentionally omit publication state.
         pending=[(kind,identifier)];seen=set()

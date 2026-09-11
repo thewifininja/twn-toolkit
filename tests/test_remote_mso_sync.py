@@ -217,3 +217,14 @@ def test_received_library_portable_backup_keeps_opaque_owner_and_local_import(tm
     with main._connect() as db:db.execute('DELETE FROM remote_mso_links')
     adapter.restore_backup_snapshot(snapshot)
     with main._connect() as db:assert db.execute('SELECT count(*) FROM remote_mso_links').fetchone()[0]==4
+
+
+def test_relative_instance_path_resolves_shared_credentials(tmp_path,monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    store=node(Path('agent'),'agent')
+    credential=store.save_credential(user_id='owner',name='Login',remote_username='operator',password='relative-secret')
+    store.set_visibility('credential',credential['id'],user_id='owner',visibility='global')
+    set_sharing(store,'credential',credential['id'],True,user_id='owner')
+    sync_local(store.instance_path)
+    assert store.resolve_credential(credential['id'],user_id='owner')['password']=='relative-secret'
+    assert metadata(store,store.library_for_user('owner'))['credentials'][0]['mso']['enabled']
