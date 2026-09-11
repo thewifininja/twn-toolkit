@@ -16,7 +16,8 @@ from .backup_source_reads import read_json_file, current_source_budget, source_j
 from .distributed_agents import DistributedIdentityStore, DistributedSettingsStore
 from .file_transactions import file_transaction
 from .sqlite_store import bootstrap_sqlite_store, sqlite_store_connection
-from .mso_types import LIST_TYPES, default_profiles, validate_list
+from .remote_mso_bridge import synchronize_before, synchronize_after, detaching_library
+from .mso_types import LOCAL_DEFAULT_TYPES, LIST_TYPES, default_profiles, validate_list
 from .mso_secrets import transform as transform_secrets
 from . import mso_references as references
 
@@ -140,6 +141,13 @@ class MsoStore:
         marker = "ping_migrated" if kind == PING else "migrated:" + kind
         if self._meta(db, marker):
             return
+        if kind.startswith('terminal.'):
+            self._set(db, marker, '1')
+            return
+        if kind == 'ssh.matrix':
+            from .ssh_commandlets import _migrate_legacy_ssh_profiles, _migrate_matrix_actions
+            _migrate_legacy_ssh_profiles(str(self.instance))
+            _migrate_matrix_actions(str(self.instance))
         try:
             profiles = read_json_file(self.instance / spec.filename)
         except FileNotFoundError:
@@ -149,10 +157,10 @@ class MsoStore:
             for profile in profiles
         ):
             raise ValueError(f"Invalid saved-list file: {spec.filename}. Repair it before migration.")
-        if kind == 'snmp.credentials':
+        from .mso_secrets import LEGACY_SECRET_FIELDS
+        if kind in LEGACY_SECRET_FIELDS:
             from .profile_secrets import transform_profiles
-            from .mso_secrets import SNMP_SECRET_FIELDS
-            profiles = transform_profiles(profiles, self.instance, spec.filename, SNMP_SECRET_FIELDS, encrypt=False)
+            profiles = transform_profiles(profiles, self.instance, spec.filename, LEGACY_SECRET_FIELDS[kind], encrypt=False)
         if kind == 'snmp.hosts':
             self._migrate(db, 'snmp.credentials')
             credentials = {self._load(row['payload'])['name']: row['id'] for row in db.execute("SELECT id,payload FROM mso_objects WHERE kind='snmp.credentials' AND deleted=0")}
@@ -244,8 +252,11 @@ class MsoStore:
                 raise ValueError("Connect to a Mainframe or enable Mainframe mode before using MSO.")
             if self.kind == references.HOST:
                 payload = references.prepare_host(self, db, payload, active)
+            local_default = bool(payload['is_default']) if self.kind in LOCAL_DEFAULT_TYPES and 'is_default' in payload else None
             if active:
                 payload = validate(self.kind, payload)
+            if local_default is not None:
+                payload['is_default'] = local_default
             if old and old["conflict"]:
                 raise MsoConflict("Resolve the MSO conflict before editing this profile.")
             if old and old["enabled"] and not active:
@@ -264,6 +275,13 @@ class MsoStore:
                 identifier = str(uuid.uuid4())
                 db.execute("INSERT INTO mso_objects(id,kind,payload,enabled,dirty,origin) VALUES (?,?,?,?,?,?)",
                            (identifier, self.kind, self._dump(payload), active, active, self.node))
+            if local_default:
+                for other in rows:
+                    if other['id'] != identifier:
+                        value = self._load(other['payload'])
+                        if value.get('is_default'):
+                            value['is_default'] = False
+                            db.execute('UPDATE mso_objects SET payload=?,version=version+1 WHERE id=?', (self._dump(value), other['id']))
             if self._role() == "mainframe":
                 self._flush(db)
             if self.kind == references.HOST:
@@ -345,12 +363,28 @@ class MsoStore:
             if previous:
                 references.remap_replaced_credentials(self, db, previous)
 
+    def _ordered_changes(self, db, supported=None):
+        rows = db.execute("SELECT * FROM mso_objects WHERE dirty=1 AND conflict='' ORDER BY rowid").fetchall()
+        if supported is not None:
+            rows = [row for row in rows if row['kind'] in supported]
+        parents = {row['id']: json.loads(row['payload']).get('parent_id', '') for row in db.execute("SELECT id,payload FROM mso_objects WHERE kind='terminal.folder'")}
+        def rank(row):
+            depth=0;parent=parents.get(row['id'],'');seen={row['id']}
+            while parent and parent not in seen:
+                seen.add(parent);depth+=1;parent=parents.get(parent,'')
+            if row['deleted']:
+                return (10, {'terminal.host':0,'terminal.folder':1,'terminal.credential':2,'snmp.credentials':2}.get(row['kind'],0),-depth)
+            return ({'terminal.credential':0,'snmp.credentials':0,'terminal.folder':1}.get(row['kind'],2),depth,0)
+        return sorted(rows,key=rank)
+
     def _proposal(self, db, row):
         if row["inflight"]:
             return self._load(row["inflight"])
         proposal = {"operation": str(uuid.uuid4()), "id": row["id"], "kind": row["kind"],
                     "base": row["revision"], "payload": self._load(row["payload"]),
                     "deleted": bool(row["deleted"]), "version": row["version"]}
+        if row['kind'] in LOCAL_DEFAULT_TYPES:
+            proposal['payload'].pop('is_default', None)
         db.execute("UPDATE mso_objects SET inflight=? WHERE id=?", (self._dump(proposal), row["id"]))
         return proposal
 
@@ -363,6 +397,7 @@ class MsoStore:
             raise ValueError("No compatible MSO object types.")
         return supported
 
+    @synchronize_before
     def request(self, types=None):
         supported = self._supported_types(list(OBJECT_TYPES) if types is None else types)
         with self._tx() as db:
@@ -376,9 +411,7 @@ class MsoStore:
                     self._set(db, "cursor", "0")
                 self._set(db, "cursor_types", signature)
                 self._set(db, "epoch", str(uuid.uuid4()))
-            placeholders = ",".join("?" for _ in supported)
-            proposals = [self._proposal(db, row) for row in db.execute(
-                f"SELECT * FROM mso_objects WHERE dirty=1 AND conflict='' AND kind IN ({placeholders}) ORDER BY {references.ORDER} LIMIT ?", (*supported, BATCH)).fetchall()]
+            proposals = [self._proposal(db, row) for row in self._ordered_changes(db, supported)[:BATCH]]
             return {"protocol": PROTOCOL, "fleet": self._meta(db, "fleet"), "epoch": self._meta(db, "epoch"),
                     "cursor": int(self._meta(db, "cursor")), "history": history, "types": supported, "proposals": proposals}
 
@@ -422,6 +455,7 @@ class MsoStore:
         db.execute("DELETE FROM mso_receipts WHERE sequence < (SELECT COALESCE(MAX(sequence),0)-10000 FROM mso_receipts)")
         return {"id": ident, "operation": operation, "revision": revision, "accepted": True}
 
+    @synchronize_before
     def exchange(self, peer, request):
         with self._tx() as db:
             if self._role() != "mainframe":
@@ -485,6 +519,8 @@ class MsoStore:
             if not row["conflict"] or self._load(row["conflict"]) != self._load(conflict):
                 db.execute("UPDATE mso_objects SET conflict=?,version=version+1 WHERE id=?", (conflict, ident))
             return
+        if remote['kind'] in LOCAL_DEFAULT_TYPES:
+            payload['is_default'] = bool(self._load(row['payload']).get('is_default')) if row else False
         # Names are display labels, never identity. Preserve colliding local data.
         collision = next((r for r in db.execute("SELECT id,payload FROM mso_objects WHERE kind=? AND deleted=0 AND id!=?", (remote["kind"], ident)) if self._load(r["payload"])["name"] == payload["name"]), None)
         if collision and not remote["deleted"]:
@@ -498,6 +534,7 @@ class MsoStore:
         if collision_state:
             db.execute("UPDATE mso_objects SET conflict=? WHERE id=?", (collision_state, ident))
 
+    @synchronize_after
     def receive(self, response, request):
         with self._tx() as db:
             if self._role() != "agent" or request["epoch"] != self._meta(db, "epoch"):
@@ -569,10 +606,11 @@ class MsoStore:
 
     def _flush(self, db):
         self._ensure_fleet(db)
-        for row in db.execute(f"SELECT * FROM mso_objects WHERE dirty=1 AND conflict='' ORDER BY {references.ORDER}").fetchall():
+        for row in self._ordered_changes(db):
             proposal = self._proposal(db, row)
             self._ack(db, self._accept(db, self.node, proposal))
 
+    @synchronize_after
     def resolve(self, ident, choice, expected):
         with self._tx() as db:
             row = db.execute("SELECT * FROM mso_objects WHERE id=?", (_uuid(ident),)).fetchone()
@@ -595,7 +633,7 @@ class MsoStore:
 
     @contextmanager
     def changing_role(self):
-        with self._tx() as db:
+        with detaching_library(self.instance), self._tx() as db:
             identities = {}
             for row in db.execute("SELECT * FROM mso_objects WHERE enabled=1").fetchall():
                 if row["deleted"] and not row["conflict"]:
@@ -604,6 +642,8 @@ class MsoStore:
                     identities[row["id"]] = str(uuid.uuid4())
                     db.execute("UPDATE mso_objects SET id=?,enabled=0,revision=0,dirty=0,deleted=0,inflight='',conflict='',origin=?,version=version+1 WHERE id=?", (identities[row["id"]], self.node, row["id"]))
             references.remap_references(self, db, identities)
+            # Native Remote Terminal libraries are the preserved independent copies.
+            db.execute("DELETE FROM mso_objects WHERE kind LIKE 'terminal.%'")
             db.execute("DELETE FROM mso_hub")
             db.execute("DELETE FROM mso_receipts")
             for key, value in (("fleet", ""), ("cursor", "0"), ("history", "0"), ("sequence", "0"), ("epoch", str(uuid.uuid4()))):

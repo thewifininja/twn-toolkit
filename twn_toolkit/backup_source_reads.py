@@ -233,6 +233,8 @@ def bounded_backup_store(adapter, *, rollback=False):
         empty = ()
     elif isinstance(adapter, RemoteConnectionBackupStore):
         tables = ('remote_connection_folders', 'remote_connection_credentials', 'remote_connection_hosts')
+        if rollback:
+            tables += ('remote_mso_links',)
         empty = ()
     elif isinstance(adapter, CertificateAutomationProfilesBackupStore):
         tables = ('pki_credentials', 'pki_servers', 'pki_templates', 'managed_certificates')

@@ -213,9 +213,10 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
         self.assertIn(b"Saved FortiAuthenticator profile", response.data)
         self.assertNotIn(b"secret-one", response.data)
 
-        profile_path = os.path.join(self.temporary_directory.name, "fortiauthenticator_profiles.json")
-        with open(profile_path, encoding="utf-8") as handle:
-            profile = json.load(handle)[0]
+        from twn_toolkit.profiles import FortiAuthenticatorProfileStore
+        store = FortiAuthenticatorProfileStore(self.temporary_directory.name)
+        profile_path = os.path.join(self.temporary_directory.name, "mso.sqlite3")
+        profile = store.all()[0]
         self.assertEqual(profile["host"], "https://fac.example.com")
         self.assertEqual(profile["timeout"], 25)
         self.assertEqual(oct(os.stat(profile_path).st_mode & 0o777), "0o600")
@@ -231,11 +232,9 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
                 "timeout": "20",
             },
         )
-        with open(profile_path, encoding="utf-8") as handle:
-            profile = json.load(handle)[0]
+        profile = store.all()[0]
         self.assertEqual(profile["name"], "Renamed")
-        self.assertEqual(profile["password"]["format"], "twn-profile-secret-v1")
-        self.assertNotIn("secret-one", Path(profile_path).read_text())
+        self.assertNotIn(b"secret-one", Path(profile_path).read_bytes())
         from twn_toolkit.profiles import FortiAuthenticatorProfileStore
         self.assertEqual(FortiAuthenticatorProfileStore(self.temporary_directory.name).get("Renamed")["password"], "secret-one")
 
@@ -244,8 +243,7 @@ class FortiAuthenticatorRouteTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertIn(b"Deleted FortiAuthenticator profile", response.data)
-        with open(profile_path, encoding="utf-8") as handle:
-            self.assertEqual(json.load(handle), [])
+        self.assertEqual(store.all(), [])
 
     @patch("twn_toolkit.fortiauthenticator_routes.FortiAuthenticatorClient.test_connection")
     def test_saved_profile_connection(self, test_connection: Mock) -> None:

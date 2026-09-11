@@ -142,7 +142,7 @@
         <label>Authentication port<input name="port" type="number" min="1" max="65535" value="1812"></label>
         <label>Shared secret<input name="secret" type="password" autocomplete="new-password"></label>
         <span class="field-note secret-note">Required for a new profile.</span>
-        {% call action_row() %}<button type="submit">Save server</button>{% endcall %}
+        {% call action_row() %}{{ list_switch('radius.servers') }}<button type="submit">Save server</button>{% endcall %}
       </form>
     {% endcall %}
     <div class="access-profile-list nested-profile-list">
@@ -155,7 +155,7 @@
             <label>Authentication port<input name="port" type="number" min="1" max="65535" value="{{ server.port }}"></label>
             <label>Shared secret<input name="secret" type="password" autocomplete="new-password"></label>
             <span class="field-note secret-note">Leave blank to keep the saved secret.</span>
-            {% call action_row() %}
+            {% call action_row() %}{{ list_switch('radius.servers', server.name) }}
               <button type="submit">Update server</button>
               <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_radius_profile', kind='servers') }}" data-profile-name="{{ server.name }}">Duplicate</button>
               <button class="danger radius-delete-profile" data-kind="servers" data-name="{{ server.name }}" type="button">Delete</button>
@@ -173,8 +173,8 @@
         <label>Profile name<input name="name" maxlength="100" required placeholder="Test user"></label>
         <label>Username<input name="username" required autocomplete="off"></label>
         <label>Password<input name="password" type="password" autocomplete="new-password"></label>
-        <span class="field-note secret-note">Required for a new profile. Stored locally without encryption.</span>
-        {% call action_row() %}<button type="submit">Save credential</button>{% endcall %}
+        <span class="field-note secret-note">Required for a new profile. Saved passwords are protected at rest.</span>
+        {% call action_row() %}{{ list_switch('radius.credentials') }}<button type="submit">Save credential</button>{% endcall %}
       </form>
     {% endcall %}
     <div class="access-profile-list nested-profile-list">
@@ -186,7 +186,7 @@
             <label>Username<input name="username" required autocomplete="off" value="{{ profile.username }}"></label>
             <label>Password<input name="password" type="password" autocomplete="new-password"></label>
             <span class="field-note secret-note">Leave blank to keep the saved password.</span>
-            {% call action_row() %}
+            {% call action_row() %}{{ list_switch('radius.credentials', profile.name) }}
               <button type="submit">Update credentials</button>
               <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('tools.duplicate_radius_profile', kind='credentials') }}" data-profile-name="{{ profile.name }}">Duplicate</button>
               <button class="danger radius-delete-profile" data-kind="credentials" data-name="{{ profile.name }}" type="button">Delete</button>

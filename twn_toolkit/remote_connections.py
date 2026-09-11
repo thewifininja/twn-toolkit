@@ -42,8 +42,10 @@ class RemoteConnectionStore:
             ).digest()
         )
         self._cipher = Fernet(encryption_key)
-        with self._connect():
-            pass
+        from .remote_mso_bridge import initialize
+        from .file_transactions import file_transaction
+        with file_transaction(self.path), self._connect() as connection:
+            initialize(connection)
         try:
             os.chmod(self.path, 0o600)
         except OSError:
@@ -330,6 +332,10 @@ class RemoteConnectionStore:
             is_admin=is_admin,
         ):
             raise RemoteConnectionError("Select a valid saved credential.")
+        from .remote_mso_bridge import require_usable
+        require_usable(self, "credential", credential_id)
+        if host_id:
+            require_usable(self, "host", host_id)
         scope_host_id = str(row["scope_host_id"])
         if scope_host_id and scope_host_id != host_id:
             raise RemoteConnectionError(
@@ -409,9 +415,13 @@ class RemoteConnectionStore:
         user_id: str,
         name: str,
         parent_id: str = "",
+        is_admin: bool = False,
         credential_mode: str = "inherit",
         credential_id: str = "",
     ) -> dict[str, Any]:
+        actor_id = user_id
+        from .remote_mso_bridge import creation_owner
+        user_id = creation_owner(self,user_id,is_admin,folder_id=parent_id,credential_id=credential_id)
         clean_name = self._name(name, "Folder name")
         folder_id = f"rf_{secrets.token_hex(10)}"
         now = time.time()
@@ -441,6 +451,8 @@ class RemoteConnectionStore:
                     now,
                 ),
             )
+            if actor_id != user_id:
+                connection.execute("UPDATE remote_connection_folders SET visibility='admins_only' WHERE id=?",(folder_id,))
         return self.get_folder(folder_id, user_id=user_id)  # type: ignore[return-value]
 
     def get_folder(self, folder_id: str, *, user_id: str, is_admin: bool = False) -> dict[str, Any] | None:
@@ -1280,6 +1292,8 @@ class RemoteConnectionStore:
         return {"hosts": len(clean_host_ids), "folders": len(clean_folder_ids)}
 
     def clear(self) -> None:
+        from .remote_mso_bridge import require_local_library
+        require_local_library(self)
         for path in (
             self.path,
             self.path.with_name(f"{self.path.name}-wal"),

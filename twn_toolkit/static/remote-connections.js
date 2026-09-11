@@ -92,6 +92,7 @@
       target.searchParams.set("choice_kind", kind);
       if (subjectKind !== "quick") {
         target.searchParams.set("choice_manage", "1");
+        if (!subject && ["host", "folder"].includes(subjectKind)) target.searchParams.set("choice_shared", "1");
         if (subject) target.searchParams.set("choice_owner", subject.user_id);
       }
       const response = await fetch(target, {signal, headers: {"Accept": "application/json"}});
@@ -102,7 +103,7 @@
       if (kind === "folder" && subjectKind === "folder" && subject) { folderDescendants(subject.id, blocked); blocked.add(subject.id); }
       if (kind === "folder" && subjectKind === "bulk") selectedFolders.forEach((id) => { blocked.add(id); folderDescendants(id, blocked); });
       const options = choices[kind === "folder" ? "folders" : "credentials"]
-        .filter((row) => !row.context_only && !blocked.has(row.id))
+        .filter((row) => !row.context_only && !blocked.has(row.id) && (subject || !["host", "folder"].includes(subjectKind) || row.owned || row.mso?.enabled))
         .map((row) => ({id: row.id, label: kind === "folder" ? row.name : `${row.name} · ${row.username}`, row}));
       if (kind === "folder" && !query && page === 1) options.unshift({id: "", label: "Connections (root)"});
       const paging = choices.metadata_pagination;
@@ -206,7 +207,7 @@
   }
 
   function sameLibrary(item, subject) {
-    return canManage(item) && (subject ? item.user_id === subject.user_id : item.owned);
+    return canManage(item) && (subject ? item.user_id === subject.user_id : (item.owned || item.mso?.enabled));
   }
 
   function managementFields(type, subject) {
@@ -1124,7 +1125,7 @@
     if (!mayReplaceEditor(folderForm)) return;
     const id = document.getElementById("remote-folder-id").value;
     const name = document.getElementById("remote-folder-name").value;
-    if (!id || !window.confirm(`Delete '${name}'? The folder must be empty.`)) return;
+    if (!id || !window.confirm(`Delete '${name}'? The folder must be empty.${editingItems.folder?.mso?.enabled ? ' This also removes its shared copies from the fleet.' : ''}`)) return;
     try {
       await mutate(`${manager.dataset.foldersUrl}/${id}`, {method: "DELETE"});
       closeEditor(folderDialog, true);
@@ -1244,7 +1245,7 @@
     if (!mayReplaceEditor(hostForm)) return;
     const id = document.getElementById("remote-host-id").value;
     const name = document.getElementById("remote-host-name").value;
-    if (!id || !window.confirm(`Delete saved host '${name}'?`)) return;
+    if (!id || !window.confirm(`Delete saved host '${name}'?${editingItems.host?.mso?.enabled ? ' This also removes its shared copies from the fleet.' : ''}`)) return;
     try {
       await mutate(`${manager.dataset.hostsUrl}/${id}`, {method: "DELETE"});
       closeEditor(hostDialog, true);
@@ -1475,7 +1476,7 @@
     if (!mayReplaceEditor(credentialForm)) return;
     const id = document.getElementById("remote-credential-id").value;
     const name = document.getElementById("remote-credential-name").value;
-    if (!id || !window.confirm(`Delete saved credential '${name}'?`)) return;
+    if (!id || !window.confirm(`Delete saved credential '${name}'?${editingItems.credential?.mso?.enabled ? ' This also removes its shared copies from the fleet.' : ''}`)) return;
     try {
       await mutate(`${manager.dataset.credentialsUrl}/${id}`, {method: "DELETE"});
       editCredential(library.credentials[0] || null, true);
@@ -1486,6 +1487,13 @@
 
   async function mutate(url, options) {
     const form = document.querySelector('.remote-terminal-dialog[open] form');
+    const sharing = form?.querySelector('[data-remote-mso]');
+    const type = form === folderForm ? 'folder' : form === hostForm ? 'host' : form === credentialForm ? 'credential' : '';
+    const requestBody = {...(options.body || {}), mso_revision: form?.dataset.msoRevision || library.mso_revision};
+    if (sharing && options.body?.name && ['POST','PATCH'].includes(options.method)) {
+      requestBody.mso_enabled = sharing.checked;
+      if (editingItems[type]?.mso?.enabled && !sharing.checked && !window.confirm('Turn MSO off? Keep this copy locally and remove the shared copies from the fleet.')) throw new Error('MSO withdrawal cancelled.');
+    }
     const snapshot = beginEditorRequest(form);
     let saved = false;
     try {
@@ -1494,7 +1502,7 @@
       const response = await fetch(libraryUrl(url), {
         method: options.method,
         headers: {"Accept": "application/json", "Content-Type": "application/json"},
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body: JSON.stringify(requestBody),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "The connection library could not be updated.");
@@ -1514,7 +1522,14 @@
   }
 
   function openDialog(dialog, focusId = "") {
-    resetEditor(dialog.querySelector("form"));
+    const form = dialog.querySelector('form');
+    const type = form === folderForm ? 'folder' : form === hostForm ? 'host' : form === credentialForm ? 'credential' : '';
+    const sharing = form?.querySelector('[data-remote-mso]');
+    if (sharing) sharing.checked = Boolean(editingItems[type]?.mso?.enabled);
+    const conflict = form?.querySelector('[data-remote-mso-conflict]');
+    if (conflict) conflict.hidden = !editingItems[type]?.mso?.conflict;
+    if (form) form.dataset.msoRevision = library.mso_revision || '';
+    resetEditor(form);
     if (!dialog.open) dialog.showModal();
     if (focusId) window.setTimeout(() => document.getElementById(focusId)?.focus(), 0);
   }

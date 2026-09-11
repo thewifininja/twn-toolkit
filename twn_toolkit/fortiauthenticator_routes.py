@@ -18,6 +18,8 @@ from flask import (
     url_for,
 )
 
+from .mso_ui import save_profile as save_mso_profile, delete_profile as delete_mso_profile
+from .mso import MsoConflict
 from .activity_context import record_current_activity
 from .audit import (
     annotate_audit_event,
@@ -158,9 +160,6 @@ def register_fortiauthenticator_routes(
             flash(str(exc), "error")
             return redirect(url_for("fortiauthenticator_home"))
 
-        if existing_profile and original_name != name:
-            profile_store.delete(original_name)
-
         saved_profile = {
             "name": name,
             "host": host,
@@ -170,7 +169,11 @@ def register_fortiauthenticator_routes(
             "timeout": timeout,
             "is_default": is_default,
         }
-        profile_store.upsert(saved_profile)
+        try:
+            save_mso_profile(profile_store, saved_profile, original_name)
+        except (MsoConflict, ValueError) as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("fortiauthenticator_home"))
         annotate_profile_saved(
             category="FortiAuthenticator",
             action_namespace="fortiauthenticator",
@@ -186,7 +189,11 @@ def register_fortiauthenticator_routes(
     def delete_fortiauthenticator_profile(name: str):
         profile = profile_store.get(name)
         if profile:
-            profile_store.delete(name)
+            try:
+                delete_mso_profile(profile_store, name)
+            except (MsoConflict, ValueError) as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("fortiauthenticator_home"))
             annotate_profile_deleted(
                 category="FortiAuthenticator",
                 action_namespace="fortiauthenticator",

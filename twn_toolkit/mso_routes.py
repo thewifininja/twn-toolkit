@@ -18,11 +18,11 @@ def register_mso_routes(tools_bp):
         if not kinds:
             abort(403)
         profiles = [p for kind in kinds for p in MsoStore(current_app.instance_path, kind).profiles(metadata=True)]
-        conflicts = [redact(p) for p in profiles if p["mso"]["conflict"]]
+        conflicts = [redact(p) for p in profiles if p["mso"]["conflict"] and _can_review(p)]
         page = max(1, request.args.get("page", 1, type=int))
         return render_template("tools/mso_conflicts.html", conflicts=conflicts[(page-1)*25:page*25],
                                page=page, more=len(conflicts) > page*25, list_types=LIST_TYPES,
-                               credential_names={p["mso"]["id"]: p["name"] for p in profiles if p["mso"]["kind"] == "snmp.credentials"})
+                               credential_names={p["mso"]["id"]: p.get("title", p["name"]) for p in profiles if _can_review(p)})
 
     @tools_bp.post("/mso/conflicts/resolve")
     def resolve_mso_conflict():
@@ -33,8 +33,11 @@ def register_mso_routes(tools_bp):
             abort(403)
         try:
             store = MsoStore(current_app.instance_path, kind)
-            if not store.profile(request.form.get("object_id")):
+            profile = store.profile(request.form.get("object_id"))
+            if not profile:
                 abort(404)
+            if not _can_review(profile):
+                abort(403)
             store.resolve(request.form.get("object_id"), request.form.get("choice"), request.form.get("version", type=int))
         except (MsoConflict, ValueError) as exc:
             flash(str(exc), "error")
@@ -43,3 +46,20 @@ def register_mso_routes(tools_bp):
                              resource_type="MSO", resource_id=request.form.get("object_id", ""), details={"choice": request.form.get("choice")})
         flash("Conflict resolved. Changes will sync in the background.", "success")
         return redirect(url_for("tools.mso_conflicts"))
+
+
+def _can_review(profile):
+    if not profile['mso']['kind'].startswith('terminal.'):
+        return True
+    from flask import g
+    user=getattr(g,'current_user',{}) or {}
+    if user.get('is_admin'):
+        return True
+    from .remote_mso_bridge import _store,REVERSE,COLLECTIONS
+    store=_store(current_app.instance_path)
+    with store._connect() as db:
+        exists=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='remote_mso_links'").fetchone()
+        link=db.execute('SELECT native_id FROM remote_mso_links WHERE mso_id=?',(profile['mso']['id'],)).fetchone() if exists else None
+    if not link:
+        return False
+    return any(item['id']==link['native_id'] and item['can_manage'] for item in store.library_for_user(user.get('id',''))[COLLECTIONS[REVERSE[profile['mso']['kind']]]])

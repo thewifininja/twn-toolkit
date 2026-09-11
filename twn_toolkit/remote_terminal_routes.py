@@ -111,6 +111,8 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 )
                 if not saved_host:
                     raise RemoteSessionError("Saved host not found.")
+                from .remote_mso_bridge import require_usable
+                require_usable(_connection_store(), "host", source_host_id)
                 host = str(saved_host["host"])
                 port = int(saved_host["port"])
                 protocol = _protocol(saved_host.get("protocol", "ssh"))
@@ -296,6 +298,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
             )
             folder = _connection_store().create_folder(
                 user_id=user["id"],
+                is_admin=bool(user.get("is_admin")),
                 name=str(payload.get("name", "")),
                 parent_id=parent_id,
                 credential_mode=str(payload.get("credential_mode", "inherit")),
@@ -1378,7 +1381,7 @@ def _connection_library(user_id: str, *, credential_id: str = "") -> dict[str, o
         metadata_page=metadata_page, metadata_query=request.args.get("metadata_query", ""),
         metadata_credential_id=credential_id,
         choice_kind=request.args.get("choice_kind", "") if request.args.get("choice_kind") in {"folder", "credential", "vault"} else "",
-        choice_owner=(request.args.get("choice_owner") or user_id) if request.args.get("choice_manage") == "1" else "",
+        choice_owner=(request.args.get("choice_owner") or ("" if request.args.get("choice_shared") == "1" and getattr(g,"current_user",{}).get("is_admin") else user_id)) if request.args.get("choice_manage") == "1" else "",
         choice_manage=request.args.get("choice_manage") == "1",
     )
     if not request.args.get("choice_kind"):
@@ -1398,7 +1401,8 @@ def _connection_library(user_id: str, *, credential_id: str = "") -> dict[str, o
         host["console_current_path"] = str(device.get("path", "")) if device else ""
         if device:
             host["console_device_path"] = str(device["path"])
-    return library
+    from .remote_mso_bridge import metadata
+    return metadata(_connection_store(), library)
 
 
 def _serial_console_options() -> dict[str, object]:
@@ -1582,14 +1586,45 @@ class _LibraryMutationRejected(Exception):
 def _library_mutation(handler):
     @wraps(handler)
     def mutate(*args, **kwargs):
+        from .remote_mso_bridge import before_mutation, metadata, validate_changes, set_sharing, require_usable, COLLECTIONS
         response = None
+        store = _connection_store()
+        payload = request.get_json(silent=True) or {}
         try:
-            with _connection_store().transaction():
+            with store.transaction():
+                before = before_mutation(store)
+                revision = metadata(store, {name:[] for name in COLLECTIONS.values()})['mso_revision']
+                with store._connect() as db:
+                    ids = {kind:{r['id'] for r in db.execute(f'SELECT id FROM remote_connection_{table}')} for kind,table in COLLECTIONS.items()}
                 response = handler(*args, **kwargs)
                 status = response[1] if isinstance(response, tuple) else response.status_code
                 if status >= 400:
                     raise _LibraryMutationRejected()
+                if 'mso_enabled' in payload:
+                    kind = next((kind for kind in COLLECTIONS if handler.__name__ in {'create_remote_terminal_'+kind,'update_remote_terminal_'+kind}), None)
+                    if not kind:
+                        raise RemoteConnectionError('This action cannot change MSO sharing.')
+                    identifier = kwargs.get(kind+'_id') or (args[0] if args else '')
+                    if not identifier:
+                        with store._connect() as db:
+                            created = {r['id'] for r in db.execute(f'SELECT id FROM remote_connection_{COLLECTIONS[kind]}')} - ids[kind]
+                        if len(created)!=1:
+                            raise RemoteConnectionError('The saved terminal object could not be identified.')
+                        identifier = created.pop()
+                    if (kind,identifier) in before and payload.get('mso_revision')!=revision:
+                        raise RemoteConnectionError('This shared terminal object changed. Reload the library before editing it.')
+                    require_usable(store,kind,identifier,action='changing MSO')
+                    user=_current_user()
+                    set_sharing(store,kind,identifier,payload['mso_enabled'],user_id=user['id'],is_admin=bool(user.get('is_admin')))
+                validate_changes(store,before,payload.get('mso_revision'),revision)
+                body=response[0] if isinstance(response,tuple) else response
+                data=body.get_json()
+                data['library']=_connection_library(_current_user()['id'],credential_id=data.get('credential_id',''))
+                response=jsonify(data),status
         except _LibraryMutationRejected:
             pass
+        except RemoteConnectionError as exc:
+            suppress_audit_event()
+            return jsonify({'error':str(exc)}),409
         return response
     return mutate
