@@ -79,7 +79,7 @@ class ProfileStoreTests(unittest.TestCase):
 
     def test_failed_profile_replace_preserves_the_previous_json(self) -> None:
         with tempfile.TemporaryDirectory() as instance:
-            store = ProfileStore(instance)
+            store = ProfileStore(instance, filename="legacy-profiles.json")
             store.replace_all([{"name": "Before", "targets": "1.1.1.1"}])
 
             with (

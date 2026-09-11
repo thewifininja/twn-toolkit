@@ -57,10 +57,14 @@ def managed_mutation(resource_type, identifier):
                     if owner_id != actor_id:
                         _check_shared_dependencies(store, values, items, index, owner_id)
                     values["user_id"] = owner_id
+                if not targets and method.__name__ == 'save_host':
+                    from .remote_mso_bridge import creation_owner
+                    values['user_id'] = creation_owner(store, actor_id, is_admin,
+                        folder_id=values.get('folder_id',''), credential_id=values.get('credential_id',''))
                 result = method(*bound.args, **bound.kwargs)
-                if targets and values["user_id"] != actor_id and method.__name__ == "save_host":
+                if values["user_id"] != actor_id and method.__name__ == "save_host":
                     scoped_id = result.get("credential_id")
-                    if scoped_id and result.get("credential_scope_host_id") == result["id"] and scoped_id not in index["credential"]:
+                    if scoped_id and result.get("credential_scope_host_id") == result["id"] and (not targets or scoped_id not in index["credential"]):
                         # A newly supplied host-specific secret follows its shared host.
                         # Existing private credentials were rejected before mutation.
                         with store._connect() as connection:

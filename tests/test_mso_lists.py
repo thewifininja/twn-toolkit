@@ -27,6 +27,16 @@ def payload(kind, name='Shared list'):
         result.update(version='v2c', community='fixture-community-secret')
     elif kind == 'snmp.oids':
         result['source'] = 'System Name = 1.3.6.1.2.1.1.5.0'
+    elif kind == 'ssh.matrix':
+        result.update(matrix='Host,Name\n192.0.2.1,Gateway',actions=[],created_at='2026-09-10T00:00:00+00:00',updated_at='2026-09-10T00:00:00+00:00')
+    elif kind == 'fortigate.profile':
+        result.update(host='https://192.0.2.10', api_key='fixture-api-key', verify_tls=True, default_vdom='root')
+    elif kind == 'fortiauthenticator.profile':
+        result.update(host='https://192.0.2.10', username='api', password='fixture-password', verify_tls=True, timeout=20)
+    elif kind == 'radius.servers':
+        result.update(host='192.0.2.10', port=1812, secret='fixture-radius-secret')
+    elif kind == 'radius.credentials':
+        result.update(username='tester', password='fixture-password')
     elif kind == 'radius.attributes':
         result['source'] = 'NAS-Identifier = audit'
     elif kind == 'lldp.persona':
@@ -57,7 +67,7 @@ def named(store, name):
     return next(p for p in store.profiles(metadata=True) if p['name'] == name)
 
 
-@pytest.mark.parametrize('kind', [kind for kind in LIST_TYPES if kind != 'snmp.hosts'])
+@pytest.mark.parametrize('kind', [kind for kind in LIST_TYPES if kind != 'snmp.hosts' and not kind.startswith('terminal.')])
 def test_all_list_types_bidirectional_conflicts_and_withdrawal(tmp_path, kind):
     main = node(tmp_path/'main', 'mainframe', kind)
     agent = node(tmp_path/'agent', 'agent', kind)
@@ -81,7 +91,7 @@ def test_all_list_types_bidirectional_conflicts_and_withdrawal(tmp_path, kind):
     assert named(agent, 'Main edit')['mso']['state'] == 'Local'
 
 
-@pytest.mark.parametrize('kind', [kind for kind in LIST_TYPES if kind != 'snmp.hosts'])
+@pytest.mark.parametrize('kind', [kind for kind in LIST_TYPES if kind != 'snmp.hosts' and not kind.startswith('terminal.')])
 def test_legacy_migration_is_local_stable_and_retains_source(tmp_path, kind):
     legacy = [payload(kind, 'Legacy')]
     source = tmp_path/LIST_TYPES[kind].filename
@@ -115,7 +125,7 @@ def test_old_clients_only_receive_ping_and_upgrade_rescans(tmp_path):
     assert named(agent, 'Shared list')['mso']['state'] == 'Synced'
 
 
-@pytest.mark.parametrize('kind', [kind for kind in LIST_TYPES if kind != 'snmp.hosts'])
+@pytest.mark.parametrize('kind', [kind for kind in LIST_TYPES if kind != 'snmp.hosts' and not kind.startswith('terminal.')])
 def test_replace_failure_rolls_back_entire_library(tmp_path, kind):
     store = MsoStore(tmp_path, kind)
     store.replace_local([payload(kind)])

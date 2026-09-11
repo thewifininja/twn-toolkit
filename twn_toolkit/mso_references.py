@@ -1,7 +1,7 @@
 """Stable SNMP references and fleet dependency invariants."""
 CREDENTIAL = 'snmp.credentials'
 HOST = 'snmp.hosts'
-ORDER = "CASE WHEN kind='snmp.credentials' AND deleted=0 THEN 0 WHEN kind='snmp.credentials' THEN 2 ELSE 1 END,rowid"
+ORDER = "CASE WHEN deleted=1 THEN 10 WHEN kind IN ('snmp.credentials','terminal.credential') THEN 0 WHEN kind='terminal.folder' THEN 1 ELSE 2 END,CASE WHEN deleted=1 THEN CASE WHEN kind='terminal.host' THEN 0 WHEN kind='terminal.folder' THEN 1 ELSE 2 END ELSE rowid END,rowid"
 
 
 def prepare_host(store, db, payload, active):
@@ -66,6 +66,10 @@ def remap_references(store, db, identities):
 
 
 def hub_dependency_error(store, db, proposal, payload):
+    from .remote_mso_schema import dependency_error
+    terminal_error = dependency_error(store, db, proposal, payload)
+    if terminal_error:
+        return terminal_error
     if proposal['kind'] == HOST and not proposal['deleted']:
         credential = db.execute('SELECT kind,deleted FROM mso_hub WHERE id=?', (payload['credential_id'],)).fetchone()
         if not credential or credential['kind'] != CREDENTIAL or credential['deleted']:

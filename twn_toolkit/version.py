@@ -1,6 +1,21 @@
-APP_VERSION = "0.25.4"
+APP_VERSION = "0.25.5"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.25.5",
+        "date": "2026-09-10",
+        "title": "MSO tool libraries and terminal paths",
+        "summary": "Share appliance profiles, RADIUS credentials, Bulk SSH libraries and eligible Remote Terminal objects bidirectionally.",
+        "groups": (
+            {"title": "Mainframe Synced Objects", "items": (
+                "Share FortiGate and FortiAuthenticator profiles with protected credentials while keeping default selection local.",
+                "Add RADIUS server/shared-secret and test-credential sharing.",
+                "Sync Bulk SSH matrices, variables and their CLI actions as one versioned library without running commands.",
+                "Sync Global/Admins Only Remote Terminal folders, full paths, SSH/Telnet hosts and credentials; keep private objects local.",
+                "Protect dependent credentials, preserve native libraries on withdrawal, and resolve conflicts centrally with compact themed controls.",
+            )},
+        ),
+    },
     {
         "version": "0.25.4",
         "date": "2026-09-10",

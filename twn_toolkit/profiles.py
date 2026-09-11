@@ -151,29 +151,6 @@ class ProtectedProfileSecrets:
             self._write(self._read())
             return True
 
-class ProfileStore(ProtectedProfileSecrets, JsonListStore):
-    secret_fields = ("api_key",)
-
-    def __init__(self, instance_path: str, filename: str = "profiles.json") -> None:
-        super().__init__(instance_path, filename)
-
-    def upsert(self, profile: dict[str, Any]) -> None:
-        self._upsert(
-            profile,
-            clear_existing_default=bool(profile.get("is_default")),
-        )
-
-    def delete(self, name: str) -> None:
-        super().delete(name)
-
-
-class FortiAuthenticatorProfileStore(ProfileStore):
-    secret_fields = ("password",)
-
-    def __init__(self, instance_path: str) -> None:
-        super().__init__(instance_path, "fortiauthenticator_profiles.json")
-
-
 class PingProfileStore(JsonListStore):
     def __init__(self, instance_path: str, filename: str = "ping_profiles.json") -> None:
         super().__init__(instance_path, filename)
@@ -214,6 +191,8 @@ class PingProfileStore(JsonListStore):
                 raise ValueError("Profile not found.")
             copied = deepcopy(source)
             copied["name"] = duplicate_name(name, (p["name"] for p in self.all()))
+            if "is_default" in copied:
+                copied["is_default"] = False
             self.mso_store().save(copied, enabled=False)
             return copied
 
@@ -237,6 +216,27 @@ class PingProfileStore(JsonListStore):
             self.mso_store().replace_local(profiles)
         else:
             super().replace_all(profiles)
+
+
+class ProfileStore(ProtectedProfileSecrets, PingProfileStore):
+    secret_fields = ("api_key",)
+
+    def __init__(self, instance_path: str, filename: str = "profiles.json") -> None:
+        super().__init__(instance_path, filename)
+
+    def upsert(self, profile: dict[str, Any], original_name: str = "") -> None:
+        if self._uses_mso:
+            self.mso_store().save(profile, original_name)
+        else:
+            self._upsert(profile, original_name=original_name,
+                         clear_existing_default=bool(profile.get("is_default")))
+
+
+class FortiAuthenticatorProfileStore(ProfileStore):
+    secret_fields = ("password",)
+
+    def __init__(self, instance_path: str) -> None:
+        super().__init__(instance_path, "fortiauthenticator_profiles.json")
 
 
 class DNSProfileStore(PingProfileStore):

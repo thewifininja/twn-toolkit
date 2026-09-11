@@ -1,10 +1,11 @@
 # Mainframe Synced Objects
 
-Saved lists use the MSO framework first introduced by the Ping pilot. The saved-list
-rollout adds DNS query and server lists, NTP targets, Traceroute targets, TCP scanner
-hosts and ports, Wake-on-LAN groups, SNMP hosts, credentials and OID collections,
-RADIUS attribute sets, and LLDP personas. Terminal libraries, other credential
-stores, automations, cases, and files remain outside this wave.
+Development v0.25.5 supports 21 object kinds: Ping; DNS queries and servers;
+NTP and Traceroute targets; TCP hosts and ports; Wake-on-LAN groups; SNMP hosts,
+credentials and OIDs; RADIUS attributes, servers and credentials; LLDP personas;
+FortiGate and FortiAuthenticator profiles; Bulk SSH matrices; and Remote Terminal
+folders, credentials and hosts. Automations and Certificates/PKI remain deferred.
+Cases, files, SMTP and dashboard preferences are outside this rollout.
 
 ## Using it
 
@@ -109,11 +110,63 @@ sensitive-export protections and import as local objects.
 
 ![SNMP host sharing includes its selected credential](images/mso-snmp-sharing.png)
 
+## Appliance, RADIUS and Bulk SSH libraries
+
+FortiGate profiles include their API keys; FortiAuthenticator profiles include
+login credentials. RADIUS server profiles include shared secrets, and test
+credentials include passwords. Secrets use the same protected storage and
+redacted conflict comparison as SNMP credentials. Choosing a default Fortinet
+profile affects only the current instance; sharing does not select a remote default.
+
+A Bulk SSH matrix, its host variables and its CLI actions form one shared object.
+Edits to any of these use the matrix revision, so concurrent edits require central
+conflict review. Matrix and command text are encrypted at rest; authorized editors
+and conflict reviewers can see their contents. Legacy command sets remain available
+for copying into matrices; they do not become a second shared library. Receiving
+an action never queues or executes it. Runbooks and run history remain local.
+
+![Shared Bulk SSH matrix controls](images/mso-bulk-matrix.png)
+
+## Remote Terminal libraries
+
+Only **Global** and **Admins Only** objects can use MSO. **Private** objects stay
+local. Sharing a host includes its entire folder path and selected or inherited
+credential. Eligible dependencies are shared automatically; a private dependency
+blocks the save without creating a partially shared host or changing visibility.
+A shared folder may contain local children, including private children belonging
+to its local owner. Serial-console definitions remain local to their hardware.
+
+Folder and credential references use UUIDs, including during bidirectional moves
+and renames. Received libraries retain an opaque owner identity; accounts are not
+created or matched by username. Administrators can manage received shared objects
+and add shared children in the same library. Existing visibility permissions still
+apply. A host-specific credential withdraws with its host; reusable credentials
+stay shared until explicitly withdrawn and cannot be withdrawn while shared
+objects depend on them. New connections are blocked while their shared host or
+credential dependencies have an unresolved conflict. Existing sessions continue.
+
+The compact switch sits beside Save in each folder, host and credential editor.
+Save first, then reload the library to see incoming changes. Concurrent shared
+library edits can require a reload before saving another open editor. Conflict
+resolution stays on the central page, accessible from the Remote Terminal header
+even if the conflicted object has been deleted locally. Turning off MSO preserves the acting
+instance's native object; receiving peers remove their replicas after syncing.
+Folders or credentials needed by local children are retained locally.
+
+Native terminal data remains in `remote_connections.sqlite3`; a durable link table
+connects it to MSO identities. Native IDs survive withdrawal and leaving the fleet.
+Portable backups retain shared-library ownership as an opaque identity but import
+without MSO membership. They never map a received library to a same-named account.
+Withdraw active objects before replacing the library. Recovery snapshots preserve
+native data and publication links together with the MSO store.
+
+![Remote Terminal folder sharing beside Save](images/mso-terminal-folder.png)
+
 ## Removing or leaving
 
 - **Disable MSO:** keep an independent local copy on the acting instance and
   remove the shared replicas from the Mainframe and other Agents as they sync.
-  The local copy gets a fresh UUID. The confirmation states this fleet-wide effect.
+  Profile copies get fresh UUIDs; Remote Terminal retains its native ID and drops the MSO link. The confirmation states this fleet-wide effect.
 - **Delete an MSO:** remove the shared profile everywhere as peers sync, without
   retaining a new local copy. Concurrent offline changes remain explicit conflicts.
 - **Duplicate:** always create a fresh local object, even when the source is MSO.
@@ -134,7 +187,7 @@ or forgetting the last revision it already received. Capability changes cannot
 mask a Mainframe recovery below that known revision.
 Sync errors are separate from an otherwise healthy Agent connection.
 
-Each participating library migrates once from its existing JSON file into the
+Each participating JSON profile library migrates once from its existing file into the
 owner-readable `mso.sqlite3` database. Existing entries retain their values and
 start local, with stable UUIDs. Legacy JSON files remain as migration sources but
 are no longer active stores after migration. Receiving a list first migrates any

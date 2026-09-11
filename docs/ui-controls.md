@@ -28,6 +28,9 @@ square-edged switch track keeps the idle control unobtrusive; thumb position
 indicates checked state without relying on color. Align its click-target height
 with adjacent actions, rather than borrowing the taller text-field height.
 Hide feature-specific controls when the current instance role cannot use them.
+Remote Terminal dialog footers use the same compact switch beside Save, including
+the shared 42px mobile action height. Keep conflict resolution in the central
+workspace; each editor only needs the switch and an attention link.
 
 ## Fields
 

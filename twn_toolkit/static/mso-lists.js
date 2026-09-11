@@ -16,7 +16,10 @@
     states.set(control, {library: JSON.parse(control.dataset.msoLibrary || '{}')});
     const manager = control.closest('[data-saved-profile-manager]');
     const select = manager?.querySelector('[data-saved-profile-select]');
+    const toggle = control.querySelector('[data-mso-switch]');
+    const initialChecked = toggle.checked;
     render(control, select?.value || control.dataset.msoName || '');
+    window.TwnUnsavedForms?.rebaseReference(control.closest('form'), toggle.name, initialChecked, toggle.checked);
     select?.addEventListener('change', () => render(control, select.value));
     manager?.addEventListener('savedprofilesaved', () => {
       if (!select?.value) render(control, '');
@@ -55,6 +58,49 @@
     },
   };
   initialize();
+  document.querySelectorAll('form[data-mso-matrix]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      const deleting = event.submitter?.hasAttribute('formaction');
+      if (!deleting && event.submitter?.value !== 'save_host_matrix') return;
+      if (deleting && !window.confirm(window.TwnMso.deleteMessage(form, form.elements.host_matrix_original_name.value))) {
+        event.preventDefault(); return;
+      }
+      const body = new FormData(form);
+      if (!window.TwnMso.prepare(body, form, deleting ? 'delete' : 'save')) {
+        event.preventDefault(); return;
+      }
+      for (const [key, value] of body) {
+        if (!key.startsWith('mso_')) continue;
+        let input = form.querySelector(`input[name="${key}"]`);
+        if (!input) {
+          input = document.createElement('input'); input.type = 'hidden'; input.name = key; form.append(input);
+        }
+        input.value = value;
+      }
+    });
+  });
+  document.querySelectorAll('form[data-mso-appliance]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      const deleting = event.submitter?.value === 'delete';
+      if (!deleting && event.submitter?.value !== 'save') return;
+      if (deleting && !window.confirm(window.TwnMso.deleteMessage(form, form.elements.original_name?.value || ''))) {
+        event.preventDefault(); return;
+      }
+      const body = new FormData(form);
+      if (!window.TwnMso.prepare(body, form, deleting ? 'delete' : 'save')) {
+        event.preventDefault(); return;
+      }
+      for (const [key, value] of body) {
+        if (!key.startsWith('mso_')) continue;
+        let input = form.querySelector(`input[name="${key}"]`);
+        if (!input) {
+          input = document.createElement('input'); input.type = 'hidden'; input.name = key;
+          form.append(input);
+        }
+        input.value = value;
+      }
+    });
+  });
   document.querySelectorAll('form[data-mso-native]').forEach((form) => {
     form.addEventListener('submit', (event) => {
       if (event.submitter?.value !== 'save') return;

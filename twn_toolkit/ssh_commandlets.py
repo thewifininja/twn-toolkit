@@ -17,7 +17,7 @@ from .network_tools import (
     parse_ssh_targets,
     validate_ssh_target,
 )
-from .profiles import JsonListStore
+from .profiles import JsonListStore, PingProfileStore
 
 
 SSH_MATRIX_ROW_LIMIT = SSH_TARGET_LIMIT
@@ -107,14 +107,22 @@ class SSHCommandletStore(JsonListStore):
         )
 
 
-class SSHHostMatrixStore(JsonListStore):
+class SSHHostMatrixStore(PingProfileStore):
     def __init__(self, instance_path: str) -> None:
         super().__init__(instance_path, "ssh_host_matrices.json")
 
     def all(self) -> list[dict[str, Any]]:
-        _migrate_legacy_ssh_profiles(str(self.instance_path))
-        _migrate_matrix_actions(str(self.instance_path))
-        return super().all()
+        from .file_transactions import file_transaction
+        with file_transaction(self.transaction_path):
+            matrices = super().all()
+            for matrix in matrices:
+                if int(matrix.get('action_schema_version', 0) or 0) >= 1:
+                    continue
+                commands = JsonListStore(str(self.instance_path), 'ssh_commandlets.json').all()
+                actions = [normalize_ssh_matrix_action(command) for command in commands
+                           if matrix['name'] in command.get('matrix_names', [])]
+                self.upsert({**matrix, 'actions': actions, 'action_schema_version': 1})
+            return super().all()
 
     def get(self, name: str) -> dict[str, Any] | None:
         return next(
@@ -123,8 +131,7 @@ class SSHHostMatrixStore(JsonListStore):
         )
 
     def upsert(self, matrix: dict[str, Any], original_name: str = "") -> None:
-        _migrate_legacy_ssh_profiles(str(self.instance_path))
-        self._upsert(
+        super().upsert(
             normalize_ssh_host_matrix(matrix),
             original_name=original_name,
         )

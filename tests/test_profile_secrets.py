@@ -43,7 +43,7 @@ def test_saved_secret_is_protected_without_changing_store_contract(tmp_path, sto
 
 
 def test_legacy_read_is_nonmutating_and_any_write_protects_all_rows(tmp_path):
-    store = ProfileStore(str(tmp_path))
+    store = ProfileStore(str(tmp_path), filename="legacy-profiles.json")
     legacy = [{'name': 'A', 'api_key': 'legacy-secret'}, {'name': 'B', 'api_key': 'second-secret'}]
     store.path.write_text(json.dumps(legacy))
     original = store.path.read_bytes()
@@ -59,7 +59,7 @@ def test_legacy_read_is_nonmutating_and_any_write_protects_all_rows(tmp_path):
 
 @pytest.mark.parametrize('change', ['key', 'missing_key', 'name', 'file', 'token', 'version'])
 def test_unreadable_or_moved_secret_fails_without_overwriting_profiles(tmp_path, change):
-    store = ProfileStore(str(tmp_path))
+    store = ProfileStore(str(tmp_path), filename='legacy-profiles.json')
     store.upsert({'name': 'A', 'api_key': 'original-secret'})
     raw = json.loads(store.path.read_text())
     if change == 'key':
@@ -113,9 +113,9 @@ def test_portable_store_transfer_reencrypts_for_destination_key(tmp_path):
     destination = ProfileStore(str(tmp_path / 'destination'))
     source.upsert({'name': 'Lab', 'api_key': 'portable-secret'})
     destination.replace_all(source.all())
-    assert source.path.read_bytes() != destination.path.read_bytes()
+    assert storage_path(source).read_bytes() != storage_path(destination).read_bytes()
     assert source.get('Lab') == destination.get('Lab')
-    assert 'portable-secret' not in destination.path.read_text()
+    assert b'portable-secret' not in storage_path(destination).read_bytes()
 
 
 def test_environment_key_override_is_required_consistently(tmp_path, monkeypatch):
@@ -171,7 +171,7 @@ def test_radius_rename_and_legacy_migration_preserve_secret(tmp_path, kind, fiel
     store.upsert({**old, 'name': 'New'}, original_name='Old')
     assert store.get('Old') is None
     assert store.get('New')[field] == 'legacy-secret'
-    assert 'legacy-secret' not in store.path.read_text()
+    assert b'legacy-secret' not in storage_path(store).read_bytes()
 
 
 def test_radius_attributes_remain_plain_and_do_not_create_key(tmp_path):

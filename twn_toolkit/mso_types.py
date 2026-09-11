@@ -15,6 +15,12 @@ class ListType:
 
 
 LIST_TYPES = {
+    'fortigate.profile': ListType('profiles.json', 'FortiGate connection', 'fortigate.home', 'fortigate_home'),
+    'fortiauthenticator.profile': ListType('fortiauthenticator_profiles.json', 'FortiAuthenticator connection', 'fortiauthenticator.home', 'fortiauthenticator_home'),
+    'ssh.matrix': ListType('ssh_host_matrices.json', 'Bulk SSH host matrix and actions', 'tools.multi_ssh', 'tools.multi_ssh'),
+    'terminal.folder': ListType('', 'Remote Terminal folder', 'tools.remote_terminal', 'tools.remote_terminal'),
+    'terminal.credential': ListType('', 'Remote Terminal credential', 'tools.remote_terminal', 'tools.remote_terminal'),
+    'terminal.host': ListType('', 'Remote Terminal host', 'tools.remote_terminal', 'tools.remote_terminal'),
     'ping.profile': ListType('ping_profiles.json', 'Ping profile', 'tools.ping', 'tools.ping_tool'),
     'dns.hosts': ListType('dns_hosts_profiles.json', 'DNS query list', 'tools.dns_response', 'tools.dns_response'),
     'dns.servers': ListType('dns_servers_profiles.json', 'DNS server list', 'tools.dns_response', 'tools.dns_response'),
@@ -26,10 +32,13 @@ LIST_TYPES = {
     'snmp.credentials': ListType('snmp_credentials_profiles.json', 'SNMP credential', 'tools.snmp_test', 'tools.snmp_test'),
     'snmp.hosts': ListType('snmp_host_profiles.json', 'SNMP host profile', 'tools.snmp_test', 'tools.snmp_test'),
     'snmp.oids': ListType('snmp_oid_profiles.json', 'SNMP OID profile', 'tools.snmp_test', 'tools.snmp_test'),
+    'radius.servers': ListType('radius_servers_profiles.json', 'RADIUS server profile', 'tools.radius_test', 'tools.radius_test'),
+    'radius.credentials': ListType('radius_credentials_profiles.json', 'RADIUS test credential', 'tools.radius_test', 'tools.radius_test'),
     'radius.attributes': ListType('radius_attributes_profiles.json', 'RADIUS attribute set', 'tools.radius_test', 'tools.radius_test'),
     'lldp.persona': ListType('lldp_personas.json', 'LLDP persona', 'tools.lldp_lab', 'tools.lldp_lab'),
 }
-FILE_TYPES = {spec.filename: kind for kind, spec in LIST_TYPES.items()}
+LOCAL_DEFAULT_TYPES = {'fortigate.profile', 'fortiauthenticator.profile'}
+FILE_TYPES = {spec.filename: kind for kind, spec in LIST_TYPES.items() if spec.filename}
 
 
 def default_profiles(kind):
@@ -92,6 +101,61 @@ def validate_list(kind, payload):
         else:
             entries = parse_radius_attributes(source)
         return {'name': name, 'source': source, 'count': len(entries)}
+    if kind.startswith('terminal.'):
+        from .remote_mso_schema import validate
+        return validate(kind,payload)
+    if kind == 'ssh.matrix':
+        from .ssh_commandlets import normalize_ssh_host_matrix
+        if not isinstance(payload.get('matrix'), str) or not isinstance(payload.get('actions', []), list):
+            raise ValueError('Invalid shared SSH matrix.')
+        for action in payload.get('actions', []):
+            if not isinstance(action, dict) or any(not isinstance(action.get(key, ''), str) for key in ('name', 'commands', 'description', 'platform', 'created_at', 'updated_at')):
+                raise ValueError('Invalid shared CLI action.')
+        value = normalize_ssh_host_matrix(payload)
+        # Validation must not manufacture an edit timestamp on every delivery.
+        for key in ('created_at', 'updated_at'):
+            value[key] = _text(payload, key)
+        for action, source in zip(value['actions'], payload.get('actions', [])):
+            for key in ('created_at', 'updated_at'):
+                action[key] = _text(source, key)
+        value['action_schema_version'] = 1
+        return value
+    if kind in {'fortigate.profile', 'fortiauthenticator.profile'}:
+        from .fortigate import normalize_host
+        host = normalize_host(_text(payload, 'host'))
+        tls = payload.get('verify_tls')
+        if type(tls) is not bool:
+            raise ValueError('Invalid TLS verification setting.')
+        result = {'name': name, 'host': host, 'verify_tls': tls}
+        if kind == 'fortigate.profile':
+            from .fortigate import normalize_api_key
+            key = normalize_api_key(_text(payload, 'api_key'))
+            if not key:
+                raise ValueError('A FortiGate profile requires an API key.')
+            return {**result, 'api_key': key, 'default_vdom': _text(payload, 'default_vdom') or 'root'}
+        username, password = _text(payload, 'username'), payload.get('password')
+        timeout = payload.get('timeout')
+        if not username or not isinstance(password, str) or not password:
+            raise ValueError('A FortiAuthenticator profile requires credentials.')
+        if type(timeout) is not int or not 1 <= timeout <= 300:
+            raise ValueError('Invalid FortiAuthenticator timeout.')
+        return {**result, 'username': username, 'password': password, 'timeout': timeout}
+    if kind in {'radius.servers', 'radius.credentials'}:
+        if kind == 'radius.servers':
+            from .network_tools import validate_hosts
+            host = _text(payload, 'host')
+            validate_hosts(host, limit=1)
+            port = payload.get('port')
+            if type(port) is not int or not 1 <= port <= 65535:
+                raise ValueError('Invalid RADIUS port.')
+            secret = payload.get('secret')
+            if not isinstance(secret, str) or not secret:
+                raise ValueError('A RADIUS server requires a shared secret.')
+            return {'name': name, 'host': host, 'port': port, 'secret': secret}
+        username, password = _text(payload, 'username'), payload.get('password')
+        if not username or not isinstance(password, str) or not password:
+            raise ValueError('A RADIUS credential requires a username and password.')
+        return {'name': name, 'username': username, 'password': password}
     if kind == 'snmp.credentials':
         from .snmp_tools import validate_snmp_credential
         fields = ('name', 'version', 'community', 'username', 'security_level', 'auth_protocol', 'auth_key', 'priv_protocol', 'priv_key', 'context_name')

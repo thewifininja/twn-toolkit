@@ -22358,6 +22358,7 @@ body.remote-terminal-resizing * {
 
 /* Match the existing taller mobile action rows without enlarging compact controls. */
 @media (max-width: 700px) {
+  .remote-terminal-dialog .toggle-action > .button-link,
   .button-row > .compact-profile-mso .toggle-action > .button-link {
     height: auto;
     min-height: 42px;

@@ -19,6 +19,8 @@ from flask import (
     url_for,
 )
 
+from .mso_ui import save_profile as save_mso_profile, delete_profile as delete_mso_profile
+from .mso import MsoConflict
 from .activity_context import record_current_activity
 from .switch_order import managed_switch_order, switch_order_moves, _switch_order_error_summary, _valid_switch_order
 from .preview_binding import issue_bound_preview, valid_bound_preview
@@ -331,9 +333,6 @@ def register_fortigate_routes(
             flash(str(exc), "error")
             return redirect(url_for("fortigate_home"))
 
-        if existing_profile and original_name != name:
-            profile_store.delete(original_name)
-
         saved_profile = {
             "name": name,
             "host": host,
@@ -342,7 +341,11 @@ def register_fortigate_routes(
             "is_default": is_default,
             "default_vdom": default_vdom,
         }
-        profile_store.upsert(saved_profile)
+        try:
+            save_mso_profile(profile_store, saved_profile, original_name)
+        except (MsoConflict, ValueError) as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("fortigate_home"))
         annotate_profile_saved(
             category="FortiGate",
             action_namespace="fortigate",
@@ -358,7 +361,11 @@ def register_fortigate_routes(
     def delete_profile(name: str):
         profile = profile_store.get(name)
         if profile:
-            profile_store.delete(name)
+            try:
+                delete_mso_profile(profile_store, name)
+            except (MsoConflict, ValueError) as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("fortigate_home"))
             annotate_profile_deleted(
                 category="FortiGate",
                 action_namespace="fortigate",

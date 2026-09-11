@@ -22,6 +22,7 @@ from flask import (
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
+from .mso_ui import save_profile as save_mso_profile, delete_profile as delete_mso_profile, guard_args
 from .diagnostic_routes import diagnostic_store, owned_diagnostic
 from .diagnostic_worker import record_unsuccessful_scan
 from .ping_investigation import recording_case_id
@@ -500,7 +501,12 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             flash("That host matrix no longer exists.", "error")
             suppress_audit_event()
         else:
-            store.delete(name)
+            try:
+                delete_mso_profile(store, name)
+            except ValueError as exc:
+                flash(str(exc), 'error')
+                suppress_audit_event()
+                return redirect(url_for('tools.multi_ssh'))
             _remove_matrix_relationship(name)
             flash(f"Host matrix '{name}' deleted.", "success")
             annotate_audit_event(
@@ -889,6 +895,10 @@ def _annotate_run(
     )
 
 
+def _save_shared_matrix(store, matrix, original_name):
+    store.mso_store().save(matrix, original_name, **guard_args(store))
+
+
 def _save_matrix_action(
     form: dict[str, object],
 ) -> tuple[dict[str, object], dict[str, object], bool]:
@@ -939,7 +949,7 @@ def _save_matrix_action(
                 f"A maximum of {SSH_MATRIX_ACTION_LIMIT} CLI actions is allowed per matrix."
             )
         actions.append(matrix_action)
-    store.upsert({**matrix, "actions": actions}, original_name=matrix_name)
+    _save_shared_matrix(store, {**matrix, "actions": actions}, matrix_name)
     saved = store.get(matrix_name)
     if not saved:
         raise ToolInputError("The host matrix could not be updated.")
@@ -996,7 +1006,7 @@ def _copy_matrix_action(
         raise ToolInputError(
             f"A maximum of {SSH_MATRIX_ACTION_LIMIT} CLI actions is allowed per matrix."
         )
-    store.upsert({**matrix, "actions": actions}, original_name=matrix_name)
+    _save_shared_matrix(store, {**matrix, "actions": actions}, matrix_name)
     saved = store.get(matrix_name)
     if not saved:
         raise ToolInputError("The host matrix could not be updated.")
@@ -1039,7 +1049,7 @@ def _duplicate_matrix_action(
         raise ToolInputError(
             f"A maximum of {SSH_MATRIX_ACTION_LIMIT} CLI actions is allowed per matrix."
         )
-    store.upsert({**matrix, "actions": actions}, original_name=matrix_name)
+    _save_shared_matrix(store, {**matrix, "actions": actions}, matrix_name)
     saved = store.get(matrix_name)
     if not saved:
         raise ToolInputError("The host matrix could not be updated.")
@@ -1070,7 +1080,7 @@ def _delete_matrix_action(
     ]
     if len(actions) == len(matrix.get("actions", [])):
         raise ToolInputError("That CLI action no longer exists.")
-    store.upsert({**matrix, "actions": actions}, original_name=matrix_name)
+    _save_shared_matrix(store, {**matrix, "actions": actions}, matrix_name)
     saved = store.get(matrix_name)
     if not saved:
         raise ToolInputError("The host matrix could not be updated.")
@@ -1099,7 +1109,7 @@ def _move_matrix_action(form: dict[str, object]) -> dict[str, object]:
     destination = index - 1 if direction == "up" else index + 1
     if 0 <= destination < len(actions):
         actions[index], actions[destination] = actions[destination], actions[index]
-        store.upsert({**matrix, "actions": actions}, original_name=matrix_name)
+        _save_shared_matrix(store, {**matrix, "actions": actions}, matrix_name)
     saved = store.get(matrix_name)
     if not saved:
         raise ToolInputError("The host matrix could not be updated.")
@@ -1299,7 +1309,7 @@ def _save_host_matrix(
     )
     for matrix_action in matrix.get("actions", []):
         _require_action_compatibility(matrix, matrix_action)
-    store.upsert(matrix, original_name=original_name)
+    save_mso_profile(store, matrix, original_name)
     _reconcile_matrix_relationships(
         original_name=original_name,
         matrix=matrix,

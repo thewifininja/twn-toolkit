@@ -146,7 +146,11 @@ class RemoteConnectionBackupStore:
 
     def all(self) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []
-        for user in self.auth_store.users():
+        users = list(self.auth_store.users())
+        with self.store._connect() as connection:
+            virtual = {row['user_id'] for table in ('folders','hosts','credentials') for row in connection.execute(f"SELECT DISTINCT user_id FROM remote_connection_{table} WHERE user_id LIKE 'mso:%'")}
+        users.extend({'id': owner, 'username': owner} for owner in sorted(virtual))
+        for user in users:
             user_id = str(user["id"])
             library = self.store.library_for_user(user_id)
             library = {
@@ -176,6 +180,7 @@ class RemoteConnectionBackupStore:
                 {
                     "name": str(user["username"]),
                     "owner_username": str(user["username"]),
+                    **({"mso_owner": user_id[4:]} if user_id.startswith("mso:") else {}),
                     "folders": library["folders"],
                     "credentials": credentials,
                     "hosts": library["hosts"],
@@ -184,12 +189,14 @@ class RemoteConnectionBackupStore:
         return records
 
     def count(self) -> int:
-        return sum(
-            any(self.store.library_for_user(str(user["id"])).values())
-            for user in self.auth_store.users()
-        )
+        owners={str(user['id']) for user in self.auth_store.users()}
+        with self.store._connect() as connection:
+            present={row['user_id'] for table in ('folders','credentials','hosts') for row in connection.execute(f'SELECT DISTINCT user_id FROM remote_connection_{table}')}
+        return len({owner for owner in present if owner in owners or owner.startswith('mso:')})
 
     def replace_all(self, values: list[dict[str, Any]]) -> None:
+        from .remote_mso_bridge import require_local_library
+        require_local_library(self.store)
         users = {
             str(user["username"]).casefold(): user
             for user in self.auth_store.users()
@@ -207,6 +214,14 @@ class RemoteConnectionBackupStore:
                 raise ValueError("Remote Terminal backup owners must be unique.")
             seen_owners.add(folded_owner)
             local_user = users.get(folded_owner)
+            if library.get('mso_owner'):
+                import uuid
+                identifier = str(uuid.UUID(library['mso_owner']))
+                if identifier != library['mso_owner']:
+                    raise ValueError('Invalid shared terminal library owner.')
+                if any(item.get('visibility')=='private' for key in ('folders','hosts','credentials') for item in library.get(key,[])):
+                    raise ValueError('A shared-library backup cannot assign private objects to an unmapped owner.')
+                local_user = {'id': 'mso:'+identifier}
             if not local_user:
                 raise ValueError(
                     f"Create or map local user {owner} before importing their Remote Terminal library."
@@ -263,6 +278,7 @@ class RemoteConnectionBackupStore:
     def backup_snapshot(self) -> dict[str, list[dict[str, Any]]]:
         with self.store._connect() as connection:
             return {
+                'mso_links': [dict(row) for row in connection.execute('SELECT * FROM remote_mso_links')],
                 "folders": [
                     dict(row)
                     for row in connection.execute(
@@ -287,6 +303,10 @@ class RemoteConnectionBackupStore:
         self, snapshot: dict[str, list[dict[str, Any]]]
     ) -> None:
         with self.store._connect() as connection:
+            from .remote_mso_bridge import initialize
+            initialize(connection)
+            connection.execute('DELETE FROM remote_mso_links')
+            self._insert_snapshot_rows(connection,'remote_mso_links',snapshot.get('mso_links',[]))
             connection.execute("DELETE FROM remote_connection_hosts")
             connection.execute("DELETE FROM remote_connection_credentials")
             connection.execute("DELETE FROM remote_connection_folders")

@@ -641,7 +641,8 @@ def test_admin_can_export_and_import_selected_profile_backups(tmp_path):
         },
     )
     assert imported.status_code == 302
-    assert json.loads(profiles.read_text(encoding="utf-8"))[0]["name"] == "Lab"
+    from twn_toolkit.profiles import ProfileStore
+    assert ProfileStore(tmp_path).all()[0]["name"] == "Lab"
     assert json.loads(ping_profiles.read_text(encoding="utf-8")) == []
 
 

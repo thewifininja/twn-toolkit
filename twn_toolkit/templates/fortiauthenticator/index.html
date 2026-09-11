@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/mso.html" import list_switch with context %}
 {% from "components/tool_cards.html" import tool_card %}
 {% from "components/ui.html" import create_toggle, section_header %}
 
@@ -38,7 +39,7 @@
     ) }}
     <details class="add-user-card card-action-details saved-profile-create" {% if not profiles %}open{% endif %}>
       {{ create_toggle("New profile") }}
-      <form class="form" method="post" action="{{ url_for('save_fortiauthenticator_profile') }}">
+      <form data-mso-appliance class="form" method="post" action="{{ url_for('save_fortiauthenticator_profile') }}">
         <p class="field-note">Create a new FortiAuthenticator API profile.</p>
         <label>
           Profile name
@@ -68,7 +69,7 @@
           <input name="is_default" type="checkbox">
           Use as default profile
         </label>
-        <button type="submit">Save profile</button>
+        <div class="form-actions">{{ list_switch('fortiauthenticator.profile') }}<button type="submit" value="save">Save profile</button></div>
       </form>
     </details>
 
@@ -91,7 +92,7 @@
               action="{{ url_for('test_fortiauthenticator_profile', name=profile.name) }}"
               data-loading-message="Testing FortiAuthenticator profile…"
             ></form>
-            <form class="form fortinet-profile-form" method="post" action="{{ url_for('save_fortiauthenticator_profile') }}">
+            <form data-mso-appliance class="form fortinet-profile-form" method="post" action="{{ url_for('save_fortiauthenticator_profile') }}">
               <input type="hidden" name="original_name" value="{{ profile.name }}">
               <label>
                 Profile name
@@ -123,13 +124,13 @@
               </label>
               <div class="button-row">
                 <button class="secondary" type="submit" form="fortiauthenticator-test-profile-{{ loop.index }}">Test profile</button>
-                <button type="submit">Update profile</button>
+                {{ list_switch('fortiauthenticator.profile', profile.name) }}<button type="submit" value="save">Update profile</button>
                 <button class="secondary duplicate-action" type="button" data-profile-duplicate="{{ url_for('duplicate_fortiauthenticator_profile', name=profile.name) }}" data-profile-name="{{ profile.name }}">Duplicate</button>
                 <button
                   class="danger"
                   type="submit"
                   formaction="{{ url_for('delete_fortiauthenticator_profile', name=profile.name) }}"
-                  onclick="return confirm('Delete FortiAuthenticator profile {{ profile.name }}?')"
+                  value="delete" data-mso-delete
                 >Delete</button>
               </div>
             </form>

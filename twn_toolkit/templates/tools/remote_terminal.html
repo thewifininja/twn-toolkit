@@ -8,6 +8,7 @@
     <p>Open persistent SSH, Telnet, or locally attached console sessions, and organize reusable connections with per-item availability controls.</p>
   </div>
   <div class="remote-terminal-primary-actions">
+    {% if mso_available %}<a class="button-link secondary" href="{{ url_for('tools.mso_conflicts') }}">MSO conflicts</a>{% endif %}
     <button type="button" data-open-quick-connect>Quick connect</button>
   </div>
 </section>
@@ -93,7 +94,8 @@
         <span class="remote-terminal-stage-mark" aria-hidden="true">&gt;_</span>
         <h2>Choose a connection</h2>
         <p>Open a saved host from the explorer or connect temporarily without adding it to your library.</p>
-        <button type="button" data-open-quick-connect>Quick connect</button>
+        {% if mso_available %}<a class="button-link secondary" href="{{ url_for('tools.mso_conflicts') }}">MSO conflicts</a>{% endif %}
+    <button type="button" data-open-quick-connect>Quick connect</button>
       </div>
     </section>
 
@@ -216,7 +218,7 @@
     <p class="tool-status" id="remote-folder-status" role="status"></p>
     <footer class="remote-terminal-dialog-footer-split">
       <span class="button-row" data-folder-existing-actions hidden><button class="secondary" type="button" data-duplicate-folder title="Copy this saved folder and its contents, up to 10,000 folders and hosts">Duplicate</button><button class="danger" type="button" data-delete-folder>Delete</button></span>
-      <span class="button-row"><button class="secondary" type="button" data-dialog-close>Cancel</button><button type="submit">Save folder</button></span>
+      <span class="button-row"><button class="secondary" type="button" data-dialog-close>Cancel</button>{% if mso_available %}<label class="toggle-action"><input type="checkbox" role="switch" data-remote-mso aria-label="Mainframe synced object"><span class="button-link secondary">MSO</span></label><a class="button-link secondary" href="{{ url_for('tools.mso_conflicts') }}" data-remote-mso-conflict hidden>Review conflict</a>{% endif %}<button type="submit">Save folder</button></span>
     </footer>
   </fieldset></form>
 </dialog>
@@ -275,7 +277,7 @@
     <p class="tool-status" id="remote-host-status" role="status"></p>
     <footer class="remote-terminal-dialog-footer-split">
       <span class="button-row" data-host-existing-actions hidden><button class="secondary" type="button" data-duplicate-host>Duplicate</button><button class="danger" type="button" data-delete-host>Delete</button></span>
-      <span class="button-row"><button class="secondary" type="button" data-dialog-close>Cancel</button><button type="submit">Save host</button></span>
+      <span class="button-row"><button class="secondary" type="button" data-dialog-close>Cancel</button>{% if mso_available %}<label class="toggle-action"><input type="checkbox" role="switch" data-remote-mso aria-label="Mainframe synced object"><span class="button-link secondary">MSO</span></label><a class="button-link secondary" href="{{ url_for('tools.mso_conflicts') }}" data-remote-mso-conflict hidden>Review conflict</a>{% endif %}<button type="submit">Save host</button></span>
     </footer>
   </fieldset></form>
 </dialog>
@@ -311,7 +313,7 @@
         <p class="tool-status" id="remote-credential-status" role="status"></p>
         <footer class="remote-terminal-dialog-footer-split">
           <span class="button-row" data-credential-existing-actions hidden><button class="secondary" type="button" data-duplicate-credential>Duplicate</button><button class="danger" type="button" data-delete-credential>Delete</button></span>
-          <span class="button-row"><button class="secondary" type="button" data-dialog-close>Close</button><button id="remote-credential-save" type="submit">Save credential</button></span>
+          <span class="button-row"><button class="secondary" type="button" data-dialog-close>Close</button>{% if mso_available %}<label class="toggle-action"><input type="checkbox" role="switch" data-remote-mso aria-label="Mainframe synced object"><span class="button-link secondary">MSO</span></label><a class="button-link secondary" href="{{ url_for('tools.mso_conflicts') }}" data-remote-mso-conflict hidden>Review conflict</a>{% endif %}<button id="remote-credential-save" type="submit">Save credential</button></span>
         </footer>
       </fieldset></form>
     </div>

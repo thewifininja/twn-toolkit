@@ -15,7 +15,7 @@ service.
 
 Current release: **v0.25.0**
 
-Development: **v0.25.4** extends [MSO across saved network lists and SNMP credentials](docs/mainframe-synced-objects.md),
+Development: **v0.25.5** extends [MSO across saved lists, appliance profiles and terminal libraries](docs/mainframe-synced-objects.md),
 with bidirectional fleet sharing, stable credential references and central conflict review.
 
 v0.25.0 adds a full-screen installer with service-first location choices,

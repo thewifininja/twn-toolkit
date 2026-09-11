@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/mso.html" import list_switch with context %}
 {% from "components/ui.html" import case_recorded_notice, host_range_guidance, tool_result_runbar, tool_settings_backdrop %}
 
 {% block shell_classes %} multi-ssh-shell{% endblock %}
@@ -60,7 +61,7 @@
 
     <div class="multi-ssh-workspace-panels">
       <section id="multi-ssh-hosts-panel" role="tabpanel" aria-labelledby="multi-ssh-hosts-tab" data-ssh-workspace-panel="hosts" {% if active_workspace != 'hosts' %}hidden{% endif %}>
-        <form class="form multi-ssh-host-form" method="post" autocomplete="off" data-ssh-host-form data-unsaved-form data-ssh-target-limit="{{ ssh_target_limit }}">
+        <form data-mso-matrix class="form multi-ssh-host-form" method="post" autocomplete="off" data-ssh-host-form data-unsaved-form data-ssh-target-limit="{{ ssh_target_limit }}">
           <input type="hidden" name="workspace" value="hosts">
           <input type="hidden" name="host_matrix_original_name" value="{{ form.host_matrix_original_name }}">
           <input type="hidden" name="source_host_matrix" value="{{ form.source_host_matrix }}">
@@ -120,10 +121,10 @@
             <div class="multi-ssh-save-row">
               <p class="field-note">Saving validates every existing CLI action against the updated columns and values. Credentials are not saved with this configuration.</p>
               <div class="button-row">
-                <button name="action" type="submit" value="save_host_matrix">{{ 'Save matrix changes' if form.host_matrix_original_name else 'Save host matrix' }}</button>
+                {{ list_switch('ssh.matrix', form.host_matrix_original_name) }}<button name="action" type="submit" value="save_host_matrix">{{ 'Save matrix changes' if form.host_matrix_original_name else 'Save host matrix' }}</button>
                 {% if form.host_matrix_original_name %}
                   <a class="button-link secondary" href="{{ url_for('tools.multi_ssh', host_matrix=form.host_matrix_original_name, duplicate_matrix=1) }}">Duplicate</a>
-                  <button class="danger" type="submit" formaction="{{ url_for('tools.delete_ssh_host_matrix') }}" name="name" value="{{ form.host_matrix_original_name }}" formnovalidate onclick="return confirm({{ ('Delete host matrix “' ~ form.host_matrix_original_name ~ '” and its CLI actions?') | tojson | forceescape }})">Delete</button>
+                  <button class="danger" type="submit" formaction="{{ url_for('tools.delete_ssh_host_matrix') }}" name="name" value="{{ form.host_matrix_original_name }}" formnovalidate>Delete</button>
                 {% endif %}
               </div>
             </div>
@@ -165,7 +166,8 @@
                 <form method="post" class="multi-ssh-action-copy-form" data-unsaved-form>
                   <input type="hidden" name="action" value="copy_matrix_action">
                   <input type="hidden" name="workspace" value="actions">
-                  <input type="hidden" name="host_matrix_original_name" value="{{ selected_matrix.name }}">
+                  <input type="hidden" name="host_matrix_original_name" value="{{ selected_matrix.name }}">{% if mso_available %}{% set matrix_mso = mso_metadata('ssh.matrix').get(selected_matrix.name, {}) %}
+<input type="hidden" name="mso_kind" value="ssh.matrix"><input type="hidden" name="mso_id" value="{{ matrix_mso.get('id', '') }}"><input type="hidden" name="mso_version" value="{{ matrix_mso.get('version', '') }}">{% endif %}
                   <label>
                     Source action
                     <select name="copy_action_source" required>
@@ -185,7 +187,8 @@
 
           <form class="form multi-ssh-action-editor" method="post" autocomplete="off" data-unsaved-form>
             <input type="hidden" name="workspace" value="actions">
-            <input type="hidden" name="host_matrix_original_name" value="{{ selected_matrix.name }}">
+            <input type="hidden" name="host_matrix_original_name" value="{{ selected_matrix.name }}">{% if mso_available %}{% set matrix_mso = mso_metadata('ssh.matrix').get(selected_matrix.name, {}) %}
+<input type="hidden" name="mso_kind" value="ssh.matrix"><input type="hidden" name="mso_id" value="{{ matrix_mso.get('id', '') }}"><input type="hidden" name="mso_version" value="{{ matrix_mso.get('version', '') }}">{% endif %}
             <input type="hidden" name="matrix_action_original_name" value="{{ action_editor.original_name }}">
             <div class="multi-ssh-section-head">
               <div><p class="eyebrow">{{ 'Edit CLI action' if action_editor.original_name else 'Create CLI action' }}</p><h2>{{ action_editor.name or 'New reusable action' }}</h2><p>Variables are resolved from each host row. Every required value must exist before this action can be saved.</p></div>
@@ -222,7 +225,8 @@
           <form class="form multi-ssh-run-form" id="multi-ssh-run-form" method="post" autocomplete="off" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count="{{ selected_matrix.target_count }}">
             <input type="hidden" name="workspace" value="run">
             <input type="hidden" name="matrix_action_run" value="on">
-            <input type="hidden" name="host_matrix_original_name" value="{{ selected_matrix.name }}">
+            <input type="hidden" name="host_matrix_original_name" value="{{ selected_matrix.name }}">{% if mso_available %}{% set matrix_mso = mso_metadata('ssh.matrix').get(selected_matrix.name, {}) %}
+<input type="hidden" name="mso_kind" value="ssh.matrix"><input type="hidden" name="mso_id" value="{{ matrix_mso.get('id', '') }}"><input type="hidden" name="mso_version" value="{{ matrix_mso.get('version', '') }}">{% endif %}
             <input type="hidden" name="matrix" value="{{ form.matrix }}">
             <textarea name="commands" hidden>{{ form.commands }}</textarea>
             <input name="command_timeout" type="hidden" value="{{ form.command_timeout }}">
