@@ -128,6 +128,8 @@ def register_tools(registry) -> None:
     registry.map_endpoints(
         {
             "mainframe": "admin.mainframe",
+            "sync_mainframe_objects": "admin.mainframe",
+            "agent_terminal_stream": "admin.mainframe",
             "agent_workspace": "admin.mainframe",
             "agent_dns_response": "admin.mainframe",
             "refresh_agent_workspace_identity": "admin.mainframe",

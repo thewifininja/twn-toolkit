@@ -40,7 +40,7 @@ understand prerelease bundle versions.
 
 ## Current MSO planning
 
-The MSO pilot has used numeric development versions through **v0.25.5**.
+The MSO pilot has used numeric development versions through **v0.25.6**.
 **v0.26.0 is the likely next GA target**, subject to the release owner's final
 scope decision. It sorts above those pilot versions, so they can upgrade normally
 once a verified GA bundle is available. This planning note does not change the

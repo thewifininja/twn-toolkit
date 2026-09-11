@@ -32,6 +32,12 @@ Remote Terminal dialog footers use the same compact switch beside Save, includin
 the shared 42px mobile action height. Keep conflict resolution in the central
 workspace; each editor only needs the switch and an attention link.
 
+Mainframe uses the shared workspace tabs with role-specific panels. Capability
+previews are limited to two lines and a remaining-count label. Their full list uses
+a themed, bounded popover outside the table's clipping area, available on hover,
+keyboard focus and tap. Escape and an outside tap dismiss it. Position the popup
+above or below its trigger without covering the trigger itself.
+
 ## Fields
 
 `static/appearance.css` owns sizing for ordinary single-line inputs, native

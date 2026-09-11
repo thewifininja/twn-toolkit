@@ -6,6 +6,7 @@ import json
 import os
 import re
 import secrets
+import select
 import socket
 import sqlite3
 import threading
@@ -911,6 +912,9 @@ class RemoteSessionManager:
             self.control_root / f"{self.pid}-{secrets.token_hex(4)}.sock"
         )
         self._lock = threading.RLock()
+        self.output_changed = threading.Condition()
+        self._stream_slots = threading.BoundedSemaphore(8)
+        self._control_slots = threading.BoundedSemaphore(16)
         self._reconciliation_lock = threading.Lock()
         self._next_reconciliation_at: dict[str, float] = {}
         self._runtimes: dict[str, dict[str, Any]] = {}
@@ -1364,6 +1368,7 @@ class RemoteSessionManager:
             channel.settimeout(0.25)
             runtime["channel"] = channel
             self.store.mark_connected(session_id)
+            self._notify_output()
             self._record_runtime_activity(session_id)
             while not runtime["stop"].is_set():
                 if channel.recv_ready():
@@ -1381,7 +1386,12 @@ class RemoteSessionManager:
                     if time.monotonic() - last_activity >= REMOTE_SESSION_IDLE_SECONDS:
                         runtime["termination"] = "idle_timeout"
                         break
-                    time.sleep(0.05)
+                    # Wait on the transport's readable descriptor. No packets are
+                    # sent while idle, and keystroke echo wakes us immediately.
+                    try:
+                        select.select([channel], [], [], 1)
+                    except (TypeError, ValueError, AttributeError):
+                        runtime["stop"].wait(0.05)  # Non-descriptor adapters.
             self._flush_terminal_output(session_id, decoder)
             self.store.finish(
                 session_id,
@@ -1420,6 +1430,7 @@ class RemoteSessionManager:
                     error=self._connection_error(exc, protocol),
                 )
         finally:
+            self._notify_output()
             credentials = runtime.get("telnet_credentials", {})
             if isinstance(credentials, dict):
                 credentials["username"] = ""
@@ -1448,6 +1459,11 @@ class RemoteSessionManager:
         output = decoder.decode(data)
         if output:
             self.store.append_output(session_id, output)
+            self._notify_output()
+
+    def _notify_output(self) -> None:
+        with self.output_changed:
+            self.output_changed.notify_all()
 
     def _flush_terminal_output(
         self,
@@ -1649,36 +1665,59 @@ class RemoteSessionManager:
                 continue
             except OSError:
                 return
-            with connection:
-                try:
-                    connection.settimeout(2)
-                    raw = b""
-                    while b"\n" not in raw and len(raw) <= 32 * 1024:
-                        chunk = connection.recv(4096)
-                        if not chunk:
-                            break
-                        raw += chunk
-                    if len(raw) > 32 * 1024:
-                        raise RemoteSessionError("Remote-session control input is too large.")
-                    message = json.loads(raw.split(b"\n", 1)[0].decode("utf-8"))
-                    result = self._apply_control(message)
-                    response = {"ok": True, **result}
-                except Exception as exc:
-                    response = {
-                        "ok": False,
-                        "error": (
-                            str(exc)
-                            if isinstance(exc, RemoteSessionError)
-                            else "Remote-session control failed."
-                        ),
-                    }
-                try:
-                    connection.sendall(
-                        json.dumps(response, separators=(",", ":")).encode("utf-8")
-                        + b"\n"
-                    )
-                except OSError:
-                    pass
+            if not self._control_slots.acquire(blocking=False):
+                connection.close()
+                continue
+            threading.Thread(target=self._handle_control, args=(connection,), daemon=True,
+                             name="remote-control-request").start()
+
+    def _handle_control(self, connection):
+        try:
+            self._handle_control_connection(connection)
+        finally:
+            self._control_slots.release()
+
+    def _handle_control_connection(self, connection):
+        with connection:
+            try:
+                connection.settimeout(2)
+                raw = b""
+                deadline = time.monotonic() + 2
+                while b"\n" not in raw and len(raw) <= 32 * 1024:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise RemoteSessionError("Remote-session control read timed out.")
+                    connection.settimeout(remaining)
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        break
+                    raw += chunk
+                if len(raw) > 32 * 1024:
+                    raise RemoteSessionError("Remote-session control input is too large.")
+                message = json.loads(raw.split(b"\n", 1)[0].decode("utf-8"))
+                if message.get("action") == "stream":
+                    from .terminal_stream import serve_owner_stream
+                    self._apply_control({**message, "action": "ping"})
+                    serve_owner_stream(self, connection, message)
+                    return
+                result = self._apply_control(message)
+                response = {"ok": True, **result}
+            except Exception as exc:
+                response = {
+                    "ok": False,
+                    "error": (
+                        str(exc)
+                        if isinstance(exc, RemoteSessionError)
+                        else "Remote-session control failed."
+                    ),
+                }
+            try:
+                connection.sendall(
+                    json.dumps(response, separators=(",", ":")).encode("utf-8")
+                    + b"\n"
+                )
+            except OSError:
+                pass
 
     def _apply_control(self, message: dict[str, Any]) -> dict[str, Any]:
         session_id = str(message.get("session_id", ""))
@@ -1973,6 +2012,7 @@ def safe_filename(value: str) -> str:
 
 def public_remote_session(session: dict[str, Any]) -> dict[str, Any]:
     from flask import url_for
+    from urllib.parse import urlsplit
 
     session_id = str(session["id"])
     return {
@@ -1989,6 +2029,7 @@ def public_remote_session(session: dict[str, Any]) -> dict[str, Any]:
             "output_url": url_for(
                 "tools.remote_terminal_output", session_id=session_id
             ),
+            "stream_url": urlsplit(url_for("tools.remote_terminal_stream", session_id=session_id, _external=False)).path,
             "checkpoint_url": url_for(
                 "tools.save_remote_terminal_checkpoint", session_id=session_id
             ),

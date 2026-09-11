@@ -11,6 +11,7 @@ from .network_tools import (
 )
 from .system_identity import collect_system_identity
 from .distributed_http import dispatch_http_request
+from .distributed_terminal import attach_terminal
 
 
 CapabilityHandler = Callable[[Path, dict[str, Any]], dict[str, Any]]
@@ -39,6 +40,12 @@ def execute_capability(
 
 def _system_identity(instance: Path, _inputs: dict[str, Any]) -> dict[str, Any]:
     return collect_system_identity(instance)
+
+
+def _mso_sync(instance: Path, _inputs: dict[str, Any]) -> dict[str, Any]:
+    from .mso import MsoStore
+    MsoStore(instance).request_sync()
+    return {"sync_requested": True}
 
 
 def _dns_lookup(_instance: Path, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -88,6 +95,8 @@ def _bounded_text(value: object, limit: int, label: str) -> str:
 
 
 _CAPABILITIES: dict[tuple[str, str], CapabilityHandler] = {
+    ("system.mso.sync", "1"): _mso_sync,
+    ("system.terminal.stream", "1"): attach_terminal,
     ("system.http.tunnel", "1"): dispatch_http_request,
     ("system.identity", "1"): _system_identity,
     ("tools.dns.lookup", "1"): _dns_lookup,

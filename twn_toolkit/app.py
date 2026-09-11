@@ -329,6 +329,56 @@ def create_app(instance_path: str | None = None) -> Flask:
             session["last_seen"] = now
         return None
 
+    from .terminal_websocket import websocket_route
+
+    @websocket_route(app, "/agents/<agent_id>/ui/tools/remote-terminal/sessions/<session_id>/stream")
+    def agent_terminal_stream(ws, agent_id, session_id):
+        from .terminal_stream import WEB_VIEWERS, browser_stream, viewer_authorization, receive_frame, send_frame
+        from .distributed_terminal import CAPABILITY, attachment_ticket
+        if not WEB_VIEWERS.acquire(blocking=False):
+            ws.close(reason=1013)
+            return
+        connection = None
+        try:
+            if (distributed_settings_store.get()["role"] != "mainframe"
+                    or not g.current_user.get("is_admin")
+                    or _origin(request.headers.get("Origin", "")) != _origin(request.host_url)):
+                ws.close(reason=1008)
+                return
+            agent = distributed_agent_store.get(agent_id)
+            if (not agent or agent["state"] != "approved" or not agent["online"]
+                    or not agent_supports_capability(agent, *CAPABILITY)
+                    or agent_gui_compatibility_error(agent)):
+                ws.close(reason=1008)
+                return
+            after = int(request.args.get("after", "0"))
+            if after < 0:
+                raise ValueError("Invalid terminal cursor.")
+            with attachment_ticket(app.instance_path) as (ticket, listener):
+                distributed_job_store.enqueue(
+                    agent_id=agent_id, requester_id=g.current_user["id"],
+                    capability_id=CAPABILITY[0], capability_version=CAPABILITY[1],
+                    inputs={"ticket": ticket, "session_id": session_id,
+                            "user_id": g.current_user["id"], "after": after},
+                )
+                connection, _ = listener.accept()
+                connection.settimeout(10)
+                if receive_frame(connection).get("agent_id") != agent_id:
+                    raise ValueError("Terminal attachment Agent mismatch.")
+                send_frame(connection, {"type": "ready"})
+                account_allowed = viewer_authorization(admin=True)
+                def authorized():
+                    current = distributed_agent_store.get(agent_id)
+                    return (account_allowed() and distributed_settings_store.get()["role"] == "mainframe"
+                            and current and current["state"] == "approved")
+                browser_stream(ws, connection, authorized)
+        except (OSError, ValueError):
+            ws.close(reason=1008)
+        finally:
+            if connection:
+                connection.close()
+            WEB_VIEWERS.release()
+
     @app.route("/agents/<agent_id>/ui/", defaults={"remote_path": ""}, methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
     @app.route("/agents/<agent_id>/ui/<path:remote_path>", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
     def agent_ui(agent_id: str, remote_path: str):
@@ -1520,6 +1570,11 @@ def create_app(instance_path: str | None = None) -> Flask:
 
 
 def _is_cross_origin_mutation() -> bool:
+    if request.headers.get("Upgrade", "").lower() == "websocket":
+        try:
+            return _origin(request.headers.get("Origin", "")) != _origin(request.host_url)
+        except ValueError:
+            return True
     if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
         return False
     fetch_site = request.headers.get("Sec-Fetch-Site", "").lower()

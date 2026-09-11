@@ -44,6 +44,33 @@ from .serial_console import (
 
 
 def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
+    from .terminal_websocket import websocket_route
+
+    @websocket_route(tools_bp, "/remote-terminal/sessions/<session_id>/stream")
+    def remote_terminal_stream(ws, session_id):
+        from .terminal_stream import open_owner_stream, browser_stream, viewer_authorization, WEB_VIEWERS
+        from .app import _origin
+        suppress_audit_event()
+        if not WEB_VIEWERS.acquire(blocking=False):
+            ws.close(reason=1013)
+            return
+        connection = None
+        try:
+            if _origin(request.headers.get("Origin", "")) != _origin(request.host_url):
+                ws.close(reason=1008)
+                return
+            after = int(request.args.get("after", "0"))
+            if after < 0:
+                raise ValueError("Invalid output cursor.")
+            connection = open_owner_stream(_manager(), session_id, _current_user()["id"], after)
+            browser_stream(ws, connection, viewer_authorization())
+        except (OSError, ValueError):
+            ws.close(reason=1008)
+        finally:
+            if connection:
+                connection.close()
+            WEB_VIEWERS.release()
+
     @tools_bp.get("/remote-terminal")
     def remote_terminal():
         user = _current_user()

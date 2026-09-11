@@ -174,6 +174,9 @@ class SerialConsoleChannel:
     def recv_ready(self) -> bool:
         return bool(self.connection.is_open and self.connection.in_waiting)
 
+    def fileno(self) -> int:
+        return self.connection.fileno()
+
     def recv(self, size: int) -> bytes:
         return bytes(self.connection.read(max(1, int(size))))
 

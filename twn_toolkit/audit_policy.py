@@ -233,6 +233,7 @@ AUDIT_ANNOTATED_ENDPOINTS = frozenset(
         "update_automation_retention",
         "update_distributed_agent",
         "update_mainframe_enrollment_window",
+        "sync_mainframe_objects",
         "update_distributed_settings",
         "update_execution_context",
         "update_investigation_state",

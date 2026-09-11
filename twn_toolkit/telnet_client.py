@@ -51,6 +51,9 @@ class TelnetChannel:
         )
         return bool(readable)
 
+    def fileno(self) -> int:
+        return self.connection.fileno()
+
     def recv(self, size: int) -> bytes | None:
         raw = self.connection.recv(size)
         if not raw:

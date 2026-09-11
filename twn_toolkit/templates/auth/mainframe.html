@@ -7,7 +7,13 @@
     'Coordinate toolkit instances, manage trust, and choose how this instance participates.',
     'Administration'
   ) }}
-  <div class="settings-organizer">
+  <div data-workspace-tabs data-initial-tab="{{ initial_mainframe_tab }}" data-workspace-tabs-persist="false" data-mainframe-workspace>
+    <nav class="tool-workspace-tabs" role="tablist" aria-label="Mainframe workspace">
+      {% for key, label in mainframe_tabs %}
+      <button type="button" id="mainframe-{{ key }}-tab" role="tab" data-workspace-tab="{{ key }}" aria-controls="mainframe-{{ key }}-panel" aria-selected="{{ 'true' if initial_mainframe_tab == key else 'false' }}">{{ label }}</button>
+      {% endfor %}
+    </nav>
+  <div class="settings-organizer" id="mainframe-settings-panel" role="tabpanel" aria-labelledby="mainframe-settings-tab" data-workspace-panel="settings" {% if initial_mainframe_tab != 'settings' %}hidden{% endif %}>
     <section class="panel server-access-panel" id="distributed-configuration">
       {{ section_header("Instance role", "Operate independently, coordinate remote agents, or connect outward to one mainframe.") }}
       <div class="message info">
@@ -87,29 +93,10 @@
       </section>
     {% endif %}
 
+  </div>
     {% if distributed_settings.role == 'mainframe' %}
-      <section class="panel server-access-panel" id="enrollment-window">
-        {{ section_header("Agent enrollment", "Temporarily permit new agents to request administrator approval. Existing agents remain connected when enrollment is closed.") }}
-        <div class="mainframe-enrollment-status">
-          <span class="status-chip {{ 'success' if enrollment_window.open else 'muted' }}">{{ 'Open' if enrollment_window.open else 'Closed' }}</span>
-          {% if enrollment_window.open %}
-            <span class="field-note">Closes automatically in {{ (enrollment_window.remaining_seconds / 60) | round(0, 'ceil') | int }} minute(s).</span>
-          {% else %}
-            <span class="field-note">New enrollment requests are rejected.</span>
-          {% endif %}
-        </div>
-        <form method="post" action="{{ url_for('update_mainframe_enrollment_window') }}" class="form mainframe-enrollment-form">
-          <label for="enrollment-window-minutes">Enrollment duration (minutes)
-            <input id="enrollment-window-minutes" type="number" name="minutes" min="1" max="1440" value="15" required>
-          </label>
-          <div class="button-row mainframe-enrollment-buttons">
-            <button type="submit" name="action" value="open">{{ 'Extend enrollment' if enrollment_window.open else 'Open enrollment' }}</button>
-            {% if enrollment_window.open %}
-              <button type="submit" name="action" value="close" class="secondary" formnovalidate>Close now</button>
-            {% endif %}
-          </div>
-        </form>
-      </section>
+    <div class="settings-organizer" id="mainframe-agents-panel" role="tabpanel" aria-labelledby="mainframe-agents-tab" data-workspace-panel="agents" {% if initial_mainframe_tab != 'agents' %}hidden{% endif %}>
+
 
     <section class="panel server-access-panel" id="distributed-enrollments">
       {{ section_header("Connected agents", "Approve an agent only after its displayed pairing code matches the code shown here once the secure transport is available.") }}
@@ -124,9 +111,22 @@
               {% for agent in distributed_agents %}
                 <tr>
                   <td><strong>{{ agent.name }}</strong><br><small>{{ agent.hostname or agent.id }}</small>{% if agent.toolkit_version %}<br><small>Toolkit {{ agent.toolkit_version }} · protocol {{ agent.protocol_version }}</small>{% endif %}{% if agent.platform %}<br><small>{{ agent.platform }}</small>{% endif %}</td>
-                  <td><span class="status-chip {{ 'success' if agent.online else 'muted' }}">{{ 'Online' if agent.online else 'Offline' }}</span>{% if agent.state == 'approved' and not agent.gui_compatible %}<br><span class="status-chip warning">GUI update required</span>{% endif %}</td>
+                  <td><span class="status-chip {{ 'success' if agent.online else 'muted' }}">{{ 'Online' if agent.online else 'Offline' }}</span>{% if agent.mso_status %}<br><small>MSO · {{ agent.mso_supported_types|length }} types</small>{% if agent.mso_missing %}<br><span class="status-chip warning">MSO upgrade required</span>{% endif %}{% endif %}{% if agent.state == 'approved' and not agent.gui_compatible %}<br><span class="status-chip warning">GUI update required</span>{% endif %}</td>
                   <td><span class="status-chip {{ 'success' if agent.state == 'approved' else ('warning' if agent.state == 'pending' else 'muted') }}">{{ agent.state | capitalize }}</span></td>
-                  <td>{% if agent.capabilities %}<div class="mainframe-capability-list">{% for capability in agent.capabilities %}{% if capability.id == 'system.http.tunnel' %}<code>Full interface</code>{% else %}<code>{{ capability.id }}@{{ capability.version }}</code>{% endif %}{% endfor %}</div>{% else %}<span class="field-note">None reported</span>{% endif %}</td>
+                  <td>
+                    {% if agent.capabilities %}
+                    <button type="button" class="secondary compact mainframe-capability-preview" data-capability-trigger aria-expanded="false" aria-controls="capabilities-{{ agent.id }}" aria-label="All capabilities for {{ agent.name }}">
+                      {% for capability in agent.capabilities[:2] %}<span><span class="mainframe-capability-name">{{ {'system.http.tunnel': 'Full interface', 'system.terminal.stream': 'Terminal streaming', 'system.mso.sync': 'MSO sync'}.get(capability.id, capability.id ~ '@' ~ capability.version) }}</span>{% if loop.last and agent.capabilities|length > 2 %} <small>+{{ agent.capabilities|length - 2 }} more</small>{% endif %}</span>{% endfor %}
+                    </button>
+                    <div id="capabilities-{{ agent.id }}" class="mainframe-capability-popup" hidden popover="auto" tabindex="0" aria-label="{{ agent.name }} capabilities">
+                      <strong>{{ agent.name }} · Capabilities</strong>
+                      <div class="mainframe-capability-list">{% for capability in agent.capabilities %}<code>{{ capability.id }}@{{ capability.version }}</code>{% endfor %}</div>
+                      <strong>MSO</strong>
+                      {% if agent.mso_status %}<p>Protocol 1 · {{ agent.mso_supported_types|length }} object types</p><p>Last exchange: {{ agent.mso_status.checked_display }}</p><ul>{% for kind in agent.mso_supported_types %}<li>{{ mso_types[kind].label }}</li>{% endfor %}</ul>{% else %}<p>Support not yet reported.</p>{% endif %}
+                      {% if agent.mso_missing %}<p>Upgrade required for:</p><ul>{% for label in agent.mso_missing %}<li>{{ label }}</li>{% endfor %}</ul>{% endif %}
+                    </div>
+                    {% else %}<span class="field-note">None reported</span>{% endif %}
+                  </td>
                   <td>{% if distributed_pairings.get(agent.id) %}<code class="mainframe-pairing-code">{{ distributed_pairings[agent.id].pairing_code }}</code>{% else %}<span class="field-note">Not pairing</span>{% endif %}</td>
                   <td><code>{{ agent.last_address or 'Not observed' }}</code></td>
                   <td><code title="{{ agent.fingerprint }}">{{ agent.fingerprint[:16] }}…</code></td>
@@ -157,6 +157,33 @@
       {% endif %}
     </section>
 
+      <details class="panel server-access-panel" id="enrollment-window">
+        <summary>Agent enrollment · {{ 'Open' if enrollment_window.open else 'Closed' }}</summary>
+        {{ section_header("Agent enrollment", "Temporarily permit new agents to request administrator approval. Existing agents remain connected when enrollment is closed.") }}
+        <div class="mainframe-enrollment-status">
+          <span class="status-chip {{ 'success' if enrollment_window.open else 'muted' }}">{{ 'Open' if enrollment_window.open else 'Closed' }}</span>
+          {% if enrollment_window.open %}
+            <span class="field-note">Closes automatically in {{ (enrollment_window.remaining_seconds / 60) | round(0, 'ceil') | int }} minute(s).</span>
+          {% else %}
+            <span class="field-note">New enrollment requests are rejected.</span>
+          {% endif %}
+        </div>
+        <form method="post" action="{{ url_for('update_mainframe_enrollment_window') }}" class="form mainframe-enrollment-form">
+          <label for="enrollment-window-minutes">Enrollment duration (minutes)
+            <input id="enrollment-window-minutes" type="number" name="minutes" min="1" max="1440" value="15" required>
+          </label>
+          <div class="button-row mainframe-enrollment-buttons">
+            <button type="submit" name="action" value="open">{{ 'Extend enrollment' if enrollment_window.open else 'Open enrollment' }}</button>
+            {% if enrollment_window.open %}
+              <button type="submit" name="action" value="close" class="secondary" formnovalidate>Close now</button>
+            {% endif %}
+          </div>
+        </form>
+      </details>
+    </div>
+    {% endif %}
+    {% if distributed_settings.role != 'standalone' %}
+    {% include 'auth/mainframe_mso.html' %}
     {% endif %}
   </div>
 </div>
