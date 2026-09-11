@@ -13,6 +13,8 @@ from twn_toolkit.network_tools import ToolInputError
 
 def test_manifest_advertises_versioned_finite_capabilities():
     assert advertised_capabilities() == [
+        {"id": "system.mso.sync", "version": "1"},
+        {"id": "system.terminal.stream", "version": "1"},
         {"id": "system.http.tunnel", "version": "1"},
         {"id": "system.identity", "version": "1"},
         {"id": "tools.dns.lookup", "version": "1"},

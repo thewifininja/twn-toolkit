@@ -1,0 +1,51 @@
+<section class="panel" id="mainframe-mso-panel" role="tabpanel" aria-labelledby="mainframe-mso-tab" data-workspace-panel="mso" {% if initial_mainframe_tab != 'mso' %}hidden{% endif %}>
+  {{ section_header('MSO Objects', 'Shared definitions, pending changes, and fleet receipt status.') }}
+  <div class="button-row">
+    <form method="post" action="{{ url_for('sync_mainframe_objects') }}"><button type="submit" class="secondary" {% if mso_status.unavailable %}disabled{% endif %}>Sync now</button></form>
+    <a class="button-link secondary" href="{{ url_for('tools.mso_conflicts') }}">Local conflicts{% if mso_conflict_count %} · {{ mso_conflict_count }}{% endif %}</a>
+    <span class="field-note">{{ mso_total }} shared object{{ '' if mso_total == 1 else 's' }}</span>
+  </div>
+  {% if mso_status.error %}<p class="message warning">{{ mso_status.error }}</p>{% endif %}
+  {% if distributed_settings.role == 'agent' %}<p class="field-note">Last successful exchange: {{ mso_status.success_display or 'Not yet reported' }}</p>{% endif %}
+  {% if distributed_settings.role == 'mainframe' %}
+  <details class="mainframe-sync-agents">
+    <summary>Agent sync status</summary>
+    <div class="table-wrap mainframe-job-table-wrap"><table class="mainframe-job-table">
+      <thead><tr><th>Agent</th><th>MSO support</th><th>Last successful exchange</th><th>Status</th></tr></thead>
+      <tbody>{% for agent in distributed_agents if agent.state == 'approved' %}<tr>
+        <td>{{ agent.name }}{% if not agent.online %} · Offline{% endif %}</td>
+        <td>{% if agent.mso_status %}{{ agent.mso_supported_types|length }} types{% if agent.mso_missing %} · Upgrade required{% endif %}{% else %}Not reported{% endif %}</td>
+        <td>{{ agent.mso_status.checked_display if agent.mso_status else 'Not yet reported' }}</td>
+        <td>{% if agent.mso_status and agent.mso_status.error %}<span class="status-chip warning">Sync error</span><p>{{ agent.mso_status.error }}</p>{% endif %}
+          {% if agent.mso_status and agent.mso_status.conflicts %}<a class="button-link secondary compact" href="{{ url_for('agent_ui', agent_id=agent.id, remote_path='tools/mso/conflicts') }}">{{ agent.mso_status.conflicts }} conflict{{ '' if agent.mso_status.conflicts == 1 else 's' }}</a>
+          {% elif agent.mso_status and agent.mso_status.conflicts is defined and not agent.mso_status.error %}No conflicts reported{% elif not agent.mso_status or agent.mso_status.conflicts is undefined %}Conflict status not reported{% endif %}
+        </td>
+      </tr>{% else %}<tr><td colspan="4">No approved Agents.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </details>
+  {% endif %}
+  <form method="get" action="{{ url_for('mainframe') }}" class="button-row mainframe-mso-search">
+    <input type="hidden" name="tab" value="mso">
+    <label>Find shared objects<input type="search" name="q" value="{{ mso_query }}" maxlength="100" placeholder="Name, tool, or status"></label>
+    <button type="submit" class="secondary">Search</button>
+    {% if mso_query %}<a class="button-link secondary" href="{{ url_for('mainframe', tab='mso') }}">Clear</a>{% endif %}
+  </form>
+  {% if mso_objects %}
+  <div class="table-wrap mainframe-job-table-wrap"><table class="mainframe-job-table">
+    <thead><tr><th>Object</th><th>Tool</th><th>Status</th><th>Revision</th>{% if distributed_settings.role == 'mainframe' %}<th>Agent receipt</th>{% endif %}<th>Library</th></tr></thead>
+    <tbody>{% for item in mso_objects %}<tr>
+      <td><strong>{{ item.name }}</strong>{% if item.deleted %}<br><small>Removal pending</small>{% endif %}</td>
+      <td>{{ mso_types[item.kind].label }}</td>
+      <td><span class="status-chip {{ 'warning' if item.state != 'Accepted' else 'success' }}">{{ item.state }}</span></td>
+      <td>{{ item.revision }}</td>
+      {% if distributed_settings.role == 'mainframe' %}<td>{{ item.received }} / {{ item.agents }} received</td>{% endif %}
+      <td><a class="button-link secondary compact" href="{{ url_for(mso_types[item.kind].endpoint) }}">Open library</a></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="field-note">Accepted means the Mainframe recorded the revision. Agent receipt is acknowledged on the next exchange; conflicts are reviewed separately.</p>
+  {% elif not mso_status.unavailable %}<p class="empty-state">{{ 'No matching shared objects.' if mso_query else 'No shared objects yet. Enable MSO on a saved definition to share it.' }}</p>{% endif %}
+  <div class="button-row">
+    {% if mso_page > 1 %}<a class="button-link secondary" href="{{ url_for('mainframe', tab='mso', q=mso_query, page=mso_page-1) }}">Previous</a>{% endif %}
+    {% if mso_more %}<a class="button-link secondary" href="{{ url_for('mainframe', tab='mso', q=mso_query, page=mso_page+1) }}">Next</a>{% endif %}
+  </div>
+</section>

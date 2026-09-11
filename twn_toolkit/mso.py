@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -127,6 +128,9 @@ class MsoStore:
             id TEXT PRIMARY KEY, kind TEXT NOT NULL, payload TEXT NOT NULL,
             revision INTEGER NOT NULL, deleted INTEGER NOT NULL, origin TEXT NOT NULL)""")
         db.execute("CREATE INDEX IF NOT EXISTS mso_hub_revision ON mso_hub(revision)")
+        db.execute("""CREATE TABLE IF NOT EXISTS mso_peers (
+            peer TEXT PRIMARY KEY, types TEXT NOT NULL, cursor INTEGER NOT NULL,
+            checked_at REAL NOT NULL)""")
         db.execute("""CREATE TABLE IF NOT EXISTS mso_receipts (
             sequence INTEGER PRIMARY KEY AUTOINCREMENT, peer TEXT NOT NULL, operation TEXT NOT NULL,
             object_id TEXT NOT NULL, revision INTEGER NOT NULL, UNIQUE(peer, operation))""")
@@ -486,6 +490,10 @@ class MsoStore:
                 row = db.execute("SELECT * FROM mso_hub WHERE id=?", (proposal["id"],)).fetchone()
                 if row:
                     self._apply(db, self._hub_record(row))
+            # Only a subsequent request acknowledges receipt of an earlier response.
+            # Replace the cursor on rescans; never infer delivery from bytes sent.
+            db.execute("INSERT INTO mso_peers VALUES (?,?,?,?) ON CONFLICT(peer) DO UPDATE SET types=excluded.types,cursor=excluded.cursor,checked_at=excluded.checked_at",
+                       (peer, _json(supported), cursor, time.time()))
             return {"protocol": PROTOCOL, "fleet": fleet, "epoch": request.get("epoch"),
                     "acknowledgements": acknowledgements, "objects": [self._hub_record(r) for r in rows],
                     "cursor": rows[-1]["revision"] if rows else cursor}
@@ -602,7 +610,56 @@ class MsoStore:
         with self._tx() as db:
             if error is not None:
                 self._set(db, "sync_error", str(error)[:240])
-            return {"error": self._meta(db, "sync_error")}
+                if not error:
+                    self._set(db, "sync_success", str(time.time()))
+            return {"error": self._meta(db, "sync_error"),
+                    "last_success": float(self._meta(db, "sync_success") or 0)}
+
+    def request_sync(self):
+        """Wake the existing control lane; never start another polling loop."""
+        if self._role() != "agent":
+            raise ValueError("A local sync request requires Agent mode.")
+        path = self.instance / "mso-sync-requested"
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.close(descriptor)
+
+    def peer_status(self):
+        with self._tx() as db:
+            return {"protocol": PROTOCOL, "types": list(OBJECT_TYPES),
+                    "error": self._meta(db, "sync_error"),
+                    "conflicts": db.execute("SELECT COUNT(*) FROM mso_objects WHERE conflict!=''").fetchone()[0]}
+
+    def record_peer_status(self, peer, status):
+        if not isinstance(status, dict) or status.get("protocol") != PROTOCOL:
+            return
+        supported = self._supported_types(status.get("types"))
+        error, conflicts = status.get("error", ""), status.get("conflicts", 0)
+        if not isinstance(error, str) or len(error) > 240 or type(conflicts) is not int or not 0 <= conflicts <= MAX_FLEET_OBJECTS:
+            raise ValueError("Invalid MSO peer status.")
+        with self._tx() as db:
+            self._set(db, "peer_status:" + peer, _json({"types": supported, "error": error, "conflicts": conflicts}))
+
+    def inventory(self):
+        """Administrative metadata only: never return definitions or credentials."""
+        with self._tx() as db:
+            peers = {row["peer"]: {"types": json.loads(row["types"]),
+                     "cursor": row["cursor"], "checked_at": row["checked_at"]}
+                     for row in db.execute("SELECT * FROM mso_peers")}
+            for row in db.execute("SELECT key,value FROM mso_meta WHERE key LIKE 'peer_status:%'"):
+                peer = row["key"].removeprefix("peer_status:")
+                status = json.loads(row["value"])
+                acknowledged = peers.setdefault(peer, {"types": [], "cursor": 0, "checked_at": 0})
+                acknowledged.update(error=status["error"], conflicts=status["conflicts"], advertised_types=status["types"])
+            objects = []
+            for row in db.execute("SELECT * FROM mso_objects WHERE enabled=1 OR dirty=1 OR conflict!=''"):
+                if row["deleted"] and not row["dirty"] and not row["conflict"]:
+                    continue
+                payload = source_json_loads(row["payload"])
+                objects.append({"id": row["id"], "name": payload.get("title") or payload["name"],
+                                "kind": row["kind"], "revision": row["revision"],
+                                "state": "Conflict" if row["conflict"] else "Pending" if row["dirty"] else "Accepted",
+                                "deleted": bool(row["deleted"])})
+            return {"objects": sorted(objects, key=lambda row: (row["name"].casefold(), row["kind"])), "peers": peers}
 
     def _flush(self, db):
         self._ensure_fleet(db)
@@ -646,6 +703,10 @@ class MsoStore:
             db.execute("DELETE FROM mso_objects WHERE kind LIKE 'terminal.%'")
             db.execute("DELETE FROM mso_hub")
             db.execute("DELETE FROM mso_receipts")
+            db.execute("DELETE FROM mso_peers")
+            db.execute("DELETE FROM mso_meta WHERE key LIKE 'peer_status:%'")
+            self._set(db, "sync_error", "")
+            self._set(db, "sync_success", "0")
             for key, value in (("fleet", ""), ("cursor", "0"), ("history", "0"), ("sequence", "0"), ("epoch", str(uuid.uuid4()))):
                 self._set(db, key, value)
             yield

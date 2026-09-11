@@ -69,6 +69,11 @@
   let cursor = 0;
   let pollTimer = null;
   let pollGeneration = 0;
+  let stream = null;
+  let streamReady = false;
+  let streamDisabled = false;
+  let inputSequence = 0;
+  let streamInput = null;
   let pollingGeneration = -1;
   let synchronizing = false;
   let focusAfterSync = false;
@@ -204,10 +209,10 @@
     button.addEventListener("click", () => sendTelnetCredential(button));
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) persistCheckpoint();
+    if (document.hidden) { persistCheckpoint(); closeStream(); clearTimeout(pollTimer); }
     else if (selected) pollOutput();
   });
-  window.addEventListener("pagehide", () => persistCheckpoint());
+  window.addEventListener("pagehide", () => { persistCheckpoint(); closeStream(); clearTimeout(pollTimer); });
   initializeTerminalHeight();
   if (window.ResizeObserver) {
     new ResizeObserver(() => {
@@ -473,6 +478,7 @@
     const reveal = Boolean(options.reveal);
     const requestFocus = Boolean(options.focus);
     persistCheckpoint();
+    closeStream();
     clearTimeout(pollTimer);
     clearTimeout(checkpointTimer);
     checkpointTimer = null;
@@ -513,18 +519,21 @@
     let pollImmediately = false;
     try {
       const suffix = bootstrap ? "&bootstrap=1" : "";
-      const response = await fetch(`${pollingSession.output_url}?after=${requestCursor}${suffix}`, {
-        headers: {"Accept": "application/json"},
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Terminal output is unavailable.");
+      let data = options.data;
+      if (!data) {
+        const response = await fetch(`${pollingSession.output_url}?after=${requestCursor}${suffix}`, {
+          headers: {"Accept": "application/json"},
+        });
+        data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Terminal output is unavailable.");
+      }
       if (
         generation !== pollGeneration
         || !selected
         || selected.id !== pollingSession.id
       ) return;
       pollMessage.hidden = true;
-      selected = data.session;
+      selected = {...selected, ...data.session};
       upsert(selected);
       if (data.checkpoint) {
         const restored = terminal.restore(data.checkpoint.snapshot);
@@ -577,10 +586,61 @@
 
   function schedulePoll(immediate = false) {
     clearTimeout(pollTimer);
-    if (!selected) return;
+    if (!selected || document.hidden) return;
+    if (stream) return;
+    if (!immediate && active(selected) && selected.stream_url && !streamDisabled) {
+      openStream();
+      return;
+    }
+    if (!active(selected) && !immediate) return;
     const delay = immediate ? 0 : document.hidden ? 5000 : active(selected) ? 250 : 2000;
     const generation = pollGeneration;
     pollTimer = setTimeout(() => pollOutput({generation}), delay);
+  }
+
+  function closeStream() {
+    const previous = stream;
+    stream = null;
+    streamReady = false;
+    previous?.close();
+    if (streamInput) {
+      streamInput.reject(new Error("Terminal connection closed before input was acknowledged."));
+      streamInput = null;
+    }
+  }
+
+  function openStream() {
+    if (stream || !selected || document.hidden) return;
+    const generation = pollGeneration;
+    const url = new URL(selected.stream_url, location.href);
+    url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    url.host = location.host;
+    url.searchParams.set("after", cursor);
+    const socket = new WebSocket(url);
+    stream = socket;
+    socket.onmessage = (event) => {
+      if (stream !== socket || generation !== pollGeneration) return;
+      let data;
+      try { data = JSON.parse(event.data); } catch (_error) { socket.close(); return; }
+      if (data.type === "ready") { streamReady = true; return; }
+      if (data.type === "accepted") {
+        if (streamInput?.sequence === data.sequence) { streamInput.resolve(); streamInput = null; }
+        return;
+      }
+      if (data.type === "output") {
+        pollOutput({generation, data});
+      }
+    };
+    socket.onclose = () => {
+      if (stream !== socket) return;
+      // Older Agents/proxies may not support streaming. Keep the established
+      // HTTP path available, and never replay an unacknowledged keystroke.
+      streamDisabled = !streamReady;
+      closeStream();
+      if (generation === pollGeneration && !document.hidden) {
+        pollTimer = setTimeout(() => pollOutput({generation}), 2000);
+      }
+    };
   }
 
   function scheduleCheckpoint() {
@@ -635,6 +695,10 @@
 
   function queueInput(data, immediate) {
     if (!selected || selected.state !== "running" || !data) return;
+    if (inputQueue.reduce((total, item) => total + item.data.length, 0) + data.length > 65536) {
+      showMessage("Terminal input is arriving faster than it can be delivered. This text was not queued.");
+      return;
+    }
     jumpToLive({focus: false});
     const item = {
       sessionId: selected.id,
@@ -647,15 +711,24 @@
     } else {
       inputQueue.push(item);
     }
-    window.clearTimeout(inputTimer);
-    inputTimer = window.setTimeout(flushInputQueue, immediate ? 0 : 30);
+    if (immediate) window.clearTimeout(inputTimer);
+    if (immediate || !inputTimer) inputTimer = window.setTimeout(flushInputQueue, 0);
   }
 
   async function flushInputQueue() {
+    inputTimer = null;
     if (inputSending || !inputQueue.length) return;
     inputSending = true;
     const item = inputQueue.shift();
     try {
+      if (streamReady && stream?.readyState === WebSocket.OPEN && selected?.id === item.sessionId) {
+        const sequence = ++inputSequence;
+        await new Promise((resolve, reject) => {
+          streamInput = {sequence, resolve, reject};
+          stream.send(JSON.stringify({type: "input", sequence, data: item.data}));
+        });
+        return;
+      }
       const response = await fetch(item.url, {
         method: "POST",
         headers: {"Accept": "application/json", "Content-Type": "application/json"},
@@ -663,7 +736,7 @@
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Terminal input was not delivered.");
-      if (selected && selected.id === item.sessionId) pollOutput();
+      if (selected && selected.id === item.sessionId && !stream) pollOutput();
     } catch (error) {
       showMessage(`${error.message} The toolkit did not retry it, so terminal input cannot be duplicated.`);
     } finally {
@@ -933,6 +1006,7 @@
 
   function clearSelectedSession() {
     persistCheckpoint();
+    closeStream();
     clearTimeout(pollTimer);
     clearTimeout(checkpointTimer);
     checkpointTimer = null;

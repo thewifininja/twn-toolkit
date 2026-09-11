@@ -1308,6 +1308,7 @@ start() {
   set -- "$GUNICORN" \
     --bind "$HOST:$PORT" \
     --workers "$WORKERS" \
+    --threads 16 \
     --timeout 3700 \
     --pid "$PIDFILE" \
     --access-logfile "$ACCESS_LOG" \
@@ -1818,6 +1819,7 @@ launchd_run() {
       set -- "$GUNICORN" \
         --bind "$HOST:$PORT" \
         --workers "$WORKERS" \
+        --threads 16 \
         --timeout 3700 \
         --pid "$PIDFILE" \
         --access-logfile "$ACCESS_LOG" \

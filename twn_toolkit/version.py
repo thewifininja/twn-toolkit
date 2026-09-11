@@ -1,6 +1,26 @@
-APP_VERSION = "0.25.5"
+APP_VERSION = "0.25.6"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.25.6",
+        "date": "2026-09-11",
+        "title": "Mainframe workspace and terminal streaming",
+        "summary": "Organize Agent administration and MSO status, and stream terminal input and output on demand.",
+        "groups": (
+            {"title": "Mainframe", "items": (
+                "Separate Connected Agents, MSO Objects and Settings using role-aware workspace tabs.",
+                "Keep capability previews compact, with a full list available by hover, keyboard focus or tap.",
+                "Search shared definitions, request synchronization, and distinguish accepted revisions from acknowledged Agent receipt.",
+                "Report Agent MSO support, last exchange, sync errors and remote conflict counts centrally.",
+            )},
+            {"title": "Remote Terminal", "items": (
+                "Stream keystrokes and output locally and through the existing authenticated outbound Agent connection.",
+                "Stop terminal output polling while streaming; detach hidden viewers and catch up from retained output when returning.",
+                "Preserve session ownership, access checks, scrollback, bounded connection capacity and input delivery without automatic retries.",
+                "Retain HTTP compatibility for older Agents and browser proxies without WebSocket support.",
+            )},
+        ),
+    },
     {
         "version": "0.25.5",
         "date": "2026-09-10",

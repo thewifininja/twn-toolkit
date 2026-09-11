@@ -120,8 +120,10 @@ def main() -> None:
             if settings["role"] == "agent":
                 if any(not thread.is_alive() for thread in execution_threads):
                     raise RuntimeError("An Agent execution thread stopped unexpectedly.")
+                sync_requested = instance / "mso-sync-requested"
+                sync_requested.unlink(missing_ok=True)
                 status = _agent_tick(instance, settings, control_only=True)
-                pause(regular_poll_delay(status, control_backoff), lambda: running)
+                pause(regular_poll_delay(status, control_backoff), lambda: running and not sync_requested.exists())
             else:
                 time.sleep(0.25)
     except Exception as exc:
@@ -277,6 +279,13 @@ def _agent_tick(
         # token. The Mainframe migration has already made their outcome unknown.
         results_path.unlink(missing_ok=True)
         pending_results = receipts.pending("regular", activation_id)
+        from .mso import MsoStore
+        reported_mso = None
+        if control_only:
+            try:
+                reported_mso = MsoStore(instance).peer_status()
+            except (OSError, ValueError, sqlite3.Error):
+                pass  # MSO storage failure must not break the Agent control lane.
         result = client.heartbeat(
             advertised_capabilities(),
             toolkit_version=APP_VERSION,
@@ -286,6 +295,7 @@ def _agent_tick(
             results=pending_results,
             wait_seconds=0 if control_only else wait_seconds,
             control_only=control_only,
+            **({"mso_status": reported_mso} if reported_mso is not None else {}),
         )
         if result.get("job_protocol") != JOB_PROTOCOL_VERSION:
             raise ValueError("Upgrade the Mainframe for owned operation delivery.")

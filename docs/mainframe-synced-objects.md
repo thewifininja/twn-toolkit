@@ -1,6 +1,6 @@
 # Mainframe Synced Objects
 
-Development v0.25.5 supports 21 object kinds: Ping; DNS queries and servers;
+Development v0.25.6 supports 21 object kinds: Ping; DNS queries and servers;
 NTP and Traceroute targets; TCP hosts and ports; Wake-on-LAN groups; SNMP hosts,
 credentials and OIDs; RADIUS attributes, servers and credentials; LLDP personas;
 FortiGate and FortiAuthenticator profiles; Bulk SSH matrices; and Remote Terminal
@@ -178,6 +178,39 @@ native data and publication links together with the MSO store.
 
 ## Compatibility and recovery
 
+### Inventory and Agent status
+
+Open **Administration → Mainframe → MSO Objects** for the shared inventory.
+Search by name, tool or status; each row links back to its library. Local-only
+definitions and credential values are not included. The pane is available in
+Mainframe and Agent modes; standalone instances show Settings only.
+
+![MSO object inventory](images/mainframe-mso-inventory.png)
+
+**Accepted** means the Mainframe recorded the revision. **Agent receipt** counts
+approved Agents whose next exchange acknowledges that revision for the relevant
+object type. Sending a response alone does not count as receipt. A rescan resets
+that Agent's receipt cursor until it catches up. Receipt does not mean a conflicting
+local edit was replaced. Offline Agents remain in the denominator.
+
+Expand **Agent sync status** to see supported types, the last successful exchange,
+reported sync errors, and links to conflicts on each Agent. **Local conflicts**
+reviews conflicts on the instance being viewed. Conflict contents and resolution
+stay on that instance; only counts are reported centrally. Older builds may not
+report counts or support manual sync, and unreported status is not proof of health.
+
+**Sync now** wakes the existing Agent control worker, or requests a wakeup from
+connected compatible Agents when used on Mainframe. It starts a bounded exchange;
+large backlogs continue through the normal background batches. Offline Agents
+catch up after reconnecting. It does not change heartbeat or idle polling intervals.
+
+Connected Agents appears only in Mainframe mode. Its capabilities show a compact
+preview; hover, focus or tap for the full scrollable list. Settings contains the
+instance role, identity and Agent enrollment connection. Existing section links
+still open the appropriate tab.
+
+![Connected Agents with compact capability previews](images/mainframe-workspace.png)
+
 Upgrade Mainframe and participating Agents to a build supporting the desired list
 kinds. The heartbeat advertises supported types. Original Ping-only peers continue
 to exchange Ping objects; additional lists wait until both peers support them.
@@ -215,8 +248,8 @@ Each exchange carries at most four proposals and four changed records. A shared
 object is limited to 64 KiB; Ping accepts up to 250 targets. The store retains up
 to 5,000 shared identities, including deletion tombstones, and 10,000 recent
 operation receipts. Tombstones prevent stale resurrection. Reaching the identity
-limit produces an explicit error; automatic tombstone retirement and fleet-wide
-conflict aggregation remain outside this rollout.
+limit produces an explicit error. Automatic tombstone retirement and resolving
+another instance's conflicts without opening its workspace remain outside this rollout.
 
 ## Two-instance acceptance
 

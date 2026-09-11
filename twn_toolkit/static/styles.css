@@ -11604,6 +11604,43 @@ button.compact,
   gap: 5px;
 }
 
+.mainframe-capability-preview {
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  max-width: 24rem;
+  white-space: nowrap;
+}
+.mainframe-capability-preview > span {
+  display: flex;
+  gap: 6px;
+  max-width: 100%;
+  line-height: 1.5;
+}
+.mainframe-capability-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mainframe-capability-preview small { color: var(--muted); flex-shrink: 0; }
+.mainframe-capability-popup {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(28rem, calc(100vw - 16px));
+  max-height: min(32rem, calc(100dvh - 16px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 8px 24px #0004;
+  z-index: 1100;
+  overflow-wrap: anywhere;
+}
+.mainframe-capability-popup .mainframe-capability-list { margin: 12px 0; }
+.mainframe-mso-search { align-items: flex-end; margin: 16px 0; }
+
 .mainframe-capability-list code,
 .mainframe-pairing-code {
   background: var(--surface-subtle);

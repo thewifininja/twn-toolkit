@@ -29,11 +29,13 @@ class LongPollBudget:
         self._peak = 0
 
     @contextmanager
-    def slot(self, agent_id):
+    def slot(self, agent_id, *, channel="poll", per_agent=None):
+        key = (agent_id, channel)
+        peer_limit = self.per_agent if per_agent is None else min(self.limit, max(1, per_agent))
         with self._lock:
-            admitted = self._active < self.limit and self._agents.get(agent_id, 0) < self.per_agent
+            admitted = self._active < self.limit and self._agents.get(key, 0) < peer_limit
             if admitted:
-                self._agents[agent_id] = self._agents.get(agent_id, 0) + 1
+                self._agents[key] = self._agents.get(key, 0) + 1
                 self._active += 1
                 self._peak = max(self._peak, self._active)
         try:
@@ -42,13 +44,13 @@ class LongPollBudget:
             if admitted:
                 with self._lock:
                     self._active -= 1
-                    self._agents[agent_id] -= 1
-                    if not self._agents[agent_id]:
-                        del self._agents[agent_id]
+                    self._agents[key] -= 1
+                    if not self._agents[key]:
+                        del self._agents[key]
 
     def stats(self):
         with self._lock:
-            return {"active": self._active, "peak": self._peak, "agents": len(self._agents)}
+            return {"active": self._active, "peak": self._peak, "agents": len({agent for agent, _channel in self._agents})}
 
 
 class RetryBackoff:

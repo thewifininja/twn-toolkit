@@ -653,9 +653,48 @@ def register_admin_routes(
         except (OSError, json.JSONDecodeError):
             agent_runtime_status = {}
         agents = distributed_agent_store.list()
+        from .mso import MsoStore
+        from .mso_types import LIST_TYPES
+        role = distributed_settings["role"]
+        inventory, sync_status = {"objects": [], "peers": {}}, {}
+        if role != "standalone":
+            try:
+                mso = MsoStore(app.instance_path)
+                inventory, sync_status = mso.inventory(), mso.sync_status()
+            except (OSError, ValueError, sqlite3.Error):
+                sync_status = {"error": "The MSO store is unavailable. Check storage health before syncing.", "unavailable": True}
+        for agent in agents:
+            peer = inventory["peers"].get("twn_" + agent["id"].removeprefix("agent_"))
+            agent["mso_status"] = peer
+            supported_types = peer.get("advertised_types", peer["types"]) if peer else []
+            agent["mso_supported_types"] = supported_types
+            agent["mso_missing"] = [LIST_TYPES[kind].label for kind in LIST_TYPES if peer and kind not in supported_types]
+            if peer:
+                peer["checked_display"] = datetime.fromtimestamp(peer["checked_at"]).astimezone().strftime("%b %d, %H:%M:%S %Z") if peer["checked_at"] else "Not yet reported"
+        approved = [agent for agent in agents if agent["state"] == "approved"]
+        for item in inventory["objects"]:
+            item["received"] = sum(bool(agent["mso_status"] and item["kind"] in agent["mso_status"]["types"]
+                                        and agent["mso_status"]["cursor"] >= item["revision"] and item["revision"] > 0)
+                                   for agent in approved)
+            item["agents"] = len(approved)
+        query = request.args.get("q", "").strip()[:100]
+        objects = [item for item in inventory["objects"] if query.casefold() in
+                   (item["name"] + " " + LIST_TYPES[item["kind"]].label + " " + item["state"]).casefold()]
+        page = max(1, request.args.get("page", 1, type=int))
+        tabs = ([('agents', 'Connected Agents')] if role == "mainframe" else []) + ([('mso', 'MSO Objects')] if role != "standalone" else []) + [('settings', 'Settings')]
+        initial_tab = request.args.get("tab", tabs[0][0])
+        if initial_tab not in dict(tabs):
+            initial_tab = tabs[0][0]
+        if sync_status.get("last_success"):
+            sync_status["success_display"] = datetime.fromtimestamp(sync_status["last_success"]).astimezone().strftime("%b %d, %H:%M:%S %Z")
         return render_template(
             "auth/mainframe.html",
             distributed_settings=distributed_settings,
+            mainframe_tabs=tabs, initial_mainframe_tab=initial_tab,
+            mso_objects=objects[(page-1)*50:page*50], mso_query=query, mso_page=page,
+            mso_more=len(objects) > page*50, mso_total=len(inventory["objects"]),
+            mso_conflict_count=sum(item["state"] == "Conflict" for item in inventory["objects"]),
+            mso_status=sync_status, mso_types=LIST_TYPES,
             distributed_identity=distributed_identity_store.load_or_create(),
             distributed_agents=agents,
             distributed_pki_status=pki_status,
@@ -673,6 +712,30 @@ def register_admin_routes(
             ),
             enrollment_window=distributed_enrollment_window.status(),
         )
+
+    @app.post("/mainframe/mso/sync")
+    def sync_mainframe_objects():
+        from .mso import MsoStore
+        from .distributed_agents import agent_supports_capability
+        if not g.current_user.get("is_admin"):
+            return Response("Administrator access is required.", status=403)
+        role = distributed_settings_store.get()["role"]
+        if role == "standalone":
+            return Response("MSO requires Mainframe or Agent mode.", status=404)
+        if role == "agent":
+            MsoStore(app.instance_path).request_sync()
+            message = "Sync requested. The background worker will exchange shared objects now."
+        else:
+            count = 0
+            for agent in distributed_agent_store.list("approved"):
+                if agent["online"] and agent_supports_capability(agent, "system.mso.sync", "1"):
+                    distributed_job_store.enqueue(agent_id=agent["id"], requester_id=g.current_user["id"],
+                                                  capability_id="system.mso.sync", capability_version="1", inputs={})
+                    count += 1
+            message = f"Sync requested from {count} connected Agent(s). Other Agents retain their normal background sync schedule."
+        annotate_audit_event(category="Mainframe", action="mso.sync_requested", summary=message)
+        flash(message, "success")
+        return redirect(url_for("mainframe", tab="mso"))
 
     @app.post("/mainframe/enrollment-window")
     def update_mainframe_enrollment_window():

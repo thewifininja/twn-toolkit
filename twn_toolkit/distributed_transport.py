@@ -215,6 +215,12 @@ class EnrollmentServer:
         agent_id = self._approved_certificate_agent(certificate_der)
         if int(payload.get("protocol", 0)) != PROTOCOL_VERSION:
             raise ValueError("Unsupported agent protocol version.")
+        if payload.get("mso_status") is not None:
+            from .mso import MsoStore
+            try:
+                MsoStore(self.instance_path).record_peer_status("twn_" + agent_id.removeprefix("agent_"), payload["mso_status"])
+            except (OSError, ValueError, sqlite3.Error):
+                pass  # Preserve independent enrollment/work control if MSO is unavailable.
         agent = self.agent_store.record_heartbeat(
             agent_id,
             capabilities=payload.get("capabilities", []),
@@ -473,6 +479,7 @@ class EnrollmentClient:
         results: list[dict[str, Any]] | None = None,
         wait_seconds: float = 0,
         control_only: bool = False,
+        mso_status: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not self.enrolled():
             raise EnrollmentTransportError("This agent has not completed enrollment.")
@@ -482,6 +489,7 @@ class EnrollmentClient:
             {
                 "protocol": PROTOCOL_VERSION,
                 "capabilities": capabilities,
+                **({"mso_status": mso_status} if mso_status is not None else {}),
                 "gui_protocol": GUI_PROTOCOL_VERSION,
                 "toolkit_version": toolkit_version,
                 "platform": platform,
@@ -694,7 +702,7 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
             )
 
         def do_POST(self) -> None:
-            if self.path not in {"/v1/enrollment", "/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control", "/v1/jobs/response-chunk", "/v1/mso/exchange"}:
+            if self.path not in {"/v1/terminal/connect", "/v1/enrollment", "/v1/agent-status", "/v1/heartbeat", "/v1/interactive", "/v1/jobs/control", "/v1/jobs/response-chunk", "/v1/mso/exchange"}:
                 self._json(404, {"error": "Not found."})
                 return
             try:
@@ -714,6 +722,13 @@ def _handler_for(enrollment_server: EnrollmentServer) -> type[BaseHTTPRequestHan
                 payload = json.loads(self.rfile.read(length))
                 if not isinstance(payload, dict):
                     raise ValueError("Enrollment payload must be an object.")
+                if self.path == "/v1/terminal/connect":
+                    from .distributed_terminal import accept_agent_attachment
+                    try:
+                        accept_agent_attachment(enrollment_server, self, payload)
+                    except OSError:
+                        self._json(503, {"error": "Terminal attachment is unavailable."})
+                    return
                 if self.path == "/v1/enrollment":
                     result = enrollment_server.begin_enrollment(
                         payload, str(self.client_address[0])

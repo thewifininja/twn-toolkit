@@ -363,7 +363,7 @@ def test_admin_can_open_and_close_agent_enrollment(tmp_path):
     client = app.test_client()
     page = client.get("/mainframe")
     assert b"Agent enrollment" in page.data
-    assert b'<section class="panel server-access-panel" id="enrollment-window">' in page.data
+    assert b'<details class="panel server-access-panel" id="enrollment-window">' in page.data
     assert b"New enrollment requests are rejected" in page.data
 
     assert client.post(

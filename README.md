@@ -15,8 +15,9 @@ service.
 
 Current release: **v0.25.0**
 
-Development: **v0.25.5** extends [MSO across saved lists, appliance profiles and terminal libraries](docs/mainframe-synced-objects.md),
-with bidirectional fleet sharing, stable credential references and central conflict review.
+Development: **v0.25.6** adds a tabbed Mainframe workspace with
+[MSO inventory and Agent receipt status](docs/mainframe-synced-objects.md), plus
+[on-demand terminal streaming](docs/terminal-streaming.md) locally and through Agents.
 
 v0.25.0 adds a full-screen installer with service-first location choices,
 searchable timezones and individually selected dependencies. Mainframe agent
