@@ -1,6 +1,6 @@
 # Mainframe Synced Objects
 
-Development v0.25.6 supports 21 object kinds: Ping; DNS queries and servers;
+v0.26.0 supports 21 object kinds: Ping; DNS queries and servers;
 NTP and Traceroute targets; TCP hosts and ports; Wake-on-LAN groups; SNMP hosts,
 credentials and OIDs; RADIUS attributes, servers and credentials; LLDP personas;
 FortiGate and FortiAuthenticator profiles; Bulk SSH matrices; and Remote Terminal
@@ -51,6 +51,22 @@ force a network sync; that continues automatically in the background.
 ![MSO conflicts in the profile action menu](images/mso-profile-menu.png)
 
 ![Shared DNS saved-list controls](images/mso-saved-dns.png)
+
+## New Agents and offline work
+
+A newly enrolled and approved Agent automatically downloads the current shared
+objects supported by its installed version. An Agent returning after shipping or
+an outage resumes from its saved synchronization position. Objects do not expire
+because an Agent is offline, and no re-save, destination assignment or manual push
+is required. Delivery is progressive: up to four objects per exchange, continuing
+through normal background cycles until caught up.
+
+MSO creates, edits and deletions made on a disconnected Agent remain pending on
+disk and are sent upstream after reconnection. Accepted changes then reach the
+other Agents. Objects created without enabling MSO stay local. Competing edits or
+an edit versus deletion can require conflict review; catch-up does not silently
+replace a conflicting local draft. Different UUIDs with matching names remain
+separate objects and may require name-conflict review.
 
 ## Conflicts in one place
 

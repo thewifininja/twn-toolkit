@@ -44,7 +44,9 @@ artifacts, or local packet/log files.
 
 For pilot and beta builds, follow [beta release versioning](docs/beta-releases.md)
 before choosing an installed version. Preserve a forward upgrade path to the
-intended GA; prerelease suffixes require updater support before use.
+intended GA. Future betas require explicit prerelease versions and matching tags;
+do not default to the next patch number. Implement updater prerelease support
+before using suffixes or deploying another beta.
 
 1. Freeze the intended feature scope. Create a release-preparation branch and
    record scope, compatibility, validation and publication gates in

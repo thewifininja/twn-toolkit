@@ -1,6 +1,36 @@
-APP_VERSION = "0.25.6"
+APP_VERSION = "0.26.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.26.0",
+        "date": "2026-09-11",
+        "title": "Mainframe Synced Objects and responsive remote terminals",
+        "summary": "Share tool libraries across your fleet, manage synchronization centrally, and stream terminal sessions locally or through an Agent.",
+        "groups": (
+            {"title": "Mainframe Synced Objects", "items": (
+                "Opt saved objects into bidirectional fleet synchronization with stable identities, offline catch-up and centralized conflict review; existing objects remain local by default.",
+                "Share Ping, DNS, NTP, Traceroute, TCP, Wake-on-LAN, SNMP and RADIUS lists, LLDP personas, FortiGate and FortiAuthenticator profiles, and Bulk SSH matrices with their actions.",
+                "Share Global/Admins Only Remote Terminal folders, full paths, SSH/Telnet hosts and protected credentials; private objects and serial consoles stay local.",
+                "Share required eligible credential and folder dependencies, retain offline changes, and distinguish local withdrawal from fleet deletion.",
+                "Keep Automations, Certificates/PKI, cases and evidence, datastore content, SMTP and dashboard settings outside MSO scope.",
+            )},
+            {"title": "Mainframe workspace", "items": (
+                "Organize administration into Connected Agents, MSO Objects and Settings, with tabs appropriate to the instance role.",
+                "Search shared-object inventory, request synchronization, inspect Agent support and errors, and distinguish Mainframe acceptance from acknowledged Agent receipt.",
+                "Show compact capability previews with a full list on hover, keyboard focus or tap; improve Save contrast and compact sharing controls across themes.",
+            )},
+            {"title": "Remote Terminal", "items": (
+                "Stream keystrokes and output through an on-demand WebSocket and an outbound, certificate-authenticated Agent relay, outside the generic job queue.",
+                "Detach hidden viewers while preserving their shells and recover retained output on return, without increasing ordinary Agent idle polling.",
+                "Preserve ownership and access checks, bounded resources and ordered input without automatic retries; retain HTTP fallback for older peers or proxies without WebSocket support.",
+            )},
+            {"title": "Upgrade and recovery", "items": (
+                "Upgrade Mainframe and Agents to v0.26.0 and reload open browser pages; numeric v0.25.1–v0.25.6 pilot builds can upgrade normally.",
+                "Participating JSON libraries migrate to the MSO store while native terminal libraries retain their identities. Recovery points preserve matching code and instance data.",
+                "Leaving a Mainframe preserves independent local copies; revocation blocks synchronization but does not remotely erase stored objects.",
+            )},
+        ),
+    },
     {
         "version": "0.25.6",
         "date": "2026-09-11",
