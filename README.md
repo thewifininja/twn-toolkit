@@ -13,25 +13,24 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.25.0**
+Current release: **v0.26.0**
 
-Development: **v0.25.6** adds a tabbed Mainframe workspace with
-[MSO inventory and Agent receipt status](docs/mainframe-synced-objects.md), plus
-[on-demand terminal streaming](docs/terminal-streaming.md) locally and through Agents.
+v0.26.0 introduces [Mainframe Synced Objects](docs/mainframe-synced-objects.md):
+share supported saved lists, appliance profiles, Bulk SSH libraries and eligible
+Remote Terminal folders, hosts and credentials bidirectionally across your fleet.
+Objects remain local until shared; offline Agents catch up when they reconnect.
+A tabbed Mainframe workspace provides shared-object inventory, synchronization
+status, conflict review and compact Agent capability previews.
 
-v0.25.0 adds a full-screen installer with service-first location choices,
-searchable timezones and individually selected dependencies. Mainframe agent
-selection is independent in every tab and device. Supervised background work,
-friendly Bulk SSH run names, themed host results and consistent collapsed
-Recent runs make long operations easier to follow. Connection libraries use one
-host/folder search with contextual saved-choice lookup. The release also hardens
-job, export, storage and recovery boundaries and fixes wireless-client exports.
-Automation creation uses the full builder; existing workflows are preserved.
+[Remote Terminal streaming](docs/terminal-streaming.md) carries keystrokes and
+output directly, locally or through an outbound Agent relay. Hidden viewers detach
+and recover retained output on return without increasing ordinary Agent idle polling.
+Shared Save controls and compact MSO switches follow the application's themes.
 
 Use the built-in updater on Mainframe and Agents, then reload open browser pages.
 The verified bundle retains the v0.9.0 minimum direct-upgrade boundary; see the
 existing updater exceptions below for older service installations.
-[Release notes and compatibility](docs/release-0.25.0-checklist.md).
+[Release notes and compatibility](docs/release-0.26.0-checklist.md).
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,

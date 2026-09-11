@@ -284,9 +284,18 @@ accepted replay frames.
   patch releases for compatible fixes/documentation, minor releases for new
   tools or meaningful workflows, and reserve 1.0.0 for the first explicitly
   supported/stable configuration and migration contract.
+- Future betas require an explicitly chosen GA target, prerelease version and
+  matching annotated tag (for example `v0.27.0-beta.1`), published as a GitHub
+  prerelease. Never assume or consume the next ordinary patch version for a beta.
+  The updater currently rejects prerelease suffixes: implement and test parsing,
+  ordering, manifests, opt-in discovery, tag CI and beta-to-GA upgrades before
+  deploying the next beta. Missing support is not permission to use patch numbers.
+  A numeric exception requires an explicit release-owner decision. The MSO
+  v0.25.1–v0.25.6 pilots were accepted only because GA moved to v0.26.0; do not
+  repeat that exception by default. See [beta policy](beta-releases.md).
 - Before 1.0, call out configuration/schema incompatibilities in release notes;
   pre-1.0 does not excuse silent destructive changes.
-- Current milestone is 0.19.3: the v0.19.1 investigation and Remote Terminal
+- Historical 0.19.3 milestone: the v0.19.1 investigation and Remote Terminal
   milestone remains intact, while the v0.19.2 systemd lifecycle repair now
   combines with a serialized Remote Terminal schema migration so concurrent
   Gunicorn workers cannot race while adding `credential_mode`. Existing

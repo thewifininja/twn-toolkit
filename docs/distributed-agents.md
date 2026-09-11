@@ -287,8 +287,14 @@ supervisor code; existing supervisor processes retain their loaded code.
 
 ## Mainframe Synced Objects
 
-The v0.25.1 development build supports bidirectional fleet-wide sharing of saved
-Ping profiles. Each profile is local by default, with an MSO toggle to opt in.
-Authorized users can edit or disable MSO anywhere; conflicts use a shared review
-page instead of per-tool resolution controls. See the [Ping pilot guide](mainframe-synced-objects.md)
-for offline behavior, deletion, compatibility and recovery limits.
+v0.26.0 supports bidirectional fleet-wide sharing across 21 object kinds: saved
+network lists, appliance profiles, Bulk SSH libraries, and eligible Remote Terminal
+folders, hosts and credentials. Objects stay local by default; enable MSO to share.
+New and returning Agents catch up automatically. Authorized users can edit or
+disable MSO anywhere, with centralized conflict review.
+
+Use **Administration → Mainframe → MSO Objects** for inventory, synchronization
+requests and Agent status. Connected Agents and Settings have separate role-aware
+tabs. See the [MSO guide](mainframe-synced-objects.md) for supported libraries,
+visibility, offline changes, deletion, compatibility and recovery limits, and
+[terminal streaming](terminal-streaming.md) for the on-demand outbound relay.

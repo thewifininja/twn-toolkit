@@ -1,6 +1,6 @@
 # Remote Terminal streaming
 
-Development v0.25.6 uses an on-demand WebSocket for a visible, active terminal.
+v0.26.0 uses an on-demand WebSocket for a visible, active terminal.
 Keystrokes and output travel over that connection; the browser no longer repeatedly
 requests output. SSH, Telnet and serial transports wake their session reader when
 data is available. No speculative local echo is used, so password prompts and
@@ -11,6 +11,12 @@ existing certificate-authenticated Mainframe listener. Input and output then pas
 directly through the relay, outside the generic HTTP job queue. The Agent does not
 open a new inbound port. Both ends advertise/support `system.terminal.stream@1`;
 older builds and proxies without WebSocket support retain the HTTP path.
+
+The browser reaches Mainframe's web port (default **5050**). The Agent initiates
+its relay to Mainframe's existing enrollment port (default **5051**), and Mainframe
+bridges the two bidirectional connections. Neither machine needs direct access to
+the other machine's web port for this terminal path; the Agent needs outbound
+access to Mainframe's enrollment listener. Custom configured ports still apply.
 
 ## Idle and detached sessions
 

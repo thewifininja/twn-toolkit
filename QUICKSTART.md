@@ -5,6 +5,15 @@ test, saved device profiles, a working automation, local file services, and
 basic administration. The searchable **Help** page inside the toolkit contains
 the full field guide and release notes.
 
+## Fleet sharing in v0.26.0
+
+After enrolling and approving an Agent, enable **MSO** on a supported saved object
+to share it across the fleet. New and returning Agents automatically catch up;
+local-only objects stay local. Use **Administration → Mainframe → MSO Objects**
+for inventory, synchronization status and conflict review. Upgrade Mainframe and
+Agents together and reload open browser pages. See [MSO scope and behavior](docs/mainframe-synced-objects.md)
+and [terminal streaming](docs/terminal-streaming.md).
+
 ## Requirements
 
 - Python 3.10 or newer
