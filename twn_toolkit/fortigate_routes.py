@@ -525,6 +525,14 @@ def register_fortigate_routes(
             return rename_preview_response(task, profile, entries, endpoint)
         return queue_rename(app, task, profile, entries, endpoint)
 
+    @app.post("/tasks/<task_id>/fabric")
+    def task_fabric(task_id: str):
+        task = get_task(task_id)
+        if not isinstance(task, ExportTask):
+            return jsonify(error='Fabric discovery is available for export tasks.'), 400
+        return queue_read(app, profile_store.get(request.form.get('profile', '')),
+                          provider='fortigate', mode='fabric_discovery', task=task, as_json=True)
+
     @app.post("/tasks/<task_id>/fields")
     def task_fields(task_id: str):
         task = get_task(task_id)

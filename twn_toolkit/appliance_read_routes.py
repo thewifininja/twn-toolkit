@@ -29,6 +29,32 @@ def queue_read(app, profile, *, provider, mode, task=None, as_json=False):
         task_id=task.id if task else '', fields=request.form.get('fields', '').strip(),
         endpoint_template=request.form.get('endpoint_template', '').strip(),
         csv_format=normalize_csv_download_format(request.form.get('csv_format')))
+    if provider == 'fortigate' and mode in {'fields', 'preview', 'export'} and request.form.get('fabric_discovery'):
+        store = diagnostic_store()
+        discovery = store.get(request.form['fabric_discovery'], user['id'])
+        serials = request.form.getlist('fabric_serial')
+        valid = (discovery and discovery['tool'] == TOOL and discovery['state'] == 'succeeded' and
+                 discovery['config'].get('mode') == 'fabric_discovery' and
+                 discovery['config'].get('task_id') == task.id and
+                 discovery['config'].get('profile') == profile and
+                 time.time() - discovery['completed'] <= 900)
+        targets = discovery['summary'].get('targets', []) if valid else []
+        chosen = [t for t in targets if t['serial'] in serials]
+        if not valid or not chosen or len(set(serials)) != len(serials) or len(chosen) != len(serials):
+            message = 'Discover the Fabric again and select at least one gate for this profile.'
+            if as_json:
+                return jsonify(error=message), 400
+            abort(400, message)
+        if config['endpoint_template'] and config['endpoint_template'] not in task.endpoint_options():
+            message = 'Fabric reads support the built-in endpoints only. Reset the endpoint or use the connected gate.'
+            if as_json:
+                return jsonify(error=message), 400
+            abort(400, message)
+        config['fabric_targets'] = chosen
+    elif request.form.getlist('fabric_serial') and mode != 'fabric_discovery':
+        abort(400, 'Discover the Fabric before selecting gates.')
+    if mode == 'fabric_discovery':
+        config['label'] += ' · Fabric discovery'
     suppress_audit_event()
     try:
         identifier = diagnostic_store().enqueue(user_id=user['id'], tool=TOOL, config=config)
@@ -67,6 +93,7 @@ def register_read_routes(app, provider, *, task_routes=False):
             diagnostic_result_endpoint=prefix + '_job', diagnostic_result_url=url_for(prefix + '_job', job_id=job_id, **args), diagnostic_recent=[],
             diagnostic_scheduler=read_automation_heartbeat(store.instance/'automation-heartbeat.json'),
             download_url=url_for(prefix + '_download', job_id=job_id, **args),
+            diagnostic_completion_label='Partial' if job['summary'].get('partial') else None,
             back_url=url_for('task_form', task_id=task_id) if task_id else url_for(provider + '_home'))
 
     def status(job_id, task_id=None):
@@ -118,7 +145,7 @@ def recent_read_links(provider, task_id=''):
         prefix = 'appliance_task' if task_id else provider + '_connection'
         args = {'task_id': task_id} if task_id else {}
         links.append({'url': url_for(prefix + '_job', job_id=job['id'], **args),
-                      'id': job['id'], 'state': job['state'], 'mode': config['mode'],
+                      'id': job['id'], 'state': 'partial' if job['state']=='succeeded' and store.get(job['id'], g.current_user['id'])['summary'].get('partial') else job['state'], 'mode': config['mode'],
                       'profile_name': config['profile']['name'], 'created': job['created'],
                       'created_display': localized_time_values(job['created'], timezone)['display']})
     return links

@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='task-fabric.css') }}">
 <header class="run-page-heading"><h1>{{ diagnostic_label }}</h1></header>
 {% if diagnostic_recent or appliance_recent %}{% include 'components/recent_runs.html' %}{% endif %}
 {% include 'components/diagnostic_job.html' %}
@@ -12,7 +13,9 @@
   {% set data = diagnostic_job.summary %}
   {% for warning in data.response_warnings|default([]) %}<p class="message warning" role="status">{{ warning }}</p>{% endfor %}
   {% if data.recording_warning %}<p class="message error" role="alert">{{ data.recording_warning }}</p>{% endif %}
-  {% if data.rows is defined %}<p>{{ data.preview_count }} of {{ data.row_count }} rows shown. {% if data.fields_clipped %}Long values shortened for preview.{% endif %} CSV exports retain full values.</p>
+  {% if data.groups %}{% include 'components/fabric_results.html' %}{% endif %}
+  {% if data.targets %}<p class="field-note">{{ data.targets|length }} FortiGates discovered.</p>{% for target in data.targets %}<p>{{ target.hostname }} · {{ target.model }} · {{ target.serial }}</p>{% endfor %}{% endif %}
+  {% if data.rows is defined and not data.groups %}<p>{{ data.preview_count }} of {{ data.row_count }} rows shown. {% if data.fields_clipped %}Long values shortened for preview.{% endif %} CSV exports retain full values.</p>
   <div class="preview-table-wrap"><table><thead><tr>{% for column in data.columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead>
   <tbody>{% for row in data.rows %}<tr>{% for column in data.columns %}<td>{{ row[column] }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
   {% elif data.fields is defined %}<div class="preview-table-wrap"><table><thead><tr><th scope="col">Field</th><th scope="col">Sample (up to 512 characters)</th></tr></thead><tbody>{% for field in data.fields %}<tr><td>{{ field.name }}</td><td>{{ field.sample }}</td></tr>{% endfor %}</tbody></table></div>

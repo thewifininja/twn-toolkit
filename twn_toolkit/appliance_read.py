@@ -30,7 +30,46 @@ def execute_read(store, job, config):
         profile = config['profile']
         client = (FortiGateClient if provider == 'fortigate' else FortiAuthenticatorClient).from_profile(profile)
         data = {}
-        if mode == 'dhcp':
+        def check_fabric():
+            current = store.owned(job['id'], job['token'])
+            if not current or current['state'] == 'cancel_requested':
+                raise ApplianceReadLimitError('Appliance read cancelled.')
+        if mode == 'fabric_discovery':
+            from dataclasses import asdict
+            from .fortigate_fabric import discover
+            if provider != 'fortigate' or not isinstance(get_task(config['task_id']), ExportTask):
+                raise ApplianceReadLimitError('Invalid Fabric discovery task.')
+            check_fabric()
+            data = dict(targets=[asdict(t) for t in discover(client, True)], discovery_id=job['id'],
+                        api_calls=2, message='Fabric discovery complete. Return to the task to select gates.')
+        elif config.get('fabric_targets'):
+            from .fortigate_fabric_exports import read_exports, write_export, public_summary
+            task = get_task(config['task_id'])
+            if provider != 'fortigate' or not isinstance(task, ExportTask) or mode not in {'fields','preview','export'}:
+                raise ApplianceReadLimitError('Invalid Fabric read task.')
+            endpoint = config['endpoint_template'] or task.endpoint_template
+            if endpoint not in task.endpoint_options() or not 1 <= len(config['fabric_targets']) <= 32:
+                raise ApplianceReadLimitError('Invalid Fabric endpoint or target count.')
+            client = client.for_display_export()
+            data = read_exports(client, task, config['fabric_targets'], endpoint=endpoint,
+                vdom=profile.get('default_vdom', 'root'), fields=config['fields'], mode=mode, check=check_fabric)
+            if mode == 'export' and data['successful_gates']:
+                root = PrivateArtifactStore(store.instance, TOOL, config['artifact_bytes'])
+                artifact_directory(store, job['id'], TOOL).mkdir(mode=0o700)
+                for name in ('raw.csv', 'download.csv'):
+                    outputs.append(root.begin_upload(job['id'], name))
+                class FabricCsvOutput:
+                    def write(self, text):
+                        check_fabric()
+                        outputs[0].write(text.encode('utf-8'))
+                        outputs[1].write(csv_for_download(text, config['csv_format']).encode('utf-8'))
+                        return len(text)
+                write_export(data, FabricCsvOutput())
+                for output in outputs:
+                    output.commit()
+                data.update(archive=True, byte_count=outputs[0].total)
+            data = public_summary(data)
+        elif mode == 'dhcp':
             from .fortigate_dhcp import collect_inventory
             def check():
                 current = store.owned(job['id'], job['token'])
@@ -152,14 +191,15 @@ def record_read_outcome(store, job, state, *, config=None, summary=None):
             operation_id='appliance-read:' + job['id'], tool_id=config['tool_id'],
             event_type='external.export.completed' if mode == 'export' and state == 'succeeded' else 'diagnostic.' + state,
             action=config['label'], outcome='incomplete' if state == 'unknown' or (summary or {}).get('partial') else state,
-            summary=config['label'] + ': ' + state + '.', targets={'profile': config['profile']['name']},
+            summary=config['label'] + ': ' + state + '.', targets={'profile': config['profile']['name'], **({'gates': [t['serial'] for t in config['fabric_targets']]} if config.get('fabric_targets') else {})},
             parameters={'mode': mode, 'download_format': config.get('csv_format', ''),
                         **({'scope': 'fabric' if config.get('fabric') else 'single', 'vdom': config.get('vdom')} if mode == 'dhcp' else {})},
             metrics={'export_size_bytes': (summary or {}).get('byte_count', 0),
                      **({'record_count': len((summary or {}).get('scopes', [])), 'api_calls': (summary or {}).get('api_calls', 0)} if mode == 'dhcp' else {})},
-            details={'devices': (summary or {}).get('devices', [])} if mode == 'dhcp' else {},
+            details={'devices': (summary or {}).get('devices', [])} if mode == 'dhcp' else
+                    {'gates': [{k:v for k,v in group.items() if k != 'rows'} for group in (summary or {}).get('groups', [])]},
             started_at=job.get('started') or job['created'], completed_at=time.time())
-        if mode == 'export' and state == 'succeeded':
+        if mode == 'export' and state == 'succeeded' and (summary or {}).get('archive'):
             with (artifact_directory(store, job['id'], TOOL) / 'raw.csv').open('rb') as stream:
                 cases.add_generated_evidence_event(**args, filename=config['task_id'] + '-' + job['id'][:12] + '-raw.csv',
                     content_type='text/csv', stream=stream, max_bytes=config['artifact_bytes'])
