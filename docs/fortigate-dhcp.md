@@ -15,6 +15,10 @@ by starting another discovery; completed inventories do not poll appliances.
 
 ## Reading results
 
+All three views group results into collapsed FortiGate boxes, identified by hostname,
+with matching counts and collection status. Expand a gate to load its saved results;
+several gates can stay open for comparison. VDOMs remain identified within each gate.
+
 Pools shows every returned DHCP server, including disabled configurations, with
 all address ranges, associated interface, mask, gateway, DNS mode/addresses and
 lease duration. Expand a row for interface address/type/VLAN, domain, exclusions,
@@ -24,7 +28,10 @@ values are shown as configured and must not be confused with the server duration
 
 Reservations and Leases provide separate searchable views. Gate filtering and
 search apply to retained data, not additional appliance reads. Views paginate at
-50 entries. Device/VDOM collection status distinguishes an empty configuration
+50 entries per gate, with paging inside the expanded box. Search spans the entire
+snapshot and shows matching gates, including matches beyond the first page. Opening
+boxes reads saved data only; it does not contact the firewalls. Without JavaScript,
+the View gate link opens the same results as a normal page. Device/VDOM collection status distinguishes an empty configuration
 from missing data. CSV exports the available pools, including nested configuration
 as JSON cells; Full JSON also includes leases, capture time and collection errors.
 Exports contain network/client inventory and omit API tokens and credential fields.

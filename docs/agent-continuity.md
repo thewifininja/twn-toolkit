@@ -1084,3 +1084,10 @@ requests and returned root data even for an invalid serial. Proxy-path reads
 were verified on a root70F/downstream40F across VPN. Other firmware, HA/multi-hop,
 and write permissions require separate validation. No credentials or raw generic
 appliance configuration belong in retained DHCP results. See fortigate-dhcp.md.
+
+DHCP views group by immutable gate serial, displaying hostname/model, matching
+counts and aggregate collection status. All-gate views render collapsed summaries
+only; expanding fetches the existing owner-scoped result page for that device.
+Results paginate50 within the gate, search scans the complete retained snapshot,
+and multiple boxes may stay open. No polling or appliance requests are introduced.
+Preserve normal links for no-JavaScript navigation and failed-fetch recovery.
