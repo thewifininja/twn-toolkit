@@ -42,3 +42,5 @@
 .dhcp-gate-body {border-top:1px solid var(--line);padding:1rem;min-width:0}
 .dhcp-gate-contexts .field-note:first-child {margin-top:0}
 @media(max-width:650px) {.dhcp-gate>summary {flex-wrap:wrap;gap:.5rem}.dhcp-gate-name {flex-basis:75%}.dhcp-gate-body {padding:.65rem}}
+
+.dhcp-pagination:not(:empty) {margin-top:1rem}
