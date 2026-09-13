@@ -1105,4 +1105,17 @@ endpoints to built-in candidates, preserve partial per-gate status, and prepend
 unambiguous gate identity to CSV. All-failed runs have no downloadable archive.
 Bounds:32gates,10kcollectedrows,16MiBcollectedJSON plus existing worker/HTTP/artifact/
 UI limits. Preview100rows shared acrossgates. See fortigate-fabric-exports.md.
-DHCP stays investigation-only; rename/order/history require separate rollout.
+DHCP stays investigation-only. Rename/order/history now support one selected gate;
+see fortigate-fabric-actions.md. The job-only `_fabric_target` and
+`_fabric_operation` keys bind the full discovered target into existing signed
+previews. Never persist them into profile/MSO storage. Compare stored profiles
+using `base_profile` while retaining the target in preview signatures. Keep the
+existing root-origin mutation lock/revision conservative across downstream gates.
+`FabricScopedClient` restricts methods/endpoints, verifies identity before each PUT,
+and checks every response serial/VDOM. Workers retain durable intent and never
+replay unknown writes. Preserve wireless log pagination and cumulative budgets.
+Discovery routes must enforce the underlying task permission and job ownership.
+Before reverting workers, finish or cancel queued Fabric jobs: older workers may
+ignore targeting keys and execute against the connected gate. No migration or
+version change is required for this feature. Live write validation is outstanding;
+read-only root/downstream checks and simulated write tests are separate evidence.

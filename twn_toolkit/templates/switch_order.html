@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='task-fabric.css') }}">
 <header class="run-page-heading"><h1>Re-order Managed FortiSwitches</h1></header>
 {% if switch_order_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
 <section class="panel tool-panel switch-order-tool"
@@ -15,7 +16,7 @@
   </div>
 
   {% if profiles %}
-    <form id="switch-order-source" class="form">
+    <form id="switch-order-source" class="form" data-fabric-form>
       <div class="form-grid">
         <label>
           FortiGate profile
@@ -32,6 +33,7 @@
                  value="{{ (profiles | selectattr('is_default') | first or profiles[0]).default_vdom }}">
         </label>
       </div>
+{% set fabric_single = true %}{% set fabric_discovery_url = url_for('fabric_discovery', kind='switch-order') %}{% include 'components/fabric_selector.html' %}
       <div class="button-row">
         <button type="button" id="load-switch-order">Load current order</button>
         <a class="button-link secondary" href="{{ url_for('fortigate_home') }}">FortiGate</a>
@@ -71,4 +73,6 @@
 </section>
 
 <script src="{{ url_for('static', filename='switch-order.js') }}" defer></script>
+<script src="{{ url_for('static', filename='appliance-read.js') }}"></script>
+<script src="{{ url_for('static', filename='task-fabric.js') }}"></script>
 {% endblock %}

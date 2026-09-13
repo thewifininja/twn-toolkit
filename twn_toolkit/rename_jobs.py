@@ -12,6 +12,7 @@ from .file_transactions import file_transaction
 from .fortigate import FortiGateClient, FortiGateError
 from .preview_binding import PreviewSigner
 from .profiles import ProfileStore
+from .fortigate_scoped_client import base_profile
 from .rename_preview import _context, _SCOPE
 from .switch_order_jobs import operation_target, interruption_outcome
 from .tasks import RenameTask, get_task, _extract_rows, _flatten_dict, _first_value
@@ -43,7 +44,7 @@ def execute_rename(store, job, config):
             raise RenameStopped('The operation stopped before its next checkpoint.')
 
     def validate():
-        if ProfileStore(str(store.instance)).get(config['profile']['name']) != config['profile']:
+        if ProfileStore(str(store.instance)).get(config['profile']['name']) != base_profile(config['profile']):
             raise RenameStopped('The appliance profile changed. Build a fresh preview before applying.')
         if not signer.valid(config['preview_token'], _SCOPE,
                             _context(task, config['profile'], config['endpoint'], config['entries'], config.get('target_revision', ''))):
@@ -87,7 +88,7 @@ def execute_rename(store, job, config):
                             summary['phase'] = 'applying'
                             summary['in_flight'] = intent
                             summary['attempted_moves'] += 1
-                            summary['api_calls'] += 1
+                            summary['api_calls'] += 2 if config['profile'].get('_fabric_target') else 1
                             checkpoint()
                             if not store.advance_mutation_revision(target, job['id'], job['token'], config.get('target_revision', '')):
                                 raise RenameStopped('Worker ownership or reviewed origin changed before sending the rename.')
@@ -150,6 +151,8 @@ def record_rename_outcome(store, job, state, *, config=None):
                    'attempted object count': summary.get('attempted_moves', 0), 'failed object count': sum(row['status'] == 'error' for row in results),
                    'omitted successful object count': max(0, successes - 20),
                    'profile': audit_reference('FortiGate profile', config['profile']['name'], config['profile']['name'])}
+        if config['profile'].get('_fabric_target'):
+            details['FortiGate target'] = config['profile']['_fabric_target']['serial']
         ActivityStore(str(store.instance)).record_event('Fortinet', 'Ran FortiGate rename task', task.label + ': ' + state,
             counters={'fortinet': {'api_calls': summary.get('api_calls', 0), 'failures': int(state != 'succeeded')}}, count_action=True, **identity)
         if successes:
@@ -165,7 +168,7 @@ def record_rename_outcome(store, job, state, *, config=None):
                 operation_id='rename:' + job['id'], tool_id='fortigate.' + task.id.replace('-', '_'),
                 event_type='external.action.completed' if state == 'succeeded' else 'external.action.' + state,
                 action=task.label, outcome='incomplete' if state == 'unknown' else state,
-                summary=task.label + ': ' + state, targets={'profile': config['profile']['name']},
+                summary=task.label + ': ' + state, targets={'profile': config['profile']['name'], **({'gate': config['profile']['_fabric_target']['serial']} if config['profile'].get('_fabric_target') else {})},
                 parameters={'endpoint': config['endpoint']}, metrics=details,
                 details={'acknowledged renames': summary.get('completed_moves', []), 'in-flight rename': summary.get('in_flight')},
                 started_at=job.get('started') or job['created'], completed_at=time.time())

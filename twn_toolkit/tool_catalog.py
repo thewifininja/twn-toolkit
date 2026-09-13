@@ -70,6 +70,8 @@ class ToolRegistry:
     def tool_id_for_endpoint(
         self, endpoint: str, view_args: dict[str, Any] | None = None
     ) -> str | None:
+        if endpoint in {'fabric_discovery','fabric_discovery_job','fabric_discovery_status','fabric_discovery_cancel'}:
+            return {'switch-order':'fortigate.switch_order', 'wireless-history':'fortigate.wireless_client_history'}.get(str((view_args or {}).get('kind','')))
         if endpoint in {
             "task_form",
             "task_csv_template",

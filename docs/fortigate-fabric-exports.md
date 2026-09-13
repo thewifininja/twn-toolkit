@@ -47,5 +47,6 @@ The four default export endpoints were checked read-only on a FortiOS 7.6.6
 root 70F and downstream 40F across VPN. Other firmware versions, HA and multihop
 paths still need endpoint-specific validation.
 
-DHCP remains an investigation-only, read-only tool. AP/switch rename, switch
-ordering and wireless client history are not Fabric-aware in this rollout.
+DHCP remains an investigation-only, read-only tool. [AP/switch rename, switch
+ordering and wireless client history](fortigate-fabric-actions.md) support one
+explicit Fabric target per run.

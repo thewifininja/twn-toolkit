@@ -8,6 +8,7 @@ import time
 
 from flask import (
     Flask,
+    abort,
     Response,
     current_app,
     flash,
@@ -138,6 +139,9 @@ def register_fortigate_routes(
     from .appliance_read_routes import queue_read, register_read_routes, recent_read_links
     from .switch_order_routes import register_switch_order_jobs, queue_switch_order
     register_switch_order_jobs(app)
+    from .fortigate_fabric_routes import register_fabric_routes
+    from .fortigate_fabric_selection import selected_profile
+    register_fabric_routes(app, profile_store)
     from .rename_routes import register_rename_jobs, queue_rename, bounded_rename_entries, read_rename_csv, recent_rename_links
     from .rename_jobs import target_key
     register_rename_jobs(app)
@@ -151,12 +155,15 @@ def register_fortigate_routes(
             flash(str(exc), 'error')
             return redirect(url_for('task_form', task_id=task.id))
         valid_entries = [entry for entry in entries if entry['identifier'] and entry['new_name']]
+        if profile.get('_fabric_target') and endpoint != task.endpoint_template:
+            abort(400, 'Fabric renames require the built-in endpoint.')
         revision = diagnostic_store().mutation_revision(target_key(profile))
         suppress_audit_event()
         _record_fortinet_api_activity('Previewed FortiGate rename task',
             f"{profile['name']}: {task.label} ({len(entries)} rows)", api_calls=0, count_action=False)
         return render_template('results.html', entries=valid_entries, profile=profile, task=task,
             results=results, dry_run=True, endpoint_template=endpoint, target_origin=rename_target(profile),
+            fabric_discovery=request.form.get('fabric_discovery',''), fabric_serial=request.form.get('fabric_serial',''),
             target_revision=revision, preview_expiry_minutes=RENAME_PREVIEW_MAX_AGE_SECONDS // 60,
             preview_token=issue_rename_preview(task, profile, endpoint, valid_entries, target_revision=revision) if valid_entries else '')
     from .fortigate_dhcp_routes import register_dhcp_routes
@@ -199,7 +206,7 @@ def register_fortigate_routes(
             form = {key: request.form.get(key, default).strip() for key, default in form.items()}
             suppress_audit_event()
             try:
-                config = prepare_history_config(profile_store.get(form["profile"]), form)
+                config = prepare_history_config(selected_profile(profile_store.get(form["profile"]), "wireless-history"), form)
                 case = InvestigationStore(app.instance_path).active_for_user(user["id"])
                 config.update(username=user["username"], investigation_id=case["id"] if case and case.get("is_recording") else "")
                 job_id = store.enqueue(user_id=user["id"], tool=HISTORY_TOOL, config=config)
@@ -249,6 +256,7 @@ def register_fortigate_routes(
     def switch_order_objects():
         suppress_audit_event()
         profile = profile_store.get(request.form.get("profile", ""))
+        profile = selected_profile(profile, 'switch-order')
         if not profile:
             return jsonify({"error": "Select a valid FortiGate profile."}), 400
         vdom = request.form.get("vdom", "").strip() or profile.get("default_vdom", "root")
@@ -258,6 +266,7 @@ def register_fortigate_routes(
     def preview_switch_order():
         suppress_audit_event()
         profile = profile_store.get(request.form.get("profile", ""))
+        profile = selected_profile(profile, 'switch-order')
         vdom = request.form.get("vdom", "").strip() or (profile or {}).get("default_vdom", "root")
         original = request.form.getlist("original_switch_id")
         desired = request.form.getlist("switch_id")
@@ -275,6 +284,7 @@ def register_fortigate_routes(
     @app.post("/fortigate/switch-order/apply")
     def apply_switch_order():
         profile = profile_store.get(request.form.get("profile", ""))
+        profile = selected_profile(profile, 'switch-order')
         desired_ids = request.form.getlist("switch_id")
         if not profile:
             return jsonify({"error": "Select a valid FortiGate profile."}), 400
@@ -443,6 +453,7 @@ def register_fortigate_routes(
         except (ValueError, csv.Error) as exc:
             flash(str(exc), 'error')
             return redirect(url_for('task_form', task_id=task_id))
+        profile = selected_profile(profile, task_id)
         return rename_preview_response(task, profile, entries,
                                        endpoint_template or task.endpoint_template, start_row=2)
 
@@ -458,6 +469,7 @@ def register_fortigate_routes(
     def rename_objects(task_id: str):
         task = get_task(task_id)
         profile = profile_store.get(request.form.get("profile", ""))
+        profile = selected_profile(profile, task_id)
         endpoint_template = request.form.get("endpoint_template", "").strip()
         dry_run = request.form.get("dry_run") == "on"
 
@@ -528,8 +540,8 @@ def register_fortigate_routes(
     @app.post("/tasks/<task_id>/fabric")
     def task_fabric(task_id: str):
         task = get_task(task_id)
-        if not isinstance(task, ExportTask):
-            return jsonify(error='Fabric discovery is available for export tasks.'), 400
+        if not isinstance(task, (ExportTask, RenameTask)):
+            return jsonify(error='Fabric discovery is not available for this task.'), 400
         return queue_read(app, profile_store.get(request.form.get('profile', '')),
                           provider='fortigate', mode='fabric_discovery', task=task, as_json=True)
 

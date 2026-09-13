@@ -1,0 +1,9 @@
+    <details id="fabric-targets" data-single="{{ 'true' if fabric_single else 'false' }}" class="advanced-options">
+      <summary>Target: <span data-target-summary>Connected FortiGate</span></summary>
+      <div class="button-row"><button type="button" class="secondary" data-discover-url="{{ fabric_discovery_url }}">Discover Fabric</button></div>
+      <p class="field-note" role="status">Discover the Fabric to choose downstream gates. {{ 'Uses the tool’s VDOM settings.' if fabric_single else 'Uses the profile’s default VDOM.' }}</p>
+      <input type="hidden" name="fabric_discovery" value="">
+      <div class="button-row" data-selection-actions hidden><button type="button" class="secondary" data-select-all {% if fabric_single %}hidden{% endif %}>Select all</button><button type="button" class="secondary" data-select-root>Connected gate only</button></div>
+      <div class="fabric-target-list"></div>
+    </details>
+

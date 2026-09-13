@@ -37,7 +37,7 @@ def execute_read(store, job, config):
         if mode == 'fabric_discovery':
             from dataclasses import asdict
             from .fortigate_fabric import discover
-            if provider != 'fortigate' or not isinstance(get_task(config['task_id']), ExportTask):
+            if provider != 'fortigate' or not (isinstance(get_task(config['task_id']), (ExportTask,RenameTask)) or config.get('tool_id') in {'fortigate.switch_order','fortigate.wireless_client_history'}):
                 raise ApplianceReadLimitError('Invalid Fabric discovery task.')
             check_fabric()
             data = dict(targets=[asdict(t) for t in discover(client, True)], discovery_id=job['id'],
@@ -136,6 +136,9 @@ def execute_read(store, job, config):
                             raise ApplianceReadLimitError('Unknown appliance read operation.')
                 else:
                     raise ApplianceReadLimitError('Invalid appliance task.')
+        if profile.get('_fabric_target'):
+            from .rename_preview import rename_target
+            data['target_origin'] = rename_target(profile)
         if getattr(client, 'response_warnings', []):
             data['response_warnings'] = list(client.response_warnings)
         if len(json.dumps(data).encode()) > MAX_UI_BYTES:

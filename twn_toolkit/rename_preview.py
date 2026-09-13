@@ -32,6 +32,8 @@ def rename_target(profile):
         host = parsed.hostname or ""
         if ":" in host:
             host = f"[{host}]"
-        return f"{parsed.scheme}://{host}" + (f":{parsed.port}" if parsed.port else "")
+        origin = f"{parsed.scheme}://{host}" + (f":{parsed.port}" if parsed.port else "")
+        target = profile.get('_fabric_target')
+        return f"{target['hostname']} ({target['serial']}) via {origin}" if target else origin
     except (TypeError, ValueError):
         return "Configured profile target"
