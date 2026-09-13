@@ -39,7 +39,11 @@ paged or incomplete output is unavailable, never interpreted as healthy.
 LLDP summary data includes all reported device types, including APs and routers;
 it is not filtered to FortiSwitch neighbors. The main ports table shows the API
 inter-switch relationships. LLDP summary data is displayed as reported. It does not establish full chassis
-identities, so repeated device names are not classified as loops. A physical cycle
+identities, so repeated device names alone are not classified as loops. Reciprocal
+LLDP entries that name the inspected switch on two distinct physical ports produce
+a **possible same-switch cable loop** review, with the reported STP blocking state
+for those ports. This correlation replaces the generic normal-redundancy note for
+the pair; it does not label STP blocking as a Loop Guard event. A physical cycle
 alone does not prove a forwarding loop. Missing sources and uncertain observations
 remain visible; there is no overall green “no loops” verdict.
 
@@ -57,9 +61,12 @@ idle polling or automatic recovery actions are added.
 Read-only live validation on a FortiOS 7.6.6 root/downstream pair collected four
 switches and 76 ports. Optional SSH obtained Loop Guard, STP and LLDP summaries
 from the three root-managed FortiSwitch 7.6.6 devices. The downstream FortiSwitch
-3.6.12 remained API-only. The run completed in about 16 seconds. All observed Loop
-Guard ports were disabled, so positive triggered-state parsing currently relies
-on explicitly synthetic fixtures. Other firmware formats and actual triggered
+3.6.12 remained API-only. The run completed in about 16 seconds. Initial Loop Guard
+readings were disabled. A later operator-created cable loop produced reciprocal
+same-switch LLDP entries and a BACKUP/DISCARDING STP port; the correlation now
+identifies that pair as a review item. Loop Guard was enabled on that pair but
+reported no trigger, so positive Loop Guard triggered-state parsing still relies
+on explicitly synthetic fixtures. Other firmware formats and triggered Loop Guard
 incidents require further validation before treating this as a production locator.
 
 No migration, dependency or version change is required. Keep this prototype on its

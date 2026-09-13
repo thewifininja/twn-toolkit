@@ -196,3 +196,60 @@ def test_inspector_requires_its_own_tool_permission(tmp_path):
     assert client.post('/fortigate/loop-inspector').status_code==403
     assert client.post('/fortigate/loop-inspector/jobs/missing/cancel').status_code==403
     app.extensions['remote_session_manager'].close()
+
+SELF_LLDP='''Vdom: root
+Managed Switch : A 0
+port1 Up A 120 BR - port2
+port2 Up A 120 BR - port1
+'''
+SELF_STP='''Vdom: root
+A:
+Instance ID 0
+port1 1G 20000 128 DESIGNATED FORWARDING 2 EN
+port2 1G 20000 128 BACKUP DISCARDING 2 EN
+'''
+
+
+def test_reciprocal_self_lldp_with_backup_stp_is_actionable_review(monkeypatch):
+    from twn_toolkit import fortigate_loop_ssh as ssh
+    data=collect(SwitchClient())
+    gate=data['gates'][0];gate['switches']=gate['switches'][:1];gate['findings']=[]
+    monkeypatch.setattr(ssh,'open_ssh_client',lambda **kw:object())
+    monkeypatch.setattr(ssh,'close_ssh_client',lambda c:None)
+    def read(client,command,*args):
+        if command.startswith('get system'):return 'Serial-Number: '+ROOT
+        if 'loop-guard' in command:return 'Vdom: root\nport1 enabled - 45 0 0 -\nport2 enabled - 45 0 0 -\n'
+        return SELF_LLDP if 'lldp' in command else SELF_STP
+    monkeypatch.setattr(ssh,'read_command',read)
+    ssh.supplement(data,{},lambda:None)
+    assert data['review_count']==1 and data['protection_count']==0
+    assert len(gate['findings'])==1
+    finding=gate['findings'][0]
+    assert finding['ports']=='port1, port2' and finding['kind']=='Review'
+    assert 'same-switch cable loop' in finding['message']
+    assert 'port2 BACKUP/DISCARDING (instance 0)' in finding['message']
+    assert not data['partial']
+
+
+@pytest.mark.parametrize('lldp',[
+    SELF_LLDP.replace('port2 Up A','port2 Down A'),
+    SELF_LLDP.replace('port2 Up A 120 BR - port1','port2 Up B 120 BR - port1'),
+    SELF_LLDP.replace('port2 Up A 120 BR - port1','port2 Up A 120 BR - port3'),
+    SELF_LLDP.replace('120','0'),
+    SELF_LLDP+'port1 Up A 120 BR - port2\n',
+    SELF_LLDP.replace(' Up A ',' Up Branch Switch '),
+])
+def test_lldp_self_link_requires_live_unambiguous_reciprocal_self_neighbors(lldp):
+    from twn_toolkit.fortigate_loop_ssh import same_switch_links,parse_output
+    switch={'id':'A','ports':[{'name':'port1'},{'name':'port2'}],
+            'diagnostics':{'lldp':parse_output('lldp',lldp,'A')}}
+    assert same_switch_links(switch)==[]
+
+
+def test_lldp_names_with_spaces_are_preserved_and_missing_stp_not_inferred():
+    from twn_toolkit.fortigate_loop_ssh import same_switch_links,parse_output
+    rows=parse_output('lldp',LLDP,'A')
+    assert rows[0]['neighbor_name']=='Branch Switch' and rows[0]['neighbor_port']=='port5'
+    switch={'id':'A','ports':[{'name':'port1'},{'name':'port2'}],
+            'diagnostics':{'lldp':parse_output('lldp',SELF_LLDP,'A')}}
+    assert 'STP blocking state for this pair is unavailable' in same_switch_links(switch)[0]['message']
