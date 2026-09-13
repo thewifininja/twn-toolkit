@@ -60,21 +60,32 @@ def register_dhcp_routes(app, profiles):
         q = request.args.get('q', '').strip()[:200]
         device = request.args.get('device', '')
         entries = []
+        gates = {}
         if data:
             entries = data['leases'] if view == 'leases' else data['scopes']
             if view == 'reservations':
                 entries = [{**r, 'device': s['device'], 'serial': s['serial'], 'vdom': s['vdom'],
                             'interface': s.get('interface', ''), 'server_id': s.get('id')}
                            for s in data['scopes'] for r in s['reserved-address']]
+            for context in data['devices']:
+                gate = gates.setdefault(context['serial'], dict(serial=context['serial'],
+                    hostname=context['hostname'], model=context['model'], contexts=[], count=0))
+                gate['contexts'].append(context)
             entries = [s for s in entries if (not device or s['serial']==device) and
                        (not q or q.casefold() in json.dumps(s, ensure_ascii=False).casefold())]
+            for entry in entries:
+                if entry['serial'] in gates:
+                    gates[entry['serial']]['count'] += 1
+            gates = {serial: gate for serial, gate in gates.items()
+                     if (not device or serial == device) and (not q or gate['count'])}
         total = len(entries)
         try:
             page = max(1, min(int(request.args.get('page', 1)), max(1, (total+49)//50)))
         except ValueError:
             page = 1
         response = make_response(render_template('fortigate_dhcp.html', page_title='DHCP inventory',
-            profiles=profiles.all(), selected_name=selected, data=data, entries=entries[(page-1)*50:page*50],
+            profiles=profiles.all(), selected_name=selected, data=data, gates=list(gates.values()),
+            entries=entries[(page-1)*50:page*50] if device else [],
             view=view, q=q, device=device, page=page, total=total, lease_duration=lease_duration,
             scope=request.values.get('scope', 'fabric' if config.get('fabric') else 'single'),
             vdom=request.values.get('vdom', config.get('vdom', '')),

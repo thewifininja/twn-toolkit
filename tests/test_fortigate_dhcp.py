@@ -182,3 +182,43 @@ def test_current_tool_permission_required_for_all_job_routes(tmp_path):
         assert client.get(url).status_code==403
     assert client.post('/fortigate/dhcp/jobs/fake/cancel').status_code==403
     assert client.post('/fortigate/dhcp').status_code==403
+
+
+def test_fleet_overview_loads_one_gate_at_a_time_and_pages_within_gate(browser):
+    from copy import deepcopy
+    from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
+    sample = collect_inventory(Client(), fabric=True)
+    snapshot = {**sample, 'devices': [], 'scopes': [], 'leases': []}
+    for index in range(20):
+        serial = f'FG{index:04d}'
+        snapshot['devices'].append({**sample['devices'][0], 'serial': serial,
+                                    'hostname': f'Site {index}', 'scope_count': 61})
+        for pool in range(61):
+            scope = deepcopy(sample['scopes'][0])
+            scope.update(serial=serial, device=f'Site {index}', id=pool,
+                         interface=f'network-{pool}')
+            snapshot['scopes'].append(scope)
+        snapshot['leases'].append({**sample['leases'][0], 'serial': serial, 'device': f'Site {index}'})
+    response = browser.post('/fortigate/dhcp', data={'profile': 'Lab', 'scope': 'fabric'})
+    store = DiagnosticJobStore(browser.application.instance_path)
+    job = store.claim()
+    assert store.finish(job['id'], job['token'], [], snapshot)
+    for view in ('pools', 'reservations', 'leases'):
+        url = response.location + '&view=' + view
+        overview = browser.get(url).get_data(as_text=True)
+        assert overview.count('class="dhcp-gate"') == 20
+        assert 'class="dhcp-pool"' not in overview
+        assert 'data-loaded="true"' not in overview
+        selected = browser.get(url + '&device=FG0007').get_data(as_text=True)
+        assert selected.count('class="dhcp-gate"') == 1
+        assert 'data-loaded="true"' in selected
+    first = browser.get(response.location + '&device=FG0007').get_data(as_text=True)
+    assert first.count('class="dhcp-pool"') == 50
+    second = browser.get(response.location + '&device=FG0007&page=2').get_data(as_text=True)
+    assert second.count('class="dhcp-pool"') == 11
+    assert 'network-60' in second and 'network-0</strong>' not in second
+    matches = browser.get(response.location + '&q=network-60').get_data(as_text=True)
+    assert matches.count('class="dhcp-gate"') == 20
+    assert '20 matching pools' in matches
+    assert '1 matching pools' in browser.get(response.location + '&q=network-60&device=FG0007').get_data(as_text=True)
+    assert 'No matching pools' in browser.get(response.location + '&device=unknown').get_data(as_text=True)
