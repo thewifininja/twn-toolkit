@@ -55,7 +55,8 @@ def execute_history(store, job, config):
     form = prepared["form"]
     client = FortiGateClient.from_profile(prepared["profile"])
     with client.pooled() as pooled:
-        result = wireless_client_history(LocalFortiGateWirelessHistorySource(pooled), form["mac"], form["vdom"], form["hours"])
+        source = LocalFortiGateWirelessHistorySource(pooled, label=('FortiGate: ' + config['profile']['_fabric_target']['hostname']) if config['profile'].get('_fabric_target') else 'Local FortiGate')
+        result = wireless_client_history(source, form["mac"], form["vdom"], form["hours"])
     if len(result.get("timeline", [])) > MAX_RESULT_ROWS:
         error = f"Wireless history exceeds {MAX_RESULT_ROWS:,} AP transitions. Choose a shorter time window. No partial timeline was retained."
         if store.abort(job["id"], job["token"], "failed", error):
@@ -120,7 +121,7 @@ def record_history_outcome(store, job, state, error, *, config=None, rows=None, 
             investigation_id=config["investigation_id"], **identity, operation_id="fortigate-wireless-history:" + job["id"],
             event_type="diagnostic.completed" if summary else "diagnostic." + state,
             tool_id=TOOL_ID, action="Wireless client history", outcome="incomplete" if state == "unknown" else state,
-            summary=description, targets={"client_mac": form["mac"]},
+            summary=description, targets={"client_mac": form["mac"], **({"gate":config["profile"]["_fabric_target"]["serial"]} if config["profile"].get("_fabric_target") else {})},
             parameters={"profile": form["profile"], "VDOM": form["vdom"], "hours": form["hours"]},
             metrics=metrics, details=details, started_at=job.get("started") or job["created"], completed_at=time.time())
         if summary is not None:

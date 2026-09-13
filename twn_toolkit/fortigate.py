@@ -78,6 +78,12 @@ class FortiGateClient:
 
     @classmethod
     def from_profile(cls, profile: dict[str, Any]) -> "FortiGateClient":
+        if profile.get('_fabric_target'):
+            from .fortigate_scoped_client import FabricScopedClient
+            return FabricScopedClient(
+                host=normalize_host(profile['host']), api_key=normalize_api_key(profile['api_key']),
+                verify_tls=profile.get('verify_tls', True), target=profile['_fabric_target'],
+                operation=profile['_fabric_operation'])
         return cls(
             host=normalize_host(profile["host"]),
             api_key=normalize_api_key(profile["api_key"]),

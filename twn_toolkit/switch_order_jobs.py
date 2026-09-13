@@ -12,6 +12,7 @@ from .file_transactions import file_transaction
 from .fortigate import FortiGateClient, FortiGateError
 from .preview_binding import PreviewSigner
 from .profiles import ProfileStore
+from .fortigate_scoped_client import base_profile
 from .rename_preview import rename_target
 from .switch_order import managed_switch_order, switch_order_moves, _switch_order_error_summary, _valid_switch_order
 
@@ -69,7 +70,7 @@ def execute_switch_order(store, job, config):
             raise SwitchOrderStopped('The operation was stopped before its next checkpoint.')
 
     def validate():
-        if ProfileStore(str(store.instance)).get(config['profile']['name']) != config['profile']:
+        if ProfileStore(str(store.instance)).get(config['profile']['name']) != base_profile(config['profile']):
             raise ValueError('The appliance profile changed after submission. Load and review the current target again.')
         if config['mode'] == 'apply' and not signer.valid(config['preview_token'], 'switch-order-apply-v1', review_context(config)):
             raise ValueError('The reviewed order expired or changed before execution. Load and review it again.')
@@ -114,7 +115,7 @@ def execute_switch_order(store, job, config):
                         summary['phase'] = 'applying'
                         summary['in_flight'] = move
                         summary['attempted_moves'] += 1
-                        summary['api_calls'] += 1
+                        summary['api_calls'] += 2 if config['profile'].get('_fabric_target') else 1
                         checkpoint()
                         if not store.advance_mutation_revision(target, job['id'], job['token'], config.get('target_revision', '')):
                             raise SwitchOrderStopped('The operation lost ownership or its reviewed target changed before sending the move.')
@@ -184,6 +185,8 @@ def record_switch_outcome(store, job, state, *, config=None):
             observed = summary.get('switches', [])
             details['changes'] = audit_changes({'switch order': references(original)}, {'switch order': references(observed)})
             details['omitted switch references'] = max(0, max(len(original), len(observed)) - 20)
+        if config['profile'].get('_fabric_target'):
+            details['FortiGate target'] = config['profile']['_fabric_target']['serial']
         ActivityStore(str(store.instance)).record_event('Fortinet', title, config['profile']['name'] + ': ' + state,
             counters={'fortinet': {'api_calls': summary.get('api_calls', 0), 'failures': int(state != 'succeeded')}},
             count_action=apply, **identity)
@@ -198,7 +201,7 @@ def record_switch_outcome(store, job, state, *, config=None):
                 operation_id='switch-order:' + job['id'], tool_id='fortigate.switch_order',
                 event_type=('external.action.completed' if state == 'succeeded' else 'external.action.' + state) if apply else 'diagnostic.' + state,
                 action=title, outcome='incomplete' if state == 'unknown' else state,
-                summary=title + ': ' + state + '.', targets={'profile': config['profile']['name']},
+                summary=title + ': ' + state + '.', targets={'profile': config['profile']['name'], **({'gate': config['profile']['_fabric_target']['serial']} if config['profile'].get('_fabric_target') else {})},
                 parameters={'vdom': config['vdom'], 'mode': config['mode']}, metrics=details,
                 details={'completed moves': summary.get('completed_moves', []), 'in-flight move': summary.get('in_flight')},
                 started_at=job.get('started') or job['created'], completed_at=time.time())

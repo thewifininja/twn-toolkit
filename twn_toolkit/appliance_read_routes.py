@@ -20,6 +20,12 @@ def queue_read(app, profile, *, provider, mode, task=None, as_json=False):
             return jsonify(error='Select a valid appliance profile.'), 400
         flash('Profile not found.', 'error')
         return redirect(url_for(provider + '_home'))
+    if provider == 'fortigate' and mode == 'objects':
+        from .fortigate_fabric_selection import selected_profile
+        profile = selected_profile(profile, task.id)
+        endpoint = request.form.get('endpoint_template', '').strip() or task.endpoint_template
+        if profile.get('_fabric_target') and endpoint != task.endpoint_template:
+            return jsonify(error='Fabric rename reads require the built-in endpoint.'),400
     user = g.current_user
     case = InvestigationStore(app.instance_path).active_for_user(user['id'])
     config = dict(profile=profile, provider=provider, mode=mode, username=user['username'],
@@ -51,7 +57,7 @@ def queue_read(app, profile, *, provider, mode, task=None, as_json=False):
                 return jsonify(error=message), 400
             abort(400, message)
         config['fabric_targets'] = chosen
-    elif request.form.getlist('fabric_serial') and mode != 'fabric_discovery':
+    elif request.form.getlist('fabric_serial') and mode not in {'fabric_discovery','objects'}:
         abort(400, 'Discover the Fabric before selecting gates.')
     if mode == 'fabric_discovery':
         config['label'] += ' · Fabric discovery'

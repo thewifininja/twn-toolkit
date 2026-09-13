@@ -47,6 +47,7 @@
     {% if dry_run and entries and preview_token %}
       <form method="post" action="{{ url_for('rename_objects', task_id=task.id) }}" data-appliance-operation>
         <input name="profile" type="hidden" value="{{ profile.name }}">
+        {% if profile.get('_fabric_target') %}<input name="fabric_discovery" type="hidden" value="{{ fabric_discovery }}"><input name="fabric_serial" type="hidden" value="{{ fabric_serial }}">{% endif %}
         <input name="endpoint_template" type="hidden" value="{{ endpoint_template }}">
         <input name="preview_token" type="hidden" value="{{ preview_token }}">
         <input name="target_revision" type="hidden" value="{{ target_revision|default('') }}">

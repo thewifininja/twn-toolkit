@@ -36,6 +36,7 @@
     window.TwnSelectControls?.sync(vdom);
     invalidateTarget();
   });
+  source.addEventListener("fabric-target-changed", invalidateTarget);
   vdom.addEventListener("input", invalidateTarget);
   vdom.addEventListener("change", invalidateTarget);
 
@@ -54,7 +55,7 @@
   }
 
   function targetMatches() {
-    return loadedTarget && loadedTarget.profile === profile.value && loadedTarget.vdom === vdom.value;
+    return loadedTarget && loadedTarget.profile === profile.value && loadedTarget.vdom === vdom.value && ["fabric_discovery", "fabric_serial"].every(name => loadedTarget[name] === String(new FormData(source).get(name) || ""));
   }
 
   function orderBody() {
@@ -62,6 +63,7 @@
     body.set("profile", loadedTarget.profile);
     body.set("vdom", loadedTarget.vdom);
     body.set("target_revision", targetRevision);
+    ["fabric_discovery", "fabric_serial"].forEach(name => body.set(name, loadedTarget[name] || ""));
     originalIds.forEach((id) => body.append("original_switch_id", id));
     currentIds().forEach((id) => body.append("switch_id", id));
     return body;
@@ -72,6 +74,7 @@
     loading = true;
     const generation = ++revision;
     const requestedProfile = profile.value;
+    const requestedForm = new FormData(source);
     loadToken = previewToken = targetRevision = "";
     loadedTarget = null;
     loadButton.disabled = true;
@@ -82,13 +85,13 @@
     confirmation.checked = false;
     applyButton.disabled = true;
     try {
-      const data = await runOrder(root.dataset.loadUrl, new FormData(source), generation, false);
+      const data = await runOrder(root.dataset.loadUrl, requestedForm, generation, false);
       if (generation !== revision) return;
       if (!data.load_token) throw new Error("This response cannot authorize a reorder. Update the executing instance and reload.");
       loadToken = data.load_token;
       targetRevision = data.target_revision || "";
       if (displayNote) displayNote.hidden = false;
-      loadedTarget = {profile: requestedProfile, vdom: data.vdom};
+      loadedTarget = {profile: requestedProfile, vdom: data.vdom, fabric_discovery:String(requestedForm.get("fabric_discovery") || ""), fabric_serial:String(requestedForm.get("fabric_serial") || "")};
       if (targetLabel) targetLabel.textContent = `${requestedProfile} · ${data.target_origin} · VDOM ${data.vdom}`;
       vdom.value = data.vdom;
       window.TwnSelectControls?.sync(vdom);
@@ -191,6 +194,7 @@
     previewToken = "";
     applying = true;
     profile.disabled = vdom.disabled = loadButton.disabled = true;
+    source.querySelectorAll("#fabric-targets input, #fabric-targets button").forEach(input => { input.disabled = true; });
     updateApplyState();
     setStatus("Applying moves and verifying the resulting order…");
     status.dataset.operationState = "submitted";
@@ -220,6 +224,7 @@
       window.clearTimeout(waitingTimer);
       applying = false;
       profile.disabled = vdom.disabled = loadButton.disabled = false;
+      source.querySelectorAll("#fabric-targets input, #fabric-targets button").forEach(input => { input.disabled = false; });
       updateApplyState();
     }
   });

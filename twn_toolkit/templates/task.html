@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-{% if task.kind == 'export' %}<link rel="stylesheet" href="{{ url_for('static', filename='task-fabric.css') }}">{% endif %}
+<link rel="stylesheet" href="{{ url_for('static', filename='task-fabric.css') }}">
 <header class="run-page-heading"><h1>{{ task.label }}</h1></header>
 {% include 'components/recent_runs.html' %}
 <section class="panel tool-panel">
@@ -20,16 +20,9 @@
         {% endfor %}
       </select>
     </label>
-    {% if task.kind == 'export' %}
-    <details id="fabric-targets" class="advanced-options">
-      <summary>Target: <span data-target-summary>Connected FortiGate</span></summary>
-      <div class="button-row"><button type="button" class="secondary" data-discover-url="{{ url_for('task_fabric', task_id=task.id) }}">Discover Fabric</button></div>
-      <p class="field-note" role="status">Discover the Fabric to choose downstream gates. Uses the profile’s default VDOM.</p>
-      <input type="hidden" name="fabric_discovery" value="">
-      <div class="button-row" data-selection-actions hidden><button type="button" class="secondary" data-select-all>Select all</button><button type="button" class="secondary" data-select-root>Connected gate only</button></div>
-      <div class="fabric-target-list"></div>
-    </details>
-    {% endif %}
+    {% set fabric_single = task.kind != 'export' %}
+    {% set fabric_discovery_url = url_for('task_fabric', task_id=task.id) %}
+    {% include 'components/fabric_selector.html' %}
     <label>
       {% if task.kind == "export" %}CSV fields{% else %}CSV file{% endif %}
       {% if task.kind == "export" %}
@@ -161,8 +154,8 @@
 <script src="{{ url_for('static', filename='appliance-read.js') }}"></script>
 {% if task.kind == "export" %}
   <script src="{{ url_for('static', filename='task-fields.js') }}"></script>
-  <script src="{{ url_for('static', filename='task-fabric.js') }}"></script>
 {% else %}
   <script src="{{ url_for('static', filename='rename-editor.js') }}"></script>
 {% endif %}
+<script src="{{ url_for('static', filename='task-fabric.js') }}"></script>
 {% endblock %}

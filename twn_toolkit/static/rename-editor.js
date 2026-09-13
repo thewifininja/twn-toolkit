@@ -27,17 +27,19 @@
 
     try {
       const data = await window.TwnApplianceRead(loadButton.dataset.objectsUrl, formData, status);
-      if (["profile", "endpoint_template"].some(name => String(formData.get(name) || "") !== String(new FormData(sourceForm).get(name) || ""))) {
+      if (["profile", "endpoint_template", "fabric_discovery", "fabric_serial"].some(name => String(formData.get(name) || "") !== String(new FormData(sourceForm).get(name) || ""))) {
         throw new Error("The profile or endpoint changed. Load again for the current selection.");
       }
 
 
       profileInput.value = String(formData.get("profile") || "");
       endpointInput.value = String(formData.get("endpoint_template") || "");
+      editorForm.querySelectorAll('[name="fabric_discovery"], [name="fabric_serial"]').forEach(input => input.remove());
+      ['fabric_discovery', 'fabric_serial'].forEach(name => editorForm.append(hiddenInput(name, formData.get(name) || '')));
       renderObjects(data.objects || []);
       edited = false;
       window.TwnUnsavedForms?.acknowledge(editorForm, window.TwnUnsavedForms.capture(editorForm));
-      status.textContent = `${data.row_count} device(s) loaded.`;
+      status.textContent = `${data.row_count} device(s) loaded.${data.target_origin ? " Target: " + data.target_origin : ""}`;
     } catch (error) {
       status.textContent = error.message;
     } finally {
