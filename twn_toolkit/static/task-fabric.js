@@ -40,6 +40,7 @@
         input.value = target.serial; input.checked = !target.path; input.dataset.root = String(!target.path);
         const text = document.createElement('span'); text.textContent = target.hostname;
         const detail = document.createElement('small'); detail.textContent = `${target.model || 'FortiGate'} · ${target.vdoms.join(', ')}${target.path ? '' : ' · Connected gate'}`;
+        if (data.targets.filter(other => other.hostname === target.hostname).length > 1) detail.textContent += ' · ' + target.serial;
         text.append(detail); label.append(input, text); list.append(label);
       });
       saved.value = data.discovery_id; actions.hidden = false;
