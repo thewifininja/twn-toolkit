@@ -21,6 +21,9 @@ def register_tools(registry: Any) -> None:
 
     registry.add_tools(
         [
+            ToolLink("fortigate.loop_inspector", "Switch loop inspector",
+                "Experimental read-only switch topology and redundancy inspection.",
+                "fortigate_loop", "fortigate", "Network Tasks", show_on_home=False, nav_icon="SW"),
             ToolLink("fortigate.dhcp", "DHCP inventory",
                 "Discover DHCP pools, interfaces, reservations and leases on one FortiGate or its Fabric.",
                 "fortigate_dhcp", "fortigate", "Network Tasks", show_on_home=False, nav_icon="IP"),
@@ -145,3 +148,6 @@ def register_tools(registry: Any) -> None:
     )
 
     registry.map_endpoints({"fortigate_connection_"+suffix:"fortigate.home" for suffix in ("job","status","cancel","download")})
+
+    registry.map_endpoints({"fortigate_loop": "fortigate.loop_inspector"})
+    registry.map_endpoints({"fortigate_loop_" + suffix: "fortigate.loop_inspector" for suffix in ("status", "cancel", "download")})

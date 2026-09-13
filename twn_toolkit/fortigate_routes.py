@@ -168,6 +168,8 @@ def register_fortigate_routes(
             preview_token=issue_rename_preview(task, profile, endpoint, valid_entries, target_revision=revision) if valid_entries else '')
     from .fortigate_dhcp_routes import register_dhcp_routes
     register_dhcp_routes(app, profile_store)
+    from .fortigate_loop_routes import register_loop_routes
+    register_loop_routes(app, profile_store)
     register_read_routes(app, 'fortigate')
     register_read_routes(app, 'fortigate', task_routes=True)
 

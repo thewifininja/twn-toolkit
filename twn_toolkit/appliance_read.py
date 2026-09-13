@@ -69,6 +69,12 @@ def execute_read(store, job, config):
                     output.commit()
                 data.update(archive=True, byte_count=outputs[0].total)
             data = public_summary(data)
+        elif mode == 'loop_inspector':
+            from .fortigate_loop import collect
+            data = collect(client, fabric=config['fabric'], vdom=config['vdom'], check=check_fabric)
+            if config.get('ssh'):
+                from .fortigate_loop_ssh import supplement
+                supplement(data, config['ssh'], check_fabric)
         elif mode == 'dhcp':
             from .fortigate_dhcp import collect_inventory
             def check():
@@ -181,7 +187,7 @@ def record_read_outcome(store, job, state, *, config=None, summary=None):
         detail = (summary or {}).get('activity_detail', config['profile']['name'] + ': ' + state)
         ActivityStore(str(store.instance)).record_event('Fortinet', title, detail,
             counters={'fortinet': {'api_calls': (summary or {}).get('api_calls', int(bool(job.get('started')))), 'failures': int(state != 'succeeded' or (summary or {}).get('partial', False))}},
-            count_action=mode in {'connection', 'export', 'dhcp'}, **identity)
+            count_action=mode in {'connection', 'export', 'dhcp', 'loop_inspector'}, **identity)
         action = provider + ('.profile_test_' if mode == 'connection' else '.export_' if mode == 'export' else '.read_') + state
         AuditStore(str(store.instance)).record(**identity, method='WORKER', endpoint='appliance_read_job',
             path='/appliance-read/' + job['id'], status_code=200, category=label, action=action,
@@ -199,7 +205,8 @@ def record_read_outcome(store, job, state, *, config=None, summary=None):
                         **({'scope': 'fabric' if config.get('fabric') else 'single', 'vdom': config.get('vdom')} if mode == 'dhcp' else {})},
             metrics={'export_size_bytes': (summary or {}).get('byte_count', 0),
                      **({'record_count': len((summary or {}).get('scopes', [])), 'api_calls': (summary or {}).get('api_calls', 0)} if mode == 'dhcp' else {})},
-            details={'devices': (summary or {}).get('devices', [])} if mode == 'dhcp' else
+            details={'coverage': (summary or {}).get('coverage'), 'switch_count': (summary or {}).get('switch_count'), 'review_count': (summary or {}).get('review_count')} if mode == 'loop_inspector' else
+                    {'devices': (summary or {}).get('devices', [])} if mode == 'dhcp' else
                     {'gates': [{k:v for k,v in group.items() if k != 'rows'} for group in (summary or {}).get('groups', [])]},
             started_at=job.get('started') or job['created'], completed_at=time.time())
         if mode == 'export' and state == 'succeeded' and (summary or {}).get('archive'):
