@@ -1,7 +1,7 @@
 # Experimental switch loop inspector
 
 This branch is a prototype for review, not a claim that an entire network is
-loop-free. Find **Switch loop inspector** on the FortiGate workflows page.
+loop-free. Find **Switch loop inspector** under **FortiGate → FortiSwitch Tasks**.
 
 Choose a FortiGate profile, one VDOM, and either that gate or its Fabric. The scan
 runs in the existing background worker and retains its results. Expand a gate,
@@ -36,7 +36,9 @@ paths are shown as potentially normal redundancy. Explicit recognized protection
 flags or Loop Guard blocking statuses are shown separately. Unrecognized, rejected,
 paged or incomplete output is unavailable, never interpreted as healthy.
 
-LLDP summary data is displayed as reported. It does not establish full chassis
+LLDP summary data includes all reported device types, including APs and routers;
+it is not filtered to FortiSwitch neighbors. The main ports table shows the API
+inter-switch relationships. LLDP summary data is displayed as reported. It does not establish full chassis
 identities, so repeated device names are not classified as loops. A physical cycle
 alone does not prove a forwarding loop. Missing sources and uncertain observations
 remain visible; there is no overall green “no loops” verdict.

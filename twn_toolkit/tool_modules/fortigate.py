@@ -23,7 +23,7 @@ def register_tools(registry: Any) -> None:
         [
             ToolLink("fortigate.loop_inspector", "Switch loop inspector",
                 "Experimental read-only switch topology and redundancy inspection.",
-                "fortigate_loop", "fortigate", "Network Tasks", show_on_home=False, nav_icon="SW"),
+                "fortigate_loop", "fortigate", "FortiSwitch Tasks", show_on_home=False, nav_icon="SW"),
             ToolLink("fortigate.dhcp", "DHCP inventory",
                 "Discover DHCP pools, interfaces, reservations and leases on one FortiGate or its Fabric.",
                 "fortigate_dhcp", "fortigate", "Network Tasks", show_on_home=False, nav_icon="IP"),
