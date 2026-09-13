@@ -1,0 +1,6 @@
+{% for group in data.groups %}
+<details class="fabric-result"><summary><strong>{{ group.hostname }}</strong><span>{{ group.vdom }} · {{ 'Count unavailable' if group.error else (group.row_count|string) ~ ' rows' }}</span><span class="pill {{ 'warning' if group.error else 'success' }}">{{ 'Unavailable' if group.error else 'Read OK' }}</span></summary>
+<div class="fabric-result-body"><p class="field-note">{{ group.serial }}{% if group.endpoint_used %} · {{ group.endpoint_used }}{% endif %}</p>
+{% if group.error %}<p class="message warning">{{ group.error }}</p>{% elif group.rows %}<p class="field-note">{{ group.rows|length }} of {{ group.row_count }} rows shown. CSV retains all collected rows.</p><div class="preview-table-wrap"><table><thead><tr>{% for column in data.columns[3:] %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead><tbody>{% for row in group.rows %}<tr>{% for column in data.columns[3:] %}<td>{{ row[column] }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>{% endif %}
+</div></details>
+{% endfor %}

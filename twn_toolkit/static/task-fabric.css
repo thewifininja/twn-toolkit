@@ -1,0 +1,10 @@
+.fabric-target-list {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr));gap:.75rem;margin-top:1rem}
+.fabric-target-list small {display:block;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
+.fabric-result {border:1px solid var(--line);margin-top:.75rem;min-width:0}
+.fabric-result>summary {display:flex;flex-wrap:wrap;align-items:center;gap:.75rem;padding:1rem;cursor:pointer}
+.fabric-result>summary::before {content:'▸';color:var(--muted)}
+.fabric-result[open]>summary::before {content:'▾'}
+.fabric-result>summary strong {flex:1;overflow-wrap:anywhere}
+.fabric-result>summary::-webkit-details-marker {display:none}
+.fabric-result>summary:hover {background:var(--surface-subtle)}
+.fabric-result-body {padding:1rem;border-top:1px solid var(--line);overflow-wrap:anywhere}

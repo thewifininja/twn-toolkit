@@ -28,7 +28,7 @@
 
     try {
       const data = await window.TwnApplianceRead(builder.dataset.fieldsUrl, formData, status);
-      if (["profile", "endpoint_template", "fields"].some(name => String(formData.get(name) || "") !== String(new FormData(form).get(name) || ""))) {
+      if (["profile", "endpoint_template", "fields", "fabric_discovery"].some(name => String(formData.get(name) || "") !== String(new FormData(form).get(name) || "")) || JSON.stringify(formData.getAll("fabric_serial")) !== JSON.stringify(new FormData(form).getAll("fabric_serial"))) {
         throw new Error("Inputs changed while this read was running. Load again for the current selection.");
       }
       renderFields(data.fields || []);
@@ -36,7 +36,7 @@
       if (data.endpoint_used) {
         endpointInput.value = data.endpoint_used;
       }
-      status.textContent = `Loaded ${data.fields.length} fields from ${data.row_count} row(s). Select, reorder, then apply. ${(data.response_warnings || []).join(' ')}`;
+      status.textContent = `${data.partial ? "Some gates could not be read. " : ""}Loaded ${data.fields.length} fields from ${data.row_count} row(s). Select, reorder, then apply. ${(data.response_warnings || []).join(' ')}`;
     } catch (error) {
       status.textContent = error.message;
       fieldList.innerHTML = "";
@@ -61,14 +61,17 @@
 
     try {
       const data = await window.TwnApplianceRead(builder.dataset.previewUrl, formData, previewStatus);
-      if (["profile", "endpoint_template", "fields"].some(name => String(formData.get(name) || "") !== String(new FormData(form).get(name) || ""))) {
+      if (["profile", "endpoint_template", "fields", "fabric_discovery"].some(name => String(formData.get(name) || "") !== String(new FormData(form).get(name) || "")) || JSON.stringify(formData.getAll("fabric_serial")) !== JSON.stringify(new FormData(form).getAll("fabric_serial"))) {
         throw new Error("Inputs changed while this read was running. Load again for the current selection.");
       }
-      renderPreview(data.columns || [], data.rows || []);
+      if (data.groups) {
+        previewTable.parentElement.hidden = true;
+        window.TwnRenderFabricResults(document.getElementById('fabric-preview'), data);
+      } else { renderPreview(data.columns || [], data.rows || []); }
       if (data.endpoint_used) {
         endpointInput.value = data.endpoint_used;
       }
-      previewStatus.textContent = `${data.preview_count} of ${data.row_count} row(s) shown using ${data.endpoint_used}.${data.fields_clipped ? " Long values shortened for preview." : ""} CSV exports retain full values. ${(data.response_warnings || []).join(' ')}`;
+      previewStatus.textContent = data.groups ? `${data.preview_count} of ${data.row_count} rows across ${data.groups.length} selected gates. ${data.message}` : `${data.preview_count} of ${data.row_count} row(s) shown using ${data.endpoint_used}.${data.fields_clipped ? " Long values shortened for preview." : ""} CSV exports retain full values. ${(data.response_warnings || []).join(' ')}`;
     } catch (error) {
       previewStatus.textContent = error.message;
     } finally {
@@ -158,6 +161,9 @@
   }
 
   function clearPreview() {
+    const fabric = document.getElementById('fabric-preview');
+    if (fabric) fabric.replaceChildren();
+    previewTable.parentElement.hidden = false;
     previewTable.querySelector("thead").innerHTML = "";
     previewTable.querySelector("tbody").innerHTML = "";
   }

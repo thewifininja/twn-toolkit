@@ -289,6 +289,7 @@ AUDIT_SUPPRESSED_ENDPOINTS = frozenset(
         "switch_order_objects",
         "preview_switch_order",
         "task_fields",
+        "task_fabric",
         "task_objects",
         "task_preview",
         "tools.snmp_interface_sample",

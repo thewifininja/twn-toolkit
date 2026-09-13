@@ -128,6 +128,7 @@ class ToolRegistryTests(unittest.TestCase):
             "task_objects",
             "rename_objects",
             "task_fields",
+            "task_fabric",
             "task_preview",
             "appliance_task_job", "appliance_task_status", "appliance_task_cancel", "appliance_task_download",
             "rename_job", "rename_job_status", "rename_job_cancel",

@@ -110,6 +110,9 @@ counters are intentionally excluded.
 Explore [DHCP inventory](docs/fortigate-dhcp.md) for read-only pool, reservation,
 and lease discovery on a single FortiGate or its Security Fabric.
 
+[Fabric-aware FortiGate exports](docs/fortigate-fabric-exports.md) provide explicit
+gate selection, grouped previews and source-labelled CSV.
+
 See [FortiGate API connection and result policy](docs/fortigate-http.md) for
 connection reuse, response limits, and history-search budgets.
 

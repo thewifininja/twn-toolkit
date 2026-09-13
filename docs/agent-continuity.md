@@ -1091,3 +1091,18 @@ only; expanding fetches the existing owner-scoped result page for that device.
 Results paginate50 within the gate, search scans the complete retained snapshot,
 and multiple boxes may stay open. No polling or appliance requests are introduced.
 Preserve normal links for no-JavaScript navigation and failed-fetch recovery.
+
+## FortiGate Fabric exports
+
+The four ExportTask tools share `fortigate_fabric.py` with DHCP for discovery and
+strict response serial/VDOM checks. DHCP re-exports existing names for callers.
+`task_fabric` is a task-permission-scoped, worker-audited queued discovery endpoint.
+New selections reference an owner/task/profile-bound successful discovery job no
+older than15minutes; only saved serial/path records are accepted. Never accept a
+posted proxy path or silently rediscover/broaden a queued selection. Existing direct
+reads remain independent of Fabric permissions. Selected-target reads restrict
+endpoints to built-in candidates, preserve partial per-gate status, and prepend
+unambiguous gate identity to CSV. All-failed runs have no downloadable archive.
+Bounds:32gates,10kcollectedrows,16MiBcollectedJSON plus existing worker/HTTP/artifact/
+UI limits. Preview100rows shared acrossgates. See fortigate-fabric-exports.md.
+DHCP stays investigation-only; rename/order/history require separate rollout.
