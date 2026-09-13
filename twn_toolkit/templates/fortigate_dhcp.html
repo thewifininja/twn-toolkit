@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% from 'components/ui.html' import workspace_header, workspace_tabs, section_header, empty_state %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='fortigate-dhcp.css') }}">
+{{ workspace_header('DHCP inventory', 'Explore DHCP configuration across one FortiGate or its Security Fabric.', eyebrow='FortiGate · Read only') }}
+{% include 'components/recent_runs.html' %}
+{% if not data %}{% include 'components/diagnostic_job.html' %}{% endif %}
+{% if data %}<details class="panel dhcp-new-discovery"><summary>New discovery · {{ selected_name }}</summary>{% else %}<section class="panel">{% endif %}
+{% call section_header('Discover DHCP', 'Each run saves a snapshot. Refresh by running discovery again.', compact=true) %}<a class="button-link secondary" href="{{ url_for('fortigate_home') }}">FortiGate home</a>{% endcall %}
+<form method="post" action="{{ url_for('fortigate_dhcp') }}" class="form dhcp-discovery" data-loading-message="Queueing DHCP discovery…">
+<label>Connection profile<select name="profile" required><option value="">Choose a profile</option>{% for p in profiles %}<option value="{{ p.name }}" {% if p.name == selected_name or (not selected_name and (p.is_default or profiles|length == 1)) %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></label>
+<label>Scope<select name="scope"><option value="single" {% if scope == 'single' %}selected{% endif %}>This FortiGate</option><option value="fabric" {% if scope == 'fabric' %}selected{% endif %}>This FortiGate + Fabric</option></select></label>
+<label>VDOM<input name="vdom" value="{{ vdom }}" maxlength="80" placeholder="Profile default"><small class="field-note">Use * for all advertised Fabric VDOMs.</small></label>
+<div class="button-row"><button type="submit">Discover DHCP</button></div>
+</form>
+{% if data %}</details>{% else %}</section>{% endif %}
+{% if data %}
+<section class="panel">
+{% call section_header('Inventory snapshot', 'Captured ' ~ (data.captured|history_time), compact=true) %}
+<span class="pill {{ 'warning' if data.partial else 'success' }}">{{ 'Partial' if data.partial else 'Complete' }}</span>
+<a class="button-link secondary" href="{{ url_for('fortigate_dhcp_download', job_id=diagnostic_job.id, format='csv') }}">All pools CSV</a><a class="button-link secondary" href="{{ url_for('fortigate_dhcp_download', job_id=diagnostic_job.id, format='json') }}">Full JSON</a>
+{% endcall %}
+<p class="field-note">{{ data.scopes|length }} DHCP servers · {{ data.leases|length }} lease records · {{ data.devices|length }} device/VDOM contexts. These are retained observations, not a live feed. CSV contains available pool data; JSON also includes leases and collection errors.</p>
+{% if data.recording_warning %}<p class="message error">{{ data.recording_warning }}</p>{% endif %}
+<div class="dhcp-device-list">
+{% for d in data.devices %}<details><summary><strong>{{ d.hostname }}</strong><span>{{ d.model }} · {{ d.vdom }}</span><span class="pill {{ 'warning' if d.errors else 'success' }}">{{ 'Incomplete' if d.errors else 'Read OK' }}</span><span>{{ (d.scope_count|string) ~ ' servers' if d.get('configuration_read', true) else 'Server count unavailable' }}</span></summary><div class="dhcp-detail-body"><p>{{ 'Via Fabric root' if d.via_fabric else 'Direct connection' }} · <code>{{ d.serial }}</code></p>{% for e in d.errors %}<p class="message warning">{{ e }}</p>{% endfor %}</div></details>{% endfor %}
+</div>
+</section>
+{{ workspace_tabs('DHCP views', [dict(label='Pools',href=url_for('fortigate_dhcp',job=diagnostic_job.id,view='pools',device=device,q=q),active=view=='pools'),dict(label='Reservations',href=url_for('fortigate_dhcp',job=diagnostic_job.id,view='reservations',device=device,q=q),active=view=='reservations'),dict(label='Leases',href=url_for('fortigate_dhcp',job=diagnostic_job.id,view='leases',device=device,q=q),active=view=='leases')]) }}
+<section class="panel">
+<form method="get" class="form dhcp-filters" action="{{ url_for('fortigate_dhcp') }}">
+<input type="hidden" name="job" value="{{ diagnostic_job.id }}"><input type="hidden" name="view" value="{{ view }}">
+<label>FortiGate<select name="device"><option value="">All discovered gates</option>{% for d in data.devices|unique(attribute='serial') %}<option value="{{ d.serial }}" {% if device==d.serial %}selected{% endif %}>{{ d.hostname }} · {{ d.model }}</option>{% endfor %}</select></label>
+<label>Search {{ view }}<input type="search" name="q" value="{{ q }}" placeholder="Interface, subnet, IP, MAC, hostname…" maxlength="200"></label>
+<div class="button-row"><button type="submit" class="secondary">Filter</button><a class="button-link secondary" href="{{ url_for('fortigate_dhcp',job=diagnostic_job.id,view=view) }}">Clear</a></div>
+</form>
+<p class="field-note">{{ total }} matching {{ view }} · page {{ page }} of {{ [1, ((total + 49) // 50)]|max }}</p>
+{% if view == 'pools' %}
+<div class="dhcp-pools">
+<div class="dhcp-pool-head" aria-hidden="true"><span>Gate / interface</span><span>Address pools</span><span>Gateway</span><span>DNS</span><span>Lease</span><span>Status</span></div>
+{% for s in entries %}
+<details class="dhcp-pool">
+<summary>
+<div><strong>{{ s.interface or 'Interface not reported' }}</strong><small>{{ s.device }} · {{ s.vdom }} · #{{ s.id }}</small>{% if s.interface_details.alias %}<small>{{ s.interface_details.alias }}</small>{% endif %}</div>
+<div><span class="dhcp-mobile-label">Address pools</span>{% for r in s['ip-range'] %}<span class="dhcp-range">{{ r['start-ip'] }} – {{ r['end-ip'] }}</span>{% else %}<span>No address ranges reported</span>{% endfor %}<small>{% if s.subnets %}{{ s.subnets|join(', ') }}{% else %}Mask {{ s.netmask|default('not reported') }}{% endif %}</small></div>
+<div><span class="dhcp-mobile-label">Gateway</span>{{ s['default-gateway']|default('Not reported') }}</div>
+<div><span class="dhcp-mobile-label">DNS</span>{% if s['dns-service'] == 'specify' %}{% for k in ['dns-server1','dns-server2','dns-server3','dns-server4'] %}{% if s.get(k) and s[k] != '0.0.0.0' %}<span class="dhcp-range">{{ s[k] }}</span>{% endif %}{% endfor %}{% elif s['dns-service'] == 'local' %}Interface DNS<small>{{ (s.interface_details.ip|default('')).split(' ')[0] or 'Address unavailable' }}</small>{% elif s['dns-service'] == 'default' %}System DNS{% else %}{{ s['dns-service']|default('Not reported') }}{% endif %}{% if s.get('system_dns') %}<small>{{ s.system_dns|join(', ') }}</small>{% endif %}</div>
+<div><span class="dhcp-mobile-label">Lease</span>{{ lease_duration(s.get('lease-time')) }}</div>
+<div><span class="pill {{ 'success' if s.status == 'enable' else 'neutral' }}">{{ 'Enabled' if s.status == 'enable' else 'Disabled' if s.status == 'disable' else 'Not reported' }}</span><small>{{ s['reserved-address']|length }} reservations</small></div>
+</summary>
+<div class="dhcp-detail-body">
+<div class="dhcp-facts">
+<div><strong>Interface address</strong><span>{{ s.interface_details.ip|default('Not available') }}</span></div><div><strong>Interface type / VLAN</strong><span>{{ s.interface_details.type|default('Not available') }}{% if s.interface_details.vlanid %} · VLAN {{ s.interface_details.vlanid }}{% endif %}</span></div>
+<div><strong>Parent interface</strong><span>{{ s.interface_details.interface|default('—') }}</span></div><div><strong>DNS domain</strong><span>{{ s.get('domain', 'Not reported') or 'Not configured' }}</span></div>
+<div><strong>Lease seconds</strong><span>{{ s['lease-time']|default('Not reported') }}</span></div><div><strong>Configuration ownership</strong><span>{{ 'IPAM managed' if s.get('dhcp-settings-from-fortiipam') == 'enable' else 'Local DHCP configuration' }}</span></div>
+</div>
+{% for key,title in [('ip-range','Address range details'),('exclude-range','Excluded ranges'),('reserved-address','Reservations'),('options','DHCP options')] %}
+<details class="dhcp-subsection"><summary>{{ title }} <span class="count-badge">{{ s[key]|length }}</span></summary>{% if s[key] %}{% set columns = namespace(names=[]) %}{% for r in s[key] %}{% for k in r %}{% if k not in columns.names %}{% set columns.names = columns.names + [k] %}{% endif %}{% endfor %}{% endfor %}<div class="preview-table-wrap"><table><thead><tr>{% for k in columns.names %}<th scope="col">{{ k }}</th>{% endfor %}</tr></thead><tbody>{% for r in s[key] %}<tr>{% for k in columns.names %}<td>{{ r.get(k, '—') }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>{% else %}<p class="field-note">None configured.</p>{% endif %}</details>
+{% endfor %}
+<details class="dhcp-subsection"><summary>Additional configuration</summary><div class="preview-table-wrap"><table><tbody>{% for k,v in s.items() if k not in ['device','serial','vdom','interface_details','ip-range','exclude-range','reserved-address','options'] %}<tr><th scope="row">{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}</tbody></table></div><p class="field-note">Device {{ s.serial }}. Configuration fields are limited to DHCP inventory; credential fields are excluded.</p></details>
+</div>
+</details>
+{% else %}{{ empty_state('No matching pools', 'Check filters and collection status above. An incomplete read does not establish that no DHCP servers exist.') }}{% endfor %}
+</div>
+{% else %}
+<div class="preview-table-wrap"><table><thead><tr><th scope="col">Gate / VDOM</th><th scope="col">Interface / server</th><th scope="col">IP</th><th scope="col">MAC</th><th scope="col">{{ 'Description / match' if view == 'reservations' else 'Hostname' }}</th><th scope="col">{{ 'Action' if view == 'reservations' else 'Lease expires' }}</th></tr></thead><tbody>
+{% for r in entries %}<tr><td>{{ r.device }}<small class="dhcp-muted">{{ r.vdom }}</small></td><td>{{ r.interface }}<small class="dhcp-muted">#{{ r.get('server_id',r.get('server_mkey','—')) }}</small></td><td>{{ r.ip|default('—') }}</td><td>{{ r.mac|default('—') }}</td><td>{% if view == 'reservations' %}{{ r.description|default('') }}{% if r.type == 'option82' %}<small class="dhcp-muted">Option 82 · {{ r.get('circuit-id','') }} · {{ r.get('remote-id','') }}</small>{% endif %}{% else %}{{ r.hostname or '—' }}{% endif %}</td><td>{% if view == 'reservations' %}{{ r.action|default('Not reported') }}{% else %}{{ r.expire_time|history_time if r.expire_time else 'Not reported' }}{% if r.reserved %}<small class="dhcp-muted">Reserved</small>{% endif %}{% endif %}</td></tr>
+{% else %}<tr><td colspan="6">No matching {{ view }}. Check collection status above for unavailable data.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endif %}
+<div class="button-row">{% if page > 1 %}<a class="button-link secondary" href="{{ url_for('fortigate_dhcp',job=diagnostic_job.id,view=view,device=device,q=q,page=page-1) }}">Previous</a>{% endif %}{% if page * 50 < total %}<a class="button-link secondary" href="{{ url_for('fortigate_dhcp',job=diagnostic_job.id,view=view,device=device,q=q,page=page+1) }}">Next</a>{% endif %}</div>
+</section>
+{% elif not diagnostic_job %}
+{{ empty_state('Choose a FortiGate to discover its DHCP configuration', 'Fabric discovery includes downstream gates through the selected connection. No firewall settings are changed.') }}
+{% endif %}
+<script src="{{ url_for('static',filename='diagnostic-job.js') }}"></script>
+{% endblock %}

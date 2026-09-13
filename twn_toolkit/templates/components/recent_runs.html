@@ -27,7 +27,7 @@
   <summary><span class="recent-runs-title">Recent runs</span><span class="count-badge">{{ history.rows|length }}</span><svg class="recent-runs-chevron" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
   <ul class="recent-runs-list" aria-label="Recent runs">
   {% for item in history.rows|sort(attribute='created', reverse=true) %}
-    {% set tone = 'success' if item.state in ['succeeded', 'issued'] else 'error' if item.state in ['failed', 'timed_out', 'timeout'] else 'warning' if item.state in ['queued', 'running', 'cancel_requested', 'unknown', 'interrupted', 'pending', 'awaiting_dns', 'issuing', 'starting', 'validating'] else 'neutral' %}
+    {% set tone = 'success' if item.state in ['succeeded', 'issued'] else 'error' if item.state in ['failed', 'timed_out', 'timeout'] else 'warning' if item.state in ['partial', 'queued', 'running', 'cancel_requested', 'unknown', 'interrupted', 'pending', 'awaiting_dns', 'issuing', 'starting', 'validating'] else 'neutral' %}
     <li class="recent-run">
       <strong class="recent-run-name">{{ item.name }}</strong>
       <span class="pill {{ tone }} recent-run-state">{{ labels.get(item.state, item.state|replace('_', ' ')|title) }}</span>

@@ -30,7 +30,14 @@ def execute_read(store, job, config):
         profile = config['profile']
         client = (FortiGateClient if provider == 'fortigate' else FortiAuthenticatorClient).from_profile(profile)
         data = {}
-        if mode == 'connection':
+        if mode == 'dhcp':
+            from .fortigate_dhcp import collect_inventory
+            def check():
+                current = store.owned(job['id'], job['token'])
+                if not current or current['state'] == 'cancel_requested':
+                    raise ApplianceReadLimitError('Inventory cancelled.')
+            data = collect_inventory(client, fabric=config['fabric'], vdom=config['vdom'], check=check)
+        elif mode == 'connection':
             result = client.test_connection()
             if provider == 'fortigate':
                 detail = str(result.get('version') or result.get('build') or 'reachable')[:512]
@@ -127,12 +134,12 @@ def record_read_outcome(store, job, state, *, config=None, summary=None):
                 config = json.loads(store.cipher.open(config, job['id'] + ':diagnostic-config'))
         provider, mode = config['provider'], config['mode']
         label = 'FortiGate' if provider == 'fortigate' else 'FortiAuthenticator'
-        title = 'Tested ' + label + ' profile' if mode == 'connection' else 'Ran FortiGate ' + mode
+        title = 'Tested ' + label + ' profile' if mode == 'connection' else 'Discovered FortiGate DHCP' if mode == 'dhcp' else 'Ran FortiGate ' + mode
         identity = {'user_id': job['user_id'], 'username': config['username']}
         detail = (summary or {}).get('activity_detail', config['profile']['name'] + ': ' + state)
         ActivityStore(str(store.instance)).record_event('Fortinet', title, detail,
-            counters={'fortinet': {'api_calls': int(bool(job.get('started'))), 'failures': int(state != 'succeeded')}},
-            count_action=mode in {'connection', 'export'}, **identity)
+            counters={'fortinet': {'api_calls': (summary or {}).get('api_calls', int(bool(job.get('started')))), 'failures': int(state != 'succeeded' or (summary or {}).get('partial', False))}},
+            count_action=mode in {'connection', 'export', 'dhcp'}, **identity)
         action = provider + ('.profile_test_' if mode == 'connection' else '.export_' if mode == 'export' else '.read_') + state
         AuditStore(str(store.instance)).record(**identity, method='WORKER', endpoint='appliance_read_job',
             path='/appliance-read/' + job['id'], status_code=200, category=label, action=action,
@@ -144,10 +151,13 @@ def record_read_outcome(store, job, state, *, config=None, summary=None):
         args = dict(investigation_id=config['investigation_id'], **identity,
             operation_id='appliance-read:' + job['id'], tool_id=config['tool_id'],
             event_type='external.export.completed' if mode == 'export' and state == 'succeeded' else 'diagnostic.' + state,
-            action=config['label'], outcome='incomplete' if state == 'unknown' else state,
+            action=config['label'], outcome='incomplete' if state == 'unknown' or (summary or {}).get('partial') else state,
             summary=config['label'] + ': ' + state + '.', targets={'profile': config['profile']['name']},
-            parameters={'mode': mode, 'download_format': config.get('csv_format', '')},
-            metrics={'export_size_bytes': (summary or {}).get('byte_count', 0)}, details={},
+            parameters={'mode': mode, 'download_format': config.get('csv_format', ''),
+                        **({'scope': 'fabric' if config.get('fabric') else 'single', 'vdom': config.get('vdom')} if mode == 'dhcp' else {})},
+            metrics={'export_size_bytes': (summary or {}).get('byte_count', 0),
+                     **({'record_count': len((summary or {}).get('scopes', [])), 'api_calls': (summary or {}).get('api_calls', 0)} if mode == 'dhcp' else {})},
+            details={'devices': (summary or {}).get('devices', [])} if mode == 'dhcp' else {},
             started_at=job.get('started') or job['created'], completed_at=time.time())
         if mode == 'export' and state == 'succeeded':
             with (artifact_directory(store, job['id'], TOOL) / 'raw.csv').open('rb') as stream:

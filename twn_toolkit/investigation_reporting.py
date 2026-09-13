@@ -1215,6 +1215,7 @@ _PRESENTATION_BUILDERS: dict[str, PresentationBuilder] = {
     "tools.multi_ssh": _ssh_presentation,
     "tools.remote_terminal": _remote_terminal_presentation,
     "tools.multi_sftp": _transfer_presentation,
+    "fortigate.dhcp": _external_action_presentation,
     "fortigate.wireless_client_history": _wireless_history_presentation,
     "fortigate.rename_aps": _external_action_presentation,
     "fortigate.export_aps": _external_action_presentation,

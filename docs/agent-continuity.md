@@ -1066,3 +1066,21 @@ warnings. Every host starts collapsed, including failures. Progress polling upda
 the summary and counters without replacing host output, expanding rows, or clearing
 retry drafts; loading newer output remains an explicit refresh. Terminal runs must
 not show hosts as still in progress solely because an acknowledgment was lost.
+
+## FortiGate DHCP inventory
+
+DHCP inventory is read-only and reuses the appliance-read diagnostic worker,
+owner-scoped retained snapshots, existing retention/deadlines, audit and case
+recording. Pools is the primary view; reservations and IPv4 leases are separate
+searchable/paged views. Rows and recent runs start collapsed. Do not hide disabled
+servers, multiple ranges, missing lookups or partial device failures. DNS mode
+and actual system resolvers are distinct; gateway and interface IP are distinct.
+
+Security Fabric discovery uses system/csf. Hostnames are display labels; serials
+and VDOMs identify objects. Route downstream reads through the discovered
+`/csf/<fabric-path>/api/v2/...` path and verify the response serial/VDOM. Never
+fall back to the root. X-Target-Serial was ignored by the tested 7.6.6 API-token
+requests and returned root data even for an invalid serial. Proxy-path reads
+were verified on a root70F/downstream40F across VPN. Other firmware, HA/multi-hop,
+and write permissions require separate validation. No credentials or raw generic
+appliance configuration belong in retained DHCP results. See fortigate-dhcp.md.
