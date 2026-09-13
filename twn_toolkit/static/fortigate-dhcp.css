@@ -1,0 +1,30 @@
+.dhcp-discovery,.dhcp-filters {display:grid;grid-template-columns:2fr 1.5fr 1.5fr auto;gap:1rem;align-items:start}
+.dhcp-filters {grid-template-columns:1fr 2fr auto}
+.dhcp-discovery .button-row,.dhcp-filters .button-row {align-self:center}
+.dhcp-pool-head,.dhcp-pool>summary {display:grid;grid-template-columns:minmax(11rem,1.4fr) minmax(15rem,1.7fr) minmax(8rem,1fr) minmax(8rem,1fr) minmax(5rem,.6fr) minmax(7rem,.8fr);gap:1rem;padding:1rem;align-items:start}
+.dhcp-pools {overflow-x:auto}
+.dhcp-pool-head {font-size:.8rem;color:var(--muted);font-weight:600}
+.dhcp-pool {border-top:1px solid var(--line)}
+.dhcp-pool>summary {cursor:pointer;list-style:none;background:var(--panel)}
+.dhcp-pool>summary::-webkit-details-marker {display:none}
+.dhcp-pool>summary>div:first-child strong::before {content:'▸ ';color:var(--muted)}
+.dhcp-pool[open]>summary>div:first-child strong::before {content:'▾ '}
+.dhcp-pool>summary:hover,.dhcp-device-list summary:hover {background:var(--surface-subtle)}
+.dhcp-pool small,.dhcp-muted {display:block;color:var(--muted);margin-top:.3rem;font-size:.78rem}
+.dhcp-range {display:block;overflow-wrap:anywhere}
+.dhcp-detail-body {padding:1rem;overflow-wrap:anywhere}
+.dhcp-facts {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin-bottom:1rem}
+.dhcp-facts strong,.dhcp-facts span {display:block}
+.dhcp-facts strong {color:var(--muted);font-size:.8rem;margin-bottom:.3rem}
+.dhcp-subsection {padding:.65rem 0;border-top:1px solid var(--line)}
+.dhcp-subsection summary {cursor:pointer}
+.dhcp-device-list summary {display:flex;align-items:center;flex-wrap:wrap;gap:.75rem;padding:.6rem;cursor:pointer}
+.dhcp-device-list summary>span {font-size:.8rem;color:var(--muted)}
+.dhcp-mobile-label {display:none}
+@media(max-width:1100px) {.dhcp-pool-head,.dhcp-pool>summary {grid-template-columns:minmax(10rem,1fr) minmax(14rem,1.5fr) minmax(8rem,1fr) minmax(8rem,1fr) 6rem 7rem}.dhcp-discovery {grid-template-columns:1fr 1fr}}
+@media(max-width:650px) {.dhcp-pool-head {display:none}.dhcp-pool>summary {grid-template-columns:1fr 1fr;gap:1rem}.dhcp-pool>summary>div:first-child {grid-column:1/-1}.dhcp-mobile-label {display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem}.dhcp-discovery,.dhcp-filters,.dhcp-facts {grid-template-columns:1fr}.dhcp-pools {overflow:visible}}
+
+.dhcp-new-discovery>summary {cursor:pointer;font-weight:600;padding:.25rem 0}
+.dhcp-new-discovery[open]>summary {margin-bottom:1rem}
+
+.dhcp-pool>summary>div {min-width:0;overflow-wrap:anywhere}

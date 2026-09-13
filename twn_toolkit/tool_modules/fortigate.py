@@ -21,6 +21,9 @@ def register_tools(registry: Any) -> None:
 
     registry.add_tools(
         [
+            ToolLink("fortigate.dhcp", "DHCP inventory",
+                "Discover DHCP pools, interfaces, reservations and leases on one FortiGate or its Fabric.",
+                "fortigate_dhcp", "fortigate", "Network Tasks", show_on_home=False, nav_icon="IP"),
             ToolLink(
                 "fortigate.home",
                 "FortiGate",
@@ -120,6 +123,8 @@ def register_tools(registry: Any) -> None:
             ),
         ]
     )
+    registry.map_endpoints({"fortigate_dhcp": "fortigate.dhcp"})
+    registry.map_endpoints({"fortigate_dhcp_" + suffix: "fortigate.dhcp" for suffix in ("status", "cancel", "download")})
     registry.map_endpoints(
         {
             "save_profile": "fortigate.home",

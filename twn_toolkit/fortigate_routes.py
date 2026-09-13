@@ -159,6 +159,8 @@ def register_fortigate_routes(
             results=results, dry_run=True, endpoint_template=endpoint, target_origin=rename_target(profile),
             target_revision=revision, preview_expiry_minutes=RENAME_PREVIEW_MAX_AGE_SECONDS // 60,
             preview_token=issue_rename_preview(task, profile, endpoint, valid_entries, target_revision=revision) if valid_entries else '')
+    from .fortigate_dhcp_routes import register_dhcp_routes
+    register_dhcp_routes(app, profile_store)
     register_read_routes(app, 'fortigate')
     register_read_routes(app, 'fortigate', task_routes=True)
 
