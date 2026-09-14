@@ -186,3 +186,58 @@ def test_dns_case_capture_survives_navigation_and_refresh_does_not_duplicate(tmp
     events = [e for e in cases.events_for_user(original, 'test-user') if e['tool_id'] == 'tools.dns_response']
     assert len(events) == 1 and events[0]['details']['results'] == [row()]
     assert store.claim() is None
+
+
+def test_case_report_renders_lookup_and_load_metrics_without_replaying_dns(tmp_path, monkeypatch):
+    from twn_toolkit.investigations import InvestigationStore
+
+    app = create_app(str(tmp_path)); app.testing = True
+    client = app.test_client()
+    try:
+        client.post('/investigations', data={'title': 'DNS report regression'})
+        cases = InvestigationStore(str(tmp_path))
+        case = cases.active_for_user('test-user')
+        load = dict(completed_queries=12, failed_queries=3, success_rate=75,
+                    achieved_qps=6, elapsed_seconds=2)
+        monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_load_test', lambda *a, **kw: load)
+        monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_lookup_matrix', lambda *a, **kw: [row()])
+        for mode in ('compare', 'load'):
+            response = client.post('/tools/dns-response', data={**FORM, 'mode': mode})
+            assert response.status_code == 303
+            store = app.extensions['diagnostic_job_store']
+            job = store.claim()
+            execute_scan(store, job['id'], job['token'])
+            store.release(job['id'], job['token'])
+            assert store.get(job['id'], 'test-user')['state'] == 'succeeded'
+        # Render existing retained events; report review must never repeat queries.
+        monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_load_test', lambda *a, **kw: pytest.fail('Report repeated DNS load'))
+        monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_lookup_matrix', lambda *a, **kw: pytest.fail('Report repeated DNS lookup'))
+        response = client.get(f"/investigations/{case['id']}/report")
+        assert response.status_code == 200
+        for expected in (b'DNS lookup', b'192.0.2.10', b'DNS load test', b'Achieved load', b'6 QPS', b'75 %', b'2 seconds'):
+            assert expected in response.data
+    finally:
+        app.extensions['remote_session_manager'].close()
+
+
+def test_case_report_renders_shared_metric_fallback_for_empty_dhcp_results(tmp_path):
+    from twn_toolkit.investigations import InvestigationStore
+
+    app = create_app(str(tmp_path)); app.testing = True
+    client = app.test_client()
+    try:
+        client.post('/investigations', data={'title': 'Empty result report'})
+        cases = InvestigationStore(str(tmp_path))
+        case = cases.active_for_user('test-user')
+        cases.record_for_case(
+            investigation_id=case['id'], user_id='test-user', username='test-user',
+            operation_id='empty-dhcp-report', event_type='diagnostic.completed',
+            tool_id='tools.dhcp_discover', action='DHCP Discover', outcome='succeeded',
+            summary='Discovery finished without offers.', targets={'interface': 'eth0'},
+            parameters={}, metrics={'offer_count': 0}, details={'offers': []},
+            started_at=time.time(), completed_at=time.time())
+        response = client.get(f"/investigations/{case['id']}/report")
+        assert response.status_code == 200
+        assert b'No DHCP offers were received.' in response.data
+    finally:
+        app.extensions['remote_session_manager'].close()

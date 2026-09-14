@@ -329,7 +329,7 @@
                   {% for row in detail.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}
                 </tbody></table></div>
               {% elif detail and detail.kind == 'metrics' %}
-                <dl class="investigation-result-metrics">{% for metric in detail.values %}<div><dt>{{ metric.label }}</dt><dd>{{ metric.value }}</dd></div>{% endfor %}</dl>
+                <dl class="investigation-result-metrics">{% for metric in detail["values"] %}<div><dt>{{ metric.label }}</dt><dd>{{ metric.value }}</dd></div>{% endfor %}</dl>
               {% endif %}
             </article>
           {% endfor %}
