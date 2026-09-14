@@ -15,7 +15,7 @@
     <label>Destination
       <input name="host" value="{{ form.host }}" placeholder="host.example.com or 192.0.2.1" required>
     </label>
-    <div class="ntp-options">
+    <div class="form">
       <label>Address family
         <select name="family">
           {% for value, label in [('auto', 'Auto'), ('ipv4', 'IPv4'), ('ipv6', 'IPv6')] %}
