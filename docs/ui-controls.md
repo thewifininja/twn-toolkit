@@ -68,3 +68,14 @@ For visual regression checks, compare text inputs and dropdowns at 90%, 100%,
 110% and 125% text size, both densities, and desktop/mobile widths. Include
 fields inside dialogs and details sections, and check for clipped text or page
 overflow. New and Edit Host must share the same control treatment as other pages.
+
+## Retained result exports
+
+For tabular run exports, place **Export CSV** in the existing result action row
+using `.button-link.secondary`. Show it only when retained results are available.
+Export the complete retained table, independent of page/filter state, and document
+when a tool retains aggregates instead of individual samples. Reuse `table_csv`
+from `csv_exports.py` for bounded tables and its spreadsheet-safe text handling.
+Routes must enforce both tool access and run ownership, use attachment/no-store
+headers, and read saved results without rerunning the tool. Keep tool-specific
+columns explicit; do not flatten arbitrary stored configuration or credentials.

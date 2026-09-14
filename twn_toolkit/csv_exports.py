@@ -70,3 +70,12 @@ def _spreadsheet_safe_cell(value: str) -> str:
     if formula_candidate.startswith(_FORMULA_PREFIXES) and not _NUMBER.fullmatch(value):
         return f"'{value}"
     return value
+
+
+def table_csv(headers, rows) -> str:
+    """Render a bounded result table using the shared spreadsheet-safe policy."""
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    return spreadsheet_safe_csv(output.getvalue())

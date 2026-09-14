@@ -3,13 +3,14 @@ from __future__ import annotations
 import secrets
 import time
 
-from flask import Blueprint, current_app, g, jsonify, redirect, render_template, request, url_for
+from flask import abort, make_response, Blueprint, current_app, g, jsonify, redirect, render_template, request, url_for
 
 from .mso_ui import save_profile, delete_profile, mutation
 from .activity_context import record_current_activity
 from .diagnostic_routes import diagnostic_store, owned_diagnostic
 from .diagnostic_worker import record_unsuccessful_scan
 from .dns_diagnostic import prepare_dns_config
+from .dns_exports import dns_run_csv
 from .investigations import InvestigationStore
 from .automation_heartbeat import read_automation_heartbeat
 from .audit import annotate_profile_deleted, annotate_profile_duplicated, annotate_profile_saved, annotate_tool_run
@@ -107,6 +108,21 @@ def register_dns_routes(tools_bp: Blueprint) -> None:
             diagnostic_scheduler=read_automation_heartbeat(store.instance / 'automation-heartbeat.json'),
             result_page=page, result_total=total,
         )
+
+    @tools_bp.get('/dns-response/jobs/<job_id>/csv')
+    def download_dns_job_csv(job_id):
+        job = owned_diagnostic(job_id, 'dns')
+        if job['state'] != 'succeeded':
+            abort(409, description='CSV is available after this DNS run completes.')
+        rows = diagnostic_store().completed_rows(job_id, g.current_user['id'], 'dns')
+        if rows is None:
+            abort(404)
+        response = make_response(dns_run_csv(job, rows))
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = f'attachment; filename="dns-{job["config"]["form"]["mode"]}-{job_id}.csv"'
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
 
     @tools_bp.get('/dns-response/jobs/<job_id>/status')
     def dns_job_status(job_id):

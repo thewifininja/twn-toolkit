@@ -30,6 +30,7 @@
     </div>
   </div>
   <div class="tool-runbar-actions">
+    {% if dns_has_results and diagnostic_job %}<a class="button-link secondary" href="{{ url_for('tools.download_dns_job_csv', job_id=diagnostic_job.id) }}">Export CSV</a>{% endif %}
     <button
       type="submit"
       form="dns-form"
