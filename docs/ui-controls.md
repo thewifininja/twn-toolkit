@@ -55,6 +55,10 @@ Multiline textareas share field typography and padding, while keeping their rows
 editor heights and resizing behavior. Mobile/touch fields use at least 16px text
 and honor larger text scaling. The hidden terminal input capture is excluded.
 
+For stacked field groups, reuse `.form` so each label/input pair is separated
+from the preceding field. Column-count classes such as `.ntp-options` require
+their grid container class; they do not supply display or spacing on their own.
+
 Field widths belong to the form layout: paired metadata can use equal columns,
 while a hostname can take more space than its port. Multi-select/list
 boxes, file pickers, ranges, colors, checkboxes, radios and action buttons have

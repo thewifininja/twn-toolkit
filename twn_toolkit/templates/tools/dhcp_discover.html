@@ -14,7 +14,7 @@
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
 
   <form class="form" id="dhcp-discover-form" method="post" data-loading-message="Sending DHCP Discover…">
-    <div class="ntp-options">
+    <div class="form">
       <label>Network interface
         <select name="interface" id="dhcp-interface" required>
           {% for interface in interfaces %}
@@ -35,7 +35,7 @@
     </label>
     <span class="field-note">Comma-separated option numbers or names, in the exact order to request. For example: <code>Subnet Mask, Router, 6, Domain Name, 119</code>.</span>
 
-    <div class="ntp-options">
+    <div class="form">
       <label>Host name (optional)
         <input name="hostname" maxlength="255" value="{{ form.hostname }}">
       </label>
