@@ -77,7 +77,7 @@ def register_tools(registry: Any) -> None:
                 show_on_home=False,
                 nav_icon="⇩",
             ),
-            ToolLink("fortigate.loop_inspector", "Switch loop inspector",
+            ToolLink("fortigate.loop_inspector", "Switch loop inspector (Experimental)",
                 "Experimental read-only switch topology and redundancy inspection.",
                 "fortigate_loop", "fortigate", "FortiSwitch Tasks", show_on_home=False, nav_icon="SW"),
             ToolLink(

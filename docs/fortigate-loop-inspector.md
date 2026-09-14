@@ -1,7 +1,8 @@
 # Experimental switch loop inspector
 
-This branch is a prototype for review, not a claim that an entire network is
-loop-free. Find **Switch loop inspector** under **FortiGate → FortiSwitch Tasks**.
+This tool is experimental: it presents observed topology and protection evidence
+and cannot certify that an entire network is loop-free. Find **Switch loop inspector
+(Experimental)** under **FortiGate → FortiSwitch Tasks**.
 
 Choose a FortiGate profile, one VDOM, and either that gate or its Fabric. The scan
 runs in the existing background worker and retains its results. Expand a gate,
@@ -69,6 +70,6 @@ reported no trigger, so positive Loop Guard triggered-state parsing still relies
 on explicitly synthetic fixtures. Other firmware formats and triggered Loop Guard
 incidents require further validation before treating this as a production locator.
 
-No migration, dependency or version change is required. Keep this prototype on its
-experimental branch until the behavior is reviewed. Drain/cancel its queued runs
-before reverting to workers that do not support this job mode.
+No migration, dependency or version change is required. The tool remains
+experimental while firmware coverage and topology analysis expand. Drain/cancel
+its queued runs before reverting to workers that do not support this job mode.
