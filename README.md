@@ -13,9 +13,13 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.26.0**
+Current release: **v0.26.1**
 
-v0.26.0 introduces [Mainframe Synced Objects](docs/mainframe-synced-objects.md):
+v0.26.1 fixes case reports containing DNS load tests: upgrade and reopen the
+existing report; no test rerun is needed. It adds Fabric-aware FortiGate workflows,
+read-only DHCP inventory and an [experimental Switch Loop Inspector](docs/fortigate-loop-inspector.md).
+
+v0.26.0 introduced [Mainframe Synced Objects](docs/mainframe-synced-objects.md):
 share supported saved lists, appliance profiles, Bulk SSH libraries and eligible
 Remote Terminal folders, hosts and credentials bidirectionally across your fleet.
 Objects remain local until shared; offline Agents catch up when they reconnect.
@@ -30,7 +34,7 @@ Shared Save controls and compact MSO switches follow the application's themes.
 Use the built-in updater on Mainframe and Agents, then reload open browser pages.
 The verified bundle retains the v0.9.0 minimum direct-upgrade boundary; see the
 existing updater exceptions below for older service installations.
-[Release notes and compatibility](docs/release-0.26.0-checklist.md).
+[Release notes and compatibility](docs/release-0.26.1-checklist.md).
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
