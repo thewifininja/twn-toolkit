@@ -5,6 +5,14 @@ test, saved device profiles, a working automation, local file services, and
 basic administration. The searchable **Help** page inside the toolkit contains
 the full field guide and release notes.
 
+## Upgrading to v0.26.1
+
+Use the built-in updater on Mainframe and Agents, then reload browser pages.
+Existing case reports that crashed after a DNS load test can be opened again;
+the saved results do not need to be recreated. This patch adds no database migration.
+See the [release compatibility notes](docs/release-0.26.1-checklist.md), including
+Fabric job rollback precautions.
+
 ## Fleet sharing in v0.26.0
 
 After enrolling and approving an Agent, enable **MSO** on a supported saved object

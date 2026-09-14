@@ -1,6 +1,27 @@
-APP_VERSION = "0.26.0"
+APP_VERSION = "0.26.1"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.26.1",
+        "date": "2026-09-14",
+        "title": "Case report recovery and FortiGate Fabric workflows",
+        "summary": "Open existing DNS load-test case reports, investigate DHCP across your Fabric, and inspect switch loops experimentally.",
+        "groups": (
+            {"title": "Case reports", "items": (
+                "Fix a report-rendering crash after DNS load tests and other metric-only results. Existing evidence is preserved: reopen the report without rerunning the test.",
+            )},
+            {"title": "FortiGate workflows", "items": (
+                "Discover Security Fabric members and select gates by hostname for supported exports, AP and switch actions, ordering and wireless history.",
+                "Investigate DHCP pools, interfaces, DNS servers, gateways, lease times, reservations and leases across a single gate or Fabric, grouped into expandable gate sections.",
+                "Add experimental read-only Switch Loop Inspector with API inventory, optional bounded root-gate SSH diagnostics, STP/Loop Guard evidence and suspicious LLDP relationships. Coverage is incomplete; findings require operator review.",
+            )},
+            {"title": "Interface and compatibility", "items": (
+                "Keep populated appliance profile-test history within Profiles; improve FortiGate task spacing, DHCP pagination and field spacing in Path MTU, Wake-on-LAN, DHCP Discover and Packet Replay.",
+                "Upgrade Mainframe and Agents together before using Fabric jobs. No new database migration or dependency changes are required by this patch.",
+                "Drain or cancel Fabric jobs before rolling back to older workers that do not understand target selection. DHCP inventory and Loop Inspector remain investigation tools, without remediation.",
+            )},
+        ),
+    },
     {
         "version": "0.26.0",
         "date": "2026-09-11",
