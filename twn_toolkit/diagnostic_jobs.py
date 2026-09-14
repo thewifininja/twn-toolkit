@@ -314,3 +314,22 @@ class DiagnosticJobStore:
             count = db.execute("SELECT COUNT(*) FROM diagnostic_rows WHERE " + clause, (job_id,)).fetchone()[0]
             rows = db.execute("SELECT position,payload FROM diagnostic_rows WHERE " + clause + " ORDER BY position LIMIT ? OFFSET ?", (job_id, RESULT_PAGE_SIZE, (page - 1) * RESULT_PAGE_SIZE)).fetchall()
         return [json.loads(self.cipher.open(row["payload"], f"{job_id}:diagnostic-row:{row['position']}")) for row in rows], count
+
+    def completed_rows(self, job_id, user_id, tool):
+        """Read all bounded rows in one snapshot, with ownership and state checks.
+
+        None means unavailable; an empty list is a completed run with no rows.
+        The LEFT JOIN distinguishes these even if retention removes a run.
+        """
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT r.position, r.payload FROM diagnostic_jobs j "
+                "LEFT JOIN diagnostic_rows r ON r.job_id=j.id "
+                "WHERE j.id=? AND j.user_id=? AND j.tool=? AND j.state='succeeded' "
+                "ORDER BY r.position", (job_id, user_id, tool),
+            ).fetchall()
+        if not rows:
+            return None
+        return [json.loads(self.cipher.open(row['payload'],
+                    f"{job_id}:diagnostic-row:{row['position']}"))
+                for row in rows if row['position'] is not None]

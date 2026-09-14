@@ -241,3 +241,125 @@ def test_case_report_renders_shared_metric_fallback_for_empty_dhcp_results(tmp_p
         assert b'No DHCP offers were received.' in response.data
     finally:
         app.extensions['remote_session_manager'].close()
+
+
+def test_dns_csv_exports_all_retained_rows_safely_without_repeating_queries(tmp_path, monkeypatch):
+    import csv
+    import io
+
+    app = create_app(str(tmp_path)); app.testing = True
+    client = app.test_client()
+    try:
+        submitted = client.post('/tools/dns-response', data=FORM)
+        store = app.extensions['diagnostic_job_store']; job = store.claim()
+        url = f"/tools/dns-response/jobs/{job['id']}/csv"
+        assert client.get(url).status_code == 409
+        assert b'Export CSV' not in client.get(submitted.headers['Location']).data
+        rows = [row(i) for i in range(150)]
+        rows[0].update(host_label='=SUM(1,2)', server_label='Office, café',
+                       answers=['TXT "quoted", value\nsecond line', 'other answer'])
+        rows[-1].update(status='timeout', answers=[], response_ms=None, error='No reply, timed out')
+        monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_lookup_matrix', lambda *a, **kw: rows)
+        execute_scan(store, job['id'], job['token'])
+        monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_lookup_matrix', lambda *a, **kw: pytest.fail('Export repeated DNS'))
+        assert b'Export CSV' in client.get(submitted.headers['Location']).data
+        response = client.get(url + '?page=2')
+        assert response.status_code == 200
+        assert response.mimetype == 'text/csv'
+        assert response.headers['Cache-Control'] == 'no-store'
+        assert f'dns-compare-{job["id"]}.csv' in response.headers['Content-Disposition']
+        exported = list(csv.DictReader(io.StringIO(response.get_data(as_text=True), newline='')))
+        assert len(exported) == 150
+        assert exported[0]['Query label'] == "'=SUM(1,2)"
+        assert exported[0]['Resolver label'] == 'Office, café'
+        assert exported[0]['Answers'] == '\n'.join(rows[0]['answers'])
+        assert exported[-1]['Query'] == 'private149.test'
+        assert exported[-1]['Status'] == 'timeout'
+        assert exported[-1]['Response (ms)'] == ''
+        assert exported[-1]['Error'] == 'No reply, timed out'
+        assert all(r['Run ID'] == job['id'] and r['Completed (UTC)'] for r in exported)
+        assert client.get(url).data == response.data
+        assert store.completed_rows(job['id'], 'another-user', 'dns') is None
+        assert store.completed_rows(job['id'], 'test-user', 'tcp') is None
+        with store.connect(write=True) as db:
+            db.execute('UPDATE diagnostic_jobs SET user_id=? WHERE id=?', ('another-user', job['id']))
+        assert client.get(url).status_code == 404
+        wrong_tool = store.enqueue(user_id='test-user', tool='tcp_scan', config={})
+        assert client.get(f'/tools/dns-response/jobs/{wrong_tool}/csv').status_code == 404
+        assert client.get('/tools/dns-response/jobs/missing/csv').status_code == 404
+    finally:
+        app.extensions['remote_session_manager'].close()
+
+
+def test_dns_load_csv_exports_resolver_statistics_and_empty_latency(tmp_path, monkeypatch):
+    import csv
+    import io
+
+    app = create_app(str(tmp_path)); app.testing = True
+    client = app.test_client()
+    try:
+        client.post('/tools/dns-response', data={**FORM, 'mode': 'load'})
+        store = app.extensions['diagnostic_job_store']; job = store.claim()
+        resolver = dict(server='192.0.2.53', server_label='Primary', completed_queries=4,
+                        successful_queries=3, failed_queries=1, success_rate=75, achieved_qps=2,
+                        average_ms=1, p50_ms=0, p95_ms=2, p99_ms=3, max_ms=4,
+                        statuses={'success': 3, 'timeout': 1})
+        failed = {**resolver, 'server': '192.0.2.54', 'server_label': 'Backup',
+                  'successful_queries': 0, 'failed_queries': 4, 'success_rate': 0,
+                  'average_ms': None, 'p50_ms': None, 'p95_ms': None, 'p99_ms': None,
+                  'max_ms': None, 'statuses': {'timeout': 4}}
+        load = dict(record_type='A', completed_queries=8, failed_queries=5, success_rate=37.5,
+                    achieved_qps=4, elapsed_seconds=2, concurrency=1, qps_per_server=2,
+                    target_qps_total=4, planned_queries=8, requested_duration_seconds=2,
+                    resolvers=[resolver, failed])
+        monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_load_test', lambda *a, **kw: load)
+        execute_scan(store, job['id'], job['token'])
+        monkeypatch.setattr('twn_toolkit.dns_diagnostic.dns_load_test', lambda *a, **kw: pytest.fail('Export repeated load'))
+        response = client.get(f"/tools/dns-response/jobs/{job['id']}/csv")
+        assert response.status_code == 200
+        exported = list(csv.DictReader(io.StringIO(response.get_data(as_text=True))))
+        assert len(exported) == 2
+        assert exported[0]['Queries'] == 'private.test'
+        assert exported[0]['Record type'] == 'A'
+        assert exported[0]['Elapsed (s)'] == '2'
+        assert exported[0]['Planned queries (all resolvers)'] == '8'
+        assert exported[0]['p50 (ms)'] == '0'
+        assert json.loads(exported[0]['Response counts (JSON)']) == resolver['statuses']
+        assert exported[1]['Resolver'] == '192.0.2.54'
+        assert exported[1]['Average (ms)'] == ''
+        assert exported[1]['Success (%)'] == '0'
+        assert store.completed_rows(job['id'], 'test-user', 'dns') == []
+        with store.connect(write=True) as db:
+            db.execute('DELETE FROM diagnostic_jobs WHERE id=?', (job['id'],))
+        assert store.completed_rows(job['id'], 'test-user', 'dns') is None
+        assert client.get(f"/tools/dns-response/jobs/{job['id']}/csv").status_code == 404
+    finally:
+        app.extensions['remote_session_manager'].close()
+
+
+def test_dns_csv_requires_dns_permission_and_completed_run(tmp_path):
+    from twn_toolkit.auth import AuthStore
+
+    app = create_app(str(tmp_path))
+    client = app.test_client()
+    try:
+        password = 'correct horse battery staple'
+        client.post('/setup', data={'username': 'admin', 'password': password, 'confirm_password': password})
+        auth = AuthStore(str(tmp_path))
+        profile = auth.save_access_profile(name='Only ping', tool_ids=['tools.ping'])
+        auth.create_user('limited', 'another sufficiently long password', access_profile_ids=[profile['id']])
+        submitted = client.post('/tools/dns-response', data=FORM)
+        job_id = submitted.headers['Location'].split('job=')[1]
+        url = f'/tools/dns-response/jobs/{job_id}/csv'
+        assert client.get(url).status_code == 409
+        store = app.extensions['diagnostic_job_store']
+        for state in ('running', 'cancel_requested', 'cancelled', 'failed', 'unknown'):
+            with store.connect(write=True) as db:
+                db.execute('UPDATE diagnostic_jobs SET state=? WHERE id=?', (state, job_id))
+            assert client.get(url).status_code == 409
+        client.post('/logout')
+        assert client.get(url).status_code == 302
+        client.post('/login', data={'username': 'limited', 'password': 'another sufficiently long password'})
+        assert client.get(url).status_code == 403
+    finally:
+        app.extensions['remote_session_manager'].close()
