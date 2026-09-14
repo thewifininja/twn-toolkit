@@ -1,6 +1,24 @@
-APP_VERSION = "0.26.1"
+APP_VERSION = "0.26.2"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.26.2",
+        "date": "2026-09-14",
+        "title": "CSV exports for saved DNS runs",
+        "summary": "Download comparison results and load-test resolver statistics directly from completed DNS runs.",
+        "groups": (
+            {"title": "DNS result exports", "items": (
+                "Add Export CSV beside completed DNS run controls, including existing retained runs without repeating DNS traffic.",
+                "Export every comparison result across all pages, including labels, answers, errors and response times.",
+                "Export one row per load-test resolver with counts, success rate, throughput, latency percentiles and response counts, plus run identity, timestamps and test settings.",
+                "Preserve DNS tool permissions and run ownership; protect spreadsheet text against formula interpretation. Load tests retain summary statistics, not individual query samples.",
+            )},
+            {"title": "Upgrade", "items": (
+                "Upgrade the instance holding the DNS run and reload the page. No database migration, dependency change or test rerun is required.",
+                "Includes the v0.26.1 fix for case reports containing DNS load-test metrics; existing saved evidence remains intact.",
+            )},
+        ),
+    },
     {
         "version": "0.26.1",
         "date": "2026-09-14",

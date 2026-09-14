@@ -5,12 +5,15 @@ test, saved device profiles, a working automation, local file services, and
 basic administration. The searchable **Help** page inside the toolkit contains
 the full field guide and release notes.
 
-## Upgrading to v0.26.1
+## Upgrading to v0.26.2
 
 Use the built-in updater on Mainframe and Agents, then reload browser pages.
+Open a completed DNS run and choose **Export CSV** for all comparison rows or
+per-resolver load-test statistics. Upgrade the instance holding the run; saved
+results are exported without repeating DNS traffic.
 Existing case reports that crashed after a DNS load test can be opened again;
 the saved results do not need to be recreated. This patch adds no database migration.
-See the [release compatibility notes](docs/release-0.26.1-checklist.md), including
+See the [release compatibility notes](docs/release-0.26.2-checklist.md), including
 Fabric job rollback precautions.
 
 ## Fleet sharing in v0.26.0

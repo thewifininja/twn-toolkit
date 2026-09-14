@@ -13,7 +13,10 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.26.1**
+Current release: **v0.26.2**
+
+v0.26.2 adds **Export CSV** to completed DNS runs: download all comparison
+results or per-resolver load-test statistics from the saved snapshot.
 
 v0.26.1 fixes case reports containing DNS load tests: upgrade and reopen the
 existing report; no test rerun is needed. It adds Fabric-aware FortiGate workflows,
@@ -34,7 +37,7 @@ Shared Save controls and compact MSO switches follow the application's themes.
 Use the built-in updater on Mainframe and Agents, then reload open browser pages.
 The verified bundle retains the v0.9.0 minimum direct-upgrade boundary; see the
 existing updater exceptions below for older service installations.
-[Release notes and compatibility](docs/release-0.26.1-checklist.md).
+[Release notes and compatibility](docs/release-0.26.2-checklist.md).
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
