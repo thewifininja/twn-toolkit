@@ -25,6 +25,7 @@ def _policy(mode: str, evidence: str, rationale: str) -> InvestigationCapturePol
 
 CAPTURE_POLICIES: dict[str, InvestigationCapturePolicy] = {
     "fortigate.home": _policy("excluded", "none", "Navigation is not case evidence."),
+    "fortigate.loop_inspector": _policy("finite", "bounded-results", "Read-only switch inspection retains collection coverage and topology observations."),
     "fortigate.dhcp": _policy("finite", "bounded-results", "A read-only DHCP inventory records device scope and completion."),
     "fortigate.wireless_client_history": _policy("finite", "bounded-results", "A client-history search is a troubleshooting observation."),
     "fortigate.rename_aps": _policy("action", "bounded-results", "Configuration changes belong in the case narrative."),

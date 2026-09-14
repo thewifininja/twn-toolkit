@@ -44,7 +44,7 @@
       One device per line: <code>MAC</code>, <code>Name | MAC</code>, or <code>Name | MAC | verification hostname/IP</code>. Verification addresses are optional. Maximum {{ target_limit }} devices.
     </span>
 
-    <div class="ntp-options">
+    <div class="form">
       <label>Destination mode
         <select name="destination_mode" id="wol-destination-mode">
           <option value="local" {{ 'selected' if form.destination_mode == 'local' else '' }}>Local broadcast</option>
@@ -68,7 +68,7 @@
       </label>
     </div>
 
-    <div class="ntp-options">
+    <div class="form">
       <label>UDP port
         <select name="port">
           <option value="9" {{ 'selected' if form.port == '9' else '' }}>9</option>

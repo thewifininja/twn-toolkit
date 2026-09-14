@@ -115,6 +115,10 @@ gate selection, grouped previews and source-labelled CSV. [Fabric actions and
 wireless history](docs/fortigate-fabric-actions.md) use one selected gate per
 rename, switch-order or history run, retaining reviewed previews and verification.
 
+The experimental [Switch loop inspector](docs/fortigate-loop-inspector.md) combines
+read-only Fabric topology with optional SSH protection-state diagnostics for the
+connected gate, explicitly identifying missing data.
+
 See [FortiGate API connection and result policy](docs/fortigate-http.md) for
 connection reuse, response limits, and history-search budgets.
 

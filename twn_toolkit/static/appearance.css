@@ -924,6 +924,12 @@ body,
   min-width: 0;
 }
 
+/* Task sections own one consistent gap; legacy home-section margins must not
+   add a second gap below each group. Match the space below the workspace tabs. */
+.fortigate-workspace,
+.fortigate-workspace .task-groups { gap: 1rem; }
+.fortigate-workspace .task-group { margin: 0; }
+
 .multicast-mode-picker legend { grid-column: 1 / -1; }
 
 h1,

@@ -77,6 +77,9 @@ def register_tools(registry: Any) -> None:
                 show_on_home=False,
                 nav_icon="⇩",
             ),
+            ToolLink("fortigate.loop_inspector", "Switch loop inspector (Experimental)",
+                "Experimental read-only switch topology and redundancy inspection.",
+                "fortigate_loop", "fortigate", "FortiSwitch Tasks", show_on_home=False, nav_icon="SW"),
             ToolLink(
                 "fortigate.switch_order",
                 "Re-order Managed FortiSwitches",
@@ -145,3 +148,6 @@ def register_tools(registry: Any) -> None:
     )
 
     registry.map_endpoints({"fortigate_connection_"+suffix:"fortigate.home" for suffix in ("job","status","cancel","download")})
+
+    registry.map_endpoints({"fortigate_loop": "fortigate.loop_inspector"})
+    registry.map_endpoints({"fortigate_loop_" + suffix: "fortigate.loop_inspector" for suffix in ("status", "cancel", "download")})

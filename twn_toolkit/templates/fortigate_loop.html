@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% from 'components/ui.html' import workspace_header, section_header %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static',filename='loop-inspector.css') }}">
+{{ workspace_header('Switch loop inspector', 'Inspect switch links and redundancy across a FortiGate or its Fabric.', eyebrow='Experimental · Read only') }}
+{% include 'components/recent_runs.html' %}
+{% include 'components/diagnostic_job.html' %}
+{% if data %}<details class="panel"><summary>New scan · {{ selected_name }}</summary>{% else %}<section class="panel">{% endif %}
+<form class="form loop-scan" method="post" action="{{ url_for('fortigate_loop') }}" data-loading-message="Queueing switch inspection…">
+<label>Connection profile<select name="profile" required><option value="">Choose a profile</option>{% for p in profiles %}<option value="{{ p.name }}" {% if p.name==selected_name or (not selected_name and (p.is_default or profiles|length==1)) %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></label>
+<label>Scope<select name="scope"><option value="single" {% if scope=='single' %}selected{% endif %}>This FortiGate</option><option value="fabric" {% if scope=='fabric' %}selected{% endif %}>This FortiGate + Fabric</option></select></label>
+<label>VDOM<input name="vdom" value="{{ vdom }}" placeholder="Profile default" maxlength="80"></label>
+<label class="loop-ssh-choice">SSH diagnostics (optional)<select name="ssh_host" aria-describedby="loop-ssh-note"><option value="">API topology only</option>{% for h in ssh_hosts %}<option value="{{ h.id }}">{{ h.name }} · {{ h.host }}</option>{% endfor %}</select></label>
+<div class="button-row loop-scan-actions"><button type="submit">Inspect switches</button></div>
+<small id="loop-ssh-note" class="field-note loop-scan-note">Saved Remote Terminal connection to this FortiGate. Read-only commands; root VDOM only.</small>
+</form>
+{% if data %}</details>{% else %}</section>{% endif %}
+<section class="panel">
+<p class="message warning"><strong>Experimental coverage.</strong> {{ data.coverage if data else "API scans read topology and configuration. Optional SSH adds reported Loop Guard, STP and LLDP summary data for the connected gate. Missing sources cannot establish that the network is loop-free." }}</p>
+{% if not data %}<p>Run an inspection to retain a snapshot of switches, ports and inter-switch relationships. No background polling continues after the run.</p>{% endif %}
+{% if data %}
+<div class="button-row loop-snapshot-actions"><span class="pill {{ 'warning' if data.partial else 'neutral' }}">{{ 'Partial collection' if data.partial else 'API collection complete' }}</span><span>{{ data.switch_count }} switches · {{ data.port_count }} ports · {{ data.review_count }} observation{{ 's' if data.review_count != 1 else '' }} to review · {{ data.protection_count|default(0) }} reported protection events</span><a class="button-link secondary" href="{{ url_for('fortigate_loop_download',job_id=diagnostic_job.id) }}">Download snapshot</a></div>
+<p class="field-note">Captured {{ data.captured|history_time }}. Findings describe physical links, not proof of forwarding loops.</p>
+{% if data.recording_warning %}<p class="message warning">{{ data.recording_warning }}</p>{% endif %}
+{% for g in data.gates %}
+<details class="loop-gate" {% if gate and g.serial==gate.serial %}open{% endif %}>
+<summary><strong>{{ g.hostname }}</strong><span>{{ g.vdom }} · {{ g.switches|length }} switches</span>{% set reviews = g.findings|selectattr('kind','equalto','Review')|list|length %}{% if reviews %}<span class="pill warning">{{ reviews }} to review</span>{% endif %}<span class="pill {{ 'warning' if g.errors else 'neutral' }}">{{ 'Incomplete' if g.errors else 'Snapshot collected' }}</span></summary>
+<div class="loop-body"><p class="field-note">{{ g.serial }}</p>
+{% for error in g.errors + g.diagnostic_errors|default([]) %}<p class="message warning">{{ error }}</p>{% endfor %}
+{% for f in g.findings|sort(attribute='kind') %}<p class="message {{ 'error' if f.kind=='Protection' else 'warning' if f.kind=='Review' else 'info' }}"><strong>{{ f.kind }} · {{ f.switch }} · {{ f.ports }}</strong><br>{{ f.message }}</p>{% endfor %}
+{% for s in g.switches %}<details class="loop-switch" {% if switch and s.serial==switch.serial and gate.serial==g.serial %}open{% endif %}>
+<summary><strong>{{ s.id }}</strong><span>{{ s.connection }} · {{ s.ports|length }} ports</span></summary>
+<div class="loop-body"><p class="field-note">{{ s.serial }} · {{ s.firmware }}</p>
+{% if s.diagnostics and switch and s.serial==switch.serial and gate.serial==g.serial %}{% for kind, rows in s.diagnostics.items() %}<details><summary>{{ {'guard':'Loop Guard','stp':'STP','lldp':'LLDP summary'}[kind] }} · {{ rows|length }} reported rows</summary><p class="field-note">Up to 50 rows shown. Download the snapshot for all reported rows. LLDP summary does not include verified chassis identities.</p><div class="preview-table-wrap"><table class="loop-table"><thead><tr><th>Port / logical trunk</th><th>Instance</th><th>Role / enabled</th><th>State / status</th><th>Flags / details</th></tr></thead><tbody>{% for row in rows[:50] %}<tr><td>{{ row.port }}</td><td>{{ row.instance }}</td><td>{{ row.role }}</td><td>{{ row.state }}</td><td>{{ row.flags }} {{ row.detail }}</td></tr>{% endfor %}</tbody></table></div></details>{% endfor %}{% endif %}
+{% if switch and s.serial==switch.serial and gate.serial==g.serial %}
+<div class="preview-table-wrap"><table class="loop-table"><thead><tr><th>Port</th><th>Link</th><th>Neighbor / remote port</th><th>Relationship</th><th>STP configured</th><th>Loop Guard configured</th><th>Blocking state</th></tr></thead><tbody>
+{% for p in ports %}<tr><td>{{ p.name }}</td><td>{{ p.link or 'Unavailable' }}</td><td>{{ p.peer or 'Not reported' }}{% if p.peer_port %} · {{ p.peer_port }}{% endif %}</td><td>{{ 'FortiLink' if p.fortilink else 'MCLAG' if p.mclag else p.peer_trunk or 'Not reported' }}</td><td>{{ p.stp_config }}</td><td>{{ p.loop_config }}</td><td>{{ 'See diagnostics above' if s.diagnostics else 'Unavailable' }}</td></tr>{% endfor %}
+</tbody></table></div>
+<div class="button-row loop-pagination">{% if page>1 %}<a class="button-link secondary" href="{{ url_for('fortigate_loop',job=diagnostic_job.id,gate=g.serial,switch=s.serial,page=page-1) }}">Previous</a>{% endif %}<span>Page {{ page }}</span>{% if page*50<s.ports|length %}<a class="button-link secondary" href="{{ url_for('fortigate_loop',job=diagnostic_job.id,gate=g.serial,switch=s.serial,page=page+1) }}">Next</a>{% endif %}</div>
+{% else %}<a class="button-link secondary" href="{{ url_for('fortigate_loop',job=diagnostic_job.id,gate=g.serial,switch=s.serial) }}">Inspect ports</a>{% endif %}
+</div></details>{% else %}<p>No switch inventory available in this snapshot.</p>{% endfor %}
+</div></details>{% endfor %}
+{% endif %}
+</section>
+<script src="{{ url_for('static',filename='diagnostic-job.js') }}"></script>
+{% endblock %}

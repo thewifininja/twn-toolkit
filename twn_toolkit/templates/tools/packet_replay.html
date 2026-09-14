@@ -17,7 +17,7 @@
 
   <form class="form" method="post" enctype="multipart/form-data" data-loading-message="Preparing packet replay…">
     <input name="prepared_packet_hex" type="hidden" value="{{ form.prepared_packet_hex }}">
-    <div class="ntp-options">
+    <div class="form">
       <label>Network interface
         <select name="interface" required>
           {% for interface in interfaces %}
@@ -59,7 +59,7 @@
       <span class="field-note">Choose one source. Classic Ethernet PCAP only for now; multi-packet captures are supported.</span>
     </fieldset>
 
-    <div class="ntp-options">
+    <div class="form">
       <label>Rewrite source MAC (optional)
         <input name="source_mac" value="{{ form.source_mac }}" placeholder="02:00:00:00:00:01">
       </label>
@@ -68,7 +68,7 @@
       </label>
     </div>
 
-    <div class="ntp-options">
+    <div class="form">
       <label>VLAN handling
         <select name="vlan_action">
           <option value="keep" {{ 'selected' if form.vlan_action == 'keep' else '' }}>Keep packet VLAN tags</option>
