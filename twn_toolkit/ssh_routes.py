@@ -135,6 +135,9 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                 else:
                     error = "That host matrix no longer exists."
 
+        if request.method == "GET" and form.get("host_matrix_original_name"):
+            form["selected_actions"] = request.args.getlist("selected_actions")
+
         if request.method == "POST":
             form = _posted_form()
             action = str(request.form.get("action", "run")).strip().lower()
@@ -160,9 +163,12 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                 except (ToolInputError, TypeError, ValueError) as exc:
                     error = str(exc) if str(exc) else "Enter a valid SSH port."
                 suppress_audit_event()
-            elif action == "save_host_matrix":
+            elif action in {"save_host_matrix", "save_host_matrix_copy"}:
                 try:
-                    host_matrix, existed = _save_host_matrix(form)
+                    if action == "save_host_matrix_copy":
+                        host_matrix, existed = _save_host_matrix_copy(form)
+                    else:
+                        host_matrix, existed = _save_host_matrix(form)
                 except (ToolInputError, ValueError) as exc:
                     error = str(exc)
                     suppress_audit_event()
@@ -175,13 +181,30 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     form["host_matrix_original_name"] = host_matrix["name"]
                     form["matrix_actions"] = host_matrix.get("actions", [])
                     _annotate_host_matrix_save(host_matrix, existed)
-            elif action == "save_matrix_action":
+            elif action in {
+                "save_matrix_action", "save_matrix_action_and_add", "save_matrix_action_copy",
+            }:
                 try:
-                    host_matrix, matrix_action, existed = _save_matrix_action(form)
+                    save_form = dict(form)
+                    if action == "save_matrix_action_copy":
+                        save_form["matrix_action_original_name"] = ""
+                        save_form["matrix_action_name"] = request.form.get("copy_name", "").strip()
+                    host_matrix, matrix_action, existed = _save_matrix_action(save_form)
                 except (ToolInputError, ValueError) as exc:
                     error = str(exc)
                     suppress_audit_event()
                 else:
+                    previous_name = str(form.get("matrix_action_original_name", ""))
+                    if action != "save_matrix_action_copy":
+                        form["selected_actions"] = [
+                            matrix_action["name"] if name == previous_name else name
+                            for name in form["selected_actions"]
+                        ]
+                    if (
+                        action == "save_matrix_action_and_add"
+                        and matrix_action["name"] not in form["selected_actions"]
+                    ):
+                        form["selected_actions"].append(matrix_action["name"])
                     _load_host_matrix_form(form, host_matrix)
                     form["matrix_action_name"] = matrix_action["name"]
                     form["matrix_action_original_name"] = matrix_action["name"]
@@ -311,6 +334,8 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             preview=preview,
             results=results,
         )
+        if request.form.get("action") == "save_matrix_action_and_add" and success and not error:
+            active_workspace = "run"
         return render_template(
             "tools/multi_ssh.html",
             error=error,
@@ -628,9 +653,12 @@ def _load_host_matrix_form(
             "host_matrix_original_name": "" if duplicate else matrix["name"],
             "source_host_matrix": str(matrix["name"]) if duplicate else "",
             "matrix_actions": list(matrix.get("actions", [])),
-            # Loading or saving a matrix must never opt its action library into a
-            # run. Operators assemble an explicit, ordered runbook on the Run tab.
-            "selected_actions": [],
+            # Preserve only explicit selections belonging to this same matrix.
+            "selected_actions": (
+                list(form.get("selected_actions", []))
+                if not duplicate and form.get("host_matrix_original_name") == matrix["name"]
+                else []
+            ),
         }
     )
 
@@ -1278,6 +1306,36 @@ def _load_ssh_profile_selection():
     return redirect(url_for("tools.multi_ssh", **destination))
 
 
+def _save_host_matrix_copy(form: dict[str, object]) -> tuple[dict[str, object], bool]:
+    """Create an independent local copy from the submitted editor contents."""
+    store = _ssh_host_matrix_store()
+    source = store.get(str(form.get("host_matrix_original_name", "")))
+    if not source:
+        raise ToolInputError("That host matrix no longer exists.")
+    matrix = normalize_ssh_host_matrix(
+        {
+            "name": request.form.get("copy_name", "").strip(),
+            "description": form["host_matrix_description"],
+            "matrix": form["matrix"],
+            "actions": (
+                source.get("actions", [])
+                if request.form.get("copy_actions") == "on" else []
+            ),
+        }
+    )
+    if any(item["name"].casefold() == matrix["name"].casefold() for item in store.all()):
+        raise ToolInputError("A host matrix with that name already exists. Choose a different name.")
+    for matrix_action in matrix.get("actions", []):
+        _require_action_compatibility(matrix, matrix_action)
+    # A non-existing original name makes this an atomic create, never an upsert
+    # of an existing profile. Do not carry the source's MSO identity or sharing.
+    store.mso_store().save(
+        matrix, "new-copy:" + secrets.token_hex(16), enabled=False, guarded=True,
+    )
+    form["selected_actions"] = []
+    return matrix, False
+
+
 def _save_host_matrix(
     form: dict[str, object],
 ) -> tuple[dict[str, object], bool]:
@@ -1384,10 +1442,10 @@ def _selected_matrix_action(
     actions: list[dict[str, object]],
     form: dict[str, object],
 ) -> dict[str, object] | None:
-    if request.args.get("new_action") == "1":
+    if request.method == "GET" and request.args.get("new_action") == "1":
         return None
     requested = str(
-        request.args.get("matrix_action", "")
+        (request.args.get("matrix_action", "") if request.method == "GET" else "")
         or form.get("matrix_action_original_name")
         or form.get("matrix_action_name")
         or ""
@@ -1419,7 +1477,9 @@ def _matrix_action_editor(
     selected: dict[str, object] | None,
 ) -> dict[str, object]:
     posted_action = str(request.form.get("action", "")).strip().lower()
-    if request.method == "POST" and posted_action == "save_matrix_action":
+    if request.method == "POST" and posted_action in {
+        "save_matrix_action", "save_matrix_action_and_add", "save_matrix_action_copy",
+    }:
         return {
             "name": form.get("matrix_action_name", ""),
             "description": form.get("matrix_action_description", ""),
@@ -1525,6 +1585,8 @@ def _active_ssh_workspace(
         return "actions"
     if posted_action in {
         "save_matrix_action",
+        "save_matrix_action_and_add",
+        "save_matrix_action_copy",
         "copy_matrix_action",
         "duplicate_matrix_action",
         "delete_matrix_action",

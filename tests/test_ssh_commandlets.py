@@ -266,9 +266,9 @@ class SSHCommandletRouteTests(unittest.TestCase):
             initial_page = client.get("/tools/multi-ssh")
             self.assertIn(b"Fleet command workspace", initial_page.data)
             self.assertIn(b"Host matrix", initial_page.data)
-            self.assertIn(b"1 \xc2\xb7 Hosts", initial_page.data)
-            self.assertIn(b"2 \xc2\xb7 CLI actions", initial_page.data)
-            self.assertIn(b"3 \xc2\xb7 Run", initial_page.data)
+            self.assertIn(b'data-ssh-workspace-tab="hosts">Hosts', initial_page.data)
+            self.assertIn(b'data-ssh-workspace-tab="actions">CLI actions', initial_page.data)
+            self.assertIn(b'data-ssh-workspace-tab="run">Run', initial_page.data)
             self.assertIn(b"Raw matrix", initial_page.data)
             self.assertEqual(initial_page.data.count(b"data-ssh-matrix-mode="), 1)
             self.assertIn(b'data-ssh-matrix-toggle', initial_page.data)
@@ -829,7 +829,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
             run_workspace = client.get(
                 "/tools/multi-ssh?host_matrix=Branches&workspace=run"
             )
-            self.assertIn(b"No actions in this runbook", run_workspace.data)
+            self.assertIn(b"No actions in this run", run_workspace.data)
             self.assertIn(b"0 actions", run_workspace.data)
             self.assertNotIn(b'name="selected_actions"', run_workspace.data)
 

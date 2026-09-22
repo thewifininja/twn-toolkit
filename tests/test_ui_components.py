@@ -1369,14 +1369,14 @@ class UIComponentTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertLess(bulk_ssh.index("1 · Hosts"), bulk_ssh.index("2 · CLI actions"))
-        self.assertLess(bulk_ssh.index("2 · CLI actions"), bulk_ssh.index("3 · Run"))
+        self.assertLess(bulk_ssh.index('data-ssh-workspace-tab="hosts"'), bulk_ssh.index('data-ssh-workspace-tab="actions"'))
+        self.assertLess(bulk_ssh.index('data-ssh-workspace-tab="actions"'), bulk_ssh.index('data-ssh-workspace-tab="run"'))
         self.assertIn('name="host_matrix"', bulk_ssh)
         self.assertIn("Build a host matrix", bulk_ssh)
         self.assertIn("Create CLI action", bulk_ssh)
         self.assertIn("Build this run", bulk_ssh)
         self.assertIn("Add one or more saved actions", bulk_ssh)
-        self.assertIn("Saving an action never selects it automatically", bulk_ssh)
+        self.assertIn("Review and confirm before anything executes", bulk_ssh)
         self.assertIn('data-ssh-runbook', bulk_ssh)
         self.assertIn("bulk-transfer-config-grid", bulk_transfer)
         self.assertIn("Targets and access", bulk_transfer)

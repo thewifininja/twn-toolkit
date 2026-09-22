@@ -50,8 +50,78 @@
 
   const matrixSelector = document.querySelector("[data-ssh-matrix-selector]");
   matrixSelector?.addEventListener("change", () => matrixSelector.form?.requestSubmit());
+  const activeTab = document.querySelector('[data-ssh-workspace-tab][aria-selected="true"]');
+  if (activeTab) showWorkspace(activeTab.dataset.sshWorkspaceTab);
   const actionSelector = document.querySelector("[data-ssh-action-selector]");
-  actionSelector?.addEventListener("change", () => actionSelector.form?.requestSubmit());
+  const actionForm = document.querySelector(".multi-ssh-action-editor");
+  if (actionForm && actionSelector) {
+    const fields = {
+      name: "matrix_action_name", description: "matrix_action_description",
+      platform: "matrix_action_platform", commands: "commands",
+      command_timeout: "command_timeout", original_name: "matrix_action_original_name",
+    };
+    const read = () => Object.fromEntries(Object.entries(fields).map(([key, name]) => [key, actionForm.elements.namedItem(name).value]));
+    const empty = { name: "", description: "", platform: "", commands: "", command_timeout: "300", original_name: "" };
+    const baseline = new Map([["", empty]]);
+    JSON.parse(document.querySelector("[data-ssh-action-library]").textContent).forEach((action) => {
+      baseline.set(action.name, Object.fromEntries(Object.keys(fields).map((key) => [key, String(key === "original_name" ? action.name : action[key] ?? "")])));
+    });
+    const drafts = new Map([...baseline].map(([key, value]) => [key, { ...value }]));
+    let current = read().original_name;
+    drafts.set(current, read());
+    const initialUrl = new URL(window.location.href);
+    if (matrixSelector?.value) {
+      initialUrl.searchParams.set("host_matrix", matrixSelector.value);
+      initialUrl.searchParams.delete("duplicate_matrix");
+    }
+    initialUrl.searchParams.delete("new_action");
+    if (current) initialUrl.searchParams.set("matrix_action", current);
+    else initialUrl.searchParams.set("new_action", "1");
+    window.history.replaceState({}, "", initialUrl);
+    const changed = (key, draft) => JSON.stringify(draft) !== JSON.stringify(baseline.get(key));
+    const remember = () => {
+      drafts.set(current, read());
+      const dirty = [...drafts].some(([key, draft]) => changed(key, draft));
+      actionForm.dataset.unsavedInitial = String(dirty);
+      if (!dirty) window.TwnUnsavedForms?.reset(actionForm);
+    };
+    const selectAction = (name) => {
+      remember();
+      current = name;
+      const draft = drafts.get(name) || empty;
+      Object.entries(fields).forEach(([key, field]) => { actionForm.elements.namedItem(field).value = draft[key]; });
+      actionSelector.value = name;
+      window.TwnSelectControls?.sync(actionSelector);
+      actionForm.querySelector(".eyebrow").textContent = name ? "Edit CLI action" : "Create CLI action";
+      actionForm.querySelector("h2").textContent = draft.name || "New reusable action";
+      const badge = actionForm.querySelector(".pill");
+      if (badge) badge.hidden = true;
+      actionForm.querySelector('[value="save_matrix_action"]').textContent = name ? "Save changes" : "Save CLI action";
+      actionForm.querySelector("[data-ssh-action-delete]").hidden = !name;
+      const url = new URL(window.location.href);
+      url.searchParams.delete("new_action");
+      url.searchParams.set("matrix_action", name);
+      if (!name) url.searchParams.set("new_action", "1");
+      window.history.replaceState({}, "", url);
+      remember();
+    };
+    actionSelector.addEventListener("change", () => selectAction(actionSelector.value));
+    document.querySelector("[data-ssh-new-action]")?.addEventListener("click", () => {
+      selectAction("");
+      actionForm.elements.namedItem("matrix_action_name").focus();
+    });
+    actionForm.addEventListener("input", remember);
+    actionForm.addEventListener("submit", (event) => {
+      remember();
+      if ([...drafts].some(([key, draft]) => key !== current && changed(key, draft))
+        && !window.confirm("Other CLI actions have unsaved drafts. Continue and leave those drafts?")) {
+        event.preventDefault();
+      }
+    });
+    actionForm.querySelector("[data-ssh-action-delete]")?.addEventListener("click", (event) => {
+      if (!window.confirm(`Delete CLI action “${read().original_name}”?`)) event.preventDefault();
+    });
+  }
 
   const actionCommands = document.querySelector("[data-ssh-action-commands]");
   document.querySelector("[data-ssh-action-variable-picker]")?.addEventListener("click", (event) => {
@@ -115,6 +185,7 @@
     });
 
     hostForm.addEventListener("submit", (event) => {
+      if (event.submitter?.name === "name") return; // Delete does not save editor contents.
       const matrix = hostForm.querySelector("[data-ssh-matrix]");
       if (matrixEditor.mode === "grid") matrixEditor.sync();
       if (matrixEditor.mode === "grid" && !matrixEditor.validate({ focus: true, requireTargets: true })) {
@@ -135,8 +206,86 @@
     });
   }
 
+  document.querySelector("[data-ssh-rename-matrix]")?.addEventListener("click", () => {
+    showWorkspace("hosts");
+    const name = hostForm?.elements.namedItem("host_matrix_name");
+    name?.focus();
+    name?.select();
+  });
+
+  const copyDialog = document.querySelector("[data-ssh-copy-dialog]");
+  const copyName = copyDialog?.querySelector("[data-ssh-copy-name]");
+  const copyActions = copyDialog?.querySelector("[data-ssh-copy-actions]");
+  let copyKind = null;
+  let copyTrigger = null;
+  document.querySelectorAll("[data-ssh-copy]").forEach((button) => {
+    button.addEventListener("click", () => {
+      copyKind = button.dataset.sshCopy;
+      copyTrigger = button;
+      const source = copyKind === "matrix" ? hostForm : document.querySelector(".multi-ssh-action-editor");
+      const name = source.elements.namedItem(copyKind === "matrix" ? "host_matrix_name" : "matrix_action_name");
+      copyName.value = `Copy of ${name.value}`.slice(0, 100);
+      copyActions.checked = true;
+      copyDialog.querySelector("[data-ssh-copy-actions-label]").hidden = copyKind !== "matrix";
+      copyDialog.querySelector("[data-ssh-copy-note]").textContent = copyKind === "matrix"
+        ? "Copies the current host editor contents into a new local matrix. Saved CLI actions can be included. The original stays unchanged."
+        : "Copies the current action editor contents into this matrix's library. The original stays unchanged; nothing runs.";
+      copyDialog.showModal();
+      copyName.focus();
+      copyName.select();
+    });
+  });
+  copyDialog?.querySelector("[data-ssh-copy-cancel]").addEventListener("click", () => copyDialog.close());
+  copyDialog?.addEventListener("close", () => copyTrigger?.focus());
+  const setHidden = (form, name, value) => {
+    let input = form.querySelector(`input[name="${name}"]`);
+    if (!input) {
+      input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.dataset.unsavedIgnore = "";
+      form.append(input);
+    }
+    input.value = value;
+  };
+  copyDialog?.querySelector("form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const source = copyKind === "matrix" ? hostForm : document.querySelector(".multi-ssh-action-editor");
+    setHidden(source, "copy_name", copyName.value.trim());
+    setHidden(source, "copy_actions", copyActions.checked ? "on" : "");
+    copyDialog.close();
+    showWorkspace(copyKind === "matrix" ? "hosts" : "actions");
+    // requestSubmit preserves editor validation, serialization and unsaved guards.
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.name = "action";
+    submit.value = copyKind === "matrix" ? "save_host_matrix_copy" : "save_matrix_action_copy";
+    submit.hidden = true;
+    source.append(submit);
+    // Finish the dialog submit first so its cancelled event cannot clear the
+    // shared unsaved guard's acknowledgement of the real editor submission.
+    setTimeout(() => {
+      source.requestSubmit(submit);
+      submit.remove();
+    }, 0);
+  });
+
   const runForm = document.querySelector("[data-multi-ssh]");
   if (!runForm) return;
+  const selectedNames = () => [...runForm.querySelectorAll('[name="selected_actions"]')].map((input) => input.value);
+  document.querySelectorAll(".multi-ssh-action-editor, .multi-ssh-action-copy-form, [data-ssh-host-form], [data-ssh-action-picker]").forEach((form) => {
+    form.addEventListener("submit", () => {
+      form.querySelectorAll('[name="selected_actions"]').forEach((input) => input.remove());
+      selectedNames().forEach((name) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "selected_actions";
+        input.value = name;
+        input.dataset.unsavedIgnore = "";
+        form.append(input);
+      });
+    });
+  });
   const token = runForm.querySelector("[data-ssh-preview-token]");
   const status = runForm.querySelector("[data-ssh-preview-status]");
   const confirmation = runForm.querySelector("[data-ssh-run-confirmation]");
@@ -199,6 +348,7 @@
     const input = document.createElement("input");
     input.type = "hidden";
     input.name = "selected_actions";
+    input.dataset.unsavedIgnore = "";
     input.value = option.value;
 
     const number = document.createElement("span");

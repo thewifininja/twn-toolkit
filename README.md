@@ -177,7 +177,13 @@ The sidebar and Network Tools page use the same functional organization.
 - **Bulk SSH** — save a spreadsheet-style host matrix with fixed Name and Host
   columns plus reusable per-host variables. Each matrix owns a compatible CLI
   action library; the Run tab builds an explicit ordered runbook from only the
-  actions needed for that execution. Raw Matrix mode supports CSV-style pasting,
+  actions needed for that execution. Matrix controls sit beside the selector.
+  **Save a copy** uses the current editor contents and a new name; matrix copies
+  start local and can include saved CLI actions. **Save & add to run** saves an
+  action and adds it to the current run without executing it. Action drafts stay
+  in memory when switching between editors; saving retains the chosen run order.
+  See the [library and run workflow](docs/bulk-ssh-workflow.md).
+  Raw Matrix mode supports CSV-style pasting,
   and the compact importer accepts friendly host lists and inclusive IPv4/IPv6
   ranges. Fleet runs support up to 5,000 targets in batches of 50 with at most
   10 simultaneous SSH connections and a bounded aggregate output budget.
