@@ -18,6 +18,7 @@ from ..network_tools import (
     SSH_EXECUTION_BATCH_SIZE,
     ToolInputError,
     parse_ssh_targets,
+    split_ssh_commands,
     run_ssh_host_plans,
     validate_hosts,
 )
@@ -51,11 +52,7 @@ def _validate_ssh(config: dict[str, Any]) -> dict[str, Any]:
         matrix = ssh_hosts_to_matrix(str(config.get("hosts", "")))
     username = str(config.get("username", "")).strip()
     password = str(config.get("password", ""))
-    commands = [
-        command.strip()
-        for command in str(config.get("commands", "")).splitlines()
-        if command.strip()
-    ]
+    commands = split_ssh_commands(str(config.get("commands", "")))
     try:
         port = int(config.get("port", 22))
         command_timeout = int(config.get("command_timeout", 300))

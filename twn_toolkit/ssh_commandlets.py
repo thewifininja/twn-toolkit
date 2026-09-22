@@ -14,6 +14,7 @@ from .network_tools import (
     SSH_TARGET_LIMIT,
     ToolInputError,
     parse_ssh_commands,
+    split_ssh_commands,
     parse_ssh_targets,
     validate_ssh_target,
 )
@@ -292,9 +293,7 @@ def build_ssh_command_plans(
     default_command_timeout: int = SSH_DEFAULT_COMMAND_TIMEOUT,
 ) -> dict[str, Any]:
     matrix = parse_ssh_target_matrix(matrix_text)
-    command_lines = (
-        str(commands).splitlines() if isinstance(commands, str) else list(commands)
-    )
+    command_lines = split_ssh_commands(commands)
     available = set(matrix["variable_names"])
     referenced = referenced_ssh_variables(command_lines)
     unknown = [name for name in referenced if name not in available]
@@ -415,7 +414,7 @@ def normalize_ssh_commandlet(commandlet: dict[str, Any]) -> dict[str, Any]:
         )
     except (TypeError, ValueError) as exc:
         raise ToolInputError("Default command timeout must be a whole number.") from exc
-    command_lines = [line for line in commands.splitlines() if line.strip()]
+    command_lines = split_ssh_commands(commands)
     parse_ssh_commands(command_lines, default_timeout)
     variables = referenced_ssh_variables(command_lines)
     raw_matrix_names = commandlet.get("matrix_names", [])
@@ -471,7 +470,7 @@ def ssh_matrix_actions_to_commands(actions: list[dict[str, Any]]) -> str:
     for action in actions:
         normalized = normalize_ssh_matrix_action(action)
         parsed = parse_ssh_commands(
-            str(normalized["commands"]).splitlines(),
+            split_ssh_commands(str(normalized["commands"])),
             int(normalized["command_timeout"]),
         )
         command_lines.extend(

@@ -30,6 +30,7 @@ from . import bulk_ssh_jobs
 from .activity_context import record_current_activity
 from .audit import annotate_audit_event, annotate_tool_run, suppress_audit_event
 from .network_tools import (
+    split_ssh_commands,
     SSH_DEFAULT_COMMAND_TIMEOUT,
     SSH_EXECUTION_BATCH_SIZE,
     SSH_EXECUTION_WORKERS,
@@ -479,13 +480,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                 resource_id=name,
                 resource_name=name,
                 details={
-                    "command count": len(
-                        [
-                            line
-                            for line in str(commandlet["commands"]).splitlines()
-                            if line.strip()
-                        ]
-                    ),
+                    "command count": len(split_ssh_commands(str(commandlet["commands"]))),
                     "variables": commandlet.get("variables", []),
                     "related host matrices": commandlet.get("matrix_names", []),
                 },
@@ -1168,13 +1163,7 @@ def _annotate_matrix_action_save(
         details={
             "host matrix": matrix["name"],
             "variables": action.get("variables", []),
-            "command count": len(
-                [
-                    line
-                    for line in str(action.get("commands", "")).splitlines()
-                    if line.strip()
-                ]
-            ),
+            "command count": len(split_ssh_commands(str(action.get("commands", "")))),
         },
     )
 
@@ -1332,13 +1321,7 @@ def _annotate_commandlet_save(
         resource_id=str(commandlet["name"]),
         resource_name=str(commandlet["name"]),
         details={
-            "command count": len(
-                [
-                    line
-                    for line in str(commandlet["commands"]).splitlines()
-                    if line.strip()
-                ]
-            ),
+            "command count": len(split_ssh_commands(str(commandlet["commands"]))),
             "variables": commandlet["variables"],
             "related host matrices": commandlet.get("matrix_names", []),
             "platform configured": bool(commandlet["platform"]),
