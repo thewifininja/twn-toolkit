@@ -161,8 +161,8 @@ class NetworkToolTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ToolInputError, "between 1 and 3600"):
             parse_ssh_commands(["[timeout=3601] show report"], 300)
-        with self.assertRaisesRegex(ToolInputError, "Combined command timeout budget"):
-            parse_ssh_commands(["[timeout=2000] one", "[timeout=2000] two"], 300)
+        self.assertEqual(len(parse_ssh_commands(["show status"] * 100, 300)), 100)
+        self.assertEqual(len(parse_ssh_commands(["[timeout=2000] one", "[timeout=2000] two"], 300)), 2)
 
     def test_ssh_targets_support_optional_friendly_names(self) -> None:
         self.assertEqual(
@@ -327,7 +327,7 @@ class NetworkToolTests(unittest.TestCase):
             )
         self.assertEqual(result["status"], "timeout")
         self.assertEqual(result["timed_out_command"], "diag debug report")
-        channel.send.assert_called_once_with("diag debug report\n")
+        channel.sendall.assert_called_once_with("diag debug report\n")
 
     def test_ssh_host_can_enable_scoped_legacy_compatibility(self) -> None:
         client = MagicMock()

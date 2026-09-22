@@ -134,9 +134,9 @@ class SSHCommandletParserTests(unittest.TestCase):
         self.assertEqual(
             built["plans"][0]["commands"],
             [
-                "            interface vlan 4",
-                "            [timeout=600] ip address 10.0.4.1",
-                "            show host switch-1 row 1",
+                "interface vlan 4",
+                "[timeout=600] ip address 10.0.4.1",
+                "show host switch-1 row 1",
             ],
         )
         self.assertEqual(

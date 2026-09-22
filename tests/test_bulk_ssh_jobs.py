@@ -188,7 +188,7 @@ def test_banner_capture_is_bounded_under_continuous_output(monkeypatch):
 
 
 @pytest.fixture
-def ssh_server():
+def ssh_server(request):
     """A disposable actual Paramiko server; no external host or known-host write."""
     import socket
     import threading
@@ -228,6 +228,8 @@ def ssh_server():
                     continue
                 channel.settimeout(.1)
                 channel.send(b'fixture # ')
+                pending = b''
+                in_value = False
                 while not stop.is_set():
                     try:
                         data = channel.recv(4096)
@@ -238,6 +240,13 @@ def ssh_server():
                         break
                     commands.append(data)
                     received.set()
+                    if getattr(request, 'param', '') == 'multiline':
+                        pending += data
+                        while b'\n' in pending:
+                            line, pending = pending.split(b'\n', 1)
+                            if line.count(b'"') % 2:
+                                in_value = not in_value
+                            channel.sendall(b'\r\n> ' if in_value else b'\r\nfixture # ')
                     # Keep a command in flight until the worker closes the socket.
             except (EOFError, OSError, paramiko.SSHException):
                 disconnected.set()
@@ -560,3 +569,14 @@ def test_retained_host_rows_start_collapsed_with_explicit_outcome_badges(setup):
     assert f'/tools/multi-ssh/jobs/{identifier}/download?host=0' in page
     assert page.index('Cancel remaining work')<page.index('class="ssh-result ssh-run-host"')
     assert 'data-ssh-count="completed">3<' in page
+
+
+@pytest.mark.parametrize('ssh_server', ['multiline'], indirect=True)
+def test_real_ssh_multiline_certificate_waits_for_normal_prompt(ssh_server):
+    port, _, _, received = ssh_server
+    certificate = 'set certificate "-----BEGIN CERTIFICATE-----\n' + ('A' * 64 + '\n') * 100 + '\n-----END CERTIFICATE-----"'
+    commands = network.parse_ssh_commands(['config vpn certificate local', certificate, 'end', 'get system status'], 3)
+    result = network._ssh_host('127.0.0.1', 'fixture', 'fixture', commands, port, True, False, 0)
+    assert result['status'] == 'success', result
+    assert b''.join(received).decode() == '\n'.join(spec['command'] for spec in commands) + '\n'
+    assert '> ' in result['output']

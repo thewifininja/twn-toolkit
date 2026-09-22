@@ -205,7 +205,7 @@
               <div class="multi-ssh-variable-picker" data-ssh-action-variable-picker aria-label="Available matrix variables"><span>Insert host variable</span>{% for variable in selected_matrix.variables %}<button class="secondary ssh-variable-chip" type="button" data-ssh-variable="{{ variable }}">{{ '{{ ' ~ variable ~ ' }}' }}</button>{% endfor %}</div>
             </div>
             <div class="multi-ssh-save-row">
-              <p class="field-note">Need more time for one command? Prefix it with <code>[timeout=600]</code>. A run may contain at most 50 commands and a 3600-second timeout budget per host.</p>
+              <p class="field-note">Need more time for one command? Prefix it with <code>[timeout=600]</code>. There is no command-count limit. The configured run deadline still applies. Paste multiline double-quoted values as written; the closing quote completes that command.</p>
               <div class="button-row">
                 <button name="action" value="save_matrix_action" type="submit">{{ 'Save changes' if action_editor.original_name else 'Save CLI action' }}</button>
                 {% if action_editor.original_name %}

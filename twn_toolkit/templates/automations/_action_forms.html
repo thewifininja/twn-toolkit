@@ -80,7 +80,7 @@
         </div>
         <label>Default command timeout
           <div class="input-suffix"><input name="action_command_timeout" type="number" min="1" max="3600" value="{{ config.get('command_timeout', config.get('action_command_timeout', '300')) }}" required data-1p-ignore><span>seconds</span></div>
-          <small class="field-note">A command completes when the device prompt returns. Override one command with <code>[timeout=600] command</code>. Combined timeout budget: 3600 seconds per host.</small>
+          <small class="field-note">A command completes when the device prompt returns. Override one command with <code>[timeout=600] command</code>. Multiline quoted values stay together. No command-count cap; the automation run deadline still applies.</small>
         </label>
       </section>
 

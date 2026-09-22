@@ -154,8 +154,10 @@ toolkit generation identifiers are deliberately omitted from action evidence.
   simultaneous SSH connections and a bounded aggregate output budget. Commands
   use a 300-second default ceiling and complete as soon as the original device
   prompt returns. Prefix an individual command with `[timeout=600]` when it
-  needs a different ceiling; accepted values are 1 through 3600 seconds. The
-  combined timeout budget across commands is limited to one hour per host.
+  needs a different ceiling; accepted values are 1 through 3600 seconds. There
+  is no command-count or summed-timeout cap; the automation run deadline still
+  applies. Literal newlines inside quoted values are sent as one command before
+  waiting for the normal prompt, including PEM certificate input.
 - Action: send an RFC 5424 syslog message to up to 20 UDP or TCP collectors.
   Facility, severity, hostname, application name, timeout, and destination ports
   are configurable. Messages support the documented trigger, toolkit, startup,

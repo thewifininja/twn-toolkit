@@ -41,11 +41,10 @@ DNS_LOAD_MAX_DURATION_SECONDS = 30
 DNS_LOAD_MAX_QPS_PER_SERVER = 500
 DNS_LOAD_MAX_QUERIES = 50_000
 DNS_LOAD_MAX_SERVERS = 5
-SSH_TIMEOUT_PREFIX = re.compile(r"^\[timeout=(\d+)\]\s+(.+)$", re.IGNORECASE)
+SSH_TIMEOUT_PREFIX = re.compile(r"^\[timeout=(\d+)\]\s+(.+)$", re.IGNORECASE | re.DOTALL)
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 SSH_DEFAULT_COMMAND_TIMEOUT = 300
 SSH_MAX_COMMAND_TIMEOUT = 3600
-SSH_MAX_RUN_TIMEOUT = 3600
 SSH_OUTPUT_LIMIT = 5 * 1024 * 1024
 SSH_TARGET_LIMIT = 5_000
 SSH_EXECUTION_BATCH_SIZE = 50
@@ -1206,6 +1205,42 @@ def run_ssh_host_plans(
     return [result for _index, result in sorted(indexed_results)]
 
 
+def split_ssh_commands(commands: list[str] | str) -> list[str]:
+    """Keep literal newlines inside quoted CLI values in one command.
+
+    A continuation prompt is input mode, not command completion. The complete
+    quoted value must be sent before waiting for the original device prompt.
+    Backslash-escaped quotes do not change quote state.
+    """
+    text = commands if isinstance(commands, str) else "\n".join(str(item) for item in commands)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    result, current = [], []
+    quote = ""
+    escaped = False
+    for char in text:
+        if char == "\n" and not quote:
+            command = "".join(current).strip()
+            if command:
+                result.append(command)
+            current = []
+            escaped = False
+            continue
+        previous = current[-1] if current else " "
+        current.append(char)
+        if not escaped:
+            if quote and char == quote:
+                quote = ""
+            elif not quote and (char == '"' or char == "'" and (previous.isspace() or previous in "=([")):
+                quote = char
+        escaped = char == "\\" and not escaped and quote != "'"
+    if quote:
+        raise ToolInputError("SSH script has an unclosed quote. Close multiline values before running.")
+    command = "".join(current).strip()
+    if command:
+        result.append(command)
+    return result
+
+
 def parse_ssh_commands(
     commands: list[str], default_timeout: int = SSH_DEFAULT_COMMAND_TIMEOUT
 ) -> list[dict[str, Any]]:
@@ -1217,11 +1252,9 @@ def parse_ssh_commands(
         raise ToolInputError(
             f"Default command timeout must be between 1 and {SSH_MAX_COMMAND_TIMEOUT} seconds."
         )
-    normalized = [str(command).strip() for command in commands if str(command).strip()]
+    normalized = split_ssh_commands(commands)
     if not normalized:
         raise ToolInputError("Enter at least one command.")
-    if len(normalized) > 50:
-        raise ToolInputError("A maximum of 50 SSH commands is allowed per run.")
     parsed: list[dict[str, Any]] = []
     for raw_command in normalized:
         timeout = normalized_default
@@ -1236,13 +1269,7 @@ def parse_ssh_commands(
                 )
         if not command:
             raise ToolInputError("A timeout override must be followed by a command.")
-        if len(command) > 500:
-            raise ToolInputError("Each SSH command must be 500 characters or fewer.")
         parsed.append({"command": command, "timeout": timeout})
-    if sum(item["timeout"] for item in parsed) > SSH_MAX_RUN_TIMEOUT:
-        raise ToolInputError(
-            f"Combined command timeout budget cannot exceed {SSH_MAX_RUN_TIMEOUT} seconds per host."
-        )
     return parsed
 
 
@@ -1417,7 +1444,7 @@ def _ssh_host_connection(
             command = str(command_spec["command"])
             command_timeout = int(command_spec["timeout"])
             command_attempted = True
-            channel.send(f"{command}\n")
+            channel.sendall(f"{command}\n")
             if command_delay > 0:
                 time.sleep(min(command_delay, 0.25))
             command_output, completed = _read_ssh_command(
